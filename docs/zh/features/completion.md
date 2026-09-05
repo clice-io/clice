@@ -6,28 +6,30 @@
 
 <!-- BEGIN GENERATED ITEMS: include_path_completion -->
 
-| 能力                 | 状态 | 问题 |
-| -------------------- | ---- | ---- |
-| 引号形式的包含路径   | 支持 |      |
-| 尖括号形式的包含路径 | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 引号形式的包含路径
+**Quoted include paths**
 
-来自已配置搜索路径的头文件和目录，目录以末尾斜杠标识
+Completion lists headers and directories from the configured search path and
+marks directories with a trailing slash
 
-请求在编译前由服务器响应，因此该测试用例只有服务器端处理路径。
-
-```cpp
-#include "snap"
+```snap
+tests/snap/code_completion/include_path_completion/01_include_quoted.cpp
 ```
 
-### 尖括号形式的包含路径
+<!-- END CAPABILITY -->
 
-采用尖括号形式的相同搜索路径候选项
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-#include <snap>
+**Angled include paths**
+
+Angled includes offer the same search-path candidates
+
+```snap
+tests/snap/code_completion/include_path_completion/02_include_angled.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -93,31 +95,21 @@
 
 <!-- BEGIN GENERATED ITEMS: module_completion -->
 
-| 能力     | 状态 | 问题 |
-| -------- | ---- | ---- |
-| 导入语句 | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 导入语句
+**Import statements**
 
-在 `import` 之后补全已知模块名，并插入末尾的分号
+Known module names complete after `import`, with the closing semicolon
+inserted
 
-服务器根据其模块映射响应请求，因此该测试用例只有服务器端处理路径；会先打开同级模块接口，以便服务器获知该模块。该语句会保持未终止状态——如果行内已有 `;`，则表示导入已完成，不再提供任何补全项。
+A statement that already contains its closing semicolon is complete and
+offers no module names.
 
-`main.cpp`：
-
-```cpp
-import ma
+```snap
+tests/snap/code_completion/module_completion/01_import_modules/main.cpp
 ```
 
-`mod_math.cppm`：
-
-```cpp
-export module math;
-
-export int add(int a, int b) {
-    return a + b;
-}
-```
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -202,117 +194,74 @@ export int add(int a, int b) {
 
 <!-- BEGIN GENERATED ITEMS: member_access -->
 
-| 能力                 | 状态 | 问题 |
-| -------------------- | ---- | ---- |
-| 类的成员             | 支持 |      |
-| 已实例化类模板的成员 | 支持 |      |
-| 指针成员访问         | 支持 |      |
-| 作用域限定的成员     | 支持 |      |
-| 继承的成员           | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 类的成员
+**Members of a class**
 
-字段、方法、析构函数和运算符均以普通名称补全
+Fields, methods, the destructor and operators complete with plain names
 
-析构函数补全为 `~Account`（绝不会是 `~struct Account`），`operator=` 在 `=` 前不留空格，转换运算符会写出其目标类型。
+The destructor completes as `~Account` (never `~struct Account`),
+`operator=` keeps no space before `=`, and a conversion operator
+spells its target type.
 
-```cpp
-// The member access expression is left dangling at the point.
-struct Wallet {
-    int cents;
-};
-
-struct Account {
-    int balance;
-    int bazzzz(int a, int b);
-    operator Wallet();
-};
-
-void bar() {
-    Account acc;
-    acc.
-}
+```snap
+tests/snap/code_completion/member_access/01_member_access.cpp
 ```
 
-### 已实例化类模板的成员
+<!-- END CAPABILITY -->
 
-析构函数标签会保留所写的模板实参
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The member access expression is left dangling at the point.
-template <typename T>
-struct Box {
-    T value;
-};
+**Instantiated class template members**
 
-void bar() {
-    Box<int> b;
-    b.
-}
+The destructor label keeps the written template arguments
+
+```snap
+tests/snap/code_completion/member_access/02_member_template.cpp
 ```
 
-### 指针成员访问
+<!-- END CAPABILITY -->
 
-对指针使用 `->` 时，会补全其所指对象的成员
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The member access expression is left dangling at the point.
-struct Node {
-    int value;
-    Node* next;
-    int compute(int a);
-};
+**Pointer member access**
 
-void bar() {
-    Node* p;
-    p->
-}
+`->` on a pointer completes the pointee's members
+
+```snap
+tests/snap/code_completion/member_access/03_pointer_arrow.cpp
 ```
 
-### 作用域限定的成员
+<!-- END CAPABILITY -->
 
-在 `::` 后，静态数据成员、嵌套类型、方法和注入类名都会列出
+<!-- BEGIN CAPABILITY: supported -->
 
-限定补全不会只保留可通过静态方式访问的子集：实例字段和析构函数会与静态成员、嵌套类型一同出现。
+**Scope-qualified members**
 
-```cpp
-// The qualified-id is left dangling at the point.
-struct Config {
-    static int shared_count;
-    static int make(int seed);
+After `::` static data, nested types, methods and the injected class name
+all list
 
-    struct Nested {
-        int a;
-    };
+Qualified completion is not filtered to the statically-reachable subset:
+instance fields and the destructor show up alongside the static members
+and nested types.
 
-    int instance_field;
-};
-
-void bar() {
-    int v = Config::;
-}
+```snap
+tests/snap/code_completion/member_access/04_scope_access.cpp
 ```
 
-### 继承的成员
+<!-- END CAPABILITY -->
 
-派生对象的补全结果包括其自身成员及其基类的成员
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The member access expression is left dangling at the point.
-struct Base {
-    int base_field;
-    int base_method();
-};
+**Inherited members**
 
-struct Derived : Base {
-    int derived_field;
-};
+A derived object completes its own members and those of its base
 
-void bar() {
-    Derived d;
-    d.
-}
+```snap
+tests/snap/code_completion/member_access/05_inherited_members.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -414,217 +363,144 @@ void bar() {
 
 <!-- BEGIN GENERATED ITEMS: symbols -->
 
-| 能力                         | 状态 | 问题 |
-| ---------------------------- | ---- | ---- |
-| 支持模糊前缀匹配的非限定查找 | 支持 |      |
-| 类模板去重                   | 支持 |      |
-| 构造函数标签保持简单形式     | 支持 |      |
-| 关键字模式                   | 支持 |      |
-| 宏                           | 支持 |      |
-| 宏遮蔽声明                   | 支持 |      |
-| 在宏实参内补全               | 支持 |      |
-| 命名空间限定查找             | 支持 |      |
-| 枚举成员                     | 支持 |      |
-| 局部名称遮蔽全局名称         | 支持 |      |
-| using 声明                   | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 支持模糊前缀匹配的非限定查找
+**Fuzzy unqualified lookup**
 
-强前缀匹配会保留；弱子序列匹配和非限定的命名空间成员则不会保留
+Strong prefix matches survive, weak subsequence matches and unqualified
+namespace members do not
 
-```cpp
-// The completion expression dangles as an unfinished statement.
-namespace A {
-
-void fooooo();
-
-}
-
-struct X {
-    void operator()() {}
-};
-
-void bar() {
-    X functor;
-    auto folded = [](int x) {
-    };
-    fo;
-}
+```snap
+tests/snap/code_completion/symbols/01_unqualified_lookup.cpp
 ```
 
-### 类模板去重
+<!-- END CAPABILITY -->
 
-同时作为构造函数和推导指引出现的名称仍只保留一个类条目
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-template <typename T>
-struct Foo {
-    Foo() {}
+**Class template deduplication**
 
-    Foo(T x) {}
+A name that is also constructors and a deduction guide stays a single class
+entry
 
-    Foo(T x, T y) {}
-};
-
-template <typename T>
-Foo(T) -> Foo<T>;
-
-void bar() {
-    Fo
-}
+```snap
+tests/snap/code_completion/symbols/02_template_dedup.cpp
 ```
 
-### 构造函数标签保持简单形式
+<!-- END CAPABILITY -->
 
-类模板的构造函数和推导指引均直接以类名补全，绝不会采用模板化写法
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-template <typename T, typename U>
-struct Bazzz {
-    Bazzz() {}
+**Constructor labels stay plain**
 
-    Bazzz(T x) {}
+Class template constructors and deduction guides complete as the bare class
+name, never a templated spelling
 
-    Bazzz(T x, U y) {}
-};
-
-template <typename T>
-Bazzz(T) -> Bazzz<T, int>;
-
-void bar() {
-    Ba
-}
+```snap
+tests/snap/code_completion/symbols/03_constructor_labels.cpp
 ```
 
-### 关键字模式
+<!-- END CAPABILITY -->
 
-关键字与其他候选项一样参与补全，插入文本为纯文本
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int x = tru
+**Keyword patterns**
+
+Keywords complete like any candidate, with plain insert text
+
+```snap
+tests/snap/code_completion/symbols/04_pattern_keyword.cpp
 ```
 
-### 宏
+<!-- END CAPABILITY -->
 
-对象式宏作为常量补全，函数式宏作为带参数签名的函数补全；参数代码片段遵循函数设置
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-#define RETRY_LIMIT 3
+**Macros**
 
-#define CLAMP(value, limit) ((value) < (limit) ? (value) : (limit))
+Object-like macros complete as constants, function-like ones as functions
+with a parameter signature; argument snippets follow the function setting
 
-int a = RETRY;
-int b = CLA;
+```snap
+tests/snap/code_completion/symbols/05_macros.cpp
 ```
 
-### 宏遮蔽声明
+<!-- END CAPABILITY -->
 
-被重定义为宏的名称补全为宏，而不是被遮蔽的声明
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-void GUARD(int);
-#define GUARD 1
+**Macro shadowing a declaration**
 
-int BOUND(int lo, int hi);
-#define BOUND(lo, hi) ((lo) < (hi) ? (lo) : (hi))
+A name redefined as a macro completes as the macro, not the shadowed
+declaration
 
-int a = GUAR;
-int b = BOUN;
+```snap
+tests/snap/code_completion/symbols/06_macro_shadow.cpp
 ```
 
-### 在宏实参内补全
+<!-- END CAPABILITY -->
 
-写在宏实参中的成员访问，补全结果与写在宏外时一致
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-#define WRAP(...) __VA_ARGS__
+**Completion inside macro arguments**
 
-struct Config {
-    int retries;
-    int timeout;
-};
+Member access written as a macro argument completes as it would outside the
+macro
 
-void run() {
-    Config config;
-    WRAP(config.);
-}
+```snap
+tests/snap/code_completion/symbols/07_macro_argument.cpp
 ```
 
-### 命名空间限定查找
+<!-- END CAPABILITY -->
 
-`ns::` 列出该命名空间自身的成员
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The qualified-id is left dangling at the point.
-namespace geometry {
+**Namespace-qualified lookup**
 
-int area_of(int r);
+`ns::` lists the namespace's own members
 
-struct Point {
-    int x;
-};
-
-int origin;
-
-}  // namespace geometry
-
-void bar() {
-    int v = geometry::;
-}
+```snap
+tests/snap/code_completion/symbols/08_namespace_qualified.cpp
 ```
 
-### 枚举成员
+<!-- END CAPABILITY -->
 
-有作用域枚举通过 `Type::` 列出成员，无作用域枚举项则直接以名称补全
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// Both completion prefixes dangle; the statements stay
-// semicolon-terminated so the second marker is not dragged into recovery.
-enum class Color { Red, Green, Blue };
+**Enum members**
 
-enum Fruit { Apple, Banana };
+A scoped enum lists through `Type::`, an unscoped enumerator completes by
+bare name
 
-void bar() {
-    Color c = Color::;
-    int f = App;
-}
+```snap
+tests/snap/code_completion/symbols/09_enum_members.cpp
 ```
 
-### 局部名称遮蔽全局名称
+<!-- END CAPABILITY -->
 
-被遮蔽的全局名称不会作为重复条目出现
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-int counter = 0;
+**Local shadowing a global**
 
-void bar() {
-    int counter = 1;
-    int v = coun;
-}
+The shadowed global does not appear as a duplicate entry
+
+```snap
+tests/snap/code_completion/symbols/10_local_shadow.cpp
 ```
 
-### using 声明
+<!-- END CAPABILITY -->
 
-通过 `using` 引入的名称以非限定形式补全
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-namespace lib {
+**Using-declaration**
 
-int helper_fn(int x);
+A name pulled in with `using` completes unqualified
 
-}
-
-using lib::helper_fn;
-
-void bar() {
-    int v = help;
-}
+```snap
+tests/snap/code_completion/symbols/11_using_declaration.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -662,110 +538,93 @@ void bar() {
 
 <!-- BEGIN GENERATED ITEMS: functions_snippets -->
 
-| 能力                     | 状态 | 问题 |
-| ------------------------ | ---- | ---- |
-| 签名与返回类型详情       | 支持 |      |
-| 重载合并                 | 支持 |      |
-| 未合并的重载             | 支持 |      |
-| 参数占位符代码片段       | 支持 |      |
-| 代码片段遵循重载合并设置 | 支持 |      |
-| 带默认实参的参数         | 支持 |      |
-| 可变参数签名             | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 签名与返回类型详情
+**Signature and return type details**
 
-参数列表和返回类型会作为标签详情一并显示
+The parameter list and return type ride along as label details
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-double foooo(int x, float y);
-
-int x = fo
+```snap
+tests/snap/code_completion/functions_snippets/01_function_candidates.cpp
 ```
 
-### 重载合并
+<!-- END CAPABILITY -->
 
-重载集合合并为一个条目，并显示重载数量
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int foooo(int x);
-int foooo(int x, int y);
-double foooo(double d);
+**Overload bundling**
 
-int x = fooo
+An overload set collapses into one entry with an overload count
+
+```snap
+tests/snap/code_completion/functions_snippets/02_overload_bundle.cpp
 ```
 
-### 未合并的重载
+<!-- END CAPABILITY -->
 
-关闭重载合并后，每个重载各自作为一个条目显示，并带有各自的签名
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int foooo(int x);
-int foooo(int x, int y);
-double foooo(double d);
+**Unbundled overloads**
 
-int x = fooo
+With bundling off, every overload is its own entry with its own signature
+
+```snap
+tests/snap/code_completion/functions_snippets/03_no_bundle_overloads.cpp
 ```
 
-### 参数占位符代码片段
+<!-- END CAPABILITY -->
 
-调用补全会为每个参数插入制表位占位符；无参函数则保持为纯文本
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefixes dangle as unfinished statements.
-int foooo(int x, float y);
-void nothing_to_fill();
+**Parameter placeholder snippets**
 
-struct Foo {
-    int bazzzz(int a, int b);
-};
+Calls insert tab-stop placeholders per argument; a no-argument function
+stays plain text
 
-void bar() {
-    Foo f;
-    fo;
-    no;
-    f.ba;
-}
+```snap
+tests/snap/code_completion/functions_snippets/04_snippet_arguments.cpp
 ```
 
-### 代码片段遵循重载合并设置
+<!-- END CAPABILITY -->
 
-重载合并时，即使已启用，参数代码片段也不会生效
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int foooo(int x);
-int foooo(int x, int y);
+**Snippets defer to bundling**
 
-int z = fo
+While overloads are bundled, argument snippets stay off even when enabled
+
+```snap
+tests/snap/code_completion/functions_snippets/05_snippet_bundle_mode.cpp
 ```
 
-### 带默认实参的参数
+<!-- END CAPABILITY -->
 
-签名详情会省略带默认实参的参数
+<!-- BEGIN CAPABILITY: supported -->
 
-签名详情仅保留必需参数；末尾的
-`int retries = 3` 会被省略。
+**Default-argument parameters**
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int configure(int timeout, int retries = 3);
+A parameter with a default value drops out of the signature detail
 
-int x = confi
+The signature detail keeps only the required parameters; the trailing
+`int retries = 3` is elided.
+
+```snap
+tests/snap/code_completion/functions_snippets/06_default_argument.cpp
 ```
 
-### 可变参数签名
+<!-- END CAPABILITY -->
 
-参数详情中会显示末尾的 `...`
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int printf_like(const char* fmt, ...);
+**Variadic signature**
 
-int x = printf
+A trailing `...` shows in the parameter detail
+
+```snap
+tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -871,87 +730,73 @@ int x = printf
 
 <!-- BEGIN GENERATED ITEMS: filtering_ranking -->
 
-| 能力               | 状态 | 问题 |
-| ------------------ | ---- | ---- |
-| 下划线过滤         | 支持 |      |
-| 弃用标记           | 支持 |      |
-| 词边界模糊匹配     | 支持 |      |
-| 不区分大小写的前缀 | 支持 |      |
-| 前缀优先于子序列   | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 下划线过滤
+**Underscore filtering**
 
-以下划线开头的内部符号默认隐藏，除非用户输入的前缀本身以下划线开头
+Underscore-prefixed internal symbols hide unless the typed prefix itself
+starts with one
 
-```cpp
-// The completion prefixes are undeclared identifiers. The
-// statements stay semicolon-terminated: an unterminated one puts the
-// NEXT marker into a recovery context, which completion drops entirely.
-int _private_thing;
-int public_thing;
-
-int x = pu;
-int y = _p;
+```snap
+tests/snap/code_completion/filtering_ranking/01_underscore_filter.cpp
 ```
 
-### 弃用标记
+<!-- END CAPABILITY -->
 
-[[deprecated]] 候选项带有 Deprecated 标记，对应的普通候选项则没有
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-[[deprecated]] int old_thing(int x);
-int new_thing(int x);
+**Deprecated tagging**
 
-int z = thing
+A [[deprecated]] candidate carries the Deprecated tag, its plain sibling
+does not
+
+```snap
+tests/snap/code_completion/filtering_ranking/02_deprecated_tag.cpp
 ```
 
-### 词边界模糊匹配
+<!-- END CAPABILITY -->
 
-前缀 `fb` 匹配 `foo_bar_baz` 中各单词的开头
+<!-- BEGIN CAPABILITY: supported -->
 
-`frobnicate` 对 `fb` 仅构成较弱的分散子序列匹配，因此被过滤掉；
-`foo_bar_baz` 则在 `foo`/`bar` 的词边界处匹配，因此得以保留。
+**Word-boundary fuzzy match**
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-int foo_bar_baz;
-int frobnicate;
+Prefix `fb` matches the word starts of `foo_bar_baz`
 
-void bar() {
-    int v = fb;
-}
+`frobnicate` is only a weak scattered subsequence of `fb` and is dropped;
+`foo_bar_baz` matches on the `foo`/`bar` word boundaries and survives.
+
+```snap
+tests/snap/code_completion/filtering_ranking/03_fuzzy_word_boundary.cpp
 ```
 
-### 不区分大小写的前缀
+<!-- END CAPABILITY -->
 
-小写前缀可以匹配大小写混合的标识符
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-int MyLongName;
+**Case-insensitive prefix**
 
-void bar() {
-    int v = mylong;
-}
+A lowercase prefix matches a mixed-case identifier
+
+```snap
+tests/snap/code_completion/filtering_ranking/04_case_insensitive.cpp
 ```
 
-### 前缀优先于子序列
+<!-- END CAPABILITY -->
 
-精确前缀匹配的候选项排在分散子序列匹配的候选项之前
+<!-- BEGIN CAPABILITY: supported -->
 
-对于前缀 `fo`，`format_output` 属于真正的前缀匹配，得分高于
-仅以子序列方式匹配的 `fast_math_operation`。
+**Prefix outranks subsequence**
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-int format_output;
-int fast_math_operation;
+An exact-prefix candidate sorts above a scattered subsequence match
 
-void bar() {
-    int v = fo;
-}
+For prefix `fo`, `format_output` is a true prefix and outscores
+`fast_math_operation`, which only matches as a subsequence.
+
+```snap
+tests/snap/code_completion/filtering_ranking/05_prefix_beats_subsequence.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 

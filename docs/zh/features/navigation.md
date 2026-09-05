@@ -4,858 +4,569 @@
 
 <!-- BEGIN GENERATED ITEMS: go_to_definition -->
 
-| 能力                                      | 状态   | 问题                                                        |
-| ----------------------------------------- | ------ | ----------------------------------------------------------- |
-| 跨 TU 跳转到定义                          | 支持   |                                                             |
-| 定义与声明在光标处交替切换                | 支持   |                                                             |
-| 仅有声明的符号跳转到其声明                | 支持   |                                                             |
-| 对 `#include` 指令执行跳转到定义          | 支持   |                                                             |
-| 局部变量和参数跳转到其声明                | 支持   |                                                             |
-| 穿透宏包装跳转到底层声明                  | 支持   |                                                             |
-| 由宏体或 Token 粘贴产生的名称锚定在调用点 | 支持   |                                                             |
-| `#define` 体内的 Token 本身不提供导航     | 支持   |                                                             |
-| 错误恢复                                  | 不支持 |                                                             |
-| 未实例化模板中的依赖成员导航              | 支持   |                                                             |
-| 模板特化导航到主模板                      | 不支持 | [clangd#212](https://github.com/clangd/clangd/issues/212)   |
-| `auto` 关键字导航到推导得到的类型         | 不支持 | [clangd#2055](https://github.com/clangd/clangd/issues/2055) |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 跨 TU 跳转到定义
+**跨 TU 跳转到定义**
 
-一个翻译单元中的引用可解析到另一个源文件提供的定义——结果来自整个项目范围，而不局限于当前文件。
+从一个翻译单元中的使用位置，可以跳转到同一项目中另一个源文件提供的定义，查找范围覆盖整个项目，而不局限于当前文件
 
-`main.cpp`：
-
-```cpp
-#include "shared.h"
-
-int run(int value) {
-    return transform(value);
-}
+```snap
+tests/snap/navigation/go_to_definition/01_def_cross_tu/main.cpp
 ```
 
-`lib.cpp`：
+<!-- END CAPABILITY -->
 
-```cpp
-#include "shared.h"
+<!-- BEGIN CAPABILITY: supported -->
 
-int transform(int value) {
-    return value * 2;
-}
+**定义与声明相互跳转**
+
+在声明与定义之间相互跳转
+
+从使用位置发起请求会跳转到定义，从声明或定义处发起请求则会跳转到另一处。对于没有单独声明的内联符号，跳转目标仍是其定义。
+
+```snap
+tests/snap/navigation/go_to_definition/02_def_decl_alternate.cpp
 ```
 
-`shared.h`：
+<!-- END CAPABILITY -->
 
-```cpp
-#pragma once
+<!-- BEGIN CAPABILITY: supported -->
 
-int transform(int value);
+**仅有声明的符号导航**
+
+对于只有声明的符号，如纯虚函数、`extern` 变量、类内静态常量，会跳转到该声明，而不是不返回任何结果
+
+```snap
+tests/snap/navigation/go_to_definition/03_def_declaration_only.cpp
 ```
 
-### 定义与声明在光标处交替切换
+<!-- END CAPABILITY -->
 
-在引用处执行跳转到定义会到达定义。在定义处执行时，它会跳转到声明；在声明处执行时，它会跳转到定义——两个位置交替切换。对于以内联方式定义且没有单独声明的符号，结果仍为其定义。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int scale(int value);
+**在 `#include` 指令上跳转到定义**
 
-int scale(int value) {
-    return value * 2;
-}
+在包含指令上执行跳转到定义，会打开其引用的文件
 
-int apply(int value) {
-    return scale(value);
-}
+文件开头的包含指令与文件后面普通的包含指令行为一致。
+
+```snap
+tests/snap/navigation/go_to_definition/04_def_include/main.cpp
 ```
 
-### 仅有声明的符号跳转到其声明
+<!-- END CAPABILITY -->
 
-只有声明的符号——纯虚函数、`extern` 变量、类内静态常量——会解析到该声明，而不是不返回任何结果。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-extern int threshold;
+**局部符号导航**
 
-int probe(int value);
+在局部变量或参数上执行跳转到定义，会跳转到它在函数体内的声明
 
-struct Screen {
-    static const int margin = 4;
-    virtual void refresh() = 0;
-};
-
-int watch(Screen& screen, int value) {
-    screen.refresh();
-    return probe(value) + threshold + Screen::margin;
-}
+```snap
+tests/snap/navigation/go_to_definition/05_def_local_symbol.cpp
 ```
 
-### 对 `#include` 指令执行跳转到定义
+<!-- END CAPABILITY -->
 
-在 `#include` 行上执行跳转到定义会打开所包含的文件。无论是文件开头被编译进 Preamble（PCH）的包含指令，还是文件后面的普通包含指令，都支持这一操作。
+<!-- BEGIN CAPABILITY: supported -->
 
-`main.cpp`：
+**宏包装导航**
 
-```cpp
-#include "panel.h"
+宏实参中直接写出的名称以其书写位置为定位点，因此可以像普通位置一样在定义与声明之间相互跳转；从后续使用位置发起跳转时，也能穿过宏包装，定位到它所声明的函数
 
-int build() {
-    return dimension();
-}
-
-#include "extra.h"
-
-int total() {
-    return build() + spacing();
-}
+```snap
+tests/snap/navigation/go_to_definition/06_def_macro_wrapper.cpp
 ```
 
-`extra.h`：
+<!-- END CAPABILITY -->
 
-```cpp
-inline int spacing() {
-    return 2;
-}
+<!-- BEGIN CAPABILITY: supported -->
+
+**宏生成的名称**
+
+通过 Token 拼接生成的名称在源码中没有独立的书写位置，因此以生成它的宏调用为定位点：该调用就是它的定义位置，在普通代码中使用该名称时，可以跳转回该调用
+
+```snap
+tests/snap/navigation/go_to_definition/07_def_macro_generated.cpp
 ```
 
-`panel.h`：
+<!-- END CAPABILITY -->
 
-```cpp
-#pragma once
+<!-- BEGIN CAPABILITY: supported -->
 
-int dimension();
+**宏体导航**
+
+宏体中写出的 Token 只有在宏展开时才获得具体含义，因此在其上执行导航不会返回结果，而宏调用处的 Token 始终会跳转到所展开的宏
+
+```snap
+tests/snap/navigation/go_to_definition/08_def_macro_body.cpp
 ```
 
-### 局部变量和参数跳转到其声明
+<!-- END CAPABILITY -->
 
-对局部变量或参数执行跳转到定义，会跳转到它在函数体内的声明。
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-int accumulate(int base) {
-    int total = base;
-    total = total + base;
-    return total;
-}
+**错误恢复**
+
+变量类型无法解析时，无法跳转到该变量的声明
+
+当变量的类型名无法解析时，即使仍然记录了变量自身的声明，目前在该变量的后续使用位置执行跳转到定义也不会返回结果。
+
+```snap
+tests/snap/navigation/go_to_definition/09_def_error_recovery.cpp
 ```
 
-### 穿透宏包装跳转到底层声明
+<!-- END CAPABILITY -->
 
-宏实参中写出的名称锚定在其拼写位置，因此定义与声明会在该处像在普通位置一样交替跳转；后续对该名称的使用会穿透宏包装，解析到它所声明的函数。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-#define DECLARE_HOOK(name) int name(int value)
+**待决成员导航**
 
-DECLARE_HOOK(notify);
+在从未实例化的模板中，访问待决类型（dependent type）对象的成员时，可以跳转到对应类模板中声明的成员
 
-DECLARE_HOOK(notify) {
-    return value + 1;
-}
-
-int trigger(int value) {
-    return notify(value);
-}
+```snap
+tests/snap/navigation/go_to_definition/10_def_dependent_type.cpp
 ```
 
-### 由宏体或 Token 粘贴产生的名称锚定在调用点
+<!-- END CAPABILITY -->
 
-通过 Token 粘贴组装的名称在源代码中没有自己的拼写，因此它锚定在创建它的宏调用处：该调用就是它的定义位置，而对该名称的普通使用会跳回该调用点。
+<!-- BEGIN CAPABILITY: unsupported clangd#212 -->
 
-```cpp
-#define MAKE_FLAG(name) bool flag_##name = false
+**模板特化导航**
 
-MAKE_FLAG(verbose);
+在显式特化的名称上执行跳转到定义，会跳转到该特化本身；不支持从该特化进一步跳转到它所特化的主模板
 
-bool read_flag() {
-    return flag_verbose;
-}
+```snap
+tests/snap/navigation/go_to_definition/11_def_template_spec.cpp
 ```
 
-### `#define` 体内的 Token 本身不提供导航
+<!-- END CAPABILITY -->
 
-宏体中的 Token 在宏展开为其赋予含义之前没有任何意义，因此对其执行代码导航不会得到任何结果；而调用处的 Token 始终解析到被展开的宏。
+<!-- BEGIN CAPABILITY: unsupported clangd#2055 -->
 
-```cpp
-#define DEFINE_COUNTER int counter = 0
+**`auto` 推导类型导航**
 
-DEFINE_COUNTER;
+目前还无法从 `auto` 关键字跳转到其推导出的类型
+
+```snap
+tests/snap/navigation/go_to_definition/12_def_auto_keyword.cpp
 ```
 
-### 错误恢复
-
-导航到类型未解析的变量
-
-当变量的类型名无法解析时，对该变量后续用法执行转到定义目前不会得到任何结果，即使该变量自身的声明仍有记录。
-
-```cpp
-Unresolved handle;  // 'Unresolved' does not name a type
-
-void read() {
-    (void) handle;  // go-to-def on handle → the declaration above
-}
-```
-
-### 未实例化模板中的依赖成员导航
-
-在一个从未实例化的模板中，访问依赖类型对象的成员时，会解析到相应类模板中声明的成员。
-
-```cpp
-template <typename T>
-struct Sink {
-    void push(T value);
-};
-
-template <typename T>
-void drain(Sink<T>& sink, T value) {
-    sink.push(value);
-}
-```
-
-### 模板特化导航到主模板
-
-对显式特化的名称执行转到定义时，会解析到该特化本身；目前不支持从该特化继续跳转到它所特化的主模板。
-
-```cpp
-template <typename T>
-struct Formatter {}; // primary template
-
-template <>
-struct Formatter<int> {}; // go-to-def on Formatter → primary template
-```
-
-### `auto` 关键字导航到推导得到的类型
-
-对 `auto` 关键字执行转到定义时，应跳转到由它推导得到的类型；目前不会得到任何结果。
-
-```cpp
-struct Widget {};
-
-Widget make_widget();
-
-void use() {
-    auto widget = make_widget(); // go-to-def on auto → Widget
-}
-```
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-### 隐式代码导航
+## 隐式目标
 
-导航到隐式调用的代码定义。在 C++ 中，许多语法结构会产生对构造函数、运算符、转换等的隐藏调用。从相应语法结构（花括号、关键字或运算符 Token）导航到实际调用的函数，对于理解真正执行的代码至关重要。
+跳转到隐式调用的代码定义。在 C++ 中，许多语法结构会隐式调用构造函数、运算符、转换函数等。从语法结构（花括号、关键字、运算符 Token）跳转到实际调用的函数，对于理解究竟执行了哪些代码至关重要。
 
-隐式导航要求源 Token 没有歧义——如果某种模式中的 Token 已有明确的转到定义目标（例如变量名始终指向其声明），就不能将其改用于隐式调用导航。
+隐式导航要求源码中的 Token 没有歧义。如果 Token 已有明确的“转到定义”目标（例如，变量名始终跳转到其声明），就不能再用它来导航到隐式调用。
 
-<!-- BEGIN GENERATED ITEMS: implicit_code_navigation -->
+<!-- BEGIN GENERATED ITEMS: implicit_targets -->
 
-| 能力                                  | 状态     | 问题                                                        |
-| ------------------------------------- | -------- | ----------------------------------------------------------- |
-| `override` / `final`                  | 不支持   |                                                             |
-| `break` / `continue`                  | 不支持   | [clangd#1921](https://github.com/clangd/clangd/issues/1921) |
-| 构造函数调用                          | 支持     |                                                             |
-| 拷贝/移动构造与赋值                   | 部分支持 |                                                             |
-| CTAD                                  | 支持     |                                                             |
-| 聚合初始化                            | 支持     |                                                             |
-| `delete` 表达式                       | 不支持   |                                                             |
-| `new` 表达式                          | 部分支持 |                                                             |
-| 成员初始化列表                        | 部分支持 |                                                             |
-| 委托构造函数                          | 部分支持 |                                                             |
-| 继承构造函数                          | 部分支持 |                                                             |
-| 返回值隐式构造                        | 支持     |                                                             |
-| Lambda 初始化捕获                     | 不支持   |                                                             |
-| 重载运算符                            | 支持     |                                                             |
-| C++20 重写运算符                      | 支持     |                                                             |
-| 用户定义字面量                        | 不支持   |                                                             |
-| 隐式转换运算符                        | 不支持   | [clangd#1931](https://github.com/clangd/clangd/issues/1931) |
-| 调用构造函数或转换运算符的类型转换    | 部分支持 |                                                             |
-| 范围 for 循环（range-based for）      | 不支持   |                                                             |
-| 结构化绑定（structured bindings）     | 不支持   |                                                             |
-| `co_await` / `co_yield` / `co_return` | 部分支持 |                                                             |
+<!-- BEGIN CAPABILITY: unsupported -->
 
-### `override` / `final`
+**`override` / `final`**
 
-导航到被重写的基类方法
+`override` 和 `final` 尚不能跳转到被重写的基类方法
 
-在 `override` 或 `final` 说明符上执行转到定义，应跳转到它所重写的基类虚函数；目前不会返回任何结果。
+在 `override` 或 `final` 说明符上执行“转到定义”，无法跳转到被重写的基类虚方法。
 
-```cpp
-struct Base {
-    virtual void draw();
-    virtual void paint();
-};
-
-struct Derived : Base {
-    void draw() override;  // go-to-def on override → Base::draw
-    void paint() final;    // go-to-def on final → Base::paint
-};
+```snap
+tests/snap/navigation/implicit_targets/01_override_final.cpp
 ```
 
-### `break` / `continue`
+<!-- END CAPABILITY -->
 
-导航到所在循环或 switch 语句的头部
+<!-- BEGIN CAPABILITY: unsupported clangd#1921 -->
 
-在 `break` 或 `continue` 上执行转到定义，应跳转到其所在循环或 switch 语句的头部；目前不会返回任何结果。
+**`break` / `continue`**
 
-```cpp
-void loop() {
-    for (int i = 0; i < 10; i += 1) {
-        if (i == 5) break;  // go-to-def on break → the for loop
-        continue;           // go-to-def on continue → the for loop
-    }
-}
+`break` 和 `continue` 尚不能跳转到其所在的控制语句
+
+在 `break` 或 `continue` 上执行“转到定义”，无法跳转到其控制的循环或 switch 语句的头部。
+
+```snap
+tests/snap/navigation/implicit_targets/02_break_continue.cpp
 ```
 
-### 构造函数调用
+<!-- END CAPABILITY -->
 
-从圆括号或花括号导航到选中的构造函数
+<!-- BEGIN CAPABILITY: unsupported -->
 
-在构造函数调用的左圆括号或左花括号上执行转到定义，会跳转到重载决议选中的构造函数；`T(args)` 和 `T{args}` 两种形式均适用。
+**`delete` 表达式**
 
-```cpp
-struct Widget {
-    Widget(int w, int h);
-};
+`delete` 尚不能跳转到所调用的析构函数
 
-void build() {
-    Widget a(800, 600);
-    Widget b{800, 600};
-}
+在 `delete` 上执行“转到定义”，无法跳转到它调用的析构函数。
+
+```snap
+tests/snap/navigation/implicit_targets/03_delete_dtor.cpp
 ```
 
-### 拷贝/移动构造与赋值
+<!-- END CAPABILITY -->
 
-导航到构造函数或赋值运算符
+<!-- BEGIN CAPABILITY: partial -->
 
-在赋值表达式的 `=` 上执行转到定义，会跳转到赋值运算符。引入拷贝初始化或移动初始化的 `=`（`T b = a;`）属于初始化语法，而非运算符调用，目前尚无法解析。
+**`new` 表达式**
 
-```cpp
-struct Widget {
-    Widget(int v);
-    Widget(const Widget& other);
-    Widget(Widget&& other);
-    Widget& operator=(const Widget& other);
-};
+`new` 可跳转到重载的内存分配函数，但不能跳转到构造函数
 
-void copies(Widget a) {
-    Widget b = a;
-    Widget c = static_cast<Widget&&>(a);
-    b = c;
-}
+在 `new` 上执行“转到定义”，可跳转到类中重载的 `operator new`。返回结果不包含同一表达式调用的构造函数。
+
+```snap
+tests/snap/navigation/implicit_targets/04_new_ctor.cpp
 ```
 
-### CTAD
+<!-- END CAPABILITY -->
 
-导航到选中的构造函数
+<!-- BEGIN CAPABILITY: supported -->
 
-当类模板实参推导选中某个特化时，在构造函数调用上执行转到定义会跳转到选中的构造函数，而不仅仅是类模板。
+**重载运算符**
 
-```cpp
-template <typename T>
-struct Box {
-    Box(T input) : value(input) {}
-    T value;
-};
+重载运算符的 Token 可跳转到其定义
 
-template <typename T>
-Box(T) -> Box<T>;
+在重载运算符的 Token 上执行“转到定义”，可跳转到该运算符的定义。二元、下标、调用和箭头运算符（`+`、`[]`、`()`、`->`）均可解析。
 
-void use() {
-    Box b(7);
-}
+```snap
+tests/snap/navigation/implicit_targets/05_operator_call.cpp
 ```
 
-### 聚合初始化
+<!-- END CAPABILITY -->
 
-导航到结构体定义
+<!-- BEGIN CAPABILITY: supported -->
 
-聚合体没有构造函数，因此在其初始化器的左花括号上执行转到定义会跳转到该聚合体的定义。
+**C++20 重写运算符**
 
-```cpp
-struct Point {
-    int x;
-    int y;
-};
+重写后的比较可跳转到实际实现该比较的运算符
 
-void use() {
-    auto p = Point{1, 2};
-}
+对于按 C++20 重写规则合成的比较，在源码中写出的运算符上执行“转到定义”，可跳转到实际实现该比较的运算符：`!=` 跳转到 `operator==`，`>` 跳转到 `operator<=>`。
+
+```snap
+tests/snap/navigation/implicit_targets/06_rewritten_operator.cpp
 ```
 
-### `delete` 表达式
+<!-- END CAPABILITY -->
 
-导航到析构函数
+<!-- BEGIN CAPABILITY: unsupported -->
 
-在 `delete` 上执行转到定义，应跳转到它所调用的析构函数；目前不会返回任何结果。
+**用户定义字面量（user-defined literals）**
 
-```cpp
-struct Widget {
-    ~Widget();
-};
+字面量后缀尚不能跳转到对应的用户定义字面量运算符
 
-void dispose(Widget* widget) {
-    delete widget;  // go-to-def on delete → Widget::~Widget
-}
+在用户定义字面量的后缀上执行“转到定义”，无法跳转到对应的 `operator""`。
+
+```snap
+tests/snap/navigation/implicit_targets/07_udl.cpp
 ```
 
-### `new` 表达式
+<!-- END CAPABILITY -->
 
-导航到构造函数和重载的 `operator new`
+<!-- BEGIN CAPABILITY: unsupported clangd#1931 -->
 
-在 `new` 上执行转到定义会跳转到类中重载的 `operator new`。返回结果不包含同一表达式所调用的构造函数。
+**隐式转换运算符**
 
-```cpp
-struct Pool {
-    Pool();
-    static void* operator new(decltype(sizeof(0)) size);
-};
+转换上下文尚不能跳转到所调用的转换运算符
 
-void make() {
-    Pool* p = new Pool();
-}
+在执行用户定义转换的上下文（条件、`!`、显式的 `bool(...)`）中执行“转到定义”，无法跳转到对应的转换运算符。
+
+```snap
+tests/snap/navigation/implicit_targets/08_conversion_context.cpp
 ```
 
-### 成员初始化列表
+<!-- END CAPABILITY -->
 
-导航到基类和成员的构造函数
+<!-- BEGIN CAPABILITY: partial -->
 
-可从每个初始化器的左圆括号导航到初始化列表所调用的基类和成员构造函数。初始化器名称本身会解析为基类类型或成员，因此需要通过圆括号导航到构造函数。
+**强制类型转换导航**
 
-```cpp
-struct Base {
-    Base(int x);
-};
+调用构造函数的强制类型转换可跳转到所选的构造函数
 
-struct Logger {
-    Logger(int level);
-};
+调用用户定义转换运算符的 `static_cast` 尚不能跳转到该运算符。
 
-struct App : Base {
-    Logger logger;
-    App() : Base(42), logger(1) {}
-};
+```snap
+tests/snap/navigation/implicit_targets/09_cast_conversion.cpp
 ```
 
-### 委托构造函数
+<!-- END CAPABILITY -->
 
-导航到目标构造函数
+<!-- BEGIN CAPABILITY: unsupported -->
 
-可从委托调用的左圆括号导航到委托构造函数的目标。构造函数名本身会解析为类类型，因此需要通过圆括号导航到目标构造函数。
+**范围 for 循环（range-based for）**
 
-```cpp
-struct Widget {
-    Widget(int w, int h);
-    Widget() : Widget(0, 0) {}
-};
+范围 for 循环中的冒号尚不能跳转到 `begin()` 或 `end()`
+
+在范围 for 循环的 `:` 上执行“转到定义”，无法跳转到为该范围选用的 `begin()` 或 `end()`。
+
+```snap
+tests/snap/navigation/implicit_targets/10_range_for.cpp
 ```
 
-### 继承构造函数
+<!-- END CAPABILITY -->
 
-导航到通过 `using` 引入的基类构造函数
+<!-- BEGIN CAPABILITY: partial -->
 
-在继承构造函数声明（`using Base::Base;`）上执行转到定义，会跳转到一个基类构造函数。当基类声明了多个构造函数时，返回结果只会解析到其中一个，而不会列出整个集合。
+**`co_await` / `co_yield` / `co_return`**
 
-```cpp
-struct Base {
-    Base(int x);
-    Base(int x, int y);
-};
+`co_yield` 可跳转到 promise 对象的方法，其他协程关键字则不能
 
-struct Derived : Base {
-    using Base::Base;
-};
+在 `co_yield` 上执行“转到定义”，可跳转到 promise 对象的 `yield_value`。`co_await` 和 `co_return` 关键字尚不能跳转到等待器（awaiter）或 promise 对象的方法。
+
+```snap
+tests/snap/navigation/implicit_targets/11_coroutine.cpp
 ```
 
-### 返回值隐式构造
+<!-- END CAPABILITY -->
 
-导航到构造函数
+<!-- END GENERATED ITEMS -->
 
-花括号形式的 `return {args}` 会隐式构造该函数的返回类型；在花括号上执行转到定义会跳转到选中的构造函数。
+## 隐式构造
 
-```cpp
-struct Widget {
-    Widget(int w, int h);
-};
+从初始化、返回、捕获和分解语法执行导航，可跳转到隐式选定的构造函数、聚合类型定义或绑定。
 
-Widget create() {
-    return {800, 600};
-}
+<!-- BEGIN GENERATED ITEMS: implicit_construction -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**构造函数调用**
+
+圆括号和花括号可跳转到所选的构造函数
+
+在构造函数调用的左圆括号或左花括号上执行“跳转到定义”，可跳转到重载决议选中的构造函数，适用于 `T(args)` 和 `T{args}` 两种形式。
+
+```snap
+tests/snap/navigation/implicit_construction/01_constructor_call.cpp
 ```
 
-### Lambda 初始化捕获
+<!-- END CAPABILITY -->
 
-导航到构造函数
+<!-- BEGIN CAPABILITY: partial -->
 
-在 Lambda 初始化捕获的 `=` 上执行转到定义，应跳转到负责构造被捕获值的构造函数；目前不会返回任何结果。
+**拷贝／移动构造与赋值**
 
-```cpp
-struct Widget {
-    Widget(int v);
-    Widget(Widget&& other);
-};
+赋值中的 `=` 可跳转到赋值运算符，拷贝初始化和移动初始化中的 `=` 则不可以
 
-void use(Widget w) {
-    // go-to-def on = → Widget(Widget&&)
-    auto f = [x = static_cast<Widget&&>(w)] {};
-}
+在赋值中的 `=` 上执行“跳转到定义”，可跳转到赋值运算符。引入拷贝初始化或移动初始化的 `=`（`T b = a;`）属于初始化语法，而非运算符调用，目前尚无法解析。
+
+```snap
+tests/snap/navigation/implicit_construction/02_copy_move.cpp
 ```
 
-### 重载运算符
+<!-- END CAPABILITY -->
 
-从运算符 Token 导航到其定义
+<!-- BEGIN CAPABILITY: supported -->
 
-在重载运算符的 Token 上执行跳转到定义，会到达该运算符的定义处。
-二元运算符、下标运算符、调用运算符和箭头运算符（`+`、`[]`、`()`、`->`）均可解析。
+**CTAD**
 
-```cpp
-struct Iterator {
-    int value;
-};
+使用 CTAD 的构造调用可跳转到推导出的特化的构造函数
 
-struct Vec {
-    Vec operator+(const Vec& other) const;
-    int operator[](int index) const;
-    int operator()(int a, int b) const;
-    Iterator* operator->();
-};
+当类模板实参推导选中特化时，在构造函数调用上执行“跳转到定义”，可跳转到选中的构造函数，而不只是类模板。
 
-void use(Vec a, Vec b) {
-    Vec c = a + b;
-    int e = a[0];
-    int f = a(1, 2);
-    a->value;
-}
+```snap
+tests/snap/navigation/implicit_construction/03_ctad.cpp
 ```
 
-### C++20 重写运算符
+<!-- END CAPABILITY -->
 
-跳转到重写实际使用的运算符
+<!-- BEGIN CAPABILITY: supported -->
 
-对于由 C++20 重写规则合成的比较，在源码中写出的运算符上执行跳转到定义，会到达实际实现该比较的运算符：`!=` 会跳转到 `operator==`，`>` 会跳转到 `operator<=>`。
+**聚合初始化**
 
-```cpp
-namespace std {
-struct strong_ordering {
-    int n;
-    constexpr operator int() const { return n; }
-    static const strong_ordering equal, greater, less;
-};
-constexpr strong_ordering strong_ordering::equal = {0};
-constexpr strong_ordering strong_ordering::greater = {1};
-constexpr strong_ordering strong_ordering::less = {-1};
-}
+聚合初始化的花括号可跳转到聚合类型的定义
 
-struct S {
-    int value;
-    bool operator==(const S& other) const;
-    auto operator<=>(const S& other) const = default;
-};
+聚合类型没有构造函数，因此在其初始化器的花括号上执行“跳转到定义”，会跳转到聚合类型的定义。
 
-void use(S a, S b) {
-    bool ne = a != b;
-    bool gt = a > b;
-}
+```snap
+tests/snap/navigation/implicit_construction/04_aggregate_init.cpp
 ```
 
-### 用户定义字面量
+<!-- END CAPABILITY -->
 
-跳转到字面量运算符
+<!-- BEGIN CAPABILITY: partial -->
 
-在用户定义字面量的后缀上执行跳转到定义，应该到达对应的 `operator""`；目前不会返回任何结果。
+**成员初始化列表**
 
-```cpp
-struct Duration {
-    unsigned long long ticks;
-};
+成员初始化器的圆括号可跳转到选中的基类或成员构造函数
 
-Duration operator""_ms(unsigned long long value);
+在初始化列表中各初始化器的左圆括号上，可跳转到该初始化器调用的基类或成员构造函数。初始化器名称本身会解析到基类类型或成员，因此需要通过圆括号跳转到构造函数。
 
-void use() {
-    Duration d = 500_ms;  // go-to-def on _ms → operator""_ms
-}
+```snap
+tests/snap/navigation/implicit_construction/05_member_init.cpp
 ```
 
-### 隐式转换运算符
+<!-- END CAPABILITY -->
 
-从转换上下文跳转到运算符
+<!-- BEGIN CAPABILITY: partial -->
 
-从调用用户定义转换的上下文（条件表达式、`!`、显式 `bool(...)`）执行跳转到定义，应该到达转换运算符；目前不会返回任何结果。
+**委托构造函数**
 
-```cpp
-struct Guard {
-    explicit operator bool() const;
-};
+委托构造函数中委托调用的圆括号可跳转到目标构造函数
 
-void use(Guard g) {
-    if (g) {}      // go-to-def on ( → Guard::operator bool
-    bool ok = !g;  // go-to-def on ! → Guard::operator bool
-}
+在委托调用的左圆括号上，可跳转到委托构造函数的目标构造函数。构造函数名称本身会解析到类类型，因此需要通过圆括号跳转到目标构造函数。
+
+```snap
+tests/snap/navigation/implicit_construction/06_delegating_ctor.cpp
 ```
 
-### 调用构造函数或转换运算符的类型转换
+<!-- END CAPABILITY -->
 
-对用于构造目标对象的 `static_cast` 执行跳转到定义，会到达所选的构造函数。调用用户定义转换运算符的 `static_cast` 尚不能跳转到该运算符。
+<!-- BEGIN CAPABILITY: partial -->
 
-```cpp
-struct Meters {
-    explicit operator double() const;
-};
+**继承构造函数**
 
-struct Foo {
-    explicit Foo(int value);
-};
+继承构造函数的声明可跳转到引入的某一个基类构造函数
 
-void use(Meters m) {
-    double d = static_cast<double>(m);
-    Foo f = static_cast<Foo>(42);
-}
+在继承构造函数的声明（`using Base::Base;`）上执行“跳转到定义”，可跳转到基类构造函数。当基类声明了多个构造函数时，返回结果会指向其中一个，而不会列出全部构造函数。
+
+```snap
+tests/snap/navigation/implicit_construction/07_inherited_ctor.cpp
 ```
 
-### 范围 for 循环（range-based for）
+<!-- END CAPABILITY -->
 
-跳转到 `begin()` / `end()`
+<!-- BEGIN CAPABILITY: supported -->
 
-对范围 for 循环的 `:` 执行跳转到定义，应该到达为该范围选择的 `begin()` / `end()`；目前不会返回任何结果。
+**返回值的隐式构造**
 
-```cpp
-struct Iterator {
-    int operator*() const;
-    Iterator& operator++();
-    bool operator!=(const Iterator& other) const;
-};
+花括号形式的返回值可跳转到选中的构造函数
 
-struct Range {
-    Iterator begin();
-    Iterator end();
-};
+花括号形式的 `return {args}` 会隐式构造函数返回类型的对象；在花括号上执行“跳转到定义”，可跳转到选中的构造函数。
 
-void use(Range r) {
-    for (int x : r) {}  // go-to-def on : → Range::begin / Range::end
-}
+```snap
+tests/snap/navigation/implicit_construction/08_return_construction.cpp
 ```
 
-### 结构化绑定（structured bindings）
+<!-- END CAPABILITY -->
 
-跳转到底层访问器或字段
+<!-- BEGIN CAPABILITY: unsupported -->
 
-对结构化绑定名称执行跳转到定义，会解析到绑定本身，而不是该名称对应的底层字段或访问器。
+**Lambda 初始化捕获**
 
-```cpp
-struct Pair {
-    int first;
-    int second;
-};
+Lambda 初始化捕获尚无法跳转到其移动构造函数
 
-void use(Pair p) {
-    // go-to-def on a → Pair::first, on b → Pair::second
-    auto [a, b] = p;
-}
+在 Lambda 初始化捕获的 `=` 上执行“跳转到定义”，无法跳转到构造捕获值的构造函数。
+
+```snap
+tests/snap/navigation/implicit_construction/09_lambda_capture.cpp
 ```
 
-### `co_await` / `co_yield` / `co_return`
+<!-- END CAPABILITY -->
 
-跳转到 awaiter 或 promise 方法
+<!-- BEGIN CAPABILITY: unsupported -->
 
-对 `co_yield` 执行跳转到定义，会到达 promise 的 `yield_value`。`co_await` 和 `co_return` 关键字尚不能跳转到 awaiter 或 promise 的方法。
+**结构化绑定（structured bindings）**
 
-```cpp
-namespace std {
-template <typename Ret, typename...>
-struct coroutine_traits {
-    using promise_type = typename Ret::promise_type;
-};
-template <typename = void>
-struct coroutine_handle {
-    coroutine_handle() = default;
-    template <typename Promise>
-    coroutine_handle(coroutine_handle<Promise>) noexcept;
-    static coroutine_handle from_address(void*) noexcept;
-};
-struct suspend_never {
-    bool await_ready() const noexcept;
-    void await_suspend(coroutine_handle<>) const noexcept;
-    void await_resume() const noexcept;
-};
-}
+结构化绑定名称可跳转到绑定本身，而非底层字段或访问器
 
-struct Awaiter {
-    bool await_ready() const noexcept;
-    void await_suspend(std::coroutine_handle<>) const noexcept;
-    int await_resume() const noexcept;
-};
+在结构化绑定名称上执行“跳转到定义”，会解析到绑定本身，而非该名称所对应的底层字段或访问器。
 
-struct Task {
-    struct promise_type {
-        Task get_return_object();
-        std::suspend_never initial_suspend();
-        std::suspend_never final_suspend() noexcept;
-        Awaiter yield_value(int value);
-        void return_value(int value);
-        void unhandled_exception();
-    };
-};
-
-Task example() {
-    co_await Awaiter{};
-    co_yield 1;
-    co_return 2;
-}
+```snap
+tests/snap/navigation/implicit_construction/10_structured_binding.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## 跳转到声明
 
-从符号的使用处或定义处跳转到其声明。C++ 中的许多实体具有独立的声明和定义。
+从符号的使用处或定义处跳转到其声明。在 C++ 中，许多实体的声明和定义是分开的。
 
-clice 会返回所有声明位置和定义位置（直接在声明处定义的符号没有单独的声明位置），并排除光标当前所在的位置，因此可以在声明位置与定义位置之间切换，其行为与跳转到定义相同。
+clice 返回声明和定义的位置，并排除光标当前所在的位置；内联定义的符号没有单独的声明。因此，声明与定义位置会像“跳转到定义”一样交替跳转。
 
 <!-- BEGIN GENERATED ITEMS: go_to_declaration -->
 
-| 能力                         | 状态 | 问题 |
-| ---------------------------- | ---- | ---- |
-| 跨 TU 跳转到声明             | 支持 |      |
-| 函数                         | 支持 |      |
-| 类和结构体的前向声明         | 支持 |      |
-| 静态数据成员                 | 支持 |      |
-| `extern` 变量                | 支持 |      |
-| 多重声明                     | 支持 |      |
-| 签名仅有形式差异的声明与定义 | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 跨 TU 跳转到声明
+**跨 TU 跳转到声明**
 
-从使用处执行跳转到声明，可以解析出其他文件中的位置：函数原型位于共享头文件中，行外定义位于同级源文件中；从另一个文件中的使用处跳转时，这两个位置都会列出。
+在使用处执行“跳转到声明”可找到其他文件中的位置：函数原型位于共享头文件中，定义则单独放在同级源文件中，从另一文件中的使用处跳转时，两者都会列出
 
-`main.cpp`：
-
-```cpp
-#include "shared.h"
-
-int run(int value) {
-    return scale(value);
-}
+```snap
+tests/snap/navigation/go_to_declaration/01_decl_cross_tu/main.cpp
 ```
 
-`lib.cpp`：
+<!-- END CAPABILITY -->
 
-```cpp
-#include "shared.h"
+<!-- BEGIN CAPABILITY: supported -->
 
-int scale(int value) {
-    return value * 2;
-}
+**函数**
+
+从使用处和单独给出的定义处跳转到函数原型
+
+从调用处和单独给出的定义处执行“跳转到声明”，都能到达函数原型；原型会与这两处非当前光标位置交替跳转。
+
+```snap
+tests/snap/navigation/go_to_declaration/02_decl_function_prototype.cpp
 ```
 
-`shared.h`：
+<!-- END CAPABILITY -->
 
-```cpp
-#pragma once
+<!-- BEGIN CAPABILITY: supported -->
 
-int scale(int value);
+**前置声明的记录类型**
+
+如果一个类先有前置声明，随后才有定义，从使用处跳转时会同时列出两者；前置声明仍保留在声明集合中，不会因为有了定义而被移除
+
+```snap
+tests/snap/navigation/go_to_declaration/03_decl_forward_class.cpp
 ```
 
-### 函数
+<!-- END CAPABILITY -->
 
-从使用处或行外定义跳转到原型
+<!-- BEGIN CAPABILITY: supported -->
 
-无论从调用点还是行外定义执行跳转到声明，都能到达函数原型——原型会与另外两个非光标位置交替成为目标。
+**静态数据成员**
 
-```cpp
-struct Widget {
-    void draw();
-};
+从静态成员的使用处跳转到类内声明
 
-void Widget::draw() {}
+静态数据成员在类内声明、类外定义；在使用处执行“跳转到声明”时，会同时列出类内声明和定义。
 
-void render(Widget& widget) {
-    widget.draw();
-}
+```snap
+tests/snap/navigation/go_to_declaration/04_decl_static_member.cpp
 ```
 
-### 类和结构体的前向声明
+<!-- END CAPABILITY -->
 
-对于先有前向声明、后有定义的类，从使用处执行跳转到声明时，会同时列出两者；前向声明仍属于声明集合，不会因已有定义而被丢弃。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Widget;
+**`extern` 变量**
 
-struct Widget {
-    int value;
-};
+从外部变量的使用处跳转到其声明
 
-class Panel;
+从 `extern` 变量的使用处跳转时，会同时列出 `extern` 声明和定义性声明，因此始终可以从使用处到达头文件中的声明。
 
-class Panel {
-    int width;
-};
-
-int probe(Widget& widget, Panel& panel) {
-    return widget.value;
-}
+```snap
+tests/snap/navigation/go_to_declaration/05_decl_extern_variable.cpp
 ```
 
-### 静态数据成员
+<!-- END CAPABILITY -->
 
-跳转到类内声明
+<!-- BEGIN CAPABILITY: supported -->
 
-静态数据成员在类内声明、在类外定义；从使用处执行跳转到声明，会同时列出类内声明和定义。
+**多处声明**
 
-```cpp
-struct Config {
-    static int timeout;
-};
+从使用处跳转到所有声明位置
 
-int Config::timeout = 30;
+当一个实体在多处声明时，在使用处执行“跳转到声明”会列出所有声明位置，而不只是最近的一处。
 
-int read_config() {
-    return Config::timeout;
-}
+```snap
+tests/snap/navigation/go_to_declaration/06_decl_multiple.cpp
 ```
 
-### `extern` 变量
+<!-- END CAPABILITY -->
 
-跳转到声明
+<!-- BEGIN CAPABILITY: supported -->
 
-使用 `extern` 变量时，会同时列出 `extern` 声明和起定义作用的声明，因此始终可以从使用处跳转到头文件中的声明。
+**签名的表面差异**
 
-```cpp
-extern int log_level;
+参数名和参数的顶层 `const` 都不属于函数类型的一部分：下方的声明与定义对同一个函数采用了不同的写法，但“跳转到声明”仍能从使用处跳转到函数原型
 
-int log_level = 0;
-
-int read_level() {
-    return log_level;
-}
+```snap
+tests/snap/navigation/go_to_declaration/07_decl_signature_mismatch.cpp
 ```
 
-### 多重声明
-
-每个声明位置
-
-当实体在多个位置声明时，从使用处执行跳转到声明，会列出所有声明位置，而不只是最近的位置。
-
-```cpp
-int clamp(int value);
-int clamp(int value);
-
-int clamp(int value) {
-    return value < 0 ? 0 : value;
-}
-
-int hold(int value) {
-    return clamp(value);
-}
-```
-
-### 签名仅有形式差异的声明与定义
-
-参数名以及参数上的顶层 `const` 都不属于函数类型：下面的声明和定义以不同形式书写了同一个函数，但“跳转到声明”仍能将使用处关联到函数原型。
-
-```cpp
-int render(int width, const int height);
-
-int render(int w, int h) {
-    return w * h;
-}
-
-int use_render() {
-    return render(800, 600);
-}
-```
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -863,230 +574,155 @@ int use_render() {
 
 <!-- BEGIN GENERATED ITEMS: go_to_implementation -->
 
-| 能力             | 状态   | 问题                                                      |
-| ---------------- | ------ | --------------------------------------------------------- |
-| 重写链           | 支持   |                                                           |
-| 同级重写         | 支持   |                                                           |
-| 非虚函数         | 不支持 | [clangd#854](https://github.com/clangd/clangd/issues/854) |
-| 基类             | 支持   |                                                           |
-| 模板鸭子类型导航 | 不支持 |                                                           |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 重写链
+**重写链**
 
-重写链的每一层都跳转到各自的直接重写方法
+沿重写链逐级跳转到实现
 
-在三级重写链中，对每个方法执行“跳转到实现”都会到达下一层的重写方法——从基类到中间类，从中间类到叶子类。
+在三级重写链中，从每个方法执行“跳转到实现”都会到达下一级的重写方法：从基类到中间类，再从中间类到叶子类。
 
-```cpp
-struct Base {
-    virtual void run() = 0;
-};
-
-struct Middle : Base {
-    void run() override {}
-};
-
-struct Leaf : Middle {
-    void run() override {}
-};
+```snap
+tests/snap/navigation/go_to_implementation/01_impl_virtual_chain.cpp
 ```
 
-### 同级重写
+<!-- END CAPABILITY -->
 
-所有同级重写方法
+<!-- BEGIN CAPABILITY: supported -->
 
-对虚方法执行“跳转到实现”会列出各同级派生类中的所有重写方法。
+**同级重写**
 
-```cpp
-struct Shape {
-    virtual int area() = 0;
-};
+跳转到实现时列出所有同级重写方法
 
-struct Circle : Shape {
-    int area() override { return 1; }
-};
+在虚方法上执行“跳转到实现”，会列出各个同级派生类中的所有重写方法。
 
-struct Square : Shape {
-    int area() override { return 2; }
-};
-
-struct Triangle : Shape {
-    int area() override { return 3; }
-};
+```snap
+tests/snap/navigation/go_to_implementation/02_impl_virtual_siblings.cpp
 ```
 
-### 非虚函数
+<!-- END CAPABILITY -->
 
-从声明到行外定义
+<!-- BEGIN CAPABILITY: unsupported clangd#854 -->
 
-对非虚函数声明执行“跳转到实现”应到达其行外定义，其结果应是“跳转到定义”结果的超集；目前不会返回任何结果。
+**非虚函数**
 
-```cpp
-struct Widget {
-    void draw();  // go-to-impl on draw → out-of-line definition below
-};
+尚不能从非虚函数声明跳转到单独给出的定义
 
-void Widget::draw() {}
+在非虚函数声明上执行“跳转到实现”，无法到达其单独给出的定义，会返回空结果。
+
+```snap
+tests/snap/navigation/go_to_implementation/03_impl_nonvirtual_def.cpp
 ```
 
-### 基类
+<!-- END CAPABILITY -->
 
-所有派生类
+<!-- BEGIN CAPABILITY: supported -->
 
-对基类名执行“跳转到实现”会列出由它派生的类。
+**基类**
 
-```cpp
-struct Base {};
+从基类跳转到所有派生类
 
-struct Circle : Base {};
+在基类名称上执行“跳转到实现”，会列出从该类派生的类。
 
-struct Square : Base {};
+```snap
+tests/snap/navigation/go_to_implementation/04_impl_base_derived.cpp
 ```
 
-### 模板鸭子类型导航
+<!-- END CAPABILITY -->
 
-从依赖成员调用执行“跳转到实现”应列出所有已知实例化中的具体方法；泛型 Lambda 的依赖调用同样如此。目前不会返回任何结果。
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-template <typename T>
-void process(T& obj) {
-    obj.foo();  // go-to-impl on foo → A::foo (from the process(a) instantiation)
-}
+**模板鸭子类型导航**
 
-struct A {
-    void foo() {}
-};
+尚不能将依赖调用解析到已知实例化中的方法
 
-void run(A a) {
-    process(a);
-}
+这适用于函数模板和泛型 Lambda，但目前两者都不会返回实现目标。
 
-void generic() {
-    auto call = [](auto& x) { x.bar(); };  // go-to-impl on bar → the concrete bar
-}
+```snap
+tests/snap/navigation/go_to_implementation/05_impl_template_duck_type.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## 跳转到类型定义
 
-跳转到符号的类型定义。适用于变量、参数、字段以及任何其他有类型的命名实体。若类型是类型别名或类指针包装类型，跳转时应解包到其底层类型或所指类型。
+跳转到符号的类型定义。适用于变量、参数、字段以及其他具有类型的命名实体。当类型是类型别名或类似指针的包装类型时，应解开别名或包装，跳转到其底层类型或所指向类型的定义。
 
 <!-- BEGIN GENERATED ITEMS: go_to_type_definition -->
 
-| 能力                     | 状态     | 问题                                                        |
-| ------------------------ | -------- | ----------------------------------------------------------- |
-| 变量和参数               | 支持     |                                                             |
-| 类和结构体的字段         | 支持     |                                                             |
-| `auto` 推导的变量        | 不支持   |                                                             |
-| 从智能指针跳转到所指类型 | 部分支持 | [clangd#1026](https://github.com/clangd/clangd/issues/1026) |
-| 类型别名                 | 部分支持 |                                                             |
-| 结构化绑定变量           | 支持     |                                                             |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 变量和参数
+**变量和参数**
 
-对局部变量或参数执行“跳转到类型定义”可到达其类型的定义。
+对局部变量或参数执行“跳转到类型定义”，可跳转到其类型的定义
 
-```cpp
-struct Widget {};
-
-Widget make_widget();
-
-int probe(Widget param) {
-    Widget local = make_widget();
-    return 0;
-}
+```snap
+tests/snap/navigation/go_to_type_definition/01_typedef_variables.cpp
 ```
 
-### 类和结构体的字段
+<!-- END CAPABILITY -->
 
-对字段访问执行“跳转到类型定义”可到达字段类型的定义。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Logger {};
+**类和结构体字段**
 
-class Store {};
+对字段访问执行“跳转到类型定义”，可跳转到该字段类型的定义
 
-struct App {
-    Logger logger;
-    Store store;
-};
-
-int use(App& app) {
-    app.logger;
-    app.store;
-    return 0;
-}
+```snap
+tests/snap/navigation/go_to_type_definition/02_typedef_field.cpp
 ```
 
-### `auto` 推导的变量
+<!-- END CAPABILITY -->
 
-对 `auto` 推导的变量执行“跳转到类型定义”应到达推导所得类型的定义；目前该变量没有类型关联，因此不会返回任何结果。
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-struct Widget {};
+**由 `auto` 推导类型的变量**
 
-Widget make_widget();
+由 auto 推导类型的变量目前还无法跳转到其推导出的类型定义
 
-void probe() {
-    auto widget = make_widget();  // go-to-type-def on widget → Widget
-}
+```snap
+tests/snap/navigation/go_to_type_definition/03_typedef_auto.cpp
 ```
 
-### 从智能指针跳转到所指类型
+<!-- END CAPABILITY -->
 
-对智能指针变量执行“跳转到类型定义”会到达包装类型本身；尚不支持解包并跳转到所指类型。
+<!-- BEGIN CAPABILITY: partial clangd#1026 -->
 
-```cpp
-template <typename T>
-struct Ptr {
-    T* operator->();
-    T& operator*();
-    T* raw;
-};
+**跳转到智能指针所指向的类型**
 
-struct Widget {};
+对智能指针变量执行“跳转到类型定义”，会跳转到包装类型本身；尚不支持解开包装并跳转到所指向的类型
 
-int use(Ptr<Widget> ptr) {
-    return 0;
-}
+```snap
+tests/snap/navigation/go_to_type_definition/04_typedef_smart_pointer.cpp
 ```
 
-### 类型别名
+<!-- END CAPABILITY -->
 
-对别名类型的变量执行“跳转到类型定义”会到达 `using` 或 `typedef` 声明；目前尚不会解开别名并跳转到底层类型的定义。
+<!-- BEGIN CAPABILITY: partial -->
 
-```cpp
-struct Impl {};
+**类型别名**
 
-using Handle = Impl;
+对使用类型别名的变量执行“跳转到类型定义”，会跳转到 `using` 或 `typedef` 声明；目前还无法解开别名并跳转到底层类型的定义
 
-typedef Impl LegacyHandle;
-
-int use(Handle handle, LegacyHandle legacy) {
-    return 0;
-}
+```snap
+tests/snap/navigation/go_to_type_definition/05_typedef_alias.cpp
 ```
 
-### 结构化绑定变量
+<!-- END CAPABILITY -->
 
-对结构化绑定执行“跳转到类型定义”会到达所绑定成员类型的定义。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Widget {};
+**结构化绑定（structured bindings）变量**
 
-struct Pair {
-    Widget first;
-    int second;
-};
+对结构化绑定执行“跳转到类型定义”，可跳转到所绑定成员的类型定义
 
-Pair make_pair();
-
-int use() {
-    auto [widget, count] = make_pair();
-    return 0;
-}
+```snap
+tests/snap/navigation/go_to_type_definition/06_typedef_structured_binding.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1094,226 +730,139 @@ int use() {
 
 <!-- BEGIN GENERATED ITEMS: find_references -->
 
-| 能力                                               | 状态   | 问题                                                                                                                   |
-| -------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
-| 跨 TU 查找引用                                     | 支持   |                                                                                                                        |
-| 引用结果中包含声明和定义位置                       | 支持   |                                                                                                                        |
-| 范围 for 循环（range-based for loop）的隐式引用    | 不支持 | [clangd#1081](https://github.com/clangd/clangd/issues/1081)                                                            |
-| 隐式构造函数与析构函数调用                         | 不支持 |                                                                                                                        |
-| 通过转发函数产生的引用                             | 不支持 | [clangd#716](https://github.com/clangd/clangd/issues/716), [clangd#1872](https://github.com/clangd/clangd/issues/1872) |
-| 依赖上下文和模板上下文中的引用                     | 不支持 | [clangd#258](https://github.com/clangd/clangd/issues/258), [clangd#675](https://github.com/clangd/clangd/issues/675)   |
-| 引用的读/写分类                                    | 不支持 | [clangd#2139](https://github.com/clangd/clangd/issues/2139)                                                            |
-| 随每条引用显示其所在函数                           | 不支持 | [clangd#177](https://github.com/clangd/clangd/issues/177)                                                              |
-| 宏展开、`#ifdef`、`#ifndef` 与 `#undef` 中的宏引用 | 支持   |                                                                                                                        |
-| 写在其他宏定义体内的宏引用                         | 不支持 | [clangd#346](https://github.com/clangd/clangd/issues/346)                                                              |
-| 标签与 goto 引用                                   | 支持   |                                                                                                                        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 跨 TU 查找引用
+**跨 TU 查找引用**
 
-查找引用也会收集其他文件中的使用位置：如果一个函数在一个源文件中定义，并在同级的另一个源文件中被调用，结果会同时报告两个调用点以及共享头文件中的声明，而不只是当前文件中的使用位置。
+查找引用也会收集其他文件中的使用位置：对于在一个源文件中定义、在另一个同级源文件中调用的函数，结果会同时列出两处调用位置以及共享头文件中的声明，而不局限于当前文件中的使用位置
 
-`main.cpp`：
-
-```cpp
-#include "shared.h"
-
-int run(int value) {
-    return compute(value);
-}
+```snap
+tests/snap/navigation/find_references/01_refs_cross_tu/main.cpp
 ```
 
-`lib.cpp`：
+<!-- END CAPABILITY -->
 
-```cpp
-#include "shared.h"
+<!-- BEGIN CAPABILITY: supported -->
 
-int compute(int value) {
-    return value * 2;
-}
+**引用结果中的声明**
 
-int again(int value) {
-    return compute(value) + 1;
-}
+引用查询会返回声明、在声明之外编写的定义以及所有使用位置，因此从符号的任一位置都能跳转到它的所有相关位置
+
+```snap
+tests/snap/navigation/find_references/02_refs_include_declaration.cpp
 ```
 
-`shared.h`：
+<!-- END CAPABILITY -->
 
-```cpp
-#pragma once
+<!-- BEGIN CAPABILITY: unsupported clangd#1081 -->
 
-int compute(int value);
+**范围 for 循环引用**
+
+对 `begin` 查找引用只会返回它自身的声明；隐式调用它的范围 for 循环不会出现在引用结果中
+
+```snap
+tests/snap/navigation/find_references/03_refs_range_for.cpp
 ```
 
-### 引用结果中包含声明和定义位置
+<!-- END CAPABILITY -->
 
-引用查询会返回声明、类外定义和每个使用位置，因此从符号的任意一处都能访问它的所有出现位置。
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-int scale(int value);
+**隐式构造函数和析构函数调用**
 
-int scale(int value) {
-    return value * 2;
-}
+对构造函数查找引用只会返回显式引用位置；隐式调用该构造函数或对应析构函数的对象定义不会出现在结果中
 
-int use() {
-    return scale(3);
-}
+```snap
+tests/snap/navigation/find_references/04_refs_implicit_construction.cpp
 ```
 
-### 范围 for 循环（range-based for loop）的隐式引用
+<!-- END CAPABILITY -->
 
-对 `begin` 执行查找引用只会报告它自身的声明；隐式调用它的范围 for 循环不会包含在引用结果中。
+<!-- BEGIN CAPABILITY: unsupported clangd#716 clangd#1872 -->
 
-```cpp
-struct Iterator {
-    int operator*() const;
-    Iterator& operator++();
-    bool operator!=(const Iterator& other) const;
-};
+**通过转发函数产生的引用**
 
-struct Range {
-    Iterator begin();  // find-refs here omits the range-for below
-    Iterator end();
-};
+对构造函数查找引用时，结果不包含通过完美转发工厂间接调用它的位置
 
-void use(Range r) {
-    for (int x : r) {
-    }
-}
+```snap
+tests/snap/navigation/find_references/05_refs_forwarding.cpp
 ```
 
-### 隐式构造函数与析构函数调用
+<!-- END CAPABILITY -->
 
-对构造函数执行查找引用只会报告它显式出现的位置；隐式调用该构造函数或其析构函数的对象定义不会包含在结果中。
+<!-- BEGIN CAPABILITY: unsupported clangd#258 clangd#675 -->
 
-```cpp
-struct Blob {
-    Blob();  // find-refs here omits the `Blob b;` definition below
-    ~Blob();
-};
+**模板中的依赖引用**
 
-void use() {
-    Blob b;
-}
+对成员查找引用时，结果不包含模板中依赖于模板参数的调用位置，即使用该成员所属的类实例化了模板也不例外
+
+```snap
+tests/snap/navigation/find_references/06_refs_dependent_context.cpp
 ```
 
-### 通过转发函数产生的引用
+<!-- END CAPABILITY -->
 
-查找构造函数的引用时，结果不包含经由完美转发工厂间接调用它的调用点。
+<!-- BEGIN CAPABILITY: unsupported clangd#2139 -->
 
-```cpp
-template <typename T, typename... Args>
-T make(Args&&... args) {
-    return T(static_cast<Args&&>(args)...);
-}
+**引用的读写分类**
 
-struct Widget {
-    Widget(int w, int h);  // find-refs here omits the make<Widget> call
-};
+引用查询的响应只包含位置，无法据此区分写入和读取；尚不支持为每条结果标注访问类型
 
-Widget build() {
-    return make<Widget>(800, 600);
-}
+```snap
+tests/snap/navigation/find_references/07_refs_read_write.cpp
 ```
 
-### 依赖上下文和模板上下文中的引用
+<!-- END CAPABILITY -->
 
-查找成员的引用时，结果不包含模板中的依赖调用点，即使使用该成员所属的类实例化了模板。
+<!-- BEGIN CAPABILITY: unsupported clangd#177 -->
 
-```cpp
-struct A {
-    void foo();  // find-refs here omits the dependent obj.foo() below
-};
+**引用的上下文**
 
-template <typename T>
-void process(T& obj) {
-    obj.foo();
-}
+每条引用只返回位置，不附带所在函数的名称，因此结果中除文件和行号外没有其他上下文信息
 
-void run(A a) {
-    process(a);
-}
+```snap
+tests/snap/navigation/find_references/08_refs_enclosing_context.cpp
 ```
 
-### 引用的读/写分类
+<!-- END CAPABILITY -->
 
-引用响应只包含位置信息，因此无法区分读取与写入；也不支持为每项结果标注其访问类型。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int use() {
-    int x = 0;      // write
-    int y = x + 1;  // read
-    x = y;          // write
-    return x;
-}
+**宏引用**
+
+宏引用搜索会包含宏展开、条件测试和取消定义的位置
+
+同一名称的每次 `#define` 都被视为独立的符号，因此在 `#undef` 之后重新定义的宏只会收集自身的使用位置。
+
+```snap
+tests/snap/navigation/find_references/09_refs_macro.cpp
 ```
 
-### 随每条引用显示其所在函数
+<!-- END CAPABILITY -->
 
-每条引用都只报告一个位置；不会附带该引用所在函数的名称，因此结果除文件和行号外不包含其他上下文。
+<!-- BEGIN CAPABILITY: unsupported clangd#346 -->
 
-```cpp
-int shared_value = 0;
+**嵌套宏引用**
 
-int reader() {
-    return shared_value;
-}
+对宏查找引用时，结果不包含其他宏定义体中对该宏的引用
 
-int writer() {
-    shared_value = 1;
-    return shared_value;
-}
+```snap
+tests/snap/navigation/find_references/10_refs_macro_in_macro.cpp
 ```
 
-### 宏展开、`#ifdef`、`#ifndef` 与 `#undef` 中的宏引用
+<!-- END CAPABILITY -->
 
-宏的引用包括它的展开、用于测试它的 `#ifdef` / `#ifndef` 条件指令，以及撤销其定义的 `#undef`。同一名称的每个 `#define` 都对应一个独立符号，因此在 `#undef` 后重新定义的宏只会收集属于该次定义的使用位置。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-#define FEATURE 1
+**标签和 goto 引用**
 
-int on = FEATURE;
+查找标签的引用时，会列出标签本身以及所有跳转到该标签的 `goto`
 
-#ifdef FEATURE
-int guarded = 1;
-#endif
-
-#ifndef FEATURE
-int missing = 0;
-#endif
-
-#undef FEATURE
-
-#define FEATURE 2
-
-int again = FEATURE;
+```snap
+tests/snap/navigation/find_references/11_refs_label_goto.cpp
 ```
 
-### 写在其他宏定义体内的宏引用
-
-查找宏的引用时，不会包括其他宏定义体内对该宏的提及。
-
-```cpp
-#define WIDTH 100  // find-refs here omits the WIDTH tokens in AREA below
-
-#define AREA (WIDTH * WIDTH)
-
-int total = AREA;
-```
-
-### 标签与 goto 引用
-
-查找标签的引用时，会列出标签本身以及所有跳转到该标签的 `goto`。
-
-```cpp
-int loop(int failed) {
-    retry:
-    if (failed) {
-        goto retry;
-    }
-    return 0;
-}
-```
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1321,166 +870,115 @@ int loop(int failed) {
 
 <!-- BEGIN GENERATED ITEMS: call_hierarchy -->
 
-| 能力                         | 状态     | 问题                                                        |
-| ---------------------------- | -------- | ----------------------------------------------------------- |
-| 为函数和方法准备调用层次结构 | 支持     |                                                             |
-| 传入调用                     | 支持     |                                                             |
-| 传出调用                     | 支持     |                                                             |
-| 条目 detail 字段中的函数签名 | 不支持   |                                                             |
-| 成员函数的限定名             | 部分支持 |                                                             |
-| 跟踪虚函数派发               | 不支持   |                                                             |
-| 非函数目标                   | 不支持   | [clangd#1308](https://github.com/clangd/clangd/issues/1308) |
-| Lambda 内部的调用            | 支持     |                                                             |
-| 经由转发函数的构造函数调用   | 不支持   | [clangd#2242](https://github.com/clangd/clangd/issues/2242) |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 为函数和方法准备调用层次结构
+**调用层次结构准备**
 
-无论是非成员函数还是成员函数，都可以准备调用层次结构，并以光标下的实体为起点创建条目。
+自由函数和成员函数都支持准备调用层次结构，并以光标处的实体为定位点创建条目
 
-```cpp
-struct Service {
-    void start();
-};
-
-void Service::start() {}
-
-void launch(Service& s) {
-    s.start();
-}
+```snap
+tests/snap/navigation/call_hierarchy/01_calls_prepare.cpp
 ```
 
-### 传入调用
+<!-- END CAPABILITY -->
 
-传入调用会列出函数的所有调用者；若同一个调用者多次调用该函数，则每个调用点都会计入。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int helper(int v) {
-    return v;
-}
+**传入调用**
 
-int alpha() {
-    return helper(1);
-}
+传入调用列出函数的所有调用者；同一调用者多次调用该函数时，会列出每个调用位置
 
-int beta() {
-    return helper(2) + helper(3);
-}
+```snap
+tests/snap/navigation/call_hierarchy/02_calls_incoming.cpp
 ```
 
-### 传出调用
+<!-- END CAPABILITY -->
 
-传出调用会列出函数体调用的所有函数，每个被调用者对应一个条目。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int one() {
-    return 1;
-}
+**传出调用**
 
-int two() {
-    return 2;
-}
+传出调用列出函数体内调用的所有函数，每个被调用函数对应一个条目
 
-int three() {
-    return 3;
-}
-
-int dispatch() {
-    return one() + two() + three();
-}
+```snap
+tests/snap/navigation/call_hierarchy/03_calls_outgoing.cpp
 ```
 
-### 条目 detail 字段中的函数签名
+<!-- END CAPABILITY -->
 
-调用层次结构条目只包含名称；detail 字段中不会附带函数签名，因此无法在层次结构中区分重载。
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-int compute(int a, int b) {  // no signature attached to this item
-    return a + b;
-}
+**调用层次结构条目详情**
 
-int caller() {
-    return compute(1, 2);
-}
+调用层次结构条目仅包含名称，详情字段中没有附带函数签名，因此无法在层次结构中区分重载
+
+```snap
+tests/snap/navigation/call_hierarchy/04_calls_detail_signature.cpp
 ```
 
-### 成员函数的限定名
+<!-- END CAPABILITY -->
 
-可以生成成员函数的调用层次结构条目，但其 name 字段只包含未限定的方法名（`draw`），而不是能将它与非成员函数区分开的限定名 `Circle::draw`。
+<!-- BEGIN CAPABILITY: partial -->
 
-```cpp
-struct Circle {
-    void draw();
-};
+**成员函数的限定名称**
 
-void Circle::draw() {}
+成员函数会生成调用层次结构条目，但名称字段仅包含函数名（`draw`），不包含可将其与自由函数区分开的限定名称 `Circle::draw`
+
+```snap
+tests/snap/navigation/call_hierarchy/05_calls_qualified_name.cpp
 ```
 
-### 跟踪虚函数派发
+<!-- END CAPABILITY -->
 
-基类虚方法的传入调用不包括对派生类重写方法的调用；对重写方法的调用只归属于该重写方法，绝不会归属于它所重写的基类方法。
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-struct Base {
-    virtual void draw();
-};
+**跟踪虚函数分派**
 
-struct Derived : Base {
-    void draw() override;
-};
+基类虚函数的传入调用不包含通过派生类中的重写函数发起的调用；对重写函数的调用仅归属于该重写函数，不会归属于被它重写的基类函数
 
-void call_derived(Derived& d) {
-    d.draw();  // absent from the incoming calls of Base::draw
-}
+```snap
+tests/snap/navigation/call_hierarchy/06_calls_virtual_dispatch.cpp
 ```
 
-### 非函数目标
+<!-- END CAPABILITY -->
 
-变量和枚举常量
+<!-- BEGIN CAPABILITY: unsupported clangd#1308 -->
 
-在变量或枚举常量上准备调用层次结构不会返回任何结果；该请求仅适用于函数和方法。
+**非函数目标**
 
-```cpp
-int counter = 0;  // prepare call hierarchy here → nothing
+对变量和枚举常量准备调用层次结构时，不返回任何结果
 
-enum Mode {
-    Fast,  // prepare call hierarchy here → nothing
-    Slow,
-};
+对变量或枚举常量准备调用层次结构时，不返回任何结果；该请求仅适用于自由函数和成员函数。
+
+```snap
+tests/snap/navigation/call_hierarchy/07_calls_non_function.cpp
 ```
 
-### Lambda 内部的调用
+<!-- END CAPABILITY -->
 
-写在 Lambda 函数体中的调用会出现在其所调用函数的传入调用中，并归属于包围该 Lambda 的函数。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-void foo() {}
+**Lambda 内的调用**
 
-void use() {
-    auto task = [] {
-        foo();
-    };
-    task();
-}
+Lambda 体内的调用会出现在被调用函数的传入调用中，并归属于包含该 Lambda 的函数
+
+```snap
+tests/snap/navigation/call_hierarchy/08_calls_lambda.cpp
 ```
 
-### 经由转发函数的构造函数调用
+<!-- END CAPABILITY -->
 
-构造函数的传入调用不包括经由完美转发工厂函数调用该构造函数的调用点。
+<!-- BEGIN CAPABILITY: unsupported clangd#2242 -->
 
-```cpp
-template <typename T, typename... Args>
-T make(Args&&... args) {
-    return T(static_cast<Args&&>(args)...);
-}
+**通过转发函数调用构造函数**
 
-struct Widget {
-    Widget(int w, int h);  // make<Widget> below is absent from incoming calls
-};
+构造函数的传入调用不包含通过完美转发工厂函数间接调用它的位置
 
-Widget build() {
-    return make<Widget>(800, 600);
-}
+```snap
+tests/snap/navigation/call_hierarchy/09_calls_forwarding_ctor.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1488,84 +986,65 @@ Widget build() {
 
 <!-- BEGIN GENERATED ITEMS: type_hierarchy -->
 
-| 能力                                             | 状态     | 问题                                                    |
-| ------------------------------------------------ | -------- | ------------------------------------------------------- |
-| 为 class、struct、enum 和 union 准备类型层次结构 | 支持     |                                                         |
-| 父类型                                           | 支持     |                                                         |
-| 子类型                                           | 支持     |                                                         |
-| 模板继承                                         | 支持     |                                                         |
-| 类型层次结构条目中的模板参数                     | 部分支持 | [clangd#31](https://github.com/clangd/clangd/issues/31) |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 为 class、struct、enum 和 union 准备类型层次结构
+**类型层次结构准备**
 
-准备类型层次结构时，可以将条目锚定到任何用户定义类型标签上——class、struct、enum 和 union 均可。
+准备类型层次结构时，可以在任意用户定义的类型标记上定位条目，包括类、结构体、枚举和联合体
 
-```cpp
-class Handle {};
-
-struct Point {};
-
-enum class Mode {};
-
-union Storage {
-    int i;
-    float f;
-};
+```snap
+tests/snap/navigation/type_hierarchy/01_types_prepare.cpp
 ```
 
-### 父类型
+<!-- END CAPABILITY -->
 
-父类型会列出类的所有直接基类，包括多重继承派生类型的每一个基类。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Alpha {};
+**超类型**
 
-struct Beta {};
+超类型列出类的所有直接基类，包括多重继承中派生类型的每个基类
 
-struct Gamma : Alpha, Beta {};
+```snap
+tests/snap/navigation/type_hierarchy/02_types_supertypes.cpp
 ```
 
-### 子类型
+<!-- END CAPABILITY -->
 
-子类型会列出从某个基类派生的所有类，涵盖各个同级派生类型。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Shape {};
+**子类型**
 
-struct Circle : Shape {};
+子类型列出从某个基类派生的所有类，涵盖各个同级派生类型
 
-struct Square : Shape {};
-
-struct Triangle : Shape {};
+```snap
+tests/snap/navigation/type_hierarchy/03_types_subtypes.cpp
 ```
 
-### 模板继承
+<!-- END CAPABILITY -->
 
-基类的子类型包括通过类模板从其派生的类，例如 CRTP 包装器。
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Base {};
+**模板继承**
 
-template <typename T>
-struct CRTP : Base {};
+基类的子类型包括通过类模板（例如 CRTP 包装类）从该基类派生的类
 
-struct Widget : CRTP<Widget> {};
+```snap
+tests/snap/navigation/type_hierarchy/04_types_template_inheritance.cpp
 ```
 
-### 类型层次结构条目中的模板参数
+<!-- END CAPABILITY -->
 
-由类模板特化产生的子类型会被列出，但其条目名称仅为不带实参的模板名（`Derived`），不含能够区分 `Derived<Foo>` 的模板参数。
+<!-- BEGIN CAPABILITY: partial clangd#31 -->
 
-```cpp
-struct Foo {};
+**层次结构中的模板实参**
 
-struct Base {};
+类模板特化产生的子类型会被列出，但条目名称仅包含模板名（`Derived`），不包含用于区分 `Derived<Foo>` 的模板实参
 
-template <typename T>
-struct Derived : Base {};
-
-Derived<Foo> instance;
+```snap
+tests/snap/navigation/type_hierarchy/05_types_template_args.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1575,137 +1054,111 @@ Derived<Foo> instance;
 
 <!-- BEGIN GENERATED ITEMS: workspace_symbol -->
 
-| 能力                             | 状态     | 问题                                                        |
-| -------------------------------- | -------- | ----------------------------------------------------------- |
-| 基本的工作区符号搜索             | 支持     |                                                             |
-| 搜索覆盖整个项目                 | 支持     |                                                             |
-| 重载区分                         | 部分支持 | [clangd#1344](https://github.com/clangd/clangd/issues/1344) |
-| 模糊匹配                         | 不支持   | [clangd#914](https://github.com/clangd/clangd/issues/914)   |
-| 部分限定名搜索                   | 不支持   | [clangd#550](https://github.com/clangd/clangd/issues/550)   |
-| 在枚举作用域内查找枚举项         | 不支持   | [clangd#931](https://github.com/clangd/clangd/issues/931)   |
-| 别名所指向的声明排在类型别名前面 | 不支持   | [clangd#2253](https://github.com/clangd/clangd/issues/2253) |
-| 按修饰名（链接器名称）搜索       | 不支持   |                                                             |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 基本的工作区符号搜索
+**基本的工作区全局符号搜索**
 
-不区分大小写的子串匹配
+工作区符号搜索通过子串匹配名称，不区分大小写
 
-查询会匹配所有名称中包含查询文本的符号，且不区分大小写：函数、类型、枚举项和宏都会参与匹配；如果没有匹配项，则返回空列表而不是错误。
+查询会匹配名称中包含查询字符串的所有符号，不区分大小写：函数、类型、枚举项和宏都在搜索范围内；没有匹配项时返回空列表，不会报错。
 
-```cpp
-// query: widget
-// query: parse_config
-// query: MODE
-// query: fast
-// query: no_such_symbol
-
-struct Widget {
-    int width;
-};
-
-enum class Mode { Fast, Safe };
-
-#define MODE_DEFAULT 1
-
-void parse_config() {}
+```snap
+tests/snap/workspace_symbol/workspace_symbol/01_basic_search.cpp
 ```
 
-### 搜索覆盖整个项目
+<!-- END CAPABILITY -->
 
-来自查询文件之外其他文件的匹配结果
+<!-- BEGIN CAPABILITY: supported -->
 
-查询会返回甚至尚未在编辑器中打开的项目文件中的符号：这里的 `other.h` 仍处于关闭状态，因此其中的匹配结果由后台索引提供。
+**搜索覆盖整个项目**
 
-`main.cpp`：
+工作区符号搜索会返回项目中未打开文件里的匹配项
 
-```cpp
-// query: helper_elsewhere
+查询也会返回编辑器中尚未打开的项目文件里的符号：此处 `other.h` 一直未打开，因此其中的匹配结果由后台索引提供。
 
-int local_anchor = 0;
+```snap
+tests/snap/workspace_symbol/workspace_symbol/02_cross_file_search/main.cpp
 ```
 
-`other.h`：
+<!-- END CAPABILITY -->
 
-```cpp
-void helper_elsewhere() {}
+<!-- BEGIN CAPABILITY: partial clangd#1344 -->
+
+**重载消歧**
+
+工作区符号结果省略了参数类型，导致无法区分重载
+
+查询重载名称会找到所有重载，但每个条目都只显示名称本身，因此只有分别打开两个 `process` 结果对应的位置，才能区分它们。
+
+```snap
+tests/snap/workspace_symbol/workspace_symbol/03_overload_params.cpp
 ```
 
-### 重载区分
+<!-- END CAPABILITY -->
 
-结果中显示参数类型
+<!-- BEGIN CAPABILITY: unsupported clangd#914 -->
 
-查询重载名称会找到所有重载，但每个条目都只有裸名称——只有打开两个位置，才能区分两个 `process` 结果。
+**模糊匹配**
 
-```cpp
-// query: process
+工作区符号搜索尚不支持基于单词边界的模糊匹配
 
-void process(int value) {}
+匹配采用不区分大小写的子串检查：`LinLis` 无法找到 `LinkedList`，`pcfg` 也无法找到 `parse_config`。包括宏在内，所有类型的符号都不支持按单词边界处的首字母匹配。
 
-void process(bool flag, int level) {}
+```snap
+tests/snap/workspace_symbol/workspace_symbol/04_fuzzy_matching.cpp
 ```
 
-### 模糊匹配
+<!-- END CAPABILITY -->
 
-针对 camelCase 和 snake_case 的词边界感知评分
+<!-- BEGIN CAPABILITY: unsupported clangd#550 -->
 
-匹配采用不区分大小写的子串测试：`LinLis` 找不到 `LinkedList`，`pcfg` 也找不到 `parse_config`。词边界处的首字母应能匹配并参与评分，且适用于所有符号种类（包括宏）。
+**部分限定名称搜索**
 
-```cpp
-// query: LinLis
-// query: pcfg
+符号仅按名称本身匹配：即使存在 `deep::net::Socket`，搜索 `net::Socket` 也找不到结果，其他带有限定符前缀的形式同样如此
 
-struct LinkedList {};
-
-void parse_config();
+```snap
+tests/snap/workspace_symbol/workspace_symbol/05_qualified_search.cpp
 ```
 
-### 部分限定名搜索
+<!-- END CAPABILITY -->
 
-符号只按裸名称匹配：即使 `deep::net::Socket` 存在，`net::Socket` 也找不到任何结果，其他带限定符前缀的形式同样如此。
+<!-- BEGIN CAPABILITY: unsupported clangd#931 -->
 
-```cpp
-// query: net::Socket
+**有作用域枚举的枚举项查找**
 
-namespace deep {
-namespace net {
+使用限定名称查询枚举项尚无结果
 
-struct Socket {};
-
-}  // namespace net
-}  // namespace deep
+```snap
+tests/snap/workspace_symbol/workspace_symbol/06_enum_scope.cpp
 ```
 
-### 在枚举作用域内查找枚举项
+<!-- END CAPABILITY -->
 
-`Color::Red` 应该能找到枚举项——无论是有作用域枚举还是无作用域枚举——但限定查询无法匹配任何结果；只有裸名称 `Red` 可以。
+<!-- BEGIN CAPABILITY: unsupported clangd#2253 -->
 
-```cpp
-// query: Color::Red
+**别名排序**
 
-enum Color { Red, Green };
+尚未对匹配的别名及其所指向的声明进行排序
+
+目前尚未对结果进行排序。
+
+```snap
+tests/snap/workspace_symbol/workspace_symbol/07_alias_priority.cpp
 ```
 
-### 别名所指向的声明排在类型别名前面
+<!-- END CAPABILITY -->
 
-当 `ConnectionImpl` 和指向它的别名 `Connection` 同时匹配某项查询时，被别名指向的声明应排在前面。目前的结果不包含排序信息。
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-// query: Connection
+**按修饰后的名称（链接器名称）搜索**
 
-struct ConnectionImpl {};
+尚无法通过修饰后的链接器名称找到源代码中对应的函数
 
-using Connection = ConnectionImpl;
+```snap
+tests/snap/workspace_symbol/workspace_symbol/08_mangled_name.cpp
 ```
 
-### 按修饰名（链接器名称）搜索
-
-粘贴 `_Z7processi` 这样的链接器符号，应解析到该修饰名所对应的函数——这在追查链接器错误和堆栈跟踪时很有用。
-
-```cpp
-// query: _Z7processi
-
-void process(int value);
-```
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1713,206 +1166,116 @@ void process(int value);
 
 <!-- BEGIN GENERATED ITEMS: module_navigation -->
 
-| 能力                                    | 状态     | 问题                                                        |
-| --------------------------------------- | -------- | ----------------------------------------------------------- |
-| `import module_name` 导航到模块接口单元 | 支持     | [clangd#2310](https://github.com/clangd/clangd/issues/2310) |
-| `import :partition` 导航到分区单元      | 支持     |                                                             |
-| 在同一模块的接口单元与实现单元之间导航  | 部分支持 |                                                             |
-| 点分隔的模块名                          | 部分支持 |                                                             |
+<!-- BEGIN CAPABILITY: supported clangd#2310 -->
 
-### `import module_name` 导航到模块接口单元
+**模块导入导航**
 
-对 `import` 声明中的名称执行“转到定义”，会打开导出该模块的模块接口单元；使用已导入符号的位置则会跳转到该符号在该单元中的定义。
+在 `import` 声明中的名称上执行“转到定义”，会打开导出该模块的模块接口单元；在导入符号的使用处执行此操作，会跳转到该符号在该单元中的定义
 
-`main.cpp`：
-
-```cpp
-import widget;
-
-int build() {
-    return area(2, 3);
-}
+```snap
+tests/snap/navigation/module_navigation/01_module_import_name/main.cpp
 ```
 
-`widget.cppm`：
+<!-- END CAPABILITY -->
 
-```cpp
-export module widget;
+<!-- BEGIN CAPABILITY: supported -->
 
-export int area(int width, int height) {
-    return width * height;
-}
+**模块分区导航**
+
+在分区导入语句中冒号后的分区名称上执行“转到定义”，会打开声明该分区的分区单元
+
+```snap
+tests/snap/navigation/module_navigation/02_module_partition_import/main.cpp
 ```
 
-### `import :partition` 导航到分区单元
+<!-- END CAPABILITY -->
 
-对分区导入中冒号后的分区名执行“转到定义”，会打开声明该分区的分区单元。
+<!-- BEGIN CAPABILITY: partial -->
 
-`main.cpp`：
+**模块接口与实现导航**
 
-```cpp
-import pack;
+在实现单元的模块名称（`module m;`）上执行“转到定义”，会跳转到声明该模块的接口单元；尚不支持从接口名称反向跳转到实现
 
-int run() {
-    return count();
-}
+```snap
+tests/snap/navigation/module_navigation/03_module_iface_impl/main.cpp
 ```
 
-`pack.cppm`：
+<!-- END CAPABILITY -->
 
-```cpp
-export module pack;
+<!-- BEGIN CAPABILITY: partial -->
 
-export import :items;
+**以点分隔的模块名称**
+
+以点分隔的模块名称中，只有首段支持导航到模块接口
+
+在以点分隔的模块名称的首段上执行“转到定义”，会跳转到该模块的接口单元；点号后的各段尚无法单独解析。
+
+```snap
+tests/snap/navigation/module_navigation/04_module_dotted/main.cpp
 ```
 
-`pack_items.cppm`：
-
-```cpp
-export module pack:items;
-
-export int count() {
-    return 3;
-}
-```
-
-### 在同一模块的接口单元与实现单元之间导航
-
-对实现单元（`module m;`）中的模块名执行“转到定义”，会跳转到声明该模块的接口单元；但不提供反向导航，即无法从接口名称导航到实现。
-
-`main.cpp`：
-
-```cpp
-import store;
-
-int lookup(int key) {
-    return fetch(key);
-}
-```
-
-`iface.cppm`：
-
-```cpp
-export module store;
-
-export int fetch(int key);
-```
-
-`impl.cpp`：
-
-```cpp
-module store;
-
-int fetch(int key) {
-    return key * 2;
-}
-```
-
-### 点分隔的模块名
-
-导航每个名称段
-
-对点分隔模块名的首个名称段执行“转到定义”，可到达该模块的接口单元；点号后的名称段目前还无法单独解析。
-
-`main.cpp`：
-
-```cpp
-import app.core;
-
-int run() {
-    return value();
-}
-```
-
-`app_core.cppm`：
-
-```cpp
-export module app.core;
-
-export int value() {
-    return 1;
-}
-```
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## 文档高亮
 
-高亮当前文件中光标所在符号的所有引用（`textDocument/documentHighlight`）。
+高亮显示当前文件中对光标所在符号的所有引用（`textDocument/documentHighlight`）。
 
 <!-- BEGIN GENERATED ITEMS: document_highlight -->
 
-| 能力                                 | 状态   | 问题                                                        |
-| ------------------------------------ | ------ | ----------------------------------------------------------- |
-| 高亮当前文件中光标所在符号的所有引用 | 不支持 |                                                             |
-| 符号高亮的读/写分类                  | 不支持 |                                                             |
-| 控制流 Token 高亮                    | 不支持 | [clangd#1921](https://github.com/clangd/clangd/issues/1921) |
+<!-- BEGIN CAPABILITY: unsupported -->
 
-### 高亮当前文件中光标所在符号的所有引用
+**文档引用高亮**
 
-将光标放在 `total` 上时，应高亮其声明及该文件中的每处使用；该请求尚未实现。
+文档高亮尚未实现，因此声明和使用处都不会高亮显示
 
-```cpp
-int total = 0;
-
-void accumulate(int amount) {
-    total = total + amount;
-}
+```snap
+tests/snap/navigation/document_highlight/01_highlight_references.cpp
 ```
 
-### 符号高亮的读/写分类
+<!-- END CAPABILITY -->
 
-每处高亮都应包含其访问类型，以便编辑器对写操作和读操作使用不同的着色。
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-void tally() {
-    int count = 0;      // write
-    int next = count;   // read
-    count = next;       // write
-}
+**符号高亮的读写分类**
+
+文档高亮尚不报告读写访问类型
+
+```snap
+tests/snap/navigation/document_highlight/02_highlight_read_write.cpp
 ```
 
-### 控制流 Token 高亮
+<!-- END CAPABILITY -->
 
-高亮 `break` 或 `continue` 时，还应高亮其所属的循环或 `switch`；高亮 `return` / `throw` 时，则应高亮它们所标示的函数退出点。
+<!-- BEGIN CAPABILITY: unsupported clangd#1921 -->
 
-```cpp
-void drain(int outer, int inner) {
-    for (int i = 0; i < outer; i += 1) {
-        for (int j = 0; j < inner; j += 1) {
-            if (i == j) {
-                break;      // highlighting break → also the inner for
-            }
-            if (j == 0) {
-                continue;   // highlighting continue → also the inner for
-            }
-        }
-    }
-}
+**控制流 Token 高亮**
+
+控制流关键字尚无相关的文档高亮
+
+```snap
+tests/snap/navigation/document_highlight/03_highlight_control_flow.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## 源文件/头文件切换
+## 切换源文件／头文件
 
 <!-- BEGIN GENERATED ITEMS: switch_source_header -->
 
-| 能力                       | 状态   | 问题 |
-| -------------------------- | ------ | ---- |
-| 在源文件与其头文件之间切换 | 不支持 |      |
+<!-- BEGIN CAPABILITY: unsupported -->
 
-### 在源文件与其头文件之间切换
+**源文件与头文件切换**
 
-在 `widget.cpp` 中，只需一条命令即可跳转到 `widget.h`，也可从后者跳转回来——clangd 客户端所依赖的 `textDocument/switchSourceHeader` 请求尚未实现。
+源文件与头文件切换尚未实现，因此用户无法在配对文件之间直接跳转
 
-```cpp
-// widget.h
-class Widget {
-    void draw();
-};
-
-// widget.cpp — #include "widget.h"
-void Widget::draw() {}
+```snap
+tests/snap/navigation/switch_source_header/01_switch_source_header.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->

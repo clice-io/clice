@@ -5,784 +5,515 @@
      markers by hand — edit the fixture spec headers and run
      `node tools/docs/feature.ts update`. -->
 
-clice 使用自有的 Token 类型体系对文档中的每个 Token 进行分类；这套体系比标准 LSP Token 类型更丰富，并在 clice 的所有响应中保持一致。偏好标准 LSP 类型的客户端可以通过配置进行映射。
+clice 使用自有的 Token 类型体系对文档中的每个 Token 进行分类。这套体系比标准 LSP Token 类型更丰富，并在 clice 的所有响应中保持一致。偏好标准 LSP 类型的客户端可以通过配置进行映射。
 
 ## 词法 Token
 
-从 Token 流本身派生的类型，不依赖 AST。
+直接从 Token 流本身推导出的类型，不依赖 AST。
 
 <!-- BEGIN GENERATED ITEMS: lexical_tokens -->
 
-| 能力                 | 状态   | 问题                                                        |
-| -------------------- | ------ | ----------------------------------------------------------- |
-| 注释                 | 支持   |                                                             |
-| 字面量               | 支持   |                                                             |
-| 关键字               | 支持   |                                                             |
-| 预处理指令           | 支持   |                                                             |
-| 非活跃区域           | 支持   |                                                             |
-| 头文件名             | 支持   |                                                             |
-| 文件顶部的非活跃区域 | 支持   |                                                             |
-| 字面量前缀和后缀     | 不支持 |                                                             |
-| 转义序列             | 不支持 |                                                             |
-| 声明符与运算符的区分 | 不支持 | [clangd#1421](https://github.com/clangd/clangd/issues/1421) |
-| 基本类型 Token       | 支持   |                                                             |
-| 括号 Token 类型      | 不支持 |                                                             |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 注释
+**注释**
 
-行注释、块注释和文档注释，包括多行块注释
+行注释、块注释和文档注释均标记为注释 Token
 
-```cpp
-// A line comment.
-/* a one-line block comment */
-/*
- * a block comment
- * spanning several lines
- */
-/// a doc comment
-int after_comments = 0;
-
-/* first
-second */ int after_block = 1;
+```snap
+tests/snap/semantic_tokens/lexical_tokens/01_comments.cpp
 ```
 
-### 字面量
+<!-- END CAPABILITY -->
 
-数字、字符和字符串，包括原始字符串
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int decimal = 42;
-int hexadecimal = 0xFF;
-double floating = 3.14;
-char letter = 'x';
-const char* text = "hello";
-const char* raw = R"(no "escapes" in here)";
-int after_raw = 1;
+**字面量**
 
-const char* multiline = R"(line1
-line2
-)"; int after_closing = 2;
+数字、字符和字符串均标记为字面量 Token
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/02_literals.cpp
 ```
 
-### 关键字
+<!-- END CAPABILITY -->
 
-包括运算符的替代拼写以及具有上下文含义的 `final` / `override`
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-bool logic(bool a, bool b) {
-    return a and b or not a;
-}
+**关键字**
 
-struct Base {
-    virtual void act();
-    virtual ~Base();
-};
+运算符的替代拼写和上下文说明符仍标记为关键字 Token
 
-struct Leaf final : Base {
-    void act() override;
-};
-
-struct Last : Base {
-    void act() final;
-};
+```snap
+tests/snap/semantic_tokens/lexical_tokens/03_keywords.cpp
 ```
 
-### 预处理指令
+<!-- END CAPABILITY -->
 
-`#if` 链保留指令类型；未启用的分支保留词法类型；pragma 参数保持普通类型
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int before_conditional = 0;
+**预处理指令**
 
-#if 0
-int disabled_branch;
-#else
-int enabled_branch = 1;
-#endif
+`#if` 指令链保留指令类型；未启用的分支保留词法类型；pragma 参数保持普通文本样式
 
-#define FLAG
-#ifdef FLAG
-int flagged = 2;
-#endif
-
-#pragma pack(1)
-
-#
-#define STRINGIZE(x) #x
-const char* stringized = STRINGIZE(abc);
+```snap
+tests/snap/semantic_tokens/lexical_tokens/04_directives.cpp
 ```
 
-### 非活跃区域
+<!-- END CAPABILITY -->
 
-未选中分支中的 Token 保留其词法类型，并带有 `inactive` 修饰符；未分类的 Token 则作为普通的 `identifier` 载体，因此即使单独一行只有 `}` 也会变暗
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int before = 0;
+**非活动区域**
 
-#if 0
-int simple = 1;
-bare identifiers;
-call(arg);
-"string in dead code";
-// comment inside
-#ifdef NESTED
-int deeper = 2;
-#endif
-int tail = 3;
-#endif
+未选中分支中的 Token 保留其词法类型，并带有 `inactive` 修饰符；未分类的 Token 则归为普通的 `identifier` 类型以承载该修饰符，因此即使某行只有一个 `}`，也会显示为暗淡样式
 
-#if defined(MISSING)
-first_branch;
-#elif 0
-elif_branch;
-#else
-int taken = 4;
-#endif
-
-#if 0
-void edge() {
-    inner(5);
-}
-#endif
+```snap
+tests/snap/semantic_tokens/lexical_tokens/05_inactive_regions.cpp
 ```
 
-### 头文件名
+<!-- END CAPABILITY -->
 
-由引号或尖括号括起的 `#include` 文件名，包括拆分形式 `# include`
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-#include "inc/angled.h"
-#include <angled.h>
-# include "inc/angled.h"
+**头文件名**
 
-int after_includes = 0;
+包含指令中用引号或尖括号括起的文件名均标记为字符串 Token
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/06_include_names.cpp
 ```
 
-### 文件顶部的非活跃区域
+<!-- END CAPABILITY -->
 
-前导指令中未选中的分支也会以相同方式变暗
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-#define KEEP 1
-#if 0
-#define DEAD 2
-#endif
+**Preamble 中的非活动区域**
 
-int after = KEEP;
+文件开头各指令中未选中的分支也以相同方式显示为暗淡样式
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/07_inactive_preamble.cpp
 ```
 
-### 字面量前缀和后缀
+<!-- END CAPABILITY -->
 
-将编码前缀、类型后缀、数位分隔符和 UDL 后缀分别作为独立 Token
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-using size_type = decltype(sizeof(0));
-constexpr size_type operator""_kb(unsigned long long n) {
-    return n * 1024;
-}
+**字面量前缀和后缀**
 
-auto wide = L"wide string";
-auto utf8 = u8"utf-8 string";
-auto hex = 0xFF;
-auto binary = 0b1010;
-auto unsigned_suffix = 42u;
-auto float_suffix = 3.14f;
-auto separators = 1'000'000;
-auto udl = 4_kb;
+字面量的前缀、后缀和分隔符尚未标记为独立的 Token
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/08_literal_affixes.cpp
 ```
 
-### 转义序列
+<!-- END CAPABILITY -->
 
-在字符串和字符字面量内单独高亮
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-const char* escaped = "hello\nworld";
-char hex_escape = '\x41';
+**转义序列**
+
+字面量中的转义序列尚未单独高亮显示
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/09_escape_sequences.cpp
 ```
 
-### 声明符与运算符的区分
+<!-- END CAPABILITY -->
 
-区分 `*`、`&`、`&&` 用作声明符和用作算术/逻辑运算符的情况
+<!-- BEGIN CAPABILITY: unsupported clangd#1421 -->
 
-```cpp
-int value = 1;
-int* pointer = &value;
-int& reference = value;
-int product = value * value;
-int masked = value & 1;
+**声明符与运算符的区分**
+
+声明符中的运算符和表达式中的运算符尚未使用不同的 Token 类型
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/10_declarator_operators.cpp
 ```
 
-### 基本类型 Token
+<!-- END CAPABILITY -->
 
-为内置类型使用独立的 Token 类型，而非普通的 `keyword`
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int number = 0;
-float ratio = 0.5f;
-void act();
-unsigned long long wide_number = 0;
-__int128 extended_int = 0;
-_Float16 extended_float = 0;
+**基本类型的 Token 类型**
+
+内置类型使用独立的 Token 类型，而非普通的 `keyword`
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/11_primitive_types.cpp
 ```
 
-### 括号 Token 类型
+<!-- END CAPABILITY -->
 
-将相互匹配的 `()`、`[]`、`{}`、`<>` 分别归为不同类型
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-template <typename T>
-struct Grid {
-    T cells[4];
-};
+**括号的 Token 类型**
 
-Grid<int> grid{{1, 2, 3, 4}};
+匹配的括号尚未使用各对括号专属的 Token 类型
 
-int first(Grid<int>& grid) {
-    return grid.cells[0];
-}
+```snap
+tests/snap/semantic_tokens/lexical_tokens/12_bracket_pairs.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## 声明与引用
+## 声明
 
-根据名称所定义或引用的声明进行分类。
+名称按其所定义或引用的声明进行分类。
 
-<!-- BEGIN GENERATED ITEMS: declarations_references -->
+<!-- BEGIN GENERATED ITEMS: declarations -->
 
-| 能力                              | 状态     | 问题                                                                                                                 |
-| --------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| 命名空间                          | 支持     |                                                                                                                      |
-| 类型                              | 支持     |                                                                                                                      |
-| 函数与方法                        | 支持     |                                                                                                                      |
-| 变量                              | 支持     |                                                                                                                      |
-| 模板                              | 支持     |                                                                                                                      |
-| 概念                              | 支持     |                                                                                                                      |
-| 标签                              | 支持     |                                                                                                                      |
-| 结构化绑定（structured bindings） | 支持     |                                                                                                                      |
-| 成员初始化列表                    | 支持     | [clangd#122](https://github.com/clangd/clangd/issues/122)                                                            |
-| using 声明                        | 支持     | [clangd#2619](https://github.com/clangd/clangd/issues/2619)                                                          |
-| Lambda 初始化捕获                 | 支持     | [clangd#868](https://github.com/clangd/clangd/issues/868)                                                            |
-| `sizeof...`                       | 支持     | [clangd#213](https://github.com/clangd/clangd/issues/213)                                                            |
-| `using enum`                      | 支持     | [clangd#1283](https://github.com/clangd/clangd/issues/1283)                                                          |
-| 推导指引                          | 支持     |                                                                                                                      |
-| 显式实例化                        | 支持     | [clangd#316](https://github.com/clangd/clangd/issues/316)                                                            |
-| 依赖名称                          | 部分支持 | [clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297) |
-| 变量模板                          | 支持     |                                                                                                                      |
-| 类外成员定义                      | 支持     |                                                                                                                      |
-| 别名模板                          | 支持     |                                                                                                                      |
-| 模板模板参数                      | 支持     |                                                                                                                      |
-| Lambda 捕获                       | 支持     |                                                                                                                      |
-| 范围 for 循环                     | 支持     |                                                                                                                      |
-| 枚举底层类型                      | 支持     |                                                                                                                      |
-| 友元声明                          | 支持     |                                                                                                                      |
-| 依赖 using 声明                   | 部分支持 |                                                                                                                      |
-| 函数显式实例化指令                | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
-| 变量的显式实例化指令              | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
-| 显式实例化的成员函数体            | 支持     |                                                                                                                      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 命名空间
+**命名空间**
 
-定义、引用、嵌套命名空间和命名空间别名
+命名空间的定义、引用、嵌套和别名均标记为命名空间 Token
 
-```cpp
-namespace demo {
-namespace inner {
-int value = 1;
-}
-}
-
-namespace demo::inner::more {}
-
-namespace alias = demo::inner;
-
-int use_alias = alias::value;
+```snap
+tests/snap/semantic_tokens/declarations/01_namespaces.cpp
 ```
 
-### 类型
+<!-- END CAPABILITY -->
 
-类、结构体、联合体、枚举和类型别名，包括定义处和引用处
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-class Widget {};
-struct Point {};
-union Storage {
-    int i;
-    float f;
-};
-enum Flags { FlagA };
-enum class Mode { Fast };
+**类型**
 
-typedef Point PointAlias;
-using WidgetAlias = Widget;
+类型定义和引用保留各自的类型类别
 
-Widget* make_widget();
-PointAlias origin;
-Mode current = Mode::Fast;
+```snap
+tests/snap/semantic_tokens/declarations/02_types.cpp
 ```
 
-### 函数与方法
+<!-- END CAPABILITY -->
 
-声明、定义和调用点
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int twice(int value);
+**函数和方法**
 
-int twice(int value) {
-    return value * 2;
-}
+函数声明、定义和调用均标记为函数 Token
 
-struct Machine {
-    void start();
-    static void reset();
-};
-
-void drive(Machine machine) {
-    machine.start();
-    Machine::reset();
-    int four = twice(2);
-}
+```snap
+tests/snap/semantic_tokens/declarations/03_functions.cpp
 ```
 
-### 变量
+<!-- END CAPABILITY -->
 
-全局变量、局部变量、参数、字段和枚举成员
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Holder {
-    int field;
-    static int shared;
-};
+**变量**
 
-enum class State { Idle };
+变量声明和引用保留各自的变量类别
 
-int global_value = 1;
-
-void touch(int param) {
-    int local = param + global_value;
-    Holder h;
-    h.field = local;
-    Holder::shared = h.field;
-    State state = State::Idle;
-}
+```snap
+tests/snap/semantic_tokens/declarations/04_variables.cpp
 ```
 
-### 模板
+<!-- END CAPABILITY -->
 
-类型与非类型模板参数，模板名称带有 `templated` 修饰符
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename T, int N>
-struct Array {
-    T data[N];
-};
+**模板**
 
-template <typename T>
-T identity(T value);
+模板参数标记为类型或变量类别，模板名称带有 `templated` 修饰符
 
-template <typename T>
-T identity(T value) {
-    return value;
-}
-
-Array<int, 4> arr;
-int result = identity(3);
+```snap
+tests/snap/semantic_tokens/declarations/05_templates.cpp
 ```
 
-### 概念
+<!-- END CAPABILITY -->
 
-定义及作为模板约束的使用
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename T>
-concept Small = sizeof(T) <= 4;
+**Concept**
 
-template <Small T>
-void use_small(T value);
+Concept 的定义及其在约束中的使用均标记为 Concept Token
 
-template <typename T>
-    requires Small<T>
-void require_small(T value);
+```snap
+tests/snap/semantic_tokens/declarations/06_concepts.cpp
 ```
 
-### 标签
+<!-- END CAPABILITY -->
 
-`goto` 目标和标签定义
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-void retry(bool again) {
-    goto done;
-done:
-    if (again) {
-        goto done;
-    }
-}
+**标签**
+
+标签及其在 `goto` 中的引用均标记为标签 Token
+
+```snap
+tests/snap/semantic_tokens/declarations/07_labels.cpp
 ```
 
-### 结构化绑定（structured bindings）
+<!-- END CAPABILITY -->
 
-定义处和使用处的绑定名称
+<!-- BEGIN CAPABILITY: supported -->
 
-起始 `[` 刻意不带 Token；仅高亮绑定名称本身。
+**结构化绑定（structured bindings）**
 
-```cpp
-struct Pair {
-    int first, second;
-};
+结构化绑定名称在定义和使用处均标记为变量 Token
 
-void unpack() {
-    auto [a, b] = Pair{1, 2};
-    int sum = a + b;
-}
+起始的 `[` 特意不标记为任何 Token；仅高亮显示绑定名称本身。
+
+```snap
+tests/snap/semantic_tokens/declarations/08_structured_bindings.cpp
 ```
 
-### 成员初始化列表
+<!-- END CAPABILITY -->
 
-将被初始化的字段按字段高亮
+<!-- BEGIN CAPABILITY: supported clangd#868 -->
 
-```cpp
-struct Widget {
-    int width;
-    int height;
+**Lambda 初始化捕获**
 
-    Widget(int w, int h) : width(w), height(h) {}
-};
+Lambda 初始化捕获标记为变量 Token
+
+```snap
+tests/snap/semantic_tokens/declarations/09_lambda_init_capture.cpp
 ```
 
-### using 声明
+<!-- END CAPABILITY -->
 
-引入的名称保留其目标的类别
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-namespace tools {
-inline int helper() {
-    return 1;
-}
-struct Gadget {};
-}
+**推导指引（deduction guides）**
 
-using tools::helper;
-using tools::Gadget;
+推导指引及其所引导的模板均标记为类型 Token
 
-int used = helper();
-Gadget gadget;
+```snap
+tests/snap/semantic_tokens/declarations/10_deduction_guides.cpp
 ```
 
-### Lambda 初始化捕获
+<!-- END CAPABILITY -->
 
-捕获的名称高亮为变量
+<!-- BEGIN CAPABILITY: supported clangd#316 -->
 
-```cpp
-int compute();
+**显式实例化**
 
-auto fn = [val = compute()] {
-    return val;
-};
+类的显式实例化会高亮显示模板名称和显式写出的实参
+
+```snap
+tests/snap/semantic_tokens/declarations/11_explicit_instantiation_class.cpp
 ```
 
-### `sizeof...`
+<!-- END CAPABILITY -->
 
-参数包保留其类型参数 Token
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename... Ts>
-constexpr auto count = sizeof...(Ts);
+**变量模板**
+
+变量模板的声明、定义和特化均标记为变量 Token
+
+```snap
+tests/snap/semantic_tokens/declarations/12_variable_templates.cpp
 ```
 
-### `using enum`
+<!-- END CAPABILITY -->
 
-在 using 位置高亮枚举名
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-enum class Color { Red };
+**类外成员定义**
 
-void paint() {
-    using enum Color;
-    auto c = Red;
-}
+限定名称保留方法类别和修饰符
+
+```snap
+tests/snap/semantic_tokens/declarations/13_out_of_line_methods.cpp
 ```
 
-### 推导指引
+<!-- END CAPABILITY -->
 
-高亮推导指引名称及其所指引的模板
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename T>
-struct Vec {
-    template <typename It>
-    Vec(It first, It last);
-};
-
-template <typename It>
-Vec(It, It) -> Vec<int>;
-```
-
-### 显式实例化
-
-在 extern 声明和定义中，均高亮实例化的模板名称及显式写出的模板实参
-
-```cpp
-struct Widget {};
-
-template <typename T>
-struct Holder {
-    T value;
-};
-
-extern template struct Holder<Widget>;
-
-template struct Holder<Widget>;
-```
-
-### 依赖名称
-
-若主模板已知，则通过主模板解析
-
-已知模板（`Box<T>`）的依赖成员会解析到主模板的声明，并保留其类别。裸模板参数的成员没有候选声明，目前不会获得 Token；此类名称的启发式着色仍待解决。
-
-```cpp
-template <typename T>
-struct Box {
-    using value_type = int;
-    static void reset();
-    int size() const;
-};
-
-template <typename T>
-void resolved(Box<T> box) {
-    typename Box<T>::value_type item;
-    Box<T>::reset();
-    box.size();
-}
-
-template <typename T>
-void unresolved(T value) {
-    typename T::value_type item;
-    T::reset();
-    value.size();
-}
-```
-
-### 变量模板
-
-声明、定义、偏特化和全特化
-
-```cpp
-template <typename T, typename U>
-extern int pair_value;
-
-template <typename T, typename U>
-int pair_value = 2;
-
-template <typename T>
-extern int pair_value<T, int>;
-
-template <typename T>
-int pair_value<T, int> = 4;
-
-template <>
-int pair_value<int, int> = 5;
-```
-
-### 类外成员定义
-
-限定名保持方法的类别和修饰符
-
-```cpp
-struct Gauge {
-    int read() const;
-    static void reset();
-};
-
-int Gauge::read() const {
-    return 0;
-}
-
-void Gauge::reset() {}
-```
-
-### 别名模板
+**别名模板**
 
 别名名称带有类型类别和 `templated` 修饰符
 
-```cpp
-template <typename T>
-using Ptr = T*;
-
-template <typename T>
-struct Box {};
-
-template <typename T>
-using BoxPtr = Box<T>*;
-
-Ptr<int> pointer = nullptr;
+```snap
+tests/snap/semantic_tokens/declarations/14_alias_templates.cpp
 ```
 
-### 模板模板参数
+<!-- END CAPABILITY -->
 
-作为类型声明和使用
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename T>
-struct Holder {};
+**模板模板参数**
 
-template <template <typename> class Container, typename T>
-struct Adaptor {
-    Container<T> value;
-};
+模板模板参数（template-template parameters）在声明和使用处均获得类型 Token
 
-Adaptor<Holder, int> adaptor;
+```snap
+tests/snap/semantic_tokens/declarations/15_template_template_params.cpp
 ```
 
-### Lambda 捕获
+<!-- END CAPABILITY -->
 
-按拷贝和按引用捕获引用被捕获的变量；`this` 仍为关键字
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct S {
-    int field;
+**友元声明**
 
-    int compute() {
-        int local = 1;
-        auto by_copy = [local, this] {
-            return local + this->field;
-        };
-        auto by_reference = [&local] {
-            return local;
-        };
-        return by_copy() + by_reference();
-    }
-};
+友元声明中的名称解析到其目标；内联友元标记为定义
+
+```snap
+tests/snap/semantic_tokens/declarations/16_friend_declarations.cpp
 ```
 
-### 范围 for 循环
+<!-- END CAPABILITY -->
 
-定义处和使用处的循环变量
+<!-- BEGIN CAPABILITY: partial llvm#191658 -->
 
-```cpp
-struct List {
-    int* begin();
-    int* end();
-};
+**函数显式实例化指令**
 
-void iterate(List items) {
-    for (auto& item : items) {
-        item = 0;
-    }
-}
+函数显式实例化指令中的标识符仍不高亮
+
+```snap
+tests/snap/semantic_tokens/declarations/17_explicit_instantiation_function.cpp
 ```
 
-### 枚举底层类型
+<!-- END CAPABILITY -->
 
-枚举基类型的引用保留其类型类别
+<!-- BEGIN CAPABILITY: partial llvm#191658 -->
 
-```cpp
-using Byte = unsigned char;
+**变量显式实例化指令**
 
-enum class Flags : Byte { A, B };
+变量显式实例化指令中的标识符仍不高亮
 
-Flags flags = Flags::A;
+```snap
+tests/snap/semantic_tokens/declarations/18_explicit_instantiation_variable.cpp
 ```
 
-### 友元声明
+<!-- END CAPABILITY -->
 
-被声明为友元的名称解析到其目标；内联友元构成定义
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Widget;
-void ping();
+**显式实例化的成员体**
 
-struct Host {
-    friend struct Widget;
-    friend void ping();
-    friend void inline_friend() {}
-};
+待决名（dependent names）按实际解析结果高亮：各实例化中的种类一致时，保留所有实例化共有的修饰符；种类不一致时，标记为冲突
+
+```snap
+tests/snap/semantic_tokens/declarations/19_explicit_instantiation_member_bodies.cpp
 ```
 
-### 依赖 using 声明
+<!-- END CAPABILITY -->
 
-模板体中的 `using T::name`
+<!-- END GENERATED ITEMS -->
 
-引入的名称及其使用当前不会产生 Token；预留的 dependent-name 修饰符尚未输出。
+## 引用
 
-```cpp
-template <typename T>
-struct Derived : T {
-    using T::value;
+引用处保留其所解析到的声明的语义种类，通过语言特有的查找规则找到的名称也不例外。
 
-    int use() {
-        return value;
-    }
-};
+<!-- BEGIN GENERATED ITEMS: references -->
+
+<!-- BEGIN CAPABILITY: supported clangd#122 -->
+
+**成员初始化列表**
+
+成员初始化列表中被初始化的名称按字段高亮
+
+```snap
+tests/snap/semantic_tokens/references/01_member_init_list.cpp
 ```
 
-### 函数显式实例化指令
+<!-- END CAPABILITY -->
 
-Clang 不会为该指令构建节点，因此其中的每个标识符都不会着色：名称、模板实参和参数类型
+<!-- BEGIN CAPABILITY: supported clangd#2619 -->
 
-```cpp
-struct Widget {};
+**using 声明**
 
-template <typename T>
-void convert(T value) {}
+引入的名称保留其目标的种类
 
-extern template void convert<Widget>(Widget);
-
-template void convert<Widget>(Widget);
+```snap
+tests/snap/semantic_tokens/references/02_using_declarations.cpp
 ```
 
-### 变量的显式实例化指令
+<!-- END CAPABILITY -->
 
-Clang 不会为该指令构建节点，因此其中的每个标识符都不会着色：名称、模板实参，甚至声明符的类型
+<!-- BEGIN CAPABILITY: supported clangd#213 -->
 
-```cpp
-struct Widget {};
+**`sizeof...`**
 
-template <typename T>
-T zero = T();
+参数包保留其类型参数 Token
 
-extern template Widget zero<Widget>;
-
-template Widget zero<Widget>;
+```snap
+tests/snap/semantic_tokens/references/03_sizeof_pack.cpp
 ```
 
-### 显式实例化的成员函数体
+<!-- END CAPABILITY -->
 
-依赖名按其实际解析结果着色：类别一致时保留所有实例化共有的修饰符，类别不一致时标为冲突
+<!-- BEGIN CAPABILITY: supported clangd#1283 -->
 
-```cpp
-struct A {
-    static void hit();
-};
+**`using enum`**
 
-struct B {
-    static int hit;
-};
+using 声明在 using 处高亮枚举名称
 
-struct C {
-    void hit();
-};
-
-template <typename T>
-struct D {
-    void go() {
-        (void)T::hit;
-    }
-};
-
-template struct D<A>;
-template struct D<B>;
-
-template <typename T>
-struct E {
-    void probe(T t) {
-        t.hit();
-    }
-};
-
-template struct E<A>;
-template struct E<C>;
+```snap
+tests/snap/semantic_tokens/references/04_using_enum.cpp
 ```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#154 clangd#297 -->
+
+**待决名**
+
+待决名通过已知的主模板解析
+
+已知模板（`Box<T>`）的待决成员解析到主模板中的声明，并保留这些声明的种类。直接以模板参数为所属类型的成员没有候选声明，目前不获得 Token；对此类名称的启发式高亮仍有待解决。
+
+```snap
+tests/snap/semantic_tokens/references/05_dependent_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Lambda 捕获**
+
+按复制捕获和按引用捕获都引用被捕获的变量；`this` 仍作为关键字
+
+```snap
+tests/snap/semantic_tokens/references/06_lambda_captures.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**范围 for 循环**
+
+范围 for 循环变量在定义和使用处均保留变量 Token
+
+```snap
+tests/snap/semantic_tokens/references/07_range_for.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**枚举底层类型**
+
+枚举底层类型的引用保留其类型种类
+
+```snap
+tests/snap/semantic_tokens/references/08_enum_base.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**待决 using 声明**
+
+待决 using 声明仍不高亮
+
+引入的名称及其使用处目前均不获得 Token；预留的待决名修饰符尚未输出。
+
+```snap
+tests/snap/semantic_tokens/references/09_dependent_using.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -790,54 +521,41 @@ template struct E<C>;
 
 <!-- BEGIN GENERATED ITEMS: modules -->
 
-| 能力                              | 状态 | 问题 |
-| --------------------------------- | ---- | ---- |
-| 模块声明                          | 支持 |      |
-| 模块分区                          | 支持 |      |
-| 用作标识符的 `module` 和 `import` | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 模块声明
+**模块声明**
 
-上下文关键字 `module`、以点分隔的模块名和私有片段
+模块声明为上下文关键字、以点分隔的名称和私有模块片段生成 Token
 
-```cpp
-module;
-
-export module demo.core;
-
-export int exported_value = 1;
-
-module :private;
-
-int private_value = 2;
-
-#if 0
-module :private;
-#endif
+```snap
+tests/snap/semantic_tokens/modules/01_modules.cpp
 ```
 
-### 模块分区
+<!-- END CAPABILITY -->
 
-模块声明中的分区名称
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-export module demo.core:part;
+**模块分区**
 
-export int partition_value = 1;
+模块声明为分区名称生成 Token
+
+```snap
+tests/snap/semantic_tokens/modules/02_module_partition.cpp
 ```
 
-### 用作标识符的 `module` 和 `import`
+<!-- END CAPABILITY -->
 
-上下文关键字在模块声明之外保持其语义类别
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-void f() {
-    struct module {};
-    module m;
-    int import = 1;
-    int module = 2;
-}
+**作为标识符的 `module` 和 `import`**
+
+上下文关键字在模块声明之外保留其语义种类
+
+```snap
+tests/snap/semantic_tokens/modules/03_module_keyword_identifier.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -845,381 +563,283 @@ void f() {
 
 <!-- BEGIN GENERATED ITEMS: token_modifiers -->
 
-| 能力           | 状态   | 问题                                                        |
-| -------------- | ------ | ----------------------------------------------------------- |
-| 声明与定义     | 支持   |                                                             |
-| 静态           | 支持   |                                                             |
-| 只读           | 支持   |                                                             |
-| 虚与抽象       | 支持   |                                                             |
-| 已弃用         | 支持   |                                                             |
-| 默认库         | 支持   |                                                             |
-| 作用域修饰符   | 不支持 | [clangd#352](https://github.com/clangd/clangd/issues/352)   |
-| 可变引用与指针 | 不支持 | [clangd#839](https://github.com/clangd/clangd/issues/839)   |
-| 推导           | 不支持 |                                                             |
-| 用户定义运算符 | 不支持 | [clangd#1521](https://github.com/clangd/clangd/issues/1521) |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 声明与定义
+**声明与定义**
 
-该修饰符用于区分两者
+声明修饰符和定义修饰符用于区分这两种位置
 
-```cpp
-int measure(int value);
-
-int measure(int value) {
-    return value;
-}
-
-struct Sensor;
-
-struct Sensor {};
+```snap
+tests/snap/semantic_tokens/token_modifiers/01_decl_def_modifiers.cpp
 ```
 
-### 静态
+<!-- END CAPABILITY -->
 
-类级成员和静态局部变量
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Counter {
-    static int total;
-    static void bump();
-    int current;
-};
+**静态**
 
-void count() {
-    static int calls = 0;
-    Counter::bump();
-    Counter::total = calls;
-}
+静态成员和静态局部变量带有静态修饰符
+
+```snap
+tests/snap/semantic_tokens/token_modifiers/02_static_modifier.cpp
 ```
 
-### 只读
+<!-- END CAPABILITY -->
 
-const 和 constexpr 值、const 方法及枚举成员
+<!-- BEGIN CAPABILITY: supported -->
 
-只读目前基于值判定：指向 const 的指针也算作
-只读，即使指针本身可以改变。
+**只读**
 
-```cpp
-enum class Level { High };
+const 值、const 成员函数以及枚举成员带有只读修饰符
 
-const int limit = 10;
-constexpr int bound = 4;
+目前只读属性根据值判断：指向 const 对象的指针也视为只读，即使指针本身可以改变。
 
-struct Gauge {
-    int read() const;
-    void write(int value);
-};
-
-void probe(const int& in, const int* pointee_const, int* const self_const) {
-    Gauge gauge;
-    gauge.read();
-    gauge.write(limit);
-}
+```snap
+tests/snap/semantic_tokens/token_modifiers/03_readonly_modifier.cpp
 ```
 
-### 虚与抽象
+<!-- END CAPABILITY -->
 
-虚方法、纯虚方法和抽象类
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Shape {
-    virtual int area();
-    virtual int perimeter() = 0;
-    virtual ~Shape();
-};
+**虚与抽象**
 
-struct Square : Shape {
-    int perimeter() override;
-};
+虚成员函数和抽象类分别带有虚修饰符和抽象修饰符
 
-int measure(Shape& shape) {
-    return shape.area() + shape.perimeter();
-}
+```snap
+tests/snap/semantic_tokens/token_modifiers/04_virtual_abstract.cpp
 ```
 
-### 已弃用
+<!-- END CAPABILITY -->
 
-`[[deprecated]]` 声明及其使用
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-[[deprecated("use next_api")]] void old_api();
-void next_api();
+**已弃用**
 
-void migrate() {
-    old_api();
-}
+已弃用的声明及其使用处带有已弃用修饰符
+
+```snap
+tests/snap/semantic_tokens/token_modifiers/05_deprecated_modifier.cpp
 ```
 
-### 默认库
+<!-- END CAPABILITY -->
 
-系统头文件中声明的符号
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int before_includes = 0;
+**默认库**
 
-#include <syslib.h>
+来自系统头文件的符号带有默认库修饰符
 
-int used = system_helper();
+```snap
+tests/snap/semantic_tokens/token_modifiers/06_default_library.cpp
 ```
 
-### 作用域修饰符
+<!-- END CAPABILITY -->
 
-函数、类、文件和全局作用域
+<!-- BEGIN CAPABILITY: unsupported clangd#352 -->
 
-```cpp
-int global_scope;
-static int file_scope;
+**作用域修饰符**
 
-struct Foo {
-    int class_scope;
+符号尚不带有函数、类、文件或全局作用域修饰符
 
-    void bar() {
-        int function_scope = 0;
-    }
-};
+```snap
+tests/snap/semantic_tokens/token_modifiers/07_scope_modifiers.cpp
 ```
 
-### 可变引用与指针
+<!-- END CAPABILITY -->
 
-通过非 const 引用或指针传递的参数
+<!-- BEGIN CAPABILITY: unsupported clangd#839 -->
 
-```cpp
-void modify(int& out);
-void modify_through(int* out);
-void inspect(const int& in);
+**可变引用和指针**
 
-void run() {
-    int value = 0;
-    modify(value);
-    modify_through(&value);
-    inspect(value);
-}
+可变引用和指针实参尚不带有修饰符
+
+```snap
+tests/snap/semantic_tokens/token_modifiers/08_mutable_reference.cpp
 ```
 
-### 推导
+<!-- END CAPABILITY -->
 
-标记 `auto` 和 `decltype` 等推导类型
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-auto deduced_int = 1;
-decltype(deduced_int) same_type = 2;
+**推导**
+
+推导出的类型尚不带有专用修饰符
+
+```snap
+tests/snap/semantic_tokens/token_modifiers/09_deduced_modifier.cpp
 ```
 
-### 用户定义运算符
+<!-- END CAPABILITY -->
 
-区分重载运算符与内置运算符
+<!-- BEGIN CAPABILITY: unsupported clangd#1521 -->
 
-```cpp
-struct Vec {
-    Vec operator+(const Vec& other) const;
-};
+**用户定义的运算符**
 
-Vec add(Vec a, Vec b) {
-    return a + b;
-}
+重载运算符目前尚未与内置运算符区分
 
-int add(int a, int b) {
-    return a + b;
-}
+```snap
+tests/snap/semantic_tokens/token_modifiers/10_user_defined_operator.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## 冲突与歧义
 
-C++ 允许结构不同的实体共享同一个名称。当源码中的一个名称同时指代不同类别的实体时，任何单一的 Token 类型都无法准确表示；这类名称会获得专用的 **conflict** Token 类型，客户端通常以中性颜色显示。
+C++ 允许结构不同的实体共用一个名称。当代码中的同一个名称同时指向不同种类的实体时，没有任何单一的 Token 类型能准确表示它；这类名称会获得专用的 **conflict**（冲突）Token 类型，客户端通常以中性色显示。
 
 <!-- BEGIN GENERATED ITEMS: conflict_ambiguity -->
 
-| 能力           | 状态 | 问题 |
-| -------------- | ---- | ---- |
-| 类型与函数     | 支持 |      |
-| 类型与变量     | 支持 |      |
-| 同类别重载集合 | 支持 |      |
-| 注入类名       | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 类型与函数
+**类型与函数**
 
-同时指代二者的名称显示为 `conflict`
+同时指代类型和函数的名称标注为 `conflict`
 
-```cpp
-namespace shop {
-struct Widget {};
-void Widget();
-}
-
-using shop::Widget;
+```snap
+tests/snap/semantic_tokens/conflict_ambiguity/01_conflict_using.cpp
 ```
 
-### 类型与变量
+<!-- END CAPABILITY -->
 
-同时指代二者的名称显示为 `conflict`
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-namespace mixed {
-struct Thing {};
-int Thing;
-}
+**类型与变量**
 
-using mixed::Thing;
+同时指代类型和变量的名称标注为 `conflict`
+
+```snap
+tests/snap/semantic_tokens/conflict_ambiguity/02_conflict_type_variable.cpp
 ```
 
-### 同类别重载集合
+<!-- END CAPABILITY -->
 
-仅指代函数的名称不构成冲突
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-namespace ops {
-void apply();
-void apply(int level);
-}
+**同类重载集**
 
-using ops::apply;
+仅指代函数的名称不会产生冲突
 
-void run() {
-    apply();
-    apply(1);
-}
+```snap
+tests/snap/semantic_tokens/conflict_ambiguity/03_using_overloads.cpp
 ```
 
-### 注入类名
+<!-- END CAPABILITY -->
 
-类内部用作构造函数调用的类名
+<!-- BEGIN CAPABILITY: supported -->
 
-书写的名称显示为类；其隐含的构造函数引用不会额外着色——`(` 不会被标记为 Token。
+**注入类名（injected class name）**
 
-```cpp
-struct Widget {
-    Widget(int size);
+注入类名用作构造函数名称时，仍保留类 Token
 
-    Widget create() {
-        return Widget(42);
-    }
-};
+代码中的名称按类标注，其隐含的构造函数引用不产生额外高亮，`(` 仍不带 Token。
+
+```snap
+tests/snap/semantic_tokens/conflict_ambiguity/04_injected_class_name.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## Token 正确性
+## Token 的正确性
 
-clice 有意固定这些表现形式，其中也包括 clangd 曾处理错误的情况。
+clice 明确固定的 Token 标注行为，包括 clangd 曾处理错误的情况。
 
 <!-- BEGIN GENERATED ITEMS: token_correctness -->
 
-| 能力                     | 状态 | 问题                                                                                                                                                                                |
-| ------------------------ | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 构造函数与析构函数       | 支持 | [clangd#1509](https://github.com/clangd/clangd/issues/1509), [clangd#2078](https://github.com/clangd/clangd/issues/2078), [clangd#872](https://github.com/clangd/clangd/issues/872) |
-| 匿名参数                 | 支持 |                                                                                                                                                                                     |
-| 运算符名称               | 支持 |                                                                                                                                                                                     |
-| 类模板的析构函数         | 支持 |                                                                                                                                                                                     |
-| 转换运算符               | 支持 |                                                                                                                                                                                     |
-| 模板参数上的伪析构函数   | 支持 |                                                                                                                                                                                     |
-| 显式预置和弃置的成员函数 | 支持 |                                                                                                                                                                                     |
+<!-- BEGIN CAPABILITY: supported clangd#1509 clangd#2078 clangd#872 -->
 
-### 构造函数与析构函数
+**构造函数与析构函数**
 
-带有 constructor/destructor 修饰符的 method Token
+构造函数和析构函数使用带有专用修饰符的方法 Token
 
-析构函数名称呈现为两个 Token：`~` 带有 method 类别及 declaration/definition 修饰符，其后的类名仍是对该类的引用。
+析构函数名称标注为两个 Token：`~` 带有方法类型以及声明／定义修饰符，其后的类名仍是对类的引用。
 
-```cpp
-struct Session {
-    Session();
-    ~Session();
-};
-
-Session::Session() {}
-
-Session::~Session() {}
-
-void destroy(Session* session) {
-    session->~Session();
-}
+```snap
+tests/snap/semantic_tokens/token_correctness/01_constructors_destructors.cpp
 ```
 
-### 匿名参数
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**匿名参数**
 
 未命名参数不产生 Token
 
-未命名参数类型后的标点不产生 Token。
+未命名参数类型后的标点仍不带 Token。
 
-```cpp
-void take_one(int) {}
-void take_two(int, char* c) {}
+```snap
+tests/snap/semantic_tokens/token_correctness/02_anonymous_parameters.cpp
 ```
 
-### 运算符名称
+<!-- END CAPABILITY -->
 
-`operator` 关键字和调用处的标点不作额外着色
+<!-- BEGIN CAPABILITY: supported -->
 
-运算符的书面名称由关键字和标点组成，因此不会生成名称 Token：`operator` 仍归类为关键字，而调用处不会在运算符符号上生成任何 Token。
+**运算符名称**
 
-```cpp
-struct Value {
-    Value& operator=(const Value& other);
-    Value operator+(const Value& other) const;
-};
+`operator` 关键字和调用处的标点保持原样
 
-void combine(Value a, Value b) {
-    a = b;
-    Value c = a + b;
-}
+代码中的运算符名称由关键字和标点组成，因此不添加名称 Token：`operator` 保留其关键字分类，调用处的运算符符号不产生 Token。
+
+```snap
+tests/snap/semantic_tokens/token_correctness/03_operator_names.cpp
 ```
 
-### 类模板的析构函数
+<!-- END CAPABILITY -->
 
-模板中的 `~` 形式保持不变
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename T>
-struct Holder {
-    ~Holder();
-};
+**类模板的析构函数**
 
-template <typename T>
-Holder<T>::~Holder() {}
+`~` 的标注方式同样适用于模板
+
+```snap
+tests/snap/semantic_tokens/token_correctness/04_template_destructor.cpp
 ```
 
-### 转换运算符
+<!-- END CAPABILITY -->
 
-转换运算符以关键字书写，发生转换的使用处不额外着色
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Ratio {
-    operator double() const;
-    explicit operator bool() const;
-};
+**转换运算符**
 
-double to_double(Ratio ratio) {
-    if (ratio) {
-        return ratio;
-    }
-    return double(ratio);
-}
+名称以关键字形式书写，转换调用不产生额外高亮
+
+```snap
+tests/snap/semantic_tokens/token_correctness/05_conversion_operators.cpp
 ```
 
-### 模板参数上的伪析构函数
+<!-- END CAPABILITY -->
 
-`~` 不着色；类型名保持原有类别
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename T>
-void reset(T* value) {
-    value->~T();
-}
+**模板参数上的伪析构函数**
+
+`~` 不产生高亮，类型名称保留其 Token 类型
+
+```snap
+tests/snap/semantic_tokens/token_correctness/06_pseudo_destructor.cpp
 ```
 
-### 显式预置和弃置的成员函数
+<!-- END CAPABILITY -->
 
-特殊成员函数名称仍被标为定义 Token
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Session {
-    Session() = default;
-    Session(const Session&) = delete;
-    ~Session() = default;
-};
+**显式默认与删除的成员**
+
+特殊成员名称保留其定义 Token
+
+```snap
+tests/snap/semantic_tokens/token_correctness/07_defaulted_deleted.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1227,112 +847,99 @@ struct Session {
 
 <!-- BEGIN GENERATED ITEMS: attributes -->
 
-| 能力     | 状态   | 问题                                                        |
-| -------- | ------ | ----------------------------------------------------------- |
-| 属性名称 | 不支持 | [clangd#2209](https://github.com/clangd/clangd/issues/2209) |
+<!-- BEGIN CAPABILITY: unsupported clangd#2209 -->
 
-### 属性名称
+**属性名称**
 
-标准属性和厂商属性，以及它们内部的表达式
+属性名称及其表达式目前尚不获得语义 Token
 
-```cpp
-[[nodiscard]] int compute();
-[[deprecated("use v2")]] void old_func();
-[[maybe_unused]] int counter = 0;
-
-struct [[gnu::packed]] Packed {};
+```snap
+tests/snap/semantic_tokens/attributes/01_attributes.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## 宏
 
-宏定义体内的 Token 保持其词法类别；根据宏展开结果对这些 Token 进行着色，则属于未来的展开预览功能。
+宏定义体内的 Token 保留其词法类型；根据宏展开结果为它们添加高亮，将由未来的展开预览功能实现。
 
 <!-- BEGIN GENERATED ITEMS: macros -->
 
-| 能力               | 状态   | 问题                                                        |
-| ------------------ | ------ | ----------------------------------------------------------- |
-| 宏定义与展开       | 支持   |                                                             |
-| 展开位置与实参     | 支持   |                                                             |
-| 类对象宏与类函数宏 | 不支持 | [clangd#2649](https://github.com/clangd/clangd/issues/2649) |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 宏定义与展开
+**宏定义与展开**
 
-```cpp
-#define SQUARE(x) ((x) * (x))
+宏定义和展开会获得语义 Token
 
-[[maybe_unused]] static int squared = SQUARE(4);
+```snap
+tests/snap/semantic_tokens/macros/01_macro.cpp
 ```
 
-### 展开位置与实参
+<!-- END CAPABILITY -->
 
-展开位置的名称按宏高亮，写出的实参保留其语义高亮，定义体保持词法高亮
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int value = 1;
+**展开位置与实参**
 
-#define ID(x) x
-#define CALL helper()
+展开处的名称标注为宏，代码中的实参保留其语义，定义体仍按词法标注
 
-void helper();
-
-int copied = ID(value);
-
-void run() {
-    CALL;
-}
+```snap
+tests/snap/semantic_tokens/macros/02_macro_expansion.cpp
 ```
 
-### 类对象宏与类函数宏
+<!-- END CAPABILITY -->
 
-对两种形式使用不同的高亮
+<!-- BEGIN CAPABILITY: unsupported clangd#2649 -->
 
-```cpp
-#define MAX_SIZE 1024
-#define CHECK(x) ((x) ? 1 : 0)
+**对象式宏与函数式宏**
 
-int checked = CHECK(MAX_SIZE);
+对象式宏和函数式宏目前尚未使用不同的 Token 类型
+
+```snap
+tests/snap/semantic_tokens/macros/03_macro_kinds.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## 其他已知缺口
+## 其他已知不足
 
-以下是尚无测试用例的精选问题：
+已整理但尚无测试用例的问题：
 
-- [ ] `auto` 参数不应被高亮为模板类型参数
-      ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
-- [ ] 成员指针中的嵌套名说明符应有对应的 Token
-      ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
-- [ ] `::new` 应保持 `new` 关键字高亮
-      ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
-- [ ] 当协程返回类型为模板时，`co_yield` / `co_await` 会丢失高亮
-      ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
-- [ ] Token 修饰符应应用于重载运算符的操作数
-      ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
-- [ ] 依赖模板名（`obj.template get<int>()`）、通过 `using` 从依赖基类导入的成员，以及重载集中包含不同类别实体的依赖名（[clangd#484](https://github.com/clangd/clangd/issues/484)、
+- [ ] `auto` 参数不得高亮为模板类型参数
+      （[clangd#1390](https://github.com/clangd/clangd/issues/1390)）
+- [ ] 成员指针中的嵌套名说明符（nested name specifier）应获得 Token
+      （[clangd#2235](https://github.com/clangd/clangd/issues/2235)）
+- [ ] `::new` 中的 `new` 关键字应保持高亮
+      （[clangd#1627](https://github.com/clangd/clangd/issues/1627)）
+- [ ] 当协程返回类型为模板时，`co_yield` / `co_await` 会丢失高亮（[clangd#2437](https://github.com/clangd/clangd/issues/2437)）
+- [ ] Token 修饰符应应用于重载运算符的操作数（[clangd#2547](https://github.com/clangd/clangd/issues/2547)）
+- [ ] 依赖模板名（`obj.template get<int>()`）、通过 `using` 从依赖基类引入的成员，
+      以及重载集合种类混杂的依赖名（[clangd#484](https://github.com/clangd/clangd/issues/484)、
       [clangd#686](https://github.com/clangd/clangd/issues/686)、
       [clangd#1057](https://github.com/clangd/clangd/issues/1057)）
 
-## 非活跃代码区域
+## 非活动代码区域
 
-未选中的预处理分支内，每个 Token 都带有 `inactive` 修饰符，同时保留其词法类别，因此编辑器可以通过设置该修饰符的样式使区域变暗，而不会丢失原有的语法颜色。死代码中未分类的 Token——裸标识符和普通标点——会以不带样式的 `identifier` 类型发出，从而使整个区域都有 Token 覆盖。clice 的 VS Code 扩展默认会以变暗样式渲染这些区域；其他编辑器则直接为该修饰符设置样式（例如 Neovim 中的 `@lsp.mod.inactive`）。
+未选中的预处理器分支内，每个 Token 都带有 `inactive` 修饰符，同时保留其词法类别，因此编辑器可以通过设置该修饰符的样式来淡化显示整个区域，同时保留原有的语法着色。非活动代码中没有分类的 Token（普通标识符和标点符号）以不带样式的 `identifier` 类型输出，使 Token 覆盖整个区域。clice 的 VS Code 扩展默认会淡化显示这些区域；其他编辑器则直接为该修饰符设置样式（例如 Neovim 中的 `@lsp.mod.inactive`）。
 
-- [x] 使非活跃预处理分支变暗（[clangd#132](https://github.com/clangd/clangd/issues/132)）
-- [x] 正确处理 `#elif` 链中的非活跃区域边界（[clangd#602](https://github.com/clangd/clangd/issues/602)）
-- [x] 在非活跃区域内保留语法高亮（[clangd#1664](https://github.com/clangd/clangd/issues/1664)）
-- [x] 将非活跃区域与注释明确区分（[clangd#1545](https://github.com/clangd/clangd/issues/1545)）
-- [ ] 使不可达代码变暗（[clangd#1828](https://github.com/clangd/clangd/issues/1828)）
+- [x] 淡化显示非活动预处理器分支（[clangd#132](https://github.com/clangd/clangd/issues/132)）
+- [x] 正确处理 `#elif` 链中的非活动区域边界（[clangd#602](https://github.com/clangd/clangd/issues/602)）
+- [x] 保留非活动区域内的语法高亮（[clangd#1664](https://github.com/clangd/clangd/issues/1664)）
+- [x] 保持非活动区域与注释的区别（[clangd#1545](https://github.com/clangd/clangd/issues/1545)）
+- [ ] 淡化显示不可达代码（[clangd#1828](https://github.com/clangd/clangd/issues/1828)）
 
 ## 格式字符串高亮
 
 - [ ] `std::format` / `std::print` 占位符高亮（[clangd#1709](https://github.com/clangd/clangd/issues/1709)）
-- [ ] 将无效格式说明符高亮为错误
+- [ ] 将无效的格式说明符高亮显示为错误
 
 ## 协议支持
 
-- [x] 整篇文档的语义 Token（`textDocument/semanticTokens/full`）
-- [x] 采用 UTF-16 增量编码的 Token 位置
-- [ ] 基于范围的语义 Token（`textDocument/semanticTokens/range`）——仅计算可见视口内的 Token，这对大文件至关重要
-- [ ] 增量更新（`textDocument/semanticTokens/full/delta`）——仅发送自上次响应以来的更改
+- [x] 全文档语义 Token（`textDocument/semanticTokens/full`）
+- [x] 以 UTF-16 码元为单位、采用差分编码的 Token 位置
+- [ ] 指定范围的语义 Token（`textDocument/semanticTokens/range`）——仅计算可见视口内的 Token，这对大文件至关重要
+- [ ] 增量更新（`textDocument/semanticTokens/full/delta`）——仅发送自上次响应以来的变化
