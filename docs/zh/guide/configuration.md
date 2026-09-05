@@ -18,7 +18,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------------- | ---------------------- |
 | `${workspace}` | 客户端提供的工作区目录 |
 
-## 项目
+## `[project]`
 
 <!-- BEGIN GENERATED CONFIG: project -->
 
@@ -112,7 +112,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 <!-- END GENERATED CONFIG -->
 
-## 跟踪器
+## `[tracker]`
 
 文件跟踪器会轮询编辑器之外发生的变更（如 `git checkout`、重新生成的 `compile_commands.json`、代码生成器写出的头文件），使服务器无需重启即可检测到这些变更。将间隔设为 `0` 可禁用对应的轮询循环。
 
@@ -136,7 +136,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 <!-- END GENERATED CONFIG -->
 
-## 悬停
+## `[hover]`
 
 `[hover]` 节控制悬停卡片的渲染方式。
 
@@ -160,7 +160,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 <!-- END GENERATED CONFIG -->
 
-## 内联提示
+## `[inlay_hints]`
 
 `[inlay_hints]` 节控制服务器生成哪些内联提示类别。客户端刷新后会使用更新后的值请求提示；此过程不涉及重新编译。
 
@@ -224,7 +224,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 <!-- END GENERATED CONFIG -->
 
-## 代码补全
+## `[code_completion]`
 
 `[code_completion]` 段控制补全项的组装。
 
@@ -280,7 +280,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 <!-- END GENERATED CONFIG -->
 
-## 规则
+## `[[rules]]`
 
 `[[rules]]` 是规则对象数组。规则按声明顺序匹配——后面的规则覆盖前面的。
 
