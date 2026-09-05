@@ -156,6 +156,8 @@ export interface StartOptions {
     /// to play the hostile client.
     drainStderr?: boolean | undefined;
     args?: string[] | undefined;
+    /// Working directory of the server process; the caller's by default.
+    cwd?: string | undefined;
 }
 
 export interface InitializeOptions {
@@ -316,6 +318,7 @@ export class CliceClient {
     static start(executable: string, options: StartOptions = {}): CliceClient {
         const child = spawn(executable, options.args ?? ["serve"], {
             stdio: ["pipe", "pipe", "pipe"],
+            cwd: options.cwd,
         });
         const client = new CliceClient(child, { reader: child.stdout, writer: child.stdin });
         client.stderrDrainedFromStart = options.drainStderr !== false;

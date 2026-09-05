@@ -368,7 +368,13 @@ function initializationOptions(opts: Options): Record<string, unknown> {
 }
 
 async function startServer(opts: Options): Promise<CliceClient> {
-    const client = CliceClient.start(opts.binary, { args: serverArgs(opts) });
+    const client = CliceClient.start(opts.binary, {
+        args: serverArgs(opts),
+        // A relative CDB `directory` anchors at the database for clice but
+        // at the process cwd for clangd; running clangd from the CDB
+        // directory makes both servers compile under the same command.
+        cwd: opts.server === "clangd" ? opts.cdbDir : undefined,
+    });
     await client.initialize(new Workspace(opts.workspace), {
         initializationOptions: initializationOptions(opts),
         testDefaults: false,
