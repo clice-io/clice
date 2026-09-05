@@ -339,8 +339,23 @@ export function validateFixtureHeader(
         }
         // R7 applies to a fixture prologue, not to ordinary declaration
         // documentation later in the example. A prologue is a leading
-        // `///` block separated from the code by a blank line; a doc comment
+        // `///` block the scanner read as a header (the legacy
+        // metadata-only spelling still parses so it can be reported here)
+        // or one separated from the code by a blank line; a doc comment
         // immediately attached to the first declaration is example code.
+        const scannedHeader =
+            header.bodyStart > header.headerStart &&
+            (header.lines[header.headerStart] ?? "").trimStart().startsWith("///");
+        if (scannedHeader) {
+            problems.push(
+                problem(
+                    filePath,
+                    header.headerStart + 1,
+                    "R7: edge-case prologues must use //, not ///",
+                ),
+            );
+            return problems;
+        }
         let leadingDoc = 0;
         while (leadingDoc < header.lines.length && (header.lines[leadingDoc] ?? "").trim() === "") {
             leadingDoc += 1;

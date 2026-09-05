@@ -292,6 +292,15 @@ test("fixture header validation", () => {
     expect(
         validateFixtureHeader("/// - verify: server\nint x;\n", "nested.cpp", "section"),
     ).toEqual(expect.arrayContaining([expect.stringContaining("R7:")]));
+    // The legacy metadata-only spelling is a prologue even when the
+    // declaration follows without a blank line.
+    expect(validateFixtureHeader("/// - verify: server\nint x;\n", "root.cpp", "")).toEqual([
+        "root.cpp:1: R7: edge-case prologues must use //, not ///",
+    ]);
+    expect(
+        validateFixtureHeader("// note\n\n/// - verify: server\nint x;\n", "root.cpp", ""),
+    ).toEqual(["root.cpp:3: R7: edge-case prologues must use //, not ///"]);
+    expect(validateFixtureHeader("// - verify: server\nint x;\n", "root.cpp", "")).toEqual([]);
 });
 
 test("fixture files are named relative to the fixture", () => {

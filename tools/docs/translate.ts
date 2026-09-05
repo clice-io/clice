@@ -50,8 +50,10 @@
 /// in the same chunk), `--jobs=N` calls in parallel, `--effort=LEVEL`
 /// reasoning and `--fast` for the fast service tier. A reply that breaks
 /// a segment's shape, alters an inline literal, or names a row and its
-/// heading differently keeps the current Chinese. The pages are rewritten
-/// in place; review the diff, then `record`.
+/// heading differently keeps the current Chinese; when that text is still
+/// the English copy the page counts as failed, so a draft never exits
+/// green with untranslated segments. The pages are rewritten in place;
+/// review the diff, then `record`.
 ///
 /// `--en=DIR --zh=DIR --meta=DIR` override the tree roots (for testing).
 
@@ -1034,6 +1036,14 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
             zhSource.slice(at(zhSegments, i).start, at(zhSegments, i).end);
         const finalTexts = new Map<number, string>();
         let kept = 0;
+        let untranslated = 0;
+        const keep = (i: number) => {
+            finalTexts.set(i, currentText(i));
+            kept += 1;
+            if (currentText(i) === at(enTexts, i)) {
+                untranslated += 1;
+            }
+        };
         for (const item of items.values()) {
             const blocks = mustGet(masks, item.i);
             const restored = restoreCode(mustGet(reviewed, item.i), blocks);
@@ -1048,8 +1058,7 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
                       );
             if ("problem" in restored || problem !== null) {
                 console.error(`  ${page} segment ${item.i + 1} (${item.shape}): ${problem} — kept`);
-                kept += 1;
-                finalTexts.set(item.i, currentText(item.i));
+                keep(item.i);
                 continue;
             }
             finalTexts.set(item.i, restored.text);
@@ -1065,8 +1074,7 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
             );
             for (const i of [row, heading]) {
                 if (mustGet(finalTexts, i) !== currentText(i)) {
-                    finalTexts.set(i, currentText(i));
-                    kept += 1;
+                    keep(i);
                 }
             }
         }
@@ -1104,6 +1112,13 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
         console.log(
             `done ${page}: ${items.size} segments, ${changed} changed, ${kept} kept on problems`,
         );
+        // A kept segment whose current text is still the English copy is a
+        // draft that would pass `record` untranslated; the page is written
+        // so the segments that did translate survive a rerun.
+        if (untranslated > 0) {
+            console.error(`FAILED ${page}: ${untranslated} kept segments are still English`);
+            failed += 1;
+        }
     });
     for (const [i, outcome] of (await Promise.allSettled(work)).entries()) {
         if (outcome.status === "rejected") {

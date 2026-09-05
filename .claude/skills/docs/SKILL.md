@@ -98,8 +98,9 @@ its current Chinese to a model and writes the corrected Chinese back,
 one chunk of segments per call (a paired row and heading always in the
 same chunk), code blocks masked out — the model never sees a code block,
 and a reply that breaks a segment's shape, alters an inline literal, or
-names a row and its heading differently keeps the current text. The
-backend is the codex CLI (GPT-6 astra) with every tool switched off, so
+names a row and its heading differently keeps the current text — and
+fails the page when that text is still the English copy, so rerun
+`review` on it until green. The backend is the codex CLI (GPT-6 astra) with every tool switched off, so
 the contributor-written text it reads can reach neither the host
 filesystem nor the network (`--jobs=N` parallel calls, `--effort=LEVEL`,
 `--fast` for the fast service tier). Review the diff, then `format` and
