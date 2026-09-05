@@ -17,9 +17,8 @@ description: The clice documentation system — generated feature/config pages, 
   person or a model). Each zh page must stay **segment-isomorphic** to its
   en counterpart: same sequence of markdown blocks, translated text in the
   translatable blocks, code blocks and HTML comments byte-identical.
-  `check`, `report` and `record` never write these files;
-  `translate <page>` overwrites the named zh page, and `review` rewrites
-  the zh pages it is given — every zh page when given none.
+  `check`, `report` and `record` never write these files; `review`
+  rewrites the zh pages it is given — every zh page when given none.
 - `docs/meta/translations/` — one JSON per page pair: an ordered list of
   `{kind, en-hash, zh-hash}` pairs, each attesting "these two segments were
   last reviewed as translations of each other". Maintained exclusively by
@@ -80,59 +79,18 @@ This applies to generated regions too: after `update-feature-docs` changes
 an en feature page, the zh page must receive the translated equivalent in
 the same PR — batched at the end of the branch, see below.
 
-Machine drafting: `DEEPSEEK_API_KEY=... node tools/docs/translate.ts
-translate [page...]` produces isomorphic zh drafts via the DeepSeek API
-(no args = only pages missing a zh counterpart; explicit pages overwrite,
-feeding the current zh text to the model as terminology reference).
-Fenced code inside segments is masked out of the round trip and restored
-byte-for-byte; inline code, link targets, issue references and
-frontmatter control values must come back unchanged. A segment the model
-cannot render validly — or a row/heading pair it names two ways — is
-left in English and the run exits non-zero naming the page — rerun
-`translate` on it after review. The key comes from the environment and
-is never stored. Drafts still go through review and `record`.
+Machine drafting: there is no separate translate mode. A new or
+restructured page is drafted by copying the en page over the zh one and
+running `review` on it (below): the review pass translates every
+segment whose Chinese is still English, with the en text beside it.
+Drafts still go through a diff read and `record`.
 
-## Chinese wording: what is translated and what stays English
+## Chinese wording
 
-The zh tree reads as Chinese technical writing, not as glossed English.
-The reader is a C++ developer who searches the web in English, so the
-rule is: translate the prose, keep the names people search for.
-
-Translate:
-
-- Page, section and capability titles, table headers and cells, list
-  items, descriptions. Feature names have fixed Chinese names — use the
-  ones the overview page uses (代码补全, 悬停, 签名帮助, 代码导航,
-  文档链接, 语义 Token, 内联提示, 折叠范围, 文档符号, 格式化, 诊断,
-  代码操作; Lint stays Lint). LSP request names stay as code when
-  quoted (`textDocument/hover`), the feature is named in Chinese.
-- C++ concepts that have an established Chinese term: 结构化绑定, 范围
-  for 循环, 概念, 模板特化, 显式实例化, 折叠表达式, 参数包, 注入类名.
-  On the first use in a page, give the English in full-width
-  parentheses when the English is what one would search for: 结构化绑定
-  （structured bindings）, 最令人烦恼的解析（most vexing parse）.
-- Status words: 支持 / 部分支持 / 不支持.
-
-Keep English (never transliterate):
-
-- Product and tool names: VS Code, Neovim, Zed, CMake, Bazel, clang,
-  clang-format, clangd, GCC, MSVC, LLVM.
-- Acronyms: LSP, AST, PCH, PCM, CDB, TU, ADL, CTAD, DAG, ABI, URI, C++23.
-- Anything in code font: identifiers, keywords, file paths, config keys
-  and TOML sections, command lines, diagnostics text quoted from the
-  compiler. Code font follows the English exactly: a span the English
-  sets in backticks stays in backticks, and the Chinese adds none of its
-  own — `check` compares the inline literals of every segment pair.
-- Terms that are commonly used untranslated by Chinese C++ developers
-  and whose translations are less recognizable: Lambda, Token, Concept
-  when naming the language feature (概念 in prose is fine), `this`,
-  Preamble, Overload set. When in doubt, keep the English term and add
-  a short Chinese gloss rather than invent a translation.
-
-Style: full-width punctuation inside Chinese sentences, a space between
-CJK and Latin text (prettier enforces it), no machine-translation
-calques ("这个" for "the", passive-voice chains), sentences that say
-what the English says rather than word for word.
+What is translated and what stays English — by position on the page and by
+term — is the translate-docs skill. Read it before translating, reviewing or
+editing any zh page; the prompts in `tools/docs/translate.ts` embed the same
+rules and change together with it.
 
 Reviewing existing Chinese pages: `pixi run review-doc-translations
 [page...]` (default: every page) feeds each translatable segment with
@@ -141,10 +99,10 @@ one chunk of segments per call (a paired row and heading always in the
 same chunk), code blocks masked out — the model never sees a code block,
 and a reply that breaks a segment's shape, alters an inline literal, or
 names a row and its heading differently keeps the current text. The
-default backend is the codex CLI with every tool switched off, so the
-contributor-written text it reads can reach neither the host filesystem
-nor the network (`--jobs=N` parallel calls, `--effort=LEVEL`);
-`--backend=deepseek` uses the API. Review the diff, then `format` and
+backend is the codex CLI (GPT-6 astra) with every tool switched off, so
+the contributor-written text it reads can reach neither the host
+filesystem nor the network (`--jobs=N` parallel calls, `--effort=LEVEL`,
+`--fast` for the fast service tier). Review the diff, then `format` and
 `record`. Prefer this over handing a model whole pages: the code blocks
 would only burn its context.
 
@@ -165,8 +123,8 @@ brief is:
    keeping the skeleton (same block kind, list marker, heading depth,
    nested code byte-identical) and the terminology of the surrounding
    page; delete zh segments whose en segment is gone. For whole new
-   pages, or dozens of drifted pages, the `translate` mode below drafts
-   them when a DeepSeek key is available — otherwise translate by hand.
+   pages, or dozens of drifted pages, copy the en page over the zh one
+   and run `review` on it (machine drafting, above).
 3. `pixi run format`, then `pixi run record-doc-translations`, then
    `pixi run check-doc-translations`, `check-feature-docs` and
    `check-config-docs` — all green.
@@ -193,7 +151,6 @@ decided to be design (or long-term deferral), and a doc limitation is removed
 only when the design changes. Never reference internal IDs, file paths, or
 timelines in docs.
 
-The contract went live 2026-09-02: all pages machine-drafted
-(deepseek-v4-pro), recorded, `check` green, and the gate wired into the
-CI docs check. The legacy hand-written zh tree it replaced survives in
+The contract went live 2026-09-02: all pages machine-drafted, recorded,
+`check` green, and the gate wired into the CI docs check. The legacy hand-written zh tree it replaced survives in
 git history.
