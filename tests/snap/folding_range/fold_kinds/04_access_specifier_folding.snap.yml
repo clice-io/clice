@@ -2,6 +2,6 @@
 created_at: 2026-07-27
 input_file: fold_kinds/04_access_specifier_folding.cpp
 ---
-- { range: "5:13-12:1", kind: class, collapsed_text: "{...}" }
-- { range: "6:6-9:7", kind: accessSpecifier }
-- { range: "9:7-12:1", kind: accessSpecifier }
+- { range: "7:13-14:1", kind: class, collapsed_text: "{...}" }
+- { range: "8:6-11:7", kind: accessSpecifier }
+- { range: "11:7-14:1", kind: accessSpecifier }

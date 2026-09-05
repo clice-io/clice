@@ -1,6 +1,8 @@
-/// # Labels — `goto` targets and label definitions
+/// # Labels
 ///
 /// - status: supported
+///
+/// `goto` targets and label definitions
 
 void retry(bool again) {
     goto §done;

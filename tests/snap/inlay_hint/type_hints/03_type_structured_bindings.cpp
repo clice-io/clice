@@ -1,6 +1,8 @@
-/// # Structured bindings — each binding hints its canonical type; the aggregate itself stays bare
+/// # Structured bindings
 ///
 /// - status: supported
+///
+/// Each binding hints its canonical type; the aggregate itself stays bare
 
 struct Pair {
     int first;

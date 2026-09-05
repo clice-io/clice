@@ -1,6 +1,8 @@
-/// # Implicit constructor calls — conversions the code never wrote produce no hints of their own
+/// # Implicit constructor calls
 ///
 /// - status: supported
+///
+/// Conversions the code never wrote produce no hints of their own
 
 struct Seconds {
     Seconds(int raw);

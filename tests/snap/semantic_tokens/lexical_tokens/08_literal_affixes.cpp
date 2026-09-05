@@ -1,6 +1,8 @@
-/// # Literal prefixes and suffixes — encoding prefixes, type suffixes, digit separators and UDL suffixes as distinct tokens
+/// # Literal prefixes and suffixes
 ///
 /// - status: unsupported
+///
+/// Encoding prefixes, type suffixes, digit separators and UDL suffixes as distinct tokens
 
 using size_type = decltype(sizeof(0));
 constexpr size_type operator""_kb(unsigned long long n) {

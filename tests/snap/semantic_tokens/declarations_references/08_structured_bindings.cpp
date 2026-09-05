@@ -1,6 +1,8 @@
-/// # Structured bindings — binding names at definition and use
+/// # Structured bindings
 ///
 /// - status: supported
+///
+/// Binding names at definition and use
 ///
 /// The opening `[` deliberately carries no token; only the binding names
 /// themselves are highlighted.

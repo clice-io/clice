@@ -1,7 +1,9 @@
-/// # Delegating constructors — navigate to the target constructor
+/// # Delegating constructors
 ///
 /// - status: partial
 /// - verify: server
+///
+/// Navigate to the target constructor
 ///
 /// A delegating constructor's target is reached from the opening parenthesis
 /// of the delegated call. The constructor name itself resolves to the class

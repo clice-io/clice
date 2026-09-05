@@ -1,6 +1,8 @@
-/// # Alias templates — the alias name carries the type kind and the `templated` modifier
+/// # Alias templates
 ///
 /// - status: supported
+///
+/// The alias name carries the type kind and the `templated` modifier
 
 template <typename T>
 using §Ptr = T*;

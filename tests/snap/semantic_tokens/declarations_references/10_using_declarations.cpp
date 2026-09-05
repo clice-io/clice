@@ -1,7 +1,9 @@
-/// # Using declarations — the introduced name keeps its target's kind
+/// # Using declarations
 ///
 /// - status: supported
 /// - issues: clangd#2619
+///
+/// The introduced name keeps its target's kind
 
 namespace tools {
 inline int helper() {

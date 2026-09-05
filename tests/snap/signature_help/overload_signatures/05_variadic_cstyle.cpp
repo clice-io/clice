@@ -1,6 +1,8 @@
-/// # C-style variadic function — named parameters are listed while the trailing ellipsis is elided from the label
+/// # C-style variadic function
 ///
 /// - status: supported
+///
+/// Named parameters are listed while the trailing ellipsis is elided from the label
 
 void record(int code, ...);
 

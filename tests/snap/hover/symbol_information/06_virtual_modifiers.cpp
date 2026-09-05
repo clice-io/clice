@@ -1,7 +1,9 @@
-/// # Virtual modifiers — `virtual` / `override` / `final` show on method hover
+/// # Virtual modifiers
 ///
 /// - status: partial
 /// - issues: clangd#2474
+///
+/// `virtual` / `override` / `final` show on method hover
 ///
 /// Modifiers written in the source render (`virtual … = 0`, `override`,
 /// `final`), but an overriding method that omits the redundant `virtual`

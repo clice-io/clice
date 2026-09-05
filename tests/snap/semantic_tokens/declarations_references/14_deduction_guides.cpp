@@ -1,6 +1,8 @@
-/// # Deduction guides — the guide name and the guided template highlighted
+/// # Deduction guides
 ///
 /// - status: supported
+///
+/// The guide name and the guided template highlighted
 
 template <typename T>
 struct Vec {

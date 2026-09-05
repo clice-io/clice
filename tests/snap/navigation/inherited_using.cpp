@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 struct Base {
     §(base_ctor)Base(int input) : value(input) {}

@@ -1,7 +1,9 @@
-/// # Template keyword from a macro — the docstring should survive the expansion
+/// # Template keyword from a macro
 ///
 /// - status: partial
 /// - issues: clangd#1226
+///
+/// The docstring should survive the expansion
 ///
 /// When the `template` keyword is produced by a macro expansion, the
 /// declaration's doc comment should still appear on hover. clice currently

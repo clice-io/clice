@@ -1,7 +1,9 @@
-/// # Banner comments — a section banner separated by a blank line must not attach to the next declaration
+/// # Banner comments
 ///
 /// - status: partial
 /// - issues: clangd#974
+///
+/// A section banner separated by a blank line must not attach to the next declaration
 ///
 /// A `// ==== Section ====` banner followed by a blank line should not be
 /// misattributed as documentation for the declaration below it. clice

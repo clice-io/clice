@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: hover_correctness/05_macro_shadowed_symbol.cpp
 ---
-shadowed_use: { range: "17:12-17:18" }
+shadowed_use: { range: "19:12-19:18" }
 ### macro `lookup`  
 
 ---

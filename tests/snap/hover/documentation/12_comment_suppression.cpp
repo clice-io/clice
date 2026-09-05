@@ -1,7 +1,9 @@
-/// # Comment suppression option — a config switch to hide misattributed doc comments
+/// # Comment suppression option
 ///
 /// - status: unsupported
 /// - issues: clangd#2148
+///
+/// A config switch to hide misattributed doc comments
 ///
 /// A stray comment picked up by the association heuristic — a section
 /// banner separated from the code by a blank line, for example — always

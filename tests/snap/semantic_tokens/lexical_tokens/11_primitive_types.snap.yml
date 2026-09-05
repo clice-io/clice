@@ -2,11 +2,11 @@
 created_at: 2026-08-15
 input_file: lexical_tokens/11_primitive_types.cpp
 ---
-- { loc: "4:0", text: "int", kind: primitive }
-- { loc: "5:0", text: "float", kind: primitive }
-- { loc: "6:0", text: "void", kind: primitive }
-- { loc: "7:0", text: "unsigned", kind: primitive }
-- { loc: "7:9", text: "long", kind: primitive }
-- { loc: "7:14", text: "long", kind: primitive }
-- { loc: "8:0", text: "__int128", kind: primitive }
-- { loc: "9:0", text: "_Float16", kind: primitive }
+- { loc: "6:0", text: "int", kind: primitive }
+- { loc: "7:0", text: "float", kind: primitive }
+- { loc: "8:0", text: "void", kind: primitive }
+- { loc: "9:0", text: "unsigned", kind: primitive }
+- { loc: "9:9", text: "long", kind: primitive }
+- { loc: "9:14", text: "long", kind: primitive }
+- { loc: "10:0", text: "__int128", kind: primitive }
+- { loc: "11:0", text: "_Float16", kind: primitive }

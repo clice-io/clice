@@ -1,6 +1,8 @@
-/// # Friend declarations — befriended names resolve to their targets; inline friends define
+/// # Friend declarations
 ///
 /// - status: supported
+///
+/// Befriended names resolve to their targets; inline friends define
 
 struct Widget;
 void ping();

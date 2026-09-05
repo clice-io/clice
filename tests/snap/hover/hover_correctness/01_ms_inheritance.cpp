@@ -1,7 +1,9 @@
-/// # MSVC inheritance model — `MSInheritanceAttr` does not corrupt record hover
+/// # MSVC inheritance model
 ///
 /// - status: supported
 /// - flags: ["--target=x86_64-pc-windows-msvc"]
+///
+/// `MSInheritanceAttr` does not corrupt record hover
 ///
 /// clangd tracks this as clangd#1643 and clangd#2212; under an MSVC target
 /// the implicit inheritance attribute does not leak into the record or

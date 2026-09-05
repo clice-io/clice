@@ -1,6 +1,8 @@
-/// # Initializer-list constructions — the constructor's braces and the nested initializer list share delimiters and fold once; a parenthesized list argument keeps both folds
+/// # Initializer-list constructions
 ///
 /// - status: supported
+///
+/// The constructor's braces and the nested initializer list share delimiters and fold once; a parenthesized list argument keeps both folds
 
 namespace std {
 

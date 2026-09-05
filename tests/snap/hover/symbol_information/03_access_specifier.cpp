@@ -1,6 +1,8 @@
-/// # Access specifier — members show their public / protected / private access
+/// # Access specifier
 ///
 /// - status: supported
+///
+/// Members show their public / protected / private access
 
 class Account {
 public:

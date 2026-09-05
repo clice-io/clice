@@ -2,11 +2,11 @@
 created_at: 2026-08-01
 input_file: symbol_kinds/04_kinds_type_aliases.cpp
 ---
-- { name: "aliases", kind: Namespace, range: "4:0-22:1", selection_range: "4:10-4:17" }
--   { name: "Widget", kind: Struct, range: "6:0-6:16", selection_range: "6:7-6:13", detail: "struct" }
--   { name: "LegacyWidget", kind: Class, range: "8:0-8:27", selection_range: "8:15-8:27", detail: "type alias" }
--   { name: "ModernWidget", kind: Class, range: "10:0-10:27", selection_range: "10:6-10:18", detail: "type alias" }
--   { name: "Box", kind: Struct, range: "13:0-13:13", selection_range: "13:7-13:10", detail: "template struct" }
--   { name: "BoxOf", kind: Class, range: "16:0-16:20", selection_range: "16:6-16:11", detail: "template type alias" }
--   { name: "Holder", kind: Struct, range: "18:0-20:1", selection_range: "18:7-18:13", detail: "struct" }
--     { name: "Inner", kind: Class, range: "19:4-19:24", selection_range: "19:10-19:15", detail: "type alias" }
+- { name: "aliases", kind: Namespace, range: "6:0-24:1", selection_range: "6:10-6:17" }
+-   { name: "Widget", kind: Struct, range: "8:0-8:16", selection_range: "8:7-8:13", detail: "struct" }
+-   { name: "LegacyWidget", kind: Class, range: "10:0-10:27", selection_range: "10:15-10:27", detail: "type alias" }
+-   { name: "ModernWidget", kind: Class, range: "12:0-12:27", selection_range: "12:6-12:18", detail: "type alias" }
+-   { name: "Box", kind: Struct, range: "15:0-15:13", selection_range: "15:7-15:10", detail: "template struct" }
+-   { name: "BoxOf", kind: Class, range: "18:0-18:20", selection_range: "18:6-18:11", detail: "template type alias" }
+-   { name: "Holder", kind: Struct, range: "20:0-22:1", selection_range: "20:7-20:13", detail: "struct" }
+-     { name: "Inner", kind: Class, range: "21:4-21:24", selection_range: "21:10-21:15", detail: "type alias" }

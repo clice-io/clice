@@ -1,6 +1,8 @@
-/// # Module declarations — `export module`, `module` and `import` declarations in the outline
+/// # Module declarations
 ///
 /// - status: unsupported
+///
+/// `export module`, `module` and `import` declarations in the outline
 
 export module app.core;
 

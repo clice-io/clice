@@ -1,6 +1,8 @@
-/// # Range-based for — navigate to `begin()` / `end()`
+/// # Range-based for
 ///
 /// - status: unsupported
+///
+/// Navigate to `begin()` / `end()`
 ///
 /// Go-to-definition on the `:` of a range-based for should reach the
 /// `begin()` / `end()` chosen for the range; today it returns nothing.

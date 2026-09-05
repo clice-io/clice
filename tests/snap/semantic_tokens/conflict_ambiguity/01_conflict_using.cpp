@@ -1,6 +1,8 @@
-/// # Type vs function — a name naming both renders as `conflict`
+/// # Type vs function
 ///
 /// - status: supported
+///
+/// A name naming both renders as `conflict`
 
 namespace shop {
 struct §Widget {};

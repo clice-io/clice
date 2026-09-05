@@ -1,6 +1,8 @@
-/// # Anonymous and inline scopes — anonymous namespaces, unnamed structs and unions group their members under a placeholder name; inline namespace members stay under the inline namespace node
+/// # Anonymous and inline scopes
 ///
 /// - status: supported
+///
+/// Anonymous namespaces, unnamed structs and unions group their members under a placeholder name; inline namespace members stay under the inline namespace node
 
 namespace {
 

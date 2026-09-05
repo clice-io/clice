@@ -1,7 +1,9 @@
-/// # CTAD — deduced template arguments of a class placeholder
+/// # CTAD
 ///
 /// - status: partial
 /// - issues: clangd#435
+///
+/// Deduced template arguments of a class placeholder
 ///
 /// With class template argument deduction the variable's card shows the
 /// deduced `Box<int>`, but hovering the class-name spelling still reports

@@ -1,7 +1,9 @@
-/// # `@copydoc` tags — copy another symbol's documentation onto this one
+/// # `@copydoc` tags
 ///
 /// - status: partial
 /// - issues: clangd#1320
+///
+/// Copy another symbol's documentation onto this one
 ///
 /// A `@copydoc target` tag should copy `target`'s documentation into this
 /// symbol's hover card. clice does not resolve the tag yet — the card shows

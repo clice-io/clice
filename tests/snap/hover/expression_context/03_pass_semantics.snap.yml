@@ -2,44 +2,44 @@
 created_at: 2026-08-23
 input_file: expression_context/03_pass_semantics.cpp
 ---
-01_value: { range: "18:11-18:12" }
-### variable `n`  
+01_value: { range: "16:12-16:17" }
+### variable `count`  
 
 ---
-Type: `int`  
-Value = `0`  
-Passed as x  
+Type: `long`  
+Value = `1`  
+Passed as value  
 
 ---
 ```cpp
-// In demo
-int n = 0
+// In apply
+long count = 1
 ```
 
-02_ref: { range: "19:9-19:10" }
-### variable `n`  
+02_ref: { range: "17:11-17:16" }
+### variable `count`  
 
 ---
-Type: `int`  
-Value = `0`  
-Passed by reference as x  
+Type: `long`  
+Value = `1`  
+Passed by reference as value  
 
 ---
 ```cpp
-// In demo
-int n = 0
+// In apply
+long count = 1
 ```
 
-03_const_ref: { range: "20:15-20:16" }
-### variable `n`  
+03_const_ref: { range: "18:12-18:17" }
+### variable `count`  
 
 ---
-Type: `int`  
-Value = `0`  
-Passed by const reference as x  
+Type: `long`  
+Value = `1`  
+Passed by const reference as value  
 
 ---
 ```cpp
-// In demo
-int n = 0
+// In apply
+long count = 1
 ```

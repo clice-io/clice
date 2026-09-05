@@ -1,6 +1,8 @@
-/// # Static — class-level members and static locals
+/// # Static
 ///
 /// - status: supported
+///
+/// class-level members and static locals
 
 struct Counter {
     static int §total;

@@ -2,8 +2,8 @@
 created_at: 2026-07-31
 input_file: declarations_references/08_structured_bindings.cpp
 ---
-- { loc: "12:9", text: "[", kind: none }
-- { loc: "12:10", text: "a", kind: variable, modifiers: [definition] }
-- { loc: "12:13", text: "b", kind: variable, modifiers: [definition] }
-- { loc: "13:14", text: "a", kind: variable }
-- { loc: "13:18", text: "b", kind: variable }
+- { loc: "14:9", text: "[", kind: none }
+- { loc: "14:10", text: "a", kind: variable, modifiers: [definition] }
+- { loc: "14:13", text: "b", kind: variable, modifiers: [definition] }
+- { loc: "15:14", text: "a", kind: variable }
+- { loc: "15:18", text: "b", kind: variable }

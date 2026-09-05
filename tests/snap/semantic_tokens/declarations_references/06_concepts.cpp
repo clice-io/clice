@@ -1,6 +1,8 @@
-/// # Concepts — definitions and uses as template constraints
+/// # Concepts
 ///
 /// - status: supported
+///
+/// Definitions and uses as template constraints
 
 template <typename T>
 concept §Small = sizeof(T) <= 4;

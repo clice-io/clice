@@ -3,4 +3,4 @@ created_at: 2026-08-02
 input_file: functions_snippets/01_function_candidates.cpp
 ---
 pos:
-- { label: "foooo", kind: Function, detail: "(int x, float y)", description: "double", edit: "8:8-8:10" }
+- { label: "foooo", kind: Function, detail: "(int x, float y)", description: "double", edit: "10:8-10:10" }

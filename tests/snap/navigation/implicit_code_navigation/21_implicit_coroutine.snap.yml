@@ -8,13 +8,13 @@ co_return_kw: none
 
 co_yield_kw:
   definition:
-    - { file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "39:16-39:27" }
+    - { file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "41:16-41:27" }
   declaration:
-    - { file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "39:16-39:27" }
+    - { file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "41:16-41:27" }
   references:
-    - { file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "39:16-39:27" }
-    - { file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "47:4-47:12" }
+    - { file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "41:16-41:27" }
+    - { file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "49:4-49:12" }
   callHierarchy:
-    - { name: "yield_value", kind: Method, file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "39:16-39:27" }
+    - { name: "yield_value", kind: Method, file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "41:16-41:27" }
   incomingCalls:
-    - { name: "example", kind: Function, file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "45:5-45:12", fromRanges: ["47:4-47:14"] }
+    - { name: "example", kind: Function, file: "${WS}/implicit_code_navigation/21_implicit_coroutine.cpp", range: "47:5-47:12", fromRanges: ["49:4-49:14"] }

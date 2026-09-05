@@ -1,6 +1,8 @@
-/// # Structured bindings — navigate to the underlying accessors or fields
+/// # Structured bindings
 ///
 /// - status: unsupported
+///
+/// Navigate to the underlying accessors or fields
 ///
 /// Go-to-definition on a structured binding name resolves to the binding
 /// itself rather than the underlying field or accessor it names.

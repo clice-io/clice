@@ -1,7 +1,9 @@
-/// # Symbols from macro expansions — a symbol produced by a macro invocation is located at the invocation, not at the macro definition
+/// # Symbols from macro expansions
 ///
 /// - status: supported
 /// - issues: clangd#475
+///
+/// A symbol produced by a macro invocation is located at the invocation, not at the macro definition
 
 // The assertion holds the directives out of the preamble region, whose
 // live record the server path does not yet see.

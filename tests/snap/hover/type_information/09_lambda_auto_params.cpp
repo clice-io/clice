@@ -1,7 +1,9 @@
-/// # Lambda `auto` parameters — deduced parameter type
+/// # Lambda `auto` parameters
 ///
 /// - status: unsupported
 /// - issues: clangd#493
+///
+/// Deduced parameter type
 ///
 /// Hovering the `auto` parameter of a generic lambda yields no card; the
 /// deduced parameter type is not shown.

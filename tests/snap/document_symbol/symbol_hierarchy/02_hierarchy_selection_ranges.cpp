@@ -1,6 +1,8 @@
-/// # Symbol ranges and selection ranges — the range spans the whole declaration; the selection range covers the full written name, including multi-token names like `~Widget`, `operator==` and `operator bool`
+/// # Symbol ranges and selection ranges
 ///
 /// - status: supported
+///
+/// The range spans the whole declaration; the selection range covers the full written name, including multi-token names like `~Widget`, `operator==` and `operator bool`
 
 namespace members {
 

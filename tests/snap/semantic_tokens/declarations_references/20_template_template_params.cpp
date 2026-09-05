@@ -1,6 +1,8 @@
-/// # Template template parameters — declared and used as types
+/// # Template template parameters
 ///
 /// - status: supported
+///
+/// Declared and used as types
 
 template <typename T>
 struct Holder {};

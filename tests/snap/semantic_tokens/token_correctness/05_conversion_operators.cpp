@@ -1,6 +1,8 @@
-/// # Conversion operators — written as keywords, converting uses paint nothing extra
+/// # Conversion operators
 ///
 /// - status: supported
+///
+/// Written as keywords, converting uses paint nothing extra
 
 struct Ratio {
     §operator double() const;

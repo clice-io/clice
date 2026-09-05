@@ -1,6 +1,8 @@
-/// # Fully-expanded preview — a function-like macro use shows its arguments substituted through the body
+/// # Fully-expanded preview
 ///
 /// - status: supported
+///
+/// A function-like macro use shows its arguments substituted through the body
 ///
 /// Hovering a function-like macro invocation shows the `#define` text and a
 /// preview of the fully-expanded result with the call's arguments spliced in.

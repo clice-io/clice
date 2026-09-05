@@ -1,6 +1,8 @@
-/// # Base classes in detail — show `: Shape` on derived class declarations
+/// # Base classes in detail
 ///
 /// - status: unsupported
+///
+/// Show `: Shape` on derived class declarations
 
 struct Shape {};
 

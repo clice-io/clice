@@ -43,7 +43,10 @@ test("fixture meta parsing", () => {
     // No header: defaults — verify both, one shared snapshot.
     expect(parseFixtureMeta("int x;\n", "f")).toEqual(DEFAULTS);
     // A supplementary fixture (no `# ` doc title) may still open with a
-    // bare `///` meta block.
+    // plain-comment meta block.
+    expect(parseFixtureMeta("// - diagnostics: expected\n\nint x;\n", "f").diagnostics).toBe(true);
+    // The legacy `///` spelling remains readable so validation can report
+    // it as an R7 migration error.
     expect(parseFixtureMeta("/// - diagnostics: expected\n\nint x;\n", "f").diagnostics).toBe(true);
     expect(() => parseFixtureMeta("/// # T\n///\n/// - snpa: separate\n", "f")).toThrow(
         "unknown fixture meta key",

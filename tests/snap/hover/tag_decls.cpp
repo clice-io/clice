@@ -1,154 +1,118 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-// Struct.
-namespace struct_decl {
-namespace ns1 {
-  struct MyClass {};
-} // namespace ns1
-int main() {
-  ns1::§(01_struct)MyClass* Params;
+namespace structure_use {
+namespace model {
+struct Coordinate {};
 }
+model::§(01_struct)Coordinate* current;
 }
 
-// Class.
-namespace class_decl {
-namespace ns1 {
-  class MyClass {};
-} // namespace ns1
-int main() {
-  ns1::§(02_class)MyClass* Params;
+namespace class_use {
+namespace model {
+class Controller {};
 }
+model::§(02_class)Controller* current;
 }
 
-// Union.
-namespace union_decl {
-namespace ns1 {
-  union MyUnion { int x; int y; };
-} // namespace ns1
-int main() {
-  ns1::§(03_union)MyUnion Params;
-}
-}
-
-namespace forward_decl {
-// Forward class declaration
-class Foo;
-class Foo {};
-§(04_forward_class)Foo* foo();
-}
-
-namespace enum_def {
-// Enum declaration
-enum Hello {
-  ONE, TWO, THREE,
+namespace union_use {
+namespace model {
+union Storage {
+    long integer;
+    double decimal;
 };
-void foo() {
-  §(05_enum)Hello hello = ONE;
 }
+model::§(03_union)Storage current;
 }
 
-// Enumerator.
-namespace enumerator {
-enum Hello {
-  ONE, TWO, THREE,
+namespace forward_use {
+class Session;
+class Session {};
+§(04_forward_class)Session* active();
+}
+
+namespace enum_use {
+enum Direction { North, East, South, West };
+§(05_enum)Direction current = North;
+}
+
+namespace enumerator_use {
+enum Priority { Low, Normal, High };
+Priority current = §(06_enumerator)High;
+}
+
+namespace imported_enumerator {
+enum class Mode { Read, Write };
+using enum Mode;
+Mode current = §(07_using_enum)Write;
+}
+
+namespace anonymous_enumerator {
+enum { Pending = 4, Complete = 8 };
+int state = §(08_anon_enumerator)Complete;
+}
+
+namespace alias_use {
+typedef long Identifier;
+§(09_typedef)Identifier next;
+}
+
+namespace embedded_alias_use {
+typedef struct Payload {
+    long size;
+} Packet;
+§(10_typedef_embedded)Packet queued;
+}
+
+namespace namespace_use {
+namespace protocol {
+struct Client {
+    static void connect();
 };
-void foo() {
-  Hello hello = §(06_enumerator)ONE;
+}
+void start() {
+    §(11_namespace)protocol::Client::connect();
 }
 }
 
-// C++20's using enum.
-namespace using_enum {
-enum class Hello {
-  ONE, TWO, THREE,
-};
-void foo() {
-  using enum Hello;
-  Hello hello = §(07_using_enum)ONE;
-}
-}
-
-// Enumerator in anonymous enum.
-namespace anon_enum {
-enum {
-  ONE, TWO, THREE,
-};
-void foo() {
-  int hello = §(08_anon_enumerator)ONE;
-}
-}
-
-namespace typedef_decl {
-// Typedef
-typedef int Foo;
-int main() {
-  §(09_typedef)Foo bar;
-}
-}
-
-namespace typedef_embedded {
-// Typedef with embedded definition
-typedef struct Bar {} Foo;
-int main() {
-  §(10_typedef_embedded)Foo bar;
-}
-}
-
-// Namespace.
-namespace ns_decl {
-namespace ns {
-struct Foo { static void bar(); };
-} // namespace ns
-int main() { §(11_namespace)ns::Foo::bar(); }
-}
-
-// Field in anonymous struct.
-namespace anon_struct {
+namespace anonymous_structure {
 static struct {
-  int hello;
-} s;
-void foo() {
-  s.§(12_anon_struct_field)hello++;
+    long total;
+} metrics;
+void increment() {
+    metrics.§(12_anon_struct_field)total++;
 }
 }
 
-// Anonymous union.
-namespace anon_union {
-struct outer {
-  union {
-    int abc, def;
-  } v;
+namespace anonymous_union {
+struct Result {
+    union {
+        long code;
+        long count;
+    } data;
 };
-void g() { struct outer o; o.v.§(13_anon_union_field)def++; }
+void increment(Result& result) {
+    result.data.§(13_anon_union_field)count++;
+}
 }
 
-namespace templated_fn {
-// Templated function
-template <typename T>
-T foo() {
-  return 17;
+namespace function_template_use {
+template <typename T> T default_value() {
+    return {};
 }
-void g() { auto x = §(14_templated_function)foo<int>(); }
+long value = §(14_templated_function)default_value<long>();
 }
 
-// Should not crash on dependent method call.
-namespace method_no_crash {
-template <class T> struct cls {
-  int method();
+namespace instantiated_method_use {
+template <typename T> struct Container {
+    long size();
 };
-
-auto test = cls<int>().§(15_template_method)method();
+auto size = Container<int>{}.§(15_template_method)size();
 }
 
-// Type of nested templates: the variable.
-namespace nested_templates_var {
-template <class T> struct cls {};
-cls<cls<cls<int>>> fo§(16_nested_template_var)o;
+namespace nested_instance_value {
+template <typename T> struct Wrapper {};
+Wrapper<Wrapper<Wrapper<long>>> val§(16_nested_template_var)ue;
 }
 
-namespace nested_templates_class {
-// type of nested templates.
-template <class T> struct cls {};
-§(17_nested_template_class)cls<cls<cls<int>>> foo;
+namespace nested_instance_type {
+template <typename T> struct Wrapper {};
+§(17_nested_template_class)Wrapper<Wrapper<Wrapper<long>>> value;
 }

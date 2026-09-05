@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: documentation/08_decl_vs_def_docs.cpp
 ---
-01_at_decl: { range: "10:5-10:12" }
+01_at_decl: { range: "12:5-12:12" }
 ### function `process`  
 
 ---
@@ -18,7 +18,7 @@ Public API documentation.
 void process(int x)
 ```
 
-02_at_def: { range: "13:5-13:12" }
+02_at_def: { range: "15:5-15:12" }
 ### function `process`  
 
 ---

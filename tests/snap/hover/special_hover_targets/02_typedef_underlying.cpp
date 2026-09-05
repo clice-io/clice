@@ -1,7 +1,9 @@
-/// # Typedef underlying struct — hovering an alias expands the aliased definition
+/// # Typedef underlying struct
 ///
 /// - status: partial
 /// - issues: clangd#2020
+///
+/// Hovering an alias expands the aliased definition
 ///
 /// The card resolves the alias to its underlying type name, but does not
 /// expand that struct's definition or member list.

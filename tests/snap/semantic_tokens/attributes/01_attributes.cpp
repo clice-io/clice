@@ -1,7 +1,9 @@
-/// # Attribute names — standard and vendor attributes, and expressions inside them
+/// # Attribute names
 ///
 /// - status: unsupported
 /// - issues: clangd#2209
+///
+/// Standard and vendor attributes, and expressions inside them
 
 [[nodiscard]] int compute();
 [[deprecated("use v2")]] void old_func();

@@ -1,6 +1,8 @@
-/// # Function overloads — every overload of the callee, each with its parameter list and return type
+/// # Function overloads
 ///
 /// - status: supported
+///
+/// Every overload of the callee, each with its parameter list and return type
 
 void foo();
 void foo(int x);

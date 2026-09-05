@@ -1,6 +1,8 @@
-/// # Types — class, struct, union, enum and type aliases, at definitions and references
+/// # Types
 ///
 /// - status: supported
+///
+/// class, struct, union, enum and type aliases, at definitions and references
 
 class §Widget {};
 struct §Point {};

@@ -4,12 +4,12 @@ input_file: implicit_code_navigation/11_implicit_inherited_ctor.cpp
 ---
 inherit:
   definition:
-    - { file: "${WS}/implicit_code_navigation/11_implicit_inherited_ctor.cpp", range: "11:4-11:8" }
+    - { file: "${WS}/implicit_code_navigation/11_implicit_inherited_ctor.cpp", range: "13:4-13:8" }
   declaration:
-    - { file: "${WS}/implicit_code_navigation/11_implicit_inherited_ctor.cpp", range: "11:4-11:8" }
+    - { file: "${WS}/implicit_code_navigation/11_implicit_inherited_ctor.cpp", range: "13:4-13:8" }
   typeDefinition:
-    - { file: "${WS}/implicit_code_navigation/11_implicit_inherited_ctor.cpp", range: "10:7-10:11" }
+    - { file: "${WS}/implicit_code_navigation/11_implicit_inherited_ctor.cpp", range: "12:7-12:11" }
   references:
-    - { file: "${WS}/implicit_code_navigation/11_implicit_inherited_ctor.cpp", range: "11:4-11:8" }
+    - { file: "${WS}/implicit_code_navigation/11_implicit_inherited_ctor.cpp", range: "13:4-13:8" }
   callHierarchy:
-    - { name: "Base", kind: Method, file: "${WS}/implicit_code_navigation/11_implicit_inherited_ctor.cpp", range: "11:4-11:8" }
+    - { name: "Base", kind: Method, file: "${WS}/implicit_code_navigation/11_implicit_inherited_ctor.cpp", range: "13:4-13:8" }

@@ -2,10 +2,10 @@
 created_at: 2026-08-01
 input_file: symbol_detail/02_detail_variable_types.cpp
 ---
-- { name: "detail", kind: Namespace, range: "4:0-18:1", selection_range: "4:10-4:16" }
--   { name: "timeout", kind: Variable, range: "6:0-6:16", selection_range: "6:4-6:11", detail: "int" }
--   { name: "logger_name", kind: Variable, range: "7:0-7:32", selection_range: "7:12-7:23", detail: "const char *" }
--   { name: "Config", kind: Struct, range: "9:0-12:1", selection_range: "9:7-9:13", detail: "struct" }
--     { name: "retries", kind: Field, range: "10:4-10:20", selection_range: "10:13-10:20", detail: "unsigned int" }
--     { name: "backoff", kind: Field, range: "11:4-11:18", selection_range: "11:11-11:18", detail: "double" }
--   { name: "on_error", kind: Variable, range: "14:0-16:1", selection_range: "14:5-14:13", detail: "(lambda)" }
+- { name: "detail", kind: Namespace, range: "6:0-20:1", selection_range: "6:10-6:16" }
+-   { name: "timeout", kind: Variable, range: "8:0-8:16", selection_range: "8:4-8:11", detail: "int" }
+-   { name: "logger_name", kind: Variable, range: "9:0-9:32", selection_range: "9:12-9:23", detail: "const char *" }
+-   { name: "Config", kind: Struct, range: "11:0-14:1", selection_range: "11:7-11:13", detail: "struct" }
+-     { name: "retries", kind: Field, range: "12:4-12:20", selection_range: "12:13-12:20", detail: "unsigned int" }
+-     { name: "backoff", kind: Field, range: "13:4-13:18", selection_range: "13:11-13:18", detail: "double" }
+-   { name: "on_error", kind: Variable, range: "16:0-18:1", selection_range: "16:5-16:13", detail: "(lambda)" }

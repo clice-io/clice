@@ -1,6 +1,8 @@
-/// # Injected class name — the class name used as a constructor call inside the class
+/// # Injected class name
 ///
 /// - status: supported
+///
+/// The class name used as a constructor call inside the class
 ///
 /// The written name renders as the class; the constructor reference it
 /// implies paints nothing extra — the `(` stays token-free.

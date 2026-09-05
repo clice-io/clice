@@ -1,6 +1,8 @@
-/// # User-defined literals — navigate to the literal operator
+/// # User-defined literals
 ///
 /// - status: unsupported
+///
+/// Navigate to the literal operator
 ///
 /// Go-to-definition on a user-defined-literal suffix should reach its
 /// `operator""`; today it returns nothing.

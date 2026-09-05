@@ -4,11 +4,11 @@ input_file: implicit_code_navigation/06_implicit_aggregate_init.cpp
 ---
 agg_brace:
   definition:
-    - { file: "${WS}/implicit_code_navigation/06_implicit_aggregate_init.cpp", range: "8:7-8:12" }
+    - { file: "${WS}/implicit_code_navigation/06_implicit_aggregate_init.cpp", range: "10:7-10:12" }
   declaration:
-    - { file: "${WS}/implicit_code_navigation/06_implicit_aggregate_init.cpp", range: "8:7-8:12" }
+    - { file: "${WS}/implicit_code_navigation/06_implicit_aggregate_init.cpp", range: "10:7-10:12" }
   references:
-    - { file: "${WS}/implicit_code_navigation/06_implicit_aggregate_init.cpp", range: "8:7-8:12" }
-    - { file: "${WS}/implicit_code_navigation/06_implicit_aggregate_init.cpp", range: "14:13-14:18" }
+    - { file: "${WS}/implicit_code_navigation/06_implicit_aggregate_init.cpp", range: "10:7-10:12" }
+    - { file: "${WS}/implicit_code_navigation/06_implicit_aggregate_init.cpp", range: "16:13-16:18" }
   typeHierarchy:
-    - { name: "Point", kind: Struct, file: "${WS}/implicit_code_navigation/06_implicit_aggregate_init.cpp", range: "8:7-8:12" }
+    - { name: "Point", kind: Struct, file: "${WS}/implicit_code_navigation/06_implicit_aggregate_init.cpp", range: "10:7-10:12" }

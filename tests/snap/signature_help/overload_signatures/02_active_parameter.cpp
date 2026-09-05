@@ -1,6 +1,8 @@
-/// # Active parameter tracking — the parameter under the cursor is bracketed; the point sits in the second argument
+/// # Active parameter tracking
 ///
 /// - status: supported
+///
+/// The parameter under the cursor is bracketed; the point sits in the second argument
 
 void bar(int first, double second, char third);
 

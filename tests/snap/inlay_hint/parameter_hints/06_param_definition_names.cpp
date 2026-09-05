@@ -1,6 +1,8 @@
-/// # Names from definitions — unnamed declaration parameters take the definition's names; leading underscores strip
+/// # Names from definitions
 ///
 /// - status: supported
+///
+/// Unnamed declaration parameters take the definition's names; leading underscores strip
 
 void resize(int, int);
 

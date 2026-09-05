@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 int choose_literal(bool condition) {
     §(keyword_if)if (condition)

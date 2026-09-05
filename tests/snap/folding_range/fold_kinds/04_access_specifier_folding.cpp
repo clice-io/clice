@@ -1,7 +1,9 @@
-/// # Access-specifier section folding — `public:` / `protected:` / `private:` regions within a class
+/// # Access-specifier section folding
 ///
 /// - status: supported
 /// - issues: clangd#1455
+///
+/// `public:` / `protected:` / `private:` regions within a class
 
 class Widget {
 public:            // ┐

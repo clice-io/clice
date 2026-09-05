@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: symbol_information/04_definition_rendering.cpp
 ---
-function_def: { range: "8:4-8:11" }
+function_def: { range: "10:4-10:11" }
 ### function `backoff`  
 
 ---
@@ -16,7 +16,7 @@ Parameters:
 int backoff(int attempt = 1)
 ```
 
-var_ref: { range: "9:21-9:32" }
+var_ref: { range: "11:21-11:32" }
 ### variable `max_retries`  
 
 ---

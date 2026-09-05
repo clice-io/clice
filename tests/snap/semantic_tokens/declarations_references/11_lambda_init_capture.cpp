@@ -1,7 +1,9 @@
-/// # Lambda init-captures — the captured name highlighted as a variable
+/// # Lambda init-captures
 ///
 /// - status: supported
 /// - issues: clangd#868
+///
+/// The captured name highlighted as a variable
 
 int compute();
 

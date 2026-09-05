@@ -2,15 +2,15 @@
 created_at: 2026-07-31
 input_file: declarations_references/05_templates.cpp
 ---
-- { loc: "4:19", text: "T", kind: type, modifiers: [definition] }
-- { loc: "4:26", text: "N", kind: variable, modifiers: [definition, readonly] }
-- { loc: "5:7", text: "Array", kind: struct, modifiers: [definition, templated] }
-- { loc: "6:4", text: "T", kind: type }
-- { loc: "6:11", text: "N", kind: variable, modifiers: [readonly] }
-- { loc: "10:2", text: "identity", kind: function, modifiers: [declaration, templated] }
-- { loc: "12:19", text: "T", kind: type, modifiers: [definition] }
-- { loc: "13:0", text: "T", kind: type }
-- { loc: "13:2", text: "identity", kind: function, modifiers: [definition, templated] }
-- { loc: "13:11", text: "T", kind: type }
-- { loc: "17:0", text: "Array", kind: struct }
-- { loc: "18:13", text: "identity", kind: function }
+- { loc: "6:19", text: "T", kind: type, modifiers: [definition] }
+- { loc: "6:26", text: "N", kind: variable, modifiers: [definition, readonly] }
+- { loc: "7:7", text: "Array", kind: struct, modifiers: [definition, templated] }
+- { loc: "8:4", text: "T", kind: type }
+- { loc: "8:11", text: "N", kind: variable, modifiers: [readonly] }
+- { loc: "12:2", text: "identity", kind: function, modifiers: [declaration, templated] }
+- { loc: "14:19", text: "T", kind: type, modifiers: [definition] }
+- { loc: "15:0", text: "T", kind: type }
+- { loc: "15:2", text: "identity", kind: function, modifiers: [definition, templated] }
+- { loc: "15:11", text: "T", kind: type }
+- { loc: "19:0", text: "Array", kind: struct }
+- { loc: "20:13", text: "identity", kind: function }

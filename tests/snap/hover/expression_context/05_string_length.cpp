@@ -1,7 +1,9 @@
-/// # String literals — the length reported on hover
+/// # String literals
 ///
 /// - status: partial
 /// - issues: clangd#1016
+///
+/// The length reported on hover
 ///
 /// A string-literal card reports the array type and its size in bytes
 /// (`const char[6]`, `Size: 6 bytes` — the length plus the null

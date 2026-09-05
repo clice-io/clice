@@ -1,7 +1,9 @@
-/// # Implicit conversion operators — from a conversion context to the operator
+/// # Implicit conversion operators
 ///
 /// - status: unsupported
 /// - issues: clangd#1931
+///
+/// From a conversion context to the operator
 ///
 /// Go-to-definition from a context that runs a user-defined conversion (a
 /// condition, `!`, an explicit `bool(...)`) should reach the conversion

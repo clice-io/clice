@@ -1,7 +1,9 @@
-/// # `new` expression — navigate to the constructor and overloaded `operator new`
+/// # `new` expression
 ///
 /// - status: partial
 /// - verify: server
+///
+/// Navigate to the constructor and overloaded `operator new`
 ///
 /// Go-to-definition on `new` reaches the class's overloaded `operator new`.
 /// The constructor invoked by the same expression is not part of the reply.

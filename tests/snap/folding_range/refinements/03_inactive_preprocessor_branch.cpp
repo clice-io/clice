@@ -1,7 +1,9 @@
-/// # Inactive preprocessor branch indication — visually distinguish or auto-fold inactive `#if`/`#else` branches
+/// # Inactive preprocessor branch indication
 ///
 /// - status: partial
 /// - snap: skip
+///
+/// Visually distinguish or auto-fold inactive `#if`/`#else` branches
 ///
 /// The server emits a fold range for the region between the condition and
 /// `#else`, so the first branch can be folded manually; the post-`#else`
@@ -14,9 +16,9 @@
 /// > `FoldingRangeKind.Region` and clients can choose to auto-fold them.
 
 // snap: skip because the leading directives fall into the server's
-// preamble PCH and the server reply drops the conditionDirective fold that
-// the inspect-path (no-PCH) compile reports. Un-skip once the two paths
-// agree.
+// snap: preamble PCH and the server reply drops the conditionDirective fold that
+// snap: the inspect-path (no-PCH) compile reports. Un-skip once the two paths
+// snap: agree.
 
 #ifdef _WIN32
     // ... Windows code (active) ...

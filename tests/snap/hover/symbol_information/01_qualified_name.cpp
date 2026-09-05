@@ -1,6 +1,8 @@
-/// # Qualified name — the hover card shows the enclosing namespace and class scope
+/// # Qualified name
 ///
 /// - status: supported
+///
+/// The hover card shows the enclosing namespace and class scope
 
 namespace app::detail {
 

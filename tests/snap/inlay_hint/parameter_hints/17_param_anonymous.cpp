@@ -1,6 +1,8 @@
-/// # Anonymous parameters — nothing to name, though a mutable reference still flags `&`
+/// # Anonymous parameters
 ///
 /// - status: supported
+///
+/// Nothing to name, though a mutable reference still flags `&`
 
 void value_sink(int);
 void ref_sink(int&);

@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: type_information/03_function_signature.cpp
 ---
-01_params: { range: "9:4-9:7" }
+01_params: { range: "11:4-11:7" }
 ### function `add`  
 
 ---
@@ -17,7 +17,7 @@ Parameters:
 int add(int lhs, int rhs)
 ```
 
-02_defaults: { range: "11:5-11:14" }
+02_defaults: { range: "13:5-13:14" }
 ### function `configure`  
 
 ---

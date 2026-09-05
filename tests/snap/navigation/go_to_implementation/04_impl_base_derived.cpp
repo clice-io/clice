@@ -1,7 +1,9 @@
-/// # Base class — every derived class
+/// # Base class
 ///
 /// - status: supported
 /// - verify: server
+///
+/// Every derived class
 ///
 /// Go-to-implementation on a base class name lists the classes that derive
 /// from it.

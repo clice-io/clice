@@ -1,7 +1,9 @@
-/// # Numeric literals — type and value of an integer or float literal
+/// # Numeric literals
 ///
 /// - status: unsupported
 /// - issues: clangd#1669
+///
+/// Type and value of an integer or float literal
 ///
 /// Hovering a numeric literal yields no card, unlike character and string
 /// literals, whose type and value are shown.

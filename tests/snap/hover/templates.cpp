@@ -1,270 +1,233 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-// Variable with template type.
-namespace var_tmpl_type {
-template <typename T, class... Ts> class Foo { public: Foo(int); };
-Foo<int, char, bool> fo§(01_var_of_template_type)o = Foo<int, char, bool>(5);
-}
-
-// Implicit template instantiation.
-namespace implicit_instantiation {
-template <typename T> class vector{};
-vec§(02_implicit_instantiation)tor<int> foo;
-}
-
-// Class template.
-namespace class_template {
-template <template<typename, bool...> class C,
-          typename = char,
-          int = 0,
-          bool Q = false,
-          class... Ts> class Foo final {};
-template <template<typename, bool...> class T>
-F§(03_class_template)oo<T> foo;
-}
-
-// Function template.
-namespace function_template {
-template <template<typename, bool...> class C,
-          typename = char,
-          int = 0,
-          bool Q = false,
-          class... Ts> void foo();
-template<typename, bool...> class Foo;
-
-void bar() {
-  fo§(04_function_template)o<Foo>();
-}
-}
-
-// Function decl.
-namespace function_decl {
-template<typename, bool...> class Foo {};
-Foo<bool, true, false> foo(int, bool T = false);
-
-void bar() {
-  fo§(05_function_decl)o(3);
-}
-}
-
-// Partially-specialized class template.
-namespace partial_spec {
-template <typename T> class X;
-template <typename T> class §(06_partial_specialization)X<T*> {};
-}
-
-// Constructor of partially-specialized class template.
-namespace partial_spec_ctor {
-template<typename, typename=void> struct X;
-template<typename T> struct X<T*>{ §(07_partial_spec_constructor)X(); };
-}
-
-namespace destructor {
-class X { §(08_destructor)~X(); };
-}
-
-namespace conversion_operator {
-class X { op§(09_conversion_operator)erator int(); };
-}
-
-namespace conversion_target {
-class X { operator §(10_conversion_target)X(); };
-}
-
-// An uninstantiated specialization documents itself with the pattern
-// instantiation would pick, not the primary template.
-namespace primary_fallback {
-// comment from primary
-template <typename T> class Foo {};
-// comment from specialization
-template <typename T> class Foo<T*> {};
-void foo() {
-  Fo§(11_primary_template_doc)o<int*> *x = nullptr;
-}
-}
-
-// Var template decl.
-namespace var_template {
-using m_int = int;
-
-template <int Size> m_int §(12_variable_template)arr[Size];
-}
-
-// Var template decl specialization.
-namespace var_template_spec {
-using m_int = int;
-
-template <int Size> m_int arr[Size];
-
-template <> m_int §(13_variable_template_spec)arr<4>[4];
-}
-
-// Canonical type.
-namespace canonical_type {
-template<typename T>
-struct TestHover {
-  using Type = T;
+namespace object_instance {
+template <typename T, typename... Rest> struct Bundle {
+    Bundle(long identifier);
 };
+Bundle<long, char, bool> bund§(01_var_of_template_type)le{7};
+}
 
-void code() {
-  TestHover<int>::Type §(14_canonical_type)a;
+namespace implicit_instance {
+template <typename T> struct Sequence {};
+Sequ§(02_implicit_instantiation)ence<long> values;
+}
+
+namespace class_template_declaration {
+template <typename, bool...> struct Policy;
+template <template <typename, bool...> class Strategy, typename Value = char, long Size = 4,
+          bool Enabled = true, typename... Rest>
+struct Registry final {};
+template <template <typename, bool...> class Strategy>
+Reg§(03_class_template)istry<Strategy> registry;
+}
+
+namespace function_template_call {
+template <typename, bool...> struct Policy;
+template <template <typename, bool...> class Strategy, typename Value = char, long Size = 4,
+          bool Enabled = true, typename... Rest>
+void register_type();
+void run() {
+    regis§(04_function_template)ter_type<Policy>();
 }
 }
 
-// Canonical template type.
-namespace canonical_tmpl_type {
-template<typename T>
-void §(15_function_template_type)foo(T arg) {}
+namespace function_declaration_call {
+template <typename, bool...> struct Policy {};
+Policy<long, true, false> evaluate(long, bool enabled = true);
+void run() {
+    eval§(05_function_decl)uate(5);
+}
 }
 
-// TypeAlias template.
-namespace alias_template {
-template<typename T>
-using §(16_alias_template)alias = T;
+namespace partial_specialization_declaration {
+template <typename T> struct Container;
+template <typename T> struct §(06_partial_specialization)Container<T*> {};
 }
 
-// TypeAlias template referring to another alias.
-namespace alias_chain {
-template<typename T>
-using A = T;
-
-template<typename T>
-using §(17_alias_template_chain)AA = A<T>;
-}
-
-// Constant array.
-namespace constant_array {
-using m_int = int;
-
-m_int §(18_constant_array)arr[10];
-}
-
-// Incomplete array.
-namespace incomplete_array {
-using m_int = int;
-
-extern m_int §(19_incomplete_array)arr[];
-}
-
-// Dependent size array.
-namespace dependent_array {
-using m_int = int;
-
-template<int Size>
-struct Test {
-  m_int §(20_dependent_size_array)arr[Size];
+namespace partial_specialization_constructor {
+template <typename T, typename = void> struct Container;
+template <typename T> struct Container<T*> {
+    §(07_partial_spec_constructor)Container();
 };
 }
 
-// Dependent names resolved through the template resolver.
-namespace dependent_names {
+namespace special_members {
+struct Resource {
+    §(08_destructor)~Resource();
+};
+
+struct Conversion {
+    op§(09_conversion_operator)erator long();
+};
+
+struct SelfConversion {
+    operator §(10_conversion_target)SelfConversion();
+};
+}
+
+namespace selected_specialization_docs {
+/// Generic channel.
+template <typename T> struct Channel {};
+/// Pointer channel.
+template <typename T> struct Channel<T*> {};
+Chan§(11_primary_template_doc)nel<long*>* channel;
+}
+
+namespace variable_template_declaration {
+using count_type = long;
+template <long Size> count_type §(12_variable_template)items[Size];
+}
+
+namespace variable_template_specialization {
+using count_type = long;
+template <long Size> count_type items[Size];
+template <> count_type §(13_variable_template_spec)items<6>[6];
+}
+
+namespace canonical_member_type {
+template <typename T> struct Identity {
+    using type = T;
+};
+Identity<long>::type §(14_canonical_type)value;
+}
+
+namespace canonical_function_parameter {
+template <typename T> void §(15_function_template_type)consume(T value) {}
+}
+
+namespace alias_template_declaration {
+template <typename T> using §(16_alias_template)identity = T;
+}
+
+namespace alias_template_chain {
+template <typename T> using identity = T;
+template <typename T> using §(17_alias_template_chain)const_identity = const identity<T>;
+}
+
+namespace array_types {
+using element_type = long;
+element_type §(18_constant_array)fixed[12];
+extern element_type §(19_incomplete_array)open[];
+
+template <long Size> struct Buffer {
+    element_type §(20_dependent_size_array)data[Size];
+};
+}
+
+namespace dependent_base_names {
+template <typename T> struct Source {
+    using value_type = T;
+    static constexpr long count = 2;
+};
+template <typename T> struct Sink : Source<T> {
+    typename Source<T>::§(21_dependent_type)value_type value;
+    static constexpr long size = Source<T>::§(22_dependent_value)count;
+    using typename Source<T>::§(23_using_typename)value_type;
+    using Source<T>::§(24_using_value)count;
+};
+}
+
+namespace template_argument {
+template <typename T> struct Allocator {};
+template <template <typename> class Strategy> struct Owner {};
+Owner<§(25_template_template_arg)Allocator> owner;
+}
+
+namespace deduction_placeholder {
+template <typename T> struct Wrapper {
+    Wrapper(T);
+};
+§(26_ctad)Wrapper wrapper(9L);
+}
+
+namespace dependent_overload {
+struct Writer {
+    void write(long);
+    void write(char);
+};
+template <typename T> void emit(Writer writer, T value) {
+    writer.§(27_unresolved_member)write(value);
+}
+}
+
+namespace pack_size {
+template <typename... Types> constexpr auto count = sizeof...(§(28_sizeof_pack)Types);
+}
+
+namespace injected_name {
+template <typename T> struct Link {
+    §(29_injected_class_name)Link* next;
+};
+}
+
+namespace current_instantiation_members {
 template <typename T> struct Base {
-  using type = T;
-  static constexpr int value = 1;
-};
-
-template <typename T> struct Derived : Base<T> {
-  typename Base<T>::§(21_dependent_type)type x;
-  static constexpr int y = Base<T>::§(22_dependent_value)value;
-  using typename Base<T>::§(23_using_typename)type;
-  using Base<T>::§(24_using_value)value;
-};
-}
-
-// Template-template argument.
-namespace template_template_arg {
-template <typename> struct X {};
-template <template <typename> class TT> struct Apply {};
-Apply<§(25_template_template_arg)X> a;
-}
-
-// CTAD placeholder.
-namespace ctad {
-template <typename T> struct Box { Box(T); };
-§(26_ctad)Box b(1);
-}
-
-// Unresolved member overload set with dependent argument.
-namespace unresolved_member {
-struct A {
-  void f(int);
-  void f(char);
-};
-template <typename T> void g(A a, T t) { a.§(27_unresolved_member)f(t); }
-}
-
-// sizeof...(pack).
-namespace sizeof_pack {
-template <class... Ts> constexpr auto n = sizeof...(§(28_sizeof_pack)Ts);
-}
-
-// Injected class name.
-namespace injected_class_name {
-template <class T> struct Node {
-  §(29_injected_class_name)Node *next;
-};
-}
-
-// Dependent member access through the current instantiation.
-namespace dependent_member {
-template <typename T> struct Base {
-  void method();
-  int field;
+    void reset();
+    long value;
 };
 template <typename T> struct Derived : Base<T> {
-  void f() { this->§(30_dependent_method)method(); }
-  int g() { return this->§(31_dependent_field)field; }
+    void clear() {
+        this->§(30_dependent_method)reset();
+    }
+    long read() {
+        return this->§(31_dependent_field)value;
+    }
 };
 }
 
-// Dependent lookup through a nondependent base.
-namespace fixed_base {
-struct Fixed { using type = int; };
-template <class T> struct FixedDerived : Fixed {};
-template <class T> typename FixedDerived<T>::§(32_fixed_base)type h();
+namespace nondependent_base_name {
+struct Common {
+    using index_type = long;
+};
+template <typename T> struct Table : Common {};
+template <typename T> typename Table<T>::§(32_fixed_base)index_type index();
 }
 
-// Most specialized partial wins.
-namespace partial_order {
-template <class A, class B> struct X { static constexpr int value = 0; };
-template <class A, class B> struct X<A*, B> { static constexpr int value = 1; };
-template <class A> struct X<A*, A*> { static constexpr int value = 2; };
-template <class T> int g() { return X<T*, T*>::§(33_partial_order)value; }
+namespace partial_ordering {
+template <typename Left, typename Right> struct Rank {
+    static constexpr long value = 0;
+};
+template <typename Left, typename Right> struct Rank<Left*, Right> {
+    static constexpr long value = 1;
+};
+template <typename Type> struct Rank<Type*, Type*> {
+    static constexpr long value = 2;
+};
+template <typename T> long rank() {
+    return Rank<T*, T*>::§(33_partial_order)value;
+}
 }
 
-// Overloaded arrow chain.
-namespace arrow_chain {
-template <class T> struct Node { void method(); };
-template <class T> struct Ptr { Node<T> *operator->(); };
-template <class T> void f(Ptr<T> p) { p->§(34_arrow_chain)method(); }
+namespace overloaded_arrow {
+template <typename T> struct Node {
+    void visit();
+};
+template <typename T> struct Pointer {
+    Node<T>* operator->();
+};
+template <typename T> void visit(Pointer<T> pointer) {
+    pointer->§(34_arrow_chain)visit();
+}
 }
 
-// Use site of a dependent using-typename.
-namespace unresolved_using_use {
-template <class T> struct B2 { using type = T; };
-template <class T> struct D2 : B2<T> {
-  using typename B2<T>::type;
-  §(35_unresolved_using_use)type x;
+namespace dependent_using_use {
+template <typename T> struct Source {
+    using item_type = T;
+};
+template <typename T> struct Destination : Source<T> {
+    using typename Source<T>::item_type;
+    §(35_unresolved_using_use)item_type item;
 };
 }
 
-// An uninstantiated variable-template specialization also documents itself
-// with the pattern instantiation would pick.
-namespace var_primary_fallback {
-// comment from primary
-template <typename T> int slot = 0;
-// comment from specialization
-template <typename T> int slot<T*> = 1;
-
-using probe = decltype(sl§(36_variable_template_doc)ot<int*>);
+namespace selected_variable_docs {
+/// Generic cache slot.
+template <typename T> long cache = 0;
+/// Pointer cache slot.
+template <typename T> long cache<T*> = 1;
+using result_type = decltype(ca§(36_variable_template_doc)che<long*>);
 }
 
-// A member alias with a dependent underlying type keeps its sugar:
-// canonicalizing would spell the parameter as `type-parameter-0-0`.
-namespace dependent_member_alias {
-template <typename T>
-struct Wrap {
-  using §(37_dependent_member_alias)element = const T&;
+namespace dependent_alias_sugar {
+template <typename T> struct View {
+    using §(37_dependent_member_alias)reference = const T&;
 };
 }

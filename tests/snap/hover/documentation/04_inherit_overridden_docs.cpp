@@ -1,7 +1,9 @@
-/// # Inherited override docs — an override with no comment shows the base method's documentation
+/// # Inherited override docs
 ///
 /// - status: partial
 /// - issues: clangd#2504
+///
+/// An override with no comment shows the base method's documentation
 ///
 /// Hovering an overriding method that carries no comment of its own should
 /// surface the documentation from the method it overrides. clice does not

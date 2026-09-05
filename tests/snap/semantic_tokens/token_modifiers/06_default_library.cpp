@@ -1,6 +1,8 @@
-/// # Default library — symbols declared in system headers
+/// # Default library
 ///
 /// - status: supported
+///
+/// Symbols declared in system headers
 
 int before_includes = 0;
 

@@ -1,154 +1,110 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-// Simple initialization with decltype(auto).
-namespace simple_init {
-void foo() {
-  decl§(01_decltype_auto)type(auto) i = 1;
-}
+namespace direct_placeholder {
+decl§(01_decltype_auto)type(auto) value = 31L;
 }
 
-// Simple initialization with const decltype(auto).
-namespace const_init {
-void foo() {
-  const int j = 0;
-  decl§(02_const_decltype_auto)type(auto) i = j;
-}
+namespace const_placeholder {
+const long source = 32;
+decl§(02_const_decltype_auto)type(auto) value = source;
 }
 
-// Simple initialization with const& decltype(auto).
-namespace const_ref_init {
-void foo() {
-  int k = 0;
-  const int& j = k;
-  decl§(03_const_ref_decltype_auto)type(auto) i = j;
-}
+namespace const_reference_placeholder {
+long source = 33;
+const long& reference = source;
+decl§(03_const_ref_decltype_auto)type(auto) value = reference;
 }
 
-// Simple initialization with & decltype(auto).
-namespace ref_init {
-void foo() {
-  int k = 0;
-  int& j = k;
-  decl§(04_ref_decltype_auto)type(auto) i = j;
+namespace reference_placeholder {
+long source = 34;
+long& reference = source;
+decl§(04_ref_decltype_auto)type(auto) value = reference;
+}
+
+namespace deduced_result {
+struct Message {};
+decl§(05_decltype_auto_fn_return)type(auto) create() {
+    return Message{};
 }
 }
 
-namespace fn_return {
-// decltype(auto) in function return
-struct Bar {};
-decl§(05_decltype_auto_fn_return)type(auto) test() {
-  return Bar();
+namespace reference_result {
+decl§(06_decltype_auto_ref_return)type(auto) current() {
+    static long value;
+    return (value);
 }
 }
 
-// decltype(auto) reference in function return.
-namespace ref_fn_return {
-decl§(06_decltype_auto_ref_return)type(auto) test() {
-  static int a;
-  return (a);
-}
+namespace declared_lvalue {
+long source;
+decl§(07_decltype_lvalue)type(source) copy = source;
 }
 
-// decltype of lvalue.
-namespace of_lvalue {
-void foo() {
-  int I = 0;
-  decl§(07_decltype_lvalue)type(I) J = I;
-}
+namespace declared_reference {
+long source;
+long& reference = source;
+decl§(08_decltype_lvalue_ref)type(reference) alias = source;
 }
 
-// decltype of lvalue reference.
-namespace of_lvalue_ref {
-void foo() {
-  int I = 0;
-  int &K = I;
-  decl§(08_decltype_lvalue_ref)type(K) J = I;
-}
+namespace parenthesized_lvalue {
+long source;
+decl§(09_decltype_paren_lvalue)type((source)) alias = source;
 }
 
-// decltype of parenthesized lvalue.
-namespace of_paren_lvalue {
-void foo() {
-  int I = 0;
-  decl§(09_decltype_paren_lvalue)type((I)) J = I;
-}
+namespace rvalue_reference {
+long source;
+decl§(10_decltype_rvalue_ref)type(static_cast<long&&>(source)) moved =
+    static_cast<long&&>(source);
 }
 
-// decltype of rvalue reference.
-namespace of_rvalue_ref {
-void foo() {
-  int I = 0;
-  decl§(10_decltype_rvalue_ref)type(static_cast<int&&>(I)) J = static_cast<int&&>(I);
-}
+namespace rvalue_call {
+long&& acquire();
+decl§(11_decltype_rvalue_call)type(acquire()) moved = acquire();
 }
 
-// decltype of rvalue reference function call.
-namespace of_rvalue_call {
-int && bar();
-void foo() {
-  int I = 0;
-  decl§(11_decltype_rvalue_call)type(bar()) J = bar();
+namespace trailing_return_call {
+struct Message {};
+auto create() -> decltype(Message{}) {
+    return {};
 }
-}
-
-namespace of_trailing_return_fn {
-// decltype of function with trailing return type.
-struct Bar {};
-auto test() -> decltype(Bar()) {
-  return Bar();
-}
-void foo() {
-  decl§(12_decltype_trailing_return)type(test()) i = test();
-}
+decl§(12_decltype_trailing_return)type(create()) message = create();
 }
 
-// decltype of var with decltype.
-namespace of_decltype_var {
-void foo() {
-  int I = 0;
-  decltype(I) J = I;
-  decl§(13_decltype_of_decltype)type(J) K = J;
-}
+namespace chained_declaration {
+long source;
+decltype(source) intermediate;
+decl§(13_decltype_of_decltype)type(intermediate) copy = source;
 }
 
-// decltype of dependent type.
-namespace of_dependent {
-template <typename T>
-struct X {
-  using Y = decl§(14_decltype_dependent)type(T::Z);
+namespace dependent_expression {
+template <typename T> struct MemberType {
+    using type = decl§(14_decltype_dependent)type(T::member);
 };
 }
 
-// Undeduced decltype(auto) return type.
-namespace undeduced_return {
-template<typename T>
-decl§(15_undeduced_decltype_auto)type(auto) foo() {
-  return T();
+namespace dependent_result {
+template <typename T> decl§(15_undeduced_decltype_auto)type(auto) create() {
+    return T{};
 }
 }
 
-// Variable whose type is written with decltype.
-namespace var_with_decltype {
-int a;
-decltype(a) §(16_var_decltype_type)b = a;
+namespace variable_type {
+long source;
+decltype(source) §(16_var_decltype_type)copy = source;
 }
 
-// Variable whose type chains through decltype.
-namespace var_with_decltype_chain {
-int a;
-decltype(a) c;
-decltype(c) §(17_var_decltype_chain)b = a;
+namespace variable_type_chain {
+long source;
+decltype(source) intermediate;
+decltype(intermediate) §(17_var_decltype_chain)copy = source;
 }
 
-// Variable with const decltype type.
-namespace var_with_const_decltype {
-int a;
-const decltype(a) §(18_var_const_decltype)b = a;
+namespace const_variable_type {
+long source;
+const decltype(source) §(18_var_const_decltype)copy = source;
 }
 
-// Function with decltype in the signature.
-namespace fn_with_decltype {
-int a;
-auto §(19_fn_decltype_signature)foo(decltype(a) x) -> decltype(a) { return 0; }
+namespace signature_type {
+long source;
+auto §(19_fn_decltype_signature)convert(decltype(source) value) -> decltype(source) {
+    return value;
+}
 }

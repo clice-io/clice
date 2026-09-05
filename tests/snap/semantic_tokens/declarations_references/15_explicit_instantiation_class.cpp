@@ -1,7 +1,9 @@
-/// # Explicit instantiation — the instantiated template name and its written template arguments highlighted, on the extern declaration and the definition alike
+/// # Explicit instantiation
 ///
 /// - status: supported
 /// - issues: clangd#316
+///
+/// The instantiated template name and its written template arguments highlighted, on the extern declaration and the definition alike
 
 struct Widget {};
 

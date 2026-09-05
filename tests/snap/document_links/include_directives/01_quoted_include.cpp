@@ -1,6 +1,8 @@
-/// # Quoted includes — `#include "..."` links to the resolved header file
+/// # Quoted includes
 ///
 /// - status: supported
+///
+/// `#include "..."` links to the resolved header file
 ///
 /// Every include in the file is linked, not just the preamble run at
 /// the top.

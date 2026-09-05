@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: expression_context/05_string_length.cpp
 ---
-01_string: { range: "11:23-11:30" }
+01_string: { range: "13:23-13:30" }
 ### `string-literal`  
 
 ---

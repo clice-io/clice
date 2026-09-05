@@ -1,6 +1,8 @@
-/// # Designator suppression — written designators and `/*name=*/` comments keep their inits bare
+/// # Designator suppression
 ///
 /// - status: supported
+///
+/// Written designators and `/*name=*/` comments keep their inits bare
 
 struct Point {
     int a;

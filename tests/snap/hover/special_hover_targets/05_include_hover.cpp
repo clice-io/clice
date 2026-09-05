@@ -1,7 +1,9 @@
-/// # Include directive hover — hovering an `#include` shows the resolved header path
+/// # Include directive hover
 ///
 /// - status: supported
 /// - flags: ["-I${corpus}"]
+///
+/// Hovering an `#include` shows the resolved header path
 ///
 /// The card resolves the quoted header to its file on disk.
 

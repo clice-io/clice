@@ -1,6 +1,7 @@
 /// # Raw string literal folding
 ///
 /// - status: unsupported
+///
 
 auto sql = R"(
     SELECT *

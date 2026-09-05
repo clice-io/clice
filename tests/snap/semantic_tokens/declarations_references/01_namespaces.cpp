@@ -1,6 +1,8 @@
-/// # Namespaces — definitions, references, nested namespaces and namespace aliases
+/// # Namespaces
 ///
 /// - status: supported
+///
+/// definitions, references, nested namespaces and namespace aliases
 
 namespace §demo {
 namespace §inner {

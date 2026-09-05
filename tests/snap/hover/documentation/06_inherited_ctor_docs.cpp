@@ -1,7 +1,9 @@
-/// # Inherited constructor docs — `using Base::Base;` surfaces the base constructor's documentation
+/// # Inherited constructor docs
 ///
 /// - status: unsupported
 /// - issues: clangd#1936
+///
+/// `using Base::Base;` surfaces the base constructor's documentation
 ///
 /// A constructor pulled in with `using Base::Base;` should carry the base
 /// constructor's documentation on hover. There is no hover surface for it:

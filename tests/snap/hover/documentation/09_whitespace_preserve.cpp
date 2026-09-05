@@ -1,7 +1,9 @@
-/// # Whitespace and newlines — a markdown table in a comment keeps its line breaks
+/// # Whitespace and newlines
 ///
 /// - status: partial
 /// - issues: clangd#2057
+///
+/// A markdown table in a comment keeps its line breaks
 ///
 /// A markdown table written across several `///` lines should render as a
 /// table with its line breaks preserved. clice currently flattens the lines

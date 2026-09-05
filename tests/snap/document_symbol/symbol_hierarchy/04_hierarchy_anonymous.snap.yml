@@ -2,14 +2,14 @@
 created_at: 2026-08-01
 input_file: symbol_hierarchy/04_hierarchy_anonymous.cpp
 ---
-- { name: "(anonymous namespace)", kind: Namespace, range: "4:0-8:1", selection_range: "4:10-4:11" }
--   { name: "hidden_counter", kind: Variable, range: "6:0-6:22", selection_range: "6:4-6:18", detail: "int" }
-- { name: "misc", kind: Namespace, range: "10:0-29:1", selection_range: "10:10-10:14" }
--   { name: "v1", kind: Namespace, range: "12:0-16:1", selection_range: "12:17-12:19" }
--     { name: "versioned", kind: Function, range: "14:0-14:15", selection_range: "14:4-14:13", detail: "int ()" }
--   { name: "Outer", kind: Struct, range: "18:0-27:1", selection_range: "18:7-18:12", detail: "struct" }
--     { name: "(anonymous struct)", kind: Struct, range: "19:4-21:5", selection_range: "19:4-19:10", detail: "struct" }
--       { name: "anonymous_member", kind: Field, range: "20:8-20:28", selection_range: "20:12-20:28", detail: "int" }
--     { name: "(anonymous union)", kind: Class, range: "23:4-26:5", selection_range: "23:4-23:9", detail: "union" }
--       { name: "as_int", kind: Field, range: "24:8-24:18", selection_range: "24:12-24:18", detail: "int" }
--       { name: "as_float", kind: Field, range: "25:8-25:22", selection_range: "25:14-25:22", detail: "float" }
+- { name: "(anonymous namespace)", kind: Namespace, range: "6:0-10:1", selection_range: "6:10-6:11" }
+-   { name: "hidden_counter", kind: Variable, range: "8:0-8:22", selection_range: "8:4-8:18", detail: "int" }
+- { name: "misc", kind: Namespace, range: "12:0-31:1", selection_range: "12:10-12:14" }
+-   { name: "v1", kind: Namespace, range: "14:0-18:1", selection_range: "14:17-14:19" }
+-     { name: "versioned", kind: Function, range: "16:0-16:15", selection_range: "16:4-16:13", detail: "int ()" }
+-   { name: "Outer", kind: Struct, range: "20:0-29:1", selection_range: "20:7-20:12", detail: "struct" }
+-     { name: "(anonymous struct)", kind: Struct, range: "21:4-23:5", selection_range: "21:4-21:10", detail: "struct" }
+-       { name: "anonymous_member", kind: Field, range: "22:8-22:28", selection_range: "22:12-22:28", detail: "int" }
+-     { name: "(anonymous union)", kind: Class, range: "25:4-28:5", selection_range: "25:4-25:9", detail: "union" }
+-       { name: "as_int", kind: Field, range: "26:8-26:18", selection_range: "26:12-26:18", detail: "int" }
+-       { name: "as_float", kind: Field, range: "27:8-27:22", selection_range: "27:14-27:22", detail: "float" }

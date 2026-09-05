@@ -1,7 +1,9 @@
-/// # `collapsedText` placeholder (LSP 3.17) — show a summary when folded
+/// # `collapsedText` placeholder (LSP 3.17)
 ///
 /// - status: supported
 /// - issues: clangd#2667
+///
+/// Show a summary when folded
 ///
 /// > **Client support**: VS Code does **not** support `collapsedText` yet
 /// > ([vscode#70794](https://github.com/microsoft/vscode/issues/70794) — still

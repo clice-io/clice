@@ -1,7 +1,9 @@
-/// # CTAD arguments — deduced class template arguments after the template name
+/// # CTAD arguments
 ///
 /// - status: unsupported
 /// - issues: clangd#2331
+///
+/// Deduced class template arguments after the template name
 
 template <typename A, typename B>
 struct Pair {

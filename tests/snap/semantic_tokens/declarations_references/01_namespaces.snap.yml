@@ -2,11 +2,11 @@
 created_at: 2026-07-31
 input_file: declarations_references/01_namespaces.cpp
 ---
-- { loc: "4:10", text: "demo", kind: namespace, modifiers: [definition] }
-- { loc: "5:10", text: "inner", kind: namespace, modifiers: [definition] }
-- { loc: "10:23", text: "more", kind: namespace, modifiers: [definition] }
-- { loc: "12:10", text: "alias", kind: namespace, modifiers: [definition] }
-- { loc: "12:18", text: "demo", kind: namespace }
-- { loc: "12:24", text: "inner", kind: namespace }
-- { loc: "14:16", text: "alias", kind: namespace }
-- { loc: "14:23", text: "value", kind: variable }
+- { loc: "6:10", text: "demo", kind: namespace, modifiers: [definition] }
+- { loc: "7:10", text: "inner", kind: namespace, modifiers: [definition] }
+- { loc: "12:23", text: "more", kind: namespace, modifiers: [definition] }
+- { loc: "14:10", text: "alias", kind: namespace, modifiers: [definition] }
+- { loc: "14:18", text: "demo", kind: namespace }
+- { loc: "14:24", text: "inner", kind: namespace }
+- { loc: "16:16", text: "alias", kind: namespace }
+- { loc: "16:23", text: "value", kind: variable }

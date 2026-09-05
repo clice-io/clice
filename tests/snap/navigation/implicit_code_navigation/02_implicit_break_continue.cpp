@@ -1,7 +1,9 @@
-/// # `break` / `continue` — navigate to the enclosing loop or switch head
+/// # `break` / `continue`
 ///
 /// - status: unsupported
 /// - issues: clangd#1921
+///
+/// Navigate to the enclosing loop or switch head
 ///
 /// Go-to-definition on `break` or `continue` should reach the head of the
 /// loop or switch it controls; today it returns nothing.

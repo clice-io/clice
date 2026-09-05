@@ -2,6 +2,6 @@
 created_at: 2026-07-31
 input_file: type_hints/02_type_sugar.cpp
 ---
-- { pos: "24:16", kind: Type, label: ": Integer" }
-- { pos: "25:18", kind: Type, label: ": Compact" }
-- { pos: "29:18", kind: Type, label: ": Defaulted<float>" }
+- { pos: "26:16", kind: Type, label: ": Integer" }
+- { pos: "27:18", kind: Type, label: ": Compact" }
+- { pos: "31:18", kind: Type, label: ": Defaulted<float>" }

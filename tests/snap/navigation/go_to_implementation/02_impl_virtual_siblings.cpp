@@ -1,7 +1,9 @@
-/// # Sibling overrides — every sibling override
+/// # Sibling overrides
 ///
 /// - status: supported
 /// - verify: server
+///
+/// Every sibling override
 ///
 /// Go-to-implementation on a virtual method lists every override across
 /// the sibling derived classes.

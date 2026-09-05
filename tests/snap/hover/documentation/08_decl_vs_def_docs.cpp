@@ -1,6 +1,8 @@
-/// # Declaration vs definition comments — the declaration's doc wins over a definition-site comment
+/// # Declaration vs definition comments
 ///
 /// - status: supported
+///
+/// The declaration's doc wins over a definition-site comment
 ///
 /// clangd tracks this as clangd#829; clice already prefers the
 /// declaration's `///` documentation over the definition's plain `//` note,

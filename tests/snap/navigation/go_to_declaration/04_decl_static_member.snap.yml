@@ -4,31 +4,31 @@ input_file: go_to_declaration/04_decl_static_member.cpp
 ---
 decl:
   definition:
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "13:12-13:19" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "15:12-15:19" }
   declaration:
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "13:12-13:19" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "15:12-15:19" }
   references:
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "10:15-10:22" }
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "13:12-13:19" }
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "16:19-16:26" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "12:15-12:22" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "15:12-15:19" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "18:19-18:26" }
 
 def:
   definition:
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "10:15-10:22" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "12:15-12:22" }
   declaration:
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "10:15-10:22" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "12:15-12:22" }
   references:
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "10:15-10:22" }
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "13:12-13:19" }
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "16:19-16:26" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "12:15-12:22" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "15:12-15:19" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "18:19-18:26" }
 
 use:
   definition:
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "13:12-13:19" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "15:12-15:19" }
   declaration:
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "10:15-10:22" }
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "13:12-13:19" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "12:15-12:22" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "15:12-15:19" }
   references:
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "10:15-10:22" }
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "13:12-13:19" }
-    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "16:19-16:26" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "12:15-12:22" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "15:12-15:19" }
+    - { file: "${WS}/go_to_declaration/04_decl_static_member.cpp", range: "18:19-18:26" }

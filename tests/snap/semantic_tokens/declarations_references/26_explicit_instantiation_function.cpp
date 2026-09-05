@@ -1,7 +1,9 @@
-/// # Function explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments and the parameter types
+/// # Function explicit instantiation directives
 ///
 /// - status: partial
 /// - issues: llvm#191658
+///
+/// Clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments and the parameter types
 
 struct Widget {};
 

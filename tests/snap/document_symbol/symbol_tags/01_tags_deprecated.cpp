@@ -1,6 +1,8 @@
-/// # Deprecated tag — mark `[[deprecated]]` symbols with the LSP `deprecated` symbol tag
+/// # Deprecated tag
 ///
 /// - status: unsupported
+///
+/// Mark `[[deprecated]]` symbols with the LSP `deprecated` symbol tag
 
 [[deprecated("use open_v2")]] void open_v1();
 

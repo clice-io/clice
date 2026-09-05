@@ -1,8 +1,8 @@
 /// # Smart pointer to the pointee type
 ///
 /// - status: partial
-/// - verify: server
 /// - issues: clangd#1026
+/// - verify: server
 ///
 /// Go-to-type-definition on a smart-pointer variable reaches the wrapper
 /// type itself; unwrapping to the pointee type is not offered.

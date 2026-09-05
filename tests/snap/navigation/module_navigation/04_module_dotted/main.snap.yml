@@ -9,6 +9,6 @@ seg_app:
     - { file: "${WS}/module_navigation/04_module_dotted/app_core.cppm", range: "0:14-0:22" }
   references:
     - { file: "${WS}/module_navigation/04_module_dotted/app_core.cppm", range: "0:14-0:22" }
-    - { file: "${WS}/module_navigation/04_module_dotted/main.cpp", range: "9:7-9:10" }
+    - { file: "${WS}/module_navigation/04_module_dotted/main.cpp", range: "11:7-11:10" }
 
 seg_core: none

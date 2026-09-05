@@ -1,6 +1,8 @@
-/// # Enum underlying types — the enum-base reference keeps its type kind
+/// # Enum underlying types
 ///
 /// - status: supported
+///
+/// The enum-base reference keeps its type kind
 
 using Byte = unsigned char;
 

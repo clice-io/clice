@@ -1,7 +1,9 @@
-/// # `co_await` / `co_yield` / `co_return` — navigate to the awaiter or promise method
+/// # `co_await` / `co_yield` / `co_return`
 ///
 /// - status: partial
 /// - verify: server
+///
+/// Navigate to the awaiter or promise method
 ///
 /// Go-to-definition on `co_yield` reaches the promise's `yield_value`. The
 /// `co_await` and `co_return` keywords do not yet reach the awaiter's or

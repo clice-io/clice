@@ -1,6 +1,8 @@
-/// # Variable templates — declarations, definitions, partial and full specializations
+/// # Variable templates
 ///
 /// - status: supported
+///
+/// declarations, definitions, partial and full specializations
 
 template <typename T, typename U>
 extern int §pair_value;

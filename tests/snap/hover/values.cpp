@@ -1,95 +1,81 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-// Constexpr function call value.
-namespace constexpr_call {
-constexpr int add(int a, int b) { return a + b; }
-int b§(01_constexpr_call_value)ar = add(1, 2);
+namespace evaluated_call {
+constexpr long multiply(long left, long right) {
+    return left * right;
+}
+long §(01_constexpr_call_value)product = multiply(3, 4);
 }
 
-// sizeof value.
-namespace sizeof_value {
-int b§(02_sizeof_value)ar = sizeof(char);
+namespace evaluated_size {
+long §(02_sizeof_value)bytes = sizeof(double);
 }
 
-// Template member value.
-namespace template_member {
-template<int a, int b> struct Add {
-  static constexpr int result = a + b;
+namespace evaluated_template_member {
+template <long Left, long Right> struct Product {
+    static constexpr long value = Left * Right;
 };
-int ba§(03_template_member_value)r = Add<1, 2>::result;
+long §(03_template_member_value)result = Product<3, 5>::value;
 }
 
-// Enumerator value.
-namespace enumerator_value {
-enum Color { RED = -123, GREEN = 5, };
-Color x = GR§(04_enumerator_value)EEN;
+namespace evaluated_enumerator {
+enum class Status { Idle = -4, Ready = 12 };
+Status current = Status::§(04_enumerator_value)Ready;
 }
 
-// Variable initialized from an enumerator: symbolic value.
-namespace enum_var_value {
-enum Color { RED = -123, GREEN = 5, };
-Color x = RED;
-Color y = §(05_enum_var_value)x;
+namespace symbolic_enum_value {
+enum class Status { Idle = -4, Ready = 12 };
+Status source = Status::Idle;
+Status copy = §(05_enum_var_value)source;
 }
 
-// Static member constant value.
-namespace static_member {
-template<int a, int b> struct Add {
-  static constexpr int result = a + b;
+namespace evaluated_static_member {
+template <long Base> struct Offset {
+    static constexpr long value = Base + 6;
 };
-int bar = Add<1, 2>::resu§(06_static_member_value)lt;
+long result = Offset<10>::val§(06_static_member_value)ue;
 }
 
-// Constexpr function with aliased return type.
-namespace aliased_return {
-using my_int = int;
-constexpr my_int answer() { return 40 + 2; }
-int x = ans§(07_constexpr_fn_value)wer();
+namespace aliased_result {
+using count_type = long;
+constexpr count_type total() {
+    return 18;
+}
+long result = to§(07_constexpr_fn_value)tal();
 }
 
-// String pointer value.
-namespace string_pointer {
-const char *ba§(08_string_pointer_value)r = "1234";
+namespace pointer_value {
+const char* §(08_string_pointer_value)message = "ready";
 }
 
-// Should not crash on dependent constructor argument.
-namespace dependent_ctor_arg {
-template <typename T>
-struct Tmpl {
-  Tmpl(int name);
+namespace dependent_constructor {
+template <typename T> struct Holder {
+    Holder(long identifier);
 };
-
-template <typename A>
-void boom(int name) {
-  new Tmpl<A>(na§(09_dependent_ctor_arg)me);
+template <typename T> void create(long identifier) {
+    new Holder<T>(iden§(09_dependent_ctor_arg)tifier);
 }
 }
 
-// Should not print inline or anon namespaces.
-namespace ns {
-  inline namespace in_ns {
-    namespace a {
-      namespace {
-        namespace b {
-          inline namespace in_ns2 {
-            class Foo {};
-          } // in_ns2
-        } // b
-      } // anon
-    } // a
-  } // in_ns
-} // ns
-void foo() {
-  ns::a::b::F§(10_skip_inline_anon_ns)oo x;
-  (void)x;
+namespace product {
+inline namespace current {
+namespace api {
+namespace {
+namespace detail {
+inline namespace latest {
+class Response {};
+}
+}
+}
+}
+}
+}
+void receive() {
+    product::api::detail::Resp§(10_skip_inline_anon_ns)onse response;
 }
 
-// auto deduced to instantiation of a template with incomplete argument.
-namespace auto_incomplete_arg {
-template <typename T> class Foo {};
-class X;
-void foo() {
-  §(11_auto_incomplete_arg)auto x = Foo<X>();
+namespace incomplete_template_argument {
+template <typename T> struct Wrapper {};
+class Forward;
+void create() {
+    §(11_auto_incomplete_arg)auto wrapper = Wrapper<Forward>{};
 }
 }

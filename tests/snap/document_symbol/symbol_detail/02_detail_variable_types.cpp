@@ -1,6 +1,8 @@
-/// # Variable and field types — the declared type in the `detail` field; lambdas render as `(lambda)`
+/// # Variable and field types
 ///
 /// - status: supported
+///
+/// The declared type in the `detail` field; lambdas render as `(lambda)`
 
 namespace detail {
 

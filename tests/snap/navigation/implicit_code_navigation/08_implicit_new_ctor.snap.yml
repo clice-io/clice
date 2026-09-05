@@ -4,11 +4,11 @@ input_file: implicit_code_navigation/08_implicit_new_ctor.cpp
 ---
 new_kw:
   definition:
-    - { file: "${WS}/implicit_code_navigation/08_implicit_new_ctor.cpp", range: "10:17-10:25" }
+    - { file: "${WS}/implicit_code_navigation/08_implicit_new_ctor.cpp", range: "12:17-12:25" }
   declaration:
-    - { file: "${WS}/implicit_code_navigation/08_implicit_new_ctor.cpp", range: "10:17-10:25" }
+    - { file: "${WS}/implicit_code_navigation/08_implicit_new_ctor.cpp", range: "12:17-12:25" }
   references:
-    - { file: "${WS}/implicit_code_navigation/08_implicit_new_ctor.cpp", range: "10:17-10:25" }
-    - { file: "${WS}/implicit_code_navigation/08_implicit_new_ctor.cpp", range: "14:14-14:17" }
+    - { file: "${WS}/implicit_code_navigation/08_implicit_new_ctor.cpp", range: "12:17-12:25" }
+    - { file: "${WS}/implicit_code_navigation/08_implicit_new_ctor.cpp", range: "16:14-16:17" }
   callHierarchy:
-    - { name: "operator new", kind: Operator, file: "${WS}/implicit_code_navigation/08_implicit_new_ctor.cpp", range: "10:17-10:25" }
+    - { name: "operator new", kind: Operator, file: "${WS}/implicit_code_navigation/08_implicit_new_ctor.cpp", range: "12:17-12:25" }

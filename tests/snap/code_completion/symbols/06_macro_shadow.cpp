@@ -1,7 +1,9 @@
-/// # Macro shadowing a declaration — a name redefined as a macro completes as the macro, not the shadowed declaration
+/// # Macro shadowing a declaration
 ///
 /// - status: supported
 /// - diagnostics: expected
+///
+/// A name redefined as a macro completes as the macro, not the shadowed declaration
 
 void GUARD(int);
 #define GUARD 1

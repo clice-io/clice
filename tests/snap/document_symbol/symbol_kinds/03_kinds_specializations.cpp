@@ -1,6 +1,8 @@
-/// # Template specializations and deduction guides — explicit and partial specializations of class and variable templates appear with their template arguments in the name; members nest under their specialization; deduction guides render their deduced signature
+/// # Template specializations and deduction guides
 ///
 /// - status: supported
+///
+/// Explicit and partial specializations of class and variable templates appear with their template arguments in the name; members nest under their specialization; deduction guides render their deduced signature
 
 namespace spec {
 

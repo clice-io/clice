@@ -1,7 +1,9 @@
-/// # Instantiated templates — instantiated bodies repeat no hints at the pattern; dependent `auto` could reveal the deduced type while exactly one instantiation exists
+/// # Instantiated templates
 ///
 /// - status: partial
 /// - issues: clangd#2275
+///
+/// Instantiated bodies repeat no hints at the pattern; dependent `auto` could reveal the deduced type while exactly one instantiation exists
 
 void take(int first, int second);
 

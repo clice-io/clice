@@ -1,4 +1,4 @@
-/// - verify: inspect
+// - verify: inspect
 
 // Seed case for the tu_index corpus: symbols and relations.
 namespace demo {

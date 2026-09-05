@@ -4,16 +4,16 @@ input_file: implicit_code_navigation/04_implicit_copy_move.cpp
 ---
 assign_eq:
   definition:
-    - { file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "14:12-14:20" }
+    - { file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "16:12-16:20" }
   declaration:
-    - { file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "14:12-14:20" }
+    - { file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "16:12-16:20" }
   references:
-    - { file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "14:12-14:20" }
-    - { file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "20:6-20:7" }
+    - { file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "16:12-16:20" }
+    - { file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "22:6-22:7" }
   callHierarchy:
-    - { name: "operator=", kind: Operator, file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "14:12-14:20" }
+    - { name: "operator=", kind: Operator, file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "16:12-16:20" }
   incomingCalls:
-    - { name: "copies", kind: Function, file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "17:5-17:11", fromRanges: ["20:4-20:9"] }
+    - { name: "copies", kind: Function, file: "${WS}/implicit_code_navigation/04_implicit_copy_move.cpp", range: "19:5-19:11", fromRanges: ["22:4-22:9"] }
 
 copy_eq: none
 

@@ -2,338 +2,346 @@
 created_at: 2026-07-28
 input_file: pass_types.cpp
 ---
-01_int_value_var: { range: "33:15-33:20" }
-### variable `int_x`  
+01_int_value_var: { range: "29:13-29:17" }
+### variable `code`  
 
 ---
 Type: `int`  
-Passed as x  
+Value = `7`  
+Passed as value  
 
 ---
 ```cpp
-// In fun
-int int_x
+// In exercise_pass_types
+int code = 7
 ```
 
-02_int_value_literal: { range: "34:15-34:18" }
+02_int_value_literal: { range: "30:13-30:16" }
 ### `literal`  
 
 ---
-Passed as x
+Passed as value
 
-03_int_ref_var: { range: "35:13-35:18" }
-### variable `int_x`  
-
----
-Type: `int`  
-Passed by reference as x  
-
----
-```cpp
-// In fun
-int int_x
-```
-
-04_int_const_ref_var: { range: "36:19-36:24" }
-### variable `int_x`  
+03_int_ref_var: { range: "31:15-31:19" }
+### variable `code`  
 
 ---
 Type: `int`  
-Passed by const reference as x  
+Value = `7`  
+Passed by reference as value  
 
 ---
 ```cpp
-// In fun
-int int_x
+// In exercise_pass_types
+int code = 7
 ```
 
-05_int_const_ref_literal: { range: "37:19-37:22" }
+04_int_const_ref_var: { range: "32:13-32:17" }
+### variable `code`  
+
+---
+Type: `int`  
+Value = `7`  
+Passed by const reference as value  
+
+---
+```cpp
+// In exercise_pass_types
+int code = 7
+```
+
+05_int_const_ref_literal: { range: "33:13-33:16" }
 ### `literal`  
 
 ---
-Passed by const reference as x
+Passed by const reference as value
 
-06_int_value_from_ref: { range: "38:15-38:22" }
-### variable `int_ref`  
-
----
-Type: `int &`  
-Passed as x  
-
----
-```cpp
-// In fun
-int &int_ref = int_x
-```
-
-07_int_const_ref_from_ref: { range: "39:19-39:26" }
-### variable `int_ref`  
+06_int_value_from_ref: { range: "34:13-34:21" }
+### variable `code_ref`  
 
 ---
 Type: `int &`  
-Passed by const reference as x  
+Passed as value  
 
 ---
 ```cpp
-// In fun
-int &int_ref = int_x
+// In exercise_pass_types
+int &code_ref = code
 ```
 
-08_int_const_ref_from_const_ref: { range: "40:19-40:32" }
-### variable `int_const_ref`  
+07_int_const_ref_from_ref: { range: "35:13-35:21" }
+### variable `code_ref`  
+
+---
+Type: `int &`  
+Passed by const reference as value  
+
+---
+```cpp
+// In exercise_pass_types
+int &code_ref = code
+```
+
+08_int_const_ref_from_const_ref: { range: "36:13-36:22" }
+### variable `code_view`  
 
 ---
 Type: `const int &`  
-Passed by const reference as x  
+Passed by const reference as value  
 
 ---
 ```cpp
-// In fun
-const int &int_const_ref = int_x
+// In exercise_pass_types
+const int &code_view = code
 ```
 
-09_base_ref: { range: "42:14-42:18" }
-### variable `base`  
+09_base_ref: { range: "38:19-38:26" }
+### variable `message`  
 
 ---
-Type: `Base`  
-Passed by reference as x  
+Type: `Message`  
+Passed by reference as value  
 
 ---
 ```cpp
-// In fun
-Base base
+// In exercise_pass_types
+Message message
 ```
 
-10_base_const_ref: { range: "43:20-43:24" }
-### variable `base`  
+10_base_const_ref: { range: "39:17-39:24" }
+### variable `message`  
 
 ---
-Type: `Base`  
-Passed by const reference as x  
+Type: `Message`  
+Passed by const reference as value  
 
 ---
 ```cpp
-// In fun
-Base base
+// In exercise_pass_types
+Message message
 ```
 
-11_base_const_ref_from_const_ref: { range: "44:20-44:34" }
-### variable `base_const_ref`  
+11_base_const_ref_from_const_ref: { range: "40:17-40:29" }
+### variable `message_view`  
 
 ---
-Type: `const Base &`  
-Passed by const reference as x  
+Type: `const Message &`  
+Passed by const reference as value  
 
 ---
 ```cpp
-// In fun
-const Base &base_const_ref = base
+// In exercise_pass_types
+const Message &message_view = message
 ```
 
-12_base_value: { range: "45:16-45:20" }
-### variable `base`  
+12_base_value: { range: "41:17-41:24" }
+### variable `message`  
 
 ---
-Type: `Base`  
-Passed as x  
+Type: `Message`  
+Passed as value  
 
 ---
 ```cpp
-// In fun
-Base base
+// In exercise_pass_types
+Message message
 ```
 
-13_base_value_from_const_ref: { range: "46:16-46:30" }
-### variable `base_const_ref`  
+13_base_value_from_const_ref: { range: "42:17-42:29" }
+### variable `message_view`  
 
 ---
-Type: `const Base &`  
-Passed as x  
+Type: `const Message &`  
+Passed as value  
 
 ---
 ```cpp
-// In fun
-const Base &base_const_ref = base
+// In exercise_pass_types
+const Message &message_view = message
 ```
 
-14_derived_to_base_ref: { range: "47:14-47:21" }
-### variable `derived`  
+14_derived_to_base_ref: { range: "43:19-43:24" }
+### variable `alert`  
 
 ---
-Type: `Derived`  
-Passed by reference as x  
+Type: `Alert`  
+Passed by reference as value  
 
 ---
 ```cpp
-// In fun
-Derived derived
+// In exercise_pass_types
+Alert alert
 ```
 
-15_derived_to_base_const_ref: { range: "48:20-48:27" }
-### variable `derived`  
+15_derived_to_base_const_ref: { range: "44:17-44:22" }
+### variable `alert`  
 
 ---
-Type: `Derived`  
-Passed by const reference as x  
+Type: `Alert`  
+Passed by const reference as value  
 
 ---
 ```cpp
-// In fun
-Derived derived
+// In exercise_pass_types
+Alert alert
 ```
 
-16_derived_to_base_value: { range: "49:16-49:23" }
-### variable `derived`  
+16_derived_to_base_value: { range: "45:17-45:22" }
+### variable `alert`  
 
 ---
-Type: `Derived`  
-Passed as x  
+Type: `Alert`  
+Passed as value  
 
 ---
 ```cpp
-// In fun
-Derived derived
+// In exercise_pass_types
+Alert alert
 ```
 
-17_ctor_base_const_ref: { range: "51:17-51:21" }
-### variable `base`  
+17_ctor_base_const_ref: { range: "47:19-47:26" }
+### variable `message`  
 
 ---
-Type: `Base`  
-Passed by const reference as x  
+Type: `Message`  
+Passed by const reference as message  
 
 ---
 ```cpp
-// In fun
-Base base
+// In exercise_pass_types
+Message message
 ```
 
-18_new_ctor_base_const_ref: { range: "52:28-52:32" }
-### variable `base`  
+18_new_ctor_base_const_ref: { range: "48:32-48:39" }
+### variable `message`  
 
 ---
-Type: `Base`  
-Passed by const reference as x  
+Type: `Message`  
+Passed by const reference as message  
 
 ---
 ```cpp
-// In fun
-Base base
+// In exercise_pass_types
+Message message
 ```
 
-19_ctor_int_ref: { range: "53:17-53:22" }
-### variable `int_x`  
+19_ctor_int_ref: { range: "49:19-49:23" }
+### variable `code`  
 
 ---
 Type: `int`  
-Passed by reference as x  
+Value = `7`  
+Passed by reference as code  
 
 ---
 ```cpp
-// In fun
-int int_x
+// In exercise_pass_types
+int code = 7
 ```
 
-20_ctor_int_value: { range: "54:24-54:29" }
-### variable `int_x`  
+20_ctor_int_value: { range: "50:26-50:30" }
+### variable `code`  
 
 ---
 Type: `int`  
-Passed as y  
+Value = `7`  
+Passed as priority  
 
 ---
 ```cpp
-// In fun
-int int_x
+// In exercise_pass_types
+int code = 7
 ```
 
-21_converted_int_var: { range: "56:17-56:22" }
-### variable `int_x`  
+21_converted_int_var: { range: "52:16-52:20" }
+### variable `code`  
 
 ---
 Type: `int`  
-Passed as x (converted to float)  
+Value = `7`  
+Passed as value (converted to double)  
 
 ---
 ```cpp
-// In fun
-int int_x
+// In exercise_pass_types
+int code = 7
 ```
 
-22_converted_int_ref: { range: "57:17-57:24" }
-### variable `int_ref`  
+22_converted_int_ref: { range: "53:16-53:24" }
+### variable `code_ref`  
 
 ---
 Type: `int &`  
-Passed as x (converted to float)  
+Passed as value (converted to double)  
 
 ---
 ```cpp
-// In fun
-int &int_ref = int_x
+// In exercise_pass_types
+int &code_ref = code
 ```
 
-23_converted_int_const_ref: { range: "58:17-58:30" }
-### variable `int_const_ref`  
+23_converted_int_const_ref: { range: "54:16-54:25" }
+### variable `code_view`  
 
 ---
 Type: `const int &`  
-Passed as x (converted to float)  
+Passed as value (converted to double)  
 
 ---
 ```cpp
-// In fun
-const int &int_const_ref = int_x
+// In exercise_pass_types
+const int &code_view = code
 ```
 
-24_float_literal: { range: "59:17-59:23" }
+24_float_literal: { range: "55:16-55:21" }
 ### `literal`  
 
 ---
-Passed as x
+Passed as value
 
-25_converted_int_literal: { range: "60:17-60:20" }
+25_converted_int_literal: { range: "56:16-56:19" }
 ### `literal`  
 
 ---
-Passed as x (converted to float)
+Passed as value (converted to double)
 
-26_converted_custom_from_int: { range: "61:18-61:23" }
-### variable `int_x`  
+26_converted_custom_from_int: { range: "57:18-57:22" }
+### variable `code`  
 
 ---
 Type: `int`  
-Passed by reference as x (converted to CustomClass)  
+Value = `7`  
+Passed by reference as value (converted to Envelope)  
 
 ---
 ```cpp
-// In fun
-int int_x
+// In exercise_pass_types
+int code = 7
 ```
 
-27_converted_custom_from_float: { range: "62:18-62:25" }
-### variable `float_x`  
+27_converted_custom_from_float: { range: "58:18-58:24" }
+### variable `weight`  
 
 ---
-Type: `float`  
-Passed as x (converted to CustomClass)  
+Type: `double`  
+Value = `2.500000e+00`  
+Passed as value (converted to Envelope)  
 
 ---
 ```cpp
-// In fun
-float float_x
+// In exercise_pass_types
+double weight = 2.5
 ```
 
-28_converted_custom_from_base: { range: "63:18-63:22" }
-### variable `base`  
+28_converted_custom_from_base: { range: "59:18-59:25" }
+### variable `message`  
 
 ---
-Type: `Base`  
-Passed by const reference as x (converted to CustomClass)  
+Type: `Message`  
+Passed by const reference as value (converted to Envelope)  
 
 ---
 ```cpp
-// In fun
-Base base
+// In exercise_pass_types
+Message message
 ```

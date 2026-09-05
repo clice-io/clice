@@ -1,6 +1,8 @@
-/// # Concept constraints — the constraint behind a parameter or `auto` placeholder
+/// # Concept constraints
 ///
 /// - status: partial
+///
+/// The constraint behind a parameter or `auto` placeholder
 ///
 /// The constrained-parameter and concept-reference cards carry the
 /// constraint, but hovering the placeholder of a constrained `Addable auto`

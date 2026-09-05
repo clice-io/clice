@@ -1,6 +1,8 @@
-/// # `override` / `final` — navigate to the overridden base method
+/// # `override` / `final`
 ///
 /// - status: unsupported
+///
+/// Navigate to the overridden base method
 ///
 /// Go-to-definition on the `override` or `final` specifier should reach the
 /// base class virtual method it overrides; today it returns nothing.

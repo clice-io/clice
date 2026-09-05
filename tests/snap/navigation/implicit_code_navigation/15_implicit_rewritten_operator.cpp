@@ -1,7 +1,9 @@
-/// # C++20 rewritten operators — navigate to the operator the rewrite uses
+/// # C++20 rewritten operators
 ///
 /// - status: supported
 /// - verify: server
+///
+/// Navigate to the operator the rewrite uses
 ///
 /// For a comparison synthesized by the C++20 rewrite rules, go-to-definition
 /// on the written operator reaches the operator that actually implements it:

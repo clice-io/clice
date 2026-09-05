@@ -1,6 +1,8 @@
-/// # Predefined identifiers — `__func__` hover shows the current function name
+/// # Predefined identifiers
 ///
 /// - status: supported
+///
+/// `__func__` hover shows the current function name
 ///
 /// The value resolves in a concrete function; inside a template only the
 /// approximate type is known.

@@ -1,7 +1,9 @@
-/// # Include directives — `#include` entries in the outline
+/// # Include directives
 ///
 /// - status: unsupported
 /// - issues: clangd#2226
+///
+/// `#include` entries in the outline
 
 #include "config.h"
 

@@ -1,34 +1,34 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
+namespace constrained_object {
+template <typename T>
+concept Numeric = true;
 
-// Concept constraining a variable type.
-namespace constrained_var {
-template <class T> concept F = true;
-§(01_concept_on_var)F auto x = 1;
+§(01_concept_on_var)Numeric auto total = 7;
 }
 
-// Constrained template parameter.
-namespace constrained_tparam {
-template<class T> concept Fooable = true;
-template<Foo§(02_concept_on_tparam)able T>
-void bar(T t) {}
+namespace constrained_parameter {
+template <typename T>
+concept Printable = true;
+
+template <Print§(02_concept_on_tparam)able T> void emit(T value) {}
 }
 
-// The constrained template parameter itself.
-namespace constrained_tparam_decl {
-template<class T> concept Fooable = true;
-template<Fooable T§(03_constrained_tparam)T>
-void bar(TT t) {}
+namespace parameter_declaration {
+template <typename T>
+concept Serializable = true;
+
+template <Serializable Pa§(03_constrained_tparam)yload> void send(Payload value) {}
 }
 
-// Constrained auto parameter.
-namespace constrained_auto_param {
-template<class T> concept Fooable = true;
-void bar(Foo§(04_concept_on_auto_param)able auto t) {}
+namespace abbreviated_parameter {
+template <typename T>
+concept Hashable = true;
+
+void store(Hash§(04_concept_on_auto_param)able auto value) {}
 }
 
-// Concept reference.
-namespace concept_reference {
-template<class T> concept Fooable = true;
-auto X = Fooa§(05_concept_reference)ble<int>;
+namespace concept_expression {
+template <typename T>
+concept Ordered = true;
+
+constexpr bool ordered_int = Orde§(05_concept_reference)red<int>;
 }

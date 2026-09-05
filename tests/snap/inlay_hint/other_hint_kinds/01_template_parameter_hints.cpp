@@ -1,7 +1,9 @@
-/// # Template parameter hints — deduced and explicit template arguments at call sites
+/// # Template parameter hints
 ///
 /// - status: unsupported
 /// - issues: clangd#2583
+///
+/// Deduced and explicit template arguments at call sites
 
 template <typename T, typename U>
 T convert(U val);

@@ -1,212 +1,167 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-namespace std
-{
-  template<class _E>
-  class initializer_list { const _E *a, *b; };
-}
-
-// auto on structured bindings.
-namespace structured_bindings {
-void foo() {
-  struct S { int x; float y; };
-  au§(01_structured_bindings)to [x, y] = S();
-}
-}
-
-// Undeduced auto.
-namespace undeduced {
-template<typename T>
-void foo() {
-  au§(02_undeduced_auto)to x = T{};
-}
-}
-
-// Constrained auto.
-namespace constrained {
-template <class T> concept F = true;
-F au§(03_constrained_auto)to x = 1;
-}
-
-// auto on lambda.
-namespace on_lambda {
-void foo() {
-  au§(04_auto_lambda)to lamb = []{};
-}
-}
-
-// auto on template instantiation.
-namespace on_instantiation {
-template<typename T> class Foo{};
-void foo() {
-  au§(05_auto_instantiation)to x = Foo<int>();
-}
-}
-
-// auto on specialized template.
-namespace on_specialization {
-template<typename T> class Foo{};
-template<> class Foo<int>{};
-void foo() {
-  au§(06_auto_specialized)to x = Foo<int>();
-}
-}
-
-// Simple initialization with auto.
-namespace simple_init {
-void foo() {
-  §(07_simple_auto)auto i = 1;
-}
-}
-
-// Simple initialization with const auto.
-namespace const_init {
-void foo() {
-  const §(08_const_auto)auto i = 1;
-}
-}
-
-// Simple initialization with const auto&.
-namespace const_ref_init {
-void foo() {
-  const §(09_const_auto_ref)auto& i = 1;
-}
-}
-
-// Simple initialization with auto&.
-namespace ref_init {
-void foo() {
-  int x;
-  §(10_auto_ref)auto& i = x;
-}
-}
-
-// Simple initialization with auto*.
-namespace ptr_init {
-void foo() {
-  int a = 1;
-  §(11_auto_ptr)auto* i = &a;
-}
-}
-
-// Simple initialization with auto from pointer.
-namespace from_pointer {
-void foo() {
-  int a = 1;
-  §(12_auto_from_pointer)auto i = &a;
-}
-}
-
-// Auto with initializer list.
-namespace init_list {
-void foo() {
-  §(13_auto_init_list)auto i = {1,2};
-}
-}
-
-// User defined conversion to auto.
-namespace conversion {
-struct Bar {
-  operator §(14_auto_conversion)auto() const { return 10; }
+namespace std {
+template <typename T> class initializer_list {
+    const T* begin_value;
+    const T* end_value;
 };
 }
 
-// Simple trailing return type.
-namespace trailing_return {
-§(15_auto_trailing_return)auto main() -> int {
-  return 0;
+namespace binding_placeholder {
+struct Dimensions {
+    long width;
+    double ratio;
+};
+void inspect() {
+    au§(01_structured_bindings)to [width, ratio] = Dimensions{};
 }
 }
 
-namespace trailing_decltype_return {
-// auto function return with trailing type
-struct Bar {};
-§(16_auto_trailing_decltype)auto test() -> decltype(Bar()) {
-  return Bar();
+namespace dependent_placeholder {
+template <typename T> void inspect() {
+    au§(02_undeduced_auto)to value = T{};
 }
 }
 
-namespace fn_return {
-// auto in function return
-struct Bar {};
-§(17_auto_fn_return)auto test() {
-  return Bar();
+namespace concept_placeholder {
+template <typename T>
+concept Scalar = true;
+Scalar au§(03_constrained_auto)to count = 2L;
+}
+
+namespace closure_placeholder {
+void inspect() {
+    au§(04_auto_lambda)to callback = [](long value) { return value + 1; };
 }
 }
 
-namespace ref_fn_return {
-// auto& in function return
-struct Bar {};
-§(18_auto_ref_fn_return)auto& test() {
-  static Bar x;
-  return x;
+namespace instance_placeholder {
+template <typename T> struct Container {};
+void inspect() {
+    au§(05_auto_instantiation)to container = Container<long>{};
 }
 }
 
-namespace ptr_fn_return {
-// auto* in function return
-struct Bar {};
-§(19_auto_ptr_fn_return)auto* test() {
-  Bar* bar;
-  return bar;
+namespace specialized_placeholder {
+template <typename T> struct Container {};
+template <> struct Container<long> {};
+void inspect() {
+    au§(06_auto_specialized)to container = Container<long>{};
 }
 }
 
-namespace const_ref_fn_return {
-// const auto& in function return
-struct Bar {};
-const §(20_const_auto_ref_fn_return)auto& test() {
-  static Bar x;
-  return x;
+namespace scalar_placeholder {
+§(07_simple_auto)auto value = 21L;
+}
+
+namespace const_placeholder {
+const §(08_const_auto)auto value = 22L;
+}
+
+namespace const_reference_placeholder {
+const §(09_const_auto_ref)auto& value = 23L;
+}
+
+namespace reference_placeholder {
+long value = 24;
+§(10_auto_ref)auto& reference = value;
+}
+
+namespace pointer_placeholder {
+long value = 25;
+§(11_auto_ptr)auto* pointer = &value;
+}
+
+namespace pointer_value_placeholder {
+long value = 26;
+§(12_auto_from_pointer)auto pointer = &value;
+}
+
+namespace list_placeholder {
+§(13_auto_init_list)auto values = {1L, 2L, 3L};
+}
+
+namespace conversion_placeholder {
+struct Quantity {
+    operator §(14_auto_conversion)auto() const { return 27L; }
+};
+}
+
+namespace trailing_result {
+§(15_auto_trailing_return)auto compute() -> long {
+    return 28;
 }
 }
 
-// More complicated structured types.
-namespace fn_pointer {
-int bar();
-§(21_auto_fn_pointer)auto (*foo)() = bar;
-}
-
-// auto on alias.
-namespace alias_int {
-typedef int int_type;
-§(22_auto_alias_int)auto x = int_type();
-}
-
-namespace alias_class {
-// auto on alias
-struct cls {};
-typedef cls cls_type;
-§(23_auto_alias_class)auto y = cls_type();
-}
-
-namespace alias_template_inst {
-// auto on alias
-template <class>
-struct templ {};
-§(24_auto_alias_template)auto z = templ<int>();
-}
-
-// Undeduced auto declaration.
-namespace undeduced_decl {
-template<typename T>
-void foo() {
-  §(25_undeduced_auto_decl)auto x = T();
+namespace trailing_expression_result {
+struct Token {};
+§(16_auto_trailing_decltype)auto create() -> decltype(Token{}) {
+    return {};
 }
 }
 
-// Undeduced auto return type.
-namespace undeduced_return {
-template<typename T>
-§(26_undeduced_auto_return)auto foo() {
-  return T();
+namespace deduced_result {
+struct Token {};
+§(17_auto_fn_return)auto create() {
+    return Token{};
 }
 }
 
-// Template auto parameter.
-namespace template_auto_param {
-template<a§(27_template_auto_param)uto T>
-  void func() {
+namespace reference_result {
+struct Token {};
+§(18_auto_ref_fn_return)auto& current() {
+    static Token token;
+    return token;
 }
+}
+
+namespace pointer_result {
+struct Token {};
+§(19_auto_ptr_fn_return)auto* current() {
+    static Token token;
+    return &token;
+}
+}
+
+namespace const_reference_result {
+struct Token {};
+const §(20_const_auto_ref_fn_return)auto& current() {
+    static Token token;
+    return token;
+}
+}
+
+namespace function_pointer_placeholder {
+long compute();
+§(21_auto_fn_pointer)auto (*callback)() = compute;
+}
+
+namespace scalar_alias_placeholder {
+using distance_type = long;
+§(22_auto_alias_int)auto distance = distance_type{};
+}
+
+namespace record_alias_placeholder {
+struct State {};
+using state_type = State;
+§(23_auto_alias_class)auto state = state_type{};
+}
+
+namespace template_instance_placeholder {
+template <typename T> struct Wrapper {};
+§(24_auto_alias_template)auto wrapper = Wrapper<long>{};
+}
+
+namespace dependent_declaration_placeholder {
+template <typename T> void inspect() {
+    §(25_undeduced_auto_decl)auto value = T{};
+}
+}
+
+namespace dependent_result_placeholder {
+template <typename T> §(26_undeduced_auto_return)auto create() {
+    return T{};
+}
+}
+
+namespace non_type_placeholder {
+template <a§(27_template_auto_param)uto Value> void inspect() {}
 }

@@ -1,6 +1,8 @@
-/// # Type aliases — `typedef`, `using` aliases and alias templates appear in the outline with a `type alias` detail
+/// # Type aliases
 ///
 /// - status: supported
+///
+/// `typedef`, `using` aliases and alias templates appear in the outline with a `type alias` detail
 
 namespace aliases {
 

@@ -4,43 +4,43 @@ input_file: go_to_declaration/02_decl_function_prototype.cpp
 ---
 decl:
   definition:
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "13:13-13:17" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:13-15:17" }
   declaration:
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "13:13-13:17" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:13-15:17" }
   references:
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "10:9-10:13" }
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "13:13-13:17" }
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "16:11-16:15" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "12:9-12:13" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:13-15:17" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "18:11-18:15" }
   callHierarchy:
-    - { name: "draw", kind: Method, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "13:13-13:17" }
+    - { name: "draw", kind: Method, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:13-15:17" }
   incomingCalls:
-    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:5-15:11", fromRanges: ["16:4-16:17"] }
+    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "17:5-17:11", fromRanges: ["18:4-18:17"] }
 
 def:
   definition:
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "10:9-10:13" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "12:9-12:13" }
   declaration:
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "10:9-10:13" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "12:9-12:13" }
   references:
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "10:9-10:13" }
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "13:13-13:17" }
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "16:11-16:15" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "12:9-12:13" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:13-15:17" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "18:11-18:15" }
   callHierarchy:
-    - { name: "draw", kind: Method, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "13:13-13:17" }
+    - { name: "draw", kind: Method, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:13-15:17" }
   incomingCalls:
-    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:5-15:11", fromRanges: ["16:4-16:17"] }
+    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "17:5-17:11", fromRanges: ["18:4-18:17"] }
 
 use:
   definition:
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "13:13-13:17" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:13-15:17" }
   declaration:
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "10:9-10:13" }
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "13:13-13:17" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "12:9-12:13" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:13-15:17" }
   references:
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "10:9-10:13" }
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "13:13-13:17" }
-    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "16:11-16:15" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "12:9-12:13" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:13-15:17" }
+    - { file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "18:11-18:15" }
   callHierarchy:
-    - { name: "draw", kind: Method, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "13:13-13:17" }
+    - { name: "draw", kind: Method, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:13-15:17" }
   incomingCalls:
-    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "15:5-15:11", fromRanges: ["16:4-16:17"] }
+    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/02_decl_function_prototype.cpp", range: "17:5-17:11", fromRanges: ["18:4-18:17"] }

@@ -1,6 +1,8 @@
-/// # Bracket token types — matching `()`, `[]`, `{}`, `<>` pairs as distinct kinds
+/// # Bracket token types
 ///
 /// - status: unsupported
+///
+/// Matching `()`, `[]`, `{}`, `<>` pairs as distinct kinds
 
 template <typename T>
 struct Grid {

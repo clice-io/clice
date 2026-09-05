@@ -1,64 +1,61 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-// Typedef resolving through a chain of template aliases.
-namespace typedef_chain {
-template <bool X, typename T, typename F>
-struct cond { using type = T; };
-template <typename T, typename F>
-struct cond<false, T, F> { using type = F; };
-
-template <bool X, typename T, typename F>
-using type = typename cond<X, T, F>::type;
-
-void foo() {
-  using f§(02_typedef_chain)oo = type<true, int, double>;
-}
-}
-
-struct FwdFoo;
-int fwd_bar;
-auto fwd_baz = (Fwd§(01_forward_struct_value)Foo*)&fwd_bar;
-
-#define A(x) x, x, x, x
-#define B(x) A(A(A(A(x))))
-int a§(03_big_initializer)rr[] = {B(0)};
-
-// Labels.
-namespace labels {
-inline int f(int x) {
-  if (x) goto §(04_goto_label)done;
-  x += 1;
-§(05_label_def)done:
-  return x;
-}
-}
-
-// Class-provided allocation functions.
-namespace class_new_delete {
-struct Pool {
-  static void *operator new(unsigned long n);
-  static void operator delete(void *p);
+namespace alias_selection {
+template <bool Select, typename Left, typename Right> struct choose {
+    using type = Left;
 };
-Pool *p = §(06_operator_new)new Pool;
-inline void f() { §(07_operator_delete)delete p; }
+template <typename Left, typename Right> struct choose<false, Left, Right> {
+    using type = Right;
+};
+template <bool Select, typename Left, typename Right>
+using selected = typename choose<Select, Left, Right>::type;
+
+using integ§(02_typedef_chain)er = selected<true, long, double>;
 }
 
-// Globally qualified allocation and construction punctuation.
-namespace global_alloc {
-struct Pool {
-  static void *operator new(unsigned long n);
-  Pool(int);
-};
-Pool *p = ::§(08_global_new)new Pool(0);
-Pool value§(09_ctor_paren)(1);
+struct Incomplete;
+int storage;
+auto incomplete_pointer = (Incom§(01_forward_struct_value)plete*)&storage;
+
+#define DUPLICATE_FOUR(x) x, x, x, x
+#define DUPLICATE_256(x) DUPLICATE_FOUR(DUPLICATE_FOUR(DUPLICATE_FOUR(DUPLICATE_FOUR(x))))
+int hu§(03_big_initializer)ge[] = {DUPLICATE_256(1)};
+
+namespace jump_target {
+int adjust(int value) {
+    if (value < 0) {
+        goto §(04_goto_label)finish;
+    }
+    value *= 2;
+§(05_label_def)finish:
+    return value;
+}
 }
 
-// Overloaded call and subscript punctuation.
-namespace op_punct {
-struct F {
-  int operator()(int);
-  int operator[](int);
+namespace custom_allocation {
+struct ArenaObject {
+    static void* operator new(unsigned long count);
+    static void operator delete(void* memory);
 };
-int u(F f) { return f§(10_op_call)(1) + f§(11_op_subscript)[2]; }
+ArenaObject* object = §(06_operator_new)new ArenaObject;
+void release() {
+    §(07_operator_delete)delete object;
+}
+}
+
+namespace qualified_allocation {
+struct Record {
+    static void* operator new(unsigned long count);
+    Record(long);
+};
+Record* record = ::§(08_global_new)new Record(4);
+Record direct§(09_ctor_paren)(5);
+}
+
+namespace overloaded_punctuation {
+struct Table {
+    int operator()(int row);
+    int operator[](int row);
+};
+int read(Table table) {
+    return table§(10_op_call)(3) + table§(11_op_subscript)[4];
+}
 }

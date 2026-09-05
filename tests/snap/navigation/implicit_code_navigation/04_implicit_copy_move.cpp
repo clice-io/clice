@@ -1,7 +1,9 @@
-/// # Copy/move construction and assignment — to the constructor or assignment operator
+/// # Copy/move construction and assignment
 ///
 /// - status: partial
 /// - verify: server
+///
+/// To the constructor or assignment operator
 ///
 /// Go-to-definition on the `=` of an assignment reaches the assignment
 /// operator. The `=` that introduces a copy- or move-initialization

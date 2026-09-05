@@ -1,6 +1,8 @@
-/// # Range-based for — the loop variable at definition and use
+/// # Range-based for
 ///
 /// - status: supported
+///
+/// The loop variable at definition and use
 
 struct List {
     int* begin();

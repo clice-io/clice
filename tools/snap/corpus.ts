@@ -135,14 +135,6 @@ export function headingLevel(text: string): number {
 
 export function scanFixtureHeader(content: string): FixtureHeader {
     const all = splitLines(content);
-    let prologue = 0;
-    while (prologue < all.length) {
-        const line = (all[prologue] ?? "").trim();
-        if (line !== "" && !(line.startsWith("//") && !line.startsWith("///"))) {
-            break;
-        }
-        prologue += 1;
-    }
     const header: FixtureHeader = {
         lines: all,
         headerStart: 0,
@@ -156,6 +148,44 @@ export function scanFixtureHeader(content: string): FixtureHeader {
         bodyStart: 0,
     };
 
+    const firstPlain = (all[0] ?? "").trimStart();
+    if (firstPlain.startsWith("//") && !firstPlain.startsWith("///")) {
+        const firstText = firstPlain.slice(2).trimStart();
+        if (ENTRY_RE.test(firstText)) {
+            let edge = 0;
+            while (edge < all.length) {
+                const raw = (all[edge] ?? "").trimStart();
+                if (!raw.startsWith("//") || raw.startsWith("///")) {
+                    break;
+                }
+                const text = raw.slice(2).trimStart();
+                if (text === "") {
+                    break;
+                }
+                const match = META_RE.exec(text);
+                if (match) {
+                    header.meta.push({
+                        key: match[1] ?? "",
+                        value: (match[2] ?? "").trim(),
+                    });
+                } else {
+                    header.malformed.push(text);
+                }
+                edge += 1;
+            }
+            header.bodyStart = edge;
+            return header;
+        }
+    }
+
+    let prologue = 0;
+    while (prologue < all.length) {
+        const line = (all[prologue] ?? "").trim();
+        if (line !== "" && !(line.startsWith("//") && !line.startsWith("///"))) {
+            break;
+        }
+        prologue += 1;
+    }
     let i = prologue;
     const comment = (): string | null => {
         const raw = all[i];

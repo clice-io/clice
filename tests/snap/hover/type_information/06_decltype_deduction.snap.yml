@@ -2,67 +2,67 @@
 created_at: 2026-08-23
 input_file: type_information/06_decltype_deduction.cpp
 ---
-01_value: { range: "18:2-18:10" }
+01_value: { range: "16:4-16:12" }
 ### type `decltype`  
 
 ---
 ```cpp
-int
+long
 ```
 
-02_const: { range: "19:2-19:10" }
+02_const: { range: "17:4-17:12" }
 ### type `decltype`  
 
 ---
 ```cpp
-const int
+const long
 ```
 
-03_ref: { range: "20:2-20:10" }
+03_ref: { range: "18:4-18:12" }
 ### type `decltype`  
 
 ---
 ```cpp
-int &
+long &
 ```
 
-04_of_lvalue: { range: "21:2-21:10" }
+04_of_lvalue: { range: "19:4-19:12" }
 ### type `decltype`  
 
 ---
 ```cpp
-int
+long
 ```
 
-05_of_paren: { range: "22:2-22:10" }
+05_of_paren: { range: "20:4-20:12" }
 ### type `decltype`  
 
 ---
 ```cpp
-int &
+long &
 ```
 
-06_of_rvalue: { range: "23:2-23:10" }
+06_of_rvalue: { range: "21:4-21:12" }
 ### type `decltype`  
 
 ---
 ```cpp
-int &&
+long &&
 ```
 
-07_var_type: { range: "26:15-26:21" }
-### variable `mirror`  
+07_var_type: { range: "24:17-24:21" }
+### variable `copy`  
 
 ---
-Type: `int`  
+Type: `long`  
 
 ---
 ```cpp
-// In namespace decltype_deduction
-decltype(base) mirror = base
+// In namespace declared_types
+decltype(source) copy = source
 ```
 
-08_undeduced: { range: "28:22-28:30" }
+08_undeduced: { range: "26:22-26:30" }
 ### type `decltype`  
 
 ---
@@ -70,7 +70,7 @@ decltype(base) mirror = base
 /* not deduced */
 ```
 
-09_dependent: { range: "31:15-31:23" }
+09_dependent: { range: "31:17-31:25" }
 ### type `decltype`  
 
 ---

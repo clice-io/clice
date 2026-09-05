@@ -3,4 +3,4 @@ created_at: 2026-08-02
 input_file: functions_snippets/06_default_argument.cpp
 ---
 pos:
-- { label: "configure", kind: Function, detail: "(int timeout)", description: "int", edit: "11:8-11:13" }
+- { label: "configure", kind: Function, detail: "(int timeout)", description: "int", edit: "13:8-13:13" }

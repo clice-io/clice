@@ -1,24 +1,25 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-/// # Constant evaluation — constexpr, enumerators, sizeof
+/// # Constant evaluation
 ///
 /// - status: supported
+///
+/// Constexpr, enumerators, sizeof
 ///
 /// When an initializer is a constant expression, the card evaluates it and
 /// shows the resulting value.
 
-namespace constant_value {
+namespace evaluated_context {
+constexpr long cube(long value) {
+    return value * value * value;
+}
+long §(01_constexpr_call)from_call = cube(3);
 
-constexpr int square(int n) { return n * n; }
-int §(01_constexpr_call)from_call = square(5);
+long §(02_sizeof)from_size = sizeof(double);
 
-int §(02_sizeof)from_sizeof = sizeof(int);
+enum class State { Offline = -2, Online = 6 };
+State selected = State::§(03_enumerator)Online;
 
-enum Color { Red = -1, Green = 5 };
-Color picked = §(03_enumerator)Green;
-
-template <int A, int B> struct Sum { static constexpr int value = A + B; };
-int §(04_static_member)from_member = Sum<3, 4>::value;
-
+template <long Left, long Right> struct Product {
+    static constexpr long value = Left * Right;
+};
+long §(04_static_member)from_member = Product<4, 5>::value;
 }

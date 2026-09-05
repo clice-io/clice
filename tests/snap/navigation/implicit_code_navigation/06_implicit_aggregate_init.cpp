@@ -1,7 +1,9 @@
-/// # Aggregate initialization — navigate to the struct definition
+/// # Aggregate initialization
 ///
 /// - status: supported
 /// - verify: server
+///
+/// Navigate to the struct definition
 ///
 /// An aggregate has no constructor, so go-to-definition on its initializer
 /// brace reaches the aggregate's definition.

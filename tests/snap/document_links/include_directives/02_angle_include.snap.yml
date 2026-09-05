@@ -2,4 +2,4 @@
 created_at: 2026-08-23
 input_file: include_directives/02_angle_include.cpp
 ---
-- { range: "4:9-4:21", target: "${WS}/header_a.h" }
+- { range: "6:9-6:21", target: "${WS}/header_a.h" }

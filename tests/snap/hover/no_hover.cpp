@@ -1,30 +1,22 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-// Every point in this file is expected to produce NO hover.
+// Every marked position is expected to produce no hover.
 
-§(01_builtin_type)int nh_func1() {}
+§(01_builtin_type)int empty_result() {}
 
-void nh_func2() {§(02_empty_braces)}
+void empty_body() {§(02_empty_braces)}
 
-// FIXME: "decltype(auto)" should be a single hover
-decltype(au§(03_decltype_auto_inner)to) nh_x1 = 0;
+decltype(au§(03_decltype_auto_inner)to) inferred = 1;
 
-// FIXME: not supported yet
-// Lambda auto parameter
-auto nh_lamb = [](a§(04_lambda_auto_param)uto){};
+auto generic = [](a§(04_lambda_auto_param)uto value) {};
 
-// non-named decls don't get hover. Don't crash!
-§(05_static_assert)static_assert(1, "");
+§(05_static_assert)static_assert(true, "valid");
 
-// non-evaluatable expr
-template <typename T> void nh_func3() {
-  (void)size§(06_dependent_sizeof)of(T);
+template <typename T> void dependent_expression() {
+    (void)size§(06_dependent_sizeof)of(T);
 }
 
-// literals
-auto nh_a = t§(07_bool_literal)rue;
-auto nh_b = §(08_compound_literal)(int){42};
-auto nh_c = §(09_float_literal)42.;
-auto nh_d = §(10_imaginary_literal)42.0i;
-auto nh_e = §(11_int_literal)42;
-auto nh_f = §(12_nullptr_literal)nullptr;
+auto truth = t§(07_bool_literal)rue;
+auto compound = §(08_compound_literal)(long){7};
+auto decimal = §(09_float_literal)3.5;
+auto imaginary = §(10_imaginary_literal)6.0i;
+auto integer = §(11_int_literal)99;
+auto pointer = §(12_nullptr_literal)nullptr;

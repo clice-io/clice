@@ -4,15 +4,15 @@ input_file: implicit_code_navigation/05_implicit_ctad.cpp
 ---
 ctad_paren:
   definition:
-    - { file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "11:4-11:7" }
+    - { file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "13:4-13:7" }
   declaration:
-    - { file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "11:4-11:7" }
+    - { file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "13:4-13:7" }
   typeDefinition:
-    - { file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "10:7-10:10" }
+    - { file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "12:7-12:10" }
   references:
-    - { file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "11:4-11:7" }
-    - { file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "19:9-19:10" }
+    - { file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "13:4-13:7" }
+    - { file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "21:9-21:10" }
   callHierarchy:
-    - { name: "Box", kind: Method, file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "11:4-11:7" }
+    - { name: "Box", kind: Method, file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "13:4-13:7" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "18:5-18:8", fromRanges: ["19:8-19:12"] }
+    - { name: "use", kind: Function, file: "${WS}/implicit_code_navigation/05_implicit_ctad.cpp", range: "20:5-20:8", fromRanges: ["21:8-21:12"] }

@@ -1,6 +1,8 @@
-/// # Call with default arguments — hovering a call that omits defaults does not crash
+/// # Call with default arguments
 ///
 /// - status: supported
+///
+/// Hovering a call that omits defaults does not crash
 ///
 /// clangd crashes on this (clangd#551); clice renders the callee signature
 /// with its default arguments.

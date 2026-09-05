@@ -1,6 +1,8 @@
-/// # Unexpanded packs — a written pack expansion breaks the 1:1 argument mapping and stops hinting
+/// # Unexpanded packs
 ///
 /// - status: supported
+///
+/// A written pack expansion breaks the 1:1 argument mapping and stops hinting
 
 void plot(int x, int y, int z);
 

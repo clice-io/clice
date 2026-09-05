@@ -1,7 +1,9 @@
-/// # Names spelled in macro arguments — the selection range points at the name written in the macro argument; names spelled in the macro body fall back to the invocation site
+/// # Names spelled in macro arguments
 ///
 /// - status: supported
 /// - issues: clangd#1941
+///
+/// The selection range points at the name written in the macro argument; names spelled in the macro body fall back to the invocation site
 
 // The assertion holds the directives out of the preamble region, whose
 // live record the server path does not yet see.

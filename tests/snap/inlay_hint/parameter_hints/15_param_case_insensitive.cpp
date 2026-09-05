@@ -1,7 +1,9 @@
-/// # Sloppy name matching — `aParam` does not yet suppress an argument spelled `param`
+/// # Sloppy name matching
 ///
 /// - status: partial
 /// - issues: clangd#2248
+///
+/// `aParam` does not yet suppress an argument spelled `param`
 
 void draw(int aParam);
 

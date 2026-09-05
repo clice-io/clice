@@ -1,7 +1,9 @@
-/// # Non-virtual function — declaration to out-of-line definition
+/// # Non-virtual function
 ///
 /// - status: unsupported
 /// - issues: clangd#854
+///
+/// Declaration to out-of-line definition
 ///
 /// Go-to-implementation on a non-virtual function declaration should reach
 /// its out-of-line definition, behaving as a superset of go-to-definition;

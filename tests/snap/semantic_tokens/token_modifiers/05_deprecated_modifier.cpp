@@ -1,6 +1,8 @@
-/// # Deprecated — `[[deprecated]]` declarations and their uses
+/// # Deprecated
 ///
 /// - status: supported
+///
+/// `[[deprecated]]` declarations and their uses
 
 [[deprecated("use next_api")]] void §old_api();
 void next_api();

@@ -1,6 +1,8 @@
-/// # Include region folding — consecutive `#include` directives
+/// # Include region folding
 ///
 /// - status: unsupported
+///
+/// Consecutive `#include` directives
 
 #include <vector>       // ┐
 #include <string>       // │ foldable region

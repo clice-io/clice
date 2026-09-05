@@ -1,6 +1,8 @@
-/// # Out-of-line member definitions — qualified names keep method kinds and modifiers
+/// # Out-of-line member definitions
 ///
 /// - status: supported
+///
+/// Qualified names keep method kinds and modifiers
 
 struct Gauge {
     int read() const;

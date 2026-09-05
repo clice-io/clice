@@ -2,98 +2,98 @@
 created_at: 2026-07-28
 input_file: fields.cpp
 ---
-01_field: { range: "8:12-8:13" }
-### field `x`  
+01_field: { range: "6:17-6:20" }
+### field `row`  
 
 ---
 Type: `int`  
 
 ---
 ```cpp
-// In Foo
-public: int x
+// In Point
+public: int row
 ```
 
-02_field_init: { range: "17:12-17:13" }
-### field `x`  
+02_field_init: { range: "16:19-16:24" }
+### field `value`  
 
 ---
 Type: `int`  
 
 ---
 ```cpp
-// In Foo
-public: int x = 5
+// In Counter
+public: int value = 12
 ```
 
-03_static_field: { range: "25:13-25:14" }
-### variable `x`  
+03_static_field: { range: "25:19-25:26" }
+### variable `maximum`  
 
 ---
 Type: `int`  
 
 ---
 ```cpp
-// In Foo
-public: static int x
+// In Limits
+public: static int maximum
 ```
 
-04_member_initializer: { range: "33:10-33:11" }
-### field `x`  
+04_member_initializer: { range: "32:15-32:21" }
+### field `height`  
 
 ---
 Type: `int`  
 
 ---
 ```cpp
-// In Foo
-public: int x
+// In Window
+public: int height
 ```
 
-05_gnu_designator: { range: "41:14-41:15" }
-### field `x`  
+05_gnu_designator: { range: "40:21-40:27" }
+### field `column`  
 
 ---
 Type: `int`  
 
 ---
 ```cpp
-// In Foo
-public: int x
+// In Coordinates
+public: int column
 ```
 
-06_field_designator: { range: "49:15-49:16" }
-### field `x`  
+06_field_designator: { range: "48:22-48:28" }
+### field `column`  
 
 ---
 Type: `int`  
 
 ---
 ```cpp
-// In Foo
-public: int x
+// In Coordinates
+public: int column
 ```
 
-07_method_call: { range: "58:6-58:7" }
-### method `x`  
+07_method_call: { range: "56:17-56:21" }
+### method `size`  
 
 ---
 → `int`  
 
 ---
 ```cpp
-// In Foo
-public: int x()
+// In Queue
+public: int size()
 ```
 
-08_static_method_call: { range: "66:7-66:8" }
-### method `x`  
+08_static_method_call: { range: "65:18-65:21" }
+### method `now`  
 
 ---
 → `int`  
 
 ---
 ```cpp
-// In Foo
-public: static int x()
+// In Clock
+public: static int now()
 ```

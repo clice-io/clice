@@ -1,7 +1,9 @@
-/// # Lambdas — variables, deduced return types, and init-captures all hint
+/// # Lambdas
 ///
 /// - status: supported
 /// - issues: clangd#1163
+///
+/// variables, deduced return types, and init-captures all hint
 
 int compute();
 

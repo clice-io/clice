@@ -1,7 +1,9 @@
-/// # Explicitly spelled initializers — casts and functional casts still hint redundantly
+/// # Explicitly spelled initializers
 ///
 /// - status: partial
 /// - issues: clangd#1749
+///
+/// Casts and functional casts still hint redundantly
 
 int compute();
 

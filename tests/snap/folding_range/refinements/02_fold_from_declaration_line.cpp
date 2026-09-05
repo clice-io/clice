@@ -1,7 +1,9 @@
-/// # Fold from the declaration line for function/class bodies — keep the signature visible when folded
+/// # Fold from the declaration line for function/class bodies
 ///
 /// - status: unsupported
 /// - issues: clangd#2666
+///
+/// Keep the signature visible when folded
 ///
 /// > **Client support**: this depends on the client interpreting
 /// > `FoldingRange.startLine` correctly. VS Code uses the line _after_

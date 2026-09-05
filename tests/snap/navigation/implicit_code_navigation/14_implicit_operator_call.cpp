@@ -1,7 +1,9 @@
-/// # Overloaded operators — from the operator token to its definition
+/// # Overloaded operators
 ///
 /// - status: supported
 /// - verify: server
+///
+/// From the operator token to its definition
 ///
 /// Go-to-definition on an overloaded operator token reaches the operator's
 /// definition. The binary, subscript, call and arrow operators (`+`, `[]`,

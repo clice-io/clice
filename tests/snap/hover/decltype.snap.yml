@@ -2,117 +2,111 @@
 created_at: 2026-07-28
 input_file: decltype.cpp
 ---
-01_decltype_auto: { range: "6:2-6:10" }
+01_decltype_auto: { range: "1:0-1:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-int
+long
 ```
 
-02_const_decltype_auto: { range: "14:2-14:10" }
+02_const_decltype_auto: { range: "6:0-6:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-const int
+const long
 ```
 
-03_const_ref_decltype_auto: { range: "23:2-23:10" }
+03_const_ref_decltype_auto: { range: "12:0-12:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-const int &
+const long &
 ```
 
-04_ref_decltype_auto: { range: "32:2-32:10" }
+04_ref_decltype_auto: { range: "18:0-18:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-int &
+long &
 ```
 
-05_decltype_auto_fn_return: { range: "39:0-39:8" }
-### type `decltype`  
-
----
-decltype(auto) in function return  
-
----
-```cpp
-Bar
-```
-
-06_decltype_auto_ref_return: { range: "46:0-46:8" }
+05_decltype_auto_fn_return: { range: "23:0-23:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-int &
+Message
 ```
 
-07_decltype_lvalue: { range: "56:2-56:10" }
+06_decltype_auto_ref_return: { range: "29:0-29:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-int
+long &
 ```
 
-08_decltype_lvalue_ref: { range: "65:2-65:10" }
+07_decltype_lvalue: { range: "37:0-37:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-int &
+long
 ```
 
-09_decltype_paren_lvalue: { range: "73:2-73:10" }
+08_decltype_lvalue_ref: { range: "43:0-43:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-int &
+long &
 ```
 
-10_decltype_rvalue_ref: { range: "81:2-81:10" }
+09_decltype_paren_lvalue: { range: "48:0-48:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-int &&
+long &
 ```
 
-11_decltype_rvalue_call: { range: "90:2-90:10" }
+10_decltype_rvalue_ref: { range: "53:0-53:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-int &&
+long &&
 ```
 
-12_decltype_trailing_return: { range: "101:2-101:10" }
-### type `decltype`  
-
----
-decltype of function with trailing return type.  
-
----
-```cpp
-Bar
-```
-
-13_decltype_of_decltype: { range: "110:2-110:10" }
+11_decltype_rvalue_call: { range: "59:0-59:8" }
 ### type `decltype`  
 
 ---
 ```cpp
-int
+long &&
 ```
 
-14_decltype_dependent: { range: "118:12-118:20" }
+12_decltype_trailing_return: { range: "67:0-67:8" }
+### type `decltype`  
+
+---
+```cpp
+Message
+```
+
+13_decltype_of_decltype: { range: "73:0-73:8" }
+### type `decltype`  
+
+---
+```cpp
+long
+```
+
+14_decltype_dependent: { range: "78:17-78:25" }
 ### type `decltype`  
 
 ---
@@ -120,7 +114,7 @@ int
 <dependent type>
 ```
 
-15_undeduced_decltype_auto: { range: "125:0-125:8" }
+15_undeduced_decltype_auto: { range: "83:22-83:30" }
 ### type `decltype`  
 
 ---
@@ -128,52 +122,52 @@ int
 /* not deduced */
 ```
 
-16_var_decltype_type: { range: "133:12-133:13" }
-### variable `b`  
+16_var_decltype_type: { range: "90:17-90:21" }
+### variable `copy`  
 
 ---
-Type: `int`  
-
----
-```cpp
-// In namespace var_with_decltype
-decltype(a) b = a
-```
-
-17_var_decltype_chain: { range: "140:12-140:13" }
-### variable `b`  
-
----
-Type: `int`  
+Type: `long`  
 
 ---
 ```cpp
-// In namespace var_with_decltype_chain
-decltype(c) b = a
+// In namespace variable_type
+decltype(source) copy = source
 ```
 
-18_var_const_decltype: { range: "146:18-146:19" }
-### variable `b`  
+17_var_decltype_chain: { range: "96:23-96:27" }
+### variable `copy`  
 
 ---
-Type: `int`  
+Type: `long`  
 
 ---
 ```cpp
-// In namespace var_with_const_decltype
-const decltype(a) b = a
+// In namespace variable_type_chain
+decltype(intermediate) copy = source
 ```
 
-19_fn_decltype_signature: { range: "152:5-152:8" }
-### function `foo`  
+18_var_const_decltype: { range: "101:23-101:27" }
+### variable `copy`  
 
 ---
-→ `int`  
+Type: `long`  
+
+---
+```cpp
+// In namespace const_variable_type
+const decltype(source) copy = source
+```
+
+19_fn_decltype_signature: { range: "106:5-106:12" }
+### function `convert`  
+
+---
+→ `long`  
 Parameters:  
-- `int x`
+- `long value`
 
 ---
 ```cpp
-// In namespace fn_with_decltype
-auto foo(decltype(a) x) -> decltype(a)
+// In namespace signature_type
+auto convert(decltype(source) value) -> decltype(source)
 ```

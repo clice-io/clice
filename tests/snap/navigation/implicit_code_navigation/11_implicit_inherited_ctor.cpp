@@ -1,7 +1,9 @@
-/// # Inherited constructors — navigate to the base constructors brought in by `using`
+/// # Inherited constructors
 ///
 /// - status: partial
 /// - verify: server
+///
+/// Navigate to the base constructors brought in by `using`
 ///
 /// Go-to-definition on an inherited-constructor declaration
 /// (`using Base::Base;`) reaches a base constructor. When the base declares

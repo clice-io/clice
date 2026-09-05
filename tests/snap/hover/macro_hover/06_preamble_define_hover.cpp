@@ -1,6 +1,8 @@
-/// # `#define` inside the preamble — hover on a leading directive
+/// # `#define` inside the preamble
 ///
 /// - status: unsupported
+///
+/// Hover on a leading directive
 ///
 /// A `#define` in the file's preamble region (the leading run of directives
 /// before the first declaration) is not part of the live parse's

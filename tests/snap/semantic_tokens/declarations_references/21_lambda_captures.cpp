@@ -1,6 +1,8 @@
-/// # Lambda captures — by-copy and by-reference captures reference the captured variable; `this` stays a keyword
+/// # Lambda captures
 ///
 /// - status: supported
+///
+/// by-copy and by-reference captures reference the captured variable; `this` stays a keyword
 
 struct S {
     int field;

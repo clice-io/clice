@@ -1,6 +1,8 @@
-/// # Scoped types — a written class scope appears in the detail exactly once, for nested classes, template-ids, aliases and dependent names alike
+/// # Scoped types
 ///
 /// - status: supported
+///
+/// A written class scope appears in the detail exactly once, for nested classes, template-ids, aliases and dependent names alike
 
 namespace scoped {
 

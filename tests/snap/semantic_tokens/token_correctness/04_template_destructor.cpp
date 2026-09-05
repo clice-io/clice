@@ -1,6 +1,8 @@
-/// # Destructors of class templates — the `~` shape holds under templates
+/// # Destructors of class templates
 ///
 /// - status: supported
+///
+/// The `~` shape holds under templates
 
 template <typename T>
 struct Holder {

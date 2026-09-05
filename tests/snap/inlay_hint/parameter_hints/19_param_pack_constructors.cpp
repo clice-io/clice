@@ -1,6 +1,8 @@
-/// # Packs in constructor arguments — outer calls resolve; hints inside the expansion are still missing
+/// # Packs in constructor arguments
 ///
 /// - status: partial
+///
+/// Outer calls resolve; hints inside the expansion are still missing
 
 struct Foo {
     Foo();

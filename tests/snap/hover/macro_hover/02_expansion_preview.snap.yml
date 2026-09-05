@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: macro_hover/02_expansion_preview.cpp
 ---
-01_expansion: { range: "11:8-11:11" }
+01_expansion: { range: "13:8-13:11" }
 ### macro `MAX`  
 
 ---

@@ -1,16 +1,14 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-/// # Attribute documentation — hovering an attribute shows its description
+/// # Attribute documentation
 ///
 /// - status: supported
-/// - issues: clangd#1862
+///
+/// Hovering an attribute shows its description
 ///
 /// The attribute's own documentation renders in the card, for both GNU
 /// `__attribute__` spellings and C++ `[[...]]` attributes.
 
-namespace attr_docs {
-void foo(int * __attribute__((non§(gnu_attribute)null, noescape)) );
+namespace attribute_cards {
+void receive(char* __attribute__((non§(gnu_attribute)null, noescape)));
 
-[[nodi§(std_attribute)scard]] int compute();
+[[nodi§(std_attribute)scard]] long compute();
 }

@@ -2,6 +2,6 @@
 created_at: 2026-07-31
 input_file: declarations_references/24_friend_declarations.cpp
 ---
-- { loc: "8:18", text: "Widget", kind: struct }
-- { loc: "9:16", text: "ping", kind: function, modifiers: [declaration] }
-- { loc: "10:16", text: "inline_friend", kind: function, modifiers: [definition] }
+- { loc: "10:18", text: "Widget", kind: struct }
+- { loc: "11:16", text: "ping", kind: function, modifiers: [declaration] }
+- { loc: "12:16", text: "inline_friend", kind: function, modifiers: [definition] }

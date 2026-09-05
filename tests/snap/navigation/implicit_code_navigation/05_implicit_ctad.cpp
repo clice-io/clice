@@ -1,7 +1,9 @@
-/// # CTAD — navigate to the selected constructor
+/// # CTAD
 ///
 /// - status: supported
 /// - verify: server
+///
+/// Navigate to the selected constructor
 ///
 /// When class template argument deduction picks a specialization, go-to-
 /// definition on the constructor call reaches the constructor that was

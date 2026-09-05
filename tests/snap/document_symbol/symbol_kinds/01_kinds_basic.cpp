@@ -1,6 +1,8 @@
-/// # Core symbol kinds — namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas all appear in the outline with a mapped LSP symbol kind
+/// # Core symbol kinds
 ///
 /// - status: supported
+///
+/// namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas all appear in the outline with a mapped LSP symbol kind
 
 namespace kinds {
 

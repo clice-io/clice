@@ -1,6 +1,8 @@
-/// # Functions and methods — declarations, definitions and call sites
+/// # Functions and methods
 ///
 /// - status: supported
+///
+/// declarations, definitions and call sites
 
 int §twice(int value);
 

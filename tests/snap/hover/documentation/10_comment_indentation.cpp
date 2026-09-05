@@ -1,7 +1,9 @@
-/// # Comment indentation — indented lines in a comment render without spurious extra indentation
+/// # Comment indentation
 ///
 /// - status: partial
 /// - issues: clangd#1040
+///
+/// Indented lines in a comment render without spurious extra indentation
 ///
 /// A doc comment whose body contains an indented block should render with
 /// correct indentation. clice currently strips the leading indentation, so

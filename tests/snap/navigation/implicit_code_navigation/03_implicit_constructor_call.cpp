@@ -1,7 +1,9 @@
-/// # Constructor calls — from parentheses or braces to the selected constructor
+/// # Constructor calls
 ///
 /// - status: supported
 /// - verify: server
+///
+/// From parentheses or braces to the selected constructor
 ///
 /// Go-to-definition on the opening parenthesis or brace of a constructor
 /// call reaches the constructor overload resolution selected, for both the

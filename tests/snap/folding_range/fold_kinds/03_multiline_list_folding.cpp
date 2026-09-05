@@ -1,6 +1,8 @@
-/// # Multi-line list folding — function parameters, call arguments, initializer lists, lambda captures
+/// # Multi-line list folding
 ///
 /// - status: supported
+///
+/// Function parameters, call arguments, initializer lists, lambda captures
 
 void configure(
     int width,       // ┐

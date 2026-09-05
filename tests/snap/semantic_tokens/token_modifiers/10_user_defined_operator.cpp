@@ -1,7 +1,9 @@
-/// # User-defined operators — distinguish overloaded operators from built-in ones
+/// # User-defined operators
 ///
 /// - status: unsupported
 /// - issues: clangd#1521
+///
+/// Distinguish overloaded operators from built-in ones
 
 struct Vec {
     Vec operator+(const Vec& other) const;

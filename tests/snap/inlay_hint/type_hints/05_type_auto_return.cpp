@@ -1,6 +1,8 @@
-/// # Deduced return types — `-> T` after the parameter list, declarations included
+/// # Deduced return types
 ///
 /// - status: supported
+///
+/// `-> T` after the parameter list, declarations included
 
 auto answer() {
     return 42;

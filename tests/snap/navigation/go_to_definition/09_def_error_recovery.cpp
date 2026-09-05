@@ -1,6 +1,8 @@
-/// # Error recovery — navigate to a variable whose type is unresolved
+/// # Error recovery
 ///
 /// - status: unsupported
+///
+/// Navigate to a variable whose type is unresolved
 ///
 /// When a variable's type name fails to resolve, go-to-definition on a
 /// later use of the variable currently returns nothing, even though the

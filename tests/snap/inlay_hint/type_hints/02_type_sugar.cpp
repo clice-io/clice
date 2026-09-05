@@ -1,7 +1,9 @@
-/// # Type sugar and the length limit — aliases keep their spelling; over-long types fall back to the sugared name
+/// # Type sugar and the length limit
 ///
 /// - status: supported
 /// - issues: clangd#1298, clangd#1357
+///
+/// Aliases keep their spelling; over-long types fall back to the sugared name
 
 using Integer = int;
 

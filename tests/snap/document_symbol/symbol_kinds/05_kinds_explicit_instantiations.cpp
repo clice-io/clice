@@ -1,7 +1,9 @@
-/// # Explicit instantiation directives — the class forms appear as childless symbols; clang mislocates the function and variable forms at the pattern, so they are missing from the outline
+/// # Explicit instantiation directives
 ///
 /// - status: partial
 /// - issues: llvm#191658
+///
+/// The class forms appear as childless symbols; clang mislocates the function and variable forms at the pattern, so they are missing from the outline
 
 template <typename T>
 struct Box {

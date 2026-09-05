@@ -1,8 +1,8 @@
 /// # `import module_name` navigates to the module interface unit
 ///
 /// - status: supported
-/// - verify: server
 /// - issues: clangd#2310
+/// - verify: server
 ///
 /// Go-to-definition on the name in an `import` declaration opens the
 /// module interface unit that exports it, and uses of an imported symbol

@@ -2,4 +2,4 @@
 created_at: 2026-07-31
 input_file: designator_hints/03_designator_anonymous.cpp
 ---
-- { pos: "14:8", kind: Type, label: ".x.y=" }
+- { pos: "16:8", kind: Type, label: ".x.y=" }

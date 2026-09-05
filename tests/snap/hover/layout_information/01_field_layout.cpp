@@ -1,18 +1,17 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-/// # Field layout — size, offset, alignment and padding show on field hover
+/// # Field layout
 ///
 /// - status: supported
 ///
-/// The corpus pins an x86-64 target, so the bit numbers are stable.
+/// Size, offset, alignment and padding show on field hover
+///
+/// The corpus uses a fixed x86-64 target, so the reported bit positions are stable.
 
-struct Header {
-    char t§(plain_field)ag;
-    int len§(padded_field)gth;
+struct Frame {
+    char ki§(plain_field)nd;
+    long seque§(padded_field)nce;
 };
 
-struct Flags {
-    int rea§(bitfield)dy : 1;
-    int e§(bitfield_padding)nd : 1;
+struct Options {
+    unsigned int ena§(bitfield)bled : 1;
+    unsigned int la§(bitfield_padding)st : 1;
 };

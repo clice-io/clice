@@ -1,7 +1,9 @@
-/// # Scope modifiers — function, class, file and global scope
+/// # Scope modifiers
 ///
 /// - status: unsupported
 /// - issues: clangd#352
+///
+/// function, class, file and global scope
 
 int global_scope;
 static int file_scope;
