@@ -1301,19 +1301,19 @@ int checked = CHECK(MAX_SIZE);
 
 以下是尚无测试用例的精选问题：
 
-- `auto` 参数不应被高亮为模板类型参数
-  ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
-- 成员指针中的嵌套名说明符应有对应的 Token
-  ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
-- `::new` 应保持 `new` 关键字高亮
-  ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
-- 当协程返回类型为模板时，`co_yield` / `co_await` 会丢失高亮
-  ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
-- Token 修饰符应应用于重载运算符的操作数
-  ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
-- 依赖模板名（`obj.template get<int>()`）、通过 `using` 从依赖基类导入的成员，以及重载集中包含不同类别实体的依赖名（[clangd#484](https://github.com/clangd/clangd/issues/484)、
-  [clangd#686](https://github.com/clangd/clangd/issues/686)、
-  [clangd#1057](https://github.com/clangd/clangd/issues/1057)）
+- [ ] `auto` 参数不应被高亮为模板类型参数
+      ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
+- [ ] 成员指针中的嵌套名说明符应有对应的 Token
+      ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
+- [ ] `::new` 应保持 `new` 关键字高亮
+      ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
+- [ ] 当协程返回类型为模板时，`co_yield` / `co_await` 会丢失高亮
+      ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
+- [ ] Token 修饰符应应用于重载运算符的操作数
+      ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
+- [ ] 依赖模板名（`obj.template get<int>()`）、通过 `using` 从依赖基类导入的成员，以及重载集中包含不同类别实体的依赖名（[clangd#484](https://github.com/clangd/clangd/issues/484)、
+      [clangd#686](https://github.com/clangd/clangd/issues/686)、
+      [clangd#1057](https://github.com/clangd/clangd/issues/1057)）
 
 ## 非活跃代码区域
 

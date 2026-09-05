@@ -571,7 +571,7 @@ The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializatio
 
 ## Other Known Gaps
 
-- Abbreviated type hints with expandable label parts via `InlayHintLabelPart` ([clangd#2269](https://github.com/clangd/clangd/issues/2269))
-- Clickable type names — go-to-definition on the hinted type ([clangd#1535](https://github.com/clangd/clangd/issues/1535))
-- Scope-aware type shortening — print `Bar` instead of `foo::Bar` inside `namespace foo` ([clangd#2270](https://github.com/clangd/clangd/issues/2270))
-- Parameter hints lost when a coroutine returns a template type ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
+- [ ] Abbreviated type hints with expandable label parts via `InlayHintLabelPart` ([clangd#2269](https://github.com/clangd/clangd/issues/2269))
+- [ ] Clickable type names — go-to-definition on the hinted type ([clangd#1535](https://github.com/clangd/clangd/issues/1535))
+- [ ] Scope-aware type shortening — print `Bar` instead of `foo::Bar` inside `namespace foo` ([clangd#2270](https://github.com/clangd/clangd/issues/2270))
+- [ ] Parameter hints lost when a coroutine returns a template type ([clangd#2437](https://github.com/clangd/clangd/issues/2437))

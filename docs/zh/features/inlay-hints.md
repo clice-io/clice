@@ -1129,7 +1129,7 @@ log(2);
 
 ## 其他已知缺口
 
-- 通过 `InlayHintLabelPart` 为缩写类型提示提供可展开的标签部分（[clangd#2269](https://github.com/clangd/clangd/issues/2269)）
-- 可点击的类型名——在提示的类型上跳转到定义（[clangd#1535](https://github.com/clangd/clangd/issues/1535)）
-- 感知作用域的类型缩写——在 `namespace foo` 内显示 `Bar` 而不是 `foo::Bar`（[clangd#2270](https://github.com/clangd/clangd/issues/2270)）
-- 协程返回模板类型时丢失参数提示（[clangd#2437](https://github.com/clangd/clangd/issues/2437)）
+- [ ] 通过 `InlayHintLabelPart` 为缩写类型提示提供可展开的标签部分（[clangd#2269](https://github.com/clangd/clangd/issues/2269)）
+- [ ] 可点击的类型名——在提示的类型上跳转到定义（[clangd#1535](https://github.com/clangd/clangd/issues/1535)）
+- [ ] 感知作用域的类型缩写——在 `namespace foo` 内显示 `Bar` 而不是 `foo::Bar`（[clangd#2270](https://github.com/clangd/clangd/issues/2270)）
+- [ ] 协程返回模板类型时丢失参数提示（[clangd#2437](https://github.com/clangd/clangd/issues/2437)）

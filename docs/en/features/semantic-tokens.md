@@ -917,21 +917,21 @@ tests/snap/semantic_tokens/macros/03_macro_kinds.cpp
 
 Curated issues without a fixture yet:
 
-- `auto` parameters must not be highlighted as template type parameters
-  ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
-- Nested name specifier in a pointer-to-member should get a token
-  ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
-- `::new` should keep the `new` keyword highlighted
-  ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
-- `co_yield` / `co_await` lose highlighting when the coroutine return type is
-  a template ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
-- Token modifiers should apply to operands of overloaded operators
-  ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
-- Dependent template names (`obj.template get<int>()`), members imported from
-  a dependent base via `using`, and dependent names with mixed-kind overload
-  sets ([clangd#484](https://github.com/clangd/clangd/issues/484),
-  [clangd#686](https://github.com/clangd/clangd/issues/686),
-  [clangd#1057](https://github.com/clangd/clangd/issues/1057))
+- [ ] `auto` parameters must not be highlighted as template type parameters
+      ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
+- [ ] Nested name specifier in a pointer-to-member should get a token
+      ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
+- [ ] `::new` should keep the `new` keyword highlighted
+      ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
+- [ ] `co_yield` / `co_await` lose highlighting when the coroutine return type is
+      a template ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
+- [ ] Token modifiers should apply to operands of overloaded operators
+      ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
+- [ ] Dependent template names (`obj.template get<int>()`), members imported from
+      a dependent base via `using`, and dependent names with mixed-kind overload
+      sets ([clangd#484](https://github.com/clangd/clangd/issues/484),
+      [clangd#686](https://github.com/clangd/clangd/issues/686),
+      [clangd#1057](https://github.com/clangd/clangd/issues/1057))
 
 ## Inactive Code Regions
 
