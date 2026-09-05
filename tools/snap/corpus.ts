@@ -166,44 +166,47 @@ export function scanFixtureHeader(content: string): FixtureHeader {
         bodyStart: 0,
     };
 
-    const firstPlain = (all[0] ?? "").trimStart();
-    if (firstPlain.startsWith("//") && !firstPlain.startsWith("///")) {
-        const firstText = firstPlain.slice(2).trimStart();
-        if (ENTRY_RE.test(firstText)) {
-            let edge = 0;
-            while (edge < all.length) {
-                const raw = (all[edge] ?? "").trimStart();
-                if (!raw.startsWith("//") || raw.startsWith("///")) {
-                    break;
-                }
-                const text = raw.slice(2).trimStart();
-                if (text === "") {
-                    break;
-                }
-                const match = META_RE.exec(text);
-                if (match) {
-                    header.meta.push({
-                        key: match[1] ?? "",
-                        value: (match[2] ?? "").trim(),
-                        line: edge + 1,
-                    });
-                } else {
-                    header.malformed.push({ text, line: edge + 1 });
-                }
-                edge += 1;
-            }
-            header.bodyStart = edge;
-            return header;
-        }
-    }
-
+    // The prologue is the blank lines and ordinary `//` comments before the
+    // code or a `///` block. A supplementary fixture's metadata is a plain
+    // `//` block anywhere in it: the first entry attempt opens the block.
     let prologue = 0;
+    let plain = -1;
     while (prologue < all.length) {
-        const line = (all[prologue] ?? "").trim();
-        if (line !== "" && !(line.startsWith("//") && !line.startsWith("///"))) {
+        const raw = (all[prologue] ?? "").trimStart();
+        if (raw !== "" && (!raw.startsWith("//") || raw.startsWith("///"))) {
+            break;
+        }
+        if (raw.startsWith("//") && ENTRY_RE.test(raw.slice(2).trimStart())) {
+            plain = prologue;
             break;
         }
         prologue += 1;
+    }
+    if (plain >= 0) {
+        let edge = plain;
+        while (edge < all.length) {
+            const raw = (all[edge] ?? "").trimStart();
+            if (!raw.startsWith("//") || raw.startsWith("///")) {
+                break;
+            }
+            const text = raw.slice(2).trimStart();
+            if (text === "") {
+                break;
+            }
+            const match = META_RE.exec(text);
+            if (match) {
+                header.meta.push({
+                    key: match[1] ?? "",
+                    value: (match[2] ?? "").trim(),
+                    line: edge + 1,
+                });
+            } else {
+                header.malformed.push({ text, line: edge + 1 });
+            }
+            edge += 1;
+        }
+        header.bodyStart = edge;
+        return header;
     }
     let i = prologue;
     const comment = (): string | null => {

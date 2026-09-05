@@ -45,6 +45,14 @@ test("fixture meta parsing", () => {
     // A supplementary fixture (no `# ` doc title) may still open with a
     // plain-comment meta block.
     expect(parseFixtureMeta("// - diagnostics: expected\n\nint x;\n", "f").diagnostics).toBe(true);
+    // ... after an ordinary-comment prologue or leading blank lines.
+    expect(parseFixtureMeta("// note\n\n// - verify: server\nint x;\n", "f").verify).toBe("server");
+    expect(parseFixtureMeta("\n// - verify: inspect\n\n// note\nint x;\n", "f").verify).toBe(
+        "inspect",
+    );
+    expect(() => parseFixtureMeta("// note\n// - snap : skip\nint x;\n", "f")).toThrow(
+        "malformed fixture meta line",
+    );
     // The legacy `///` spelling remains readable so validation can report
     // it as an R7 migration error.
     expect(parseFixtureMeta("/// - diagnostics: expected\n\nint x;\n", "f").diagnostics).toBe(true);
@@ -301,6 +309,9 @@ test("fixture header validation", () => {
         validateFixtureHeader("// note\n\n/// - verify: server\nint x;\n", "root.cpp", ""),
     ).toEqual(["root.cpp:3: R7: edge-case prologues must use //, not ///"]);
     expect(validateFixtureHeader("// - verify: server\nint x;\n", "root.cpp", "")).toEqual([]);
+    expect(
+        validateFixtureHeader("// note\n\n// - verify: server\nint x;\n", "root.cpp", ""),
+    ).toEqual([]);
 });
 
 test("fixture files are named relative to the fixture", () => {
