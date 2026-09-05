@@ -178,13 +178,13 @@ tests/snap/navigation/go_to_definition/12_def_auto_keyword.cpp
 
 <!-- END GENERATED ITEMS -->
 
-### Implicit Code Navigation
+## Implicit targets
 
 Navigate to definitions of implicitly invoked code. In C++ many constructs generate hidden calls to constructors, operators, conversions, etc. Navigating from the syntactic construct (a brace, a keyword, an operator token) to the actual function being called is essential for understanding what code is really executing.
 
 Implicit navigation requires an unambiguous source token — patterns where the token already has a well-defined go-to-def target (e.g., a variable name always goes to its declaration) cannot be repurposed for implicit call navigation.
 
-<!-- BEGIN GENERATED ITEMS: implicit_code_navigation -->
+<!-- BEGIN GENERATED ITEMS: implicit_targets -->
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
@@ -513,6 +513,15 @@ tests/snap/navigation/implicit_code_navigation/21_implicit_coroutine.cpp
 ```
 
 <!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Template navigation
+
+Navigation inferred from initialization and decomposition patterns, including
+class template argument deduction.
+
+<!-- BEGIN GENERATED ITEMS: template_navigation -->
 
 <!-- END GENERATED ITEMS -->
 

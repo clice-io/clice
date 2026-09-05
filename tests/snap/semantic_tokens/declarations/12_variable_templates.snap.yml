@@ -1,0 +1,9 @@
+---
+created_at: 2026-07-31
+input_file: declarations/12_variable_templates.cpp
+---
+- { loc: "7:11", text: "pair_value", kind: variable, modifiers: [declaration, templated] }
+- { loc: "10:4", text: "pair_value", kind: variable, modifiers: [definition, templated] }
+- { loc: "13:11", text: "pair_value", kind: variable, modifiers: [declaration, templated] }
+- { loc: "16:4", text: "pair_value", kind: variable, modifiers: [definition, templated] }
+- { loc: "19:4", text: "pair_value", kind: variable, modifiers: [definition] }

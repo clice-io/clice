@@ -1,7 +1,0 @@
----
-created_at: 2026-07-31
-input_file: declarations_references/22_range_for.cpp
----
-- { loc: "12:15", text: "item", kind: variable, modifiers: [definition] }
-- { loc: "12:22", text: "items", kind: parameter }
-- { loc: "13:8", text: "item", kind: variable }

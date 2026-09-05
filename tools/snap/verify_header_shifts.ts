@@ -61,25 +61,33 @@ function withoutHeaderTokens(text: string, start: number): { text: string; remov
 
 function verify(
     snapshot: string,
+    oldSnapshot: string,
     ref: string,
 ): { delta: number; shifted: number; unchanged: number; headerTokens: number } {
     const source = sourceOf(snapshot);
-    const oldSource = fromGit(ref, source);
+    const oldSourcePath = sourceOf(oldSnapshot);
+    const oldSource = fromGit(ref, oldSourcePath);
     const newSource = fs.readFileSync(path.join(REPO_ROOT, source), "utf8");
     const oldStart = exampleStart(oldSource);
     const newStart = exampleStart(newSource);
     const delta = newStart - oldStart;
-    let oldSnapshot = fromGit(ref, snapshot);
+    let oldSnapshotText = fromGit(ref, oldSnapshot);
     let newSnapshot = fs.readFileSync(path.join(REPO_ROOT, snapshot), "utf8");
+    const oldRelative = oldSourcePath.split("/").slice(3).join("/");
+    const newRelative = source.split("/").slice(3).join("/");
+    oldSnapshotText = oldSnapshotText.replaceAll(oldRelative, newRelative);
     let headerTokens = 0;
-    if (oldSnapshot.replaceAll(POSITION_RE, "L:C") !== newSnapshot.replaceAll(POSITION_RE, "L:C")) {
-        const oldWithoutHeader = withoutHeaderTokens(oldSnapshot, oldStart);
+    if (
+        oldSnapshotText.replaceAll(POSITION_RE, "L:C") !==
+        newSnapshot.replaceAll(POSITION_RE, "L:C")
+    ) {
+        const oldWithoutHeader = withoutHeaderTokens(oldSnapshotText, oldStart);
         const newWithoutHeader = withoutHeaderTokens(newSnapshot, newStart);
-        oldSnapshot = oldWithoutHeader.text;
+        oldSnapshotText = oldWithoutHeader.text;
         newSnapshot = newWithoutHeader.text;
         headerTokens = oldWithoutHeader.removed + newWithoutHeader.removed;
         if (
-            oldSnapshot.replaceAll(POSITION_RE, "L:C") !==
+            oldSnapshotText.replaceAll(POSITION_RE, "L:C") !==
             newSnapshot.replaceAll(POSITION_RE, "L:C")
         ) {
             throw new Error(
@@ -87,7 +95,7 @@ function verify(
             );
         }
     }
-    const before = positions(oldSnapshot);
+    const before = positions(oldSnapshotText);
     const after = positions(newSnapshot);
     let shifted = 0;
     let unchanged = 0;
@@ -120,24 +128,55 @@ if (!ref || !corpus) {
     process.exit(2);
 }
 const root = `tests/snap/${corpus}`;
-const changed = execFileSync("git", ["diff", "--name-only", ref, "--", root], {
+const nameStatus = execFileSync("git", ["diff", "--name-status", "-M", ref, "--", root], {
     cwd: REPO_ROOT,
     encoding: "utf8",
 })
     .trim()
     .split("\n")
+    .filter(Boolean);
+const sourceRenames = new Map<string, string>();
+for (const line of nameStatus) {
+    const fields = line.split("\t");
+    if ((fields[0] ?? "").startsWith("R") && (fields[2] ?? "").endsWith(".cpp")) {
+        sourceRenames.set(fields[2] ?? "", fields[1] ?? "");
+    }
+}
+function oldSnapshotPath(newPath: string, oldSource: string): string {
+    const mode = /\.(inspect|server)\.snap\.yml$/.exec(newPath)?.[1];
+    return oldSource.replace(/\.cpp$/, `${mode === undefined ? "" : `.${mode}`}\.snap.yml`);
+}
+const changed = execFileSync(
+    "git",
+    ["diff", "--name-only", "--diff-filter=AMR", "-M", ref, "--", root],
+    {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+    },
+)
+    .trim()
+    .split("\n")
     .filter((file) => file.endsWith(".snap.yml"))
-    .filter((file) => !ignored.has(sourceOf(file)));
+    .map((newPath): { oldPath: string; newPath: string } => {
+        const newSource = sourceOf(newPath);
+        const oldSource = sourceRenames.get(newSource) ?? newSource;
+        return { oldPath: oldSnapshotPath(newPath, oldSource), newPath };
+    })
+    .filter(
+        ({ oldPath, newPath }) =>
+            !ignored.has(sourceOf(oldPath)) && !ignored.has(sourceOf(newPath)),
+    );
 let shiftedFiles = 0;
 let failures = 0;
-for (const snapshot of changed) {
+for (const { oldPath, newPath } of changed) {
     try {
-        const result = verify(snapshot, ref);
+        const result = verify(newPath, oldPath, ref);
         if (result.delta !== 0) {
             shiftedFiles += 1;
         }
+        const display = oldPath === newPath ? newPath : `${oldPath} -> ${newPath}`;
         console.log(
-            `${snapshot}: delta ${result.delta}, ${result.shifted} shifted positions, ${result.unchanged} sibling positions, ${result.headerTokens} header tokens excluded`,
+            `${display}: delta ${result.delta}, ${result.shifted} shifted positions, ${result.unchanged} sibling positions, ${result.headerTokens} header tokens excluded`,
         );
     } catch (error) {
         failures += 1;

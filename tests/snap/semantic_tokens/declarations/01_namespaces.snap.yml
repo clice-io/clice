@@ -1,0 +1,12 @@
+---
+created_at: 2026-07-31
+input_file: declarations/01_namespaces.cpp
+---
+- { loc: "6:10", text: "demo", kind: namespace, modifiers: [definition] }
+- { loc: "7:10", text: "inner", kind: namespace, modifiers: [definition] }
+- { loc: "12:23", text: "more", kind: namespace, modifiers: [definition] }
+- { loc: "14:10", text: "alias", kind: namespace, modifiers: [definition] }
+- { loc: "14:18", text: "demo", kind: namespace }
+- { loc: "14:24", text: "inner", kind: namespace }
+- { loc: "16:16", text: "alias", kind: namespace }
+- { loc: "16:23", text: "value", kind: variable }

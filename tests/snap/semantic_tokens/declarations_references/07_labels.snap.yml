@@ -1,6 +1,0 @@
----
-created_at: 2026-07-31
-input_file: declarations_references/07_labels.cpp
----
-- { loc: "7:9", text: "done", kind: label }
-- { loc: "8:0", text: "done", kind: label, modifiers: [definition] }

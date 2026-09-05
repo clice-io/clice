@@ -1,6 +1,6 @@
 # Code Completion
 
-## Include Path Completion
+## Include paths
 
 Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no compilation needed). Quoted completion searches the configured include directories, not the includer's own directory (unless it is on the include path).
 
@@ -87,11 +87,9 @@ tests/snap/code_completion/include_path_completion/02_include_angled.cpp
   #include <sys^>  // accept "sys" → inserts "sys", user types "/" → next completion fires
   ```
 
-## Module Completion
+## Module import
 
 Detected via text context analysis. Handled before AST (preamble-level, no compilation needed).
-
-### Import
 
 Triggered when cursor is after `import` or `export import`.
 
@@ -156,7 +154,7 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
   std::vector^  // on accept, also insert "import std;" at the top
   ```
 
-### Declaration
+## Module declarations
 
 Completion within module declaration contexts (`module` / `export module`).
 
@@ -193,11 +191,9 @@ Completion within module declaration contexts (`module` / `export module`).
   export import :^  // suggest mylib's interface partitions that need re-exporting
   ```
 
-## Semantic Code Completion
+## Member access
 
 Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompleteConsumer` via stateless worker.
-
-### Member Access
 
 <!-- BEGIN GENERATED ITEMS: member_access -->
 
@@ -290,7 +286,7 @@ tests/snap/code_completion/member_access/05_inherited_members.cpp
 - [ ] `operator[]`, `operator->`, `operator()` in member suggestions
 - [ ] Prioritize direct members for the operator typed (`.` members for `.`, `->` members for `->`)
 
-### Designated Initializers
+## Designated initializers
 
 - [ ] Sort completions in declaration order (required by C++20 designated initializers) ([clangd#965](https://github.com/clangd/clangd/issues/965))
 
@@ -319,7 +315,7 @@ tests/snap/code_completion/member_access/05_inherited_members.cpp
   Cfg c = { ^  // first item: .width = ${1}, .height = ${2}, .fullscreen = ${3}
   ```
 
-### Override & Out-of-line Definition
+## Override and out-of-line definitions
 
 - [ ] Virtual function override completion with full signature and `override` keyword
 
@@ -365,7 +361,7 @@ tests/snap/code_completion/member_access/05_inherited_members.cpp
   Vec<T>::^  // suggest "Vec()" and "~Vec()", not "Vec<T>()" or "~Vec<T>()"
   ```
 
-### Symbols
+## Symbols
 
 <!-- BEGIN GENERATED ITEMS: symbols -->
 
@@ -531,7 +527,7 @@ tests/snap/code_completion/symbols/11_using_declaration.cpp
 - [ ] Function-argument comment completion (`/*param=*/` style parameter hints)
 - [ ] Identifier-based fallback completion when semantic analysis is unavailable
 
-### Functions & Snippets
+## Functions and snippets
 
 All options below live in the `[code_completion]` configuration section.
 
@@ -677,7 +673,7 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
 
 - [ ] Set `InsertTextFormat::PlainText` when no placeholders are present
 
-### Templates & Concepts
+## Templates and concepts
 
 - [ ] Concept-aware completion: infer available members from concept constraints on template parameters ([clangd#1103](https://github.com/clangd/clangd/issues/1103))
 
@@ -724,7 +720,7 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
   };
   ```
 
-### Filtering & Ranking
+## Filtering and ranking
 
 <!-- BEGIN GENERATED ITEMS: filtering_ranking -->
 
@@ -833,7 +829,7 @@ tests/snap/code_completion/filtering_ranking/05_prefix_beats_subsequence.cpp
 - [ ] Reference-count and file-proximity ranking signals
 - [ ] Machine-learned ranking model
 
-## Auto-Include Insertion
+## Auto-include insertion
 
 Not yet implemented. Completing a symbol does not insert `#include` directives.
 
@@ -869,7 +865,7 @@ Not yet implemented. Completing a symbol does not insert `#include` directives.
 - [ ] Respect IWYU pragmas and header mappings
 - [ ] Auto-insert `import` for C++20 module symbols
 
-## Documentation in Completions
+## Documentation
 
 Not yet implemented. Completion items do not include documentation.
 
@@ -888,7 +884,7 @@ Not yet implemented. Completion items do not include documentation.
 - [ ] Standard library documentation integration
 - [ ] Macro definitions as documentation ([clangd#1485](https://github.com/clangd/clangd/issues/1485))
 
-## Trigger Characters
+## Trigger characters
 
 Registered: `. < > : " / *`. Space (` `) is planned but not yet merged ([#460](https://github.com/clice-io/clice/pull/460)).
 
@@ -904,7 +900,7 @@ Registered: `. < > : " / *`. Space (` `) is planned but not yet merged ([#460](h
 | `*`       | Pointer deref   | Semantic completion                                                                                       |
 | ` `       | After `import`  | Module name completion (extension-gated) — **pending [#460](https://github.com/clice-io/clice/pull/460)** |
 
-## LSP Protocol Features
+## Protocol
 
 - [ ] `completionItem/resolve` for lazy-loading documentation and details
 - [ ] `CompletionList.isIncomplete` flag for incremental filtering

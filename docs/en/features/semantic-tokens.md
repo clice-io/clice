@@ -162,11 +162,11 @@ tests/snap/semantic_tokens/lexical_tokens/12_bracket_pairs.cpp
 
 <!-- END GENERATED ITEMS -->
 
-## Declarations & References
+## Declarations
 
 Names classified by the declaration they define or reference.
 
-<!-- BEGIN GENERATED ITEMS: declarations_references -->
+<!-- BEGIN GENERATED ITEMS: declarations -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -514,6 +514,15 @@ tests/snap/semantic_tokens/declarations_references/28_explicit_instantiation_mem
 ```
 
 <!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## References
+
+Reference sites retain the semantic kind of the declaration they resolve to,
+including names reached through language-specific lookup rules.
+
+<!-- BEGIN GENERATED ITEMS: references -->
 
 <!-- END GENERATED ITEMS -->
 
