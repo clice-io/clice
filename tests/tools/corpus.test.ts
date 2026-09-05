@@ -53,6 +53,18 @@ test("fixture meta parsing", () => {
     expect(() => parseFixtureMeta("// note\n// - snap : skip\nint x;\n", "f")).toThrow(
         "malformed fixture meta line",
     );
+    // The block ends at its first blank line; a second block in the
+    // prologue must error rather than lose its entries.
+    expect(() =>
+        parseFixtureMeta("// - verify: server\n\n// - diagnostics: expected\nint x;\n", "f"),
+    ).toThrow("malformed fixture meta line");
+    expect(() =>
+        parseFixtureMeta("// - verify: server\n//\n// note\n// - indexing: true\n\nint x;\n", "f"),
+    ).toThrow("malformed fixture meta line");
+    // Ordinary prose after the block, and entries in the code, are fine.
+    expect(parseFixtureMeta("// - verify: server\n\n// note\nint x; // - a: b\n", "f").verify).toBe(
+        "server",
+    );
     // The legacy `///` spelling remains readable so validation can report
     // it as an R7 migration error.
     expect(parseFixtureMeta("/// - diagnostics: expected\n\nint x;\n", "f").diagnostics).toBe(true);

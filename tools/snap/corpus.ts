@@ -205,6 +205,18 @@ export function scanFixtureHeader(content: string): FixtureHeader {
             }
             edge += 1;
         }
+        // The block ends at its first blank line; an entry attempt later in
+        // the prologue would otherwise be dropped silently.
+        for (let rest = edge; rest < all.length; rest += 1) {
+            const raw = (all[rest] ?? "").trimStart();
+            if (raw !== "" && (!raw.startsWith("//") || raw.startsWith("///"))) {
+                break;
+            }
+            const text = raw.startsWith("//") ? raw.slice(2).trimStart() : "";
+            if (ENTRY_RE.test(text)) {
+                header.malformed.push({ text, line: rest + 1 });
+            }
+        }
         header.bodyStart = edge;
         return header;
     }

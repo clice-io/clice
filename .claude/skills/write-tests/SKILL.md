@@ -76,7 +76,7 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    ///
    /// - status: supported
    /// - issues: clangd#710
-   /// - verify: server
+   /// - verify: both
    /// - snap: separate
    /// - config: {"show_aka": false}
    /// - diagnostics: expected
