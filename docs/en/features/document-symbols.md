@@ -81,7 +81,7 @@ tests/snap/document_symbol/symbol_hierarchy/05_hierarchy_utf16.cpp
 
 **Core symbol kinds**
 
-namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas all appear in the outline with a mapped LSP symbol kind
+Namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas all appear in the outline with a mapped LSP symbol kind
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/01_kinds_basic.cpp
@@ -93,7 +93,7 @@ tests/snap/document_symbol/symbol_kinds/01_kinds_basic.cpp
 
 **Template declarations**
 
-class, function and variable templates carry a `template ` detail prefix; concepts and abbreviated function templates (`concept auto` parameters) appear as well
+Class, function and variable templates carry a `template ` detail prefix; concepts and abbreviated function templates (`concept auto` parameters) appear as well
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/02_kinds_templates.cpp
@@ -141,7 +141,7 @@ tests/snap/document_symbol/symbol_kinds/05_kinds_explicit_instantiations.cpp
 
 **Macro definitions**
 
-object-like and function-like macro definitions in the outline, a parameter list as the function-like detail
+Object-like and function-like macro definitions in the outline, a parameter list as the function-like detail
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/06_kinds_macros.cpp
@@ -153,7 +153,7 @@ tests/snap/document_symbol/symbol_kinds/06_kinds_macros.cpp
 
 **Macros in the preamble region**
 
-Definitions in the leading directive run outline on the inspect path, while the server's preamble record does not surface them yet
+Macros in the leading directive run are not outlined in editor requests yet
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/07_macro_preamble.cpp

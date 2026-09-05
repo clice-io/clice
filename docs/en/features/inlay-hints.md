@@ -263,7 +263,7 @@ tests/snap/inlay_hint/type_hints/01_type_auto.cpp
 
 <!-- BEGIN CAPABILITY: supported clangd#1298 clangd#1357 -->
 
-**Type sugar and the length limit**
+**Type sugar length limits**
 
 Aliases keep their spelling; over-long types fall back to the sugared name
 
@@ -289,7 +289,7 @@ tests/snap/inlay_hint/type_hints/03_type_structured_bindings.cpp
 
 **Lambdas**
 
-variables, deduced return types, and init-captures all hint
+Variables, deduced return types, and init-captures all hint
 
 ```snap
 tests/snap/inlay_hint/type_hints/04_type_lambdas.cpp

@@ -20,7 +20,7 @@ Kinds derived from the token stream itself, independent of the AST.
 
 **Comments**
 
-line, block and doc comments, including multiline blocks
+Line, block and doc comments, including multiline blocks
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/01_comments.cpp
@@ -32,7 +32,7 @@ tests/snap/semantic_tokens/lexical_tokens/01_comments.cpp
 
 **Literals**
 
-numbers, characters and strings, including raw strings
+Numbers, characters and strings, including raw strings
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/02_literals.cpp
@@ -90,7 +90,7 @@ tests/snap/semantic_tokens/lexical_tokens/06_include_names.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Inactive regions at the top of a file**
+**Inactive preamble regions**
 
 Untaken branches among the leading directives dim the same way
 
@@ -172,10 +172,10 @@ Names classified by the declaration they define or reference.
 
 **Namespaces**
 
-definitions, references, nested namespaces and namespace aliases
+Definitions, references, nested namespaces and namespace aliases
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/01_namespaces.cpp
+tests/snap/semantic_tokens/declarations/01_namespaces.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -184,10 +184,10 @@ tests/snap/semantic_tokens/declarations_references/01_namespaces.cpp
 
 **Types**
 
-class, struct, union, enum and type aliases, at definitions and references
+Class, struct, union, enum and type aliases, at definitions and references
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/02_types.cpp
+tests/snap/semantic_tokens/declarations/02_types.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -196,10 +196,10 @@ tests/snap/semantic_tokens/declarations_references/02_types.cpp
 
 **Functions and methods**
 
-declarations, definitions and call sites
+Declarations, definitions and call sites
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/03_functions.cpp
+tests/snap/semantic_tokens/declarations/03_functions.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -208,10 +208,10 @@ tests/snap/semantic_tokens/declarations_references/03_functions.cpp
 
 **Variables**
 
-globals, locals, parameters, fields and enum members
+Globals, locals, parameters, fields and enum members
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/04_variables.cpp
+tests/snap/semantic_tokens/declarations/04_variables.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -223,7 +223,7 @@ tests/snap/semantic_tokens/declarations_references/04_variables.cpp
 Type and non-type template parameters, with the `templated` modifier on template names
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/05_templates.cpp
+tests/snap/semantic_tokens/declarations/05_templates.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -235,7 +235,7 @@ tests/snap/semantic_tokens/declarations_references/05_templates.cpp
 Definitions and uses as template constraints
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/06_concepts.cpp
+tests/snap/semantic_tokens/declarations/06_concepts.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -247,7 +247,7 @@ tests/snap/semantic_tokens/declarations_references/06_concepts.cpp
 `goto` targets and label definitions
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/07_labels.cpp
+tests/snap/semantic_tokens/declarations/07_labels.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -262,31 +262,7 @@ The opening `[` deliberately carries no token; only the binding names
 themselves are highlighted.
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/08_structured_bindings.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#122 -->
-
-**Member initializer lists**
-
-Initialized fields highlighted as fields
-
-```snap
-tests/snap/semantic_tokens/declarations_references/09_member_init_list.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#2619 -->
-
-**Using declarations**
-
-The introduced name keeps its target's kind
-
-```snap
-tests/snap/semantic_tokens/declarations_references/10_using_declarations.cpp
+tests/snap/semantic_tokens/declarations/08_structured_bindings.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -298,31 +274,7 @@ tests/snap/semantic_tokens/declarations_references/10_using_declarations.cpp
 The captured name highlighted as a variable
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/11_lambda_init_capture.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#213 -->
-
-**`sizeof...`**
-
-The pack parameter keeps its type-parameter token
-
-```snap
-tests/snap/semantic_tokens/declarations_references/12_sizeof_pack.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#1283 -->
-
-**`using enum`**
-
-The enum name highlighted at the using site
-
-```snap
-tests/snap/semantic_tokens/declarations_references/13_using_enum.cpp
+tests/snap/semantic_tokens/declarations/09_lambda_init_capture.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -334,7 +286,7 @@ tests/snap/semantic_tokens/declarations_references/13_using_enum.cpp
 The guide name and the guided template highlighted
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/14_deduction_guides.cpp
+tests/snap/semantic_tokens/declarations/10_deduction_guides.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -346,7 +298,160 @@ tests/snap/semantic_tokens/declarations_references/14_deduction_guides.cpp
 The instantiated template name and its written template arguments highlighted, on the extern declaration and the definition alike
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/15_explicit_instantiation_class.cpp
+tests/snap/semantic_tokens/declarations/11_explicit_instantiation_class.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Variable templates**
+
+Declarations, definitions, partial and full specializations
+
+```snap
+tests/snap/semantic_tokens/declarations/12_variable_templates.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Out-of-line member definitions**
+
+Qualified names keep method kinds and modifiers
+
+```snap
+tests/snap/semantic_tokens/declarations/13_out_of_line_methods.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Alias templates**
+
+The alias name carries the type kind and the `templated` modifier
+
+```snap
+tests/snap/semantic_tokens/declarations/14_alias_templates.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Template template parameters**
+
+Declared and used as types
+
+```snap
+tests/snap/semantic_tokens/declarations/15_template_template_params.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Friend declarations**
+
+Befriended names resolve to their targets; inline friends define
+
+```snap
+tests/snap/semantic_tokens/declarations/16_friend_declarations.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial llvm#191658 -->
+
+**Function explicit instantiation directives**
+
+Clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments and the parameter types
+
+```snap
+tests/snap/semantic_tokens/declarations/17_explicit_instantiation_function.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial llvm#191658 -->
+
+**Variable explicit instantiation directives**
+
+Clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type
+
+```snap
+tests/snap/semantic_tokens/declarations/18_explicit_instantiation_variable.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Explicit instantiation member bodies**
+
+A dependent name paints as its actual resolution: agreeing kinds keep the modifiers all instantiations share, disagreeing kinds paint a conflict
+
+```snap
+tests/snap/semantic_tokens/declarations/19_explicit_instantiation_member_bodies.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## References
+
+Reference sites retain the semantic kind of the declaration they resolve to,
+including names reached through language-specific lookup rules.
+
+<!-- BEGIN GENERATED ITEMS: references -->
+
+<!-- BEGIN CAPABILITY: supported clangd#122 -->
+
+**Member initializer lists**
+
+Initialized fields highlighted as fields
+
+```snap
+tests/snap/semantic_tokens/references/01_member_init_list.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2619 -->
+
+**Using declarations**
+
+The introduced name keeps its target's kind
+
+```snap
+tests/snap/semantic_tokens/references/02_using_declarations.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#213 -->
+
+**`sizeof...`**
+
+The pack parameter keeps its type-parameter token
+
+```snap
+tests/snap/semantic_tokens/references/03_sizeof_pack.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1283 -->
+
+**`using enum`**
+
+The enum name highlighted at the using site
+
+```snap
+tests/snap/semantic_tokens/references/04_using_enum.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -363,55 +468,7 @@ parameter have no candidate declaration and currently get no token;
 heuristic coloring for such names remains open.
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/16_dependent_names.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Variable templates**
-
-declarations, definitions, partial and full specializations
-
-```snap
-tests/snap/semantic_tokens/declarations_references/17_variable_templates.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Out-of-line member definitions**
-
-Qualified names keep method kinds and modifiers
-
-```snap
-tests/snap/semantic_tokens/declarations_references/18_out_of_line_methods.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Alias templates**
-
-The alias name carries the type kind and the `templated` modifier
-
-```snap
-tests/snap/semantic_tokens/declarations_references/19_alias_templates.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Template template parameters**
-
-Declared and used as types
-
-```snap
-tests/snap/semantic_tokens/declarations_references/20_template_template_params.cpp
+tests/snap/semantic_tokens/references/05_dependent_names.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -420,10 +477,10 @@ tests/snap/semantic_tokens/declarations_references/20_template_template_params.c
 
 **Lambda captures**
 
-by-copy and by-reference captures reference the captured variable; `this` stays a keyword
+By-copy and by-reference captures reference the captured variable; `this` stays a keyword
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/21_lambda_captures.cpp
+tests/snap/semantic_tokens/references/06_lambda_captures.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -435,7 +492,7 @@ tests/snap/semantic_tokens/declarations_references/21_lambda_captures.cpp
 The loop variable at definition and use
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/22_range_for.cpp
+tests/snap/semantic_tokens/references/07_range_for.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -447,19 +504,7 @@ tests/snap/semantic_tokens/declarations_references/22_range_for.cpp
 The enum-base reference keeps its type kind
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/23_enum_base.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Friend declarations**
-
-Befriended names resolve to their targets; inline friends define
-
-```snap
-tests/snap/semantic_tokens/declarations_references/24_friend_declarations.cpp
+tests/snap/semantic_tokens/references/08_enum_base.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -474,55 +519,10 @@ The introduced name and its uses currently get no token; the reserved
 dependent-name modifier is not emitted yet.
 
 ```snap
-tests/snap/semantic_tokens/declarations_references/25_dependent_using.cpp
+tests/snap/semantic_tokens/references/09_dependent_using.cpp
 ```
 
 <!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial llvm#191658 -->
-
-**Function explicit instantiation directives**
-
-Clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments and the parameter types
-
-```snap
-tests/snap/semantic_tokens/declarations_references/26_explicit_instantiation_function.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial llvm#191658 -->
-
-**Variable explicit instantiation directives**
-
-Clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type
-
-```snap
-tests/snap/semantic_tokens/declarations_references/27_explicit_instantiation_variable.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Explicit instantiation member bodies**
-
-A dependent name paints as its actual resolution: agreeing kinds keep the modifiers all instantiations share, disagreeing kinds paint a conflict
-
-```snap
-tests/snap/semantic_tokens/declarations_references/28_explicit_instantiation_member_bodies.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## References
-
-Reference sites retain the semantic kind of the declaration they resolve to,
-including names reached through language-specific lookup rules.
-
-<!-- BEGIN GENERATED ITEMS: references -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -588,7 +588,7 @@ tests/snap/semantic_tokens/token_modifiers/01_decl_def_modifiers.cpp
 
 **Static**
 
-class-level members and static locals
+Class-level members and static locals
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/02_static_modifier.cpp
@@ -651,7 +651,7 @@ tests/snap/semantic_tokens/token_modifiers/06_default_library.cpp
 
 **Scope modifiers**
 
-function, class, file and global scope
+Function, class, file and global scope
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/07_scope_modifiers.cpp
@@ -851,7 +851,7 @@ tests/snap/semantic_tokens/token_correctness/06_pseudo_destructor.cpp
 
 **Defaulted and deleted members**
 
-special-member names keep their definition tokens
+Special-member names keep their definition tokens
 
 ```snap
 tests/snap/semantic_tokens/token_correctness/07_defaulted_deleted.cpp
@@ -889,6 +889,8 @@ them from their expansions belongs to a future expansion-preview feature.
 <!-- BEGIN CAPABILITY: supported -->
 
 **Macro definition and expansion**
+
+Macro definitions and expansions receive semantic tokens
 
 ```snap
 tests/snap/semantic_tokens/macros/01_macro.cpp

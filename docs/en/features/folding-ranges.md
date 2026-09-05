@@ -13,7 +13,7 @@
 
 **Block folding**
 
-functions, classes, structs, unions, enums, namespaces, lambdas
+Functions, classes, structs, unions, enums, namespaces, lambdas
 
 ```snap
 tests/snap/folding_range/fold_kinds/01_block_folding.cpp
@@ -59,11 +59,11 @@ tests/snap/folding_range/fold_kinds/04_access_specifier_folding.cpp
 
 <!-- BEGIN CAPABILITY: partial clangd#1661 clangd#2059 -->
 
-**Preprocessor conditional folding (`#if` / `#ifdef` / `#ifndef` ... `#endif`)**
+**Preprocessor conditional folding**
 
-Branch regions delimited by `#else` fold today; a bare `#if ... #endif`
-block without an `#else` does not fold yet. clangd#2059 is a duplicate
-of clangd#1661.
+Conditional branches separated by `#else` form folding ranges
+
+A bare `#if ... #endif` block without an `#else` does not fold yet.
 
 ```snap
 tests/snap/folding_range/fold_kinds/05_preprocessor_conditional.cpp
@@ -73,7 +73,9 @@ tests/snap/folding_range/fold_kinds/05_preprocessor_conditional.cpp
 
 <!-- BEGIN CAPABILITY: supported clangd#1623 -->
 
-**Custom region folding (`#pragma region` / `#pragma endregion`)**
+**Pragma region folding**
+
+Named pragma regions form folding ranges
 
 ```snap
 tests/snap/folding_range/fold_kinds/06_pragma_region.cpp
@@ -97,7 +99,7 @@ tests/snap/folding_range/fold_kinds/07_pragma_classification.cpp
 
 **Comment folding**
 
-multi-line `/* */` and consecutive `//` line comments
+Multi-line `/* */` and consecutive `//` line comments
 
 ```snap
 tests/snap/folding_range/fold_kinds/08_comment_folding.cpp
@@ -121,6 +123,8 @@ tests/snap/folding_range/fold_kinds/09_include_region.cpp
 
 **Raw string literal folding**
 
+Multiline raw string literals form folding ranges
+
 ```snap
 tests/snap/folding_range/fold_kinds/10_raw_string_literal.cpp
 ```
@@ -142,6 +146,8 @@ tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
 <!-- BEGIN CAPABILITY: unsupported -->
 
 **Template parameter list folding**
+
+Multiline template parameter lists form folding ranges
 
 ```snap
 tests/snap/folding_range/fold_kinds/12_template_parameter_list.cpp
@@ -235,7 +241,7 @@ tests/snap/folding_range/refinements/01_collapsed_text.cpp
 
 <!-- BEGIN CAPABILITY: unsupported clangd#2666 -->
 
-**Fold from the declaration line for function/class bodies**
+**Declaration-line folding**
 
 Keep the signature visible when folded
 

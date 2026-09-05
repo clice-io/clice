@@ -59,7 +59,7 @@ tests/snap/hover/symbol_information/04_definition_rendering.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#710 -->
+<!-- BEGIN CAPABILITY: partial -->
 
 **Initializer truncation**
 
@@ -117,7 +117,7 @@ tests/snap/hover/symbol_information/07_anon_namespace_scope.cpp
 
 **Variable types**
 
-pointers, references, arrays
+Pointers, references, arrays
 
 A variable's card pretty-prints its declared type, spelling the pointer,
 reference and array declarators the way they read in source.
@@ -162,7 +162,7 @@ tests/snap/hover/type_information/03_function_signature.cpp
 
 **Template parameters**
 
-type, template-template, non-type
+Type, template-template, non-type
 
 Each template parameter kind reports its form: a type parameter, a
 template-template parameter, and a non-type parameter with its default.
@@ -193,7 +193,7 @@ tests/snap/hover/type_information/05_auto_deduction.cpp
 
 **`decltype` deduction**
 
-value, reference and dependent forms
+Value, reference and dependent forms
 
 Hovering a `decltype` or `decltype(auto)` placeholder shows the resolved
 type, including the reference the parenthesized-expression rule adds.
@@ -271,7 +271,7 @@ tests/snap/hover/type_information/10_sugared_auto.cpp
 
 **Type formatting**
 
-clang-format applied to rendered types
+Clang-format applied to rendered types
 
 Long or nested types are printed by the compiler's default type printer;
 they are not re-wrapped or aligned through clang-format.
@@ -324,9 +324,7 @@ tests/snap/hover/type_information/13_concept_constraints.cpp
 
 **Field layout**
 
-size, offset, alignment and padding show on field hover
-
-The corpus pins an x86-64 target, so the bit numbers are stable.
+Size, offset, alignment and padding show on field hover
 
 ```snap
 tests/snap/hover/layout_information/01_field_layout.cpp
@@ -373,7 +371,7 @@ tests/snap/hover/layout_information/03_vtable_offset.cpp
 
 **Constant evaluation**
 
-constexpr, enumerators, sizeof
+Constexpr, enumerators, sizeof
 
 When an initializer is a constant expression, the card evaluates it and
 shows the resulting value.
@@ -732,7 +730,7 @@ tests/snap/hover/macro_hover/03_cli_macros.cpp
 
 A macro named inside another invocation's arguments
 
-The recorded expansion starts at the outer invocation, so hovering an
+The expansion preview starts at the outer invocation, so hovering an
 inner macro named inside the arguments shows only its definition, not an
 expansion preview.
 
@@ -764,11 +762,8 @@ tests/snap/hover/macro_hover/05_expansion_before_definition.cpp
 
 Hover on a leading directive
 
-A `#define` in the file's preamble region (the leading run of directives
-before the first declaration) is not part of the live parse's
-preprocessor record, so hovering its name yields nothing. Every other
-macro fixture opens with a declaration precisely to push its directives
-past the preamble boundary.
+A `#define` in the leading run of directives before the first declaration
+has no hover card, while definitions after a declaration do.
 
 ```snap
 tests/snap/hover/macro_hover/06_preamble_define_hover.cpp
@@ -826,7 +821,7 @@ tests/snap/hover/special_hover_targets/03_keyword_docs.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#1862 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Attribute documentation**
 
@@ -920,9 +915,9 @@ tests/snap/hover/special_hover_targets/09_gtk_doc.cpp
 
 **LaTeX math in Doxygen**
 
-Render `@f$ ... @f$` formulas
+Inline Doxygen formulas appear verbatim
 
-Doxygen LaTeX math formulas are shown verbatim, not rendered as math.
+The formula text is not rendered as math.
 
 ```snap
 tests/snap/hover/special_hover_targets/10_latex_math.cpp

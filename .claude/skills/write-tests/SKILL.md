@@ -68,20 +68,50 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    support. A fixture that documents a capability lives in a section
    directory as `<section>/NN_name.cpp` (or `<section>/NN_unit/main.cpp`):
    the directory is the doc page's generated-region key, the two-digit
-   number orders the item within the section, and the header opens with
-   `/// # Capability name — details` (the part before the dash is the
-   name; a `///` blank line then separates the metadata list — `status`
-   is required there: `supported`, `partial` or `unsupported` — from an
-   optional markdown description). Edge-case fixtures without a doc
-   header stay at the corpus root, un-numbered. Accept intentional
-   changes with `UPDATE_SNAPSHOTS=1 npm run snap` and review the diff
-   like code; a shared-snapshot mismatch on the server side is a real
-   divergence, not something to update over.
+   number orders the item within the section. Its header has this exact
+   shape:
+
+   ```cpp
+   /// # Qualified name
+   ///
+   /// - status: supported
+   /// - issues: clangd#710
+   /// - verify: server
+   /// - snap: separate
+   /// - config: {"show_aka": false}
+   /// - diagnostics: expected
+   /// - indexing: true
+   /// - flags: ["-std=c++23"]
+   ///
+   /// The hover card shows the enclosing namespace and class scope
+   ///
+   /// Optional further paragraphs describe reader-visible behavior.
+
+   // snap: Maintainer notes about the harness follow the header directly.
+   // snap: Every line in the note repeats the prefix.
+   ```
+
+   The name is a noun phrase of at most five words, with no dash details
+   or terminal punctuation. The first prose paragraph is the card summary:
+   one sentence, capitalized (unless it begins with code), with no terminal
+   punctuation. Further prose is reader-facing only. Put harness details —
+   why a fixture is server-only, why inspect and server differ, or what a
+   snapshot pins — in the adjacent `// snap:` block instead. The header is
+   the first content in the file. Edge-case fixtures without a doc header
+   stay at the corpus root, un-numbered; any explanatory prologue there uses
+   ordinary `//` comments, not `///`.
+
+   Accept intentional changes with `UPDATE_SNAPSHOTS=1 npm run snap` and
+   review the diff like code; a shared-snapshot mismatch on the server side
+   is a real divergence, not something to update over.
 
    Fixture meta (strict — unknown keys are errors, validated by
    `tools/snap/corpus.ts` and `tools/docs/feature.ts`), declared as
-   `- key: value` lines in the leading `///` header (`status` and
-   `issues` render into the docs, the rest drive the suites):
+   `- key: value` lines in the leading `///` header. The only keys, in fixed
+   order, are `status`, `issues`, `verify`, `snap`, `config`, `diagnostics`,
+   `indexing`, `flags`; omit unused optional keys without reordering the
+   rest. `status` is required and is `supported`, `partial` or `unsupported`.
+   `status` and `issues` render into the docs; the rest drive the suites:
    - `verify: both` (default) runs inspect and server; `inspect`/`server`
      runs only that path, which then owns the plain `<name>.snap.yml`.
    - `snap:` relates the two paths of a `verify: both` fixture.

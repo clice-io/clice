@@ -106,7 +106,7 @@ tests/snap/signature_help/overload_signatures/06_variadic_template.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Active parameter past a shorter overload**
+**Active parameter beyond overload**
 
 With the cursor in the second argument, only overloads that declare a second parameter remain
 

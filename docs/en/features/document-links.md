@@ -61,8 +61,7 @@ Links continue down the search path
 copy. Next-in-path resolution only exists when the header is compiled
 in an including TU's context — opened standalone it is compiled as its
 own TU, where clang deliberately treats `#include_next` as a plain
-include, so today both links land back on the first copy (as the
-snapshot pins).
+include, so today both links land back on the first copy.
 
 ```snap
 tests/snap/document_links/include_directives/04_include_next/main.cpp
@@ -125,9 +124,7 @@ tests/snap/document_links/embed_directives/02_has_embed.cpp
 Every link carries its target's absolute path as the hover tooltip
 
 Editors render the tooltip next to the follow-link hint, e.g.
-`/usr/include/c++/14/vector (ctrl + click)`. Snapshots pin only the
-link targets; the suite instead validates the tooltip against the
-target on the server reply of every fixture in this corpus.
+`/usr/include/c++/14/vector (ctrl + click)`.
 
 ```snap
 tests/snap/document_links/presentation/01_tooltip.cpp

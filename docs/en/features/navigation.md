@@ -10,7 +10,7 @@
 
 A use in one translation unit resolves to the definition supplied by
 a sibling source — the answer spans the project, not the current
-file alone.
+file alone
 
 ```snap
 tests/snap/navigation/go_to_definition/01_def_cross_tu/main.cpp
@@ -20,13 +20,13 @@ tests/snap/navigation/go_to_definition/01_def_cross_tu/main.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Definition and declaration alternate at the cursor site**
+**Definition and declaration alternate**
 
-On a use, go-to-definition reaches the definition. Invoked on the
-definition it steps to the declaration, and on the declaration it
-steps to the definition — the two sites alternate. A symbol defined
-inline, with no separate declaration, keeps its definition as the
-answer.
+Navigation alternates between a declaration and definition
+
+A request from a use reaches the definition, while requests at the
+declaration or definition reach the other site. An inline symbol with
+no separate declaration keeps its definition as the answer.
 
 ```snap
 tests/snap/navigation/go_to_definition/02_def_decl_alternate.cpp
@@ -36,11 +36,11 @@ tests/snap/navigation/go_to_definition/02_def_decl_alternate.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Declaration-only symbols navigate to their declaration**
+**Declaration-only navigation**
 
 Symbols that carry only a declaration — pure virtuals, `extern`
 variables, in-class static constants — resolve to that declaration
-instead of returning nothing.
+instead of returning nothing
 
 ```snap
 tests/snap/navigation/go_to_definition/03_def_declaration_only.cpp
@@ -52,9 +52,9 @@ tests/snap/navigation/go_to_definition/03_def_declaration_only.cpp
 
 **Go-to-definition on `#include` directives**
 
-Invoked on an `#include` line, go-to-definition opens the included
-file. This works for the leading includes compiled into the preamble
-(the PCH) as well as ordinary ones later in the file.
+Go-to-definition on an include opens the referenced file
+
+Leading includes and ordinary includes later in the file behave alike.
 
 ```snap
 tests/snap/navigation/go_to_definition/04_def_include/main.cpp
@@ -64,10 +64,10 @@ tests/snap/navigation/go_to_definition/04_def_include/main.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Local variables and parameters navigate to their declaration**
+**Local symbol navigation**
 
 Go-to-definition on a local variable or parameter jumps to its
-declaration inside the function body.
+declaration inside the function body
 
 ```snap
 tests/snap/navigation/go_to_definition/05_def_local_symbol.cpp
@@ -77,12 +77,12 @@ tests/snap/navigation/go_to_definition/05_def_local_symbol.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Navigate through macro wrappers to the underlying declaration**
+**Macro wrapper navigation**
 
 A name spelled in a macro argument anchors at its spelling, so
 definition and declaration alternate there exactly as at a plain
 site, and a later use resolves through the wrapper to the function it
-declares.
+declares
 
 ```snap
 tests/snap/navigation/go_to_definition/06_def_macro_wrapper.cpp
@@ -92,12 +92,12 @@ tests/snap/navigation/go_to_definition/06_def_macro_wrapper.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Names conjured by a macro body or token paste anchor at the invocation**
+**Macro-generated names**
 
 A name assembled by token paste has no spelling of its own in the
 source, so it anchors at the macro invocation that creates it: the
 invocation is its definition site, and a plain use of the name jumps
-back to that invocation.
+back to that invocation
 
 ```snap
 tests/snap/navigation/go_to_definition/07_def_macro_generated.cpp
@@ -107,11 +107,11 @@ tests/snap/navigation/go_to_definition/07_def_macro_generated.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Tokens inside a `#define` body carry no navigation of their own**
+**Macro body navigation**
 
 A token written inside a macro body has no meaning until an expansion
 assigns one, so navigation on it yields nothing, while the invocation
-token always resolves to the macro being expanded.
+token always resolves to the macro being expanded
 
 ```snap
 tests/snap/navigation/go_to_definition/08_def_macro_body.cpp
@@ -137,11 +137,11 @@ tests/snap/navigation/go_to_definition/09_def_error_recovery.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Dependent member navigation in uninstantiated templates**
+**Dependent member navigation**
 
 Inside a template that is never instantiated, a member accessed on an
 object of a dependent type resolves to the member declared on the
-corresponding class template.
+corresponding class template
 
 ```snap
 tests/snap/navigation/go_to_definition/10_def_dependent_type.cpp
@@ -151,11 +151,11 @@ tests/snap/navigation/go_to_definition/10_def_dependent_type.cpp
 
 <!-- BEGIN CAPABILITY: unsupported clangd#212 -->
 
-**Template specialization navigates to the primary template**
+**Template specialization navigation**
 
 Go-to-definition on the name of an explicit specialization resolves to
 the specialization itself; stepping from it to the primary template it
-specializes is not offered.
+specializes is not offered
 
 ```snap
 tests/snap/navigation/go_to_definition/11_def_template_spec.cpp
@@ -165,10 +165,10 @@ tests/snap/navigation/go_to_definition/11_def_template_spec.cpp
 
 <!-- BEGIN CAPABILITY: unsupported clangd#2055 -->
 
-**`auto` keyword navigates to the deduced type**
+**Deduced `auto` type navigation**
 
 Go-to-definition on the `auto` keyword should reach the type it was
-deduced to; today it returns nothing.
+deduced to; today it returns nothing
 
 ```snap
 tests/snap/navigation/go_to_definition/12_def_auto_keyword.cpp
@@ -196,7 +196,7 @@ Go-to-definition on the `override` or `final` specifier should reach the
 base class virtual method it overrides; today it returns nothing.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/01_implicit_override_final.cpp
+tests/snap/navigation/implicit_targets/01_implicit_override_final.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -211,10 +211,158 @@ Go-to-definition on `break` or `continue` should reach the head of the
 loop or switch it controls; today it returns nothing.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/02_implicit_break_continue.cpp
+tests/snap/navigation/implicit_targets/02_implicit_break_continue.cpp
 ```
 
 <!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**`delete` expression**
+
+Navigate to the destructor
+
+Go-to-definition on `delete` should reach the destructor it runs; today
+it returns nothing.
+
+```snap
+tests/snap/navigation/implicit_targets/03_implicit_delete_dtor.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**`new` expression**
+
+Navigate to the constructor and overloaded `operator new`
+
+Go-to-definition on `new` reaches the class's overloaded `operator new`.
+The constructor invoked by the same expression is not part of the reply.
+
+```snap
+tests/snap/navigation/implicit_targets/04_implicit_new_ctor.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Overloaded operators**
+
+From the operator token to its definition
+
+Go-to-definition on an overloaded operator token reaches the operator's
+definition. The binary, subscript, call and arrow operators (`+`, `[]`,
+`()`, `->`) are all resolved.
+
+```snap
+tests/snap/navigation/implicit_targets/05_implicit_operator_call.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**C++20 rewritten operators**
+
+Navigate to the operator the rewrite uses
+
+For a comparison synthesized by the C++20 rewrite rules, go-to-definition
+on the written operator reaches the operator that actually implements it:
+`!=` reaches `operator==`, and `>` reaches `operator<=>`.
+
+```snap
+tests/snap/navigation/implicit_targets/06_implicit_rewritten_operator.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**User-defined literals**
+
+Navigate to the literal operator
+
+Go-to-definition on a user-defined-literal suffix should reach its
+`operator""`; today it returns nothing.
+
+```snap
+tests/snap/navigation/implicit_targets/07_implicit_udl.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#1931 -->
+
+**Implicit conversion operators**
+
+From a conversion context to the operator
+
+Go-to-definition from a context that runs a user-defined conversion (a
+condition, `!`, an explicit `bool(...)`) should reach the conversion
+operator; today it returns nothing.
+
+```snap
+tests/snap/navigation/implicit_targets/08_implicit_conversion_context.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**Cast conversion navigation**
+
+Constructing casts navigate to the selected constructor
+
+A `static_cast` that runs a user-defined conversion operator does not yet
+reach that operator.
+
+```snap
+tests/snap/navigation/implicit_targets/09_implicit_cast_conversion.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**Range-based for**
+
+Navigate to `begin()` / `end()`
+
+Go-to-definition on the `:` of a range-based for should reach the
+`begin()` / `end()` chosen for the range; today it returns nothing.
+
+```snap
+tests/snap/navigation/implicit_targets/10_implicit_range_for.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**`co_await` / `co_yield` / `co_return`**
+
+Navigate to the awaiter or promise method
+
+Go-to-definition on `co_yield` reaches the promise's `yield_value`. The
+`co_await` and `co_return` keywords do not yet reach the awaiter's or
+promise's methods.
+
+```snap
+tests/snap/navigation/implicit_targets/11_implicit_coroutine.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Template navigation
+
+Navigation inferred from initialization and decomposition patterns, including
+class template argument deduction.
+
+<!-- BEGIN GENERATED ITEMS: template_navigation -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -227,7 +375,7 @@ call reaches the constructor overload resolution selected, for both the
 `T(args)` and `T{args}` forms.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/03_implicit_constructor_call.cpp
+tests/snap/navigation/template_navigation/01_implicit_constructor_call.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -244,7 +392,7 @@ operator. The `=` that introduces a copy- or move-initialization
 not yet resolved.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/04_implicit_copy_move.cpp
+tests/snap/navigation/template_navigation/02_implicit_copy_move.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -260,7 +408,7 @@ definition on the constructor call reaches the constructor that was
 selected, not merely the class template.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/05_implicit_ctad.cpp
+tests/snap/navigation/template_navigation/03_implicit_ctad.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -275,37 +423,7 @@ An aggregate has no constructor, so go-to-definition on its initializer
 brace reaches the aggregate's definition.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/06_implicit_aggregate_init.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**`delete` expression**
-
-Navigate to the destructor
-
-Go-to-definition on `delete` should reach the destructor it runs; today
-it returns nothing.
-
-```snap
-tests/snap/navigation/implicit_code_navigation/07_implicit_delete_dtor.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial -->
-
-**`new` expression**
-
-Navigate to the constructor and overloaded `operator new`
-
-Go-to-definition on `new` reaches the class's overloaded `operator new`.
-The constructor invoked by the same expression is not part of the reply.
-
-```snap
-tests/snap/navigation/implicit_code_navigation/08_implicit_new_ctor.cpp
+tests/snap/navigation/template_navigation/04_implicit_aggregate_init.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -322,7 +440,7 @@ itself resolves to the base type or the member, so navigation to the
 constructor goes through the parenthesis.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/09_implicit_member_init.cpp
+tests/snap/navigation/template_navigation/05_implicit_member_init.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -339,7 +457,7 @@ type, so navigation to the target constructor goes through the
 parenthesis.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/10_implicit_delegating_ctor.cpp
+tests/snap/navigation/template_navigation/06_implicit_delegating_ctor.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -356,7 +474,7 @@ several constructors the reply resolves to one of them rather than
 listing the whole set.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/11_implicit_inherited_ctor.cpp
+tests/snap/navigation/template_navigation/07_implicit_inherited_ctor.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -371,7 +489,7 @@ A braced `return {args}` implicitly constructs the function's return
 type; go-to-definition on the brace reaches the selected constructor.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/12_implicit_return_construction.cpp
+tests/snap/navigation/template_navigation/08_implicit_return_construction.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -386,99 +504,7 @@ Go-to-definition on the `=` of a lambda init-capture should reach the
 constructor that builds the captured value; today it returns nothing.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/13_implicit_lambda_capture.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Overloaded operators**
-
-From the operator token to its definition
-
-Go-to-definition on an overloaded operator token reaches the operator's
-definition. The binary, subscript, call and arrow operators (`+`, `[]`,
-`()`, `->`) are all resolved.
-
-```snap
-tests/snap/navigation/implicit_code_navigation/14_implicit_operator_call.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**C++20 rewritten operators**
-
-Navigate to the operator the rewrite uses
-
-For a comparison synthesized by the C++20 rewrite rules, go-to-definition
-on the written operator reaches the operator that actually implements it:
-`!=` reaches `operator==`, and `>` reaches `operator<=>`.
-
-```snap
-tests/snap/navigation/implicit_code_navigation/15_implicit_rewritten_operator.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**User-defined literals**
-
-Navigate to the literal operator
-
-Go-to-definition on a user-defined-literal suffix should reach its
-`operator""`; today it returns nothing.
-
-```snap
-tests/snap/navigation/implicit_code_navigation/16_implicit_udl.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#1931 -->
-
-**Implicit conversion operators**
-
-From a conversion context to the operator
-
-Go-to-definition from a context that runs a user-defined conversion (a
-condition, `!`, an explicit `bool(...)`) should reach the conversion
-operator; today it returns nothing.
-
-```snap
-tests/snap/navigation/implicit_code_navigation/17_implicit_conversion_context.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial -->
-
-**Casts invoking a constructor or conversion operator**
-
-A `static_cast` that constructs its target reaches the selected
-constructor. A `static_cast` that runs a user-defined conversion operator
-does not yet reach the operator.
-
-```snap
-tests/snap/navigation/implicit_code_navigation/18_implicit_cast_conversion.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**Range-based for**
-
-Navigate to `begin()` / `end()`
-
-Go-to-definition on the `:` of a range-based for should reach the
-`begin()` / `end()` chosen for the range; today it returns nothing.
-
-```snap
-tests/snap/navigation/implicit_code_navigation/19_implicit_range_for.cpp
+tests/snap/navigation/template_navigation/09_implicit_lambda_capture.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -493,35 +519,10 @@ Go-to-definition on a structured binding name resolves to the binding
 itself rather than the underlying field or accessor it names.
 
 ```snap
-tests/snap/navigation/implicit_code_navigation/20_implicit_structured_binding.cpp
+tests/snap/navigation/template_navigation/10_implicit_structured_binding.cpp
 ```
 
 <!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial -->
-
-**`co_await` / `co_yield` / `co_return`**
-
-Navigate to the awaiter or promise method
-
-Go-to-definition on `co_yield` reaches the promise's `yield_value`. The
-`co_await` and `co_return` keywords do not yet reach the awaiter's or
-promise's methods.
-
-```snap
-tests/snap/navigation/implicit_code_navigation/21_implicit_coroutine.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## Template navigation
-
-Navigation inferred from initialization and decomposition patterns, including
-class template argument deduction.
-
-<!-- BEGIN GENERATED ITEMS: template_navigation -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -539,7 +540,7 @@ clice returns the declaration locations plus the definition — symbols defined 
 
 Go-to-declaration on a use resolves sites in other files: the
 prototype lives in a shared header and the out-of-line definition in a
-sibling source, and both are offered from a use in another file.
+sibling source, and both are offered from a use in another file
 
 ```snap
 tests/snap/navigation/go_to_declaration/01_decl_cross_tu/main.cpp
@@ -565,11 +566,11 @@ tests/snap/navigation/go_to_declaration/02_decl_function_prototype.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Forward declarations of classes and structs**
+**Forward-declared record types**
 
 A class with a forward declaration and a later definition offers both
 from a use — the forward declaration stays part of the declaration set
-rather than being dropped in favour of the definition.
+rather than being dropped in favour of the definition
 
 ```snap
 tests/snap/navigation/go_to_declaration/03_decl_forward_class.cpp
@@ -626,12 +627,12 @@ tests/snap/navigation/go_to_declaration/06_decl_multiple.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Declaration and definition with cosmetically different signatures**
+**Cosmetic signature differences**
 
 Parameter names, and a top-level `const` on a parameter, are not part
 of a function's type: the declaration and the definition below spell the
 same function differently, yet go-to-declaration still connects a use to
-the prototype.
+the prototype
 
 ```snap
 tests/snap/navigation/go_to_declaration/07_decl_signature_mismatch.cpp
@@ -710,9 +711,10 @@ tests/snap/navigation/go_to_implementation/04_impl_base_derived.cpp
 
 **Template duck-type navigation**
 
-From a dependent member call, go-to-implementation should list the
-concrete methods of every known instantiation; the same applies to a
-generic lambda's dependent calls. Today it returns nothing.
+Dependent calls should resolve to methods of known instantiations
+
+This applies to function templates and generic lambdas, but neither
+currently returns an implementation target.
 
 ```snap
 tests/snap/navigation/go_to_implementation/05_impl_template_duck_type.cpp
@@ -733,7 +735,7 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 **Variables and parameters**
 
 Go-to-type-definition on a local variable or a parameter reaches the
-definition of its type.
+definition of its type
 
 ```snap
 tests/snap/navigation/go_to_type_definition/01_typedef_variables.cpp
@@ -746,7 +748,7 @@ tests/snap/navigation/go_to_type_definition/01_typedef_variables.cpp
 **Class and struct fields**
 
 Go-to-type-definition on a field access reaches the definition of the
-field's type.
+field's type
 
 ```snap
 tests/snap/navigation/go_to_type_definition/02_typedef_field.cpp
@@ -760,7 +762,7 @@ tests/snap/navigation/go_to_type_definition/02_typedef_field.cpp
 
 Go-to-type-definition on an `auto`-deduced variable should reach the
 deduced type's definition; today the variable carries no type relation,
-so it returns nothing.
+so it returns nothing
 
 ```snap
 tests/snap/navigation/go_to_type_definition/03_typedef_auto.cpp
@@ -770,10 +772,10 @@ tests/snap/navigation/go_to_type_definition/03_typedef_auto.cpp
 
 <!-- BEGIN CAPABILITY: partial clangd#1026 -->
 
-**Smart pointer to the pointee type**
+**Smart-pointer pointee navigation**
 
 Go-to-type-definition on a smart-pointer variable reaches the wrapper
-type itself; unwrapping to the pointee type is not offered.
+type itself; unwrapping to the pointee type is not offered
 
 ```snap
 tests/snap/navigation/go_to_type_definition/04_typedef_smart_pointer.cpp
@@ -787,7 +789,7 @@ tests/snap/navigation/go_to_type_definition/04_typedef_smart_pointer.cpp
 
 Go-to-type-definition on a variable of an aliased type reaches the
 `using` or `typedef` declaration; it does not yet unwrap the alias to
-the underlying type's definition.
+the underlying type's definition
 
 ```snap
 tests/snap/navigation/go_to_type_definition/05_typedef_alias.cpp
@@ -800,7 +802,7 @@ tests/snap/navigation/go_to_type_definition/05_typedef_alias.cpp
 **Structured binding variables**
 
 Go-to-type-definition on a structured binding reaches the definition of
-the bound member's type.
+the bound member's type
 
 ```snap
 tests/snap/navigation/go_to_type_definition/06_typedef_structured_binding.cpp
@@ -821,7 +823,7 @@ tests/snap/navigation/go_to_type_definition/06_typedef_structured_binding.cpp
 Find references gathers uses from other files too: a function
 defined in one source and called from a sibling reports both call
 sites together with the declaration in the shared header, not only the
-uses in the current file.
+uses in the current file
 
 ```snap
 tests/snap/navigation/find_references/01_refs_cross_tu/main.cpp
@@ -831,11 +833,11 @@ tests/snap/navigation/find_references/01_refs_cross_tu/main.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Declaration and definition sites appear among references**
+**Declarations among references**
 
 A reference query returns the declaration and the out-of-line
 definition together with every use, so the whole surface of a symbol
-is reachable from any one of its sites.
+is reachable from any one of its sites
 
 ```snap
 tests/snap/navigation/find_references/02_refs_include_declaration.cpp
@@ -845,11 +847,11 @@ tests/snap/navigation/find_references/02_refs_include_declaration.cpp
 
 <!-- BEGIN CAPABILITY: unsupported clangd#1081 -->
 
-**Implicit references from range-based for loops**
+**Range-for references**
 
 Find references on `begin` reports only its own declaration; the
 range-based for loop that implicitly calls it is not included among the
-references.
+references
 
 ```snap
 tests/snap/navigation/find_references/03_refs_range_for.cpp
@@ -863,7 +865,7 @@ tests/snap/navigation/find_references/03_refs_range_for.cpp
 
 Find references on a constructor reports only its explicit sites; an
 object definition that implicitly invokes the constructor or its
-destructor is not included.
+destructor is not included
 
 ```snap
 tests/snap/navigation/find_references/04_refs_implicit_construction.cpp
@@ -876,7 +878,7 @@ tests/snap/navigation/find_references/04_refs_implicit_construction.cpp
 **References through forwarding functions**
 
 Find references on a constructor does not include call sites that reach
-it indirectly through a perfect-forwarding factory.
+it indirectly through a perfect-forwarding factory
 
 ```snap
 tests/snap/navigation/find_references/05_refs_forwarding.cpp
@@ -886,11 +888,11 @@ tests/snap/navigation/find_references/05_refs_forwarding.cpp
 
 <!-- BEGIN CAPABILITY: unsupported clangd#258 clangd#675 -->
 
-**References in dependent and template contexts**
+**Dependent template references**
 
 Find references on a member does not include dependent call sites in a
 template, even when the template is instantiated with the member's
-class.
+class
 
 ```snap
 tests/snap/navigation/find_references/06_refs_dependent_context.cpp
@@ -904,7 +906,7 @@ tests/snap/navigation/find_references/06_refs_dependent_context.cpp
 
 The reference reply carries only locations, so a reader cannot tell a
 write from a read; annotating each result with its access kind is not
-offered.
+offered
 
 ```snap
 tests/snap/navigation/find_references/07_refs_read_write.cpp
@@ -914,11 +916,11 @@ tests/snap/navigation/find_references/07_refs_read_write.cpp
 
 <!-- BEGIN CAPABILITY: unsupported clangd#177 -->
 
-**Enclosing function shown with each reference**
+**Reference enclosing context**
 
 Each reference is reported as a bare location; the name of the function
 that encloses it is not attached, so results carry no context beyond
-the file and line.
+the file and line
 
 ```snap
 tests/snap/navigation/find_references/08_refs_enclosing_context.cpp
@@ -928,12 +930,12 @@ tests/snap/navigation/find_references/08_refs_enclosing_context.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Macro references across expansions, `#ifdef`/`#ifndef` and `#undef`**
+**Macro references**
 
-A macro's references span its expansions, the `#ifdef` / `#ifndef`
-conditionals that test it and the `#undef` that cancels it. Each
-`#define` of a name is its own symbol, so a redefinition after `#undef`
-collects only its own uses.
+Macro reference searches include expansions, conditional tests and undefinitions
+
+Each `#define` of a name is its own symbol, so a redefinition after
+`#undef` collects only its own uses.
 
 ```snap
 tests/snap/navigation/find_references/09_refs_macro.cpp
@@ -943,10 +945,10 @@ tests/snap/navigation/find_references/09_refs_macro.cpp
 
 <!-- BEGIN CAPABILITY: unsupported clangd#346 -->
 
-**Macro references spelled inside other macro definitions**
+**Nested macro references**
 
 Find references on a macro does not include the mentions of it written
-inside the bodies of other macro definitions.
+inside the bodies of other macro definitions
 
 ```snap
 tests/snap/navigation/find_references/10_refs_macro_in_macro.cpp
@@ -959,7 +961,7 @@ tests/snap/navigation/find_references/10_refs_macro_in_macro.cpp
 **Label and goto references**
 
 Find references on a label lists the label itself together with every
-`goto` that jumps to it.
+`goto` that jumps to it
 
 ```snap
 tests/snap/navigation/find_references/11_refs_label_goto.cpp
@@ -975,10 +977,10 @@ tests/snap/navigation/find_references/11_refs_label_goto.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Prepare call hierarchy on functions and methods**
+**Call hierarchy preparation**
 
 Preparing a call hierarchy works on a free function and on a member
-method alike, anchoring an item at the entity under the cursor.
+method alike, anchoring an item at the entity under the cursor
 
 ```snap
 tests/snap/navigation/call_hierarchy/01_calls_prepare.cpp
@@ -991,7 +993,7 @@ tests/snap/navigation/call_hierarchy/01_calls_prepare.cpp
 **Incoming calls**
 
 Incoming calls list every caller of a function, and a caller that
-invokes it more than once contributes each call site.
+invokes it more than once contributes each call site
 
 ```snap
 tests/snap/navigation/call_hierarchy/02_calls_incoming.cpp
@@ -1004,7 +1006,7 @@ tests/snap/navigation/call_hierarchy/02_calls_incoming.cpp
 **Outgoing calls**
 
 Outgoing calls list every function a body invokes, one entry per
-callee.
+callee
 
 ```snap
 tests/snap/navigation/call_hierarchy/03_calls_outgoing.cpp
@@ -1014,11 +1016,11 @@ tests/snap/navigation/call_hierarchy/03_calls_outgoing.cpp
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
-**Function signature in the item detail**
+**Call hierarchy item details**
 
 A call hierarchy item carries only its name; the function signature is
 not attached in a detail field, so overloads are indistinguishable in
-the hierarchy.
+the hierarchy
 
 ```snap
 tests/snap/navigation/call_hierarchy/04_calls_detail_signature.cpp
@@ -1032,7 +1034,7 @@ tests/snap/navigation/call_hierarchy/04_calls_detail_signature.cpp
 
 A member function's call hierarchy item is produced, but its name field
 carries only the bare method name (`draw`), not the qualified
-`Circle::draw` that would tell it apart from a free function.
+`Circle::draw` that would tell it apart from a free function
 
 ```snap
 tests/snap/navigation/call_hierarchy/05_calls_qualified_name.cpp
@@ -1046,7 +1048,7 @@ tests/snap/navigation/call_hierarchy/05_calls_qualified_name.cpp
 
 Incoming calls of a base virtual method do not include calls made
 through derived overrides; a call to an override is attributed only to
-that override, never to the base it overrides.
+that override, never to the base it overrides
 
 ```snap
 tests/snap/navigation/call_hierarchy/06_calls_virtual_dispatch.cpp
@@ -1075,7 +1077,7 @@ tests/snap/navigation/call_hierarchy/07_calls_non_function.cpp
 
 A call written in a lambda body appears in the incoming calls of the
 function it invokes, attributed to the function that encloses the
-lambda.
+lambda
 
 ```snap
 tests/snap/navigation/call_hierarchy/08_calls_lambda.cpp
@@ -1088,7 +1090,7 @@ tests/snap/navigation/call_hierarchy/08_calls_lambda.cpp
 **Constructor calls through forwarding functions**
 
 Incoming calls of a constructor do not include the call sites that
-reach it through a perfect-forwarding factory.
+reach it through a perfect-forwarding factory
 
 ```snap
 tests/snap/navigation/call_hierarchy/09_calls_forwarding_ctor.cpp
@@ -1104,10 +1106,10 @@ tests/snap/navigation/call_hierarchy/09_calls_forwarding_ctor.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Prepare type hierarchy on class, struct, enum and union**
+**Type hierarchy preparation**
 
 Preparing a type hierarchy anchors an item on any user-defined type
-tag — class, struct, enum and union alike.
+tag — class, struct, enum and union alike
 
 ```snap
 tests/snap/navigation/type_hierarchy/01_types_prepare.cpp
@@ -1120,7 +1122,7 @@ tests/snap/navigation/type_hierarchy/01_types_prepare.cpp
 **Supertypes**
 
 Supertypes list every direct base of a class, including each base of a
-multiple-inheritance derived type.
+multiple-inheritance derived type
 
 ```snap
 tests/snap/navigation/type_hierarchy/02_types_supertypes.cpp
@@ -1133,7 +1135,7 @@ tests/snap/navigation/type_hierarchy/02_types_supertypes.cpp
 **Subtypes**
 
 Subtypes list every class that derives from a base, across sibling
-derived types.
+derived types
 
 ```snap
 tests/snap/navigation/type_hierarchy/03_types_subtypes.cpp
@@ -1146,7 +1148,7 @@ tests/snap/navigation/type_hierarchy/03_types_subtypes.cpp
 **Template inheritance**
 
 Subtypes of a base include classes that derive from it through a class
-template, such as a CRTP wrapper.
+template, such as a CRTP wrapper
 
 ```snap
 tests/snap/navigation/type_hierarchy/04_types_template_inheritance.cpp
@@ -1156,11 +1158,11 @@ tests/snap/navigation/type_hierarchy/04_types_template_inheritance.cpp
 
 <!-- BEGIN CAPABILITY: partial clangd#31 -->
 
-**Template arguments in type hierarchy items**
+**Template arguments in hierarchy**
 
 A subtype produced by a class template specialization is listed, but
 its item name carries only the bare template name (`Derived`), without
-the template arguments that would distinguish `Derived<Foo>`.
+the template arguments that would distinguish `Derived<Foo>`
 
 ```snap
 tests/snap/navigation/type_hierarchy/05_types_template_args.cpp
@@ -1180,7 +1182,7 @@ Search the whole project for a symbol by name (`workspace/symbol`).
 
 **Basic workspace-wide symbol search**
 
-case-insensitive substring matching
+Case-insensitive substring matching
 
 A query matches any symbol whose name contains it, ignoring case:
 functions, types, enumerators and macros all participate, and a query
@@ -1228,7 +1230,7 @@ tests/snap/workspace_symbol/workspace_symbol/03_overload_params.cpp
 
 **Fuzzy matching**
 
-word-boundary-aware scoring for camelCase and snake_case
+Word-boundary-aware scoring for camelCase and snake_case
 
 Matching is a case-insensitive substring test: `LinLis` does not find
 `LinkedList`, and `pcfg` does not find `parse_config`. Word-boundary
@@ -1247,7 +1249,7 @@ tests/snap/workspace_symbol/workspace_symbol/04_fuzzy_matching.cpp
 
 Symbols match by bare name only: `net::Socket` finds nothing even
 though `deep::net::Socket` exists, and neither does any other
-qualifier-prefixed form.
+qualifier-prefixed form
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/05_qualified_search.cpp
@@ -1257,11 +1259,11 @@ tests/snap/workspace_symbol/workspace_symbol/05_qualified_search.cpp
 
 <!-- BEGIN CAPABILITY: unsupported clangd#931 -->
 
-**Enumerator lookup under the enum's scope**
+**Scoped enumerator lookup**
 
 `Color::Red` should find the enumerator — for scoped and unscoped
 enums alike — but qualified queries match nothing; only the bare
-`Red` does.
+`Red` does
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/06_enum_scope.cpp
@@ -1271,11 +1273,11 @@ tests/snap/workspace_symbol/workspace_symbol/06_enum_scope.cpp
 
 <!-- BEGIN CAPABILITY: unsupported clangd#2253 -->
 
-**Underlying declarations ranked above type aliases**
+**Alias ranking**
 
-When both `ConnectionImpl` and its alias `Connection` match a query,
-the underlying declaration should rank first. Results carry no
-ranking today.
+Underlying declarations should rank above matching aliases
+
+Results carry no ranking today.
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/07_alias_priority.cpp
@@ -1289,7 +1291,7 @@ tests/snap/workspace_symbol/workspace_symbol/07_alias_priority.cpp
 
 Pasting a linker symbol such as `_Z7processi` should resolve to the
 function it mangles — useful when chasing linker errors and stack
-traces.
+traces
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/08_mangled_name.cpp
@@ -1305,11 +1307,11 @@ tests/snap/workspace_symbol/workspace_symbol/08_mangled_name.cpp
 
 <!-- BEGIN CAPABILITY: supported clangd#2310 -->
 
-**`import module_name` navigates to the module interface unit**
+**Module import navigation**
 
 Go-to-definition on the name in an `import` declaration opens the
 module interface unit that exports it, and uses of an imported symbol
-reach its definition in that unit.
+reach its definition in that unit
 
 ```snap
 tests/snap/navigation/module_navigation/01_module_import_name/main.cpp
@@ -1319,10 +1321,10 @@ tests/snap/navigation/module_navigation/01_module_import_name/main.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**`import :partition` navigates to the partition unit**
+**Module partition navigation**
 
 Go-to-definition on the partition name after the colon in a partition
-import opens the partition unit that declares it.
+import opens the partition unit that declares it
 
 ```snap
 tests/snap/navigation/module_navigation/02_module_partition_import/main.cpp
@@ -1332,12 +1334,12 @@ tests/snap/navigation/module_navigation/02_module_partition_import/main.cpp
 
 <!-- BEGIN CAPABILITY: partial -->
 
-**Navigate between interface and implementation units of one module**
+**Module interface implementation navigation**
 
 Go-to-definition on the module name in an implementation unit
 (`module m;`) jumps to the interface unit that declares the module;
 the reverse direction, from the interface name to the implementation,
-is not offered.
+is not offered
 
 ```snap
 tests/snap/navigation/module_navigation/03_module_iface_impl/main.cpp
@@ -1371,10 +1373,10 @@ Highlight all references to the symbol under cursor within the current file (`te
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
-**Highlight every reference to the symbol under the cursor in the current file**
+**Document reference highlights**
 
 Placing the cursor on `total` should light up its declaration and
-every use in the file; the request is not implemented.
+every use in the file; the request is not implemented
 
 ```snap
 tests/snap/navigation/document_highlight/01_highlight_references.cpp
@@ -1387,7 +1389,7 @@ tests/snap/navigation/document_highlight/01_highlight_references.cpp
 **Read/write classification for symbol highlights**
 
 Each highlight should carry its access kind, so editors can tint
-writes differently from reads.
+writes differently from reads
 
 ```snap
 tests/snap/navigation/document_highlight/02_highlight_read_write.cpp
@@ -1401,7 +1403,7 @@ tests/snap/navigation/document_highlight/02_highlight_read_write.cpp
 
 Highlighting `break` or `continue` should also light up the loop or
 `switch` it belongs to — and `return` / `throw` the function exits
-they mark.
+they mark
 
 ```snap
 tests/snap/navigation/document_highlight/03_highlight_control_flow.cpp
@@ -1417,11 +1419,11 @@ tests/snap/navigation/document_highlight/03_highlight_control_flow.cpp
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
-**Switch between a source file and its header**
+**Source-header switching**
 
 From `widget.cpp` a single command should jump to `widget.h` and
 back — the `textDocument/switchSourceHeader` request clangd clients
-rely on is not implemented.
+rely on is not implemented
 
 ```snap
 tests/snap/navigation/switch_source_header/01_switch_source_header.cpp

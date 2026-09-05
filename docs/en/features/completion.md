@@ -12,9 +12,6 @@ Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no co
 
 Headers and directories from the configured search path, directories marked by a trailing slash
 
-Answered by the server before any compilation, so only the server path
-exists for this fixture.
-
 ```snap
 tests/snap/code_completion/include_path_completion/01_include_quoted.cpp
 ```
@@ -101,10 +98,8 @@ Triggered when cursor is after `import` or `export import`.
 
 Known module names complete after `import`, with the closing semicolon inserted
 
-Answered by the server from its module map, so only the server path
-exists for this fixture; the sibling module interface is opened first
-so the module is known. The statement stays unterminated — a `;` on
-the line means the import is already complete and nothing is offered.
+A statement that already contains its closing semicolon is complete and
+offers no module names.
 
 ```snap
 tests/snap/code_completion/module_completion/01_import_modules/main.cpp
@@ -201,7 +196,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
 **Members of a class**
 
-fields, methods, the destructor and operators complete with plain names
+Fields, methods, the destructor and operators complete with plain names
 
 The destructor completes as `~Account` (never `~struct Account`),
 `operator=` keeps no space before `=`, and a conversion operator
@@ -215,7 +210,7 @@ tests/snap/code_completion/member_access/01_member_access.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Members of an instantiated class template**
+**Instantiated class template members**
 
 The destructor label keeps the written template arguments
 
@@ -367,7 +362,7 @@ tests/snap/code_completion/member_access/05_inherited_members.cpp
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Unqualified lookup with fuzzy prefix matching**
+**Fuzzy unqualified lookup**
 
 Strong prefix matches survive, weak subsequence matches and unqualified namespace members do not
 
@@ -417,7 +412,7 @@ tests/snap/code_completion/symbols/04_pattern_keyword.cpp
 
 **Macros**
 
-object-like macros complete as constants, function-like ones as functions with a parameter signature; argument snippets follow the function setting
+Object-like macros complete as constants, function-like ones as functions with a parameter signature; argument snippets follow the function setting
 
 ```snap
 tests/snap/code_completion/symbols/05_macros.cpp
@@ -728,7 +723,7 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
 
 **Underscore filtering**
 
-underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
+Underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
 
 ```snap
 tests/snap/code_completion/filtering_ranking/01_underscore_filter.cpp
