@@ -40,7 +40,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "../compile_commands.ts";
 import { parseAnnotations } from "../snap/annotation.ts";
-import { C_FAMILY, FIXTURE_META_KEYS, headingLevel, scanFixtureHeader } from "../snap/corpus.ts";
+import { FIXTURE_META_KEYS, headingLevel, scanFixtureHeader } from "../snap/corpus.ts";
 import { renderMarkdownTable, rewriteRegions, type RegionMarkers } from "./generated.ts";
 
 // feature -> doc path (relative to repo root). Extend as more features
@@ -107,15 +107,6 @@ interface Fixture {
     issues: string[];
     description: string;
     example: string;
-    /// The example with its `§` markers kept, for the rendered card to
-    /// show where each result was taken.
-    marked: string;
-    /// The fixture's snapshot body (frontmatter stripped), empty when the
-    /// snapshot does not exist yet.
-    snapshot: string;
-    /// Sibling sources of a multi-file unit fixture (unit-relative POSIX
-    /// path, §-stripped content), rendered as extra labeled example blocks.
-    siblings: { rel: string; content: string }[];
 }
 
 function trimBlank(lines: string[]): string[] {
@@ -220,8 +211,7 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         }
     }
     // Snapshot-focus `§` markers are fixture metadata, not example code.
-    const marked = trimBlank(lines.slice(exampleStart)).join("\n");
-    const example = parseAnnotations(marked).content;
+    const example = parseAnnotations(trimBlank(lines.slice(exampleStart)).join("\n")).content;
     if (!example.trim()) {
         problems.push(`${filePath}: doc-item fixture has no example code`);
     }
@@ -234,65 +224,7 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         issues,
         description: trimBlank(desc).join("\n"),
         example,
-        marked,
-        snapshot: readSnapshot(filePath),
-        siblings: collectSiblings(filePath, isUnit),
     };
-}
-
-/// The snapshot recorded for a fixture, without its frontmatter.
-function readSnapshot(filePath: string): string {
-    const snapPath = filePath.replace(/\.cpp$/, ".snap.yml");
-    if (!fs.existsSync(snapPath)) {
-        return "";
-    }
-    const text = fs.readFileSync(snapPath, "utf8").replaceAll("\r\n", "\n");
-    const match = /^---\n[\s\S]*?\n---\n/.exec(text);
-    const lines = (match ? text.slice(match[0].length) : text).trim().split("\n");
-    // Two trailing spaces are markdown hard breaks, which the fence would
-    // trim away; spell the ones that still break something as backslash
-    // breaks (a heading or a paragraph's last line has nothing to break).
-    return lines
-        .map((line, i) => {
-            const trimmed = line.trimEnd();
-            const breaks =
-                / {2,}$/.test(line) &&
-                !trimmed.startsWith("#") &&
-                (lines[i + 1] ?? "").trim() !== "";
-            return breaks ? `${trimmed}\\` : trimmed;
-        })
-        .join("\n");
-}
-
-/// The sibling sources of a `<unit>/main.cpp` doc fixture, §-stripped like
-/// the entry's example code; empty for single-file fixtures. A leading
-/// `// snap:` comment block is harness commentary, dropped the same way
-/// the entry's example drops it.
-function collectSiblings(filePath: string, isUnit: boolean): { rel: string; content: string }[] {
-    if (!isUnit) {
-        return [];
-    }
-    const unitDir = path.dirname(filePath);
-    const siblings: { rel: string; content: string }[] = [];
-    for (const name of fs.readdirSync(unitDir, { recursive: true, encoding: "utf8" })) {
-        const rel = name.split(path.sep).join("/");
-        const abs = path.join(unitDir, name);
-        if (rel === "main.cpp" || !C_FAMILY.test(rel) || !fs.statSync(abs).isFile()) {
-            continue;
-        }
-        const content = parseAnnotations(fs.readFileSync(abs, "utf8")).content;
-        let lines = trimBlank(content.split("\n"));
-        if ((lines[0] ?? "").trim().startsWith("// snap:")) {
-            let start = 0;
-            while ((lines[start] ?? "").trim().startsWith("//")) {
-                start += 1;
-            }
-            lines = trimBlank(lines.slice(start));
-        }
-        siblings.push({ rel, content: lines.join("\n") });
-    }
-    siblings.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
-    return siblings;
 }
 
 /// A title of the form `Name — details` names the capability before the
@@ -316,13 +248,13 @@ function splitTitle(title: string): { name: string; details: string } {
 /// A section's region: one capability card per item. The card's markers
 /// carry the status and issue references (verbatim for translation), the
 /// paragraphs between them are the name, details and description, and
-/// the `snap-<feature>` fence holds the marked example with its snapshot
-/// for the site to render.
-function renderSection(fixtures: Fixture[], feature: string): string {
-    return fixtures.map((fx) => renderItem(fx, feature)).join("\n\n");
+/// the `snap` fence names the fixture; the site reads the fixture and its
+/// snapshot from the synced test corpus and renders the example itself.
+function renderSection(fixtures: Fixture[]): string {
+    return fixtures.map(renderItem).join("\n\n");
 }
 
-function renderItem(fx: Fixture, feature: string): string {
+function renderItem(fx: Fixture): string {
     const { name, details } = splitTitle(fx.title);
     const marker = [fx.status, ...fx.issues].join(" ");
     const out = [`<!-- BEGIN CAPABILITY: ${marker} -->`, "", `**${name}**`];
@@ -330,36 +262,9 @@ function renderItem(fx: Fixture, feature: string): string {
     if (paragraphs.length > 0) {
         out.push("", paragraphs.join("\n\n"));
     }
-    const data: string[] = [`feature: ${feature}`, "code: |", ...indent(fx.marked)];
-    for (const sibling of fx.siblings) {
-        data.push(`file ${sibling.rel}: |`, ...indent(sibling.content));
-    }
-    if (fx.snapshot) {
-        data.push("snapshot: |", ...indent(fx.snapshot));
-    }
-    out.push("", ...fencedBlock(data.join("\n"), undefined, `snap-${feature}`));
-    out.push("", "<!-- END CAPABILITY -->");
+    const rel = path.relative(REPO_ROOT, fx.path).split(path.sep).join("/");
+    out.push("", "```snap", rel, "```", "", "<!-- END CAPABILITY -->");
     return out.join("\n");
-}
-
-function indent(text: string): string[] {
-    return text.split("\n").map((line) => (line === "" ? "" : `  ${line}`));
-}
-
-/// One example code block, labeled with its unit-relative file name when
-/// the fixture has more than one file.
-function fencedBlock(content: string, label?: string, lang = "cpp"): string[] {
-    // A fence longer than any backtick run in the example, so example
-    // code can never close the fence early.
-    const runs = content.match(/`+/g) ?? [];
-    const longest = runs.reduce((max, run) => Math.max(max, run.length), 0);
-    const fence = "`".repeat(Math.max(3, longest + 1));
-    const out: string[] = [];
-    if (label !== undefined) {
-        out.push(`\`${label}\`:`, "");
-    }
-    out.push(`${fence}${lang}`, ...content.split("\n").map((line) => line.trimEnd()), fence);
-    return out;
 }
 
 function collectFixtures(feature: string, problems: string[]): Fixture[] {
@@ -385,9 +290,6 @@ function globCpp(dir: string): string[] {
         .sort();
 }
 
-const corpusOf = (fx: Fixture): string =>
-    path.relative(REPO_ROOT, fx.path).split(path.sep)[2] ?? "";
-
 function rewriteDoc(
     docText: string,
     sections: Map<string, Fixture[]>,
@@ -403,7 +305,7 @@ function rewriteDoc(
             if (matched.length === 0) {
                 problems.push(`${docPath}: region '${section}' matches no fixtures`);
             }
-            return renderSection(matched, corpusOf(matched[0]!));
+            return renderSection(matched);
         },
         problems,
     );
@@ -426,6 +328,8 @@ function processFeature(
     // in their details would render as one heading twice, whichever of
     // the corpora feeding this page they come from. A section spanning
     // two corpora would interleave their independently-sorted item order.
+    const corpusOf = (fx: Fixture): string =>
+        path.relative(REPO_ROOT, fx.path).split(path.sep)[2] ?? "";
     const nameOwner = new Map<string, string>();
     const sectionOwner = new Map<string, string>();
     for (const fx of fixtures) {

@@ -20,17 +20,8 @@ Clickable links from source directives to their resolved target files.
 Every include in the file is linked, not just the preamble run at
 the top.
 
-```snap-document_links
-feature: document_links
-code: |
-  #include "header_a.h"
-  #include "header_b.h"
-  int x = 1;
-  #include "header_c.h"
-snapshot: |
-  - { range: "7:9-7:21", target: "${WS}/header_a.h" }
-  - { range: "8:9-8:21", target: "${WS}/header_b.h" }
-  - { range: "10:9-10:21", target: "${WS}/header_c.h" }
+```snap
+tests/snap/document_links/include_directives/01_quoted_include.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -41,12 +32,8 @@ snapshot: |
 
 `#include <...>` links to the header found on the search path
 
-```snap-document_links
-feature: document_links
-code: |
-  #include <header_a.h>
-snapshot: |
-  - { range: "4:9-4:21", target: "${WS}/header_a.h" }
+```snap
+tests/snap/document_links/include_directives/02_angle_include.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -57,13 +44,8 @@ snapshot: |
 
 `#include MACRO` links the directive argument to the expanded target
 
-```snap-document_links
-feature: document_links
-code: |
-  #define HEADER "header_b.h"
-  #include HEADER
-snapshot: |
-  - { range: "6:9-6:15", target: "${WS}/header_b.h" }
+```snap
+tests/snap/document_links/include_directives/03_macro_include.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -82,31 +64,8 @@ own TU, where clang deliberately treats `#include_next` as a plain
 include, so today both links land back on the first copy (as the
 snapshot pins).
 
-```snap-document_links
-feature: document_links
-code: |
-  #include <wrap.h>
-
-  int use_wrap = WRAP_FIRST + WRAP_SECOND;
-file first/wrap.h: |
-  #pragma once
-
-  #define WRAP_FIRST 1
-
-  #if __has_include_next(<wrap.h>)
-  #include_next <wrap.h>
-  #endif
-file second/wrap.h: |
-  #pragma once
-
-  #define WRAP_SECOND 2
-snapshot: |
-  --- first/wrap.h
-  - { range: "6:23-6:31", target: "${WS}/include_directives/04_include_next/first/wrap.h" }
-  - { range: "7:14-7:22", target: "${WS}/include_directives/04_include_next/first/wrap.h" }
-
-  --- main.cpp
-  - { range: "13:9-13:17", target: "${WS}/include_directives/04_include_next/first/wrap.h" }
+```snap
+tests/snap/document_links/include_directives/04_include_next/main.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -117,15 +76,8 @@ snapshot: |
 
 The checked path links to the file it probes
 
-```snap-document_links
-feature: document_links
-code: |
-  #if __has_include("header_c.h")
-  #include "header_c.h"
-  #endif
-snapshot: |
-  - { range: "4:18-4:30", target: "${WS}/header_c.h" }
-  - { range: "5:9-5:21", target: "${WS}/header_c.h" }
+```snap
+tests/snap/document_links/include_directives/05_has_include.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -142,14 +94,8 @@ snapshot: |
 
 The resource path links to the embedded file
 
-```snap-document_links
-feature: document_links
-code: |
-  const char data[] = {
-  #embed "data.bin"
-  };
-snapshot: |
-  - { range: "5:7-5:17", target: "${WS}/embed_directives/data.bin" }
+```snap
+tests/snap/document_links/embed_directives/01_embed.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -160,17 +106,8 @@ snapshot: |
 
 The checked path links to the probed resource
 
-```snap-document_links
-feature: document_links
-code: |
-  #if __has_embed("data.bin")
-  const char first_byte[] = {
-  #embed "data.bin" limit(1)
-  };
-  #endif
-snapshot: |
-  - { range: "4:16-4:26", target: "${WS}/embed_directives/data.bin" }
-  - { range: "6:7-6:17", target: "${WS}/embed_directives/data.bin" }
+```snap
+tests/snap/document_links/embed_directives/02_has_embed.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -192,12 +129,8 @@ Editors render the tooltip next to the follow-link hint, e.g.
 link targets; the suite instead validates the tooltip against the
 target on the server reply of every fixture in this corpus.
 
-```snap-document_links
-feature: document_links
-code: |
-  #include "header_a.h"
-snapshot: |
-  - { range: "9:9-9:21", target: "${WS}/header_a.h" }
+```snap
+tests/snap/document_links/presentation/01_tooltip.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -214,14 +147,8 @@ snapshot: |
 
 `import` and `module` declarations link to their interface files
 
-```snap-document_links
-feature: document_links
-code: |
-  export module app;
-
-  import lib;
-  import :part;
-  export import lib.extra;
+```snap
+tests/snap/document_links/module_declarations/01_modules.cpp
 ```
 
 <!-- END CAPABILITY -->

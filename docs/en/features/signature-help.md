@@ -38,21 +38,8 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 Every overload of the callee, each with its parameter list and return type
 
-```snap-signature_help
-feature: signature_help
-code: |
-  void foo();
-  void foo(int x);
-  void foo(int x, int y);
-
-  int main() {
-      foo(§(pos));
-  }
-snapshot: |
-  pos:
-  - foo(⟦int x⟧, int y) -> void
-  - foo(⟦int x⟧) -> void
-  - foo() -> void
+```snap
+tests/snap/signature_help/overload_signatures/01_overloads.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -63,17 +50,8 @@ snapshot: |
 
 The parameter under the cursor is bracketed; the point sits in the second argument
 
-```snap-signature_help
-feature: signature_help
-code: |
-  void bar(int first, double second, char third);
-
-  int main() {
-      bar(1, §(pos)2.0, 'c');
-  }
-snapshot: |
-  pos:
-  - bar(int first, ⟦double second⟧, char third) -> void
+```snap
+tests/snap/signature_help/overload_signatures/02_active_parameter.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -84,22 +62,8 @@ snapshot: |
 
 A non-const receiver lists both the const and non-const overloads; the trailing const qualifier is not rendered in the label
 
-```snap-signature_help
-feature: signature_help
-code: |
-  struct Buffer {
-      int at(int index);
-      int at(int index) const;
-  };
-
-  int main() {
-      Buffer b;
-      b.at(§(pos)0);
-  }
-snapshot: |
-  pos:
-  - at(⟦int index⟧) -> int
-  - at(⟦int index⟧) -> int
+```snap
+tests/snap/signature_help/overload_signatures/03_member_overloads.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -110,17 +74,8 @@ snapshot: |
 
 Parameters with defaults render their initializer in the signature
 
-```snap-signature_help
-feature: signature_help
-code: |
-  void configure(int width, int height = 100, bool visible = true);
-
-  int main() {
-      configure(§(pos)1);
-  }
-snapshot: |
-  pos:
-  - configure(⟦int width⟧, int height = 100, bool visible = true) -> void
+```snap
+tests/snap/signature_help/overload_signatures/04_default_arguments.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -131,17 +86,8 @@ snapshot: |
 
 Named parameters are listed while the trailing ellipsis is elided from the label
 
-```snap-signature_help
-feature: signature_help
-code: |
-  void record(int code, ...);
-
-  int main() {
-      record(§(pos)0);
-  }
-snapshot: |
-  pos:
-  - record(⟦int code⟧) -> void
+```snap
+tests/snap/signature_help/overload_signatures/05_variadic_cstyle.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -152,18 +98,8 @@ snapshot: |
 
 The parameter pack renders as the callee's uninstantiated signature
 
-```snap-signature_help
-feature: signature_help
-code: |
-  template <typename... Args>
-  void emit(Args... args);
-
-  int main() {
-      emit(§(pos));
-  }
-snapshot: |
-  pos:
-  - emit(⟦Args ...args⟧) -> void
+```snap
+tests/snap/signature_help/overload_signatures/06_variadic_template.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -174,19 +110,8 @@ snapshot: |
 
 With the cursor in the second argument, only overloads that declare a second parameter remain
 
-```snap-signature_help
-feature: signature_help
-code: |
-  void draw();
-  void draw(int x);
-  void draw(int x, int y);
-
-  int main() {
-      draw(1, §(pos)2);
-  }
-snapshot: |
-  pos:
-  - draw(int x, ⟦int y⟧) -> void
+```snap
+tests/snap/signature_help/overload_signatures/07_active_beyond_last.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -236,30 +161,8 @@ snapshot: |
 
 Constructor calls render without a return arrow; aggregate initialization lists the fields in braces
 
-```snap-signature_help
-feature: signature_help
-code: |
-  struct Point {
-      int x;
-      int y;
-  };
-
-  struct Widget {
-      Widget(int a, double b);
-  };
-
-  int main() {
-      Point p{1, §(aggregate)2};
-      Widget w(§(ctor)3, 4.0);
-  }
-snapshot: |
-  aggregate:
-  - Point{int x, ⟦int y⟧}
-
-  ctor:
-  - Widget(⟦int a⟧, double b)
-  - Widget(⟦const Widget &⟧)
-  - Widget(⟦Widget &&⟧)
+```snap
+tests/snap/signature_help/special_call_contexts/01_constructor_aggregate.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -270,16 +173,8 @@ snapshot: |
 
 The prototype's parameter names show, not just the types
 
-```snap-signature_help
-feature: signature_help
-code: |
-  int main() {
-      void (*callback)(int code, double value) = nullptr;
-      callback(§(pos)5, 1.5);
-  }
-snapshot: |
-  pos:
-  - (⟦int code⟧, double value) -> void
+```snap
+tests/snap/signature_help/special_call_contexts/02_function_pointer.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -290,16 +185,8 @@ snapshot: |
 
 Template parameters show as the signature; a class template points at its kind, not a return type
 
-```snap-signature_help
-feature: signature_help
-code: |
-  template <typename T, typename U>
-  struct Pair {};
-
-  Pair<int, §(pos) double> p;
-snapshot: |
-  pos:
-  - Pair<typename T, ⟦typename U⟧> -> struct
+```snap
+tests/snap/signature_help/special_call_contexts/03_template_arguments.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -310,21 +197,8 @@ snapshot: |
 
 The inner call's help shows at the inner marker and the outer call's help at the outer marker
 
-```snap-signature_help
-feature: signature_help
-code: |
-  int inner(int a);
-  int outer(int b, int c);
-
-  int main() {
-      outer(inner(§(deep)1), §(shallow)2);
-  }
-snapshot: |
-  deep:
-  - inner(⟦int a⟧) -> int
-
-  shallow:
-  - outer(int b, ⟦int c⟧) -> int
+```snap
+tests/snap/signature_help/special_call_contexts/04_nested_calls.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -335,20 +209,8 @@ snapshot: |
 
 Invoking an object routes signature help to its operator() overload
 
-```snap-signature_help
-feature: signature_help
-code: |
-  struct Adder {
-      int operator()(int a, int b);
-  };
-
-  int main() {
-      Adder add;
-      add(§(pos)1, 2);
-  }
-snapshot: |
-  pos:
-  - operator()(⟦int a⟧, int b) -> int
+```snap
+tests/snap/signature_help/special_call_contexts/05_operator_call.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -359,18 +221,8 @@ snapshot: |
 
 Calling a lambda variable offers the closure's operator() parameters
 
-```snap-signature_help
-feature: signature_help
-code: |
-  int main() {
-      auto square = [](int n) {
-          return n * n;
-      };
-      square(§(pos)3);
-  }
-snapshot: |
-  pos:
-  - operator()(⟦int n⟧) -> int
+```snap
+tests/snap/signature_help/special_call_contexts/06_lambda_call.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -381,21 +233,8 @@ snapshot: |
 
 A new-expression's constructor arguments drive signature help
 
-```snap-signature_help
-feature: signature_help
-code: |
-  struct Node {
-      Node(int value, Node* next);
-  };
-
-  int main() {
-      Node* n = new Node(§(pos)0, nullptr);
-  }
-snapshot: |
-  pos:
-  - Node(⟦int value⟧, Node *next)
-  - Node(⟦const Node &⟧)
-  - Node(⟦Node &&⟧)
+```snap
+tests/snap/signature_help/special_call_contexts/07_new_expression.cpp
 ```
 
 <!-- END CAPABILITY -->

@@ -17,36 +17,8 @@ clice renders inline annotations for the information the code leaves implicit: p
 
 Argument names at call sites and constructor calls
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  void draw(int width, int height);
-
-  struct Point {
-      Point(int x, int y);
-      Point(const Point& other);
-      Point(Point&& other);
-  };
-
-  void use() {
-      draw(10, 20);
-      Point p(1, 2);
-      Point q{3, 4};
-      // Copy and move constructors stay quiet; a temporary's own braces
-      // still hint (the outer prvalue construction is elided anyway).
-      Point r(p);
-      Point m(Point{5, 6});
-      Point s(static_cast<Point&&>(r));
-  }
-snapshot: |
-  - { pos: "13:9", kind: Parameter, label: "width:", padding_right: true }
-  - { pos: "13:13", kind: Parameter, label: "height:", padding_right: true }
-  - { pos: "14:12", kind: Parameter, label: "x:", padding_right: true }
-  - { pos: "14:15", kind: Parameter, label: "y:", padding_right: true }
-  - { pos: "15:12", kind: Parameter, label: "x:", padding_right: true }
-  - { pos: "15:15", kind: Parameter, label: "y:", padding_right: true }
-  - { pos: "19:18", kind: Parameter, label: "x:", padding_right: true }
-  - { pos: "19:21", kind: Parameter, label: "y:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/01_param_names.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -57,47 +29,8 @@ snapshot: |
 
 Arguments that already spell the parameter name, and `/*name=*/` comments
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  void draw(int width, int height);
-
-  void use() {
-      int width = 5;
-      int h = 2;
-      // `width` matches the parameter spelling: only `height:` hints.
-      draw(width, h);
-      // An inline comment naming the parameter serves the same purpose;
-      // a comment naming something else does not.
-      draw(/*width=*/1, /*height=*/2);
-      draw(/*margin=*/6, 7);
-  }
-
-  struct Sizes {
-      static int width;
-      int height;
-
-      void member() {
-          // A bare member access spells the parameter name: suppressed.
-          draw(5, height);
-      }
-  };
-
-  void qualified(Sizes s) {
-      // A qualified name is not a plain spelling match.
-      draw(Sizes::width, 3);
-      // Neither is an access through a written base object.
-      draw(4, s.height);
-  }
-snapshot: |
-  - { pos: "11:16", kind: Parameter, label: "height:", padding_right: true }
-  - { pos: "15:20", kind: Parameter, label: "width:", padding_right: true }
-  - { pos: "15:23", kind: Parameter, label: "height:", padding_right: true }
-  - { pos: "24:13", kind: Parameter, label: "width:", padding_right: true }
-  - { pos: "30:9", kind: Parameter, label: "width:", padding_right: true }
-  - { pos: "30:23", kind: Parameter, label: "height:", padding_right: true }
-  - { pos: "32:9", kind: Parameter, label: "width:", padding_right: true }
-  - { pos: "32:12", kind: Parameter, label: "height:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/02_param_suppression.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -108,68 +41,8 @@ snapshot: |
 
 `setX(x)` and `std::move`/`std::forward` arguments stay bare
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  namespace std {
-
-  template <typename T>
-  struct remove_reference {
-      using type = T;
-  };
-
-  template <typename T>
-  struct remove_reference<T&> {
-      using type = T;
-  };
-
-  template <typename T>
-  struct remove_reference<T&&> {
-      using type = T;
-  };
-
-  template <typename T>
-  constexpr T&& forward(typename remove_reference<T>::type& t) noexcept;
-
-  template <typename T>
-  constexpr typename remove_reference<T>::type&& move(T&& t) noexcept;
-
-  }  // namespace std
-
-  struct Config {
-      void setWidth(int width);
-      void set_height(int height);
-      // The parameter carries extra information beyond the setter name, so
-      // it still hints.
-      void setTimeout(int timeout_millis);
-  };
-
-  void consume(int&& sink);
-
-  // The three-argument algorithm form of std::move is a real call whose
-  // parameters deserve hints; only the single-argument cast stays bare.
-  namespace std {
-
-  template <typename T>
-  T* move(T* first, T* last, T* result);
-
-  }  // namespace std
-
-  void use(Config& config) {
-      config.setWidth(3);
-      config.set_height(4);
-      config.setTimeout(5);
-      int value = 1;
-      consume(std::move(value));
-      int buffer[4];
-      std::move(buffer, buffer + 2, buffer + 2);
-  }
-snapshot: |
-  - { pos: "51:22", kind: Parameter, label: "timeout_millis:", padding_right: true }
-  - { pos: "53:12", kind: Parameter, label: "sink:", padding_right: true }
-  - { pos: "55:14", kind: Parameter, label: "first:", padding_right: true }
-  - { pos: "55:22", kind: Parameter, label: "last:", padding_right: true }
-  - { pos: "55:34", kind: Parameter, label: "result:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/03_param_setters_builtins.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -180,23 +53,8 @@ snapshot: |
 
 `&` flags arguments passed by non-const lvalue reference
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  void mutate(int& value);
-  void observe(const int& value);
-  void take(int&& value);
-
-  void use() {
-      int v = 0;
-      mutate(v);
-      observe(v);
-      take(static_cast<int&&>(v));
-  }
-snapshot: |
-  - { pos: "11:11", kind: Parameter, label: "&value:", padding_right: true }
-  - { pos: "12:12", kind: Parameter, label: "value:", padding_right: true }
-  - { pos: "13:9", kind: Parameter, label: "value:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/04_param_references.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -207,63 +65,8 @@ snapshot: |
 
 Packs forwarded through wrappers resolve to the target's parameter names
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  namespace std {
-
-  template <typename T>
-  struct remove_reference {
-      using type = T;
-  };
-
-  template <typename T>
-  constexpr T&& forward(typename remove_reference<T>::type& t) noexcept;
-
-  }  // namespace std
-
-  void target(int first, int second);
-
-  template <typename... Args>
-  void wrap(Args&&... args) {
-      target(std::forward<Args>(args)...);
-  }
-
-  // A plain pass-through works without std::forward as well.
-  void sink(int a, int b, int c);
-
-  template <typename... Ts>
-  void call_with(Ts... ts) {
-      sink(ts...);
-  }
-
-  // Forwarding also resolves through packs sandwiched between fixed
-  // head and tail arguments.
-  int accumulate(int, int b, double);
-
-  template <typename... Args>
-  int head_tail(int a, Args&&... args) {
-      return accumulate(1, std::forward<Args>(args)..., 1.0);
-  }
-
-  template <typename... Args>
-  int chain(Args&&... args) {
-      return head_tail(std::forward<Args>(args)...);
-  }
-
-  void use() {
-      wrap(1, 2);
-      call_with(1, 2, 3);
-      chain(32, 42);
-  }
-snapshot: |
-  - { pos: "47:9", kind: Parameter, label: "first:", padding_right: true }
-  - { pos: "47:12", kind: Parameter, label: "second:", padding_right: true }
-  - { pos: "48:14", kind: Parameter, label: "a:", padding_right: true }
-  - { pos: "48:17", kind: Parameter, label: "b:", padding_right: true }
-  - { pos: "48:20", kind: Parameter, label: "c:", padding_right: true }
-  - { pos: "49:10", kind: Parameter, label: "a:", padding_right: true }
-  - { pos: "49:14", kind: Parameter, label: "b:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/05_param_forwarding.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -274,33 +77,8 @@ snapshot: |
 
 Unnamed declaration parameters take the definition's names; leading underscores strip
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  void resize(int, int);
-
-  void fill(int _value, int __count);
-
-  int scale(int good);
-
-  void use() {
-      resize(800, 600);
-      fill(1, 2);
-      // When both name their parameter, the declaration wins.
-      scale(7);
-  }
-
-  void resize(int width, int height) {}
-
-  int scale(int bad) {
-      return bad;
-  }
-snapshot: |
-  - { pos: "11:11", kind: Parameter, label: "width:", padding_right: true }
-  - { pos: "11:16", kind: Parameter, label: "height:", padding_right: true }
-  - { pos: "12:9", kind: Parameter, label: "value:", padding_right: true }
-  - { pos: "12:12", kind: Parameter, label: "count:", padding_right: true }
-  - { pos: "14:10", kind: Parameter, label: "good:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/06_param_definition_names.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -311,34 +89,8 @@ snapshot: |
 
 Indirect calls still name their parameters
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Callback {
-      void operator()(int status, int detail) const;
-  };
-
-  void (*handler)(int status, const char* message);
-
-  void use() {
-      Callback cb;
-      cb(1, 2);
-      cb.operator()(3, 4);
-      handler(0, "ok");
-      auto cmp = [](int lhs, int rhs) { return lhs < rhs; };
-      cmp(1, 2);
-  }
-snapshot: |
-  - { pos: "13:7", kind: Parameter, label: "status:", padding_right: true }
-  - { pos: "13:10", kind: Parameter, label: "detail:", padding_right: true }
-  - { pos: "14:18", kind: Parameter, label: "status:", padding_right: true }
-  - { pos: "14:21", kind: Parameter, label: "detail:", padding_right: true }
-  - { pos: "15:12", kind: Parameter, label: "status:", padding_right: true }
-  - { pos: "15:15", kind: Parameter, label: "message:", padding_right: true }
-  - { pos: "16:12", kind: Type, label: ": (lambda)" }
-  - { pos: "16:35", kind: Type, label: "-> bool" }
-  - { pos: "17:8", kind: Parameter, label: "lhs:", padding_right: true }
-  - { pos: "17:11", kind: Parameter, label: "rhs:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/07_param_function_objects.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -349,20 +101,8 @@ snapshot: |
 
 The explicit object parameter never hints (C++23)
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Widget {
-      void resize(this Widget& self, int width, int height);
-  };
-
-  void use() {
-      Widget w;
-      w.resize(800, 600);
-  }
-snapshot: |
-  - { pos: "11:13", kind: Parameter, label: "width:", padding_right: true }
-  - { pos: "11:18", kind: Parameter, label: "height:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/08_param_deducing_this.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -377,35 +117,8 @@ Candidates are matched by argument count; only a unique surviving
 candidate names the parameters, so a call that could still hit several
 overloads stays bare rather than guessing.
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  template <typename T>
-  void apply(T scale);
-
-  template <typename T>
-  struct Holder {
-      void member(T item);
-      static void static_member(T slot);
-  };
-
-  void overload(int value);
-  void overload(double value);
-
-  template <typename T>
-  struct Runner {
-      void run(Holder<T> holder, T value) {
-          apply(value);
-          holder.member(value);
-          Holder<T>::static_member(value);
-          // Several overloads remain viable: no hint.
-          overload(T{});
-      }
-  };
-snapshot: |
-  - { pos: "23:14", kind: Parameter, label: "scale:", padding_right: true }
-  - { pos: "24:22", kind: Parameter, label: "item:", padding_right: true }
-  - { pos: "25:33", kind: Parameter, label: "slot:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/09_param_dependent.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -416,26 +129,8 @@ snapshot: |
 
 A written pack expansion breaks the 1:1 argument mapping and stops hinting
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  void plot(int x, int y, int z);
-
-  template <typename... Ts>
-  void relay(Ts... ts) {
-      // `ts...` may instantiate to any number of arguments.
-      plot(0, ts...);
-  }
-
-  void use() {
-      // The outer call still resolves through pack forwarding: 1 and 2 land
-      // in plot's y and z.
-      relay(1, 2);
-  }
-snapshot: |
-  - { pos: "9:9", kind: Parameter, label: "x:", padding_right: true }
-  - { pos: "15:10", kind: Parameter, label: "y:", padding_right: true }
-  - { pos: "15:13", kind: Parameter, label: "z:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/10_param_packs.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -446,31 +141,8 @@ snapshot: |
 
 Arguments spelled as macros hint; calls generated inside macro bodies do not
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  void report(double value);
-  void plot(double x, double y);
-  int check(int status);
-
-  #define PI 3.14
-  #define CALL_REPORT() report(2.71)
-  #define PAIR 1.0, 2.0
-  #define ASSERT(expr) if(!(expr)) {}
-
-  void use() {
-      // An object-like macro is still one written argument.
-      report(PI);
-      // The call only exists inside the macro body.
-      CALL_REPORT();
-      // One macro covering several arguments has no place to anchor.
-      plot(PAIR);
-      // Code written as a macro argument keeps its hints.
-      ASSERT(check(42) == 0);
-  }
-snapshot: |
-  - { pos: "16:11", kind: Parameter, label: "value:", padding_right: true }
-  - { pos: "22:17", kind: Parameter, label: "status:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/11_param_macros.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -481,26 +153,8 @@ snapshot: |
 
 Conversions the code never wrote produce no hints of their own
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Seconds {
-      Seconds(int raw);
-  };
-
-  void wait(Seconds);
-  void hold(Seconds duration);
-
-  Seconds use() {
-      // The implicit Seconds(5) must not surface `raw:`.
-      wait(5);
-      // The written call still hints its own parameter.
-      hold(6);
-      // Nor does the conversion in a return statement.
-      return 7;
-  }
-snapshot: |
-  - { pos: "15:9", kind: Parameter, label: "duration:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/12_param_implicit_conversions.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -511,35 +165,8 @@ snapshot: |
 
 MS property accesses stay quiet; written subscripts keep the accessor's names
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  int printf(const char* Format, ...);
-
-  struct State {
-      __declspec(property(get = GetX, put = PutX)) int x[];
-      int GetX(int row, int column);
-      void PutX(int value);
-
-      // The syntactic form is a binary operator: no `value:` hint on `y`.
-      void Work(int y) {
-          x = y;
-      }
-  };
-
-  int use() {
-      State s;
-      // The semantic form of __builtin_dump_struct calls printf; none of it
-      // is written here.
-      __builtin_dump_struct(&s, printf);
-      printf("%d", 42);
-      // Property subscripts read best with the accessor's parameter names.
-      return s.x[1][2];
-  }
-snapshot: |
-  - { pos: "22:11", kind: Parameter, label: "Format:", padding_right: true }
-  - { pos: "24:15", kind: Parameter, label: "row:", padding_right: true }
-  - { pos: "24:18", kind: Parameter, label: "column:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/13_param_pseudo_objects.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -550,28 +177,8 @@ snapshot: |
 
 An explicit instantiation definition adds no duplicate hints, while its written template arguments hint normally
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  template <typename T>
-  void apply(T value) {}
-
-  template void apply<int>(int value);
-
-  void use() {
-      apply(42);
-  }
-
-  int measure(int amount);
-
-  template <typename T>
-  struct Box {};
-
-  template struct Box<decltype(measure(7))>;
-snapshot: |
-  - { pos: "11:10", kind: Parameter, label: "value:", padding_right: true }
-  - { pos: "19:37", kind: Parameter, label: "amount:", padding_right: true }
-  - { pos: "19:40", kind: Type, label: ": int" }
+```snap
+tests/snap/inlay_hint/parameter_hints/14_param_explicit_instantiation.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -582,18 +189,8 @@ snapshot: |
 
 `aParam` does not yet suppress an argument spelled `param`
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  void draw(int aParam);
-
-  void use() {
-      int param = 3;
-      // Ideally the near-match would suppress the hint; today it still shows.
-      draw(param);
-  }
-snapshot: |
-  - { pos: "10:9", kind: Parameter, label: "aParam:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/15_param_case_insensitive.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -604,19 +201,8 @@ snapshot: |
 
 `using Base::Base` calls lose their parameter names
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Base {
-      Base(int width);
-  };
-
-  struct Derived : Base {
-      using Base::Base;
-  };
-
-  // No `width:` hint yet.
-  Derived d(7);
+```snap
+tests/snap/inlay_hint/parameter_hints/16_param_inherited_constructors.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -627,24 +213,8 @@ code: |
 
 Nothing to name, though a mutable reference still flags `&`
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  void value_sink(int);
-  void ref_sink(int&);
-  void const_ref_sink(const int&);
-  void rvalue_sink(int&&);
-
-  void use() {
-      int v = 0;
-      value_sink(1);
-      // Only the `&` marker survives without a name.
-      ref_sink(v);
-      const_ref_sink(v);
-      rvalue_sink(2);
-  }
-snapshot: |
-  - { pos: "13:13", kind: Parameter, label: "&:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/17_param_anonymous.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -655,34 +225,8 @@ snapshot: |
 
 Operator syntax and user-defined literals stay bare; member and default member initializers hint
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct S {
-      S(int param);
-  };
-
-  void operator+(S lhs, S rhs);
-
-  long double operator""_w(long double param);
-
-  struct Holder {
-      S member;
-      S defaulted{3};
-      Holder() : member(42) {}
-  };
-
-  void use() {
-      S a(1);
-      S b(2);
-      a + b;
-      1.2_w;
-  }
-snapshot: |
-  - { pos: "14:16", kind: Parameter, label: "param:", padding_right: true }
-  - { pos: "15:22", kind: Parameter, label: "param:", padding_right: true }
-  - { pos: "19:8", kind: Parameter, label: "param:", padding_right: true }
-  - { pos: "20:8", kind: Parameter, label: "param:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/18_param_operators.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -693,38 +237,8 @@ snapshot: |
 
 Outer calls resolve; hints inside the expansion are still missing
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Foo {
-      Foo();
-      Foo(int x);
-  };
-
-  void consume(Foo a, int b);
-
-  template <typename... Args>
-  void relay(Args... args) {
-      consume(args...);
-  }
-
-  template <typename... Args>
-  void construct(Args... args) {
-      // The written Foo{args...} and the literal after it get no hints yet.
-      consume(Foo{args...}, 1);
-  }
-
-  void use() {
-      relay(Foo{}, 42);
-      relay(42, 42);
-      construct(42);
-  }
-snapshot: |
-  - { pos: "23:10", kind: Parameter, label: "a:", padding_right: true }
-  - { pos: "23:17", kind: Parameter, label: "b:", padding_right: true }
-  - { pos: "24:10", kind: Parameter, label: "a:", padding_right: true }
-  - { pos: "24:14", kind: Parameter, label: "b:", padding_right: true }
-  - { pos: "25:14", kind: Parameter, label: "x:", padding_right: true }
+```snap
+tests/snap/inlay_hint/parameter_hints/19_param_pack_constructors.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -741,20 +255,8 @@ snapshot: |
 
 The hint shows the full variable type, qualifiers included
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  int make();
-
-  void use() {
-      auto value = make();
-      const auto& ref = value;
-      auto* ptr = &value;
-  }
-snapshot: |
-  - { pos: "7:14", kind: Type, label: ": int" }
-  - { pos: "8:19", kind: Type, label: ": const int &" }
-  - { pos: "9:13", kind: Type, label: ": int *" }
+```snap
+tests/snap/inlay_hint/type_hints/01_type_auto.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -765,39 +267,8 @@ snapshot: |
 
 Aliases keep their spelling; over-long types fall back to the sugared name
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  using Integer = int;
-
-  Integer make_alias();
-
-  template <typename A, typename B, typename C>
-  struct extremely_long_template_name {};
-
-  using Compact = extremely_long_template_name<int, char, bool>;
-
-  Compact make_compact();
-
-  extremely_long_template_name<Integer, Integer, Integer> make_long();
-
-  template <typename T, typename U = int>
-  struct Defaulted {};
-
-  Defaulted<float> make_defaulted();
-
-  void use() {
-      auto aliased = make_alias();
-      auto shortened = make_compact();
-      // No sugar short enough to fall back to: the hint is dropped.
-      auto dropped = make_long();
-      // Default template arguments never print.
-      auto defaulted = make_defaulted();
-  }
-snapshot: |
-  - { pos: "24:16", kind: Type, label: ": Integer" }
-  - { pos: "25:18", kind: Type, label: ": Compact" }
-  - { pos: "29:18", kind: Type, label: ": Defaulted<float>" }
+```snap
+tests/snap/inlay_hint/type_hints/02_type_sugar.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -808,27 +279,8 @@ snapshot: |
 
 Each binding hints its canonical type; the aggregate itself stays bare
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Pair {
-      int first;
-      float second;
-  };
-
-  Pair make();
-
-  int array[2];
-
-  void use() {
-      auto [a, b] = make();
-      auto [x, y] = array;
-  }
-snapshot: |
-  - { pos: "14:11", kind: Type, label: ": int" }
-  - { pos: "14:14", kind: Type, label: ": float" }
-  - { pos: "15:11", kind: Type, label: ": int" }
-  - { pos: "15:14", kind: Type, label: ": int" }
+```snap
+tests/snap/inlay_hint/type_hints/03_type_structured_bindings.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -839,25 +291,8 @@ snapshot: |
 
 variables, deduced return types, and init-captures all hint
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  int compute();
-
-  void use() {
-      auto callback = [captured = compute()](int x) {
-          return x + captured;
-      };
-      auto bare = [] {
-          return 1.5;
-      };
-  }
-snapshot: |
-  - { pos: "8:17", kind: Type, label: ": (lambda)" }
-  - { pos: "8:29", kind: Type, label: ": int" }
-  - { pos: "8:49", kind: Type, label: "-> int" }
-  - { pos: "11:13", kind: Type, label: ": (lambda)" }
-  - { pos: "11:18", kind: Type, label: "-> double" }
+```snap
+tests/snap/inlay_hint/type_hints/04_type_lambdas.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -868,44 +303,8 @@ snapshot: |
 
 `-> T` after the parameter list, declarations included
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  auto answer() {
-      return 42;
-  }
-
-  auto& ref_answer() {
-      static int storage = 0;
-      return storage;
-  }
-
-  // A declaration hints once a later definition supplies the deduction; a
-  // definition-less one stays silent.
-  auto declared(int x);
-  auto deducible(int x);
-
-  auto deducible(int x) {
-      return x + 1;
-  }
-
-  // Written trailing return types need no hint.
-  auto spelled() -> int;
-  auto pointer() -> auto* {
-      return "text";
-  }
-
-  struct Convertible {
-      operator auto() {
-          return 42;
-      }
-  };
-snapshot: |
-  - { pos: "4:13", kind: Type, label: "-> int" }
-  - { pos: "8:18", kind: Type, label: "-> int &" }
-  - { pos: "16:21", kind: Type, label: "-> int" }
-  - { pos: "18:21", kind: Type, label: "-> int" }
-  - { pos: "29:19", kind: Type, label: "-> int" }
+```snap
+tests/snap/inlay_hint/type_hints/05_type_auto_return.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -916,40 +315,8 @@ snapshot: |
 
 The underlying type shows next to the written `decltype`
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  int source();
-
-  decltype(source()) value = 1;
-
-  int& ref = value;
-  // decltype(auto) preserves the reference.
-  decltype(auto) forwarded = ref;
-
-  // Every written decltype spelling hints: declarators, alias targets,
-  // return types and functional casts.
-  const decltype(0)& bound = value;
-
-  decltype(0) declared();
-
-  auto trailing() -> decltype(0);
-
-  template <class, class>
-  struct Wrap;
-
-  using Alias = Wrap<decltype(0), float>;
-
-  auto constructed = decltype(0){};
-snapshot: |
-  - { pos: "6:18", kind: Type, label: ": int" }
-  - { pos: "10:24", kind: Type, label: ": int &" }
-  - { pos: "14:17", kind: Type, label: ": int" }
-  - { pos: "16:11", kind: Type, label: ": int" }
-  - { pos: "18:30", kind: Type, label: ": int" }
-  - { pos: "23:30", kind: Type, label: ": int" }
-  - { pos: "25:16", kind: Type, label: ": int" }
-  - { pos: "25:30", kind: Type, label: ": int" }
+```snap
+tests/snap/inlay_hint/type_hints/06_type_decltype.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -960,48 +327,8 @@ snapshot: |
 
 A template with exactly one instantiation reveals the deduced type
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  int twice(auto x) {
-      return x + x;
-  }
-
-  int result = twice(21);
-
-  // A second instantiation makes the deduction ambiguous: no hint.
-  int measure(auto x) {
-      return 1;
-  }
-
-  int a = measure(1);
-  int b = measure(2.0);
-
-  // Packs and parameters after them never hint.
-  int spread(auto first, auto... rest, auto last) {
-      return 0;
-  }
-
-  int c = spread<void*, char, float>(nullptr, 'x', 2.0f, 3);
-
-  // Deduplication: a template body hints once across instantiations of the
-  // same deduced type.
-  template <typename T>
-  void body() {
-      auto var = 42;
-  }
-
-  template void body<int>();
-  template void body<float>();
-snapshot: |
-  - { pos: "4:16", kind: Type, label: ": int" }
-  - { pos: "8:19", kind: Parameter, label: "x:", padding_right: true }
-  - { pos: "15:16", kind: Parameter, label: "x:", padding_right: true }
-  - { pos: "16:16", kind: Parameter, label: "x:", padding_right: true }
-  - { pos: "19:21", kind: Type, label: ": void *" }
-  - { pos: "23:35", kind: Parameter, label: "first:", padding_right: true }
-  - { pos: "23:55", kind: Parameter, label: "last:", padding_right: true }
-  - { pos: "29:12", kind: Type, label: ": int" }
+```snap
+tests/snap/inlay_hint/type_hints/07_type_auto_params.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1012,20 +339,8 @@ snapshot: |
 
 Casts and functional casts still hint redundantly
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  int compute();
-
-  void use() {
-      // The type is already written on the right-hand side; ideally these
-      // two hints would be suppressed.
-      auto widened = static_cast<long>(compute());
-      auto braced = int{42};
-  }
-snapshot: |
-  - { pos: "10:16", kind: Type, label: ": long" }
-  - { pos: "11:15", kind: Type, label: ": int" }
+```snap
+tests/snap/inlay_hint/type_hints/08_type_explicit_source.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1036,18 +351,8 @@ snapshot: |
 
 Deduction inside an uninstantiated template body stays silent
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  template <typename T>
-  void body(T input) {
-      // No hint: the deduced type depends on T.
-      auto derived = input + 1;
-      // A dependence-free initializer still hints normally.
-      auto counter = 0;
-  }
-snapshot: |
-  - { pos: "10:16", kind: Type, label: ": int" }
+```snap
+tests/snap/inlay_hint/type_hints/09_type_dependent.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1058,29 +363,8 @@ snapshot: |
 
 Namespace qualifiers drop from hints; class scopes stay
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  namespace outer {
-  namespace inner {
-
-  struct S1 {};
-  S1 make_s1();
-  auto x = make_s1();
-
-  struct S2 {
-      template <typename T>
-      struct Nested {};
-  };
-
-  S2::Nested<int> make_nested();
-  auto y = make_nested();
-
-  }  // namespace inner
-  }  // namespace outer
-snapshot: |
-  - { pos: "9:6", kind: Type, label: ": S1" }
-  - { pos: "17:6", kind: Type, label: ": S2::Nested<int>" }
+```snap
+tests/snap/inlay_hint/type_hints/10_type_scopes.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1091,49 +375,8 @@ snapshot: |
 
 Hints print the canonical type, not `tuple_element<I, T>::type`
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct IntPair {
-      int a;
-      int b;
-  };
-
-  namespace std {
-
-  template <typename T>
-  struct tuple_size {};
-
-  template <>
-  struct tuple_size<IntPair> {
-      constexpr static unsigned value = 2;
-  };
-
-  template <unsigned I, typename T>
-  struct tuple_element {};
-
-  template <unsigned I>
-  struct tuple_element<I, IntPair> {
-      using type = int;
-  };
-
-  }  // namespace std
-
-  template <unsigned I>
-  int get(const IntPair& p) {
-      if constexpr(I == 0) {
-          return p.a;
-      } else {
-          return p.b;
-      }
-  }
-
-  IntPair make();
-
-  auto [x, y] = make();
-snapshot: |
-  - { pos: "40:7", kind: Type, label: ": int" }
-  - { pos: "40:10", kind: Type, label: ": int" }
+```snap
+tests/snap/inlay_hint/type_hints/11_type_bindings_tuple.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1144,35 +387,8 @@ snapshot: |
 
 Instantiated bodies repeat no hints at the pattern; dependent `auto` could reveal the deduced type while exactly one instantiation exists
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  void take(int first, int second);
-
-  template <typename T>
-  struct Single {
-      void reset() {
-          take(1, 2);
-          // Deducible from the only instantiation, but not yet deduced.
-          auto copy = T();
-      }
-  };
-
-  template struct Single<char>;
-
-  template <typename T>
-  struct Twice {
-      void reset() {
-          // No hint: two instantiations deduce contradicting types.
-          auto copy = T();
-      }
-  };
-
-  template struct Twice<char>;
-  template struct Twice<int>;
-snapshot: |
-  - { pos: "10:13", kind: Parameter, label: "first:", padding_right: true }
-  - { pos: "10:16", kind: Parameter, label: "second:", padding_right: true }
+```snap
+tests/snap/inlay_hint/type_hints/12_type_conflicting_instantiations.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1189,34 +405,8 @@ snapshot: |
 
 Positional aggregate initialization shows `.field=` and `[index]=`
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Point {
-      int x;
-      int y;
-      int z;
-  };
-
-  Point p{1, 2 + 2};
-
-  int coordinates[2] = {7, 8};
-
-  // Array designators survive dependent-sized members; reserved names are
-  // skipped rather than printed.
-  template <typename T, int N>
-  struct Array {
-      T __elements[N];
-  };
-
-  Array<int, 2> pair = {0, 1};
-snapshot: |
-  - { pos: "11:8", kind: Type, label: ".x=" }
-  - { pos: "11:11", kind: Type, label: ".y=" }
-  - { pos: "13:22", kind: Type, label: "[0]=" }
-  - { pos: "13:25", kind: Type, label: "[1]=" }
-  - { pos: "22:22", kind: Type, label: "[0]=" }
-  - { pos: "22:25", kind: Type, label: "[1]=" }
+```snap
+tests/snap/inlay_hint/designator_hints/01_designator_basic.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1227,25 +417,8 @@ snapshot: |
 
 Written braces recurse; omitted braces flatten into `.outer.inner=`
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Inner {
-      int x;
-      int y;
-  };
-
-  struct Outer {
-      Inner a;
-      Inner b;
-  };
-
-  Outer o{{1, 2}, 3};
-snapshot: |
-  - { pos: "14:8", kind: Type, label: ".a=" }
-  - { pos: "14:9", kind: Type, label: ".x=" }
-  - { pos: "14:12", kind: Type, label: ".y=" }
-  - { pos: "14:16", kind: Type, label: ".b.x=" }
+```snap
+tests/snap/inlay_hint/designator_hints/02_designator_nested.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1256,22 +429,8 @@ snapshot: |
 
 Unnamed unions and structs vanish from the designator path
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct State {
-      union {
-          struct {
-              struct {
-                  int y;
-              };
-          } x;
-      };
-  };
-
-  State s{42};
-snapshot: |
-  - { pos: "14:8", kind: Type, label: ".x.y=" }
+```snap
+tests/snap/inlay_hint/designator_hints/03_designator_anonymous.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1282,22 +441,8 @@ snapshot: |
 
 Written designators and `/*name=*/` comments keep their inits bare
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Point {
-      int a;
-      int b;
-      int c;
-      int d;
-      int e;
-  };
-
-  // Mixing written designators with positional inits is a C99 extension
-  // clang accepts with a warning; only the bare `4` needs help.
-  Point p{/*a=*/1, .c = 2, /* .d = */ 3, 4};
-snapshot: |
-  - { pos: "14:39", kind: Type, label: ".e=" }
+```snap
+tests/snap/inlay_hint/designator_hints/04_designator_suppression.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1308,32 +453,8 @@ snapshot: |
 
 Constructor calls, copies and idiomatic zero-init produce no designators
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Constructible {
-      Constructible(int amount);
-  };
-
-  // A braced constructor call names parameters, not fields.
-  Constructible built{5};
-
-  struct Copyable {
-      int x;
-  };
-
-  Copyable original{1};
-  Copyable duplicate{original};
-
-  // The idiomatic `{}` zero-initializer stays quiet.
-  struct Wide {
-      int fields[8];
-  };
-
-  Wide zeroed{};
-snapshot: |
-  - { pos: "9:20", kind: Parameter, label: "amount:", padding_right: true }
-  - { pos: "15:18", kind: Type, label: ".x=" }
+```snap
+tests/snap/inlay_hint/designator_hints/05_designator_aggregates_only.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1344,22 +465,8 @@ snapshot: |
 
 Designators survive next to initializers that fail to compile
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  // The first initializer deliberately fails to convert.
-  struct Empty {};
-
-  struct Mixed {
-      int a;
-      int b;
-  };
-
-  void use() {
-      Mixed m{Empty(), 1};
-  }
-snapshot: |
-  - { pos: "14:21", kind: Type, label: ".b=" }
+```snap
+tests/snap/inlay_hint/designator_hints/06_designator_recovery.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1370,15 +477,8 @@ snapshot: |
 
 C++20 `Point(1, 2)` gets no hints yet
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  struct Point {
-      int x;
-      int y;
-  };
-
-  Point p(1, 2);
+```snap
+tests/snap/inlay_hint/designator_hints/07_designator_parenthesized.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1395,14 +495,8 @@ code: |
 
 Deduced and explicit template arguments at call sites
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  template <typename T, typename U>
-  T convert(U val);
-
-  // Could hint `T: float` next to the explicit argument list.
-  float converted = convert<float>(42);
+```snap
+tests/snap/inlay_hint/other_hint_kinds/01_template_parameter_hints.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1413,18 +507,8 @@ code: |
 
 Deduced class template arguments after the template name
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  template <typename A, typename B>
-  struct Pair {
-      A first;
-      B second;
-      Pair(A a, B b);
-  };
-
-  // Could hint `<int, double>` after `pair`.
-  Pair pair(1, 2.5);
+```snap
+tests/snap/inlay_hint/other_hint_kinds/02_ctad_arguments.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1435,15 +519,8 @@ code: |
 
 Surface the conversions a call site performs
 
-```snap-inlay_hint
-feature: inlay_hint
-code: |
-  void process(double val);
-
-  // Could hint `(double)` before the argument.
-  void use() {
-      process(42);
-  }
+```snap
+tests/snap/inlay_hint/other_hint_kinds/03_conversion_hints.cpp
 ```
 
 <!-- END CAPABILITY -->
