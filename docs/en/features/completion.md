@@ -6,29 +6,44 @@ Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no co
 
 <!-- BEGIN GENERATED ITEMS: include_path_completion -->
 
-| Capability           | Status    | Issues |
-| -------------------- | --------- | ------ |
-| Quoted include paths | Supported |        |
-| Angled include paths | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Quoted include paths
+**Quoted include paths**
 
 Headers and directories from the configured search path, directories marked by a trailing slash
 
 Answered by the server before any compilation, so only the server path
 exists for this fixture.
 
-```cpp
-#include "snap"
+```snap-code_completion
+feature: code_completion
+code: |
+  #include "snap§(pos)"
+snapshot: |
+  pos:
+  - { label: "snap_dir/", kind: File }
+  - { label: "snap_header.h", kind: File }
 ```
 
-### Angled include paths
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Angled include paths**
 
 The same search-path candidates in the angled form
 
-```cpp
-#include <snap>
+```snap-code_completion
+feature: code_completion
+code: |
+  #include <snap§(pos)>
+snapshot: |
+  pos:
+  - { label: "snap_dir/", kind: File }
+  - { label: "snap_header.h", kind: File }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -94,11 +109,9 @@ Triggered when cursor is after `import` or `export import`.
 
 <!-- BEGIN GENERATED ITEMS: module_completion -->
 
-| Capability        | Status    | Issues |
-| ----------------- | --------- | ------ |
-| Import statements | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Import statements
+**Import statements**
 
 Known module names complete after `import`, with the closing semicolon inserted
 
@@ -107,21 +120,22 @@ exists for this fixture; the sibling module interface is opened first
 so the module is known. The statement stays unterminated — a `;` on
 the line means the import is already complete and nothing is offered.
 
-`main.cpp`:
+```snap-code_completion
+feature: code_completion
+code: |
+  import ma§(pos)
+file mod_math.cppm: |
+  export module math;
 
-```cpp
-import ma
+  export int add(int a, int b) {
+      return a + b;
+  }
+snapshot: |
+  pos:
+  - { label: "math", kind: Module, insert: "math;" }
 ```
 
-`mod_math.cppm`:
-
-```cpp
-export module math;
-
-export int add(int a, int b) {
-    return a + b;
-}
-```
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -210,15 +224,9 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
 <!-- BEGIN GENERATED ITEMS: member_access -->
 
-| Capability                                | Status    | Issues |
-| ----------------------------------------- | --------- | ------ |
-| Members of a class                        | Supported |        |
-| Members of an instantiated class template | Supported |        |
-| Pointer member access                     | Supported |        |
-| Scope-qualified members                   | Supported |        |
-| Inherited members                         | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Members of a class
+**Members of a class**
 
 fields, methods, the destructor and operators complete with plain names
 
@@ -226,60 +234,100 @@ The destructor completes as `~Account` (never `~struct Account`),
 `operator=` keeps no space before `=`, and a conversion operator
 spells its target type.
 
-```cpp
-// The member access expression is left dangling at the point.
-struct Wallet {
-    int cents;
-};
+```snap-code_completion
+feature: code_completion
+code: |
+  // The member access expression is left dangling at the point.
+  struct Wallet {
+      int cents;
+  };
 
-struct Account {
-    int balance;
-    int bazzzz(int a, int b);
-    operator Wallet();
-};
+  struct Account {
+      int balance;
+      int bazzzz(int a, int b);
+      operator Wallet();
+  };
 
-void bar() {
-    Account acc;
-    acc.
-}
+  void bar() {
+      Account acc;
+      acc.§(pos)
+  }
+snapshot: |
+  pos:
+  - { label: "Account", kind: Class, edit: "22:8-22:8" }
+  - { label: "balance", kind: Field, description: "int", edit: "22:8-22:8" }
+  - { label: "bazzzz", kind: Method, detail: "(int a, int b)", description: "int", edit: "22:8-22:8" }
+  - { label: "operator Wallet", kind: Method, detail: "()", edit: "22:8-22:8" }
+  - { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "22:8-22:8" }
+  - { label: "~Account", kind: Method, detail: "()", description: "void", edit: "22:8-22:8" }
 ```
 
-### Members of an instantiated class template
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Members of an instantiated class template**
 
 The destructor label keeps the written template arguments
 
-```cpp
-// The member access expression is left dangling at the point.
-template <typename T>
-struct Box {
-    T value;
-};
+```snap-code_completion
+feature: code_completion
+code: |
+  // The member access expression is left dangling at the point.
+  template <typename T>
+  struct Box {
+      T value;
+  };
 
-void bar() {
-    Box<int> b;
-    b.
-}
+  void bar() {
+      Box<int> b;
+      b.§(pos)
+  }
+snapshot: |
+  pos:
+  - { label: "Box", kind: Class, edit: "13:6-13:6" }
+  - { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "13:6-13:6" }
+  - { label: "value", kind: Field, description: "int", edit: "13:6-13:6" }
+  - { label: "~Box<int>", kind: Method, detail: "()", description: "void", edit: "13:6-13:6" }
 ```
 
-### Pointer member access
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Pointer member access**
 
 `->` on a pointer completes the pointee's members
 
-```cpp
-// The member access expression is left dangling at the point.
-struct Node {
-    int value;
-    Node* next;
-    int compute(int a);
-};
+```snap-code_completion
+feature: code_completion
+code: |
+  // The member access expression is left dangling at the point.
+  struct Node {
+      int value;
+      Node* next;
+      int compute(int a);
+  };
 
-void bar() {
-    Node* p;
-    p->
-}
+  void bar() {
+      Node* p;
+      p->§(pos)
+  }
+snapshot: |
+  pos:
+  - { label: "Node", kind: Class, edit: "14:7-14:7" }
+  - { label: "compute", kind: Method, detail: "(int a)", description: "int", edit: "14:7-14:7" }
+  - { label: "next", kind: Field, description: "Node *", edit: "14:7-14:7" }
+  - { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "14:7-14:7" }
+  - { label: "value", kind: Field, description: "int", edit: "14:7-14:7" }
+  - { label: "~Node", kind: Method, detail: "()", description: "void", edit: "14:7-14:7" }
 ```
 
-### Scope-qualified members
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Scope-qualified members**
 
 After `::` static data, nested types, methods and the injected class name all list
 
@@ -287,44 +335,73 @@ Qualified completion is not filtered to the statically-reachable subset:
 instance fields and the destructor show up alongside the static members
 and nested types.
 
-```cpp
-// The qualified-id is left dangling at the point.
-struct Config {
-    static int shared_count;
-    static int make(int seed);
+```snap-code_completion
+feature: code_completion
+code: |
+  // The qualified-id is left dangling at the point.
+  struct Config {
+      static int shared_count;
+      static int make(int seed);
 
-    struct Nested {
-        int a;
-    };
+      struct Nested {
+          int a;
+      };
 
-    int instance_field;
-};
+      int instance_field;
+  };
 
-void bar() {
-    int v = Config::;
-}
+  void bar() {
+      int v = Config::§(pos);
+  }
+snapshot: |
+  pos:
+  - { label: "Config", kind: Class, edit: "22:20-22:20" }
+  - { label: "Nested", kind: Class, edit: "22:20-22:20" }
+  - { label: "instance_field", kind: Field, description: "int", edit: "22:20-22:20" }
+  - { label: "make", kind: Method, detail: "(int seed)", description: "int", edit: "22:20-22:20" }
+  - { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "22:20-22:20" }
+  - { label: "shared_count", kind: Variable, description: "int", edit: "22:20-22:20" }
+  - { label: "~Config", kind: Method, detail: "()", description: "void", edit: "22:20-22:20" }
 ```
 
-### Inherited members
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Inherited members**
 
 A derived object completes its own members and those of its base
 
-```cpp
-// The member access expression is left dangling at the point.
-struct Base {
-    int base_field;
-    int base_method();
-};
+```snap-code_completion
+feature: code_completion
+code: |
+  // The member access expression is left dangling at the point.
+  struct Base {
+      int base_field;
+      int base_method();
+  };
 
-struct Derived : Base {
-    int derived_field;
-};
+  struct Derived : Base {
+      int derived_field;
+  };
 
-void bar() {
-    Derived d;
-    d.
-}
+  void bar() {
+      Derived d;
+      d.§(pos)
+  }
+snapshot: |
+  pos:
+  - { label: "Base", kind: Class, edit: "17:6-17:6" }
+  - { label: "Derived", kind: Class, edit: "17:6-17:6" }
+  - { label: "base_field", kind: Field, description: "int", edit: "17:6-17:6" }
+  - { label: "base_method", kind: Method, detail: "()", description: "int", edit: "17:6-17:6" }
+  - { label: "derived_field", kind: Field, description: "int", edit: "17:6-17:6" }
+  - { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "17:6-17:6" }
+  - { label: "~Base", kind: Method, detail: "()", description: "void", edit: "17:6-17:6" }
+  - { label: "~Derived", kind: Method, detail: "()", description: "void", edit: "17:6-17:6" }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -426,217 +503,344 @@ void bar() {
 
 <!-- BEGIN GENERATED ITEMS: symbols -->
 
-| Capability                                    | Status    | Issues |
-| --------------------------------------------- | --------- | ------ |
-| Unqualified lookup with fuzzy prefix matching | Supported |        |
-| Class template deduplication                  | Supported |        |
-| Constructor labels stay plain                 | Supported |        |
-| Keyword patterns                              | Supported |        |
-| Macros                                        | Supported |        |
-| Macro shadowing a declaration                 | Supported |        |
-| Completion inside macro arguments             | Supported |        |
-| Namespace-qualified lookup                    | Supported |        |
-| Enum members                                  | Supported |        |
-| Local shadowing a global                      | Supported |        |
-| Using-declaration                             | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Unqualified lookup with fuzzy prefix matching
+**Unqualified lookup with fuzzy prefix matching**
 
 Strong prefix matches survive, weak subsequence matches and unqualified namespace members do not
 
-```cpp
-// The completion expression dangles as an unfinished statement.
-namespace A {
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion expression dangles as an unfinished statement.
+  namespace A {
 
-void fooooo();
+  void fooooo();
 
-}
+  }
 
-struct X {
-    void operator()() {}
-};
+  struct X {
+      void operator()() {}
+  };
 
-void bar() {
-    X functor;
-    auto folded = [](int x) {
-    };
-    fo;
-}
+  void bar() {
+      X functor;
+      auto folded = [](int x) {
+      };
+      fo§(pos);
+  }
+snapshot: |
+  pos:
+  - { label: "folded", kind: Variable, detail: "(int x)", description: "void", edit: "20:4-20:6" }
 ```
 
-### Class template deduplication
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Class template deduplication**
 
 A name that is also constructors and a deduction guide stays a single class entry
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-template <typename T>
-struct Foo {
-    Foo() {}
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix dangles as an unfinished statement.
+  template <typename T>
+  struct Foo {
+      Foo() {}
 
-    Foo(T x) {}
+      Foo(T x) {}
 
-    Foo(T x, T y) {}
-};
+      Foo(T x, T y) {}
+  };
 
-template <typename T>
-Foo(T) -> Foo<T>;
+  template <typename T>
+  Foo(T) -> Foo<T>;
 
-void bar() {
-    Fo
-}
+  void bar() {
+      Fo§(pos)
+  }
+snapshot: |
+  pos:
+  - { label: "Foo", kind: Class, detail: "<typename T>", edit: "19:4-19:6" }
 ```
 
-### Constructor labels stay plain
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Constructor labels stay plain**
 
 Class template constructors and deduction guides complete as the bare class name, never a templated spelling
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-template <typename T, typename U>
-struct Bazzz {
-    Bazzz() {}
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix dangles as an unfinished statement.
+  template <typename T, typename U>
+  struct Bazzz {
+      Bazzz() {}
 
-    Bazzz(T x) {}
+      Bazzz(T x) {}
 
-    Bazzz(T x, U y) {}
-};
+      Bazzz(T x, U y) {}
+  };
 
-template <typename T>
-Bazzz(T) -> Bazzz<T, int>;
+  template <typename T>
+  Bazzz(T) -> Bazzz<T, int>;
 
-void bar() {
-    Ba
-}
+  void bar() {
+      Ba§(pos)
+  }
+snapshot: |
+  default:
+    pos:
+    - { label: "Bazzz", kind: Class, detail: "<typename T, typename U>", edit: "20:4-20:6" }
+    - { label: "bar", kind: Function, detail: "()", description: "void", edit: "20:4-20:6" }
+
+  configured:
+    pos:
+    - { label: "Bazzz", kind: Class, detail: "<typename T, typename U>", edit: "20:4-20:6" }
+    - { label: "Bazzz", kind: Constructor, detail: "<typename T, typename U>()", edit: "20:4-20:6" }
+    - { label: "Bazzz", kind: Constructor, detail: "<typename T, typename U>(T x)", edit: "20:4-20:6" }
+    - { label: "Bazzz", kind: Constructor, detail: "<typename T, typename U>(T x, U y)", edit: "20:4-20:6" }
+    - { label: "Bazzz", kind: Function, detail: "(Bazzz<T, U>)", description: "Bazzz<T, U>", edit: "20:4-20:6" }
+    - { label: "Bazzz", kind: Function, detail: "(T x, U y)", description: "Bazzz<T, U>", edit: "20:4-20:6" }
+    - { label: "Bazzz", kind: Function, detail: "(T)", description: "Bazzz<T, int>", edit: "20:4-20:6" }
+    - { label: "Bazzz", kind: Function, detail: "<typename T, typename U>()", description: "Bazzz<T, U>", edit: "20:4-20:6" }
+    - { label: "Bazzz", kind: Function, detail: "<typename T, typename U>(T x)", description: "Bazzz<T, U>", edit: "20:4-20:6" }
+    - { label: "bar", kind: Function, detail: "()", description: "void", edit: "20:4-20:6" }
 ```
 
-### Keyword patterns
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Keyword patterns**
 
 Keywords complete like any candidate, with plain insert text
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int x = tru
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix cuts the initializer mid-expression.
+  int x = tru§(pos)
+snapshot: |
+  pos:
+  - { label: "true", kind: Snippet, edit: "6:8-6:11" }
 ```
 
-### Macros
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macros**
 
 object-like macros complete as constants, function-like ones as functions with a parameter signature; argument snippets follow the function setting
 
-```cpp
-#define RETRY_LIMIT 3
+```snap-code_completion
+feature: code_completion
+code: |
+  #define RETRY_LIMIT 3
 
-#define CLAMP(value, limit) ((value) < (limit) ? (value) : (limit))
+  #define CLAMP(value, limit) ((value) < (limit) ? (value) : (limit))
 
-int a = RETRY;
-int b = CLA;
+  int a = RETRY§(object);
+  int b = CLA§(function);
+snapshot: |
+  default:
+    function:
+    - { label: "CLAMP", kind: Function, detail: "(value, limit)", edit: "11:8-11:11" }
+    - { label: "class", kind: Keyword, edit: "11:8-11:11" }
+
+    object:
+    - { label: "RETRY_LIMIT", kind: Constant, edit: "10:8-10:13" }
+
+  configured:
+    function:
+    - { label: "CLAMP", kind: Function, detail: "(value, limit)", edit: "11:8-11:11", insert: "CLAMP(${1:value}, ${2:limit})", snippet: true }
+    - { label: "class", kind: Keyword, edit: "11:8-11:11" }
+
+    object:
+    - { label: "RETRY_LIMIT", kind: Constant, edit: "10:8-10:13" }
 ```
 
-### Macro shadowing a declaration
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macro shadowing a declaration**
 
 A name redefined as a macro completes as the macro, not the shadowed declaration
 
-```cpp
-void GUARD(int);
-#define GUARD 1
+```snap-code_completion
+feature: code_completion
+code: |
+  void GUARD(int);
+  #define GUARD 1
 
-int BOUND(int lo, int hi);
-#define BOUND(lo, hi) ((lo) < (hi) ? (lo) : (hi))
+  int BOUND(int lo, int hi);
+  #define BOUND(lo, hi) ((lo) < (hi) ? (lo) : (hi))
 
-int a = GUAR;
-int b = BOUN;
+  int a = GUAR§(object);
+  int b = BOUN§(function);
+snapshot: |
+  function:
+  - { label: "BOUND", kind: Function, detail: "(lo, hi)", edit: "12:8-12:12" }
+
+  object:
+  - { label: "GUARD", kind: Constant, edit: "11:8-11:12" }
 ```
 
-### Completion inside macro arguments
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Completion inside macro arguments**
 
 Member access written as a macro argument completes as it would outside the macro
 
-```cpp
-#define WRAP(...) __VA_ARGS__
+```snap-code_completion
+feature: code_completion
+code: |
+  #define WRAP(...) __VA_ARGS__
 
-struct Config {
-    int retries;
-    int timeout;
-};
+  struct Config {
+      int retries;
+      int timeout;
+  };
 
-void run() {
-    Config config;
-    WRAP(config.);
-}
+  void run() {
+      Config config;
+      WRAP(config.§(argument));
+  }
+snapshot: |
+  argument:
+  - { label: "Config", kind: Class, edit: "14:16-14:16" }
+  - { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "14:16-14:16" }
+  - { label: "retries", kind: Field, description: "int", edit: "14:16-14:16" }
+  - { label: "timeout", kind: Field, description: "int", edit: "14:16-14:16" }
+  - { label: "~Config", kind: Method, detail: "()", description: "void", edit: "14:16-14:16" }
 ```
 
-### Namespace-qualified lookup
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Namespace-qualified lookup**
 
 `ns::` lists the namespace's own members
 
-```cpp
-// The qualified-id is left dangling at the point.
-namespace geometry {
+```snap-code_completion
+feature: code_completion
+code: |
+  // The qualified-id is left dangling at the point.
+  namespace geometry {
 
-int area_of(int r);
+  int area_of(int r);
 
-struct Point {
-    int x;
-};
+  struct Point {
+      int x;
+  };
 
-int origin;
+  int origin;
 
-}  // namespace geometry
+  }  // namespace geometry
 
-void bar() {
-    int v = geometry::;
-}
+  void bar() {
+      int v = geometry::§(pos);
+  }
+snapshot: |
+  pos:
+  - { label: "Point", kind: Class, edit: "19:22-19:22" }
+  - { label: "area_of", kind: Function, detail: "(int r)", description: "int", edit: "19:22-19:22" }
+  - { label: "origin", kind: Variable, description: "int", edit: "19:22-19:22" }
 ```
 
-### Enum members
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Enum members**
 
 A scoped enum lists through `Type::`, an unscoped enumerator completes by bare name
 
-```cpp
-// Both completion prefixes dangle; the statements stay
-// semicolon-terminated so the second marker is not dragged into recovery.
-enum class Color { Red, Green, Blue };
+```snap-code_completion
+feature: code_completion
+code: |
+  // Both completion prefixes dangle; the statements stay
+  // semicolon-terminated so the second marker is not dragged into recovery.
+  enum class Color { Red, Green, Blue };
 
-enum Fruit { Apple, Banana };
+  enum Fruit { Apple, Banana };
 
-void bar() {
-    Color c = Color::;
-    int f = App;
-}
+  void bar() {
+      Color c = Color::§(scoped);
+      int f = App§(unscoped);
+  }
+snapshot: |
+  scoped:
+  - { label: "Blue", kind: EnumMember, description: "Color", edit: "12:21-12:21" }
+  - { label: "Green", kind: EnumMember, description: "Color", edit: "12:21-12:21" }
+  - { label: "Red", kind: EnumMember, description: "Color", edit: "12:21-12:21" }
+
+  unscoped:
+  - { label: "Apple", kind: EnumMember, description: "Fruit", edit: "13:12-13:15" }
 ```
 
-### Local shadowing a global
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Local shadowing a global**
 
 The shadowed global does not appear as a duplicate entry
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-int counter = 0;
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix dangles as an unfinished statement.
+  int counter = 0;
 
-void bar() {
-    int counter = 1;
-    int v = coun;
-}
+  void bar() {
+      int counter = 1;
+      int v = coun§(pos);
+  }
+snapshot: |
+  pos:
+  - { label: "counter", kind: Variable, description: "int", edit: "10:12-10:16" }
 ```
 
-### Using-declaration
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Using-declaration**
 
 A name pulled in with `using` completes unqualified
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-namespace lib {
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix dangles as an unfinished statement.
+  namespace lib {
 
-int helper_fn(int x);
+  int helper_fn(int x);
 
-}
+  }
 
-using lib::helper_fn;
+  using lib::helper_fn;
 
-void bar() {
-    int v = help;
-}
+  void bar() {
+      int v = help§(pos);
+  }
+snapshot: |
+  pos:
+  - { label: "helper_fn", kind: Function, detail: "(int x)", description: "int", edit: "15:12-15:16" }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -674,110 +878,199 @@ All options below live in the `[code_completion]` configuration section.
 
 <!-- BEGIN GENERATED ITEMS: functions_snippets -->
 
-| Capability                        | Status    | Issues |
-| --------------------------------- | --------- | ------ |
-| Signature and return type details | Supported |        |
-| Overload bundling                 | Supported |        |
-| Unbundled overloads               | Supported |        |
-| Parameter placeholder snippets    | Supported |        |
-| Snippets defer to bundling        | Supported |        |
-| Default-argument parameters       | Supported |        |
-| Variadic signature                | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Signature and return type details
+**Signature and return type details**
 
 The parameter list and return type ride along as label details
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-double foooo(int x, float y);
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix cuts the initializer mid-expression.
+  double foooo(int x, float y);
 
-int x = fo
+  int x = fo§(pos)
+snapshot: |
+  pos:
+  - { label: "foooo", kind: Function, detail: "(int x, float y)", description: "double", edit: "8:8-8:10" }
 ```
 
-### Overload bundling
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Overload bundling**
 
 An overload set collapses into one entry with an overload count
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int foooo(int x);
-int foooo(int x, int y);
-double foooo(double d);
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix cuts the initializer mid-expression.
+  int foooo(int x);
+  int foooo(int x, int y);
+  double foooo(double d);
 
-int x = fooo
+  int x = fooo§(pos)
+snapshot: |
+  pos:
+  - { label: "foooo", kind: Function, detail: "(…) +3 overloads", edit: "10:8-10:12" }
 ```
 
-### Unbundled overloads
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Unbundled overloads**
 
 With bundling off, every overload is its own entry with its own signature
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int foooo(int x);
-int foooo(int x, int y);
-double foooo(double d);
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix cuts the initializer mid-expression.
+  int foooo(int x);
+  int foooo(int x, int y);
+  double foooo(double d);
 
-int x = fooo
+  int x = fooo§(pos)
+snapshot: |
+  default:
+    pos:
+    - { label: "foooo", kind: Function, detail: "(…) +3 overloads", edit: "11:8-11:12" }
+
+  configured:
+    pos:
+    - { label: "foooo", kind: Function, detail: "(double d)", description: "double", edit: "11:8-11:12" }
+    - { label: "foooo", kind: Function, detail: "(int x)", description: "int", edit: "11:8-11:12" }
+    - { label: "foooo", kind: Function, detail: "(int x, int y)", description: "int", edit: "11:8-11:12" }
 ```
 
-### Parameter placeholder snippets
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Parameter placeholder snippets**
 
 Calls insert tab-stop placeholders per argument; a no-argument function stays plain text
 
-```cpp
-// The completion prefixes dangle as unfinished statements.
-int foooo(int x, float y);
-void nothing_to_fill();
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefixes dangle as unfinished statements.
+  int foooo(int x, float y);
+  void nothing_to_fill();
 
-struct Foo {
-    int bazzzz(int a, int b);
-};
+  struct Foo {
+      int bazzzz(int a, int b);
+  };
 
-void bar() {
-    Foo f;
-    fo;
-    no;
-    f.ba;
-}
+  void bar() {
+      Foo f;
+      fo§(free_function);
+      no§(no_arguments);
+      f.ba§(method);
+  }
+snapshot: |
+  default:
+    free_function:
+    - { label: "Foo", kind: Class, edit: "16:4-16:6" }
+    - { label: "foooo", kind: Function, detail: "(int x, float y)", description: "int", edit: "16:4-16:6" }
+
+    method:
+    - { label: "bazzzz", kind: Method, detail: "(int a, int b)", description: "int", edit: "18:6-18:8" }
+
+    no_arguments:
+    - { label: "noexcept", kind: Snippet, edit: "17:4-17:6" }
+    - { label: "nothing_to_fill", kind: Function, detail: "()", description: "void", edit: "17:4-17:6" }
+
+  configured:
+    free_function:
+    - { label: "Foo", kind: Class, edit: "16:4-16:6" }
+    - { label: "Foo", kind: Constructor, detail: "()", edit: "16:4-16:6" }
+    - { label: "Foo", kind: Constructor, detail: "(Foo &&)", edit: "16:4-16:6", insert: "Foo(${1:Foo &&})", snippet: true }
+    - { label: "Foo", kind: Constructor, detail: "(const Foo &)", edit: "16:4-16:6", insert: "Foo(${1:const Foo &})", snippet: true }
+    - { label: "foooo", kind: Function, detail: "(int x, float y)", description: "int", edit: "16:4-16:6", insert: "foooo(${1:int x}, ${2:float y})", snippet: true }
+
+    method:
+    - { label: "bazzzz", kind: Method, detail: "(int a, int b)", description: "int", edit: "18:6-18:8", insert: "bazzzz(${1:int a}, ${2:int b})", snippet: true }
+
+    no_arguments:
+    - { label: "noexcept", kind: Snippet, edit: "17:4-17:6" }
+    - { label: "nothing_to_fill", kind: Function, detail: "()", description: "void", edit: "17:4-17:6" }
 ```
 
-### Snippets defer to bundling
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Snippets defer to bundling**
 
 While overloads are bundled, argument snippets stay off even when enabled
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int foooo(int x);
-int foooo(int x, int y);
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix cuts the initializer mid-expression.
+  int foooo(int x);
+  int foooo(int x, int y);
 
-int z = fo
+  int z = fo§(pos)
+snapshot: |
+  default:
+    pos:
+    - { label: "foooo", kind: Function, detail: "(…) +2 overloads", edit: "10:8-10:10" }
+
+  configured:
+    pos:
+    - { label: "foooo", kind: Function, detail: "(…) +2 overloads", edit: "10:8-10:10" }
 ```
 
-### Default-argument parameters
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Default-argument parameters**
 
 A parameter with a default value drops out of the signature detail
 
 The signature detail keeps only the required parameters; the trailing
 `int retries = 3` is elided.
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int configure(int timeout, int retries = 3);
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix cuts the initializer mid-expression.
+  int configure(int timeout, int retries = 3);
 
-int x = confi
+  int x = confi§(pos)
+snapshot: |
+  pos:
+  - { label: "configure", kind: Function, detail: "(int timeout)", description: "int", edit: "11:8-11:13" }
 ```
 
-### Variadic signature
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Variadic signature**
 
 A trailing `...` shows in the parameter detail
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-int printf_like(const char* fmt, ...);
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix cuts the initializer mid-expression.
+  int printf_like(const char* fmt, ...);
 
-int x = printf
+  int x = printf§(pos)
+snapshot: |
+  pos:
+  - { label: "printf_like", kind: Function, detail: "(const char *fmt, ...)", description: "int", edit: "8:8-8:14" }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -883,87 +1176,130 @@ int x = printf
 
 <!-- BEGIN GENERATED ITEMS: filtering_ranking -->
 
-| Capability                  | Status    | Issues |
-| --------------------------- | --------- | ------ |
-| Underscore filtering        | Supported |        |
-| Deprecated tagging          | Supported |        |
-| Word-boundary fuzzy match   | Supported |        |
-| Case-insensitive prefix     | Supported |        |
-| Prefix outranks subsequence | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Underscore filtering
+**Underscore filtering**
 
 underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
 
-```cpp
-// The completion prefixes are undeclared identifiers. The
-// statements stay semicolon-terminated: an unterminated one puts the
-// NEXT marker into a recovery context, which completion drops entirely.
-int _private_thing;
-int public_thing;
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefixes are undeclared identifiers. The
+  // statements stay semicolon-terminated: an unterminated one puts the
+  // NEXT marker into a recovery context, which completion drops entirely.
+  int _private_thing;
+  int public_thing;
 
-int x = pu;
-int y = _p;
+  int x = pu§(hidden);
+  int y = _p§(typed_underscore);
+snapshot: |
+  hidden:
+  - { label: "public_thing", kind: Variable, description: "int", edit: "11:8-11:10" }
+
+  typed_underscore:
+  - { label: "_Pragma", kind: Constant, edit: "12:8-12:10" }
+  - { label: "_private_thing", kind: Variable, description: "int", edit: "12:8-12:10" }
 ```
 
-### Deprecated tagging
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Deprecated tagging**
 
 A [[deprecated]] candidate carries the Deprecated tag, its plain sibling does not
 
-```cpp
-// The completion prefix cuts the initializer mid-expression.
-[[deprecated]] int old_thing(int x);
-int new_thing(int x);
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix cuts the initializer mid-expression.
+  [[deprecated]] int old_thing(int x);
+  int new_thing(int x);
 
-int z = thing
+  int z = thing§(pos)
+snapshot: |
+  pos:
+  - { label: "new_thing", kind: Function, detail: "(int x)", description: "int", edit: "9:8-9:13" }
+  - { label: "old_thing", kind: Function, detail: "(int x)", description: "int", edit: "9:8-9:13", deprecated: true }
 ```
 
-### Word-boundary fuzzy match
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Word-boundary fuzzy match**
 
 Prefix `fb` matches the word starts of `foo_bar_baz`
 
 `frobnicate` is only a weak scattered subsequence of `fb` and is dropped;
 `foo_bar_baz` matches on the `foo`/`bar` word boundaries and survives.
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-int foo_bar_baz;
-int frobnicate;
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix dangles as an unfinished statement.
+  int foo_bar_baz;
+  int frobnicate;
 
-void bar() {
-    int v = fb;
-}
+  void bar() {
+      int v = fb§(pos);
+  }
+snapshot: |
+  pos:
+  - { label: "foo_bar_baz", kind: Variable, description: "int", edit: "13:12-13:14" }
 ```
 
-### Case-insensitive prefix
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Case-insensitive prefix**
 
 A lowercase prefix matches a mixed-case identifier
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-int MyLongName;
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix dangles as an unfinished statement.
+  int MyLongName;
 
-void bar() {
-    int v = mylong;
-}
+  void bar() {
+      int v = mylong§(pos);
+  }
+snapshot: |
+  pos:
+  - { label: "MyLongName", kind: Variable, description: "int", edit: "9:12-9:18" }
 ```
 
-### Prefix outranks subsequence
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Prefix outranks subsequence**
 
 An exact-prefix candidate sorts above a scattered subsequence match
 
 For prefix `fo`, `format_output` is a true prefix and outscores
 `fast_math_operation`, which only matches as a subsequence.
 
-```cpp
-// The completion prefix dangles as an unfinished statement.
-int format_output;
-int fast_math_operation;
+```snap-code_completion
+feature: code_completion
+code: |
+  // The completion prefix dangles as an unfinished statement.
+  int format_output;
+  int fast_math_operation;
 
-void bar() {
-    int v = fo;
-}
+  void bar() {
+      int v = fo§(pos);
+  }
+snapshot: |
+  pos:
+  - { label: "format_output", kind: Variable, description: "int", edit: "13:12-13:14" }
+  - { label: "fast_math_operation", kind: Variable, description: "int", edit: "13:12-13:14" }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 

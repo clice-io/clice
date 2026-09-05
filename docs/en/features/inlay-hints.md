@@ -11,281 +11,365 @@ clice renders inline annotations for the information the code leaves implicit: p
 
 <!-- BEGIN GENERATED ITEMS: parameter_hints -->
 
-| Capability                           | Status    | Issues                                                                                                                   |
-| ------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Parameter name hints                 | Supported |                                                                                                                          |
-| Hint suppression                     | Supported | [clangd#1877](https://github.com/clangd/clangd/issues/1877)                                                              |
-| Setter and builtin suppression       | Supported |                                                                                                                          |
-| Mutable reference markers            | Supported | [clangd#1123](https://github.com/clangd/clangd/issues/1123)                                                              |
-| Forwarding resolution                | Supported | [clangd#2324](https://github.com/clangd/clangd/issues/2324)                                                              |
-| Names from definitions               | Supported |                                                                                                                          |
-| Function pointers and call operators | Supported | [clangd#1734](https://github.com/clangd/clangd/issues/1734), [clangd#1742](https://github.com/clangd/clangd/issues/1742) |
-| Deducing `this`                      | Supported | [clangd#1777](https://github.com/clangd/clangd/issues/1777)                                                              |
-| Dependent calls                      | Supported |                                                                                                                          |
-| Unexpanded packs                     | Supported |                                                                                                                          |
-| Macros at call sites                 | Supported | [clangd#2620](https://github.com/clangd/clangd/issues/2620)                                                              |
-| Implicit constructor calls           | Supported |                                                                                                                          |
-| Pseudo-object expressions            | Supported |                                                                                                                          |
-| Explicit instantiation               | Supported | [clangd#1034](https://github.com/clangd/clangd/issues/1034)                                                              |
-| Sloppy name matching                 | Partial   | [clangd#2248](https://github.com/clangd/clangd/issues/2248)                                                              |
-| Inherited constructors               | Partial   | [clangd#1364](https://github.com/clangd/clangd/issues/1364)                                                              |
-| Anonymous parameters                 | Supported |                                                                                                                          |
-| Operators and literals               | Supported |                                                                                                                          |
-| Packs in constructor arguments       | Partial   |                                                                                                                          |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Parameter name hints
+**Parameter name hints**
 
 Argument names at call sites and constructor calls
 
-```cpp
-void draw(int width, int height);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  void draw(int width, int height);
 
-struct Point {
-    Point(int x, int y);
-    Point(const Point& other);
-    Point(Point&& other);
-};
+  struct Point {
+      Point(int x, int y);
+      Point(const Point& other);
+      Point(Point&& other);
+  };
 
-void use() {
-    draw(10, 20);
-    Point p(1, 2);
-    Point q{3, 4};
-    // Copy and move constructors stay quiet; a temporary's own braces
-    // still hint (the outer prvalue construction is elided anyway).
-    Point r(p);
-    Point m(Point{5, 6});
-    Point s(static_cast<Point&&>(r));
-}
+  void use() {
+      draw(10, 20);
+      Point p(1, 2);
+      Point q{3, 4};
+      // Copy and move constructors stay quiet; a temporary's own braces
+      // still hint (the outer prvalue construction is elided anyway).
+      Point r(p);
+      Point m(Point{5, 6});
+      Point s(static_cast<Point&&>(r));
+  }
+snapshot: |
+  - { pos: "13:9", kind: Parameter, label: "width:", padding_right: true }
+  - { pos: "13:13", kind: Parameter, label: "height:", padding_right: true }
+  - { pos: "14:12", kind: Parameter, label: "x:", padding_right: true }
+  - { pos: "14:15", kind: Parameter, label: "y:", padding_right: true }
+  - { pos: "15:12", kind: Parameter, label: "x:", padding_right: true }
+  - { pos: "15:15", kind: Parameter, label: "y:", padding_right: true }
+  - { pos: "19:18", kind: Parameter, label: "x:", padding_right: true }
+  - { pos: "19:21", kind: Parameter, label: "y:", padding_right: true }
 ```
 
-### Hint suppression
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1877 -->
+
+**Hint suppression**
 
 Arguments that already spell the parameter name, and `/*name=*/` comments
 
-```cpp
-void draw(int width, int height);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  void draw(int width, int height);
 
-void use() {
-    int width = 5;
-    int h = 2;
-    // `width` matches the parameter spelling: only `height:` hints.
-    draw(width, h);
-    // An inline comment naming the parameter serves the same purpose;
-    // a comment naming something else does not.
-    draw(/*width=*/1, /*height=*/2);
-    draw(/*margin=*/6, 7);
-}
+  void use() {
+      int width = 5;
+      int h = 2;
+      // `width` matches the parameter spelling: only `height:` hints.
+      draw(width, h);
+      // An inline comment naming the parameter serves the same purpose;
+      // a comment naming something else does not.
+      draw(/*width=*/1, /*height=*/2);
+      draw(/*margin=*/6, 7);
+  }
 
-struct Sizes {
-    static int width;
-    int height;
+  struct Sizes {
+      static int width;
+      int height;
 
-    void member() {
-        // A bare member access spells the parameter name: suppressed.
-        draw(5, height);
-    }
-};
+      void member() {
+          // A bare member access spells the parameter name: suppressed.
+          draw(5, height);
+      }
+  };
 
-void qualified(Sizes s) {
-    // A qualified name is not a plain spelling match.
-    draw(Sizes::width, 3);
-    // Neither is an access through a written base object.
-    draw(4, s.height);
-}
+  void qualified(Sizes s) {
+      // A qualified name is not a plain spelling match.
+      draw(Sizes::width, 3);
+      // Neither is an access through a written base object.
+      draw(4, s.height);
+  }
+snapshot: |
+  - { pos: "11:16", kind: Parameter, label: "height:", padding_right: true }
+  - { pos: "15:20", kind: Parameter, label: "width:", padding_right: true }
+  - { pos: "15:23", kind: Parameter, label: "height:", padding_right: true }
+  - { pos: "24:13", kind: Parameter, label: "width:", padding_right: true }
+  - { pos: "30:9", kind: Parameter, label: "width:", padding_right: true }
+  - { pos: "30:23", kind: Parameter, label: "height:", padding_right: true }
+  - { pos: "32:9", kind: Parameter, label: "width:", padding_right: true }
+  - { pos: "32:12", kind: Parameter, label: "height:", padding_right: true }
 ```
 
-### Setter and builtin suppression
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Setter and builtin suppression**
 
 `setX(x)` and `std::move`/`std::forward` arguments stay bare
 
-```cpp
-namespace std {
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  namespace std {
 
-template <typename T>
-struct remove_reference {
-    using type = T;
-};
+  template <typename T>
+  struct remove_reference {
+      using type = T;
+  };
 
-template <typename T>
-struct remove_reference<T&> {
-    using type = T;
-};
+  template <typename T>
+  struct remove_reference<T&> {
+      using type = T;
+  };
 
-template <typename T>
-struct remove_reference<T&&> {
-    using type = T;
-};
+  template <typename T>
+  struct remove_reference<T&&> {
+      using type = T;
+  };
 
-template <typename T>
-constexpr T&& forward(typename remove_reference<T>::type& t) noexcept;
+  template <typename T>
+  constexpr T&& forward(typename remove_reference<T>::type& t) noexcept;
 
-template <typename T>
-constexpr typename remove_reference<T>::type&& move(T&& t) noexcept;
+  template <typename T>
+  constexpr typename remove_reference<T>::type&& move(T&& t) noexcept;
 
-}  // namespace std
+  }  // namespace std
 
-struct Config {
-    void setWidth(int width);
-    void set_height(int height);
-    // The parameter carries extra information beyond the setter name, so
-    // it still hints.
-    void setTimeout(int timeout_millis);
-};
+  struct Config {
+      void setWidth(int width);
+      void set_height(int height);
+      // The parameter carries extra information beyond the setter name, so
+      // it still hints.
+      void setTimeout(int timeout_millis);
+  };
 
-void consume(int&& sink);
+  void consume(int&& sink);
 
-// The three-argument algorithm form of std::move is a real call whose
-// parameters deserve hints; only the single-argument cast stays bare.
-namespace std {
+  // The three-argument algorithm form of std::move is a real call whose
+  // parameters deserve hints; only the single-argument cast stays bare.
+  namespace std {
 
-template <typename T>
-T* move(T* first, T* last, T* result);
+  template <typename T>
+  T* move(T* first, T* last, T* result);
 
-}  // namespace std
+  }  // namespace std
 
-void use(Config& config) {
-    config.setWidth(3);
-    config.set_height(4);
-    config.setTimeout(5);
-    int value = 1;
-    consume(std::move(value));
-    int buffer[4];
-    std::move(buffer, buffer + 2, buffer + 2);
-}
+  void use(Config& config) {
+      config.setWidth(3);
+      config.set_height(4);
+      config.setTimeout(5);
+      int value = 1;
+      consume(std::move(value));
+      int buffer[4];
+      std::move(buffer, buffer + 2, buffer + 2);
+  }
+snapshot: |
+  - { pos: "51:22", kind: Parameter, label: "timeout_millis:", padding_right: true }
+  - { pos: "53:12", kind: Parameter, label: "sink:", padding_right: true }
+  - { pos: "55:14", kind: Parameter, label: "first:", padding_right: true }
+  - { pos: "55:22", kind: Parameter, label: "last:", padding_right: true }
+  - { pos: "55:34", kind: Parameter, label: "result:", padding_right: true }
 ```
 
-### Mutable reference markers
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1123 -->
+
+**Mutable reference markers**
 
 `&` flags arguments passed by non-const lvalue reference
 
-```cpp
-void mutate(int& value);
-void observe(const int& value);
-void take(int&& value);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  void mutate(int& value);
+  void observe(const int& value);
+  void take(int&& value);
 
-void use() {
-    int v = 0;
-    mutate(v);
-    observe(v);
-    take(static_cast<int&&>(v));
-}
+  void use() {
+      int v = 0;
+      mutate(v);
+      observe(v);
+      take(static_cast<int&&>(v));
+  }
+snapshot: |
+  - { pos: "11:11", kind: Parameter, label: "&value:", padding_right: true }
+  - { pos: "12:12", kind: Parameter, label: "value:", padding_right: true }
+  - { pos: "13:9", kind: Parameter, label: "value:", padding_right: true }
 ```
 
-### Forwarding resolution
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2324 -->
+
+**Forwarding resolution**
 
 Packs forwarded through wrappers resolve to the target's parameter names
 
-```cpp
-namespace std {
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  namespace std {
 
-template <typename T>
-struct remove_reference {
-    using type = T;
-};
+  template <typename T>
+  struct remove_reference {
+      using type = T;
+  };
 
-template <typename T>
-constexpr T&& forward(typename remove_reference<T>::type& t) noexcept;
+  template <typename T>
+  constexpr T&& forward(typename remove_reference<T>::type& t) noexcept;
 
-}  // namespace std
+  }  // namespace std
 
-void target(int first, int second);
+  void target(int first, int second);
 
-template <typename... Args>
-void wrap(Args&&... args) {
-    target(std::forward<Args>(args)...);
-}
+  template <typename... Args>
+  void wrap(Args&&... args) {
+      target(std::forward<Args>(args)...);
+  }
 
-// A plain pass-through works without std::forward as well.
-void sink(int a, int b, int c);
+  // A plain pass-through works without std::forward as well.
+  void sink(int a, int b, int c);
 
-template <typename... Ts>
-void call_with(Ts... ts) {
-    sink(ts...);
-}
+  template <typename... Ts>
+  void call_with(Ts... ts) {
+      sink(ts...);
+  }
 
-// Forwarding also resolves through packs sandwiched between fixed
-// head and tail arguments.
-int accumulate(int, int b, double);
+  // Forwarding also resolves through packs sandwiched between fixed
+  // head and tail arguments.
+  int accumulate(int, int b, double);
 
-template <typename... Args>
-int head_tail(int a, Args&&... args) {
-    return accumulate(1, std::forward<Args>(args)..., 1.0);
-}
+  template <typename... Args>
+  int head_tail(int a, Args&&... args) {
+      return accumulate(1, std::forward<Args>(args)..., 1.0);
+  }
 
-template <typename... Args>
-int chain(Args&&... args) {
-    return head_tail(std::forward<Args>(args)...);
-}
+  template <typename... Args>
+  int chain(Args&&... args) {
+      return head_tail(std::forward<Args>(args)...);
+  }
 
-void use() {
-    wrap(1, 2);
-    call_with(1, 2, 3);
-    chain(32, 42);
-}
+  void use() {
+      wrap(1, 2);
+      call_with(1, 2, 3);
+      chain(32, 42);
+  }
+snapshot: |
+  - { pos: "47:9", kind: Parameter, label: "first:", padding_right: true }
+  - { pos: "47:12", kind: Parameter, label: "second:", padding_right: true }
+  - { pos: "48:14", kind: Parameter, label: "a:", padding_right: true }
+  - { pos: "48:17", kind: Parameter, label: "b:", padding_right: true }
+  - { pos: "48:20", kind: Parameter, label: "c:", padding_right: true }
+  - { pos: "49:10", kind: Parameter, label: "a:", padding_right: true }
+  - { pos: "49:14", kind: Parameter, label: "b:", padding_right: true }
 ```
 
-### Names from definitions
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Names from definitions**
 
 Unnamed declaration parameters take the definition's names; leading underscores strip
 
-```cpp
-void resize(int, int);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  void resize(int, int);
 
-void fill(int _value, int __count);
+  void fill(int _value, int __count);
 
-int scale(int good);
+  int scale(int good);
 
-void use() {
-    resize(800, 600);
-    fill(1, 2);
-    // When both name their parameter, the declaration wins.
-    scale(7);
-}
+  void use() {
+      resize(800, 600);
+      fill(1, 2);
+      // When both name their parameter, the declaration wins.
+      scale(7);
+  }
 
-void resize(int width, int height) {}
+  void resize(int width, int height) {}
 
-int scale(int bad) {
-    return bad;
-}
+  int scale(int bad) {
+      return bad;
+  }
+snapshot: |
+  - { pos: "11:11", kind: Parameter, label: "width:", padding_right: true }
+  - { pos: "11:16", kind: Parameter, label: "height:", padding_right: true }
+  - { pos: "12:9", kind: Parameter, label: "value:", padding_right: true }
+  - { pos: "12:12", kind: Parameter, label: "count:", padding_right: true }
+  - { pos: "14:10", kind: Parameter, label: "good:", padding_right: true }
 ```
 
-### Function pointers and call operators
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1734 clangd#1742 -->
+
+**Function pointers and call operators**
 
 Indirect calls still name their parameters
 
-```cpp
-struct Callback {
-    void operator()(int status, int detail) const;
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Callback {
+      void operator()(int status, int detail) const;
+  };
 
-void (*handler)(int status, const char* message);
+  void (*handler)(int status, const char* message);
 
-void use() {
-    Callback cb;
-    cb(1, 2);
-    cb.operator()(3, 4);
-    handler(0, "ok");
-    auto cmp = [](int lhs, int rhs) { return lhs < rhs; };
-    cmp(1, 2);
-}
+  void use() {
+      Callback cb;
+      cb(1, 2);
+      cb.operator()(3, 4);
+      handler(0, "ok");
+      auto cmp = [](int lhs, int rhs) { return lhs < rhs; };
+      cmp(1, 2);
+  }
+snapshot: |
+  - { pos: "13:7", kind: Parameter, label: "status:", padding_right: true }
+  - { pos: "13:10", kind: Parameter, label: "detail:", padding_right: true }
+  - { pos: "14:18", kind: Parameter, label: "status:", padding_right: true }
+  - { pos: "14:21", kind: Parameter, label: "detail:", padding_right: true }
+  - { pos: "15:12", kind: Parameter, label: "status:", padding_right: true }
+  - { pos: "15:15", kind: Parameter, label: "message:", padding_right: true }
+  - { pos: "16:12", kind: Type, label: ": (lambda)" }
+  - { pos: "16:35", kind: Type, label: "-> bool" }
+  - { pos: "17:8", kind: Parameter, label: "lhs:", padding_right: true }
+  - { pos: "17:11", kind: Parameter, label: "rhs:", padding_right: true }
 ```
 
-### Deducing `this`
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1777 -->
+
+**Deducing `this`**
 
 The explicit object parameter never hints (C++23)
 
-```cpp
-struct Widget {
-    void resize(this Widget& self, int width, int height);
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Widget {
+      void resize(this Widget& self, int width, int height);
+  };
 
-void use() {
-    Widget w;
-    w.resize(800, 600);
-}
+  void use() {
+      Widget w;
+      w.resize(800, 600);
+  }
+snapshot: |
+  - { pos: "11:13", kind: Parameter, label: "width:", padding_right: true }
+  - { pos: "11:18", kind: Parameter, label: "height:", padding_right: true }
 ```
 
-### Dependent calls
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent calls**
 
 Parameter names appear even when the callee is only known inside a template
 
@@ -293,257 +377,357 @@ Candidates are matched by argument count; only a unique surviving
 candidate names the parameters, so a call that could still hit several
 overloads stays bare rather than guessing.
 
-```cpp
-template <typename T>
-void apply(T scale);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  template <typename T>
+  void apply(T scale);
 
-template <typename T>
-struct Holder {
-    void member(T item);
-    static void static_member(T slot);
-};
+  template <typename T>
+  struct Holder {
+      void member(T item);
+      static void static_member(T slot);
+  };
 
-void overload(int value);
-void overload(double value);
+  void overload(int value);
+  void overload(double value);
 
-template <typename T>
-struct Runner {
-    void run(Holder<T> holder, T value) {
-        apply(value);
-        holder.member(value);
-        Holder<T>::static_member(value);
-        // Several overloads remain viable: no hint.
-        overload(T{});
-    }
-};
+  template <typename T>
+  struct Runner {
+      void run(Holder<T> holder, T value) {
+          apply(value);
+          holder.member(value);
+          Holder<T>::static_member(value);
+          // Several overloads remain viable: no hint.
+          overload(T{});
+      }
+  };
+snapshot: |
+  - { pos: "23:14", kind: Parameter, label: "scale:", padding_right: true }
+  - { pos: "24:22", kind: Parameter, label: "item:", padding_right: true }
+  - { pos: "25:33", kind: Parameter, label: "slot:", padding_right: true }
 ```
 
-### Unexpanded packs
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Unexpanded packs**
 
 A written pack expansion breaks the 1:1 argument mapping and stops hinting
 
-```cpp
-void plot(int x, int y, int z);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  void plot(int x, int y, int z);
 
-template <typename... Ts>
-void relay(Ts... ts) {
-    // `ts...` may instantiate to any number of arguments.
-    plot(0, ts...);
-}
+  template <typename... Ts>
+  void relay(Ts... ts) {
+      // `ts...` may instantiate to any number of arguments.
+      plot(0, ts...);
+  }
 
-void use() {
-    // The outer call still resolves through pack forwarding: 1 and 2 land
-    // in plot's y and z.
-    relay(1, 2);
-}
+  void use() {
+      // The outer call still resolves through pack forwarding: 1 and 2 land
+      // in plot's y and z.
+      relay(1, 2);
+  }
+snapshot: |
+  - { pos: "9:9", kind: Parameter, label: "x:", padding_right: true }
+  - { pos: "15:10", kind: Parameter, label: "y:", padding_right: true }
+  - { pos: "15:13", kind: Parameter, label: "z:", padding_right: true }
 ```
 
-### Macros at call sites
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2620 -->
+
+**Macros at call sites**
 
 Arguments spelled as macros hint; calls generated inside macro bodies do not
 
-```cpp
-void report(double value);
-void plot(double x, double y);
-int check(int status);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  void report(double value);
+  void plot(double x, double y);
+  int check(int status);
 
-#define PI 3.14
-#define CALL_REPORT() report(2.71)
-#define PAIR 1.0, 2.0
-#define ASSERT(expr) if(!(expr)) {}
+  #define PI 3.14
+  #define CALL_REPORT() report(2.71)
+  #define PAIR 1.0, 2.0
+  #define ASSERT(expr) if(!(expr)) {}
 
-void use() {
-    // An object-like macro is still one written argument.
-    report(PI);
-    // The call only exists inside the macro body.
-    CALL_REPORT();
-    // One macro covering several arguments has no place to anchor.
-    plot(PAIR);
-    // Code written as a macro argument keeps its hints.
-    ASSERT(check(42) == 0);
-}
+  void use() {
+      // An object-like macro is still one written argument.
+      report(PI);
+      // The call only exists inside the macro body.
+      CALL_REPORT();
+      // One macro covering several arguments has no place to anchor.
+      plot(PAIR);
+      // Code written as a macro argument keeps its hints.
+      ASSERT(check(42) == 0);
+  }
+snapshot: |
+  - { pos: "16:11", kind: Parameter, label: "value:", padding_right: true }
+  - { pos: "22:17", kind: Parameter, label: "status:", padding_right: true }
 ```
 
-### Implicit constructor calls
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Implicit constructor calls**
 
 Conversions the code never wrote produce no hints of their own
 
-```cpp
-struct Seconds {
-    Seconds(int raw);
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Seconds {
+      Seconds(int raw);
+  };
 
-void wait(Seconds);
-void hold(Seconds duration);
+  void wait(Seconds);
+  void hold(Seconds duration);
 
-Seconds use() {
-    // The implicit Seconds(5) must not surface `raw:`.
-    wait(5);
-    // The written call still hints its own parameter.
-    hold(6);
-    // Nor does the conversion in a return statement.
-    return 7;
-}
+  Seconds use() {
+      // The implicit Seconds(5) must not surface `raw:`.
+      wait(5);
+      // The written call still hints its own parameter.
+      hold(6);
+      // Nor does the conversion in a return statement.
+      return 7;
+  }
+snapshot: |
+  - { pos: "15:9", kind: Parameter, label: "duration:", padding_right: true }
 ```
 
-### Pseudo-object expressions
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Pseudo-object expressions**
 
 MS property accesses stay quiet; written subscripts keep the accessor's names
 
-```cpp
-int printf(const char* Format, ...);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  int printf(const char* Format, ...);
 
-struct State {
-    __declspec(property(get = GetX, put = PutX)) int x[];
-    int GetX(int row, int column);
-    void PutX(int value);
+  struct State {
+      __declspec(property(get = GetX, put = PutX)) int x[];
+      int GetX(int row, int column);
+      void PutX(int value);
 
-    // The syntactic form is a binary operator: no `value:` hint on `y`.
-    void Work(int y) {
-        x = y;
-    }
-};
+      // The syntactic form is a binary operator: no `value:` hint on `y`.
+      void Work(int y) {
+          x = y;
+      }
+  };
 
-int use() {
-    State s;
-    // The semantic form of __builtin_dump_struct calls printf; none of it
-    // is written here.
-    __builtin_dump_struct(&s, printf);
-    printf("%d", 42);
-    // Property subscripts read best with the accessor's parameter names.
-    return s.x[1][2];
-}
+  int use() {
+      State s;
+      // The semantic form of __builtin_dump_struct calls printf; none of it
+      // is written here.
+      __builtin_dump_struct(&s, printf);
+      printf("%d", 42);
+      // Property subscripts read best with the accessor's parameter names.
+      return s.x[1][2];
+  }
+snapshot: |
+  - { pos: "22:11", kind: Parameter, label: "Format:", padding_right: true }
+  - { pos: "24:15", kind: Parameter, label: "row:", padding_right: true }
+  - { pos: "24:18", kind: Parameter, label: "column:", padding_right: true }
 ```
 
-### Explicit instantiation
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1034 -->
+
+**Explicit instantiation**
 
 An explicit instantiation definition adds no duplicate hints, while its written template arguments hint normally
 
-```cpp
-template <typename T>
-void apply(T value) {}
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  template <typename T>
+  void apply(T value) {}
 
-template void apply<int>(int value);
+  template void apply<int>(int value);
 
-void use() {
-    apply(42);
-}
+  void use() {
+      apply(42);
+  }
 
-int measure(int amount);
+  int measure(int amount);
 
-template <typename T>
-struct Box {};
+  template <typename T>
+  struct Box {};
 
-template struct Box<decltype(measure(7))>;
+  template struct Box<decltype(measure(7))>;
+snapshot: |
+  - { pos: "11:10", kind: Parameter, label: "value:", padding_right: true }
+  - { pos: "19:37", kind: Parameter, label: "amount:", padding_right: true }
+  - { pos: "19:40", kind: Type, label: ": int" }
 ```
 
-### Sloppy name matching
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#2248 -->
+
+**Sloppy name matching**
 
 `aParam` does not yet suppress an argument spelled `param`
 
-```cpp
-void draw(int aParam);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  void draw(int aParam);
 
-void use() {
-    int param = 3;
-    // Ideally the near-match would suppress the hint; today it still shows.
-    draw(param);
-}
+  void use() {
+      int param = 3;
+      // Ideally the near-match would suppress the hint; today it still shows.
+      draw(param);
+  }
+snapshot: |
+  - { pos: "10:9", kind: Parameter, label: "aParam:", padding_right: true }
 ```
 
-### Inherited constructors
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#1364 -->
+
+**Inherited constructors**
 
 `using Base::Base` calls lose their parameter names
 
-```cpp
-struct Base {
-    Base(int width);
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Base {
+      Base(int width);
+  };
 
-struct Derived : Base {
-    using Base::Base;
-};
+  struct Derived : Base {
+      using Base::Base;
+  };
 
-// No `width:` hint yet.
-Derived d(7);
+  // No `width:` hint yet.
+  Derived d(7);
 ```
 
-### Anonymous parameters
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Anonymous parameters**
 
 Nothing to name, though a mutable reference still flags `&`
 
-```cpp
-void value_sink(int);
-void ref_sink(int&);
-void const_ref_sink(const int&);
-void rvalue_sink(int&&);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  void value_sink(int);
+  void ref_sink(int&);
+  void const_ref_sink(const int&);
+  void rvalue_sink(int&&);
 
-void use() {
-    int v = 0;
-    value_sink(1);
-    // Only the `&` marker survives without a name.
-    ref_sink(v);
-    const_ref_sink(v);
-    rvalue_sink(2);
-}
+  void use() {
+      int v = 0;
+      value_sink(1);
+      // Only the `&` marker survives without a name.
+      ref_sink(v);
+      const_ref_sink(v);
+      rvalue_sink(2);
+  }
+snapshot: |
+  - { pos: "13:13", kind: Parameter, label: "&:", padding_right: true }
 ```
 
-### Operators and literals
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Operators and literals**
 
 Operator syntax and user-defined literals stay bare; member and default member initializers hint
 
-```cpp
-struct S {
-    S(int param);
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct S {
+      S(int param);
+  };
 
-void operator+(S lhs, S rhs);
+  void operator+(S lhs, S rhs);
 
-long double operator""_w(long double param);
+  long double operator""_w(long double param);
 
-struct Holder {
-    S member;
-    S defaulted{3};
-    Holder() : member(42) {}
-};
+  struct Holder {
+      S member;
+      S defaulted{3};
+      Holder() : member(42) {}
+  };
 
-void use() {
-    S a(1);
-    S b(2);
-    a + b;
-    1.2_w;
-}
+  void use() {
+      S a(1);
+      S b(2);
+      a + b;
+      1.2_w;
+  }
+snapshot: |
+  - { pos: "14:16", kind: Parameter, label: "param:", padding_right: true }
+  - { pos: "15:22", kind: Parameter, label: "param:", padding_right: true }
+  - { pos: "19:8", kind: Parameter, label: "param:", padding_right: true }
+  - { pos: "20:8", kind: Parameter, label: "param:", padding_right: true }
 ```
 
-### Packs in constructor arguments
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**Packs in constructor arguments**
 
 Outer calls resolve; hints inside the expansion are still missing
 
-```cpp
-struct Foo {
-    Foo();
-    Foo(int x);
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Foo {
+      Foo();
+      Foo(int x);
+  };
 
-void consume(Foo a, int b);
+  void consume(Foo a, int b);
 
-template <typename... Args>
-void relay(Args... args) {
-    consume(args...);
-}
+  template <typename... Args>
+  void relay(Args... args) {
+      consume(args...);
+  }
 
-template <typename... Args>
-void construct(Args... args) {
-    // The written Foo{args...} and the literal after it get no hints yet.
-    consume(Foo{args...}, 1);
-}
+  template <typename... Args>
+  void construct(Args... args) {
+      // The written Foo{args...} and the literal after it get no hints yet.
+      consume(Foo{args...}, 1);
+  }
 
-void use() {
-    relay(Foo{}, 42);
-    relay(42, 42);
-    construct(42);
-}
+  void use() {
+      relay(Foo{}, 42);
+      relay(42, 42);
+      construct(42);
+  }
+snapshot: |
+  - { pos: "23:10", kind: Parameter, label: "a:", padding_right: true }
+  - { pos: "23:17", kind: Parameter, label: "b:", padding_right: true }
+  - { pos: "24:10", kind: Parameter, label: "a:", padding_right: true }
+  - { pos: "24:14", kind: Parameter, label: "b:", padding_right: true }
+  - { pos: "25:14", kind: Parameter, label: "x:", padding_right: true }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -551,333 +735,447 @@ void use() {
 
 <!-- BEGIN GENERATED ITEMS: type_hints -->
 
-| Capability                      | Status    | Issues                                                                                                                   |
-| ------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Deduced `auto` variables        | Supported |                                                                                                                          |
-| Type sugar and the length limit | Supported | [clangd#1298](https://github.com/clangd/clangd/issues/1298), [clangd#1357](https://github.com/clangd/clangd/issues/1357) |
-| Structured bindings             | Supported |                                                                                                                          |
-| Lambdas                         | Supported | [clangd#1163](https://github.com/clangd/clangd/issues/1163)                                                              |
-| Deduced return types            | Supported |                                                                                                                          |
-| `decltype` spellings            | Supported |                                                                                                                          |
-| `auto` parameters               | Supported |                                                                                                                          |
-| Explicitly spelled initializers | Partial   | [clangd#1749](https://github.com/clangd/clangd/issues/1749)                                                              |
-| Dependent `auto`                | Partial   | [clangd#2275](https://github.com/clangd/clangd/issues/2275)                                                              |
-| Scope suppression               | Supported |                                                                                                                          |
-| Tuple-protocol bindings         | Supported |                                                                                                                          |
-| Instantiated templates          | Partial   | [clangd#2275](https://github.com/clangd/clangd/issues/2275)                                                              |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Deduced `auto` variables
+**Deduced `auto` variables**
 
 The hint shows the full variable type, qualifiers included
 
-```cpp
-int make();
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  int make();
 
-void use() {
-    auto value = make();
-    const auto& ref = value;
-    auto* ptr = &value;
-}
+  void use() {
+      auto value = make();
+      const auto& ref = value;
+      auto* ptr = &value;
+  }
+snapshot: |
+  - { pos: "7:14", kind: Type, label: ": int" }
+  - { pos: "8:19", kind: Type, label: ": const int &" }
+  - { pos: "9:13", kind: Type, label: ": int *" }
 ```
 
-### Type sugar and the length limit
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1298 clangd#1357 -->
+
+**Type sugar and the length limit**
 
 Aliases keep their spelling; over-long types fall back to the sugared name
 
-```cpp
-using Integer = int;
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  using Integer = int;
 
-Integer make_alias();
+  Integer make_alias();
 
-template <typename A, typename B, typename C>
-struct extremely_long_template_name {};
+  template <typename A, typename B, typename C>
+  struct extremely_long_template_name {};
 
-using Compact = extremely_long_template_name<int, char, bool>;
+  using Compact = extremely_long_template_name<int, char, bool>;
 
-Compact make_compact();
+  Compact make_compact();
 
-extremely_long_template_name<Integer, Integer, Integer> make_long();
+  extremely_long_template_name<Integer, Integer, Integer> make_long();
 
-template <typename T, typename U = int>
-struct Defaulted {};
+  template <typename T, typename U = int>
+  struct Defaulted {};
 
-Defaulted<float> make_defaulted();
+  Defaulted<float> make_defaulted();
 
-void use() {
-    auto aliased = make_alias();
-    auto shortened = make_compact();
-    // No sugar short enough to fall back to: the hint is dropped.
-    auto dropped = make_long();
-    // Default template arguments never print.
-    auto defaulted = make_defaulted();
-}
+  void use() {
+      auto aliased = make_alias();
+      auto shortened = make_compact();
+      // No sugar short enough to fall back to: the hint is dropped.
+      auto dropped = make_long();
+      // Default template arguments never print.
+      auto defaulted = make_defaulted();
+  }
+snapshot: |
+  - { pos: "24:16", kind: Type, label: ": Integer" }
+  - { pos: "25:18", kind: Type, label: ": Compact" }
+  - { pos: "29:18", kind: Type, label: ": Defaulted<float>" }
 ```
 
-### Structured bindings
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Structured bindings**
 
 Each binding hints its canonical type; the aggregate itself stays bare
 
-```cpp
-struct Pair {
-    int first;
-    float second;
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Pair {
+      int first;
+      float second;
+  };
 
-Pair make();
+  Pair make();
 
-int array[2];
+  int array[2];
 
-void use() {
-    auto [a, b] = make();
-    auto [x, y] = array;
-}
+  void use() {
+      auto [a, b] = make();
+      auto [x, y] = array;
+  }
+snapshot: |
+  - { pos: "14:11", kind: Type, label: ": int" }
+  - { pos: "14:14", kind: Type, label: ": float" }
+  - { pos: "15:11", kind: Type, label: ": int" }
+  - { pos: "15:14", kind: Type, label: ": int" }
 ```
 
-### Lambdas
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1163 -->
+
+**Lambdas**
 
 variables, deduced return types, and init-captures all hint
 
-```cpp
-int compute();
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  int compute();
 
-void use() {
-    auto callback = [captured = compute()](int x) {
-        return x + captured;
-    };
-    auto bare = [] {
-        return 1.5;
-    };
-}
+  void use() {
+      auto callback = [captured = compute()](int x) {
+          return x + captured;
+      };
+      auto bare = [] {
+          return 1.5;
+      };
+  }
+snapshot: |
+  - { pos: "8:17", kind: Type, label: ": (lambda)" }
+  - { pos: "8:29", kind: Type, label: ": int" }
+  - { pos: "8:49", kind: Type, label: "-> int" }
+  - { pos: "11:13", kind: Type, label: ": (lambda)" }
+  - { pos: "11:18", kind: Type, label: "-> double" }
 ```
 
-### Deduced return types
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Deduced return types**
 
 `-> T` after the parameter list, declarations included
 
-```cpp
-auto answer() {
-    return 42;
-}
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  auto answer() {
+      return 42;
+  }
 
-auto& ref_answer() {
-    static int storage = 0;
-    return storage;
-}
+  auto& ref_answer() {
+      static int storage = 0;
+      return storage;
+  }
 
-// A declaration hints once a later definition supplies the deduction; a
-// definition-less one stays silent.
-auto declared(int x);
-auto deducible(int x);
+  // A declaration hints once a later definition supplies the deduction; a
+  // definition-less one stays silent.
+  auto declared(int x);
+  auto deducible(int x);
 
-auto deducible(int x) {
-    return x + 1;
-}
+  auto deducible(int x) {
+      return x + 1;
+  }
 
-// Written trailing return types need no hint.
-auto spelled() -> int;
-auto pointer() -> auto* {
-    return "text";
-}
+  // Written trailing return types need no hint.
+  auto spelled() -> int;
+  auto pointer() -> auto* {
+      return "text";
+  }
 
-struct Convertible {
-    operator auto() {
-        return 42;
-    }
-};
+  struct Convertible {
+      operator auto() {
+          return 42;
+      }
+  };
+snapshot: |
+  - { pos: "4:13", kind: Type, label: "-> int" }
+  - { pos: "8:18", kind: Type, label: "-> int &" }
+  - { pos: "16:21", kind: Type, label: "-> int" }
+  - { pos: "18:21", kind: Type, label: "-> int" }
+  - { pos: "29:19", kind: Type, label: "-> int" }
 ```
 
-### `decltype` spellings
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`decltype` spellings**
 
 The underlying type shows next to the written `decltype`
 
-```cpp
-int source();
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  int source();
 
-decltype(source()) value = 1;
+  decltype(source()) value = 1;
 
-int& ref = value;
-// decltype(auto) preserves the reference.
-decltype(auto) forwarded = ref;
+  int& ref = value;
+  // decltype(auto) preserves the reference.
+  decltype(auto) forwarded = ref;
 
-// Every written decltype spelling hints: declarators, alias targets,
-// return types and functional casts.
-const decltype(0)& bound = value;
+  // Every written decltype spelling hints: declarators, alias targets,
+  // return types and functional casts.
+  const decltype(0)& bound = value;
 
-decltype(0) declared();
+  decltype(0) declared();
 
-auto trailing() -> decltype(0);
+  auto trailing() -> decltype(0);
 
-template <class, class>
-struct Wrap;
+  template <class, class>
+  struct Wrap;
 
-using Alias = Wrap<decltype(0), float>;
+  using Alias = Wrap<decltype(0), float>;
 
-auto constructed = decltype(0){};
+  auto constructed = decltype(0){};
+snapshot: |
+  - { pos: "6:18", kind: Type, label: ": int" }
+  - { pos: "10:24", kind: Type, label: ": int &" }
+  - { pos: "14:17", kind: Type, label: ": int" }
+  - { pos: "16:11", kind: Type, label: ": int" }
+  - { pos: "18:30", kind: Type, label: ": int" }
+  - { pos: "23:30", kind: Type, label: ": int" }
+  - { pos: "25:16", kind: Type, label: ": int" }
+  - { pos: "25:30", kind: Type, label: ": int" }
 ```
 
-### `auto` parameters
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`auto` parameters**
 
 A template with exactly one instantiation reveals the deduced type
 
-```cpp
-int twice(auto x) {
-    return x + x;
-}
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  int twice(auto x) {
+      return x + x;
+  }
 
-int result = twice(21);
+  int result = twice(21);
 
-// A second instantiation makes the deduction ambiguous: no hint.
-int measure(auto x) {
-    return 1;
-}
+  // A second instantiation makes the deduction ambiguous: no hint.
+  int measure(auto x) {
+      return 1;
+  }
 
-int a = measure(1);
-int b = measure(2.0);
+  int a = measure(1);
+  int b = measure(2.0);
 
-// Packs and parameters after them never hint.
-int spread(auto first, auto... rest, auto last) {
-    return 0;
-}
+  // Packs and parameters after them never hint.
+  int spread(auto first, auto... rest, auto last) {
+      return 0;
+  }
 
-int c = spread<void*, char, float>(nullptr, 'x', 2.0f, 3);
+  int c = spread<void*, char, float>(nullptr, 'x', 2.0f, 3);
 
-// Deduplication: a template body hints once across instantiations of the
-// same deduced type.
-template <typename T>
-void body() {
-    auto var = 42;
-}
+  // Deduplication: a template body hints once across instantiations of the
+  // same deduced type.
+  template <typename T>
+  void body() {
+      auto var = 42;
+  }
 
-template void body<int>();
-template void body<float>();
+  template void body<int>();
+  template void body<float>();
+snapshot: |
+  - { pos: "4:16", kind: Type, label: ": int" }
+  - { pos: "8:19", kind: Parameter, label: "x:", padding_right: true }
+  - { pos: "15:16", kind: Parameter, label: "x:", padding_right: true }
+  - { pos: "16:16", kind: Parameter, label: "x:", padding_right: true }
+  - { pos: "19:21", kind: Type, label: ": void *" }
+  - { pos: "23:35", kind: Parameter, label: "first:", padding_right: true }
+  - { pos: "23:55", kind: Parameter, label: "last:", padding_right: true }
+  - { pos: "29:12", kind: Type, label: ": int" }
 ```
 
-### Explicitly spelled initializers
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#1749 -->
+
+**Explicitly spelled initializers**
 
 Casts and functional casts still hint redundantly
 
-```cpp
-int compute();
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  int compute();
 
-void use() {
-    // The type is already written on the right-hand side; ideally these
-    // two hints would be suppressed.
-    auto widened = static_cast<long>(compute());
-    auto braced = int{42};
-}
+  void use() {
+      // The type is already written on the right-hand side; ideally these
+      // two hints would be suppressed.
+      auto widened = static_cast<long>(compute());
+      auto braced = int{42};
+  }
+snapshot: |
+  - { pos: "10:16", kind: Type, label: ": long" }
+  - { pos: "11:15", kind: Type, label: ": int" }
 ```
 
-### Dependent `auto`
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#2275 -->
+
+**Dependent `auto`**
 
 Deduction inside an uninstantiated template body stays silent
 
-```cpp
-template <typename T>
-void body(T input) {
-    // No hint: the deduced type depends on T.
-    auto derived = input + 1;
-    // A dependence-free initializer still hints normally.
-    auto counter = 0;
-}
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  template <typename T>
+  void body(T input) {
+      // No hint: the deduced type depends on T.
+      auto derived = input + 1;
+      // A dependence-free initializer still hints normally.
+      auto counter = 0;
+  }
+snapshot: |
+  - { pos: "10:16", kind: Type, label: ": int" }
 ```
 
-### Scope suppression
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Scope suppression**
 
 Namespace qualifiers drop from hints; class scopes stay
 
-```cpp
-namespace outer {
-namespace inner {
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  namespace outer {
+  namespace inner {
 
-struct S1 {};
-S1 make_s1();
-auto x = make_s1();
+  struct S1 {};
+  S1 make_s1();
+  auto x = make_s1();
 
-struct S2 {
-    template <typename T>
-    struct Nested {};
-};
+  struct S2 {
+      template <typename T>
+      struct Nested {};
+  };
 
-S2::Nested<int> make_nested();
-auto y = make_nested();
+  S2::Nested<int> make_nested();
+  auto y = make_nested();
 
-}  // namespace inner
-}  // namespace outer
+  }  // namespace inner
+  }  // namespace outer
+snapshot: |
+  - { pos: "9:6", kind: Type, label: ": S1" }
+  - { pos: "17:6", kind: Type, label: ": S2::Nested<int>" }
 ```
 
-### Tuple-protocol bindings
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Tuple-protocol bindings**
 
 Hints print the canonical type, not `tuple_element<I, T>::type`
 
-```cpp
-struct IntPair {
-    int a;
-    int b;
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct IntPair {
+      int a;
+      int b;
+  };
 
-namespace std {
+  namespace std {
 
-template <typename T>
-struct tuple_size {};
+  template <typename T>
+  struct tuple_size {};
 
-template <>
-struct tuple_size<IntPair> {
-    constexpr static unsigned value = 2;
-};
+  template <>
+  struct tuple_size<IntPair> {
+      constexpr static unsigned value = 2;
+  };
 
-template <unsigned I, typename T>
-struct tuple_element {};
+  template <unsigned I, typename T>
+  struct tuple_element {};
 
-template <unsigned I>
-struct tuple_element<I, IntPair> {
-    using type = int;
-};
+  template <unsigned I>
+  struct tuple_element<I, IntPair> {
+      using type = int;
+  };
 
-}  // namespace std
+  }  // namespace std
 
-template <unsigned I>
-int get(const IntPair& p) {
-    if constexpr(I == 0) {
-        return p.a;
-    } else {
-        return p.b;
-    }
-}
+  template <unsigned I>
+  int get(const IntPair& p) {
+      if constexpr(I == 0) {
+          return p.a;
+      } else {
+          return p.b;
+      }
+  }
 
-IntPair make();
+  IntPair make();
 
-auto [x, y] = make();
+  auto [x, y] = make();
+snapshot: |
+  - { pos: "40:7", kind: Type, label: ": int" }
+  - { pos: "40:10", kind: Type, label: ": int" }
 ```
 
-### Instantiated templates
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#2275 -->
+
+**Instantiated templates**
 
 Instantiated bodies repeat no hints at the pattern; dependent `auto` could reveal the deduced type while exactly one instantiation exists
 
-```cpp
-void take(int first, int second);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  void take(int first, int second);
 
-template <typename T>
-struct Single {
-    void reset() {
-        take(1, 2);
-        // Deducible from the only instantiation, but not yet deduced.
-        auto copy = T();
-    }
-};
+  template <typename T>
+  struct Single {
+      void reset() {
+          take(1, 2);
+          // Deducible from the only instantiation, but not yet deduced.
+          auto copy = T();
+      }
+  };
 
-template struct Single<char>;
+  template struct Single<char>;
 
-template <typename T>
-struct Twice {
-    void reset() {
-        // No hint: two instantiations deduce contradicting types.
-        auto copy = T();
-    }
-};
+  template <typename T>
+  struct Twice {
+      void reset() {
+          // No hint: two instantiations deduce contradicting types.
+          auto copy = T();
+      }
+  };
 
-template struct Twice<char>;
-template struct Twice<int>;
+  template struct Twice<char>;
+  template struct Twice<int>;
+snapshot: |
+  - { pos: "10:13", kind: Parameter, label: "first:", padding_right: true }
+  - { pos: "10:16", kind: Parameter, label: "second:", padding_right: true }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -885,152 +1183,205 @@ template struct Twice<int>;
 
 <!-- BEGIN GENERATED ITEMS: designator_hints -->
 
-| Capability                             | Status      | Issues                                                      |
-| -------------------------------------- | ----------- | ----------------------------------------------------------- |
-| Field and index designators            | Supported   | [clangd#2303](https://github.com/clangd/clangd/issues/2303) |
-| Nested aggregates                      | Supported   |                                                             |
-| Anonymous members                      | Supported   |                                                             |
-| Designator suppression                 | Supported   |                                                             |
-| Aggregates only                        | Supported   |                                                             |
-| Broken initializers                    | Supported   |                                                             |
-| Parenthesized aggregate initialization | Unsupported | [clangd#2540](https://github.com/clangd/clangd/issues/2540) |
+<!-- BEGIN CAPABILITY: supported clangd#2303 -->
 
-### Field and index designators
+**Field and index designators**
 
 Positional aggregate initialization shows `.field=` and `[index]=`
 
-```cpp
-struct Point {
-    int x;
-    int y;
-    int z;
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Point {
+      int x;
+      int y;
+      int z;
+  };
 
-Point p{1, 2 + 2};
+  Point p{1, 2 + 2};
 
-int coordinates[2] = {7, 8};
+  int coordinates[2] = {7, 8};
 
-// Array designators survive dependent-sized members; reserved names are
-// skipped rather than printed.
-template <typename T, int N>
-struct Array {
-    T __elements[N];
-};
+  // Array designators survive dependent-sized members; reserved names are
+  // skipped rather than printed.
+  template <typename T, int N>
+  struct Array {
+      T __elements[N];
+  };
 
-Array<int, 2> pair = {0, 1};
+  Array<int, 2> pair = {0, 1};
+snapshot: |
+  - { pos: "11:8", kind: Type, label: ".x=" }
+  - { pos: "11:11", kind: Type, label: ".y=" }
+  - { pos: "13:22", kind: Type, label: "[0]=" }
+  - { pos: "13:25", kind: Type, label: "[1]=" }
+  - { pos: "22:22", kind: Type, label: "[0]=" }
+  - { pos: "22:25", kind: Type, label: "[1]=" }
 ```
 
-### Nested aggregates
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Nested aggregates**
 
 Written braces recurse; omitted braces flatten into `.outer.inner=`
 
-```cpp
-struct Inner {
-    int x;
-    int y;
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Inner {
+      int x;
+      int y;
+  };
 
-struct Outer {
-    Inner a;
-    Inner b;
-};
+  struct Outer {
+      Inner a;
+      Inner b;
+  };
 
-Outer o{{1, 2}, 3};
+  Outer o{{1, 2}, 3};
+snapshot: |
+  - { pos: "14:8", kind: Type, label: ".a=" }
+  - { pos: "14:9", kind: Type, label: ".x=" }
+  - { pos: "14:12", kind: Type, label: ".y=" }
+  - { pos: "14:16", kind: Type, label: ".b.x=" }
 ```
 
-### Anonymous members
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Anonymous members**
 
 Unnamed unions and structs vanish from the designator path
 
-```cpp
-struct State {
-    union {
-        struct {
-            struct {
-                int y;
-            };
-        } x;
-    };
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct State {
+      union {
+          struct {
+              struct {
+                  int y;
+              };
+          } x;
+      };
+  };
 
-State s{42};
+  State s{42};
+snapshot: |
+  - { pos: "14:8", kind: Type, label: ".x.y=" }
 ```
 
-### Designator suppression
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Designator suppression**
 
 Written designators and `/*name=*/` comments keep their inits bare
 
-```cpp
-struct Point {
-    int a;
-    int b;
-    int c;
-    int d;
-    int e;
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Point {
+      int a;
+      int b;
+      int c;
+      int d;
+      int e;
+  };
 
-// Mixing written designators with positional inits is a C99 extension
-// clang accepts with a warning; only the bare `4` needs help.
-Point p{/*a=*/1, .c = 2, /* .d = */ 3, 4};
+  // Mixing written designators with positional inits is a C99 extension
+  // clang accepts with a warning; only the bare `4` needs help.
+  Point p{/*a=*/1, .c = 2, /* .d = */ 3, 4};
+snapshot: |
+  - { pos: "14:39", kind: Type, label: ".e=" }
 ```
 
-### Aggregates only
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Aggregates only**
 
 Constructor calls, copies and idiomatic zero-init produce no designators
 
-```cpp
-struct Constructible {
-    Constructible(int amount);
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Constructible {
+      Constructible(int amount);
+  };
 
-// A braced constructor call names parameters, not fields.
-Constructible built{5};
+  // A braced constructor call names parameters, not fields.
+  Constructible built{5};
 
-struct Copyable {
-    int x;
-};
+  struct Copyable {
+      int x;
+  };
 
-Copyable original{1};
-Copyable duplicate{original};
+  Copyable original{1};
+  Copyable duplicate{original};
 
-// The idiomatic `{}` zero-initializer stays quiet.
-struct Wide {
-    int fields[8];
-};
+  // The idiomatic `{}` zero-initializer stays quiet.
+  struct Wide {
+      int fields[8];
+  };
 
-Wide zeroed{};
+  Wide zeroed{};
+snapshot: |
+  - { pos: "9:20", kind: Parameter, label: "amount:", padding_right: true }
+  - { pos: "15:18", kind: Type, label: ".x=" }
 ```
 
-### Broken initializers
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Broken initializers**
 
 Designators survive next to initializers that fail to compile
 
-```cpp
-// The first initializer deliberately fails to convert.
-struct Empty {};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  // The first initializer deliberately fails to convert.
+  struct Empty {};
 
-struct Mixed {
-    int a;
-    int b;
-};
+  struct Mixed {
+      int a;
+      int b;
+  };
 
-void use() {
-    Mixed m{Empty(), 1};
-}
+  void use() {
+      Mixed m{Empty(), 1};
+  }
+snapshot: |
+  - { pos: "14:21", kind: Type, label: ".b=" }
 ```
 
-### Parenthesized aggregate initialization
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2540 -->
+
+**Parenthesized aggregate initialization**
 
 C++20 `Point(1, 2)` gets no hints yet
 
-```cpp
-struct Point {
-    int x;
-    int y;
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  struct Point {
+      int x;
+      int y;
+  };
 
-Point p(1, 2);
+  Point p(1, 2);
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1038,52 +1389,64 @@ Point p(1, 2);
 
 <!-- BEGIN GENERATED ITEMS: other_hint_kinds -->
 
-| Capability                | Status      | Issues                                                      |
-| ------------------------- | ----------- | ----------------------------------------------------------- |
-| Template parameter hints  | Unsupported | [clangd#2583](https://github.com/clangd/clangd/issues/2583) |
-| CTAD arguments            | Unsupported | [clangd#2331](https://github.com/clangd/clangd/issues/2331) |
-| Implicit conversion hints | Unsupported | [clangd#2254](https://github.com/clangd/clangd/issues/2254) |
+<!-- BEGIN CAPABILITY: unsupported clangd#2583 -->
 
-### Template parameter hints
+**Template parameter hints**
 
 Deduced and explicit template arguments at call sites
 
-```cpp
-template <typename T, typename U>
-T convert(U val);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  template <typename T, typename U>
+  T convert(U val);
 
-// Could hint `T: float` next to the explicit argument list.
-float converted = convert<float>(42);
+  // Could hint `T: float` next to the explicit argument list.
+  float converted = convert<float>(42);
 ```
 
-### CTAD arguments
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2331 -->
+
+**CTAD arguments**
 
 Deduced class template arguments after the template name
 
-```cpp
-template <typename A, typename B>
-struct Pair {
-    A first;
-    B second;
-    Pair(A a, B b);
-};
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  template <typename A, typename B>
+  struct Pair {
+      A first;
+      B second;
+      Pair(A a, B b);
+  };
 
-// Could hint `<int, double>` after `pair`.
-Pair pair(1, 2.5);
+  // Could hint `<int, double>` after `pair`.
+  Pair pair(1, 2.5);
 ```
 
-### Implicit conversion hints
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2254 -->
+
+**Implicit conversion hints**
 
 Surface the conversions a call site performs
 
-```cpp
-void process(double val);
+```snap-inlay_hint
+feature: inlay_hint
+code: |
+  void process(double val);
 
-// Could hint `(double)` before the argument.
-void use() {
-    process(42);
-}
+  // Could hint `(double)` before the argument.
+  void use() {
+      process(42);
+  }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 

@@ -107,6 +107,12 @@ interface Fixture {
     issues: string[];
     description: string;
     example: string;
+    /// The example with its `§` markers kept, for the rendered card to
+    /// show where each result was taken.
+    marked: string;
+    /// The fixture's snapshot body (frontmatter stripped), empty when the
+    /// snapshot does not exist yet.
+    snapshot: string;
     /// Sibling sources of a multi-file unit fixture (unit-relative POSIX
     /// path, §-stripped content), rendered as extra labeled example blocks.
     siblings: { rel: string; content: string }[];
@@ -214,7 +220,8 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         }
     }
     // Snapshot-focus `§` markers are fixture metadata, not example code.
-    const example = parseAnnotations(trimBlank(lines.slice(exampleStart)).join("\n")).content;
+    const marked = trimBlank(lines.slice(exampleStart)).join("\n");
+    const example = parseAnnotations(marked).content;
     if (!example.trim()) {
         problems.push(`${filePath}: doc-item fixture has no example code`);
     }
@@ -227,8 +234,34 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         issues,
         description: trimBlank(desc).join("\n"),
         example,
+        marked,
+        snapshot: readSnapshot(filePath),
         siblings: collectSiblings(filePath, isUnit),
     };
+}
+
+/// The snapshot recorded for a fixture, without its frontmatter.
+function readSnapshot(filePath: string): string {
+    const snapPath = filePath.replace(/\.cpp$/, ".snap.yml");
+    if (!fs.existsSync(snapPath)) {
+        return "";
+    }
+    const text = fs.readFileSync(snapPath, "utf8").replaceAll("\r\n", "\n");
+    const match = /^---\n[\s\S]*?\n---\n/.exec(text);
+    const lines = (match ? text.slice(match[0].length) : text).trim().split("\n");
+    // Two trailing spaces are markdown hard breaks, which the fence would
+    // trim away; spell the ones that still break something as backslash
+    // breaks (a heading or a paragraph's last line has nothing to break).
+    return lines
+        .map((line, i) => {
+            const trimmed = line.trimEnd();
+            const breaks =
+                / {2,}$/.test(line) &&
+                !trimmed.startsWith("#") &&
+                (lines[i + 1] ?? "").trim() !== "";
+            return breaks ? `${trimmed}\\` : trimmed;
+        })
+        .join("\n");
 }
 
 /// The sibling sources of a `<unit>/main.cpp` doc fixture, §-stripped like
@@ -262,13 +295,6 @@ function collectSiblings(filePath: string, isUnit: boolean): { rel: string; cont
     return siblings;
 }
 
-function renderIssue(ref: string): string {
-    const hash = ref.indexOf("#");
-    const tracker = ref.slice(0, hash);
-    const number = ref.slice(hash + 1);
-    return `[${ref}](${ISSUE_TRACKERS[tracker] ?? ""}${number})`;
-}
-
 /// A title of the form `Name — details` names the capability before the
 /// dash; the details open the item's description as a sentence, so a
 /// plain lowercase first word gets its sentence capital — an identifier
@@ -287,50 +313,42 @@ function splitTitle(title: string): { name: string; details: string } {
     };
 }
 
-const STATUS_LABEL: Record<string, string> = {
-    supported: "Supported",
-    partial: "Partial",
-    unsupported: "Unsupported",
-};
-
-/// A section's region: the status table of its items, then each item
-/// under its own heading with the description and the example code.
-function renderSection(fixtures: Fixture[]): string {
-    const rows: string[][] = [["Capability", "Status", "Issues"]];
-    for (const fx of fixtures) {
-        rows.push([
-            splitTitle(fx.title).name.replaceAll("|", "\\|"),
-            STATUS_LABEL[fx.status] ?? fx.status,
-            fx.issues.map(renderIssue).join(", "),
-        ]);
-    }
-    return [renderMarkdownTable(rows).join("\n"), ...fixtures.map(renderItem)].join("\n\n");
+/// A section's region: one capability card per item. The card's markers
+/// carry the status and issue references (verbatim for translation), the
+/// paragraphs between them are the name, details and description, and
+/// the `snap-<feature>` fence holds the marked example with its snapshot
+/// for the site to render.
+function renderSection(fixtures: Fixture[], feature: string): string {
+    return fixtures.map((fx) => renderItem(fx, feature)).join("\n\n");
 }
 
-function renderItem(fx: Fixture): string {
+function renderItem(fx: Fixture, feature: string): string {
     const { name, details } = splitTitle(fx.title);
-    const out = [`### ${name}`];
+    const marker = [fx.status, ...fx.issues].join(" ");
+    const out = [`<!-- BEGIN CAPABILITY: ${marker} -->`, "", `**${name}**`];
     const paragraphs = [details, fx.description].filter((text) => text !== "");
     if (paragraphs.length > 0) {
         out.push("", paragraphs.join("\n\n"));
     }
-    if (fx.example) {
-        out.push("");
-        if (fx.siblings.length === 0) {
-            out.push(...fencedBlock(fx.example));
-        } else {
-            out.push(...fencedBlock(fx.example, "main.cpp"));
-            for (const sibling of fx.siblings) {
-                out.push("", ...fencedBlock(sibling.content, sibling.rel));
-            }
-        }
+    const data: string[] = [`feature: ${feature}`, "code: |", ...indent(fx.marked)];
+    for (const sibling of fx.siblings) {
+        data.push(`file ${sibling.rel}: |`, ...indent(sibling.content));
     }
+    if (fx.snapshot) {
+        data.push("snapshot: |", ...indent(fx.snapshot));
+    }
+    out.push("", ...fencedBlock(data.join("\n"), undefined, `snap-${feature}`));
+    out.push("", "<!-- END CAPABILITY -->");
     return out.join("\n");
+}
+
+function indent(text: string): string[] {
+    return text.split("\n").map((line) => (line === "" ? "" : `  ${line}`));
 }
 
 /// One example code block, labeled with its unit-relative file name when
 /// the fixture has more than one file.
-function fencedBlock(content: string, label?: string): string[] {
+function fencedBlock(content: string, label?: string, lang = "cpp"): string[] {
     // A fence longer than any backtick run in the example, so example
     // code can never close the fence early.
     const runs = content.match(/`+/g) ?? [];
@@ -340,7 +358,7 @@ function fencedBlock(content: string, label?: string): string[] {
     if (label !== undefined) {
         out.push(`\`${label}\`:`, "");
     }
-    out.push(`${fence}cpp`, ...content.split("\n").map((line) => line.trimEnd()), fence);
+    out.push(`${fence}${lang}`, ...content.split("\n").map((line) => line.trimEnd()), fence);
     return out;
 }
 
@@ -367,6 +385,9 @@ function globCpp(dir: string): string[] {
         .sort();
 }
 
+const corpusOf = (fx: Fixture): string =>
+    path.relative(REPO_ROOT, fx.path).split(path.sep)[2] ?? "";
+
 function rewriteDoc(
     docText: string,
     sections: Map<string, Fixture[]>,
@@ -382,7 +403,7 @@ function rewriteDoc(
             if (matched.length === 0) {
                 problems.push(`${docPath}: region '${section}' matches no fixtures`);
             }
-            return renderSection(matched);
+            return renderSection(matched, corpusOf(matched[0]!));
         },
         problems,
     );
@@ -405,8 +426,6 @@ function processFeature(
     // in their details would render as one heading twice, whichever of
     // the corpora feeding this page they come from. A section spanning
     // two corpora would interleave their independently-sorted item order.
-    const corpusOf = (fx: Fixture): string =>
-        path.relative(REPO_ROOT, fx.path).split(path.sep)[2] ?? "";
     const nameOwner = new Map<string, string>();
     const sectionOwner = new Map<string, string>();
     for (const fx of fixtures) {

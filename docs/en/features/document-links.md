@@ -11,46 +11,66 @@ Clickable links from source directives to their resolved target files.
 
 <!-- BEGIN GENERATED ITEMS: include_directives -->
 
-| Capability                               | Status    | Issues                                                      |
-| ---------------------------------------- | --------- | ----------------------------------------------------------- |
-| Quoted includes                          | Supported |                                                             |
-| Angle-bracket includes                   | Supported |                                                             |
-| Macro-expanded paths                     | Supported | [clangd#2375](https://github.com/clangd/clangd/issues/2375) |
-| `#include_next` and `__has_include_next` | Partial   |                                                             |
-| `__has_include`                          | Supported |                                                             |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Quoted includes
+**Quoted includes**
 
 `#include "..."` links to the resolved header file
 
 Every include in the file is linked, not just the preamble run at
 the top.
 
-```cpp
-#include "header_a.h"
-#include "header_b.h"
-int x = 1;
-#include "header_c.h"
+```snap-document_links
+feature: document_links
+code: |
+  #include "header_a.h"
+  #include "header_b.h"
+  int x = 1;
+  #include "header_c.h"
+snapshot: |
+  - { range: "7:9-7:21", target: "${WS}/header_a.h" }
+  - { range: "8:9-8:21", target: "${WS}/header_b.h" }
+  - { range: "10:9-10:21", target: "${WS}/header_c.h" }
 ```
 
-### Angle-bracket includes
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Angle-bracket includes**
 
 `#include <...>` links to the header found on the search path
 
-```cpp
-#include <header_a.h>
+```snap-document_links
+feature: document_links
+code: |
+  #include <header_a.h>
+snapshot: |
+  - { range: "4:9-4:21", target: "${WS}/header_a.h" }
 ```
 
-### Macro-expanded paths
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2375 -->
+
+**Macro-expanded paths**
 
 `#include MACRO` links the directive argument to the expanded target
 
-```cpp
-#define HEADER "header_b.h"
-#include HEADER
+```snap-document_links
+feature: document_links
+code: |
+  #define HEADER "header_b.h"
+  #include HEADER
+snapshot: |
+  - { range: "6:9-6:15", target: "${WS}/header_b.h" }
 ```
 
-### `#include_next` and `__has_include_next`
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**`#include_next` and `__has_include_next`**
 
 Links continue down the search path
 
@@ -62,43 +82,53 @@ own TU, where clang deliberately treats `#include_next` as a plain
 include, so today both links land back on the first copy (as the
 snapshot pins).
 
-`main.cpp`:
+```snap-document_links
+feature: document_links
+code: |
+  #include <wrap.h>
 
-```cpp
-#include <wrap.h>
+  int use_wrap = WRAP_FIRST + WRAP_SECOND;
+file first/wrap.h: |
+  #pragma once
 
-int use_wrap = WRAP_FIRST + WRAP_SECOND;
+  #define WRAP_FIRST 1
+
+  #if __has_include_next(<wrap.h>)
+  #include_next <wrap.h>
+  #endif
+file second/wrap.h: |
+  #pragma once
+
+  #define WRAP_SECOND 2
+snapshot: |
+  --- first/wrap.h
+  - { range: "6:23-6:31", target: "${WS}/include_directives/04_include_next/first/wrap.h" }
+  - { range: "7:14-7:22", target: "${WS}/include_directives/04_include_next/first/wrap.h" }
+
+  --- main.cpp
+  - { range: "13:9-13:17", target: "${WS}/include_directives/04_include_next/first/wrap.h" }
 ```
 
-`first/wrap.h`:
+<!-- END CAPABILITY -->
 
-```cpp
-#pragma once
+<!-- BEGIN CAPABILITY: supported -->
 
-#define WRAP_FIRST 1
-
-#if __has_include_next(<wrap.h>)
-#include_next <wrap.h>
-#endif
-```
-
-`second/wrap.h`:
-
-```cpp
-#pragma once
-
-#define WRAP_SECOND 2
-```
-
-### `__has_include`
+**`__has_include`**
 
 The checked path links to the file it probes
 
-```cpp
-#if __has_include("header_c.h")
-#include "header_c.h"
-#endif
+```snap-document_links
+feature: document_links
+code: |
+  #if __has_include("header_c.h")
+  #include "header_c.h"
+  #endif
+snapshot: |
+  - { range: "4:18-4:30", target: "${WS}/header_c.h" }
+  - { range: "5:9-5:21", target: "${WS}/header_c.h" }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -106,32 +136,44 @@ The checked path links to the file it probes
 
 <!-- BEGIN GENERATED ITEMS: embed_directives -->
 
-| Capability    | Status    | Issues |
-| ------------- | --------- | ------ |
-| `#embed`      | Supported |        |
-| `__has_embed` | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### `#embed`
+**`#embed`**
 
 The resource path links to the embedded file
 
-```cpp
-const char data[] = {
-#embed "data.bin"
-};
+```snap-document_links
+feature: document_links
+code: |
+  const char data[] = {
+  #embed "data.bin"
+  };
+snapshot: |
+  - { range: "5:7-5:17", target: "${WS}/embed_directives/data.bin" }
 ```
 
-### `__has_embed`
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`__has_embed`**
 
 The checked path links to the probed resource
 
-```cpp
-#if __has_embed("data.bin")
-const char first_byte[] = {
-#embed "data.bin" limit(1)
-};
-#endif
+```snap-document_links
+feature: document_links
+code: |
+  #if __has_embed("data.bin")
+  const char first_byte[] = {
+  #embed "data.bin" limit(1)
+  };
+  #endif
+snapshot: |
+  - { range: "4:16-4:26", target: "${WS}/embed_directives/data.bin" }
+  - { range: "6:7-6:17", target: "${WS}/embed_directives/data.bin" }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -139,11 +181,9 @@ const char first_byte[] = {
 
 <!-- BEGIN GENERATED ITEMS: presentation -->
 
-| Capability             | Status    | Issues |
-| ---------------------- | --------- | ------ |
-| Resolved-path tooltips | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Resolved-path tooltips
+**Resolved-path tooltips**
 
 Every link carries its target's absolute path as the hover tooltip
 
@@ -152,9 +192,15 @@ Editors render the tooltip next to the follow-link hint, e.g.
 link targets; the suite instead validates the tooltip against the
 target on the server reply of every fixture in this corpus.
 
-```cpp
-#include "header_a.h"
+```snap-document_links
+feature: document_links
+code: |
+  #include "header_a.h"
+snapshot: |
+  - { range: "9:9-9:21", target: "${WS}/header_a.h" }
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -162,20 +208,22 @@ target on the server reply of every fixture in this corpus.
 
 <!-- BEGIN GENERATED ITEMS: module_declarations -->
 
-| Capability     | Status      | Issues |
-| -------------- | ----------- | ------ |
-| Module targets | Unsupported |        |
+<!-- BEGIN CAPABILITY: unsupported -->
 
-### Module targets
+**Module targets**
 
 `import` and `module` declarations link to their interface files
 
-```cpp
-export module app;
+```snap-document_links
+feature: document_links
+code: |
+  export module app;
 
-import lib;
-import :part;
-export import lib.extra;
+  import lib;
+  import :part;
+  export import lib.extra;
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->

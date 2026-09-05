@@ -32,108 +32,164 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 <!-- BEGIN GENERATED ITEMS: overload_signatures -->
 
-| Capability                               | Status    | Issues |
-| ---------------------------------------- | --------- | ------ |
-| Function overloads                       | Supported |        |
-| Active parameter tracking                | Supported |        |
-| Member function overloads                | Supported |        |
-| Default arguments in the label           | Supported |        |
-| C-style variadic function                | Supported |        |
-| Variadic template pack                   | Supported |        |
-| Active parameter past a shorter overload | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Function overloads
+**Function overloads**
 
 Every overload of the callee, each with its parameter list and return type
 
-```cpp
-void foo();
-void foo(int x);
-void foo(int x, int y);
+```snap-signature_help
+feature: signature_help
+code: |
+  void foo();
+  void foo(int x);
+  void foo(int x, int y);
 
-int main() {
-    foo();
-}
+  int main() {
+      foo(§(pos));
+  }
+snapshot: |
+  pos:
+  - foo(⟦int x⟧, int y) -> void
+  - foo(⟦int x⟧) -> void
+  - foo() -> void
 ```
 
-### Active parameter tracking
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Active parameter tracking**
 
 The parameter under the cursor is bracketed; the point sits in the second argument
 
-```cpp
-void bar(int first, double second, char third);
+```snap-signature_help
+feature: signature_help
+code: |
+  void bar(int first, double second, char third);
 
-int main() {
-    bar(1, 2.0, 'c');
-}
+  int main() {
+      bar(1, §(pos)2.0, 'c');
+  }
+snapshot: |
+  pos:
+  - bar(int first, ⟦double second⟧, char third) -> void
 ```
 
-### Member function overloads
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Member function overloads**
 
 A non-const receiver lists both the const and non-const overloads; the trailing const qualifier is not rendered in the label
 
-```cpp
-struct Buffer {
-    int at(int index);
-    int at(int index) const;
-};
+```snap-signature_help
+feature: signature_help
+code: |
+  struct Buffer {
+      int at(int index);
+      int at(int index) const;
+  };
 
-int main() {
-    Buffer b;
-    b.at(0);
-}
+  int main() {
+      Buffer b;
+      b.at(§(pos)0);
+  }
+snapshot: |
+  pos:
+  - at(⟦int index⟧) -> int
+  - at(⟦int index⟧) -> int
 ```
 
-### Default arguments in the label
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Default arguments in the label**
 
 Parameters with defaults render their initializer in the signature
 
-```cpp
-void configure(int width, int height = 100, bool visible = true);
+```snap-signature_help
+feature: signature_help
+code: |
+  void configure(int width, int height = 100, bool visible = true);
 
-int main() {
-    configure(1);
-}
+  int main() {
+      configure(§(pos)1);
+  }
+snapshot: |
+  pos:
+  - configure(⟦int width⟧, int height = 100, bool visible = true) -> void
 ```
 
-### C-style variadic function
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**C-style variadic function**
 
 Named parameters are listed while the trailing ellipsis is elided from the label
 
-```cpp
-void record(int code, ...);
+```snap-signature_help
+feature: signature_help
+code: |
+  void record(int code, ...);
 
-int main() {
-    record(0);
-}
+  int main() {
+      record(§(pos)0);
+  }
+snapshot: |
+  pos:
+  - record(⟦int code⟧) -> void
 ```
 
-### Variadic template pack
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Variadic template pack**
 
 The parameter pack renders as the callee's uninstantiated signature
 
-```cpp
-template <typename... Args>
-void emit(Args... args);
+```snap-signature_help
+feature: signature_help
+code: |
+  template <typename... Args>
+  void emit(Args... args);
 
-int main() {
-    emit();
-}
+  int main() {
+      emit(§(pos));
+  }
+snapshot: |
+  pos:
+  - emit(⟦Args ...args⟧) -> void
 ```
 
-### Active parameter past a shorter overload
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Active parameter past a shorter overload**
 
 With the cursor in the second argument, only overloads that declare a second parameter remain
 
-```cpp
-void draw();
-void draw(int x);
-void draw(int x, int y);
+```snap-signature_help
+feature: signature_help
+code: |
+  void draw();
+  void draw(int x);
+  void draw(int x, int y);
 
-int main() {
-    draw(1, 2);
-}
+  int main() {
+      draw(1, §(pos)2);
+  }
+snapshot: |
+  pos:
+  - draw(int x, ⟦int y⟧) -> void
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -174,112 +230,175 @@ int main() {
 
 <!-- BEGIN GENERATED ITEMS: special_call_contexts -->
 
-| Capability                  | Status    | Issues                                                                                                                 |
-| --------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Constructors and aggregates | Supported | [clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541) |
-| Function pointer calls      | Supported |                                                                                                                        |
-| Template argument lists     | Supported | [clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387) |
-| Nested calls                | Supported |                                                                                                                        |
-| Functor call                | Supported |                                                                                                                        |
-| Lambda call                 | Supported |                                                                                                                        |
-| New expression              | Supported |                                                                                                                        |
+<!-- BEGIN CAPABILITY: supported clangd#726 clangd#2541 -->
 
-### Constructors and aggregates
+**Constructors and aggregates**
 
 Constructor calls render without a return arrow; aggregate initialization lists the fields in braces
 
-```cpp
-struct Point {
-    int x;
-    int y;
-};
+```snap-signature_help
+feature: signature_help
+code: |
+  struct Point {
+      int x;
+      int y;
+  };
 
-struct Widget {
-    Widget(int a, double b);
-};
+  struct Widget {
+      Widget(int a, double b);
+  };
 
-int main() {
-    Point p{1, 2};
-    Widget w(3, 4.0);
-}
+  int main() {
+      Point p{1, §(aggregate)2};
+      Widget w(§(ctor)3, 4.0);
+  }
+snapshot: |
+  aggregate:
+  - Point{int x, ⟦int y⟧}
+
+  ctor:
+  - Widget(⟦int a⟧, double b)
+  - Widget(⟦const Widget &⟧)
+  - Widget(⟦Widget &&⟧)
 ```
 
-### Function pointer calls
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Function pointer calls**
 
 The prototype's parameter names show, not just the types
 
-```cpp
-int main() {
-    void (*callback)(int code, double value) = nullptr;
-    callback(5, 1.5);
-}
+```snap-signature_help
+feature: signature_help
+code: |
+  int main() {
+      void (*callback)(int code, double value) = nullptr;
+      callback(§(pos)5, 1.5);
+  }
+snapshot: |
+  pos:
+  - (⟦int code⟧, double value) -> void
 ```
 
-### Template argument lists
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#299 clangd#1387 -->
+
+**Template argument lists**
 
 Template parameters show as the signature; a class template points at its kind, not a return type
 
-```cpp
-template <typename T, typename U>
-struct Pair {};
+```snap-signature_help
+feature: signature_help
+code: |
+  template <typename T, typename U>
+  struct Pair {};
 
-Pair<int,  double> p;
+  Pair<int, §(pos) double> p;
+snapshot: |
+  pos:
+  - Pair<typename T, ⟦typename U⟧> -> struct
 ```
 
-### Nested calls
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Nested calls**
 
 The inner call's help shows at the inner marker and the outer call's help at the outer marker
 
-```cpp
-int inner(int a);
-int outer(int b, int c);
+```snap-signature_help
+feature: signature_help
+code: |
+  int inner(int a);
+  int outer(int b, int c);
 
-int main() {
-    outer(inner(1), 2);
-}
+  int main() {
+      outer(inner(§(deep)1), §(shallow)2);
+  }
+snapshot: |
+  deep:
+  - inner(⟦int a⟧) -> int
+
+  shallow:
+  - outer(int b, ⟦int c⟧) -> int
 ```
 
-### Functor call
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Functor call**
 
 Invoking an object routes signature help to its operator() overload
 
-```cpp
-struct Adder {
-    int operator()(int a, int b);
-};
+```snap-signature_help
+feature: signature_help
+code: |
+  struct Adder {
+      int operator()(int a, int b);
+  };
 
-int main() {
-    Adder add;
-    add(1, 2);
-}
+  int main() {
+      Adder add;
+      add(§(pos)1, 2);
+  }
+snapshot: |
+  pos:
+  - operator()(⟦int a⟧, int b) -> int
 ```
 
-### Lambda call
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Lambda call**
 
 Calling a lambda variable offers the closure's operator() parameters
 
-```cpp
-int main() {
-    auto square = [](int n) {
-        return n * n;
-    };
-    square(3);
-}
+```snap-signature_help
+feature: signature_help
+code: |
+  int main() {
+      auto square = [](int n) {
+          return n * n;
+      };
+      square(§(pos)3);
+  }
+snapshot: |
+  pos:
+  - operator()(⟦int n⟧) -> int
 ```
 
-### New expression
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**New expression**
 
 A new-expression's constructor arguments drive signature help
 
-```cpp
-struct Node {
-    Node(int value, Node* next);
-};
+```snap-signature_help
+feature: signature_help
+code: |
+  struct Node {
+      Node(int value, Node* next);
+  };
 
-int main() {
-    Node* n = new Node(0, nullptr);
-}
+  int main() {
+      Node* n = new Node(§(pos)0, nullptr);
+  }
+snapshot: |
+  pos:
+  - Node(⟦int value⟧, Node *next)
+  - Node(⟦const Node &⟧)
+  - Node(⟦Node &&⟧)
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
