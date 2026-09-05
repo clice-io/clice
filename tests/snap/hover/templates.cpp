@@ -6,7 +6,7 @@ Bundle<long, char, bool> bund§(01_var_of_template_type)le{7};
 }
 
 namespace implicit_instance {
-template <typename T> struct Sequence {};
+template <typename T> class Sequence {};
 Sequ§(02_implicit_instantiation)ence<long> values;
 }
 
@@ -14,7 +14,7 @@ namespace class_template_declaration {
 template <typename, bool...> struct Policy;
 template <template <typename, bool...> class Strategy, typename Value = char, long Size = 4,
           bool Enabled = true, typename... Rest>
-struct Registry final {};
+class Registry final {};
 template <template <typename, bool...> class Strategy>
 Reg§(03_class_template)istry<Strategy> registry;
 }
@@ -38,8 +38,8 @@ void run() {
 }
 
 namespace partial_specialization_declaration {
-template <typename T> struct Container;
-template <typename T> struct §(06_partial_specialization)Container<T*> {};
+template <typename T> class Container;
+template <typename T> class §(06_partial_specialization)Container<T*> {};
 }
 
 namespace partial_specialization_constructor {
@@ -58,16 +58,16 @@ struct Conversion {
     op§(09_conversion_operator)erator long();
 };
 
-struct SelfConversion {
+class SelfConversion {
     operator §(10_conversion_target)SelfConversion();
 };
 }
 
 namespace selected_specialization_docs {
 /// Generic channel.
-template <typename T> struct Channel {};
+template <typename T> class Channel {};
 /// Pointer channel.
-template <typename T> struct Channel<T*> {};
+template <typename T> class Channel<T*> {};
 Chan§(11_primary_template_doc)nel<long*>* channel;
 }
 

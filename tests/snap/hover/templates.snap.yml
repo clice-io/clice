@@ -15,23 +15,23 @@ Bundle<long, char, bool> bundle{7}
 ```
 
 02_implicit_instantiation: { range: "9:0-9:8" }
-### struct `Sequence<long>`  
+### class `Sequence<long>`  
 
 ---
 ```cpp
 // In namespace implicit_instance
-template <> struct Sequence<long> {}
+template <> class Sequence<long> {}
 ```
 
 03_class_template: { range: "18:0-18:8" }
-### struct `Registry`  
+### class `Registry`  
 
 ---
 ```cpp
 // In namespace class_template_declaration
 template <template <typename, bool...> class Strategy, typename Value = char,
           long Size = 4, bool Enabled = true, typename... Rest>
-struct Registry final {}
+class Registry final {}
 ```
 
 04_function_template: { range: "27:4-27:17" }
@@ -62,13 +62,13 @@ Parameters:
 Policy<long, true, false> evaluate(long, bool enabled = true)
 ```
 
-06_partial_specialization: { range: "41:29-41:38" }
-### struct `Container<T *>`  
+06_partial_specialization: { range: "41:28-41:37" }
+### class `Container<T *>`  
 
 ---
 ```cpp
 // In namespace partial_specialization_declaration
-template <typename T> struct Container<T *> {}
+template <typename T> class Container<T *> {}
 ```
 
 07_partial_spec_constructor: { range: "47:4-47:13" }
@@ -99,16 +99,16 @@ public: operator long()
 ```
 
 10_conversion_target: { range: "61:13-61:27" }
-### struct `SelfConversion`  
+### class `SelfConversion`  
 
 ---
 ```cpp
 // In namespace special_members
-struct SelfConversion {}
+class SelfConversion {}
 ```
 
 11_primary_template_doc: { range: "70:0-70:7" }
-### struct `Channel<long *>`  
+### class `Channel<long *>`  
 
 ---
 Pointer channel.  
@@ -116,7 +116,7 @@ Pointer channel.
 ---
 ```cpp
 // In namespace selected_specialization_docs
-template <> struct Channel<long *>
+template <> class Channel<long *>
 ```
 
 12_variable_template: { range: "75:32-75:37" }
