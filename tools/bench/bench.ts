@@ -263,9 +263,10 @@ function firstCDBEntry(cdbPath: string): string {
     if (first === undefined) {
         fail(`empty compile_commands.json at ${cdbPath}`);
     }
-    return path.isAbsolute(first.file)
-        ? first.file
-        : path.join(first.directory ?? path.dirname(cdbPath), first.file);
+    // A relative `directory` anchors at the database's own location, the
+    // way the server resolves it.
+    const directory = path.resolve(path.dirname(cdbPath), first.directory ?? ".");
+    return path.isAbsolute(first.file) ? first.file : path.join(directory, first.file);
 }
 
 function nowMs(): number {

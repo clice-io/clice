@@ -42,6 +42,7 @@ benchmarks/workloads/
 .llvm*/
 .clice/
 compile_commands.json
+!tests/data/**/compile_commands.json
 perf.data
 flamegraph.svg
 

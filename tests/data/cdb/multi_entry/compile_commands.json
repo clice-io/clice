@@ -1,0 +1,22 @@
+[
+  {
+    "directory": ".",
+    "file": "main.cpp",
+    "output": "out/Debug/main.o",
+    "arguments": ["clang++", "-std=c++20", "-DCONFIG_A", "-c", "main.cpp", "-o", "out/Debug/main.o"]
+  },
+  {
+    "directory": ".",
+    "file": "main.cpp",
+    "output": "out/Release/main.o",
+    "arguments": [
+      "clang++",
+      "-std=c++20",
+      "-DCONFIG_B",
+      "-c",
+      "main.cpp",
+      "-o",
+      "out/Release/main.o"
+    ]
+  }
+]

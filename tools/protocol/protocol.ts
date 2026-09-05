@@ -91,6 +91,12 @@ export const SwitchContextRequest = new RequestType<SwitchContextParams, SwitchC
 export interface PollParams {
     /// Which loop to tick: "cdb" or "workspace".
     loop: "cdb" | "workspace";
+    /// CDB loop only; defaults to true. A forced tick reloads unconditionally,
+    /// skipping the (size, mtime) stamp gate and the two-tick settling
+    /// debounce, so one request applies a change deterministically. `false`
+    /// runs the production tick: a rewrite is noticed only through its stamp,
+    /// and a changed stamp must hold for two consecutive ticks to reload.
+    force?: boolean;
 }
 
 export interface PollResult {

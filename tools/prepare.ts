@@ -4,12 +4,12 @@
 ///
 /// Each fixture is a subdirectory of tests/data. Fixtures with a
 /// CMakeLists.txt get compile_commands.json generated via CMake; plain
-/// fixtures (e.g. hello_world) are covered by generateTestDataCDBs.
-/// Stale .clice caches are removed so every run starts fresh.
+/// fixtures (e.g. hello_world) ship theirs in the repository. Stale .clice
+/// caches are removed so every run starts fresh.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { DATA_DIR, generateCDB, generateTestDataCDBs } from "./compile_commands.ts";
+import { DATA_DIR, generateCDB } from "./compile_commands.ts";
 
 const USAGE = "Usage: node tools/prepare.ts <fixture> [<fixture> ...]";
 
@@ -23,8 +23,6 @@ function main(fixtures: string[]): number {
         console.error(USAGE);
         return 64;
     }
-
-    generateTestDataCDBs(DATA_DIR);
 
     for (const fixture of fixtures) {
         const workspace = path.join(DATA_DIR, fixture);
