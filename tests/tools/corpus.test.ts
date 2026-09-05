@@ -177,9 +177,13 @@ test("fixture header scanning", () => {
     expect(header.headings).toEqual(["# Qualified name"]);
     expect(header.name).toBe("Qualified name");
     expect(header.meta).toEqual([
-        { key: "status", value: "partial" },
-        { key: "verify", value: "server" },
+        { key: "status", value: "partial", line: 3 },
+        { key: "verify", value: "server", line: 4 },
     ]);
+    expect(header.headingLines).toEqual([1]);
+    expect(header.titleSeparated).toBe(true);
+    expect(header.proseSeparated).toBe(true);
+    expect(header.summaryLines).toEqual([{ text: "The card summarizes the capability", line: 6 }]);
     expect(header.summary).toBe("The card summarizes the capability");
     expect(header.description).toEqual(["", "Further prose, with", "  - a bullet"]);
     expect(header.notes).toEqual(["The server path supplies the required index."]);
@@ -211,7 +215,8 @@ test("fixture header scanning", () => {
     // Headings are markdown headings of any level; `##x` is not one.
     const levels = scanFixtureHeader("/// # T\n/// ### Sub\n/// ##x\n");
     expect(levels.headings).toEqual(["# T", "### Sub"]);
-    expect(levels.malformed).toEqual(["##x"]);
+    expect(levels.headingLines).toEqual([1, 2]);
+    expect(levels.malformed).toEqual([{ text: "##x", line: 3 }]);
     expect(["# T", "##\tT", "###", "##x", "- x: y"].map(headingLevel)).toEqual([1, 2, 3, 0, 0]);
     // Without a list, the blank `///` after the headings separates the
     // description (bullets in it are prose); unseparated prose is a
@@ -222,7 +227,9 @@ test("fixture header scanning", () => {
     expect(prose.description).toEqual([]);
     expect(prose.lines[prose.bodyStart]).toBe("int x;");
     expect(parseFixtureMeta("/// # T\n///\n/// Documents T.\n", "f")).toEqual(DEFAULTS);
-    expect(scanFixtureHeader("/// # T\n/// Documents T.\n").malformed).toEqual(["Documents T."]);
+    expect(scanFixtureHeader("/// # T\n/// Documents T.\n").malformed).toEqual([
+        { text: "Documents T.", line: 2 },
+    ]);
     // Blank `///` lines before the opening heading are skipped.
     expect(scanFixtureHeader("///\n/// # T\n///\n/// - snap: skip\n").headings).toEqual(["# T"]);
     expect(parseFixtureMeta("///\n/// - snap: skip\n", "f").snap).toBe("skip");
@@ -265,6 +272,14 @@ test("fixture header validation", () => {
         expect(problems.some((item) => item.includes(`${rule}:`))).toBe(true);
     }
     expect(problems.every((item) => /^fixture\.cpp:\d+: R\d:/.test(item))).toBe(true);
+
+    const brokenKeywordBoundary = valid.replace(
+        "/// Further reader-facing detail.",
+        "/// The prose says verify: both and snap: shared.",
+    );
+    expect(validateFixtureHeader(brokenKeywordBoundary, "fixture.cpp", "hover")).toEqual(
+        expect.arrayContaining([expect.stringContaining("R4:")]),
+    );
 
     expect(validateFixtureHeader("int x;\n", "root.cpp", "")).toEqual([]);
     expect(validateFixtureHeader("/// Documents f.\nint f();\n", "root.cpp", "")).toEqual([]);

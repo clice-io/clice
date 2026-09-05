@@ -169,7 +169,7 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
 
     for (const line of header.malformed) {
         problems.push(
-            `${filePath}: malformed metadata line '${line}' ` +
+            `${filePath}:${line.line}: malformed metadata line '${line.text}' ` +
                 "(expected '- key: value'; separate the description with a bare ///)",
         );
     }
