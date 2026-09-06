@@ -329,6 +329,25 @@ test("fixture header validation", () => {
     expect(
         validateFixtureHeader("/// Attribution prologue.\n\nint f();\n", "root.cpp", ""),
     ).toEqual(expect.arrayContaining([expect.stringContaining("R7:")]));
+    // The prologue may open with ordinary comments; the `///` block after
+    // them is still a prologue.
+    expect(
+        validateFixtureHeader(
+            "// copyright\n\n/// Explains the case.\n\nint f();\n",
+            "root.cpp",
+            "",
+        ),
+    ).toEqual(["root.cpp:3: R7: edge-case prologues must use //, not ///"]);
+    expect(
+        validateFixtureHeader(
+            "// - verify: server\n\n/// Explains the case.\n\nint f();\n",
+            "root.cpp",
+            "",
+        ),
+    ).toEqual(["root.cpp:3: R7: edge-case prologues must use //, not ///"]);
+    expect(
+        validateFixtureHeader("// copyright\n\n/// Documents f.\nint f();\n", "root.cpp", ""),
+    ).toEqual([]);
     expect(
         validateFixtureHeader("/// - verify: server\nint x;\n", "nested.cpp", "section"),
     ).toEqual(expect.arrayContaining([expect.stringContaining("R7:")]));

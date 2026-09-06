@@ -132,6 +132,13 @@ function stripComment(line: string): string {
     return text;
 }
 
+/// A blank line or an ordinary `//` comment: what may precede the code or
+/// a `///` block.
+function isPrologueLine(line: string): boolean {
+    const raw = line.trimStart();
+    return raw === "" || (raw.startsWith("//") && !raw.startsWith("///"));
+}
+
 const HEADING_RE = /^(#{1,6})(?:\s|$)/;
 const META_RE = /^-\s+(\w+):\s*(.*)$/;
 /// Looser than META_RE on purpose: a misspelled entry (`- Snap:`, `- snap :`)
@@ -173,7 +180,7 @@ export function scanFixtureHeader(content: string): FixtureHeader {
     let plain = -1;
     while (prologue < all.length) {
         const raw = (all[prologue] ?? "").trimStart();
-        if (raw !== "" && (!raw.startsWith("//") || raw.startsWith("///"))) {
+        if (!isPrologueLine(raw)) {
             break;
         }
         if (raw.startsWith("//") && ENTRY_RE.test(raw.slice(2).trimStart())) {
@@ -209,7 +216,7 @@ export function scanFixtureHeader(content: string): FixtureHeader {
         // the prologue would otherwise be dropped silently.
         for (let rest = edge; rest < all.length; rest += 1) {
             const raw = (all[rest] ?? "").trimStart();
-            if (raw !== "" && (!raw.startsWith("//") || raw.startsWith("///"))) {
+            if (!isPrologueLine(raw)) {
                 break;
             }
             const text = raw.startsWith("//") ? raw.slice(2).trimStart() : "";
@@ -371,8 +378,8 @@ export function validateFixtureHeader(
             );
             return problems;
         }
-        let leadingDoc = 0;
-        while (leadingDoc < header.lines.length && (header.lines[leadingDoc] ?? "").trim() === "") {
+        let leadingDoc = header.bodyStart;
+        while (leadingDoc < header.lines.length && isPrologueLine(header.lines[leadingDoc] ?? "")) {
             leadingDoc += 1;
         }
         let afterLeadingDoc = leadingDoc;
