@@ -72,7 +72,7 @@ void Workspace::rescan_after_save(Fid path_id) {
         // its own edges, as the startup scan does.
         Fid cmd_file = path_id;
         llvm::StringRef cmd_path = path;
-        if(build.entries(path_id).empty()) {
+        if(!build.unit(path_id)) {
             if(auto host = default_host(*this, path_id)) {
                 cmd_file = host->file;
                 cmd_path = file_table.resolve(host->file);

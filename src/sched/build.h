@@ -127,6 +127,13 @@ public:
     /// that host.
     llvm::SmallVector<CommandRef> units(llvm::ArrayRef<Fid> members);
 
+    /// Whether `file` is a translation unit of its own: it has a database
+    /// entry, or a default-command rule claims it and it is a source — the
+    /// members() filter for one file, so commands() is never empty for a
+    /// unit. A header claims no unit; its default command is the resolver's
+    /// last resort after host inference, never its own command.
+    bool unit(Fid file);
+
     /// Whether a file joins the background index: no matching active rule
     /// says `index = false`.
     bool indexed(llvm::StringRef path) const;
@@ -138,6 +145,12 @@ private:
     /// declaring one; nullopt when no rule does or its command is not a
     /// compile command.
     std::optional<ConfigID> default_command(llvm::StringRef path);
+
+    /// Whether a default command compiles `path` as a unit: a C-family
+    /// source by suffix (never a header), or a suffix clang does not know
+    /// whose default command forces a language (`-x c++` for an
+    /// extensionless tool).
+    bool default_source(llvm::StringRef path);
 
     /// Files a default-command rule claims: C-family sources (never
     /// headers) under the rules' pattern roots matching their patterns,

@@ -256,6 +256,33 @@ static bool under(llvm::StringRef path, llvm::StringRef root) {
                             (root.ends_with("/") || path::is_separator(path[root.size()])));
 }
 
+bool Build::default_source(llvm::StringRef path) {
+    namespace types = clang::driver::types;
+    // Every C-family input clang compiles as a unit, preprocessed and module
+    // interface files included; a header claims no translation unit of its
+    // own.
+    auto ext = path::extension(path);
+    ext.consume_front(".");
+    auto type = ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
+    if(type != types::TY_INVALID) {
+        return types::isDerivedFromC(type) && !types::onlyPrecompileType(type);
+    }
+    auto command = default_command(path);
+    if(!command) {
+        return false;
+    }
+    auto forced = cdb.forced_language(*command);
+    return !forced.empty() && !forced.ends_with("-header");
+}
+
+bool Build::unit(Fid file) {
+    if(!entries(file).empty()) {
+        return true;
+    }
+    auto path = files.resolve(file);
+    return default_command(path).has_value() && default_source(path);
+}
+
 void Build::enumerate_default_sources(std::vector<Fid>& out) {
     llvm::SmallVector<const CompiledRule*> claimants;
     for(auto& rule: config.compiled_rules) {
@@ -290,7 +317,6 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
         });
     });
 
-    namespace types = clang::driver::types;
     llvm::DenseSet<Fid> seen(out.begin(), out.end());
     llvm::StringRef cache_dir = config.project.cache_dir;
     for(auto root: roots) {
@@ -321,28 +347,8 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
                })) {
                 continue;
             }
-            // Sources only — every C-family input clang compiles as a unit,
-            // preprocessed and module interface files included; a header
-            // claims no translation unit of its own. A suffix clang does not
-            // know is a source when the default command forces its language
-            // (`-x c++` for an extensionless tool).
-            auto ext = path::extension(entry_path);
-            ext.consume_front(".");
-            auto type = ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
-            bool source = type != types::TY_INVALID && types::isDerivedFromC(type) &&
-                          !types::onlyPrecompileType(type);
-            if(!source) {
-                if(type != types::TY_INVALID) {
-                    continue;
-                }
-                auto command = default_command(entry_path);
-                if(!command) {
-                    continue;
-                }
-                auto forced = cdb.forced_language(*command);
-                if(forced.empty() || forced.ends_with("-header")) {
-                    continue;
-                }
+            if(!default_source(entry_path)) {
+                continue;
             }
             auto file = files.intern(entry_path);
             if(seen.insert(file).second) {

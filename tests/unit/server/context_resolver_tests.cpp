@@ -90,6 +90,49 @@ TEST_CASE(PinBaseSurvivesRules) {
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
 }
 
+TEST_CASE(DefaultSourceKeepsOwnCommand) {
+    /// A unity build under a default command: main.cpp includes part.cpp
+    /// and part.h. The included source is a unit of its own and keeps the
+    /// default command the index compiles it with; the header borrows
+    /// main.cpp's.
+    TempDir tmp;
+    tmp.touch("src/main.cpp", R"(#include "part.cpp"
+#include "part.h")");
+    tmp.touch("src/part.cpp", "");
+    tmp.touch("src/part.h", "");
+    Workspace workspace;
+    ContextResolver resolver(workspace);
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active();
+
+    auto main = workspace.file_table.intern(tmp.path("src/main.cpp"));
+    auto part = workspace.file_table.intern(tmp.path("src/part.cpp"));
+    auto header = workspace.file_table.intern(tmp.path("src/part.h"));
+    workspace.dep_graph.set_includes(main, 0, {{part}, {header}});
+    workspace.dep_graph.build_reverse_map();
+
+    std::string directory;
+    std::vector<std::string> arguments;
+    Fid host;
+    EXPECT_EQ(resolver.resolve_command(tmp.path("src/part.cpp"),
+                                       directory,
+                                       arguments,
+                                       ContextUse::Editor,
+                                       &host),
+              CommandSource::Default);
+    EXPECT_TRUE(
+        llvm::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
+    EXPECT_EQ(resolver.resolve_command(tmp.path("src/part.h"),
+                                       directory,
+                                       arguments,
+                                       ContextUse::Editor,
+                                       &host),
+              CommandSource::IncludeGraph);
+    EXPECT_EQ(host, main);
+}
+
 TEST_CASE(ValidateKeepsValidChoice) {
     TempDir tmp;
     Workspace workspace;

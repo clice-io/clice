@@ -127,6 +127,20 @@ TEST_CASE(DefaultCommandMembers) {
     EXPECT_FALSE(layout.indexed("src/skip/vendored.cpp"));
 };
 
+TEST_CASE(UnitPredicate) {
+    /// A source a default-command rule claims is a unit of its own; a header
+    /// the same rule matches is not, and neither is a file no rule claims. A
+    /// database entry makes any file a unit.
+    Layout defaults("default_command_only");
+    EXPECT_TRUE(defaults.build.unit(defaults.fid("src/main.cpp")));
+    EXPECT_FALSE(defaults.build.unit(defaults.fid("include/lib.h")));
+    EXPECT_FALSE(defaults.build.unit(defaults.fid("tools/other.cpp")));
+
+    Layout bound("rules_bound");
+    EXPECT_TRUE(bound.build.unit(bound.fid("lib/x.cpp")));
+    EXPECT_FALSE(bound.build.unit(bound.fid("lib/y.hxx")));
+};
+
 TEST_CASE(PatternRootsEnumerate) {
     /// Members are enumerated from where the patterns point, not from the
     /// configuration file's directory: a config under .clice/ claims

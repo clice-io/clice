@@ -418,7 +418,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
         }
     };
 
-    auto fill_from_cdb = [&](llvm::ArrayRef<Candidate> candidates) {
+    auto fill_from_cdb = [&](llvm::ArrayRef<Candidate> candidates) -> CommandSource {
         // Multi-config projects: honor the user's chosen entry, matched by
         // entry hash so the choice survives reordering.
         llvm::StringRef pinned_hash, pinned_base;
@@ -435,6 +435,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
                                          pinned_hash,
                                          pinned_base);
         fill(picked.config, picked.source);
+        return picked.source;
     };
 
     const Selection* choice = selection(use, path_id);
@@ -456,13 +457,15 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
         }
     }
 
-    // 2. Real CDB entry for the file itself.
+    // 2. The file's own command: a database entry, or the default command
+    //    of a source the build compiles as a unit. A header's default
+    //    command is only the last resort below, after host inference.
     tried.push_back("cdb");
     auto commands = workspace.build.commands(path_id);
-    if(!commands.empty() && commands.front().source == CommandSource::CDBExact) {
-        fill_from_cdb(commands);
-        log_command_decision(path, tried, CommandSource::CDBExact, arguments);
-        return CommandSource::CDBExact;
+    if(workspace.build.unit(path_id)) {
+        auto source = fill_from_cdb(commands);
+        log_command_decision(path, tried, source, arguments);
+        return source;
     }
 
     // 3. No CDB entry — try automatic header context resolution.
