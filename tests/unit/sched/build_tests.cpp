@@ -315,6 +315,42 @@ TEST_CASE(UnmatchableRuleDeclaresNothing) {
     EXPECT_TRUE(build.declares_sources());
 };
 
+TEST_CASE(DiscoveredSourceOrder) {
+    /// Databases no rule declares rank by depth, then by path, the vanished
+    /// after the present ones.
+    TempDir tmp;
+    auto listing = [&](llvm::StringRef file) {
+        return build_cdb_json({
+            {tmp.root, tmp.path(file), {}}
+        });
+    };
+    tmp.touch("sub/compile_commands.json", listing("main.cpp"));
+    tmp.touch("build/compile_commands.json", listing("main.cpp"));
+    tmp.touch("compile_commands.json", listing("main.cpp"));
+    Config config;
+    config.finalize(tmp.root.str());
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active("");
+    auto sub = cdb.add_source(tmp.path("sub"));
+    auto deep = cdb.add_source(tmp.path("build"));
+    auto root = cdb.add_source(tmp.path("compile_commands.json"));
+    for(auto id: {sub, deep, root}) {
+        ASSERT_TRUE(cdb.load_source(id).has_value());
+    }
+
+    auto main = files.intern(canonical(tmp, "main.cpp"));
+    EXPECT_EQ(build.source_order(files.resolve(main)),
+              (llvm::SmallVector<SourceID, 4>{root, deep, sub}));
+    EXPECT_EQ(build.entries(main).front().source, root);
+
+    cdb.set_present(root, false);
+    EXPECT_EQ(build.source_order(files.resolve(main)),
+              (llvm::SmallVector<SourceID, 4>{deep, sub, root}));
+    EXPECT_EQ(build.entries(main).front().source, deep);
+};
+
 TEST_CASE(DeclaredSourceOffDiscovery) {
     /// A rule declaring a default command is the whole intent: the database
     /// sitting at the root is not consulted.

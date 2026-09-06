@@ -48,8 +48,9 @@ static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource sourc
     diagnostic.message = std::format(
         "No compilation database entry for this file (compile command was {}), so some includes "
         "may not be found. Configure compile_commands.json for accurate diagnostics.",
-        source == CommandSource::Fallback ? "synthesized from defaults"
-                                          : "inferred from an including file");
+        source == CommandSource::Fallback   ? "synthesized from defaults"
+        : source == CommandSource::Inferred ? "borrowed from a nearby translation unit"
+                                            : "inferred from an including file");
     return diagnostic;
 }
 

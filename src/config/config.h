@@ -73,8 +73,10 @@ struct ConfigRule {
                          "order decide which entry a file present in several "
                          "databases gets by default. A rule without patterns "
                          "names the workspace's databases. When no rule "
-                         "declares a source, the workspace root and its "
-                         "immediate subdirectories are searched for one.")
+                         "declares a source, every compile_commands.json in "
+                         "the workspace root and its immediate subdirectories "
+                         "loads, and so do the ones in the directories above "
+                         "a file when it is opened.")
     <std::vector<std::string>> compile_commands;
 
     KOTATSU_ANNOTATE(defaulted = true,

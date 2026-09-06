@@ -8,6 +8,7 @@
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
 #include "sched/workspace.h"
+#include "support/anomaly.h"
 #include "support/cache_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -102,10 +103,17 @@ BuildLoad load_build(Workspace& workspace, llvm::StringRef root, llvm::StringRef
     for(auto declared: workspace.build.declared_sources()) {
         paths.push_back(declared.str());
     }
-    if(!workspace.build.declares_sources()) {
-        auto found = discover_compile_commands(root);
-        if(!found.empty()) {
-            paths.push_back(found);
+    bool discovered = !workspace.build.declares_sources();
+    if(discovered) {
+        paths = discover_compile_commands(root);
+        if(paths.size() > 1) {
+            LOG_GUIDANCE(
+                "No rule names a compilation database; the {} found apply in this order, "
+                "an earlier one winning for a file both list: {}. To switch between them "
+                "instead, declare each on a tagged rule: [[rules]] configuration = \"...\" "
+                "compile_commands = [\"...\"]",
+                paths.size(),
+                llvm::join(paths, ", "));
         }
     }
     for(auto& path: paths) {

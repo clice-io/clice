@@ -403,14 +403,18 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
                                                llvm::ArrayRef<std::string> extra_append,
                                                CommandRef* out_ref) {
     auto path_id = workspace.file_table.intern(path);
-    llvm::SmallVector<llvm::StringRef, 3> tried;
+    llvm::SmallVector<llvm::StringRef, 4> tried;
 
     // Fill from the CDB layer with config rules applied (append/remove flags
     // based on file patterns). Also used for tier 4 with the synthesized
     // default config for files without an entry.
-    auto fill = [&](ConfigID base, CommandSource source) {
+    auto fill = [&](ConfigID base,
+                    CommandSource source,
+                    llvm::ArrayRef<llvm::StringRef> paths,
+                    llvm::StringRef language_path) {
         auto ref =
-            workspace.build.resolve(path_id, base, source, path, path, extra_prepend, extra_append);
+            workspace.build
+                .resolve(path_id, base, source, paths, language_path, extra_prepend, extra_append);
         directory = workspace.cdb.config(ref.config).directory;
         arguments = to_strings(workspace.cdb.render(ref));
         if(out_ref) {
@@ -434,7 +438,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
                                          path,
                                          pinned_hash,
                                          pinned_base);
-        fill(picked.config, picked.source);
+        fill(picked.config, picked.source, path, path);
         return picked.source;
     };
 
@@ -483,14 +487,34 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
         }
     }
 
-    // 4. Nothing matched — a rule's default command, else the builtin
-    //    fallback, so the file still compiles and produces diagnostics
-    //    instead of failing silently.
+    // 4. A rule's default command for a file the build does not compile as
+    //    a unit (a header under a default-command rule).
+    if(!commands.empty()) {
+        tried.push_back("default");
+        fill(commands.front().config, CommandSource::Default, path, path);
+        log_command_decision(path, tried, CommandSource::Default, arguments);
+        return CommandSource::Default;
+    }
+
+    // 5. A nearby unit's command: the file compiles as that unit's
+    //    language, under its command edited for both files.
+    tried.push_back("inferred");
+    if(auto donor = command_donor(workspace, path_id)) {
+        auto donor_path = workspace.file_table.resolve(*donor);
+        auto donor_commands = workspace.build.commands(*donor);
+        llvm::StringRef edit_paths[] = {path, donor_path};
+        fill(donor_commands.front().config, CommandSource::Inferred, edit_paths, donor_path);
+        LOG_INFO("resolve_command: {} borrows the command of {}", path, donor_path);
+        log_command_decision(path, tried, CommandSource::Inferred, arguments);
+        return CommandSource::Inferred;
+    }
+
+    // 6. The builtin fallback, so the file still compiles and produces
+    //    diagnostics instead of failing silently.
     tried.push_back("fallback");
-    auto source = commands.empty() ? CommandSource::Fallback : CommandSource::Default;
-    fill(commands.empty() ? workspace.build.builtin(path) : commands.front().config, source);
-    log_command_decision(path, tried, source, arguments);
-    return source;
+    fill(workspace.build.builtin(path), CommandSource::Fallback, path, path);
+    log_command_decision(path, tried, CommandSource::Fallback, arguments);
+    return CommandSource::Fallback;
 }
 
 void ContextResolver::append_suffix_include(Fid path_id, std::string& text) {

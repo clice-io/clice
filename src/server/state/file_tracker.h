@@ -35,21 +35,31 @@ public:
     /// Construct after the workspace is loaded.
     FileTracker(Workspace& workspace, const SessionStore& store, std::string workspace_root);
 
-    /// One CDB poll tick. Stats every registered source — declared ones
-    /// that do not exist yet included, which is how a database generated
-    /// after startup is picked up — and, when no rule declares a source
-    /// and none was discovered yet, keeps discovering one. Once a source's
-    /// (size, mtime) change has stayed stable for two consecutive ticks,
-    /// reloads it and emits one CDBChanged event carrying the reload's
-    /// diff.
+    /// One CDB poll tick. When no rule declares a source, registers every
+    /// database discovery finds that is not watched yet. Stats every
+    /// registered source — declared ones that do not exist yet included,
+    /// which is how a database generated after startup is picked up — and
+    /// the response files its commands name. Once a source's stamp change
+    /// has stayed stable for two consecutive ticks, reloads it and emits
+    /// one CDBChanged event carrying the reload's diff. A discovered
+    /// database vanishing or returning flips its presence, and the files
+    /// another database also lists change command (see
+    /// Build::source_order); its entries keep serving meanwhile.
     ///
-    /// `force` reloads unconditionally: it skips both the (size, mtime)
-    /// stamp gate — which could hide a same-size rewrite landing within
-    /// mtime granularity — and the two-tick settling debounce (the
-    /// half-written-file guard). The test hook uses it so a single poll
-    /// request applies a change deterministically; a spurious forced
-    /// reload just yields an empty diff.
+    /// `force` reloads unconditionally: it skips both the stamp gate and
+    /// the two-tick settling debounce (the half-written-file guard). The
+    /// test hook uses it so a single poll request applies a change
+    /// deterministically; a spurious forced reload just yields an empty
+    /// diff.
     llvm::SmallVector<FileEvent> tick_cdb(bool force = false);
+
+    /// Register, load and watch the databases in the directories from the
+    /// file's up to the workspace root, which startup discovery (the root
+    /// and its direct subdirectories) did not look at: a file of a deeper
+    /// project compiles from its own database. Nothing when a rule declares
+    /// sources, the file has a command already, or it lies outside the
+    /// workspace. The loads' diffs, as CDBChanged events.
+    llvm::SmallVector<FileEvent> discover_around(Fid path_id);
 
     /// One workspace sweep. Stats every file the dependency graph knows,
     /// skipping open buffers; a (mtime, size) suspect is confirmed by
@@ -71,43 +81,56 @@ public:
     kota::task<llvm::SmallVector<FileEvent>> tick_workspace();
 
 private:
-    /// (existence, size, mtime) identity of a database file.
-    struct CDBStamp {
+    /// (existence, size, mtime, filesystem identity) of a file: a
+    /// rename-over with a forged equal size and mtime still changes the
+    /// UniqueID.
+    struct FileStamp {
         bool exists = false;
         std::uint64_t size = 0;
         std::int64_t mtime_ns = 0;
+        std::uint64_t uid_device = 0;
+        std::uint64_t uid_file = 0;
 
-        friend bool operator==(const CDBStamp&, const CDBStamp&) = default;
+        friend bool operator==(const FileStamp&, const FileStamp&) = default;
     };
 
-    static CDBStamp stat_cdb(llvm::StringRef path);
+    static FileStamp stat_file(llvm::StringRef path);
+
+    /// The stamp of a source: its database and the response files its
+    /// commands name.
+    struct SourceStamp {
+        FileStamp database;
+        llvm::SmallVector<FileStamp> responses;
+
+        friend bool operator==(const SourceStamp&, const SourceStamp&) = default;
+    };
+
+    SourceStamp stat_source(SourceID id) const;
 
     /// One registered source's watch state.
     struct TrackedSource {
         SourceID id;
         /// The stamp the loaded entries correspond to.
-        CDBStamp applied;
+        SourceStamp applied;
         /// Debounce: the stamp observed on the previous tick, not yet settled.
-        CDBStamp pending;
+        SourceStamp pending;
         bool has_pending = false;
-        /// The vanished discovered databases this one replaces: they keep
-        /// serving their entries until this one has loaded.
-        llvm::SmallVector<SourceID, 1> supersedes;
     };
 
     /// Register `id` for watching, baselined at its current stamp.
     void track(SourceID id);
 
     /// Tick one source; the reload's events, if any.
-    /// Returns the sources this one superseded once its own reload landed:
-    /// the caller drops them from the watch list.
-    llvm::SmallVector<SourceID, 1> tick_source(TrackedSource& tracked,
-                                               bool force,
-                                               llvm::SmallVectorImpl<FileEvent>& events);
+    void tick_source(TrackedSource& tracked, bool force, llvm::SmallVectorImpl<FileEvent>& events);
 
-    /// Last-known on-disk state of a tracked file. The filesystem
-    /// identity is part of the stamp: a rename-over with a forged equal
-    /// size and mtime still changes the UniqueID.
+    /// Whether no rule declares the source: discovery registered it.
+    bool discovered(SourceID id) const;
+
+    /// The files the source and another one both list: their command
+    /// changes with the source's presence.
+    llvm::SmallVector<Fid, 0> shared_files(SourceID id) const;
+
+    /// Last-known on-disk state of a tracked file.
     struct FileState {
         std::uint64_t size = 0;
         std::int64_t mtime_ns = 0;

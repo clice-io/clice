@@ -216,6 +216,11 @@ public:
     /// clice/internal/poll test hook drives ticks directly.
     std::unique_ptr<FileTracker> tracker;
 
+    /// Before a file's first compile: register the databases discovery
+    /// finds between its directory and the workspace root (see
+    /// FileTracker::discover_around) so the compile finds its entry.
+    void discover_around(Fid path_id);
+
     /// Wakes subscribers after a new message landed in notify_log. Pure
     /// wake-up per the Signal contract: subscribers keep a sequence cursor
     /// and read the messages from the log, so a late subscriber (or a

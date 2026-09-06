@@ -412,26 +412,19 @@ bool is_header_type(clang::driver::types::ID type) {
 /// Only the ancestors themselves are checked — scanning their
 /// subdirectories would let an unrelated sibling project's database win.
 std::string workspace_of(llvm::StringRef start) {
-    llvm::SmallString<256> dir(start);
-    while(!dir.empty()) {
-        for(llvm::StringRef marker: config_file_names) {
-            if(fs::exists(path::join(dir, marker))) {
-                return std::string(dir);
-            }
+    std::string root = start.str();
+    path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
+        bool marked = llvm::any_of(config_file_names,
+                                   [&](llvm::StringRef marker) {
+                                       return fs::exists(path::join(dir, marker));
+                                   }) ||
+                      fs::exists(path::join(dir, "compile_commands.json"));
+        if(marked) {
+            root = dir.str();
         }
-        if(fs::exists(path::join(dir, "compile_commands.json"))) {
-            return std::string(dir);
-        }
-        // parent_path returns a prefix into dir's own buffer; truncate in
-        // place instead of assign, which trips the SmallVector
-        // self-reference assert in Debug LLVM.
-        llvm::StringRef parent = path::parent_path(dir);
-        if(parent.size() == dir.size()) {
-            break;
-        }
-        dir.truncate(parent.size());
-    }
-    return start.str();
+        return !marked;
+    });
+    return root;
 }
 
 /// The compile command for `file`. Explicit --flag arguments (the snap-test

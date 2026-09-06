@@ -543,6 +543,9 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
 
         llvm::StringRef spec = ref.drop_front();
         std::string full = path::is_absolute(spec) ? spec.str() : path::join(directory, spec);
+        if(loading) {
+            source_files[static_cast<std::size_t>(*loading)].response_files.push_back(full);
+        }
         auto content = fs::read(full);
         if(!content) {
             /// Unreadable response file: the token survives verbatim (the
@@ -723,6 +726,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // entries before the cut still swap in) — the CDB poll's two-tick
     // settle debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
+    source.response_files.clear();
+    loading = id;
+    auto recording = llvm::make_scope_exit([&] { loading.reset(); });
 
     std::uint32_t index = 0;
     for(auto element: arr) {
@@ -834,8 +840,24 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     auto count = new_entries.size();
     source.entries = std::move(new_entries);
     source.loaded = true;
+    source.present = true;
+    ranges::sort(source.response_files);
+    auto duplicates = ranges::unique(source.response_files);
+    source.response_files.erase(duplicates.begin(), duplicates.end());
     rebuild_entry_list();
     return count;
+}
+
+bool CompilationDatabase::present(SourceID id) const {
+    return source_files[static_cast<std::size_t>(id)].present;
+}
+
+void CompilationDatabase::set_present(SourceID id, bool present) {
+    source_files[static_cast<std::size_t>(id)].present = present;
+}
+
+llvm::ArrayRef<std::string> CompilationDatabase::response_files(SourceID id) const {
+    return source_files[static_cast<std::size_t>(id)].response_files;
 }
 
 llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>

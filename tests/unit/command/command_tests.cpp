@@ -351,6 +351,27 @@ TEST_CASE(ResponseFileExpansion) {
     EXPECT_NOT_CONTAINS(argv, "@");
 };
 
+TEST_CASE(ResponseFilesRecorded) {
+    /// A load records the response files its commands name, the ones it
+    /// could not read included, so the tracker can watch them all.
+    TempDir tmp;
+    tmp.touch("flags.rsp", "-DFROM_RSP=1\n");
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"),  {"@flags.rsp", "@missing.rsp"}},
+                  {tmp.root, tmp.path("other.cpp"), {"@flags.rsp"}                }
+    }));
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    auto id = database.add_source(tmp.path("compile_commands.json"));
+    ASSERT_TRUE(database.load_source(id).has_value());
+    auto recorded = database.response_files(id);
+    ASSERT_EQ(recorded.size(), 2u);
+    EXPECT_EQ(recorded[0], path::join(tmp.root, "flags.rsp"));
+    EXPECT_EQ(recorded[1], path::join(tmp.root, "missing.rsp"));
+    EXPECT_TRUE(database.present(id));
+};
+
 TEST_CASE(DriverModeFromRsp) {
     /// --driver-mode=cl inside a response file still switches on CL option
     /// visibility (clang interprets the mode after expansion).

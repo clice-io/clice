@@ -80,7 +80,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                                            &host_path_id,
                                            extras.prepend,
                                            extras.append);
-    if(source == CommandSource::Fallback) {
+    if(source == CommandSource::Fallback || source == CommandSource::Inferred) {
         // A file whose manifest survives keeps serving its last-known rows,
         // so skipping it loses nothing. One without a manifest (dropped or
         // never built) stays uncovered — count that as a failure so a batch

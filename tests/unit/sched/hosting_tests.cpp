@@ -1,3 +1,5 @@
+#include <format>
+
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
@@ -94,6 +96,79 @@ TEST_CASE(ProximityWithinSource) {
     EXPECT_EQ(ranked[2], first);
     EXPECT_EQ(ranked[3], second);
     EXPECT_EQ(ranked[4], elsewhere);
+};
+
+TEST_CASE(HostsMatchLanguage) {
+    /// A C unit never hosts a C++ header; an ambiguous `.h` takes any host.
+    TempDir tmp;
+    tmp.touch("shared/types.hpp", "");
+    tmp.touch("shared/plain.h", "");
+    Workspace workspace;
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"c/**"}, .default_command = std::string("clang")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+
+    auto hpp = workspace.file_table.intern(tmp.path("shared/types.hpp"));
+    auto plain = workspace.file_table.intern(tmp.path("shared/plain.h"));
+    auto impl = workspace.file_table.intern(tmp.path("c/impl.c"));
+    workspace.dep_graph.set_includes(impl, 0, {{hpp}, {plain}});
+    workspace.dep_graph.build_reverse_map();
+
+    EXPECT_TRUE(ranked_hosts(workspace, hpp).empty());
+    EXPECT_EQ(ranked_hosts(workspace, plain), llvm::SmallVector<Fid>{impl});
+};
+
+TEST_CASE(DonorSibling) {
+    /// A file without a command borrows from a unit in its directory, the
+    /// one sharing its stem before the first by name; a `.c` only from a C
+    /// unit, and nothing when the build has none.
+    TempDir tmp;
+    tmp.touch("src/aaa.cpp", "");
+    tmp.touch("src/x.cpp", "");
+    tmp.touch("src/x.h", "");
+    tmp.touch("src/new.cpp", "");
+    tmp.touch("src/plain.c", "");
+    Workspace workspace;
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+
+    auto header = workspace.file_table.intern(tmp.path("src/x.h"));
+    auto same_stem = workspace.file_table.intern(tmp.path("src/x.cpp"));
+    auto first = workspace.file_table.intern(tmp.path("src/aaa.cpp"));
+    auto other = workspace.file_table.intern(tmp.path("src/other.cpp"));
+    auto plain = workspace.file_table.intern(tmp.path("src/plain.c"));
+    EXPECT_EQ(command_donor(workspace, header), same_stem);
+    EXPECT_EQ(command_donor(workspace, other), first);
+    EXPECT_FALSE(command_donor(workspace, plain).has_value());
+};
+
+TEST_CASE(DonorSearchDir) {
+    /// A header under a unit's header search directory borrows that unit
+    /// before any closer one by path; a source there does not.
+    TempDir tmp;
+    tmp.touch("include/api/new.h", "");
+    tmp.touch("include/api/near.cpp", "");
+    Workspace workspace;
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
+        auto command = std::format("clang++ {} {}", flags, tmp.path(file));
+        workspace.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+    };
+    add("src/lib.cpp", "-Iinclude");
+    add("tools/gen.cpp", "");
+
+    auto header = workspace.file_table.intern(tmp.path("include/api/new.h"));
+    auto lib = workspace.file_table.intern(tmp.path("src/lib.cpp"));
+    auto gen = workspace.file_table.intern(tmp.path("tools/gen.cpp"));
+    EXPECT_EQ(command_donor(workspace, header), lib);
+
+    /// Without a searching unit the closest by path lends.
+    auto elsewhere = workspace.file_table.intern(tmp.path("tools/sub/extra.cpp"));
+    EXPECT_EQ(command_donor(workspace, elsewhere), gen);
 };
 
 };  // TEST_SUITE(Hosting)

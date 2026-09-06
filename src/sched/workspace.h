@@ -273,6 +273,12 @@ struct Workspace {
     /// picked from a stale listing without noticing.
     std::uint64_t context_epoch = 1;
 
+    /// The units by header search directory of their commands, for a
+    /// header borrowing the command of the unit whose search reaches it
+    /// (see command_donor); rebuilt when context_epoch moves.
+    llvm::StringMap<llvm::SmallVector<Fid>> search_dir_units;
+    std::uint64_t search_dir_units_epoch = 0;
+
     /// Whether `path` is one of our own synthesized context artifacts
     /// (prefix/suffix/self-snapshot files under the cache directory). A
     /// user can open these for debugging; they must never go through
@@ -360,11 +366,17 @@ struct Workspace {
                        Fid exclude_path_id = {}) const;
 };
 
-/// Find a compile_commands.json when no rule declares one: the workspace
-/// root, then its direct subdirectories in name order. Returns the empty
-/// string when none exists yet — the file tracker keeps looking on its CDB
-/// poll.
-std::string discover_compile_commands(llvm::StringRef workspace_root);
+/// The `compile_commands.json` files to load when no rule declares one:
+/// the workspace root's, then those of its direct subdirectories in name
+/// order. Empty when none exists yet — the file tracker keeps looking on
+/// its CDB poll.
+llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspace_root);
+
+/// The `compile_commands.json` files in `start` and its ancestors up to
+/// `workspace_root`, nearest first: the databases a file deeper in the
+/// tree than startup discovery looks may compile from.
+llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
+                                                      llvm::StringRef workspace_root);
 
 /// Capture a staleness snapshot from a build's reported inputs, interning
 /// the consumed versions into the shared table.

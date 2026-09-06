@@ -71,8 +71,10 @@ public:
     /// Every registered source in the priority order `path` sees: the
     /// sources of rules matching the file first, then those of the other
     /// active rules, each in declaration order; sources no active rule
-    /// declares (discovered ones) last. While the active configuration
-    /// declares sources, one only inactive rules declare is left out.
+    /// declares (discovered ones) last — those still on disk before the
+    /// vanished, shallower before deeper, then by path. While the active
+    /// configuration declares sources, one only inactive rules declare is
+    /// left out.
     llvm::SmallVector<SourceID, 4> source_order(llvm::StringRef path) const;
 
     /// A file's database entries in build order: entries from the sources
@@ -121,9 +123,14 @@ public:
 
     /// Every translation unit of the build: files with entries, plus the
     /// source files on disk that a default-command rule matches — enumerated
-    /// once per active configuration, so a file created later compiles when
-    /// opened and joins at the next start.
+    /// once per active configuration and again by refresh_default_sources.
     std::vector<Fid> members();
+
+    /// Enumerate the sources the default-command rules claim again and
+    /// report the ones that appeared since the last enumeration: a file
+    /// created after startup joins the build. The workspace sweep calls it
+    /// every tick.
+    std::vector<Fid> refresh_default_sources();
 
     /// The scan units of `members`: every command of every member, so a
     /// header reachable through only one of a file's entries still finds

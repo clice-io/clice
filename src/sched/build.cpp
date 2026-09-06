@@ -86,12 +86,22 @@ llvm::SmallVector<SourceID, 4> Build::source_order(llvm::StringRef path) const {
             add_sources(rule);
         }
     }
+    llvm::SmallVector<SourceID, 4> discovered;
     for(std::size_t i = 0; i < cdb.source_count(); i += 1) {
         auto id = SourceID(i);
         if(!llvm::is_contained(order, id) && !llvm::is_contained(declared, id)) {
-            order.push_back(id);
+            discovered.push_back(id);
         }
     }
+    // A vanished database keeps serving its entries, but one regenerated
+    // elsewhere takes over the files both list.
+    auto rank = [&](SourceID id) {
+        auto source = cdb.source_path(id);
+        auto depth = llvm::count_if(source, [](char c) { return path::is_separator(c); });
+        return std::tuple(!cdb.present(id), depth, source);
+    };
+    std::ranges::sort(discovered, {}, rank);
+    order.append(discovered);
     return order;
 }
 
@@ -272,10 +282,20 @@ std::vector<Fid> Build::members() {
     return result;
 }
 
-/// Whether `path` is `root` or lies under it.
-static bool under(llvm::StringRef path, llvm::StringRef root) {
-    return path == root || (path.starts_with(root) &&
-                            (root.ends_with("/") || path::is_separator(path[root.size()])));
+std::vector<Fid> Build::refresh_default_sources() {
+    std::vector<Fid> current;
+    enumerate_default_sources(current);
+    std::vector<Fid> appeared;
+    if(claimed_sources) {
+        llvm::DenseSet<Fid> known(claimed_sources->begin(), claimed_sources->end());
+        for(auto file: current) {
+            if(!known.contains(file)) {
+                appeared.push_back(file);
+            }
+        }
+    }
+    claimed_sources = std::move(current);
+    return appeared;
 }
 
 bool Build::default_source(llvm::StringRef path) {
@@ -339,7 +359,7 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
     }
     llvm::erase_if(roots, [&](llvm::StringRef root) {
         return llvm::any_of(roots, [&](llvm::StringRef other) {
-            return other != root && under(root, other);
+            return other != root && path::under(root, other);
         });
     });
 

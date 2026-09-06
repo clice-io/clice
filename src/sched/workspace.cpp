@@ -178,24 +178,21 @@ void Workspace::on_file_closed(Fid path_id) {
     enforce_loaded_budget();
 }
 
-std::string discover_compile_commands(llvm::StringRef workspace_root) {
+static std::string database_in(llvm::StringRef dir) {
+    auto candidate = path::join(dir, "compile_commands.json");
+    return llvm::sys::fs::exists(candidate) ? candidate : std::string();
+}
+
+llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspace_root) {
+    llvm::SmallVector<std::string> found;
     if(workspace_root.empty()) {
-        return {};
-    }
-
-    auto try_candidate = [](llvm::StringRef dir) -> std::string {
-        auto candidate = path::join(dir, "compile_commands.json");
-        if(llvm::sys::fs::exists(candidate)) {
-            return candidate;
-        }
-        return {};
-    };
-
-    if(auto found = try_candidate(workspace_root); !found.empty()) {
         return found;
     }
+    if(auto database = database_in(workspace_root); !database.empty()) {
+        found.push_back(std::move(database));
+    }
 
-    // Name order, so build/ and out/ side by side pick the same database on
+    // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
     llvm::SmallVector<std::string> subdirectories;
     std::error_code ec;
@@ -207,11 +204,23 @@ std::string discover_compile_commands(llvm::StringRef workspace_root) {
     }
     std::ranges::sort(subdirectories);
     for(auto& subdirectory: subdirectories) {
-        if(auto found = try_candidate(subdirectory); !found.empty()) {
-            return found;
+        if(auto database = database_in(subdirectory); !database.empty()) {
+            found.push_back(std::move(database));
         }
     }
-    return {};
+    return found;
+}
+
+llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
+                                                      llvm::StringRef workspace_root) {
+    llvm::SmallVector<std::string> found;
+    path::walk_ancestors(start, workspace_root, [&](llvm::StringRef dir) {
+        if(auto database = database_in(dir); !database.empty()) {
+            found.push_back(std::move(database));
+        }
+        return true;
+    });
+    return found;
 }
 
 DepsSnapshot capture_deps_snapshot(FileTable& files,

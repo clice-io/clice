@@ -300,6 +300,16 @@ std::shared_ptr<Session> MasterServer::find_session(Fid path_id) {
     return sessions.find(path_id);
 }
 
+void MasterServer::discover_around(Fid path_id) {
+    if(!tracker) {
+        return;
+    }
+    auto events = tracker->discover_around(path_id);
+    if(!events.empty()) {
+        dispatch(events);
+    }
+}
+
 std::shared_ptr<Session> MasterServer::open_session(Fid path_id) {
     // A replaced live session (an editor resending didOpen) leaves a
     // projection describing the old session's compile; the fresh session
