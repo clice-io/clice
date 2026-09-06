@@ -36,14 +36,17 @@ public:
     FileTracker(Workspace& workspace, const SessionStore& store, std::string workspace_root);
 
     /// One CDB poll tick. When no rule declares a source, registers every
-    /// database discovery finds that is not watched yet. Stats every
-    /// registered source — declared ones that do not exist yet included,
-    /// which is how a database generated after startup is picked up — and
-    /// the response files its commands name. Once a source's stamp change
-    /// has stayed stable for two consecutive ticks, reloads it and emits
-    /// one CDBChanged event carrying the reload's diff. A discovered
+    /// database discovery finds that is not watched yet, at the root and
+    /// its direct subdirectories and above every open file still without
+    /// a command. Stats every registered source — declared ones that do
+    /// not exist yet included, which is how a database generated after
+    /// startup is picked up — and the response files its commands name
+    /// (up to `watched_responses`; a generator emitting one per unit is
+    /// caught through the database's own stamp). Once a source's stamp
+    /// change has stayed stable for two consecutive ticks, reloads it and
+    /// emits one CDBChanged event carrying the reload's diff. A discovered
     /// database vanishing or returning flips its presence, and the files
-    /// another database also lists change command (see
+    /// whose default entry moves with it change command (see
     /// Build::source_order); its entries keep serving meanwhile.
     ///
     /// `force` reloads unconditionally: it skips both the stamp gate and
@@ -123,12 +126,15 @@ private:
     /// Tick one source; the reload's events, if any.
     void tick_source(TrackedSource& tracked, bool force, llvm::SmallVectorImpl<FileEvent>& events);
 
-    /// Whether no rule declares the source: discovery registered it.
-    bool discovered(SourceID id) const;
+    /// The files the source and another one both list: the ones whose
+    /// default entry may move with the source's presence.
+    llvm::SmallVector<Fid> shared_files(SourceID id) const;
 
-    /// The files the source and another one both list: their command
-    /// changes with the source's presence.
-    llvm::SmallVector<Fid, 0> shared_files(SourceID id) const;
+    /// The source of each file's default entry, as the build ranks them
+    /// now.
+    llvm::SmallVector<SourceID> default_sources(llvm::ArrayRef<Fid> files) const;
+
+    constexpr static std::size_t watched_responses = 64;
 
     /// Last-known on-disk state of a tracked file.
     struct FileState {

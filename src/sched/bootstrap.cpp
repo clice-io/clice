@@ -8,7 +8,6 @@
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
 #include "sched/workspace.h"
-#include "support/anomaly.h"
 #include "support/cache_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -69,7 +68,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
         }
     }
 
-    auto load = load_build(workspace, root, configuration);
+    auto load = load_build(workspace, root, configuration, store.remembered_sources());
     report.has_commands = !load.members.empty() || workspace.build.declares_sources();
     report.members = std::move(load.members);
     // Persisted index shards are CDB-independent; they load even with no
@@ -92,7 +91,10 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     return report;
 }
 
-BuildLoad load_build(Workspace& workspace, llvm::StringRef root, llvm::StringRef configuration) {
+BuildLoad load_build(Workspace& workspace,
+                     llvm::StringRef root,
+                     llvm::StringRef configuration,
+                     llvm::ArrayRef<std::string> remembered) {
     BuildLoad load;
     workspace.cdb.set_workspace_root(root);
     workspace.build.reset_active(configuration);
@@ -103,11 +105,16 @@ BuildLoad load_build(Workspace& workspace, llvm::StringRef root, llvm::StringRef
     for(auto declared: workspace.build.declared_sources()) {
         paths.push_back(declared.str());
     }
-    bool discovered = !workspace.build.declares_sources();
-    if(discovered) {
+    if(!workspace.build.declares_sources()) {
         paths = discover_compile_commands(root);
+        for(auto& source: remembered) {
+            if(path::under(source, root) && fs::exists(source) &&
+               !llvm::is_contained(paths, source)) {
+                paths.push_back(source);
+            }
+        }
         if(paths.size() > 1) {
-            LOG_GUIDANCE(
+            LOG_INFO(
                 "No rule names a compilation database; the {} found apply in this order, "
                 "an earlier one winning for a file both list: {}. To switch between them "
                 "instead, declare each on a tagged rule: [[rules]] configuration = \"...\" "

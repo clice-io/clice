@@ -405,9 +405,8 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     auto path_id = workspace.file_table.intern(path);
     llvm::SmallVector<llvm::StringRef, 4> tried;
 
-    // Fill from the CDB layer with config rules applied (append/remove flags
-    // based on file patterns). Also used for tier 4 with the synthesized
-    // default config for files without an entry.
+    // Render `base` with the rule edits of `paths` applied: an entry, a
+    // default command, a borrowed or the builtin one alike.
     auto fill = [&](ConfigID base,
                     CommandSource source,
                     llvm::ArrayRef<llvm::StringRef> paths,
@@ -444,6 +443,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
 
     const Selection* choice = selection(use, path_id);
     bool has_host_choice = choice && choice->host_path_id.valid();
+    guessed_commands.erase(path_id);
 
     // 1. If the file has an active header context via switchContext, use the
     //    host source's CDB entry with file path replaced and preamble injected.
@@ -499,12 +499,12 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     // 5. A nearby unit's command: the file compiles as that unit's
     //    language, under its command edited for both files.
     tried.push_back("inferred");
-    if(auto donor = command_donor(workspace, path_id)) {
-        auto donor_path = workspace.file_table.resolve(*donor);
-        auto donor_commands = workspace.build.commands(*donor);
-        llvm::StringRef edit_paths[] = {path, donor_path};
-        fill(donor_commands.front().config, CommandSource::Inferred, edit_paths, donor_path);
-        LOG_INFO("resolve_command: {} borrows the command of {}", path, donor_path);
+    guessed_commands.insert(path_id);
+    if(auto lender = command_lender(workspace, path_id)) {
+        auto lender_path = workspace.file_table.resolve(lender->unit);
+        llvm::StringRef edit_paths[] = {path, lender_path};
+        fill(lender->config, CommandSource::Inferred, edit_paths, lender_path);
+        LOG_INFO("resolve_command: {} borrows the command of {}", path, lender_path);
         log_command_decision(path, tried, CommandSource::Inferred, arguments);
         return CommandSource::Inferred;
     }

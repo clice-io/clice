@@ -408,6 +408,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                                       workspace.build.units(workspace.build.members()));
                 workspace.dep_graph.build_reverse_map();
                 workspace.context_epoch += 1;
+                workspace.commands_epoch += 1;
 
                 // A module name that just gained its first provider: its
                 // sentinel's dependents are the TUs that scanned it
@@ -511,6 +512,11 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                                      /*retired=*/workspace.build.commands(path_id).empty());
                 }
 
+                for(auto path_id: contexts.guessed_commands) {
+                    if(store.find(path_id)) {
+                        dirty.mark_ast_dirty.push_back(path_id);
+                    }
+                }
                 dirty.recheck_contexts = true;
                 dirty.reschedule_indexing = true;
                 break;

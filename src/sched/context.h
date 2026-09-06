@@ -9,6 +9,7 @@
 #include "sched/workspace.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -102,6 +103,12 @@ public:
     /// TODO: entries for headers never reopened accumulate for the server's
     /// lifetime; add eviction if observation shows it matters.
     llvm::DenseMap<Fid, HeaderContext> header_contexts;
+
+    /// The files whose last resolution borrowed or synthesized a command
+    /// (Inferred, Fallback). A database change may give one a real command
+    /// or change its lender's, which the change's own delta cannot tell;
+    /// the invalidator recompiles them on every change.
+    llvm::DenseSet<Fid> guessed_commands;
 
     /// The file's resolved header context, or nullptr.
     HeaderContext* header_context(Fid path_id) {

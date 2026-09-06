@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <optional>
+#include <ranges>
 #include <utility>
 
 #include "support/filesystem.h"
@@ -10,7 +11,9 @@
 #include "support/timer.h"
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
 
@@ -47,7 +50,7 @@ FileTracker::FileStamp FileTracker::stat_file(llvm::StringRef path) {
 
 FileTracker::SourceStamp FileTracker::stat_source(SourceID id) const {
     SourceStamp stamp{.database = stat_file(workspace.cdb.source_path(id))};
-    for(auto& response: workspace.cdb.response_files(id)) {
+    for(auto& response: workspace.cdb.response_files(id).take_front(watched_responses)) {
         stamp.responses.push_back(stat_file(response));
     }
     return stamp;
@@ -76,29 +79,39 @@ void FileTracker::track(SourceID id) {
     sources.push_back(std::move(tracked));
 }
 
-bool FileTracker::discovered(SourceID id) const {
-    return llvm::none_of(workspace.build.declared_sources(), [&](llvm::StringRef declared) {
-        return workspace.cdb.find_source(declared) == id;
-    });
+llvm::SmallVector<Fid> FileTracker::shared_files(SourceID id) const {
+    llvm::SmallVector<Fid> shared;
+    for(auto group: workspace.cdb.entries() | std::views::chunk_by([](const CompilationEntry& a,
+                                                                      const CompilationEntry& b) {
+                        return a.file == b.file;
+                    })) {
+        auto listed = [&](const CompilationEntry& entry) {
+            return entry.source == id;
+        };
+        if(std::ranges::any_of(group, listed) && !std::ranges::all_of(group, listed)) {
+            shared.push_back(group.front().file);
+        }
+    }
+    return shared;
 }
 
-llvm::SmallVector<Fid, 0> FileTracker::shared_files(SourceID id) const {
-    llvm::SmallVector<Fid, 0> files;
-    auto entries = workspace.cdb.entries();
-    for(auto first = entries.begin(); first != entries.end();) {
-        auto last = std::find_if(first, entries.end(), [&](const CompilationEntry& entry) {
-            return entry.file != first->file;
-        });
-        bool listed = false, elsewhere = false;
-        for(auto it = first; it != last; it += 1) {
-            (it->source == id ? listed : elsewhere) = true;
+llvm::SmallVector<SourceID> FileTracker::default_sources(llvm::ArrayRef<Fid> files) const {
+    return llvm::to_vector(llvm::map_range(files, [&](Fid file) {
+        return workspace.build.entries(file).front().source;
+    }));
+}
+
+/// The files whose default entry moved between two rankings, into
+/// `changed`.
+static void push_moved(llvm::ArrayRef<Fid> files,
+                       llvm::ArrayRef<SourceID> before,
+                       llvm::ArrayRef<SourceID> after,
+                       llvm::SmallVectorImpl<Fid>& changed) {
+    for(auto [file, was, now]: llvm::zip(files, before, after)) {
+        if(was != now && !llvm::is_contained(changed, file)) {
+            changed.push_back(file);
         }
-        if(listed && elsewhere) {
-            files.push_back(first->file);
-        }
-        first = last;
     }
-    return files;
 }
 
 void FileTracker::tick_source(TrackedSource& tracked,
@@ -122,18 +135,32 @@ void FileTracker::tick_source(TrackedSource& tracked,
     // same-size rewrite within mtime granularity invisible to the test
     // hook, and a spurious reload just yields an empty diff.
     tracked.has_pending = false;
-    bool was_present = tracked.applied.database.exists;
+    // A discovered database's presence ranks it (see Build::source_order):
+    // the files whose default entry moves with it change command.
+    bool flips = tracked.applied.database.exists != current.database.exists &&
+                 workspace.build.discovered(tracked.id);
+    llvm::SmallVector<Fid> shared;
+    llvm::SmallVector<SourceID> before;
+    if(flips) {
+        shared = shared_files(tracked.id);
+        before = default_sources(shared);
+    }
     if(!current.database.exists) {
         // Deleted — usually mid-regeneration. Keep serving the loaded
         // entries; the rewrite lands as the next observed change.
         tracked.applied = current;
-        if(was_present) {
-            workspace.cdb.set_present(tracked.id, false);
-            if(discovered(tracked.id)) {
-                push_delta({.changed = shared_files(tracked.id)}, events);
-            }
+        workspace.cdb.set_present(tracked.id, false);
+        if(flips) {
+            CDBDiff moved;
+            push_moved(shared, before, default_sources(shared), moved.changed);
+            push_delta(moved, events);
         }
         return;
+    }
+    llvm::StringMap<FileStamp> known;
+    for(auto [response, stamp]:
+        llvm::zip(workspace.cdb.response_files(tracked.id), current.responses)) {
+        known[response] = stamp;
     }
     auto diff = workspace.cdb.reload_and_diff(tracked.id);
     if(!diff) {
@@ -142,21 +169,21 @@ void FileTracker::tick_source(TrackedSource& tracked,
         // the reload is retried on a later tick instead of being lost.
         return;
     }
-    // The reload re-recorded the response files; the database's own stamp
-    // predates the read, so a rewrite landing meanwhile is seen next tick.
-    tracked.applied = stat_source(tracked.id);
-    tracked.applied.database = current.database;
+    // The stamps predate the read, so a rewrite landing meanwhile is seen
+    // next tick; a response file the reload first named is stamped now.
+    tracked.applied = current;
+    tracked.applied.responses.clear();
+    for(auto& response: workspace.cdb.response_files(tracked.id).take_front(watched_responses)) {
+        auto it = known.find(response);
+        tracked.applied.responses.push_back(it != known.end() ? it->second : stat_file(response));
+    }
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
              workspace.cdb.source_path(tracked.id),
              diff->added.size(),
              diff->removed.size(),
              diff->changed.size());
-    if(!was_present && discovered(tracked.id)) {
-        for(auto file: shared_files(tracked.id)) {
-            if(!llvm::is_contained(diff->changed, file) && !llvm::is_contained(diff->added, file)) {
-                diff->changed.push_back(file);
-            }
-        }
+    if(flips) {
+        push_moved(shared, before, default_sources(shared), diff->changed);
     }
     push_delta(*diff, events);
 }
@@ -164,8 +191,9 @@ void FileTracker::tick_source(TrackedSource& tracked,
 llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
     llvm::SmallVector<FileEvent> events;
     // Nothing declared: keep looking, so a database generated after
-    // startup — at the root or in a new subdirectory — is picked up.
-    // Declared sources are registered (existing or not) and only watched.
+    // startup — at the root, in a new subdirectory, or above a file open
+    // without one — is picked up. Declared sources are registered
+    // (existing or not) and only watched.
     if(!workspace.build.declares_sources()) {
         for(auto& found: discover_compile_commands(workspace_root)) {
             auto id = workspace.cdb.add_source(found);
@@ -177,6 +205,9 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
                 LOG_INFO("Found compilation database: {}", found);
                 track(id);
             }
+        }
+        for(auto& [path_id, session]: store.sessions) {
+            events.append(discover_around(path_id));
         }
     }
     for(auto& tracked: sources) {
@@ -349,7 +380,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     // A file created under a default-command rule joins the build: the
     // same gain of a command a database reload reports as added.
     if(auto appeared = workspace.build.refresh_default_sources(); !appeared.empty()) {
-        push_delta({.added = llvm::SmallVector<Fid>(appeared.begin(), appeared.end())}, events);
+        push_delta({.added = std::move(appeared)}, events);
     }
 
     LOG_PERF("tracker",

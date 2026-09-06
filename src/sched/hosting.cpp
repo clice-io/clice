@@ -24,19 +24,12 @@ enum class Family : std::uint8_t {
     Other,
 };
 
-clang::driver::types::ID type_of_suffix(llvm::StringRef path) {
-    namespace types = clang::driver::types;
-    auto ext = path::extension(path);
-    ext.consume_front(".");
-    return ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
-}
-
-/// CUDA's header convention is missing from clang's extension table.
+/// Whether the suffix names a header — or nothing clang knows, which a
+/// file under a header search directory usually is (`.inc`, `.ipp`).
 bool header_suffix(llvm::StringRef path) {
     namespace types = clang::driver::types;
-    auto type = type_of_suffix(path);
-    return path::extension(path) == ".cuh" ||
-           (type != types::TY_INVALID && types::onlyPrecompileType(type));
+    auto type = suffix_type(path);
+    return type == types::TY_INVALID || types::onlyPrecompileType(type);
 }
 
 Family family_of_suffix(llvm::StringRef path) {
@@ -44,7 +37,7 @@ Family family_of_suffix(llvm::StringRef path) {
     if(path::extension(path) == ".cuh") {
         return Family::CUDA;
     }
-    auto type = type_of_suffix(path);
+    auto type = suffix_type(path);
     if(type == types::TY_INVALID || type == types::TY_CHeader) {
         return Family::Any;
     }
@@ -57,11 +50,10 @@ Family family_of_suffix(llvm::StringRef path) {
     return types::isDerivedFromC(type) ? Family::C : Family::Other;
 }
 
-/// The family of a unit by the clang language its command compiles it as.
-Family family_of_unit(Workspace& workspace, Fid unit) {
-    auto commands = workspace.build.commands(unit);
-    llvm::StringRef language =
-        workspace.cdb.input_kind(commands.front().config, workspace.file_table.resolve(unit)).value;
+/// The family of a file by the language its effective command compiles
+/// it as — a `-x` in the entry or a rule's append included.
+Family family_of_command(const CommandRef& command) {
+    llvm::StringRef language = command.input.value;
     if(language.contains("cuda")) {
         return Family::CUDA;
     }
@@ -74,95 +66,126 @@ Family family_of_unit(Workspace& workspace, Fid unit) {
     return Family::Other;
 }
 
-bool compatible(Family file, Family unit) {
-    return file == Family::Any || file == unit;
+CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
+    auto path = workspace.file_table.resolve(unit);
+    return workspace.build.resolve(unit, command.config, command.source, path, path);
 }
 
-/// The units whose header search directories contain `dir`, nearest
-/// directory first.
-llvm::SmallVector<Fid> units_searching(Workspace& workspace, llvm::StringRef dir) {
-    auto& index = workspace.search_dir_units;
-    if(workspace.search_dir_units_epoch != workspace.context_epoch) {
+/// The first of the unit's commands compiling it in the file's family —
+/// any when the file's suffix does not say — or none.
+const Candidate* compatible_command(Workspace& workspace,
+                                    Family family,
+                                    Fid unit,
+                                    llvm::ArrayRef<Candidate> commands) {
+    if(family == Family::Any) {
+        return commands.empty() ? nullptr : &commands.front();
+    }
+    auto it = llvm::find_if(commands, [&](const Candidate& command) {
+        return family_of_command(effective(workspace, unit, command)) == family;
+    });
+    return it == commands.end() ? nullptr : &*it;
+}
+
+std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {
+    std::size_t common = 0;
+    auto n = std::min(a.size(), b.size());
+    while(common < n && a[common] == b[common]) {
+        common += 1;
+    }
+    return common;
+}
+
+/// The lenders whose command's header search directories contain `dir`,
+/// nearest directory first, by path and command within one.
+llvm::SmallVector<Lender> lenders_searching(Workspace& workspace, llvm::StringRef dir) {
+    auto& index = workspace.search_dir_lenders;
+    if(workspace.search_dir_lenders_epoch != workspace.commands_epoch) {
         index.clear();
-        for(auto& unit: workspace.build.units(workspace.build.members())) {
-            for(auto& search_dir: workspace.cdb.search_config(unit).dirs) {
-                auto canonical = search_dir.path;
-                path::canonicalize(canonical);
-                auto& bucket = index[canonical];
-                if(!llvm::is_contained(bucket, unit.file)) {
-                    bucket.push_back(unit.file);
+        for(auto member: workspace.build.members()) {
+            for(auto& command: workspace.build.commands(member)) {
+                auto ref = effective(workspace, member, command);
+                for(auto& search_dir: workspace.cdb.search_config(ref).dirs) {
+                    auto canonical = search_dir.path;
+                    path::canonicalize(canonical);
+                    auto& bucket = index[canonical];
+                    if(!llvm::is_contained(bucket, std::pair(member, command.config))) {
+                        bucket.emplace_back(member, command.config);
+                    }
                 }
             }
         }
         for(auto& bucket: index) {
-            std::ranges::sort(bucket.getValue(), [&](Fid a, Fid b) {
-                return workspace.file_table.resolve(a) < workspace.file_table.resolve(b);
+            std::ranges::sort(bucket.getValue(), {}, [&](const std::pair<Fid, ConfigID>& lender) {
+                return std::tuple(workspace.file_table.resolve(lender.first), lender.second);
             });
         }
-        workspace.search_dir_units_epoch = workspace.context_epoch;
+        workspace.search_dir_lenders_epoch = workspace.commands_epoch;
     }
-    llvm::SmallVector<Fid> units;
+    llvm::SmallVector<Lender> lenders;
     path::walk_ancestors(dir, "", [&](llvm::StringRef ancestor) {
         if(auto it = index.find(ancestor); it != index.end()) {
-            units.append(it->second);
+            for(auto& [unit, config]: it->second) {
+                lenders.push_back({.unit = unit, .config = config});
+            }
         }
         return true;
     });
-    return units;
+    return lenders;
 }
 
 }  // namespace
 
-std::optional<Fid> command_donor(Workspace& workspace, Fid file) {
+std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
     auto& files = workspace.file_table;
     auto path = files.resolve(file);
     auto family = family_of_suffix(path);
     auto dir = path::parent_path(path);
     auto stem = path::stem(path);
 
-    llvm::SmallVector<Fid> units;
+    // Every unit with a command of the family; a member a rule claims with
+    // a default command that is no compile command has none.
+    llvm::SmallVector<Lender> units;
     for(auto member: workspace.build.members()) {
-        if(member != file && compatible(family, family_of_unit(workspace, member))) {
-            units.push_back(member);
+        auto commands = workspace.build.commands(member);
+        if(auto* command = compatible_command(workspace, family, member, commands)) {
+            units.push_back({.unit = member, .config = command->config});
         }
     }
     if(units.empty()) {
         return std::nullopt;
     }
+    auto unit_path = [&](const Lender& lender) {
+        return files.resolve(lender.unit);
+    };
 
-    auto siblings = llvm::to_vector(llvm::make_filter_range(units, [&](Fid unit) {
-        return path::parent_path(files.resolve(unit)) == dir;
+    auto siblings = llvm::to_vector(llvm::make_filter_range(units, [&](const Lender& lender) {
+        return path::parent_path(unit_path(lender)) == dir;
     }));
     if(!siblings.empty()) {
-        auto key = [&](Fid unit) {
-            auto unit_path = files.resolve(unit);
-            return std::tuple(path::stem(unit_path) != stem, unit_path);
-        };
-        return *std::ranges::min_element(siblings, {}, key);
+        return *std::ranges::min_element(siblings, {}, [&](const Lender& lender) {
+            return std::tuple(path::stem(unit_path(lender)) != stem, unit_path(lender));
+        });
     }
 
-    // A header some unit's header search reaches: that unit's code finds
-    // it by that path, so its command is the one the header is written for.
+    // A header some command's header search reaches: that unit's code
+    // finds it by that path, so the command is the one the header is
+    // written for.
     if(header_suffix(path)) {
-        for(auto unit: units_searching(workspace, dir)) {
-            if(llvm::is_contained(units, unit)) {
-                return unit;
+        for(auto& lender: lenders_searching(workspace, dir)) {
+            auto commands = workspace.build.commands(lender.unit);
+            auto command = llvm::find_if(commands, [&](const Candidate& candidate) {
+                return candidate.config == lender.config;
+            });
+            if(command != commands.end() &&
+               compatible_command(workspace, family, lender.unit, llvm::ArrayRef(*command))) {
+                return lender;
             }
         }
     }
 
     // The closest unit by path: the longest shared prefix, then by name.
-    auto shared_prefix = [&](Fid unit) {
-        auto unit_path = files.resolve(unit);
-        std::size_t common = 0;
-        auto n = std::min(unit_path.size(), path.size());
-        while(common < n && unit_path[common] == path[common]) {
-            common += 1;
-        }
-        return common;
-    };
-    return *std::ranges::min_element(units, {}, [&](Fid unit) {
-        return std::tuple(path.size() - shared_prefix(unit), files.resolve(unit));
+    return *std::ranges::min_element(units, {}, [&](const Lender& lender) {
+        return std::tuple(path.size() - shared_prefix(unit_path(lender), path), unit_path(lender));
     });
 }
 
@@ -176,8 +199,7 @@ llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header) {
 
     llvm::SmallVector<Fid> hosts;
     for(auto candidate: workspace.dep_graph.find_host_sources(header)) {
-        if(!workspace.build.commands(candidate).empty() &&
-           compatible(family, family_of_unit(workspace, candidate))) {
+        if(compatible_command(workspace, family, candidate, workspace.build.commands(candidate))) {
             hosts.push_back(candidate);
         }
     }
@@ -195,12 +217,10 @@ llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header) {
         int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
         // Longer shared prefix means "closer" in the tree; measured against
         // the header's own length so every candidate shares one baseline.
-        std::size_t common = 0;
-        auto n = std::min(host_path.size(), header_path.size());
-        while(common < n && host_path[common] == header_path[common]) {
-            common += 1;
-        }
-        return {source_rank, stem_match, same_dir, header_path.size() - common};
+        return {source_rank,
+                stem_match,
+                same_dir,
+                header_path.size() - shared_prefix(host_path, header_path)};
     };
     std::ranges::sort(hosts, [&](Fid a, Fid b) {
         auto sa = score(a), sb = score(b);

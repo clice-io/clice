@@ -273,11 +273,15 @@ struct Workspace {
     /// picked from a stale listing without noticing.
     std::uint64_t context_epoch = 1;
 
-    /// The units by header search directory of their commands, for a
-    /// header borrowing the command of the unit whose search reaches it
-    /// (see command_donor); rebuilt when context_epoch moves.
-    llvm::StringMap<llvm::SmallVector<Fid>> search_dir_units;
-    std::uint64_t search_dir_units_epoch = 0;
+    /// Generation of the build's commands: bumped when a database reloads
+    /// or a member appears, not on saves like context_epoch.
+    std::uint64_t commands_epoch = 1;
+
+    /// The units and their base commands by header search directory of
+    /// the command, for a header borrowing the command whose search
+    /// reaches it (see command_lender); rebuilt when commands_epoch moves.
+    llvm::StringMap<llvm::SmallVector<std::pair<Fid, ConfigID>>> search_dir_lenders;
+    std::uint64_t search_dir_lenders_epoch = 0;
 
     /// Whether `path` is one of our own synthesized context artifacts
     /// (prefix/suffix/self-snapshot files under the cache directory). A

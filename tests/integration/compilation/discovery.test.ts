@@ -3,16 +3,19 @@
 /// one yields to the present, and a file with neither an entry nor a host
 /// borrows a nearby unit's command.
 
-import { MTIME_GRANULARITY, sleep, type CliceClient } from "@clice/tools/client";
-import { expect, test } from "../fixtures.ts";
+import { spawnSync } from "node:child_process";
+import * as path from "node:path";
+import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
+import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 function gated(macro: string): string {
     return `#ifndef ${macro}\n#error missing ${macro}\n#endif\nint main() { return 0; }\n`;
 }
 
-function guidance(client: CliceClient, uri: string): number {
-    return (client.diagnostics.get(uri) ?? []).filter((d) => d.code === "inferred-compile-command")
-        .length;
+function guidance(client: CliceClient, uri: string): string[] {
+    return (client.diagnostics.get(uri) ?? [])
+        .filter((d) => d.code === "inferred-compile-command")
+        .map((d) => (typeof d.message === "string" ? d.message : d.message.value));
 }
 
 async function cdbEvents(client: CliceClient, force = false): Promise<number> {
@@ -26,8 +29,6 @@ test("nested projects load on open", async ({ session }) => {
     const [p2] = await client.openAndWait("group-a/p2/main.cpp");
     client.assertNoErrors(p2);
 
-    // Both projects list the shared unit; the one first by name is its
-    // default, the other a candidate.
     const [shared] = await client.openAndWait("group-a/shared/generated.cpp");
     client.assertNoErrors(shared);
     expect(await client.inactiveLines(shared), "p1's command is the default").toEqual([3]);
@@ -42,8 +43,13 @@ test("root wins over subdirectory", async ({ session }) => {
     expect(await client.inactiveLines(main), "the root's command applies").toEqual([3]);
     const [extra] = await client.openAndWait("extra.cpp");
     client.assertNoErrors(extra, "the subdirectory's database fills the gap");
-    expect(client.drainedStderr().toString("utf8")).toContain(
-        "No rule names a compilation database; the 2 found apply in this order",
+    await waitUntil(
+        () =>
+            client
+                .drainedStderr()
+                .toString("utf8")
+                .includes("No rule names a compilation database; the 2 found apply in this order"),
+        { timeout: 10_000, interval: 100, description: "the multi-database hint" },
     );
 });
 
@@ -67,43 +73,38 @@ test("vanished database yields to present", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "#ifdef MOVED\nint moved = 1;\n#else\nint original = 1;\n#endif\n");
     workspace.write("only.cpp", gated("FEATURE"));
-    workspace.writeEntries(
-        [
-            ["main.cpp", ["-DFEATURE"]],
-            ["only.cpp", ["-DFEATURE"]],
-        ],
-        { at: "build/compile_commands.json" },
-    );
+    const original: [string, string[]][] = [
+        ["main.cpp", ["-DFEATURE"]],
+        ["only.cpp", ["-DFEATURE"]],
+    ];
+    workspace.writeEntries(original, { at: "build/compile_commands.json" });
     await client.initialize(workspace);
     const [main] = await client.openAndWait("main.cpp");
     expect(await client.inactiveLines(main)).toEqual([1]);
     const [only] = await client.openAndWait("only.cpp");
     client.assertNoErrors(only);
 
-    // The build directory is wiped and regenerated elsewhere: the files
-    // both databases list follow the present one, the rest keep serving.
+    // The build directory is wiped: alone, a vanished database stays silent.
     workspace.rm("build/compile_commands.json");
+    expect(await cdbEvents(client)).toBe(0);
+    expect(await cdbEvents(client)).toBe(0);
+
+    // Regenerated elsewhere: the files both databases list follow the
+    // present one, the rest keep serving.
     workspace.writeCDB(["main.cpp"], {
         extraArgs: ["-DFEATURE", "-DMOVED"],
         at: "out/compile_commands.json",
     });
-    expect(await cdbEvents(client), "the change settles for a tick").toBe(0);
+    expect(await cdbEvents(client), "the new database settles for a tick").toBe(0);
     expect(await cdbEvents(client)).toBe(1);
     await client.waitForRecompile(main);
     expect(await client.inactiveLines(main), "out/ took the shared unit over").toEqual([3]);
     expect((await client.queryContext(main)).total, "the old entry is still offered").toBe(2);
-    client.assertNoErrors(only, "the vanished database keeps serving its own files");
+    expect((await client.queryContext(only)).total, "the vanished database's own entry").toBe(1);
 
-    // The original comes back and takes its place again.
-    workspace.writeEntries(
-        [
-            ["main.cpp", ["-DFEATURE"]],
-            ["only.cpp", ["-DFEATURE"]],
-        ],
-        { at: "build/compile_commands.json" },
-    );
+    workspace.writeEntries(original, { at: "build/compile_commands.json" });
     expect(await cdbEvents(client)).toBe(0);
-    expect(await cdbEvents(client)).toBe(1);
+    expect(await cdbEvents(client), "the returning database takes its place back").toBe(1);
     await client.waitForRecompile(main);
     expect(await client.inactiveLines(main)).toEqual([1]);
 });
@@ -132,47 +133,97 @@ test("response file change reloads", async ({ session }) => {
     client.assertNoErrors(other, "a unit without the response file is untouched");
 });
 
-test("borrowed commands", async ({ session }) => {
+test("nearby unit lends its command", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    workspace.write("src/lib.cpp", '#include "api.h"\nint lib() { return API; }\n');
+    workspace.write("zsrc/lib.cpp", '#include "api.h"\nint lib() { return API; }\n');
     workspace.write("include/api.h", "#pragma once\n#define API 1\n");
+    workspace.write("include/near.cpp", "int near() { return 0; }\n");
     workspace.write("tools/tool.c", "int tool(void) { return 0; }\n");
-    workspace.writeEntries([
-        ["src/lib.cpp", ["-DFEATURE", "-Iinclude"]],
+    const entries = (feature: boolean): [string, string[]][] => [
+        ["zsrc/lib.cpp", feature ? ["-DFEATURE", "-Iinclude"] : ["-Iinclude"]],
+        ["include/near.cpp", []],
         ["tools/tool.c", ["-DTOOL"]],
-    ]);
+    ];
+    workspace.writeEntries(entries(true));
     await client.initialize(workspace);
 
-    // A new source next to a unit borrows that unit's command.
-    workspace.write("src/new.cpp", gated("FEATURE"));
-    const [sibling] = await client.openAndWait("src/new.cpp");
-    client.assertNoErrors(sibling, "the sibling's -DFEATURE applies");
-    expect(guidance(client, sibling), "a working borrowed command needs no note").toBe(0);
+    workspace.write("zsrc/new.cpp", gated("FEATURE"));
+    const [sibling] = await client.openAndWait("zsrc/new.cpp");
+    client.assertNoErrors(sibling, "the sibling unit's -DFEATURE applies");
+    expect(guidance(client, sibling)).toEqual([]);
 
-    // A header under a unit's include path borrows the unit that searches it.
-    workspace.write("include/extra.h", "#pragma once\n" + gated("FEATURE"));
-    const [header] = await client.openAndWait("include/extra.h");
-    client.assertNoErrors(header, "the unit with -Iinclude lends its command");
+    // The header sits under lib.cpp's -Iinclude: that unit lends, not the
+    // nearer include/near.cpp.
+    workspace.write("include/api/extra.h", "#pragma once\n" + gated("FEATURE"));
+    const [header] = await client.openAndWait("include/api/extra.h");
+    client.assertNoErrors(header, "the unit searching the directory lends its command");
 
-    // A C file never borrows a C++ command: the builtin fallback applies.
-    workspace.write("src/plain.c", gated("TOOL"));
-    const [plain] = await client.openAndWait("src/plain.c");
-    client.assertNoErrors(plain, "the nearest C unit lends -DTOOL");
+    // C files borrow from C units only.
+    workspace.write("zsrc/plain.c", gated("TOOL"));
+    const [plain] = await client.openAndWait("zsrc/plain.c");
+    client.assertNoErrors(plain, "the C unit lends -DTOOL");
     workspace.write("elsewhere/lone.c", gated("FEATURE"));
     const [lone] = await client.openAndWait("elsewhere/lone.c");
-    client.assertHasErrors(lone, "no C unit defines FEATURE and C++ ones do not lend");
+    client.assertHasErrors(lone, "FEATURE comes from C++ commands, which a .c never borrows");
+
+    // The lender's command changes: the borrower follows.
+    workspace.writeEntries(entries(false));
+    expect(await cdbEvents(client, true)).toBe(1);
+    await client.waitForRecompile(sibling);
+    client.assertHasErrors(sibling, "the borrowed command lost FEATURE");
+    workspace.writeEntries(entries(true));
+    expect(await cdbEvents(client, true)).toBe(1);
+    await client.waitForRecompile(sibling);
+    client.assertNoErrors(sibling);
+});
+
+test("borrowed command notes missing includes", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("src/lib.cpp", "int lib() { return 0; }\n");
+    workspace.writeEntries([["src/lib.cpp", []]]);
+    await client.initialize(workspace);
+
+    workspace.write("src/new.cpp", '#include "nope.h"\n');
+    const [uri] = await client.openAndWait("src/new.cpp");
+    client.assertHasErrors(uri);
+    expect(guidance(client, uri)).toEqual([
+        expect.stringContaining("borrowed from a nearby translation unit"),
+    ]);
+});
+
+test("inspect borrows the same way", ({ session }) => {
+    const workspace = session.tmpdir();
+    workspace.write("src/lib.cpp", "int lib() { return 0; }\n");
+    workspace.write("src/new.cpp", gated("FEATURE"));
+    workspace.writeEntries([["src/lib.cpp", ["-DFEATURE"]]]);
+    const run = spawnSync(
+        cliceExecutable(),
+        ["inspect", "hover", path.join(workspace.root, "src", "new.cpp")],
+        { encoding: "utf8", timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+    );
+    expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+    const output = JSON.parse(run.stdout) as {
+        files: Record<string, { diagnostics?: string[] | null }>;
+    };
+    expect(Object.values(output.files).flatMap((file) => file.diagnostics ?? [])).toEqual([]);
 });
 
 test("header hosts match the language", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    workspace.write("c/impl.c", '#include "../shared/types.hpp"\nint impl(void) { return 0; }\n');
+    workspace.write(
+        "c/impl.c",
+        '#include "../shared/types.hpp"\n#include "../shared/plain.h"\nint impl(void) { return 0; }\n',
+    );
     workspace.write("shared/types.hpp", "#pragma once\n" + gated("CXX"));
+    workspace.write("shared/plain.h", "#pragma once\n");
     workspace.writeEntries([["c/impl.c", ["-DFROM_C"]]]);
     await client.initialize(workspace);
 
     const [header] = await client.openAndWait("shared/types.hpp");
     client.assertHasErrors(header, "a C++ header is not hosted by a C unit");
     expect((await client.queryContext(header)).total).toBe(0);
+    const [plain] = await client.openAndWait("shared/plain.h");
+    expect((await client.queryContext(plain)).total, "a .h takes any host").toBe(1);
 });
 
 test("default command claims new files", async ({ session }) => {

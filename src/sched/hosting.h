@@ -3,6 +3,7 @@
 #include <optional>
 #include <vector>
 
+#include "command/command.h"
 #include "vfs/file_table.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -25,14 +26,21 @@ struct Host {
 /// the header's stem, its directory, and path proximity.
 llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header);
 
-/// The unit whose command a file with neither an entry nor a host borrows
-/// (CommandSource::Inferred), among the units of the file's language
-/// family (a `.h` matches any, a `.c` never borrows C++): one in the
-/// file's directory — same stem first, then by name — else, for a
-/// header, the unit whose header search directories contain it, nearest
-/// directory first, else the unit closest by path. Nullopt when the
-/// build has no such unit.
-std::optional<Fid> command_donor(Workspace& workspace, Fid file);
+/// A unit and the one of its base commands that another file borrows.
+struct Lender {
+    Fid unit;
+    ConfigID config;
+};
+
+/// The lender of a file with neither an entry nor a host
+/// (CommandSource::Inferred), among the units the build compiles in the
+/// file's language family (a `.h` matches any, a `.c` never borrows C++):
+/// one in the file's directory — same stem first, then by name — with its
+/// first command; else, for a header, the unit whose command's header
+/// search directories contain it, nearest directory first, with that
+/// command; else the unit closest by path. Nullopt when the build has no
+/// such unit.
+std::optional<Lender> command_lender(Workspace& workspace, Fid file);
 
 /// The host a header compiles under when nothing is pinned: the first
 /// ranked one with an include chain to it.

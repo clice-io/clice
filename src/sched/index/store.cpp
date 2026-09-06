@@ -1478,6 +1478,28 @@ void IndexStore::retire_excluded(Report& report) {
     }
 }
 
+llvm::SmallVector<std::string> IndexStore::remembered_sources() {
+    llvm::SmallVector<std::string> sources;
+    if(!workspace.index_db) {
+        return sources;
+    }
+    auto blob = workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
+    CDBSnapshot persisted;
+    if(!blob ||
+       !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
+        return sources;
+    }
+    for(auto& entry: persisted.entries) {
+        for(auto& source: entry.sources) {
+            auto absolute = absolute_path(workspace, source);
+            if(!llvm::is_contained(sources, absolute)) {
+                sources.push_back(std::move(absolute));
+            }
+        }
+    }
+    return sources;
+}
+
 void IndexStore::reconcile_cdb_snapshot(Report& report) {
     auto blob = workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
     CDBSnapshot persisted;

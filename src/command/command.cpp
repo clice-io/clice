@@ -24,6 +24,13 @@
 
 namespace clice {
 
+clang::driver::types::ID suffix_type(llvm::StringRef path) {
+    namespace types = clang::driver::types;
+    auto ext = path::extension(path);
+    ext.consume_front(".");
+    return ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
+}
+
 namespace {
 
 namespace ranges = std::ranges;

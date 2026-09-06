@@ -77,6 +77,10 @@ public:
     /// left out.
     llvm::SmallVector<SourceID, 4> source_order(llvm::StringRef path) const;
 
+    /// Whether discovery registered the source: no active rule declares it
+    /// (under discovery every registered source is discovered).
+    bool discovered(SourceID id) const;
+
     /// A file's database entries in build order: entries from the sources
     /// of rules matching the file first, then from the other active rules'
     /// sources, each in declaration order; discovered sources (registered
@@ -130,7 +134,7 @@ public:
     /// report the ones that appeared since the last enumeration: a file
     /// created after startup joins the build. The workspace sweep calls it
     /// every tick.
-    std::vector<Fid> refresh_default_sources();
+    llvm::SmallVector<Fid> refresh_default_sources();
 
     /// The scan units of `members`: every command of every member, so a
     /// header reachable through only one of a file's entries still finds
@@ -150,6 +154,11 @@ public:
 
 private:
     llvm::SmallVector<const CompiledRule*> matching(llvm::StringRef path) const;
+
+    /// The sources rules declare: the active rules' — and, while the active
+    /// configuration declares any, the inactive rules' too, which hide a
+    /// registered source instead of leaving it to discovery.
+    llvm::SmallVector<SourceID, 4> declared_ids() const;
 
     /// The first matching active rule declaring a default command.
     const CompiledRule* default_rule(llvm::StringRef path) const;

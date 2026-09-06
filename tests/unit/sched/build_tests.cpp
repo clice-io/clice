@@ -4,6 +4,7 @@
 #include "test/test.h"
 #include "sched/build.h"
 #include "sched/configuration.h"
+#include "sched/workspace.h"
 #include "support/filesystem.h"
 
 namespace clice::testing {
@@ -334,21 +335,70 @@ TEST_CASE(DiscoveredSourceOrder) {
     Build build{config, cdb, files};
     build.reset_active("");
     auto sub = cdb.add_source(tmp.path("sub"));
-    auto deep = cdb.add_source(tmp.path("build"));
+    auto build_dir = cdb.add_source(tmp.path("build"));
     auto root = cdb.add_source(tmp.path("compile_commands.json"));
-    for(auto id: {sub, deep, root}) {
+    for(auto id: {sub, build_dir, root}) {
         ASSERT_TRUE(cdb.load_source(id).has_value());
+        EXPECT_TRUE(build.discovered(id));
     }
 
     auto main = files.intern(canonical(tmp, "main.cpp"));
     EXPECT_EQ(build.source_order(files.resolve(main)),
-              (llvm::SmallVector<SourceID, 4>{root, deep, sub}));
+              (llvm::SmallVector<SourceID, 4>{root, build_dir, sub}));
     EXPECT_EQ(build.entries(main).front().source, root);
 
     cdb.set_present(root, false);
     EXPECT_EQ(build.source_order(files.resolve(main)),
-              (llvm::SmallVector<SourceID, 4>{deep, sub, root}));
-    EXPECT_EQ(build.entries(main).front().source, deep);
+              (llvm::SmallVector<SourceID, 4>{build_dir, sub, root}));
+    EXPECT_EQ(build.entries(main).front().source, build_dir);
+};
+
+TEST_CASE(DiscoverEveryNearby) {
+    /// Discovery lists the root's database and every direct
+    /// subdirectory's in name order, and the ones above a file up to the
+    /// root nearest first.
+    TempDir tmp;
+    tmp.touch("compile_commands.json", "[]");
+    tmp.touch("out/compile_commands.json", "[]");
+    tmp.touch("build/compile_commands.json", "[]");
+    tmp.touch("deep/proj/compile_commands.json", "[]");
+    auto found = discover_compile_commands(tmp.root);
+    ASSERT_EQ(found.size(), 3u);
+    EXPECT_EQ(found[0], path::join(tmp.root, "compile_commands.json"));
+    EXPECT_EQ(found[1], path::join(tmp.root, "build", "compile_commands.json"));
+    EXPECT_EQ(found[2], path::join(tmp.root, "out", "compile_commands.json"));
+
+    auto above = compile_commands_above(tmp.path("deep/proj/src"), tmp.root);
+    ASSERT_EQ(above.size(), 2u);
+    EXPECT_EQ(above[0], path::join(tmp.root, "deep", "proj", "compile_commands.json"));
+    EXPECT_EQ(above[1], path::join(tmp.root, "compile_commands.json"));
+};
+
+TEST_CASE(RefreshDefaultSources) {
+    /// A file created under a default-command rule's patterns appears at
+    /// the next refresh, once; a deleted one leaves the members.
+    TempDir tmp;
+    tmp.touch("src/main.cpp", "");
+    Config config;
+    config.rules.push_back(
+        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    config.finalize(tmp.root.str());
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active("");
+    ASSERT_EQ(build.members().size(), 1u);
+    EXPECT_TRUE(build.refresh_default_sources().empty());
+
+    tmp.touch("src/later.cpp", "");
+    auto later = files.intern(canonical(tmp, "src/later.cpp"));
+    EXPECT_EQ(build.refresh_default_sources(), llvm::SmallVector<Fid>{later});
+    EXPECT_TRUE(build.refresh_default_sources().empty());
+    EXPECT_EQ(build.members().size(), 2u);
+
+    fs::remove_all(tmp.path("src/later.cpp"));
+    EXPECT_TRUE(build.refresh_default_sources().empty());
+    EXPECT_EQ(build.members().size(), 1u);
 };
 
 TEST_CASE(DeclaredSourceOffDiscovery) {

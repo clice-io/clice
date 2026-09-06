@@ -370,6 +370,13 @@ TEST_CASE(ResponseFilesRecorded) {
     EXPECT_EQ(recorded[0], path::join(tmp.root, "flags.rsp"));
     EXPECT_EQ(recorded[1], path::join(tmp.root, "missing.rsp"));
     EXPECT_TRUE(database.present(id));
+
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
+    }));
+    ASSERT_TRUE(database.load_source(id).has_value());
+    EXPECT_EQ(database.response_files(id).size(), 1u);
 };
 
 TEST_CASE(DriverModeFromRsp) {

@@ -393,13 +393,6 @@ void apply_command(CompilationParams& params, const FileCommand& command) {
     params.directory = command.directory;
 }
 
-clang::driver::types::ID file_type(llvm::StringRef file) {
-    namespace types = clang::driver::types;
-    auto ext = path::extension(file);
-    return ext.empty() ? types::TY_INVALID
-                       : types::lookupTypeForExtension(llvm::StringRef(ext).drop_front());
-}
-
 bool is_header_type(clang::driver::types::ID type) {
     namespace types = clang::driver::types;
     return type == types::TY_CHeader || type == types::TY_CXXHeader;
@@ -439,7 +432,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
                                         llvm::StringRef flags_directory,
                                         ContextResolver* contexts) {
     namespace types = clang::driver::types;
-    auto type = file_type(file);
+    auto type = suffix_type(file);
     bool is_header = is_header_type(type);
 
     FileCommand command;
@@ -923,7 +916,7 @@ int run_inspect(const InspectOptions& opts) {
         // reach the fixture diagnostics gate, like the server path opening
         // every sibling — except headers, which may be valid only through
         // their includer and never compile standalone on either path.
-        if(!participant && is_header_type(file_type(source.abs))) {
+        if(!participant && is_header_type(suffix_type(source.abs))) {
             continue;
         }
         FileEntry& entry = output.files.find(source.rel)->second;

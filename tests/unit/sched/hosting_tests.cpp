@@ -119,7 +119,7 @@ TEST_CASE(HostsMatchLanguage) {
     EXPECT_EQ(ranked_hosts(workspace, plain), llvm::SmallVector<Fid>{impl});
 };
 
-TEST_CASE(DonorSibling) {
+TEST_CASE(LenderSibling) {
     /// A file without a command borrows from a unit in its directory, the
     /// one sharing its stem before the first by name; a `.c` only from a C
     /// unit, and nothing when the build has none.
@@ -140,35 +140,51 @@ TEST_CASE(DonorSibling) {
     auto first = workspace.file_table.intern(tmp.path("src/aaa.cpp"));
     auto other = workspace.file_table.intern(tmp.path("src/other.cpp"));
     auto plain = workspace.file_table.intern(tmp.path("src/plain.c"));
-    EXPECT_EQ(command_donor(workspace, header), same_stem);
-    EXPECT_EQ(command_donor(workspace, other), first);
-    EXPECT_FALSE(command_donor(workspace, plain).has_value());
+    EXPECT_EQ(command_lender(workspace, header)->unit, same_stem);
+    EXPECT_EQ(command_lender(workspace, other)->unit, first);
+    EXPECT_FALSE(command_lender(workspace, plain).has_value());
 };
 
-TEST_CASE(DonorSearchDir) {
-    /// A header under a unit's header search directory borrows that unit
-    /// before any closer one by path; a source there does not.
+TEST_CASE(LenderSearchDir) {
+    /// A header under a command's header search directory borrows that
+    /// command — the entry that searches there, not the unit's first —
+    /// over the unit closest by path; a source there borrows the closest.
     TempDir tmp;
     tmp.touch("include/api/new.h", "");
-    tmp.touch("include/api/near.cpp", "");
     Workspace workspace;
     workspace.config.finalize(tmp.root.str());
     workspace.build.reset_active("");
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         auto command = std::format("clang++ {} {}", flags, tmp.path(file));
-        workspace.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+        return *workspace.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
     };
-    add("src/lib.cpp", "-Iinclude");
-    add("tools/gen.cpp", "");
+    add("zzz/lib.cpp", "");
+    auto searching = add("zzz/lib.cpp", "-Iinclude");
+    auto near = add("include/near.cpp", "");
 
     auto header = workspace.file_table.intern(tmp.path("include/api/new.h"));
-    auto lib = workspace.file_table.intern(tmp.path("src/lib.cpp"));
-    auto gen = workspace.file_table.intern(tmp.path("tools/gen.cpp"));
-    EXPECT_EQ(command_donor(workspace, header), lib);
+    auto lender = command_lender(workspace, header);
+    ASSERT_TRUE(lender.has_value());
+    EXPECT_EQ(lender->unit, searching.file);
+    EXPECT_EQ(lender->config, searching.config);
 
-    /// Without a searching unit the closest by path lends.
-    auto elsewhere = workspace.file_table.intern(tmp.path("tools/sub/extra.cpp"));
-    EXPECT_EQ(command_donor(workspace, elsewhere), gen);
+    auto source = workspace.file_table.intern(tmp.path("include/api/new.cpp"));
+    EXPECT_EQ(command_lender(workspace, source)->unit, near.file);
+};
+
+TEST_CASE(LenderIgnoresCommandless) {
+    /// A member a rule claims with a default command that is no compile
+    /// command lends nothing.
+    TempDir tmp;
+    tmp.touch("src/a.cpp", "");
+    tmp.touch("src/b.cpp", "");
+    Workspace workspace;
+    workspace.config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    ASSERT_EQ(workspace.build.members().size(), 2u);
+    auto header = workspace.file_table.intern(tmp.path("src/new.h"));
+    EXPECT_FALSE(command_lender(workspace, header).has_value());
 };
 
 };  // TEST_SUITE(Hosting)

@@ -2,6 +2,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "server/state/file_tracker.h"
+#include "support/filesystem.h"
 
 #include "llvm/Support/Process.h"
 
@@ -189,6 +190,88 @@ TEST_CASE(CDBTickRelocates) {
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
     EXPECT_EQ(workspace.build.entries(main_id).front().source, root);
     EXPECT_EQ(workspace.build.entries(main_id).size(), 2u);
+}
+
+TEST_CASE(CDBTickRenameOver) {
+    /// A same-size rewrite renamed over the database within one mtime
+    /// tick is a new file: an ordinary tick sees it where stable file
+    /// identities exist.
+    if constexpr(fs::stable_file_ids) {
+        TempDir tmp;
+        tmp.touch("main.cpp", R"(int main() {})");
+        Workspace workspace;
+        SessionStore store;
+        write_cdb(tmp,
+                  workspace.cdb,
+                  build_cdb_json({
+                      {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
+        }));
+        FileTracker tracker(workspace, store, tmp.root.str().str());
+        llvm::sys::fs::file_status before;
+        ASSERT_FALSE(
+            static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
+
+        tmp.touch("replacement.json",
+                  build_cdb_json({
+                      {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
+        }));
+        int fd = 0;
+        ASSERT_FALSE(
+            static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("replacement.json"),
+                                                              fd,
+                                                              llvm::sys::fs::CD_OpenExisting)));
+        ASSERT_FALSE(static_cast<bool>(
+            llvm::sys::fs::setLastAccessAndModificationTime(fd,
+                                                            before.getLastAccessedTime(),
+                                                            before.getLastModificationTime())));
+        llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+        ASSERT_TRUE(fs::rename(tmp.path("replacement.json"), tmp.path("compile_commands.json"))
+                        .has_value());
+
+        ASSERT_TRUE(tracker.tick_cdb().empty());
+        auto events = tracker.tick_cdb();
+        ASSERT_EQ(events.size(), 1u);
+        auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
+        ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
+    }
+}
+
+TEST_CASE(CDBTickDiscoversAround) {
+    /// Opening a file registers the databases above it up to the root, at
+    /// once; a file with a command, or outside the workspace, registers
+    /// nothing, and a database above a file still without a command is
+    /// found by a later tick.
+    TempDir tmp;
+    tmp.touch("a/b/main.cpp", R"(int main() {})");
+    tmp.touch("a/other.cpp", R"(int other() {})");
+    Workspace workspace;
+    SessionStore store;
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    tmp.touch("a/b/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("a/b/main.cpp"), {}}
+    }));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    auto main_id = workspace.file_table.intern(tmp.path("a/b/main.cpp"));
+    auto other_id = workspace.file_table.intern(tmp.path("a/other.cpp"));
+
+    auto events = tracker.discover_around(main_id);
+    ASSERT_EQ(events.size(), 1u);
+    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{main_id});
+    EXPECT_TRUE(tracker.discover_around(main_id).empty());
+    EXPECT_TRUE(tracker.discover_around(other_id).empty());
+    auto outside = workspace.file_table.intern(path::join(path::parent_path(tmp.root), "x.cpp"));
+    EXPECT_TRUE(tracker.discover_around(outside).empty());
+
+    store.open(other_id);
+    tmp.touch("a/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("a/other.cpp"), {}}
+    }));
+    events = tracker.tick_cdb(/*force=*/true);
+    ASSERT_EQ(events.size(), 1u);
+    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{other_id});
 }
 
 TEST_CASE(CDBTickPhantomReplacement) {

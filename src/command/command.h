@@ -18,6 +18,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "clang/Driver/Types.h"
 
 namespace llvm {
 
@@ -120,6 +121,11 @@ struct CompileConfig {
 enum class ConfigID : std::uint32_t {};
 
 constexpr inline ConfigID invalid_config = ConfigID(~0u);
+
+/// The type clang assigns to a file by its extension (Types.def);
+/// TY_INVALID when it has none — `.cuh`, which clang does not list, and
+/// unknown suffixes alike.
+clang::driver::types::ID suffix_type(llvm::StringRef path);
 
 /// The language dimension of a command for one input file: the clang
 /// language name ("c++", "cuda", ...) selected by the governing selector or
@@ -493,8 +499,8 @@ private:
 
     std::vector<Source> source_files;
 
-    /// The source whose load is expanding response files, which records
-    /// them; nullopt while a hand-written command normalizes.
+    /// The source being loaded, which records the response files its
+    /// commands expand; nullopt outside a load.
     std::optional<SourceID> loading;
 
     /// Every source's entries, sorted by (file, source, ordinal).

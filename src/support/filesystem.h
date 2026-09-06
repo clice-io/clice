@@ -41,6 +41,9 @@ inline bool under(llvm::StringRef p, llvm::StringRef root) {
 inline void walk_ancestors(llvm::StringRef start,
                            llvm::StringRef stop,
                            llvm::function_ref<bool(llvm::StringRef)> visit) {
+    while(stop.size() > 1 && is_separator(stop.back())) {
+        stop = stop.drop_back();
+    }
     for(llvm::StringRef dir = start; !dir.empty();) {
         if(!visit(dir) || dir == stop) {
             return;
