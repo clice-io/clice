@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cassert>
 #include <cstring>
+#include <format>
 #include <type_traits>
 
 #ifdef __linux__
@@ -15,8 +16,10 @@
 #include "support/logging.h"
 
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/xxhash.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -38,8 +41,8 @@ constexpr llvm::StringLiteral index_lock_name = "index.lock";
 /// generation pin with FileVersion ids allocated against a different
 /// table, loading rows under the wrong files. An OS advisory lock dies
 /// with its process, so a crash leaves nothing stale behind.
-std::optional<int> acquire_writer_lock(CacheStore& store) {
-    auto lock_path = path::join(store.base_dir(), index_lock_name);
+std::optional<int> acquire_writer_lock(llvm::StringRef library) {
+    auto lock_path = path::join(library, index_lock_name);
     int lock_fd = -1;
     if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
                                                      lock_fd,
@@ -52,7 +55,7 @@ std::optional<int> acquire_writer_lock(CacheStore& store) {
         LOG_WARN(
             "Another clice process is writing the index cache at {}; "
             "index persistence is disabled for this process",
-            store.base_dir());
+            library);
         llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
         return std::nullopt;
     }
@@ -436,9 +439,11 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     return mdb_txn_commit(wtxn) == 0 ? MetaCheck::Ok : MetaCheck::Transient;
 }
 
-std::unique_ptr<LmdbDatabase>
-    open_lmdb_env(CacheStore& store, int lock_fd, std::size_t initial_mapsize, bool read_only) {
-    auto path = path::join(store.base_dir(), lmdb_file_name);
+std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
+                                            int lock_fd,
+                                            std::size_t initial_mapsize,
+                                            bool read_only) {
+    auto path = path::join(library, lmdb_file_name);
 
     auto mapsize = initial_mapsize != 0 ? initial_mapsize : lmdb_default_mapsize;
 
@@ -598,26 +603,54 @@ FsLocality filesystem_locality(llvm::StringRef dir) {
 
 }  // namespace
 
+std::string library_directory(const CacheStore& store, llvm::StringRef configuration) {
+    std::string name = "default";
+    if(!configuration.empty()) {
+        name = configuration.take_front(32).lower();
+        for(char& c: name) {
+            if(!llvm::isAlnum(c) && c != '-' && c != '_') {
+                c = '_';
+            }
+        }
+        name += std::format("~{:016x}", llvm::xxh3_64bits(configuration));
+    }
+    return path::join(store.base_dir(), "index", name);
+}
+
 std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
+                                                 llvm::StringRef configuration,
                                                  std::size_t initial_mapsize,
                                                  bool read_only) {
     read_only = read_only || store.read_only();
+    auto library = library_directory(store, configuration);
+    if(read_only) {
+        if(!llvm::sys::fs::exists(path::join(library, lmdb_file_name))) {
+            return nullptr;
+        }
+    } else if(auto ec = llvm::sys::fs::create_directories(library)) {
+        LOG_WARN("Cannot create the index library {}: {}", library, ec.message());
+        return nullptr;
+    }
     int lock_fd = -1;
     if(!read_only) {
-        auto locked = acquire_writer_lock(store);
+        auto locked = acquire_writer_lock(library);
         if(!locked) {
             return nullptr;
         }
         lock_fd = *locked;
     }
-    auto db = open_lmdb_env(store, lock_fd, initial_mapsize, read_only);
+    auto db = open_lmdb_env(library, lock_fd, initial_mapsize, read_only);
     if(!db) {
         release_writer_lock(lock_fd);
+        return nullptr;
     }
+    LOG_INFO("Index library: {}", library);
     return db;
 }
 
-std::unique_ptr<BlobDatabase> open_database(CacheStore& store, bool read_only) {
+std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
+                                            llvm::StringRef configuration,
+                                            bool read_only) {
     // FIXME: no index persistence on remote filesystems. A per-file blob
     // backend used to fill this gap (one CacheStore-namespace file per
     // blob, removed in PR #650 — see its history to resurrect it), but it
@@ -646,7 +679,7 @@ std::unique_ptr<BlobDatabase> open_database(CacheStore& store, bool read_only) {
             break;
         }
     }
-    return open_lmdb_database(store, 0, read_only);
+    return open_lmdb_database(store, configuration, 0, read_only);
 }
 
 }  // namespace clice::index

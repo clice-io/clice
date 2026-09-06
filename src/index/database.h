@@ -157,21 +157,33 @@ public:
     }
 };
 
-/// A single `index.mdb` (plus its `-lock` file) in the store's version
-/// directory. On a writable store this first takes an exclusive
-/// cross-process writer lock for the index (held until destruction) and
-/// returns nullptr when another clice process already holds it — the
-/// global/manifest blobs form one mutable lineage that tolerates no
-/// second writer. Also nullptr when the environment cannot be opened
-/// safely — only confirmed corruption (or a meta mismatch) is repaired by
-/// deleting and rebuilding the database; transient errors disable index
-/// persistence for the session and touch nothing. A read-only open uses
-/// MDB_RDONLY, which still registers a reader slot in the `-lock` file —
-/// the one deviation from the cache store's read-only-touches-nothing
-/// contract. `initial_mapsize` overrides the default virtual map
-/// reservation (tests exercise the growth path with a tiny map); 0 keeps
-/// the default.
+/// The directory of a build configuration's index library:
+/// `index/<name>` under the store's version directory, every
+/// configuration having a library of its own. The anonymous
+/// configuration's is `default`; a tag's is its spelling lowercased and
+/// reduced to `[a-z0-9_-]`, then `~` and a hash of the original. The hash
+/// alone makes the name unique — filesystems fold case, Windows reserves
+/// device names and strips trailing dots, and no tag may alias `default`
+/// — while the prefix keeps it recognizable.
+std::string library_directory(const CacheStore& store, llvm::StringRef configuration);
+
+/// The configuration's library: a single `index.mdb` (plus its `-lock`
+/// file) in its library directory, created on demand. On a writable
+/// store this first takes an exclusive cross-process writer lock for the
+/// library (held until destruction) and returns nullptr when another
+/// clice process already holds it — the global/manifest blobs form one
+/// mutable lineage that tolerates no second writer. Also nullptr when
+/// the environment cannot be opened safely — only confirmed corruption
+/// (or a meta mismatch) is repaired by deleting and rebuilding the
+/// database; transient errors disable index persistence for the session
+/// and touch nothing. A read-only open of a library without an
+/// `index.mdb` yet is nullptr too; an existing one opens with MDB_RDONLY, which
+/// still registers a reader slot in the `-lock` file — the one deviation
+/// from the cache store's read-only-touches-nothing contract.
+/// `initial_mapsize` overrides the default virtual map reservation
+/// (tests exercise the growth path with a tiny map); 0 keeps the default.
 std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
+                                                 llvm::StringRef configuration,
                                                  std::size_t initial_mapsize = 0,
                                                  bool read_only = false);
 
@@ -180,6 +192,8 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
 /// documented to break) index persistence is disabled with a warning; a
 /// FUSE mount gets the warning but proceeds, since FUSE fronts anything
 /// from a local overlay to sshfs.
-std::unique_ptr<BlobDatabase> open_database(CacheStore& store, bool read_only = false);
+std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
+                                            llvm::StringRef configuration,
+                                            bool read_only = false);
 
 }  // namespace clice::index

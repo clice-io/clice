@@ -46,7 +46,7 @@ TEST_SUITE(IndexDatabase) {
 TEST_CASE(WriteReadRoundTrip) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store);
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
 
     auto rejected = db->write({blob(index::IndexBlobKind::Shard, "a", large_value('a')),
@@ -69,7 +69,7 @@ TEST_CASE(WriteReadRoundTrip) {
 TEST_CASE(WriteRemoves) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store);
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
 
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Manifest, "m1", "one"),
@@ -91,7 +91,7 @@ TEST_CASE(WriteRemoves) {
 TEST_CASE(KindsAreIsolated) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store);
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
 
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Shard, "same", "shard"),
@@ -113,7 +113,7 @@ TEST_CASE(KindsAreIsolated) {
 TEST_CASE(SnapshotPinsUntilAdvance) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store);
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
 
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());
@@ -142,7 +142,7 @@ TEST_CASE(SnapshotPinsUntilAdvance) {
 TEST_CASE(SmallValuesCopiedAligned) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store);
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
 
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Manifest, "small", "tiny"),
@@ -169,11 +169,11 @@ TEST_CASE(ReopenServesPersistedBlobs) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     {
-        auto db = index::open_database(store);
+        auto db = index::open_database(store, "");
         ASSERT_TRUE(db != nullptr);
         ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "snapshot")}, {}).empty());
     }
-    auto db = index::open_database(store);
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
     ASSERT_TRUE(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "snapshot");
 }
@@ -182,12 +182,14 @@ TEST_CASE(CorruptDatabaseRebuilds) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     {
+        auto library = index::library_directory(store, "");
+        require(!llvm::sys::fs::create_directories(library), "creating the library failed");
         std::error_code ec;
-        llvm::raw_fd_ostream os(path::join(store.base_dir(), "index.mdb"), ec);
+        llvm::raw_fd_ostream os(path::join(library, "index.mdb"), ec);
         require(!ec, "writing garbage failed");
         os << "this is not an lmdb file, not even close, but long enough to map";
     }
-    auto db = index::open_database(store);
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
     ASSERT_FALSE(db->contains(index::IndexBlobKind::CDB, "cdb"));
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
@@ -196,7 +198,7 @@ TEST_CASE(CorruptDatabaseRebuilds) {
 TEST_CASE(DefaultOpenFileBounded) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store);
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "x")}, {}).empty());
 
@@ -205,7 +207,9 @@ TEST_CASE(DefaultOpenFileBounded) {
     // default exists to avoid); POSIX file sizes track the data
     // high-water mark and pass trivially.
     std::uint64_t size = 0;
-    ASSERT_TRUE(!llvm::sys::fs::file_size(path::join(store.base_dir(), "index.mdb"), size));
+    ASSERT_TRUE(
+        !llvm::sys::fs::file_size(path::join(index::library_directory(store, ""), "index.mdb"),
+                                  size));
     ASSERT_TRUE(size <= 256ull << 20);
 }
 
@@ -213,7 +217,7 @@ TEST_CASE(FullMapFailsWholeBatchThenGrows) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     // Small enough that a handful of large values exhausts it.
-    auto db = index::open_lmdb_database(store, 256 * 1024);
+    auto db = index::open_lmdb_database(store, "", 256 * 1024);
     ASSERT_TRUE(db != nullptr);
 
     std::vector<index::BlobDatabase::Blob> puts;
@@ -250,21 +254,21 @@ TEST_CASE(ReadOnlyMissingDatabase) {
     // A reader before any writer ran has nothing to read: persistence is
     // disabled rather than creating an index.mdb a read-only session must
     // not leave behind.
-    auto db = index::open_database(store, /*read_only=*/true);
+    auto db = index::open_database(store, "", /*read_only=*/true);
     ASSERT_TRUE(db == nullptr);
-    ASSERT_FALSE(llvm::sys::fs::exists(path::join(store.base_dir(), "index.mdb")));
+    ASSERT_FALSE(llvm::sys::fs::exists(index::library_directory(store, "")));
 }
 
 TEST_CASE(ReadOnlyServesExistingDatabase) {
     TempDir tmp;
     {
         auto store = open_store(tmp, "ws");
-        auto db = index::open_database(store);
+        auto db = index::open_database(store, "");
         ASSERT_TRUE(db != nullptr);
         ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Global, "global", "gg")}, {}).empty());
     }
     auto store = open_store(tmp, "ws", /*read_only=*/true);
-    auto db = index::open_database(store);
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
     ASSERT_TRUE(db->contains(index::IndexBlobKind::Global, "global"));
     ASSERT_TRUE(db->read(index::IndexBlobKind::Global, "global").buffer->getBuffer() == "gg");
@@ -274,21 +278,81 @@ TEST_CASE(CondemnedDatabaseDeletesOnClose) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     {
-        auto db = index::open_database(store);
+        auto db = index::open_database(store, "");
         ASSERT_TRUE(db != nullptr);
         ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "bytes")}, {}).empty());
         db->condemn();
     }
-    ASSERT_FALSE(llvm::sys::fs::exists(path::join(store.base_dir(), "index.mdb")));
-    auto db = index::open_database(store);
+    ASSERT_FALSE(
+        llvm::sys::fs::exists(path::join(index::library_directory(store, ""), "index.mdb")));
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
     ASSERT_FALSE(db->contains(index::IndexBlobKind::CDB, "cdb"));
+}
+
+TEST_CASE(LibraryPerConfiguration) {
+    /// Every configuration has a library of its own under `index/`, the
+    /// anonymous one named `default`; what one holds the other never sees.
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    EXPECT_EQ(index::library_directory(store, ""),
+              path::join(store.base_dir(), "index", "default"));
+    auto library = index::library_directory(store, "release");
+    EXPECT_EQ(path::parent_path(library), path::join(store.base_dir(), "index"));
+    EXPECT_TRUE(path::filename(library).starts_with("release~"));
+
+    auto debug = index::open_database(store, "debug");
+    auto release = index::open_database(store, "release");
+    ASSERT_TRUE(debug != nullptr);
+    ASSERT_TRUE(release != nullptr);
+    ASSERT_TRUE(debug->write({blob(index::IndexBlobKind::Global, "global", "d")}, {}).empty());
+    ASSERT_TRUE(release->advance_read_snapshot().has_value());
+    ASSERT_FALSE(release->contains(index::IndexBlobKind::Global, "global"));
+    ASSERT_TRUE(
+        llvm::sys::fs::exists(path::join(index::library_directory(store, "debug"), "index.mdb")));
+    ASSERT_TRUE(
+        llvm::sys::fs::exists(path::join(index::library_directory(store, "release"), "index.mdb")));
+}
+
+TEST_CASE(LibraryNameSanitized) {
+    /// The name's prefix is the tag reduced to a safe lowercase spelling;
+    /// the hash behind the `~` tells apart tags that reduce alike, alias
+    /// each other on a case-folding filesystem, or spell `default`.
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto name = [&](llvm::StringRef configuration) {
+        return path::filename(index::library_directory(store, configuration)).str();
+    };
+    auto prefix = [&](llvm::StringRef configuration) {
+        auto full = name(configuration);
+        return llvm::StringRef(full).rsplit('~').first.str();
+    };
+    EXPECT_EQ(prefix("Debug-x86_64.v2"), "debug-x86_64_v2");
+    EXPECT_NE(name("Debug"), name("debug"));
+    EXPECT_EQ(prefix("linux/arm"), "linux_arm");
+    EXPECT_NE(name("linux/arm"), name("linux\\arm"));
+    EXPECT_NE(name("linux/arm"), name("linux arm"));
+    EXPECT_EQ(prefix("a~b"), "a_b");
+    EXPECT_EQ(prefix("release."), "release_");
+    EXPECT_EQ(prefix(".."), "__");
+    EXPECT_NE(name("default"), "default");
+    EXPECT_EQ(prefix(std::string(40, 'x')), std::string(32, 'x'));
+}
+
+TEST_CASE(LibraryBlockedByFile) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto library = index::library_directory(store, "x");
+    auto ec = llvm::sys::fs::create_directories(path::parent_path(library));
+    ASSERT_TRUE(!ec);
+    ASSERT_TRUE(fs::write(library, "x").has_value());
+    ASSERT_TRUE(index::open_database(store, "x") == nullptr);
 }
 
 TEST_CASE(OutstandingSnapshotsStack) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store);
+    auto db = index::open_database(store, "");
     ASSERT_TRUE(db != nullptr);
 
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());

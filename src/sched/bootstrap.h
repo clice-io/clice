@@ -39,22 +39,24 @@ struct BuildLoad {
     std::vector<Fid> members;
 };
 
-/// Register and load the build's sources — the databases the rules declare
-/// (existing or not; the tracker watches for them), else the one
-/// discovered under `root` — then enumerate the build's members and scan
-/// the dependency graph from them. The workspace's configuration is
-/// final. The one loading path of the server, the batch driver and
-/// `clice inspect`.
-BuildLoad load_build(Workspace& workspace, llvm::StringRef root);
+/// Activate the build `configuration` (resolved, see
+/// resolve_configuration), register and load the build's sources — the
+/// databases the rules declare (existing or not; the tracker watches for
+/// them), else the one discovered under `root` — then enumerate the
+/// build's members and scan the dependency graph from them. The
+/// workspace's configuration is final. The one loading path of the
+/// server, the batch driver and `clice inspect`.
+BuildLoad load_build(Workspace& workspace, llvm::StringRef root, llvm::StringRef configuration);
 
 /// The one workspace loading sequence, shared by the server's initialize
-/// and the batch driver so the two can never drift apart: open the cache
-/// store and register its namespaces, discover and load
-/// the CDB, scan the dependency graph and build the module map, restore
-/// the persisted index (claiming its report into the pump), and seed the
-/// indexing sweep. The caller has already finalized workspace.config; a
-/// second call is safe and skips the store open (live CDB reloads go
-/// through the invalidator instead).
+/// and the batch driver so the two can never drift apart: resolve the
+/// build configuration (`requested_configuration` is the command line's),
+/// open the cache store with its namespaces and the configuration's index
+/// library, load the build (load_build), restore the persisted index
+/// (claiming its report into the pump), and seed the indexing sweep. The
+/// caller has already finalized workspace.config; a second call is safe
+/// and skips the store and library opens (live CDB reloads go through the
+/// invalidator instead).
 ///
 /// `read_only_index` loads the persisted index without queueing any
 /// reconciliation or sweep writes, so a later save commits nothing — for
@@ -63,6 +65,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     IndexStore& store,
                                     IndexPump& pump,
                                     llvm::StringRef root,
+                                    llvm::StringRef requested_configuration,
                                     bool read_only_index = false);
 
 }  // namespace clice

@@ -7,6 +7,7 @@
 
 #include "config/config.h"
 #include "sched/bootstrap.h"
+#include "sched/configuration.h"
 #include "sched/context.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
@@ -188,9 +189,18 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_await stack.pool.stop();
         co_return;
     }
+    if(!check_requested_configuration(workspace.config, options.configuration)) {
+        result.exit_code = 1;
+        co_await stack.pool.stop();
+        co_return;
+    }
     workspace.config.project.enable_indexing.value = true;
 
-    auto report = bootstrap_workspace(workspace, stack.store, stack.pump, options.root);
+    auto report = bootstrap_workspace(workspace,
+                                      stack.store,
+                                      stack.pump,
+                                      options.root,
+                                      options.configuration);
 
     // The command's whole product is the persisted index: without storage
     // (cache failed to open, another process holds the index writer lock,
@@ -358,12 +368,18 @@ kota::task<> run_lint(BatchStack& stack,
     // not race the plan's own runs, and without --index nothing may touch
     // the persisted index — the read-only load queues no reconciliation
     // or sweep writes, so the shutdown save commits nothing.
+    if(!check_requested_configuration(workspace.config, options.configuration)) {
+        result.exit_code = 2;
+        co_await stack.pool.stop();
+        co_return;
+    }
     workspace.config.project.enable_indexing.value = false;
 
     auto report = bootstrap_workspace(workspace,
                                       stack.store,
                                       stack.pump,
                                       options.root,
+                                      options.configuration,
                                       /*read_only_index=*/!options.with_index);
 
     auto& members = report.members;

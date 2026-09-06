@@ -92,6 +92,10 @@
         "title": "Clice: Restart Language Server"
       },
       {
+        "command": "clice.switchConfiguration",
+        "title": "Clice: Switch Build Configuration"
+      },
+      {
         "command": "clice.switchContext",
         "title": "Clice: Switch Compilation Context"
       },

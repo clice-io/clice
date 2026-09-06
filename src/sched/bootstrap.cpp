@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "index/database.h"
+#include "sched/configuration.h"
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
 #include "sched/workspace.h"
@@ -19,9 +20,11 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     IndexStore& store,
                                     IndexPump& pump,
                                     llvm::StringRef root,
+                                    llvm::StringRef requested_configuration,
                                     bool read_only_index) {
     BootstrapReport report;
     auto& cfg = workspace.config.project;
+    auto configuration = resolve_configuration(workspace.config, requested_configuration);
 
     if(!workspace.store && !cfg.cache_dir.empty()) {
         auto cache = CacheStore::open(cfg.cache_dir, cache_format_version);
@@ -58,19 +61,14 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
             // owning it), while the persisted version stamps and artifact
             // metadata still seed this session's fast paths. Its own
             // metadata stays in memory and exits with it.
-            workspace.index_db = index::open_database(*workspace.store, read_only_index);
-            if(!read_only_index) {
-                // The artifact metadata moved into the index database; a
-                // cache.json left in the store by an older clice would sit
-                // there forever.
-                fs::remove(path::join(workspace.store->base_dir(), "cache.json"));
-            }
+            workspace.index_db =
+                index::open_database(*workspace.store, configuration, read_only_index);
             LOG_INFO("Cache store: {}", workspace.store->base_dir());
             report.opened_store = true;
         }
     }
 
-    auto load = load_build(workspace, root);
+    auto load = load_build(workspace, root, configuration);
     report.has_commands = !load.members.empty() || workspace.build.declares_sources();
     report.members = std::move(load.members);
     // Persisted index shards are CDB-independent; they load even with no
@@ -93,10 +91,10 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     return report;
 }
 
-BuildLoad load_build(Workspace& workspace, llvm::StringRef root) {
+BuildLoad load_build(Workspace& workspace, llvm::StringRef root, llvm::StringRef configuration) {
     BuildLoad load;
     workspace.cdb.set_workspace_root(root);
-    workspace.build.reset_active();
+    workspace.build.reset_active(configuration);
 
     ScopedTimer cdb_timer;
     std::size_t entries = 0;

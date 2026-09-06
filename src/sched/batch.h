@@ -15,6 +15,10 @@ namespace clice {
 struct BatchOptions {
     std::string root;
 
+    /// The build configuration to activate (`--configuration`); empty
+    /// takes the persisted selection, else the default.
+    std::string configuration;
+
     /// Stateless worker count override; 0 keeps the config's values.
     std::uint32_t workers = 0;
 
@@ -58,6 +62,10 @@ BatchResult run_batch_index(const BatchOptions& options);
 
 struct BatchLintOptions {
     std::string root;
+
+    /// The build configuration to activate (`--configuration`); empty
+    /// takes the persisted selection, else the default.
+    std::string configuration;
 
     /// Stateless worker count override; 0 keeps the config's values.
     std::uint32_t workers = 0;

@@ -54,9 +54,10 @@ public:
         return active;
     }
 
-    /// Pick the startup configuration: `default_configuration`, else the
-    /// first declared tag.
-    void reset_active();
+    /// Activate a configuration — a declared tag, or empty when the rules
+    /// declare none (see resolve_configuration) — and forget the enumerated
+    /// default sources.
+    void reset_active(llvm::StringRef configuration);
 
     /// Whether an active rule declares a command source — a database or a
     /// default command. Declared sources turn automatic discovery off.

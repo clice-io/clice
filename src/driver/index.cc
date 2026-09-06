@@ -8,6 +8,7 @@
 #include "index/database.h"
 #include "index/serialization.h"
 #include "sched/batch.h"
+#include "sched/configuration.h"
 #include "sched/context.h"
 #include "sched/index/store.h"
 #include "sched/workspace.h"
@@ -30,6 +31,13 @@ struct IndexOptions {
            help = "Workspace root directory (default: current directory)",
            required = false)
     <std::string> workspace;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help =
+               "Build configuration to activate, one of the tags declared on rules "
+               "(default: the selected one, else default_configuration)",
+           required = false)
+    <std::string> configuration;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Number of indexing workers (default: from config)",
@@ -67,9 +75,13 @@ std::string format_size(std::uint64_t bytes) {
     return std::format("{} B", bytes);
 }
 
-int run_indexing(std::string root, std::uint32_t workers, const char* self_path) {
+int run_indexing(std::string root,
+                 std::string configuration,
+                 std::uint32_t workers,
+                 const char* self_path) {
     auto result = run_batch_index({
         .root = std::move(root),
+        .configuration = std::move(configuration),
         .workers = workers,
         .self_path = self_path,
     });
@@ -104,8 +116,15 @@ int run_indexing(std::string root, std::uint32_t workers, const char* self_path)
 /// the caller retries instead of reporting over the mid-write state.
 constexpr int stats_retry = -1;
 
-int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
+int run_stats_once(llvm::StringRef root,
+                   llvm::StringRef requested_configuration,
+                   std::uint32_t top,
+                   bool allow_retry) {
     auto config = Config::load_from_workspace(root);
+    if(!check_requested_configuration(config, requested_configuration)) {
+        return 1;
+    }
+    auto configuration = resolve_configuration(config, requested_configuration);
     // Read-only: the default cache directory exists as soon as the config
     // resolves it, so only the versioned store inside it proves an index
     // was ever built — and a live server (even one on an older layout)
@@ -128,7 +147,13 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     Workspace workspace;
     workspace.config = std::move(config);
     workspace.store.emplace(std::move(*store));
-    workspace.index_db = index::open_database(*workspace.store);
+    workspace.build.reset_active(configuration);
+    workspace.index_db = index::open_database(*workspace.store, configuration);
+    if(!workspace.index_db) {
+        LOG_ERROR("No index cache at {}; run `clice index` first",
+                  index::library_directory(*workspace.store, configuration));
+        return 1;
+    }
     ContextResolver contexts(workspace);
     IndexStore index_store(loop, workspace, contexts);
     auto loaded = index_store.load(/*read_only=*/true);
@@ -245,7 +270,10 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     }
     std::ranges::sort(files, std::ranges::greater{}, &ShardStat::bytes);
 
-    std::println("Index cache: {}", std::string_view(workspace.store->base_dir()));
+    std::println("Index cache: {}", index::library_directory(*workspace.store, configuration));
+    if(!configuration.empty()) {
+        std::println("Configuration: {}", configuration);
+    }
     std::println("Translation units: {}", project.manifests.size());
     std::println("File shards: {} ({}), {} occurrences, {} relations",
                  files.size(),
@@ -310,17 +338,17 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     return pending == 0 ? 0 : 1;
 }
 
-int run_stats(llvm::StringRef root, std::uint32_t top) {
+int run_stats(llvm::StringRef root, llvm::StringRef requested_configuration, std::uint32_t top) {
     constexpr std::uint32_t stats_attempts = 5;
     for(std::uint32_t attempt = 1; attempt < stats_attempts; attempt += 1) {
-        int rc = run_stats_once(root, top, /*allow_retry=*/true);
+        int rc = run_stats_once(root, requested_configuration, top, /*allow_retry=*/true);
         if(rc != stats_retry) {
             return rc;
         }
         LOG_DEBUG("Index cache is mid-save; retrying the stats read");
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
-    return run_stats_once(root, top, /*allow_retry=*/false);
+    return run_stats_once(root, requested_configuration, top, /*allow_retry=*/false);
 }
 
 }  // namespace
@@ -339,11 +367,15 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
            logging::stderr_logger("index", logging::options);
 
            auto ws = workspace_root(opts.workspace.value_or(""));
+           auto configuration = opts.configuration.value_or("");
            if(opts.stats) {
-               exit_code = run_stats(ws, opts.top.value_or(20));
+               exit_code = run_stats(ws, configuration, opts.top.value_or(20));
                return;
            }
-           exit_code = run_indexing(std::move(ws), opts.workers.value_or(0), self_path);
+           exit_code = run_indexing(std::move(ws),
+                                    std::move(configuration),
+                                    opts.workers.value_or(0),
+                                    self_path);
        })
         .on_error([](auto err) { LOG_ERROR("{}", err.message); });
 

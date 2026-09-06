@@ -143,7 +143,12 @@ inline std::expected<void, std::error_code> write(llvm::StringRef path, llvm::St
     }
     os << content;
     os.flush();
-    return std::expected<void, std::error_code>();
+    if(os.has_error()) {
+        auto error = os.error();
+        os.clear_error();
+        return std::unexpected(error);
+    }
+    return {};
 }
 
 inline std::expected<std::string, std::error_code> read(llvm::StringRef path) {

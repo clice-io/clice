@@ -20,6 +20,13 @@ struct LintOptions {
     <std::string> workspace;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
+           help =
+               "Build configuration to activate, one of the tags declared on rules "
+               "(default: the selected one, else default_configuration)",
+           required = false)
+    <std::string> configuration;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Number of lint workers (default: from config)",
            required = false)
     <std::uint32_t> workers;
@@ -40,10 +47,15 @@ auto make_command() {
     return kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
 }
 
-int run_lint(std::string root, std::uint32_t workers, bool with_index, const char* self_path) {
+int run_lint(std::string root,
+             std::string configuration,
+             std::uint32_t workers,
+             bool with_index,
+             const char* self_path) {
     auto result = run_batch_lint(
         {
             .root = std::move(root),
+            .configuration = std::move(configuration),
             .workers = workers,
             .self_path = self_path,
             .with_index = with_index,
@@ -99,6 +111,7 @@ void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* s
            logging::stderr_logger("lint", logging::options);
 
            exit_code = run_lint(workspace_root(opts.workspace.value_or("")),
+                                opts.configuration.value_or(""),
                                 opts.workers.value_or(0),
                                 static_cast<bool>(opts.index),
                                 self_path);

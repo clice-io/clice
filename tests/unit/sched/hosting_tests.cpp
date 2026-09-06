@@ -32,7 +32,7 @@ TEST_CASE(SourcePriorityBeatsProximity) {
         ConfigRule{.patterns = {"lib/**"}, .compile_commands = {"lib/cmake"}});
     workspace.config.rules.push_back(ConfigRule{.compile_commands = {"cmake"}});
     workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active();
+    workspace.build.reset_active("");
     for(auto source: workspace.build.declared_sources()) {
         workspace.cdb.load(source);
     }
@@ -65,7 +65,7 @@ TEST_CASE(ProximityWithinSource) {
         .default_command = std::string("clang++")
     });
     workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active();
+    workspace.build.reset_active("");
 
     auto header = workspace.file_table.intern(tmp.path("src/x.h"));
     auto same_stem = workspace.file_table.intern(tmp.path("other/x.cpp"));

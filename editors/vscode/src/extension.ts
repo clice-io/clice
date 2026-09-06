@@ -13,6 +13,7 @@ import {
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
 import { getSetting, Setting } from "./setting";
+import { registerBuildConfiguration } from "./feature/configuration";
 import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
 import { registerInactiveRegions } from "./feature/inactive";
@@ -317,6 +318,7 @@ export async function activate(context: ExtensionContext) {
         }),
     );
 
+    registerBuildConfiguration(client, context);
     registerCompilationContext(client, context);
     registerConflictCheck(client, context);
 

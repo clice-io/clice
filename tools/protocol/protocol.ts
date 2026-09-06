@@ -83,6 +83,45 @@ export const SwitchContextRequest = new RequestType<SwitchContextParams, SwitchC
     "clice/switchContext",
 );
 
+/// clice/listConfigurations: the build configuration menu (the distinct
+/// `configuration` tags of the rules) and the names the selection layers
+/// hold.
+export interface ListConfigurationsResult {
+    /// Declared tags in declaration order; empty when the rules declare none.
+    configurations: string[];
+
+    /// The configuration this server process runs.
+    active: string;
+
+    /// The persisted selection, applied at the next server start; empty
+    /// when none was made.
+    selected: string;
+
+    /// The configuration active when nothing selects one.
+    defaultConfiguration: string;
+}
+
+export const ListConfigurationsRequest = new RequestType0<ListConfigurationsResult, void>(
+    "clice/listConfigurations",
+);
+
+/// clice/switchConfiguration: persist `name` as the selected configuration.
+/// The running server keeps its configuration; the choice takes effect when
+/// the client restarts it.
+export interface SwitchConfigurationParams {
+    name: string;
+}
+
+export interface SwitchConfigurationResult {
+    success: boolean;
+}
+
+export const SwitchConfigurationRequest = new RequestType<
+    SwitchConfigurationParams,
+    SwitchConfigurationResult,
+    void
+>("clice/switchConfiguration");
+
 /// clice/internal/poll — TEST-ONLY, not a stable API. Synchronously runs
 /// one file-tracker tick (stat → diff → events → dispatch → effects) and
 /// responds only once the effects are applied, so integration tests can

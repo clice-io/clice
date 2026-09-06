@@ -12,6 +12,7 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/bootstrap.h"
+#include "sched/configuration.h"
 #include "sched/context.h"
 #include "sched/workspace.h"
 #include "support/filesystem.h"
@@ -82,6 +83,14 @@ struct InspectOptions {
                      "(only features that take options accept it)",
                  required = false)
     <std::string> config;
+
+    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
+                 names = {"--configuration", "--configuration="},
+                 help =
+                     "Build configuration to activate, one of the tags declared on "
+                     "rules (default: the selected one, else default_configuration)",
+                 required = false)
+    <std::string> configuration;
 
     DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
                  names = {"--log-level", "--log-level="},
@@ -717,10 +726,18 @@ int run_inspect(const InspectOptions& opts) {
         is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
     Workspace workspace;
     ContextResolver contexts(workspace);
+    if(!flags.empty() && opts.configuration.has_value()) {
+        LOG_ERROR("--configuration selects among the workspace's rules; --flags replaces them");
+        return 1;
+    }
     if(flags.empty()) {
         std::string root = workspace_of(unit_directory);
         workspace.config = Config::load_from_workspace(root);
-        load_build(workspace, root);
+        auto requested = opts.configuration.value_or("");
+        if(!check_requested_configuration(workspace.config, requested)) {
+            return 1;
+        }
+        load_build(workspace, root, resolve_configuration(workspace.config, requested));
     }
 
     // Directory mode covers what the build compiles under the tree, not only

@@ -14,7 +14,7 @@ TEST_SUITE(NotifyLog) {
 
 TEST_CASE(BoundedRetention) {
     kota::event_loop loop;
-    MasterServer server(loop, "clice-test");
+    MasterServer server(loop, "clice-test", "");
 
     // Keep the guidance gate open but silence the console sink: the test
     // fires well over a hundred reports.

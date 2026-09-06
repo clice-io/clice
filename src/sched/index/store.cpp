@@ -1152,7 +1152,8 @@ void IndexStore::recover_corrupt_database(Report& report) {
 void IndexStore::reopen_fresh_database() {
     workspace.index_db->condemn();
     workspace.index_db.reset();
-    workspace.index_db = index::open_database(*workspace.store);
+    workspace.index_db =
+        index::open_database(*workspace.store, workspace.build.active_configuration());
     // The metadata blobs died with the condemned database while their
     // loaded state lives on in memory; without a re-dirty the next save
     // skips them and a restart loses the user's context choices and every

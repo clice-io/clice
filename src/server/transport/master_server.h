@@ -70,6 +70,13 @@ struct ServerOptions {
     <std::string> workspace;
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help =
+               "Build configuration to activate, one of the tags declared on rules "
+               "(default: the selected one, else default_configuration)",
+           required = false)
+    <std::string> configuration;
+
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            names = {"--log-level", "--log-level="},
            help = "Log level: trace, debug, info, warn, error, off",
            required = false)
@@ -100,7 +107,9 @@ struct NotifyMessage {
 /// public members; the composition itself lives entirely here.
 class MasterServer {
 public:
-    MasterServer(kota::event_loop& loop, std::string self_path);
+    MasterServer(kota::event_loop& loop,
+                 std::string self_path,
+                 std::string requested_configuration);
     ~MasterServer();
 
     void initialize();
@@ -232,6 +241,10 @@ public:
     /// config diagnostics.
     std::string workspace_root;
     std::string init_options_json;
+    /// The `--configuration` argument: the build configuration this
+    /// session runs, over the persisted selection; empty takes the
+    /// selection, else the default.
+    std::string requested_configuration;
     /// Problems found while loading clice.toml during initialize(), kept so
     /// LSPClient can publish them as diagnostics on the config file's URI.
     std::vector<ConfigIssue> config_issues;

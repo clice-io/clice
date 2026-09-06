@@ -3,6 +3,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "sched/build.h"
+#include "sched/configuration.h"
 #include "support/filesystem.h"
 
 namespace clice::testing {
@@ -28,7 +29,7 @@ struct Layout {
 
     explicit Layout(llvm::StringRef name) :
         root(path::join(data_dir(), "cdb", name)), config(Config::load_from_workspace(root)) {
-        build.reset_active();
+        build.reset_active(fallback_configuration(config));
         for(auto source: build.declared_sources()) {
             cdb.load(source);
         }
@@ -168,7 +169,7 @@ TEST_CASE(PatternRootsEnumerate) {
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
-    build.reset_active();
+    build.reset_active("");
     auto members = build.members();
     ASSERT_EQ(members.size(), 2U);
     EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "src/main.cpp"))));
@@ -198,7 +199,7 @@ TEST_CASE(ForcedLanguageMembers) {
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
-    build.reset_active();
+    build.reset_active("");
     auto members = build.members();
     ASSERT_EQ(members.size(), 3U);
     EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "src/tool"))));
@@ -221,7 +222,7 @@ TEST_CASE(WorkspaceRuleClaimsKnownSources) {
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
-    build.reset_active();
+    build.reset_active("");
     auto members = build.members();
     ASSERT_EQ(members.size(), 1U);
     EXPECT_EQ(members.front(), files.intern(canonical(tmp, "main.cpp")));
@@ -230,7 +231,7 @@ TEST_CASE(WorkspaceRuleClaimsKnownSources) {
         config.rules.begin(),
         ConfigRule{.patterns = {"tool"}, .default_command = std::string("clang++ -x c++")});
     config.finalize(tmp.root.str());
-    build.reset_active();
+    build.reset_active("");
     members = build.members();
     EXPECT_EQ(members.size(), 2U);
     EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "tool"))));
@@ -258,7 +259,7 @@ TEST_CASE(UnitsDeduplicated) {
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
-    build.reset_active();
+    build.reset_active("");
     for(auto source: build.declared_sources()) {
         cdb.load(source);
     }
@@ -280,7 +281,7 @@ TEST_CASE(InvalidDefaultCommandIgnored) {
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
-    build.reset_active();
+    build.reset_active("");
     auto main = files.intern(canonical(tmp, "main.cpp"));
     EXPECT_TRUE(build.commands(main).empty());
     EXPECT_EQ(build.members().size(), 1U);
@@ -301,7 +302,7 @@ TEST_CASE(UnmatchableRuleDeclaresNothing) {
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
-    build.reset_active();
+    build.reset_active("");
     EXPECT_FALSE(build.declares_sources());
     EXPECT_TRUE(build.members().empty());
 
@@ -310,7 +311,7 @@ TEST_CASE(UnmatchableRuleDeclaresNothing) {
         .compile_commands = {"build"},
     });
     config.finalize(tmp.root.str());
-    build.reset_active();
+    build.reset_active("");
     EXPECT_TRUE(build.declares_sources());
 };
 
@@ -348,7 +349,7 @@ TEST_CASE(InactiveConfigurationExcluded) {
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
-    build.reset_active();
+    build.reset_active(resolve_configuration(config, ""));
     EXPECT_EQ(build.active_configuration(), "release");
     ASSERT_EQ(build.declared_sources().size(), 1U);
     cdb.load(tmp.path("release"));
@@ -375,7 +376,7 @@ TEST_CASE(InactiveSourceKeepsDiscovery) {
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
-    build.reset_active();
+    build.reset_active(resolve_configuration(config, ""));
     EXPECT_FALSE(build.declares_sources());
     EXPECT_TRUE(build.declared_sources().empty());
 
@@ -405,7 +406,7 @@ TEST_CASE(EditsAcrossHostAndHeader) {
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
-    build.reset_active();
+    build.reset_active("");
 
     std::string host = canonical(tmp, "src/main.cpp");
     std::string header = canonical(tmp, "include/x.h");
