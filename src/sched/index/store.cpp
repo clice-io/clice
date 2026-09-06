@@ -63,7 +63,9 @@ struct CDBSnapshotEntry {
     std::string selected;
 
     /// The databases that listed the file, so a later session can tell a
-    /// removal from a database that failed to load.
+    /// removal from a database that failed to load. Relative to the
+    /// workspace root when inside it, so the record survives a move of the
+    /// checkout.
     std::vector<std::string> sources;
 
     std::string rules;
@@ -85,6 +87,24 @@ struct CDBSnapshot {
 /// candidates that a rule's default command claims records that command's
 /// identity as its selection, so an offline edit of the command text is
 /// caught the same way.
+/// The persisted spelling of a path under the workspace: relative to the
+/// root, or the absolute path when outside it.
+static std::string persisted_path(Workspace& workspace, llvm::StringRef path) {
+    llvm::StringRef root = workspace.config.workspace_root;
+    if(!root.empty() && path.size() > root.size() && path.starts_with(root) &&
+       path::is_separator(path[root.size()])) {
+        return path.drop_front(root.size() + 1).str();
+    }
+    return path.str();
+}
+
+static std::string absolute_path(Workspace& workspace, llvm::StringRef persisted) {
+    if(path::is_absolute(persisted)) {
+        return persisted.str();
+    }
+    return path::join(workspace.config.workspace_root, persisted);
+}
+
 CDBSnapshot build_cdb_snapshot(Workspace& workspace,
                                const llvm::DenseMap<Fid, Fid>& header_hosts,
                                llvm::ArrayRef<Fid> standalone_debt) {
@@ -100,7 +120,7 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
         auto rules = workspace.build.edit_hash(llvm::StringRef(file));
         std::vector<std::string> sources;
         for(auto& candidate: candidates) {
-            auto source = workspace.cdb.source_path(candidate.source).str();
+            auto source = persisted_path(workspace, workspace.cdb.source_path(candidate.source));
             if(!llvm::is_contained(sources, source)) {
                 sources.push_back(std::move(source));
             }
@@ -1613,7 +1633,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         bool healthy = llvm::all_of(old.sources, [&](const std::string& source) {
-            auto id = workspace.cdb.find_source(source);
+            auto id = workspace.cdb.find_source(absolute_path(workspace, source));
             return id ? workspace.cdb.loaded(*id) : declared;
         });
         if(!healthy) {
