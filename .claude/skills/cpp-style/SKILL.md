@@ -29,6 +29,16 @@ defending against ghosts.
   that merely shortens lines.
 - **Delete, don't comment out.** Git history is the archive.
 
+- **One behavior difference is one options field.** Two behaviors of the
+  same logic are selected by a boolean in an options struct (`Options{.disk_only}`),
+  not by a subclass, a dummy collaborator, or a parallel code path.
+- **Cross-cutting invariants get a single writer.** Accounting, budgets,
+  ownership and visibility guarantees live in one type whose methods are the
+  only transitions and whose doc comment lists the invariants; before coding,
+  grep every site the invariant touches and funnel them through one helper
+  so a missing site is discoverable. Per-site patches never catch up with a
+  reviewer who re-derives the invariant from the whole diff.
+
 ## Files & Organization
 
 - Headers are `.h` with `#pragma once` — never include guards.
@@ -112,6 +122,13 @@ process(result.value());
 - Async code is kota coroutines (`kota::task`, `co_await`) — no callback
   style. A public interface may stay synchronous and drive a coroutine
   internally when the caller has no event loop (see `Toolchain`).
+- Review coroutine code by interleavings, not function by function: list
+  every `co_await` suspension point, the events that can fire while it is
+  suspended (crash, respawn, dispatch, cancellation, another coroutine
+  resuming), and trace the shared state through each chain; then check that
+  what the frame captured before suspending is still valid when it resumes.
+  Bugs here are always cross-function interleavings; a function-level read
+  finds none of them.
 
 ## Logging
 
@@ -181,6 +198,7 @@ process(result.value());
 ## Style
 
 - Prefer `[[maybe_unused]]` over `(void)` for intentionally unused variables or parameters.
+- Arithmetic counters step with `x += 1` / `x -= 1`, in `for` heads too — never `++`/`--`; split fused forms like `if(++x > n)` into two statements. Iterators and other types without `+=` are exempt. This applies to code you write or touch, not as a repository-wide sweep.
 
 ## Modern C++ Usage
 

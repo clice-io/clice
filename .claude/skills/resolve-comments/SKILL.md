@@ -1,43 +1,25 @@
 ---
 name: resolve-comments
-description: Pull unresolved review threads of the current PR, apply the fixes in the worktree, resolve the threads, and return a compact summary. Runs in a forked context so the GraphQL plumbing and comment bodies never touch the main conversation.
-context: fork
+description: Pull unresolved review threads of the current PR, apply the fixes in the worktree, resolve the threads, and return a compact summary. Runs inline; the digest script keeps the bot boilerplate out of the conversation.
 ---
 
 Handle one round of review comments for the current branch's PR.
 
 ## Fetch
 
-Discover the PR number with `gh pr view --json number`, then pull the
-threads (space `gh` calls with `sleep 1` — API rate limits are a real
-concern):
-
 ```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $pr: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $pr) {
-      reviewThreads(first: 100) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          isResolved
-          isOutdated
-          path
-          line
-          comments(first: 10) { nodes { author { login } body } }
-        }
-      }
-    }
-  }
-}' -F owner=clice-io -F repo=clice -F pr=<N> \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved | not))'
+python3 .claude/skills/pr/scripts/comments.py            # current branch's PR
+python3 .claude/skills/pr/scripts/comments.py <N> --all  # resolved threads too
 ```
 
-Always select by `isResolved == false` — never filter by timestamps.
-While `hasNextPage` is true, fetch the next page with
-`reviewThreads(first: 100, after: "<endCursor>")` — never report from a
-partial listing.
+One screen per round: every unresolved thread (all pages, selected by
+`isResolved == false` — never by timestamps) with its id, location,
+author, severity and the comment text stripped of badges, AI prompts and
+tracking markup, followed by the findings bots post in review bodies
+instead of inline threads (the codex connector puts P2 items there with a
+permalink). Handle those like threads; they have nothing to resolve, so
+list them as handled in the report. Space any extra `gh` calls with
+`sleep 1` — API rate limits are a real concern.
 
 ## Handle each thread
 
