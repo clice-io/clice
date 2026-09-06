@@ -27,11 +27,9 @@ on:
 
 env:
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
-  SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
   CCACHE_BASEDIR: ${{ github.workspace }}
   CCACHE_COMPILERCHECK: content
   CCACHE_MAXSIZE: 2G
-  SCCACHE_CACHE_SIZE: 2G
 
 jobs:
   build:
@@ -49,20 +47,13 @@ jobs:
       - name: Restore compiler cache
         uses: actions/cache@v6
         with:
-          path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
+          path: .cache/ccache
           key: ${{ runner.os }}-RelWithDebInfo-${{ inputs.target_triple }}-ccache-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-RelWithDebInfo-${{ inputs.target_triple }}-ccache-
 
       - name: Zero cache stats
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -e "${{ inputs.pixi_env }}" -- sccache --stop-server || true
-            pixi run -e "${{ inputs.pixi_env }}" -- sccache --zero-stats || true
-          else
-            pixi run -e "${{ inputs.pixi_env }}" -- ccache --zero-stats || true
-          fi
-        shell: bash
+        run: pixi run -e "${{ inputs.pixi_env }}" -- ccache --zero-stats
 
       - name: Build
         shell: bash
@@ -120,15 +111,9 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Print cache stats and stop server
+      - name: Print cache stats
         if: always()
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -e "${{ inputs.pixi_env }}" -- sccache --show-stats
-            pixi run -e "${{ inputs.pixi_env }}" -- sccache --stop-server || true
-          else
-            pixi run -e "${{ inputs.pixi_env }}" -- ccache --show-stats
-          fi
+        run: pixi run -e "${{ inputs.pixi_env }}" -- ccache --show-stats
         shell: bash
 
   test:
