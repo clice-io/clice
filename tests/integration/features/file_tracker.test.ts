@@ -147,12 +147,16 @@ test("cdb relocates to another directory", async ({ session }) => {
     // The build directory is wiped and regenerated elsewhere: the old
     // entries leave with their database and the new ones take over.
     workspace.rm("build/compile_commands.json");
-    expect(await eventsOf(client, "cdb")).toBe(0);
+    expect(await eventsOf(client, "cdb", { force: false })).toBe(0);
+    expect(await eventsOf(client, "cdb", { force: false })).toBe(0);
     workspace.writeCDB(["main.cpp"], {
         extraArgs: ["-DFEATURE", "-DMOVED"],
         at: "out/compile_commands.json",
     });
-    expect(await eventsOf(client, "cdb")).toBeGreaterThan(0);
+    // The replacement settles for two ticks before it loads; the old
+    // entries keep serving meanwhile.
+    expect(await eventsOf(client, "cdb", { force: false })).toBe(0);
+    expect(await eventsOf(client, "cdb", { force: false })).toBeGreaterThan(0);
     await client.waitForRecompile(mainUri);
     client.assertNoErrors(mainUri, "the relocated database still defines FEATURE");
     const contexts = await client.queryContext(mainUri);

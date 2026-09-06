@@ -42,7 +42,7 @@ Compilation databases for the whole workspace, in priority order: a compile_comm
 | ----------------------- | -------- | ------- |
 | `default_configuration` | `string` | `""`    |
 
-The build configuration active at startup, one of the tags declared on rules. Required once any rule carries a tag.
+The build configuration active at startup, one of the tags declared on rules. When rules carry tags and this names none of them, the first declared tag is used and a warning is logged.
 
 </div>
 
@@ -358,7 +358,7 @@ Maximum number of completion items (not yet implemented).
 
 ## `[[rules]]`
 
-A rule names files by pattern and says where they take their compile commands from and how those commands are edited. Rules are matched in declaration order — later rules override earlier ones. A rule carrying a `configuration` tag applies only while that configuration is active; the distinct tags form the configuration menu.
+A rule names files by pattern and says where they take their compile commands from and how those commands are edited. Every rule matching a file applies, in declaration order: an earlier rule's databases rank first among the file's candidates, the first matching rule with a `default_command` supplies the command of a file without an entry, `append` and `remove` accumulate with a later `remove` cancelling an earlier `append`, and `index = false` on any matching rule keeps the file out of the index. A rule carrying a `configuration` tag applies only while that configuration is active; the distinct tags form the configuration menu.
 
 <!-- BEGIN GENERATED CONFIG: rules -->
 
@@ -368,7 +368,7 @@ A rule names files by pattern and says where they take their compile commands fr
 | ---------- | ----------------- | ------- |
 | `patterns` | `array of string` | `[]`    |
 
-Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed); an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment (a pattern of just `*` matches any path), `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
+Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed); an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
 
 </div>
 
@@ -398,7 +398,7 @@ Compilation databases, in priority order: a compile_commands.json or a directory
 | ----------------- | ----------------------------- | ------- |
 | `default_command` | `string` or `array of string` | `""`    |
 
-The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from this configuration file's directory, and the matching source files on disk join the background index. Omitted means none.
+The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from this configuration file's directory, and the matching source files on disk join the background index — enumerated at startup, so a file created later compiles when opened and joins the index at the next start. Omitted means none.
 
 </div>
 

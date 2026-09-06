@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "sched/workspace.h"
@@ -90,13 +91,20 @@ private:
         /// Debounce: the stamp observed on the previous tick, not yet settled.
         CDBStamp pending;
         bool has_pending = false;
+        /// A vanished discovered database this one replaces: it keeps
+        /// serving its entries until this one has loaded.
+        std::optional<SourceID> supersedes;
     };
 
     /// Register `id` for watching, baselined at its current stamp.
     void track(SourceID id);
 
     /// Tick one source; the reload's events, if any.
-    void tick_source(TrackedSource& tracked, bool force, llvm::SmallVectorImpl<FileEvent>& events);
+    /// Returns the source this one superseded once its own reload landed:
+    /// the caller drops it from the watch list.
+    std::optional<SourceID> tick_source(TrackedSource& tracked,
+                                        bool force,
+                                        llvm::SmallVectorImpl<FileEvent>& events);
 
     /// Last-known on-disk state of a tracked file. The filesystem
     /// identity is part of the stamp: a rename-over with a forged equal

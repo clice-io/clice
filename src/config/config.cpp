@@ -58,25 +58,31 @@ static std::string glob_escape(llvm::StringRef literal) {
 }
 
 /// Compile one pattern against absolute paths: the literal directory before
-/// the first wildcard segment is anchored (a relative one at `config_dir`),
+/// the first wildcard segment is anchored (a relative one at `anchor`),
 /// dot-normalized and canonicalized, and the wildcard tail follows verbatim.
 /// A `**`-led pattern matches anywhere and enumerates from the workspace.
+/// `workspace_root` must be canonical: substituted into glob text, a native
+/// spelling's backslashes would read as escapes.
 static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
-                                                            llvm::StringRef config_dir,
+                                                            llvm::StringRef anchor,
                                                             llvm::StringRef workspace_root) {
+    // A substituted workspace root is path, never glob syntax: the wildcard
+    // search starts after it, and the literal prefix it lands in is escaped.
+    std::size_t search_from =
+        llvm::StringRef(pattern).starts_with("${workspace}") ? workspace_root.size() : 0;
     substitute_workspace(pattern, workspace_root);
     llvm::StringRef ref(pattern);
     std::string text = pattern;
     std::string root = workspace_root.str();
     if(!ref.starts_with("**")) {
-        auto wildcard = ref.find_first_of(R"(*?[{\)");
+        auto wildcard = ref.find_first_of(R"(*?[{\)", search_from);
         auto cut = ref.rfind('/', wildcard == llvm::StringRef::npos ? ref.size() : wildcard);
         llvm::SmallString<256> dir;
         if(cut != llvm::StringRef::npos) {
             dir = ref.take_front(cut + 1);
         }
         if(!path::is_absolute(dir)) {
-            llvm::SmallString<256> anchored(config_dir);
+            llvm::SmallString<256> anchored(anchor);
             if(!dir.empty()) {
                 path::append(anchored, dir);
             }
@@ -119,45 +125,49 @@ void Config::finalize(llvm::StringRef workspace_root) {
     reject_zero(p.min_stateless_worker_count,
                 defaults.min_stateless_worker_count,
                 "min_stateless_worker_count");
-    if(p.cache_dir.empty() && !workspace_root.empty()) {
-        p.cache_dir = path::join(workspace_root, ".clice");
+
+    this->workspace_root = workspace_root.str();
+    path::canonicalize(this->workspace_root);
+    llvm::StringRef root = this->workspace_root;
+
+    if(p.cache_dir.empty() && !root.empty()) {
+        p.cache_dir = path::join(root, ".clice");
         p.cache_dir_defaulted = true;
     }
     if(p.logging_dir.empty() && !p.cache_dir.empty())
         p.logging_dir = path::join(p.cache_dir, "logs");
 
     // Variable substitution on string fields.
-    substitute_workspace(p.cache_dir, workspace_root);
-    substitute_workspace(p.logging_dir, workspace_root);
+    substitute_workspace(p.cache_dir, root);
+    substitute_workspace(p.logging_dir, root);
     // Client-supplied dirs arrive in native spelling (backslashes, any
     // drive case); canonicalize so artifact-prefix checks against
     // pool-resolved paths hold.
     path::canonicalize(p.cache_dir);
     path::canonicalize(p.logging_dir);
 
-    // Relative paths and patterns anchor at the configuration file's
-    // directory; values from initializationOptions alone anchor at the
-    // workspace root.
-    if(config_dir.empty()) {
-        config_dir = workspace_root.str();
-    }
-    path::canonicalize(config_dir);
-    this->workspace_root = workspace_root.str();
-    path::canonicalize(this->workspace_root);
-    auto anchored = [&](std::string value) {
-        substitute_workspace(value, workspace_root);
-        if(!path::is_absolute(value) && !config_dir.empty()) {
-            value = path::join(config_dir, value);
+    auto anchored = [&](std::string value, llvm::StringRef anchor) {
+        substitute_workspace(value, root);
+        llvm::SmallString<256> full(value);
+        if(!path::is_absolute(full) && !anchor.empty()) {
+            full = anchor;
+            path::append(full, value);
         }
-        path::canonicalize(value);
-        return value;
+        path::remove_dots(full, /*remove_dot_dot=*/true);
+        std::string result(full);
+        path::canonicalize(result);
+        return result;
     };
 
     compiled_rules.clear();
     auto compile = [&](const ConfigRule& rule) -> std::optional<CompiledRule> {
+        // A rule read from a file anchors at the file's directory, one from
+        // initializationOptions at the workspace root.
+        std::string anchor = rule.directory.empty() ? root.str() : std::string(rule.directory);
+        path::canonicalize(anchor);
         CompiledRule compiled;
         for(auto& pattern: rule.patterns) {
-            if(auto compiled_pattern = compile_pattern(pattern, config_dir, workspace_root)) {
+            if(auto compiled_pattern = compile_pattern(pattern, anchor, root)) {
                 compiled.patterns.push_back(std::move(*compiled_pattern));
             }
         }
@@ -169,17 +179,17 @@ void Config::finalize(llvm::StringRef workspace_root) {
         }
         compiled.configuration = rule.configuration;
         for(auto& database: rule.compile_commands) {
-            compiled.compile_commands.push_back(anchored(database));
+            compiled.compile_commands.push_back(anchored(database, anchor));
         }
         compiled.default_command = rule.default_command;
         if(auto* spelling = std::get_if<std::string>(&compiled.default_command)) {
-            substitute_workspace(*spelling, workspace_root);
+            substitute_workspace(*spelling, root);
         } else {
             for(auto& arg: std::get<std::vector<std::string>>(compiled.default_command)) {
-                substitute_workspace(arg, workspace_root);
+                substitute_workspace(arg, root);
             }
         }
-        compiled.directory = config_dir;
+        compiled.directory = std::move(anchor);
         compiled.append.assign(rule.append.begin(), rule.append.end());
         compiled.remove.assign(rule.remove.begin(), rule.remove.end());
         compiled.index = rule.index;
@@ -300,7 +310,16 @@ std::optional<Config> Config::load(llvm::StringRef path,
     }
 
     auto config = std::move(*result);
-    config.config_dir = path::parent_path(path).str();
+    auto directory = path::parent_path(path).str();
+    for(auto& rule: config.rules) {
+        rule.directory = directory;
+    }
+    for(auto& database: config.compile_commands) {
+        substitute_workspace(database, workspace_root);
+        if(!path::is_absolute(database)) {
+            database = path::join(directory, database);
+        }
+    }
     if(finalized)
         config.finalize(workspace_root);
     LOG_INFO("Loaded config from {}", path);

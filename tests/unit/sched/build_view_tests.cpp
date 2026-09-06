@@ -1,7 +1,7 @@
+#include "test/cdb_helper.h"
 #include "test/platform.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "command/argument_parser.h"
 #include "sched/build_view.h"
 #include "support/filesystem.h"
 
@@ -9,7 +9,13 @@ namespace clice::testing {
 
 namespace {
 
-#define EXPECT_CONTAINS(haystack, needle) EXPECT_TRUE(llvm::StringRef(haystack).contains(needle))
+/// The canonical spelling of a temp path: the view matches and hands out
+/// canonical paths, TempDir spells them natively.
+std::string canonical(const TempDir& tmp, llvm::StringRef relative) {
+    auto p = tmp.path(relative);
+    path::canonicalize(p);
+    return p;
+}
 
 /// A view over one checked-in layout under tests/data/cdb: its clice.toml
 /// loaded the way the server loads it, every declared source loaded.
@@ -41,7 +47,7 @@ struct Layout {
 
     /// The driver-level render of the file's default selection, or of the
     /// builtin fallback when the view does not compile it.
-    std::string render(llvm::StringRef relative) {
+    std::vector<const char*> render(llvm::StringRef relative) {
         auto file = path(relative);
         auto id = files.intern(file);
         auto commands = view.commands(id);
@@ -55,7 +61,7 @@ struct Layout {
                                                    commands.front().source,
                                                    llvm::StringRef(file),
                                                    file);
-        return print_argv(cdb.render_driver(ref));
+        return cdb.render_driver(ref);
     }
 
     bool indexed(llvm::StringRef relative) {
@@ -74,8 +80,8 @@ TEST_CASE(RuleBoundDatabaseWins) {
 
     auto x = layout.view.candidates(layout.fid("lib/x.cpp"));
     ASSERT_EQ(x.size(), 2U);
-    EXPECT_CONTAINS(layout.render("lib/x.cpp"), "LIB");
-    EXPECT_CONTAINS(layout.render("src/a.cpp"), "ROOT");
+    EXPECT_TRUE(has_arg(layout.render("lib/x.cpp"), "LIB"));
+    EXPECT_TRUE(has_arg(layout.render("src/a.cpp"), "ROOT"));
 
     /// Edits accumulate from the rules matching the file, headers included.
     auto edits = layout.view.edits(llvm::StringRef(layout.path("lib/y.hxx")));
@@ -103,12 +109,12 @@ TEST_CASE(DefaultCommandMembers) {
     EXPECT_EQ(commands.front().source, CommandSource::Default);
     EXPECT_TRUE(layout.view.compiles(layout.fid("src/main.cpp")));
     auto rendered = layout.render("src/main.cpp");
-    EXPECT_CONTAINS(rendered, "DEFAULTED");
-    EXPECT_CONTAINS(rendered, layout.path("include"));
+    EXPECT_TRUE(has_arg(rendered, "DEFAULTED"));
+    EXPECT_TRUE(has_arg(rendered, layout.path("include")));
 
     /// A file no rule claims has no command; the builtin fallback serves it.
     EXPECT_FALSE(layout.view.compiles(layout.fid("tools/other.cpp")));
-    EXPECT_CONTAINS(layout.render("tools/other.cpp"), "clang++");
+    EXPECT_TRUE(has_arg(layout.render("tools/other.cpp"), "clang++"));
 
     auto members = layout.view.members();
     ASSERT_EQ(members.size(), 2U);
@@ -129,23 +135,20 @@ TEST_CASE(PatternRootsEnumerate) {
     tmp.touch("src/main.cpp", "int main() {}\n");
     tmp.touch("lib/util.cpp", "");
     tmp.touch("other/skip.cpp", "");
-    tmp.touch(".clice/config.toml", "");
 
     Config config;
-    config.config_dir = tmp.path(".clice");
-    config.rules.push_back(ConfigRule{.patterns = {"${workspace}/src/**"},
-                                      .default_command = std::string("clang++ -DSRC")});
-    config.rules.push_back(
-        ConfigRule{.patterns = {"../lib/*.cpp"}, .default_command = std::string("clang++ -DLIB")});
-    config.finalize(tmp.root.str());
-    auto canonical = [&](llvm::StringRef relative) {
-        std::string p = tmp.path(relative);
-        path::canonicalize(p);
-        return p;
+    auto under_clice = [&](ConfigRule rule) {
+        rule.directory = tmp.path(".clice");
+        return rule;
     };
+    config.rules.push_back(under_clice(
+        {.patterns = {"${workspace}/src/**"}, .default_command = std::string("clang++ -DSRC")}));
+    config.rules.push_back(under_clice(
+        {.patterns = {"../lib/*.cpp"}, .default_command = std::string("clang++ -DLIB")}));
+    config.finalize(tmp.root.str());
     ASSERT_EQ(config.compiled_rules.size(), 2U);
-    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, canonical("src"));
-    EXPECT_EQ(config.compiled_rules[1].patterns[0].root, canonical("lib"));
+    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, canonical(tmp, "src"));
+    EXPECT_EQ(config.compiled_rules[1].patterns[0].root, canonical(tmp, "lib"));
 
     FileTable files;
     CompilationDatabase cdb{files};
@@ -153,12 +156,12 @@ TEST_CASE(PatternRootsEnumerate) {
     view.reset_active();
     auto members = view.members();
     ASSERT_EQ(members.size(), 2U);
-    EXPECT_TRUE(llvm::is_contained(members, files.intern(tmp.path("src/main.cpp"))));
-    EXPECT_TRUE(llvm::is_contained(members, files.intern(tmp.path("lib/util.cpp"))));
-    EXPECT_FALSE(view.compiles(files.intern(tmp.path("other/skip.cpp"))));
-    EXPECT_CONTAINS(print_argv(cdb.render_full(
-                        view.commands(files.intern(tmp.path("lib/util.cpp"))).front().config)),
-                    "LIB");
+    EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "src/main.cpp"))));
+    EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "lib/util.cpp"))));
+    EXPECT_FALSE(view.compiles(files.intern(canonical(tmp, "other/skip.cpp"))));
+    auto util = view.commands(files.intern(canonical(tmp, "lib/util.cpp")));
+    ASSERT_EQ(util.size(), 1U);
+    EXPECT_TRUE(has_arg(cdb.render_full(util.front().config), "LIB"));
 };
 
 TEST_CASE(InvalidDefaultCommandIgnored) {
@@ -167,7 +170,6 @@ TEST_CASE(InvalidDefaultCommandIgnored) {
     TempDir tmp;
     tmp.touch("main.cpp", "");
     Config config;
-    config.config_dir = tmp.root.str().str();
     config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
     config.finalize(tmp.root.str());
 
@@ -175,10 +177,10 @@ TEST_CASE(InvalidDefaultCommandIgnored) {
     CompilationDatabase cdb{files};
     BuildView view{config, cdb, files};
     view.reset_active();
-    auto main = files.intern(tmp.path("main.cpp"));
+    auto main = files.intern(canonical(tmp, "main.cpp"));
     EXPECT_TRUE(view.commands(main).empty());
     EXPECT_EQ(view.members().size(), 1U);
-    EXPECT_NE(view.builtin(tmp.path("main.cpp")), invalid_config);
+    EXPECT_NE(view.builtin(canonical(tmp, "main.cpp")), invalid_config);
 };
 
 TEST_CASE(DeclaredSourceOffDiscovery) {
@@ -188,7 +190,7 @@ TEST_CASE(DeclaredSourceOffDiscovery) {
     EXPECT_TRUE(layout.config.declares_sources());
     EXPECT_TRUE(layout.view.declared_sources().empty());
     EXPECT_EQ(layout.cdb.source_count(), 0U);
-    EXPECT_CONTAINS(layout.render("main.cpp"), "FROM_RULE");
+    EXPECT_TRUE(has_arg(layout.render("main.cpp"), "FROM_RULE"));
 };
 
 TEST_CASE(InactiveConfigurationExcluded) {
@@ -205,7 +207,6 @@ TEST_CASE(InactiveConfigurationExcluded) {
     tmp.touch("release/compile_commands.json", entry("-DRELEASE"));
 
     Config config;
-    config.config_dir = tmp.root.str().str();
     config.default_configuration = "release";
     config.rules.push_back(ConfigRule{.configuration = "debug",
                                       .compile_commands = {"debug"},
@@ -223,11 +224,11 @@ TEST_CASE(InactiveConfigurationExcluded) {
     cdb.load(tmp.path("debug"));
     ASSERT_EQ(cdb.source_count(), 2U);
 
-    auto main = files.intern(tmp.path("main.cpp"));
+    auto main = files.intern(canonical(tmp, "main.cpp"));
     auto candidates = view.candidates(main);
     ASSERT_EQ(candidates.size(), 1U);
-    EXPECT_CONTAINS(print_argv(cdb.render_full(candidates.front().config)), "RELEASE");
-    EXPECT_TRUE(view.edits(llvm::StringRef(tmp.path("main.cpp"))).append.empty());
+    EXPECT_TRUE(has_arg(cdb.render_full(candidates.front().config), "RELEASE"));
+    EXPECT_TRUE(view.edits(llvm::StringRef(canonical(tmp, "main.cpp"))).append.empty());
 };
 
 TEST_CASE(EditsAcrossHostAndHeader) {
@@ -235,7 +236,6 @@ TEST_CASE(EditsAcrossHostAndHeader) {
     /// rule once, in declaration order.
     TempDir tmp;
     Config config;
-    config.config_dir = tmp.root.str().str();
     config.rules.push_back(ConfigRule{.patterns = {"src/**"}, .append = {"-DA"}});
     config.rules.push_back(ConfigRule{.patterns = {"include/**"}, .append = {"-DB"}});
     config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .remove = {"-DA"}, .append = {"-DC"}});
@@ -246,8 +246,8 @@ TEST_CASE(EditsAcrossHostAndHeader) {
     BuildView view{config, cdb, files};
     view.reset_active();
 
-    std::string host = tmp.path("src/main.cpp");
-    std::string header = tmp.path("include/x.h");
+    std::string host = canonical(tmp, "src/main.cpp");
+    std::string header = canonical(tmp, "include/x.h");
     llvm::StringRef both[] = {host, header};
     auto edits = view.edits(both);
     ASSERT_EQ(edits.append.size(), 2U);

@@ -1365,6 +1365,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
                 startup_removes.push_back({index::IndexBlobKind::Shard, key.str()});
             }
         });
+        retire_excluded(report);
         reconcile_cdb_snapshot(report);
     }
 
@@ -1426,6 +1427,20 @@ llvm::SmallVector<Fid> IndexStore::standalone_of(llvm::ArrayRef<Fid> candidates)
     return debt;
 }
 
+void IndexStore::retire_excluded(Report& report) {
+    llvm::SmallVector<Fid> excluded;
+    for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
+        if(!workspace.view.indexed(workspace.file_table.resolve(tu))) {
+            excluded.push_back(tu);
+        }
+    }
+    for(auto tu: excluded) {
+        LOG_INFO("A rule keeps {} out of the index; dropping its rows",
+                 workspace.file_table.resolve(tu));
+        drop_index_into(tu, report);
+    }
+}
+
 void IndexStore::reconcile_cdb_snapshot(Report& report) {
     auto blob = workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
     CDBSnapshot persisted;
@@ -1479,6 +1494,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     // still includes it is pinned fresh; one with no recorded host (older
     // snapshot) falls back to the include-reachability approximation below.
     llvm::DenseSet<Fid> pinned_fresh;
+    llvm::DenseSet<Fid> retired;
     for(auto& entry: snapshot.entries) {
         if(!entry.hashes.empty()) {
             continue;
@@ -1504,11 +1520,29 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             }
             continue;
         }
-        if(old.rules != entry.rules || old.selected != entry.selected) {
+        // Hosts are only known once a header has been resolved this
+        // session; until then the recorded host stands in, or every host
+        // edit would read as a rule change at each start.
+        std::string rules = entry.rules;
+        if(entry.host.empty() && !old.host.empty()) {
+            llvm::StringRef paths[] = {old.host, entry.file};
+            rules = workspace.view.edit_hash(paths);
+        }
+        if(old.rules != rules || old.selected != entry.selected) {
+            // The default command that claimed it is gone and no host
+            // vouches for it: the build stopped compiling it, so its rows
+            // leave rather than being rebuilt under the builtin fallback.
+            if(!old.selected.empty() && entry.selected.empty() && old.host.empty()) {
+                LOG_INFO("No rule claims {} any more; dropping its index", entry.file);
+                drop_index_into(server_id, report);
+                retired.insert(server_id);
+                continue;
+            }
             LOG_INFO("Compile command or rules changed since the last session; reindexing {}",
                      entry.file);
             drop_index_into(server_id, report);
             report.add_reindex(server_id);
+            changed_ids.push_back(server_id);
             continue;
         }
         if(old.host.empty()) {
@@ -1544,7 +1578,10 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     // A file no database lists any more: when every database that listed
     // it loaded fine this session, the build stopped compiling it and its
     // rows leave, as the live reload's removed branch does; a database
-    // that failed to load keeps its last-known entries serving.
+    // that failed to load keeps its last-known entries serving. One the
+    // configuration stopped declaring is gone on purpose; one discovery no
+    // longer finds may come back.
+    bool declared = workspace.config.declares_sources();
     for(auto& old: persisted.entries) {
         if(old.hashes.empty() || old.sources.empty()) {
             continue;
@@ -1555,7 +1592,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         }
         bool healthy = llvm::all_of(old.sources, [&](const std::string& source) {
             auto id = workspace.cdb.find_source(source);
-            return id && workspace.cdb.loaded(*id);
+            return id ? workspace.cdb.loaded(*id) : declared;
         });
         if(!healthy) {
             continue;
@@ -1575,7 +1612,8 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         auto server_id = workspace.file_table.intern(old.file);
-        if(project.manifests.contains(server_id) || !fs::exists(old.file)) {
+        if(retired.contains(server_id) || project.manifests.contains(server_id) ||
+           !fs::exists(old.file)) {
             continue;
         }
         LOG_INFO("Index owed from the last session; reindexing {}", old.file);

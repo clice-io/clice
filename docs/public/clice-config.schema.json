@@ -12,7 +12,7 @@
         },
         "default_configuration": {
             "type": "string",
-            "description": "The build configuration active at startup, one of the tags declared on rules. Required once any rule carries a tag.",
+            "description": "The build configuration active at startup, one of the tags declared on rules. When rules carry tags and this names none of them, the first declared tag is used and a warning is logged.",
             "default": ""
         },
         "project": {
@@ -275,7 +275,7 @@
                     "items": {
                         "type": "string"
                     },
-                    "description": "Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed); an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment (a pattern of just `*` matches any path), `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.",
+                    "description": "Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed); an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.",
                     "default": []
                 },
                 "configuration": {
@@ -303,7 +303,7 @@
                             }
                         }
                     ],
-                    "description": "The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from this configuration file's directory, and the matching source files on disk join the background index. Omitted means none.",
+                    "description": "The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from this configuration file's directory, and the matching source files on disk join the background index — enumerated at startup, so a file created later compiles when opened and joins the index at the next start. Omitted means none.",
                     "default": ""
                 },
                 "append": {

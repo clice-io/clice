@@ -454,10 +454,10 @@ TEST_CASE(InternedCommand) {
                    spelled,
                    database.input_kind(spelled, "/ws/src/a.cpp"),
                    CommandSource::Default};
-    auto rendered = print_argv(database.render_driver(ref));
-    EXPECT_CONTAINS(rendered, "-std=c++20");
-    EXPECT_CONTAINS(rendered, "/ws/include");
-    EXPECT_TRUE(llvm::StringRef(rendered).ends_with("/ws/src/a.cpp"));
+    auto rendered = database.render_driver(ref);
+    EXPECT_TRUE(llvm::is_contained(rendered, "-std=c++20"sv));
+    EXPECT_TRUE(has_arg(rendered, "/ws/include"));
+    EXPECT_EQ(std::string_view(rendered.back()), "/ws/src/a.cpp"sv);
 };
 
 TEST_CASE(MultiCommand) {
@@ -631,26 +631,15 @@ TEST_CASE(IncludePathAbsolutize) {
                          "clang++ -Iinclude -isystem sys/inc -iquote ../src main.cpp"sv);
 
     auto result = render_entry(database, "main.cpp");
-
-    /// Check each argument individually with separator normalization
-    /// (print_argv escapes backslashes, breaking convert_to_slash on Windows).
-    auto has_path = [](llvm::ArrayRef<const char*> args, llvm::StringRef needle) {
-        for(auto* arg: args) {
-            if(path::convert_to_slash(arg).find(needle.str()) != std::string::npos)
-                return true;
-        }
-        return false;
-    };
-
-    EXPECT_TRUE(has_path(result, "/project/build/include"));
-    EXPECT_TRUE(has_path(result, "/project/build/sys/inc"));
-    EXPECT_TRUE(has_path(result, "/project/"));
+    EXPECT_TRUE(has_arg(result, "/project/build/include"));
+    EXPECT_TRUE(has_arg(result, "/project/build/sys/inc"));
+    EXPECT_TRUE(has_arg(result, "/project/"));
 
     /// Absolute paths are kept as-is.
     FileTable file_table2;
     CompilationDatabase database2{file_table2};
     database2.add_command("/project/build", "main.cpp", "clang++ -I/usr/include main.cpp"sv);
-    EXPECT_TRUE(has_path(render_entry(database2, "main.cpp"), "/usr/include"));
+    EXPECT_TRUE(has_arg(render_entry(database2, "main.cpp"), "/usr/include"));
 };
 
 TEST_CASE(SemanticOptionsPreserved) {

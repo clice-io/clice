@@ -2,6 +2,7 @@
 /// commands, anchored patterns, and the edits a header inherits from its
 /// host. Every workspace is a tmpdir with its own clice.toml.
 
+import type * as proto from "vscode-languageserver-protocol";
 import type { CliceClient } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
@@ -169,4 +170,25 @@ test("index skips excluded units", async ({ session }) => {
     expect(await client.waitForIndex(main, "main_sym")).toBe(true);
     const after = await client.workspaceSymbols("tp_sym");
     expect(after?.length ?? 0, "a reloaded excluded unit stays out of the index").toBe(0);
+});
+
+test("excluded unit escalates when read", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.write("third_party/lib.cpp", "int tp_sym() { return 1; }\n");
+    workspace.writeCDB(["main.cpp", "third_party/lib.cpp"]);
+    workspace.write("clice.toml", '[[rules]]\npatterns = ["third_party/**"]\nindex = false\n');
+    await client.initialize(workspace, {
+        initializationOptions: { project: { readonly: "auto" } },
+    });
+
+    // No shard will ever serve an excluded unit: the didOpen boost is
+    // refused and the session escalates to a pulled compile at once.
+    const uri = workspace.uri("third_party/lib.cpp");
+    const arrived = client.armDiagnostics(uri);
+    client.open("third_party/lib.cpp");
+    const symbols = (await client.documentSymbols(uri)) as proto.DocumentSymbol[] | null;
+    expect(symbols?.map((s) => s.name)).toContain("tp_sym");
+    await arrived;
+    client.assertNoErrors(uri);
 });

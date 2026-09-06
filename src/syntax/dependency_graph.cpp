@@ -338,7 +338,6 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     // unit order is deterministic.
     llvm::SmallVector<CommandRef> group_refs;
     std::vector<WaveEntry> wave0;
-    llvm::DenseMap<Fid, std::uint32_t> unit_groups;
 
     {
         llvm::DenseMap<std::pair<std::uint32_t, const char*>, std::uint32_t> group_ids;
@@ -349,7 +348,6 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             if(inserted) {
                 group_refs.push_back(unit);
             }
-            unit_groups.try_emplace(unit.file, it->second);
             wave0.push_back({unit.file, it->second, /*found_dir_idx=*/0});
         }
     }
@@ -669,20 +667,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 // Preprocess under the scan unit's own group command — only
                 // its flags (e.g. a define unguarding the declaration) can
                 // resolve this unit; a multi-entry file has one group per
-                // candidate. A cached unit whose group id outlived the
-                // database it was recorded against re-derives from the
-                // file's first unit instead.
-                const CommandRef* group = nullptr;
-                if(scan_result.config_id < group_refs.size()) {
-                    group = &group_refs[scan_result.config_id];
-                } else if(auto unit_group = unit_groups.find(scan_result.path_id);
-                          unit_group != unit_groups.end()) {
-                    group = &group_refs[unit_group->second];
-                }
-                if(group) {
+                // candidate.
+                {
+                    auto& group = group_refs[scan_result.config_id];
                     CommandRef ref{scan_result.path_id,
-                                   group->config,
-                                   group->input,
+                                   group.config,
+                                   group.input,
                                    CommandSource::CDBExact};
                     auto rendered = cdb.render(ref);
                     auto config_hash = hash_rendered_command(rendered);

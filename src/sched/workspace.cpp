@@ -101,7 +101,7 @@ void Workspace::rescan_after_save(Fid path_id) {
         // its own edges, as the startup scan does.
         Fid cmd_file = path_id;
         llvm::StringRef cmd_path = path;
-        if(!view.compiles(path_id)) {
+        if(!view.has_candidates(path_id)) {
             for(auto host: rank_hosts(path_id, dep_graph.find_host_sources(path_id))) {
                 if(view.compiles(host)) {
                     cmd_file = host;

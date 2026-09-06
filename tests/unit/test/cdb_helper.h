@@ -6,8 +6,10 @@
 
 #include "test/temp_dir.h"
 #include "command/command.h"
+#include "support/filesystem.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice::testing {
@@ -62,6 +64,16 @@ inline std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
 inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
     tmp.touch("compile_commands.json", json_content);
     cdb.load(tmp.path("compile_commands.json"));
+}
+
+/// Whether one argument contains `needle` once its separators are
+/// normalized: include paths absolutize with the native separator, and
+/// print_argv escapes backslashes, so the printed line cannot be searched
+/// for a `/`-spelled path.
+inline bool has_arg(llvm::ArrayRef<const char*> argv, llvm::StringRef needle) {
+    return llvm::any_of(argv, [&](const char* arg) {
+        return llvm::StringRef(path::convert_to_slash(arg)).contains(needle);
+    });
 }
 
 /// Rules-applied driver-level render of a file's default candidate, with

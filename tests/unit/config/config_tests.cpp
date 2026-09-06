@@ -1,3 +1,5 @@
+#include <format>
+
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "config/config.h"
@@ -369,21 +371,25 @@ TEST_CASE(AnchoredRules) {
     };
     std::string root = tmp.root.str().str();
     path::canonicalize(root);
+    tmp.touch("sub/clice.toml",
+              std::format(R"(
+compile_commands = ["build", "{}"]
 
-    Config config;
-    config.config_dir = tmp.path("sub");
-    config.compile_commands = {"build", at("elsewhere/compile_commands.json")};
-    config.rules.push_back(ConfigRule{
-        .patterns = {"src/**"},
-        .configuration = "debug",
-        .compile_commands = {"out/debug"},
-        .default_command = std::string("clang++ -std=c++20"),
-    });
-    config.rules.push_back(ConfigRule{
-        .patterns = {"**/*.hxx", "${workspace}/gen/**", "../shared/*.cpp"},
-        .append = {"-x", "c++-header"},
-    });
-    config.finalize(root);
+[[rules]]
+patterns = ["src/**"]
+configuration = "debug"
+compile_commands = ["out/debug"]
+default_command = "clang++ -std=c++20"
+
+[[rules]]
+patterns = ["**/*.hxx", "${{workspace}}/gen/**", "../shared/*.cpp", "*"]
+append = ["-x", "c++-header"]
+)",
+                          at("elsewhere/compile_commands.json")));
+
+    auto loaded = Config::load(tmp.path("sub/clice.toml"), root);
+    ASSERT_TRUE(loaded.has_value());
+    auto& config = *loaded;
 
     ASSERT_EQ(config.compiled_rules.size(), 3u);
     EXPECT_EQ(config.compiled_rules[0].compile_commands[0], at("sub/out/debug"));
@@ -391,10 +397,11 @@ TEST_CASE(AnchoredRules) {
     EXPECT_EQ(config.compiled_rules[0].patterns[0].root, at("sub/src"));
     EXPECT_TRUE(config.compiled_rules[0].declares_sources());
     EXPECT_FALSE(config.compiled_rules[1].declares_sources());
-    ASSERT_EQ(config.compiled_rules[1].patterns.size(), 3u);
+    ASSERT_EQ(config.compiled_rules[1].patterns.size(), 4u);
     EXPECT_EQ(config.compiled_rules[1].patterns[0].root, root);
     EXPECT_EQ(config.compiled_rules[1].patterns[1].root, at("gen"));
     EXPECT_EQ(config.compiled_rules[1].patterns[2].root, at("shared"));
+    EXPECT_EQ(config.compiled_rules[1].patterns[3].root, at("sub"));
     EXPECT_TRUE(config.compiled_rules[2].patterns.empty());
     EXPECT_EQ(config.compiled_rules[2].compile_commands[0], at("sub/build"));
     EXPECT_EQ(config.compiled_rules[2].compile_commands[1], at("elsewhere/compile_commands.json"));
@@ -404,10 +411,12 @@ TEST_CASE(AnchoredRules) {
     ASSERT_EQ(tags.size(), 1u);
     EXPECT_EQ(tags[0], "debug");
 
-    /// A relative pattern sees only files under its anchor.
+    /// A relative pattern sees only files under its anchor; a bare `*`
+    /// names the anchor's direct children.
     EXPECT_EQ(config.matching_rules(at("sub/src/a.cpp"), "debug").size(), 2u);
     EXPECT_EQ(config.matching_rules(at("sub/src/a.cpp"), "release").size(), 1u);
     EXPECT_EQ(config.matching_rules(at("src/a.cpp"), "debug").size(), 1u);
+    EXPECT_EQ(config.matching_rules(at("sub/a.cpp"), "debug").size(), 2u);
     /// `**` and `${workspace}` patterns match the absolute path; `..`
     /// climbs out of the anchor, `*` stays within one segment.
     auto hxx = config.matching_rules(at("other/tree/x.hxx"), "debug");
@@ -416,6 +425,46 @@ TEST_CASE(AnchoredRules) {
     EXPECT_EQ(config.matching_rules(at("gen/x.cpp"), "debug").size(), 2u);
     EXPECT_EQ(config.matching_rules(at("shared/x.cpp"), "debug").size(), 2u);
     EXPECT_EQ(config.matching_rules(at("shared/deep/x.cpp"), "debug").size(), 1u);
+}
+
+TEST_CASE(InitOptionsAnchorAtWorkspace) {
+    /// A file under .clice/ anchors its own paths there; values overlaid
+    /// through initializationOptions anchor at the workspace root, whatever
+    /// file was loaded before them.
+    TempDir tmp;
+    auto at = [&](llvm::StringRef relative) {
+        std::string p = tmp.path(relative);
+        path::canonicalize(p);
+        return p;
+    };
+    std::string root = tmp.root.str().str();
+    path::canonicalize(root);
+    tmp.touch(".clice/config.toml", R"(
+compile_commands = ["../build"]
+
+[[rules]]
+patterns = ["../src/**"]
+append = ["-DFROM_FILE"]
+)");
+
+    auto from_file = Config::load_from_workspace(root);
+    ASSERT_EQ(from_file.compiled_rules.size(), 2u);
+    EXPECT_EQ(from_file.compiled_rules[0].patterns[0].root, at("src"));
+    EXPECT_EQ(from_file.compiled_rules[0].directory, at(".clice"));
+    EXPECT_EQ(from_file.compiled_rules[1].compile_commands[0], at("build"));
+
+    auto config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
+    auto ov = kota::codec::json::from_string(
+        R"({ "compile_commands": ["out"], "rules": [{ "patterns": ["src/**"], "compile_commands": ["cmake"] }] })",
+        config);
+    ASSERT_TRUE(ov.has_value());
+    config.finalize(root);
+
+    ASSERT_EQ(config.compiled_rules.size(), 2u);
+    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, at("src"));
+    EXPECT_EQ(config.compiled_rules[0].compile_commands[0], at("cmake"));
+    EXPECT_EQ(config.compiled_rules[0].directory, root);
+    EXPECT_EQ(config.compiled_rules[1].compile_commands[0], at("out"));
 }
 
 TEST_CASE(SourcesOffByDefault) {

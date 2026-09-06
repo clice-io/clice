@@ -15,7 +15,8 @@
 compile_commands = ["build"]
 
 # The build configuration active at startup, one of the tags declared on
-# rules below; required once any rule carries a `configuration` tag.
+# rules below. When rules carry tags and this names none of them, the first
+# declared tag is used.
 # default_configuration = "debug"
 
 [project]
@@ -37,8 +38,11 @@ cdb_poll_seconds = 3
 workspace_poll_seconds = 30
 
 # Rules name files by pattern and say where they take their compile commands
-# from and how those commands are edited. Rules match in declaration order;
-# later rules override earlier ones.
+# from and how those commands are edited. Every rule matching a file applies,
+# in declaration order: an earlier rule's databases rank first, the first
+# `default_command` wins, `append` and `remove` accumulate with a later
+# `remove` cancelling an earlier `append`, and `index = false` on any matching
+# rule wins.
 [[rules]]
 # Files matching the specified pattern will have this rule applied. Omitted
 # means every file. Patterns are relative to this file's directory; a

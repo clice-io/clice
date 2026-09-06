@@ -7,6 +7,7 @@
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/xxhash.h"
@@ -276,12 +277,16 @@ void BuildView::enumerate_default_sources(std::vector<Fid>& out) const {
     llvm::StringRef cache_dir = config.project.cache_dir;
     for(auto root: roots) {
         std::error_code ec;
-        for(llvm::sys::fs::recursive_directory_iterator it(root, ec), end; it != end && !ec;
+        for(llvm::sys::fs::recursive_directory_iterator it(root, ec, /*follow_symlinks=*/false),
+            end;
+            it != end && !ec;
             it.increment(ec)) {
-            llvm::StringRef entry_path = it->path();
+            // The iterator spells paths natively; the cache directory and
+            // the patterns are canonical.
+            llvm::SmallString<256> storage;
+            auto entry_path = path::canonical(it->path(), storage);
             if(it->type() == llvm::sys::fs::file_type::directory_file) {
-                if(path::filename(entry_path) == ".git" ||
-                   (!cache_dir.empty() && entry_path == cache_dir)) {
+                if(path::filename(entry_path) == ".git" || entry_path == cache_dir) {
                     it.no_push();
                 }
                 continue;
@@ -295,15 +300,13 @@ void BuildView::enumerate_default_sources(std::vector<Fid>& out) const {
                  types::isCuda(type))) {
                 continue;
             }
-            std::string canonical = entry_path.str();
-            path::canonicalize(canonical);
-            auto matched = matching(canonical);
+            auto matched = matching(entry_path);
             if(!llvm::any_of(claimants, [&](const CompiledRule* rule) {
                    return llvm::is_contained(matched, rule);
                })) {
                 continue;
             }
-            auto file = files.intern(canonical);
+            auto file = files.intern(entry_path);
             if(seen.insert(file).second) {
                 out.push_back(file);
             }

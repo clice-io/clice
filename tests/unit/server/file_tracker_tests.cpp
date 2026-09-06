@@ -141,9 +141,18 @@ TEST_CASE(CDBTickRelocates) {
     auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
     auto other_id = workspace.file_table.intern(tmp.path("other.cpp"));
     ASSERT_EQ(events.size(), 2u);
-    ASSERT_EQ(events[0].cdb.removed, llvm::SmallVector<Fid>{main_id});
-    ASSERT_EQ(events[1].cdb.added, llvm::SmallVector<Fid>{other_id});
+    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{other_id});
+    ASSERT_EQ(events[1].cdb.removed, llvm::SmallVector<Fid>{main_id});
     EXPECT_TRUE(workspace.cdb.candidate_entries(main_id).empty());
+
+    /// The replaced database is no longer watched; the replacement is.
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("other.cpp"), {"-DV2"}}
+    }));
+    events = tracker.tick_cdb(/*force=*/true);
+    ASSERT_EQ(events.size(), 1u);
+    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{other_id});
 }
 
 TEST_CASE(WorkspaceTickStateMachine) {

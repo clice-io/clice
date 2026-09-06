@@ -38,11 +38,10 @@ struct ConfigRule {
                          "configuration file's directory (`..` segments "
                          "allowed); an absolute pattern or one starting with "
                          "`**` matches the file's absolute path. "
-                         "`*` matches within a path segment (a pattern of just "
-                         "`*` matches any path), `?` a single character, `**` "
-                         "any number of segments, `{a,b}` alternatives, `[0-9]` "
-                         "a character range, `[!...]` a negated range. Omitted "
-                         "means every file.")
+                         "`*` matches within a path segment, `?` a single "
+                         "character, `**` any number of segments, `{a,b}` "
+                         "alternatives, `[0-9]` a character range, `[!...]` a "
+                         "negated range. Omitted means every file.")
     <std::vector<std::string>> patterns;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -72,7 +71,10 @@ struct ConfigRule {
                          "tokenized like a shell command line, or an argv "
                          "array. It runs from this configuration file's "
                          "directory, and the matching source files on disk "
-                         "join the background index. Omitted means none.")
+                         "join the background index — enumerated at startup, "
+                         "so a file created later compiles when opened and "
+                         "joins the index at the next start. Omitted means "
+                         "none.")
     <CommandSpelling> default_command;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -94,6 +96,13 @@ struct ConfigRule {
                          "compile when opened and still host the headers they "
                          "include. Any matching rule saying `false` wins.")
     <bool> index = true;
+
+    /// Where the rule's relative paths and patterns anchor and its default
+    /// command runs: the directory of the configuration file it was read
+    /// from; empty for a rule from initializationOptions, which anchors at
+    /// the workspace root.
+    KOTATSU_ANNOTATE(skip = true)
+    <std::string> directory;
 };
 
 /// Corresponds to the `[project]` section in clice.toml. Field
@@ -288,8 +297,9 @@ struct Config {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "The build configuration active at startup, one of the "
-                         "tags declared on rules. Required once any rule carries "
-                         "a tag.")
+                         "tags declared on rules. When rules carry tags and this "
+                         "names none of them, the first declared tag is used and "
+                         "a warning is logged.")
     <std::string> default_configuration;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -321,14 +331,9 @@ struct Config {
     KOTATSU_ANNOTATE(skip = true)
     <std::vector<CompiledRule>> compiled_rules;
 
-    /// Directory of the configuration file the values came from; the
-    /// anchor of every relative path and pattern in it. Empty until
-    /// finalize(), which defaults it to the workspace root.
-    KOTATSU_ANNOTATE(skip = true)
-    <std::string> config_dir;
-
-    /// The workspace root finalize() ran for: the `${workspace}` value and
-    /// the enumeration root of `**`-led patterns.
+    /// The workspace root finalize() ran for, canonical: the `${workspace}`
+    /// value, the anchor of rules and databases no configuration file
+    /// supplied, and the enumeration root of `**`-led patterns.
     KOTATSU_ANNOTATE(skip = true)
     <std::string> workspace_root;
 
@@ -352,13 +357,16 @@ struct Config {
     /// The distinct configuration tags, in first-appearance order.
     llvm::SmallVector<llvm::StringRef> configurations() const;
 
-    /// Try to load configuration from a TOML file. Parse/validation problems
-    /// are appended to `issues` when provided: decode failures as Error (the
-    /// caller falls back to defaults), unknown keys as Warning (the rest of
-    /// the file still applies). Set `finalized` to false when further config
-    /// sources will be overlaid before finalize() runs — derived fields
-    /// (cache_dir, logging_dir, ...) must be computed only once, from the
-    /// final merged values.
+    /// Try to load configuration from a TOML file. Its relative paths and
+    /// patterns anchor at the file's directory: every rule records it and
+    /// the top-level databases are made absolute here, so a source overlaid
+    /// later keeps its own anchor. Parse/validation problems are appended to
+    /// `issues` when provided: decode failures as Error (the caller falls
+    /// back to defaults), unknown keys as Warning (the rest of the file
+    /// still applies). Set `finalized` to false when further config sources
+    /// will be overlaid before finalize() runs — derived fields (cache_dir,
+    /// logging_dir, ...) must be computed only once, from the final merged
+    /// values.
     static std::optional<Config> load(llvm::StringRef path,
                                       llvm::StringRef workspace_root,
                                       std::vector<ConfigIssue>* issues = nullptr,
