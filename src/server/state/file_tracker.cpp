@@ -23,6 +23,8 @@ FileTracker::FileTracker(Workspace& workspace,
                          const SessionStore& store,
                          std::string workspace_root) :
     workspace(workspace), store(store), workspace_root(std::move(workspace_root)) {
+    // Discovery compares the root with the file table's spellings.
+    path::canonicalize(this->workspace_root);
     // A change landing between the workspace load and this stat is caught
     // anyway: the stamp only gates reloads, and the reload's diff is
     // computed from content, so it never reports spurious changes.
@@ -170,12 +172,14 @@ void FileTracker::tick_source(TrackedSource& tracked,
         return;
     }
     // The stamps predate the read, so a rewrite landing meanwhile is seen
-    // next tick; a response file the reload first named is stamped now.
+    // next tick. A response file this reload first named has no such
+    // stamp: baselined as unknown, it reloads once more after settling,
+    // with one taken before that read.
     tracked.applied = current;
     tracked.applied.responses.clear();
     for(auto& response: workspace.cdb.response_files(tracked.id).take_front(watched_responses)) {
         auto it = known.find(response);
-        tracked.applied.responses.push_back(it != known.end() ? it->second : stat_file(response));
+        tracked.applied.responses.push_back(it != known.end() ? it->second : FileStamp{});
     }
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
              workspace.cdb.source_path(tracked.id),
@@ -378,9 +382,14 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     }
 
     // A file created under a default-command rule joins the build: the
-    // same gain of a command a database reload reports as added.
-    if(auto appeared = workspace.build.refresh_default_sources(); !appeared.empty()) {
-        push_delta({.added = std::move(appeared)}, events);
+    // same gain of a command a database reload reports as added. One
+    // deleted leaves through DiskRemoved, but no longer lends.
+    auto refresh = workspace.build.refresh_default_sources();
+    if(refresh.vanished || !refresh.appeared.empty()) {
+        workspace.commands_epoch += 1;
+    }
+    if(!refresh.appeared.empty()) {
+        push_delta({.added = std::move(refresh.appeared)}, events);
     }
 
     LOG_PERF("tracker",

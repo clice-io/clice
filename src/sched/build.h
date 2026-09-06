@@ -130,11 +130,16 @@ public:
     /// once per active configuration and again by refresh_default_sources.
     std::vector<Fid> members();
 
+    struct DefaultSourcesRefresh {
+        llvm::SmallVector<Fid> appeared;
+        bool vanished = false;
+    };
+
     /// Enumerate the sources the default-command rules claim again and
-    /// report the ones that appeared since the last enumeration: a file
-    /// created after startup joins the build. The workspace sweep calls it
-    /// every tick.
-    llvm::SmallVector<Fid> refresh_default_sources();
+    /// report the ones that appeared since the last enumeration — a file
+    /// created after startup joins the build — and whether any left. The
+    /// workspace sweep calls it every tick.
+    DefaultSourcesRefresh refresh_default_sources();
 
     /// The scan units of `members`: every command of every member, so a
     /// header reachable through only one of a file's entries still finds

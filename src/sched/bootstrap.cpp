@@ -107,12 +107,20 @@ BuildLoad load_build(Workspace& workspace,
     }
     if(!workspace.build.declares_sources()) {
         paths = discover_compile_commands(root);
-        for(auto& source: remembered) {
-            if(path::under(source, root) && fs::exists(source) &&
-               !llvm::is_contained(paths, source)) {
-                paths.push_back(source);
-            }
-        }
+        // Registered whether still there or not, like a declared one: the
+        // tracker watches for its return, and the index it built keeps
+        // serving meanwhile. Sorted like Build::source_order ranks them, so
+        // registration order — which the persisted command sequences
+        // follow — does not depend on the order files were opened in.
+        auto stable =
+            llvm::to_vector(llvm::make_filter_range(remembered, [&](const std::string& source) {
+                return path::under(source, root) && !llvm::is_contained(paths, source);
+            }));
+        std::ranges::sort(stable, {}, [](const std::string& source) {
+            return std::tuple(llvm::count_if(source, [](char c) { return path::is_separator(c); }),
+                              llvm::StringRef(source));
+        });
+        paths.append(stable.begin(), stable.end());
         if(paths.size() > 1) {
             LOG_INFO(
                 "No rule names a compilation database; the {} found apply in this order, "

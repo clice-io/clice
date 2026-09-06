@@ -197,9 +197,15 @@ llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header) {
     auto sources = workspace.build.source_order(header_path);
     auto family = family_of_suffix(header_path);
 
+    // A host lends its first command (see pick_pinned_config), so that is
+    // the one whose language must fit.
     llvm::SmallVector<Fid> hosts;
     for(auto candidate: workspace.dep_graph.find_host_sources(header)) {
-        if(compatible_command(workspace, family, candidate, workspace.build.commands(candidate))) {
+        auto commands = workspace.build.commands(candidate);
+        if(compatible_command(workspace,
+                              family,
+                              candidate,
+                              llvm::ArrayRef(commands).take_front(1))) {
             hosts.push_back(candidate);
         }
     }
