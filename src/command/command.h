@@ -209,10 +209,6 @@ struct CompilationEntry {
 
     ConfigID config = invalid_config;
 
-    /// Wrapper prefix stripped at load (ccache, distcc, ...): display
-    /// provenance only. Not part of config identity.
-    llvm::ArrayRef<const char*> wrapper;
-
     SourceID source;
 
     /// Position of the entry in its source file. Generators emit a file's
@@ -425,23 +421,16 @@ public:
 private:
     friend class Toolchain;
 
-    struct NormalizeResult {
-        ConfigID config = invalid_config;
-        llvm::ArrayRef<const char*> wrapper;
-    };
-
     /// The normalization pipeline (§ wrapper strip → driver info → @rsp
     /// expansion → nvcc translation → parse → classify → path normalize →
     /// dedup). `file` is the entry's normalized path used to pick the input
     /// slot among the command's inputs; invalid synthesizes the slot at the
     /// end.
-    std::optional<NormalizeResult> normalize(llvm::StringRef directory,
-                                             Fid file,
-                                             llvm::ArrayRef<const char*> arguments);
+    std::optional<ConfigID> normalize(llvm::StringRef directory,
+                                      Fid file,
+                                      llvm::ArrayRef<const char*> arguments);
 
-    std::optional<NormalizeResult> normalize(llvm::StringRef directory,
-                                             Fid file,
-                                             llvm::StringRef command);
+    std::optional<ConfigID> normalize(llvm::StringRef directory, Fid file, llvm::StringRef command);
 
     /// Expand @file tokens in place, driver-mode aware (CL commands
     /// tokenize with Windows rules).
@@ -463,7 +452,7 @@ private:
     void rebuild_entry_list();
 
     std::optional<CompilationEntry> append_test_command(llvm::StringRef file,
-                                                        std::optional<NormalizeResult> normalized);
+                                                        std::optional<ConfigID> normalized);
 
     std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();
 

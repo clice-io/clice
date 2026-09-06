@@ -8,7 +8,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-export const TESTS_DIR = path.join(REPO_ROOT, "tests");
+const TESTS_DIR = path.join(REPO_ROOT, "tests");
 export const DATA_DIR = path.join(TESTS_DIR, "data");
 export const SNAP_DIR = path.join(TESTS_DIR, "snap");
 

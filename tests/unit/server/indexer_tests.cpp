@@ -2188,7 +2188,7 @@ TEST_CASE(UnclaimedDefaultRetires) {
 
     // The rule whose default command claimed the file is gone and nothing
     // else compiles it: the rows leave instead of being rebuilt under the
-    // builtin fallback, and no debt survives for a unit the view left.
+    // builtin fallback, and no debt survives for a unit the build left.
     IndexerFixture f;
     open_store(tmp, f.workspace);
     f.load();
@@ -3357,7 +3357,7 @@ TEST_CASE(ModuleLintScanParity) {
                   {tmp.root, tmp.path("m.cppm"), {}},
                   {tmp.root, tmp.path("n.cppm"), {}},
     }));
-    scan_dependency_graph(f.workspace.cdb, f.workspace.dep_graph);
+    scan_all(f.workspace.cdb, f.workspace.dep_graph);
     f.workspace.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);

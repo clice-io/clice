@@ -645,7 +645,7 @@ void MasterServer::load_workspace() {
     if(workspace_root.empty())
         return;
 
-    auto report = bootstrap_workspace(workspace, contexts, index_store, pump, workspace_root);
+    auto report = bootstrap_workspace(workspace, index_store, pump, workspace_root);
     if(report.opened_store) {
         bg_tasks.spawn(cache_checkpoint_task());
     }

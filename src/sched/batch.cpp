@@ -190,7 +190,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
     workspace.config.project.enable_indexing.value = true;
 
-    bootstrap_workspace(workspace, stack.contexts, stack.store, stack.pump, options.root);
+    bootstrap_workspace(workspace, stack.store, stack.pump, options.root);
 
     // The command's whole product is the persisted index: without storage
     // (cache failed to open, another process holds the index writer lock,
@@ -361,7 +361,6 @@ kota::task<> run_lint(BatchStack& stack,
     workspace.config.project.enable_indexing.value = false;
 
     bootstrap_workspace(workspace,
-                        stack.contexts,
                         stack.store,
                         stack.pump,
                         options.root,

@@ -254,15 +254,12 @@ ConfigID CompilationDatabase::save_config(CompileConfig config, llvm::ArrayRef<A
     return ConfigID(id);
 }
 
-std::optional<CompilationDatabase::NormalizeResult>
-    CompilationDatabase::normalize(llvm::StringRef directory,
-                                   Fid file,
-                                   llvm::ArrayRef<const char*> arguments) {
+std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory,
+                                                       Fid file,
+                                                       llvm::ArrayRef<const char*> arguments) {
     if(arguments.empty()) {
         return std::nullopt;
     }
-
-    NormalizeResult result;
 
     /// Wrapper stripping: the prefix is entry provenance, not config
     /// identity — `ccache clang++ X` and `clang++ X` dedupe to one config.
@@ -272,11 +269,6 @@ std::optional<CompilationDatabase::NormalizeResult>
             LOG_WARN("Compiler launcher without a compiler: {}", print_argv(arguments));
             return std::nullopt;
         }
-        llvm::SmallVector<const char*, 4> wrapper;
-        for(const char* token: arguments.take_front(wrapper_len)) {
-            wrapper.push_back(strings.save(token).data());
-        }
-        result.wrapper = persist_strings(wrapper);
         arguments = arguments.drop_front(wrapper_len);
     }
 
@@ -507,12 +499,12 @@ std::optional<CompilationDatabase::NormalizeResult>
                               .values = local.values});
     }
 
-    result.config = save_config(config, local_args);
-    return result;
+    return save_config(config, local_args);
 }
 
-std::optional<CompilationDatabase::NormalizeResult>
-    CompilationDatabase::normalize(llvm::StringRef directory, Fid file, llvm::StringRef command) {
+std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory,
+                                                       Fid file,
+                                                       llvm::StringRef command) {
     llvm::BumpPtrAllocator local;
     llvm::StringSaver saver(local);
 
@@ -799,7 +791,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         path::remove_dots(file_abs, /*remove_dot_dot=*/true);
         auto path_id = file_table.intern(file_abs);
 
-        std::optional<NormalizeResult> normalized;
+        std::optional<ConfigID> normalized;
 
         simdjson::ondemand::array args_arr;
         if(!obj["arguments"].get_array().get(args_arr)) {
@@ -835,11 +827,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         if(!normalized) {
             continue;
         }
-        new_entries.push_back({.file = path_id,
-                               .config = normalized->config,
-                               .wrapper = normalized->wrapper,
-                               .source = id,
-                               .ordinal = index});
+        new_entries.push_back(
+            {.file = path_id, .config = *normalized, .source = id, .ordinal = index});
     }
 
     auto count = new_entries.size();
@@ -1215,7 +1204,7 @@ std::optional<ConfigID> CompilationDatabase::intern_command(llvm::StringRef dire
     auto [it, inserted] = interned_commands.try_emplace(key, invalid_config);
     if(inserted) {
         if(auto normalized = normalize(directory, Fid{}, arguments)) {
-            it->second = normalized->config;
+            it->second = *normalized;
         } else {
             LOG_WARN("Not a compile command: {}", print_argv(arguments));
         }
@@ -1396,7 +1385,7 @@ SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
 
 std::optional<CompilationEntry>
     CompilationDatabase::append_test_command(llvm::StringRef file,
-                                             std::optional<NormalizeResult> normalized) {
+                                             std::optional<ConfigID> normalized) {
     if(!normalized) {
         return std::nullopt;
     }
@@ -1411,8 +1400,7 @@ std::optional<CompilationEntry>
     auto id = SourceID(anonymous - source_files.begin());
     auto& source = *anonymous;
     CompilationEntry entry{.file = file_table.intern(file),
-                           .config = normalized->config,
-                           .wrapper = normalized->wrapper,
+                           .config = *normalized,
                            .source = id,
                            .ordinal = static_cast<std::uint32_t>(source.entries.size())};
     source.entries.push_back(entry);

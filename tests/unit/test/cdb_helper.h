@@ -7,6 +7,7 @@
 #include "test/temp_dir.h"
 #include "command/command.h"
 #include "support/filesystem.h"
+#include "syntax/dependency_graph.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -98,6 +99,19 @@ inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
         }
     }
     return argv;
+}
+
+/// Scan every entry of the database under its own command: the shape of a
+/// test that owns no configuration.
+inline ScanReport scan_all(CompilationDatabase& cdb, DependencyGraph& graph) {
+    llvm::SmallVector<CommandRef> units;
+    for(auto& entry: cdb.entries()) {
+        units.push_back({entry.file,
+                         entry.config,
+                         cdb.input_kind(entry.config, cdb.files().resolve(entry.file)),
+                         CommandSource::CDBExact});
+    }
+    return scan_dependency_graph(cdb, graph, units);
 }
 
 }  // namespace clice::testing

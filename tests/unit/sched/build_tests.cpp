@@ -9,7 +9,7 @@ namespace clice::testing {
 
 namespace {
 
-/// The canonical spelling of a temp path: the view matches and hands out
+/// The canonical spelling of a temp path: the build matches and hands out
 /// canonical paths, TempDir spells them natively.
 std::string canonical(const TempDir& tmp, llvm::StringRef relative) {
     auto p = tmp.path(relative);
@@ -34,7 +34,7 @@ struct Layout {
         }
     }
 
-    /// Canonical spelling, like every path the view hands out.
+    /// Canonical spelling, like every path the build hands out.
     std::string path(llvm::StringRef relative) const {
         auto joined = path::join(root, relative);
         path::canonicalize(joined);
@@ -46,7 +46,7 @@ struct Layout {
     }
 
     /// The driver-level render of the file's default selection, or of the
-    /// builtin fallback when the view does not compile it.
+    /// builtin fallback when the build does not compile it.
     std::vector<const char*> render(llvm::StringRef relative) {
         auto file = path(relative);
         auto id = files.intern(file);

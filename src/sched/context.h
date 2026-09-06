@@ -237,18 +237,6 @@ public:
     /// line sits past the editor's EOF and is invisible to the client.
     void append_suffix_include(Fid path_id, std::string& text);
 
-    /// Fill compile arguments for a header from a host source's command found
-    /// through the include graph, synthesizing a preamble prefix/suffix when
-    /// the header needs includer context. Returns false when no usable host
-    /// context exists.
-    bool fill_header_context_args(llvm::StringRef path,
-                                  Fid path_id,
-                                  std::string& directory,
-                                  std::vector<std::string>& arguments,
-                                  ContextUse use,
-                                  Fid* host_path_id,
-                                  CommandRef* out_ref = nullptr);
-
     /// Validate a context choice persisted from an earlier run against the
     /// current CDB and include graph, dropping it when stale. Called on
     /// didOpen; a surviving entry is the file's active context.
@@ -275,6 +263,18 @@ public:
                    const Selection& saved) const;
 
 private:
+    /// Fill compile arguments for a header from a host source's command found
+    /// through the include graph, synthesizing a preamble prefix/suffix when
+    /// the header needs includer context. Returns false when no usable host
+    /// context exists.
+    bool fill_header_context_args(llvm::StringRef path,
+                                  Fid path_id,
+                                  std::string& directory,
+                                  std::vector<std::string>& arguments,
+                                  ContextUse use,
+                                  Fid* host_path_id,
+                                  CommandRef* out_ref = nullptr);
+
     std::optional<HeaderContext> resolve_header_context(Fid header_path_id,
                                                         ContextUse use,
                                                         bool synthesize);

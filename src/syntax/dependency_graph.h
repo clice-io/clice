@@ -259,8 +259,4 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
                                  DependencyGraph& graph,
                                  llvm::ArrayRef<CommandRef> units);
 
-/// Scan every entry of the database under its own command: the shape for
-/// tools without a configuration.
-ScanReport scan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph);
-
 }  // namespace clice

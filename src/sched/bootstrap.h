@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 
-#include "command/command.h"
 #include "vfs/file_table.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -11,7 +10,6 @@
 
 namespace clice {
 
-class ContextResolver;
 class IndexPump;
 class IndexStore;
 struct Workspace;
@@ -33,9 +31,6 @@ struct BootstrapReport {
 
 /// What loading the build found.
 struct BuildLoad {
-    /// Entries across every loaded database.
-    std::size_t entries = 0;
-
     /// The build's translation units, the dependency graph's roots.
     std::vector<Fid> members;
 };
@@ -61,7 +56,6 @@ BuildLoad load_build(Workspace& workspace, llvm::StringRef root);
 /// reconciliation or sweep writes, so a later save commits nothing — for
 /// runs whose product must not touch the index (plain `clice lint`).
 BootstrapReport bootstrap_workspace(Workspace& workspace,
-                                    ContextResolver& contexts,
                                     IndexStore& store,
                                     IndexPump& pump,
                                     llvm::StringRef root,

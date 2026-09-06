@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "index/database.h"
-#include "sched/context.h"
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
 #include "sched/workspace.h"
@@ -17,7 +16,6 @@
 namespace clice {
 
 BootstrapReport bootstrap_workspace(Workspace& workspace,
-                                    ContextResolver& contexts,
                                     IndexStore& store,
                                     IndexPump& pump,
                                     llvm::StringRef root,
@@ -103,6 +101,7 @@ BuildLoad load_build(Workspace& workspace, llvm::StringRef root) {
     workspace.build.reset_active();
 
     ScopedTimer cdb_timer;
+    std::size_t entries = 0;
     llvm::SmallVector<std::string> paths;
     for(auto declared: workspace.build.declared_sources()) {
         paths.push_back(declared.str());
@@ -117,12 +116,12 @@ BuildLoad load_build(Workspace& workspace, llvm::StringRef root) {
         auto id = workspace.cdb.add_source(path);
         if(auto loaded = workspace.cdb.load_source(id)) {
             LOG_INFO("Loaded CDB from {} with {} entries", workspace.cdb.source_path(id), *loaded);
-            load.entries += *loaded;
+            entries += *loaded;
         } else {
             LOG_WARN("Compilation database {} is not readable yet", workspace.cdb.source_path(id));
         }
     }
-    LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", load.entries, cdb_timer.ms());
+    LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", entries, cdb_timer.ms());
 
     load.members = workspace.build.members();
     if(load.members.empty()) {

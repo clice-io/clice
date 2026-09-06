@@ -168,11 +168,6 @@ public:
         return index_queue_pos < index_queue.size() ? index_queue.size() - index_queue_pos : 0;
     }
 
-    /// Total files that were enqueued in the current (or last) indexing round.
-    std::size_t total_queued() const {
-        return index_queue.size();
-    }
-
     /// Files whose latest index attempt failed for good — rejected by the
     /// worker, an empty or unverifiable result, a spent crash budget, or a
     /// dead IPC path — with no retry pending. Their rows are missing or

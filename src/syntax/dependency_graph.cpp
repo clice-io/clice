@@ -904,15 +904,4 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
     return report;
 }
 
-ScanReport scan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph) {
-    llvm::SmallVector<CommandRef> units;
-    for(auto& entry: cdb.entries()) {
-        units.push_back({entry.file,
-                         entry.config,
-                         cdb.input_kind(entry.config, cdb.files().resolve(entry.file)),
-                         CommandSource::CDBExact});
-    }
-    return scan_dependency_graph(cdb, graph, units);
-}
-
 }  // namespace clice

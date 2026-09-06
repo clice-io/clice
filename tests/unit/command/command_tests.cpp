@@ -290,13 +290,10 @@ TEST_CASE(WrapperStripped) {
     database.add_command("/fake", "a.cpp", "ccache clang++ -std=c++20 a.cpp"sv);
     database.add_command("/fake", "b.cpp", "clang++ -std=c++20 b.cpp"sv);
 
-    /// The wrapper is entry provenance, not config identity.
+    /// The wrapper is stripped and takes no part in the config identity.
     auto& a = database.candidate_entries("a.cpp").front();
     auto& b = database.candidate_entries("b.cpp").front();
     EXPECT_EQ(a.config, b.config);
-    ASSERT_EQ(a.wrapper.size(), 1U);
-    EXPECT_EQ(llvm::StringRef(a.wrapper[0]), "ccache");
-    EXPECT_TRUE(b.wrapper.empty());
 
     EXPECT_EQ(llvm::StringRef(database.config(a.config).driver), "clang++");
     EXPECT_NOT_CONTAINS(print_argv(render_entry(database, "a.cpp")), "ccache");
@@ -316,7 +313,6 @@ TEST_CASE(WrapperValueOptions) {
     auto& b = database.candidate_entries("b.cpp").front();
     EXPECT_EQ(a.config, b.config);
     EXPECT_EQ(llvm::StringRef(database.config(a.config).driver), "clang++");
-    ASSERT_EQ(a.wrapper.size(), 3U);
 };
 
 TEST_CASE(WrapperCaseInsensitive) {
@@ -327,8 +323,6 @@ TEST_CASE(WrapperCaseInsensitive) {
 
     auto& a = database.candidate_entries("a.cpp").front();
     EXPECT_EQ(llvm::StringRef(database.config(a.config).driver), "clang++");
-    ASSERT_EQ(a.wrapper.size(), 1U);
-    EXPECT_EQ(llvm::StringRef(a.wrapper[0]), "CCACHE.EXE");
 };
 
 TEST_CASE(InputKindNoExtension) {
@@ -1033,7 +1027,6 @@ TEST_CASE(FixtureLayouts) {
         ASSERT_EQ(load_layout(database, "launcher_prefix"), 1U);
         auto candidates = database.candidate_entries(source("launcher_prefix"));
         ASSERT_EQ(candidates.size(), 1U);
-        EXPECT_EQ(candidates.front().wrapper.size(), 1U);
         auto argv = render_entry(database, source("launcher_prefix"));
         ASSERT_FALSE(argv.empty());
         EXPECT_EQ(argv.front(), "clang++"sv);

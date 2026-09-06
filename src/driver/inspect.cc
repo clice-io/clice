@@ -3,7 +3,6 @@
 #include <print>
 #include <ranges>
 
-#include "command/argument_parser.h"
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
