@@ -5,11 +5,9 @@ on:
 
 env:
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
-  SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
   CCACHE_BASEDIR: ${{ github.workspace }}
   CCACHE_COMPILERCHECK: content
   CCACHE_MAXSIZE: 2G
-  SCCACHE_CACHE_SIZE: 2G
 
 jobs:
   build-and-test:
@@ -47,26 +45,37 @@ jobs:
           environments: default test-run
           activate-environment: default
 
+      # Pull requests only restore: every push saving its own copy churns
+      # the repository's 10 GB cache pool faster than the next run can reuse
+      # it. Saved from main below, once per merge.
       - name: Restore compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
-          path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
+          path: .cache/ccache
           key: ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-
 
       - name: Zero cache stats
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -- sccache --stop-server || true
-            pixi run -- sccache --zero-stats || true
-          else
-            pixi run -- ccache --zero-stats || true
-          fi
-        shell: bash
+        run: pixi run -- ccache --zero-stats
 
       - name: Build
         run: pixi run build ${{ matrix.build_type }} ON
+
+      - name: Save compiler cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/ccache
+          key: ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
+
+      # Process start-up is the fixed cost every test-suite process pays
+      # (inspect runs, servers, workers); the two build types differ in
+      # linkage and sanitizers, so both are timed.
+      - name: Process startup cost
+        shell: bash
+        run: |
+          for _ in 1 2; do time build/${{ matrix.build_type }}/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }} --version; done
 
       # Upload artifacts for editor tests (the ubuntu and macOS RelWithDebInfo
       # builds are consumed by editor-test; uploading all keeps the option open
@@ -149,16 +158,6 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # sccache runs a background server that holds file locks; if it is
-      # still alive when the pixi post-action tries to clean up the env
-      # cache on Windows, the cleanup fails and marks the job as failed.
-      - name: Print cache stats and stop server
+      - name: Print cache stats
         if: always()
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -- sccache --show-stats
-            pixi run -- sccache --stop-server || true
-          else
-            pixi run -- ccache --show-stats
-          fi
-        shell: bash
+        run: pixi run -- ccache --show-stats

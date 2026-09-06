@@ -20,5 +20,5 @@ runs:
         pixi-version: v0.71.1
         environments: ${{ inputs.environments }}
         activate-environment: ${{ inputs.activate-environment }}
-        cache: true
+        cache: false
         locked: true

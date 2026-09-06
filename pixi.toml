@@ -46,7 +46,7 @@ compiler-rt = "==22.1.8"
 xz = ">=5.8.1,<6"
 
 [feature.build.target.win-64.dependencies]
-sccache = "*"
+ccache = "*"
 
 [feature.build.target.linux-64.dependencies]
 sysroot_linux-64 = "==2.17"
