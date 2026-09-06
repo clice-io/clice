@@ -172,6 +172,8 @@ TEST_CASE(ForcedLanguageMembers) {
     tmp.touch("src/tool", "int main() {}\n");
     tmp.touch("src/util.h", "");
     tmp.touch("src/data.txt", "");
+    tmp.touch("src/pre.i", "");
+    tmp.touch("src/iface.cppm", "");
     Config config;
     config.rules.push_back(
         ConfigRule{.patterns = {"src/tool"}, .default_command = std::string("clang++ -x c++")});
@@ -184,8 +186,42 @@ TEST_CASE(ForcedLanguageMembers) {
     Build build{config, cdb, files};
     build.reset_active();
     auto members = build.members();
+    ASSERT_EQ(members.size(), 3U);
+    EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "src/tool"))));
+    EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "src/pre.i"))));
+    EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "src/iface.cppm"))));
+};
+
+TEST_CASE(UnitsDeduplicated) {
+    /// Two databases listing a file with the same command yield one scan
+    /// unit; a differing command stays its own unit.
+    TempDir tmp;
+    tmp.touch("main.cpp", "int main() {}\n");
+    auto entry = [&](llvm::StringRef define) {
+        return std::string(
+                   R"([{"directory": "..", "file": "main.cpp", "arguments": ["clang++", ")") +
+               define.str() + R"(", "main.cpp"]}])";
+    };
+    tmp.touch("a/compile_commands.json", entry("-DSAME"));
+    tmp.touch("b/compile_commands.json", entry("-DSAME"));
+    tmp.touch("c/compile_commands.json", entry("-DOTHER"));
+
+    Config config;
+    config.rules.push_back(ConfigRule{
+        .compile_commands = {"a", "b", "c"}
+    });
+    config.finalize(tmp.root.str());
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active();
+    for(auto source: build.declared_sources()) {
+        cdb.load(source);
+    }
+    auto members = build.members();
     ASSERT_EQ(members.size(), 1U);
-    EXPECT_EQ(members.front(), files.intern(canonical(tmp, "src/tool")));
+    EXPECT_EQ(build.entries(members.front()).size(), 3U);
+    EXPECT_EQ(build.units(members).size(), 2U);
 };
 
 TEST_CASE(InvalidDefaultCommandIgnored) {

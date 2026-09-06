@@ -3,6 +3,7 @@
 #include <format>
 
 #include "support/filesystem.h"
+#include "support/logging.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -213,8 +214,19 @@ llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {
     llvm::SmallVector<CommandRef> result;
     for(auto member: members) {
         auto path = files.resolve(member);
+        // Two databases listing the file with the same command make one
+        // unit: the scan would only read it twice.
+        auto first = result.size();
         for(auto& command: commands(member)) {
-            result.push_back(resolve(member, command.config, command.source, path, path));
+            auto unit = resolve(member, command.config, command.source, path, path);
+            bool seen = llvm::any_of(llvm::ArrayRef(result).drop_front(first),
+                                     [&](const CommandRef& other) {
+                                         return other.config == unit.config &&
+                                                other.input.value == unit.input.value;
+                                     });
+            if(!seen) {
+                result.push_back(unit);
+            }
         }
     }
     return result;
@@ -279,8 +291,14 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
         std::error_code ec;
         for(llvm::sys::fs::recursive_directory_iterator it(root, ec, /*follow_symlinks=*/false),
             end;
-            it != end && !ec;
+            it != end;
             it.increment(ec)) {
+            // An unreadable directory is skipped, not the rest of the walk.
+            if(ec) {
+                LOG_WARN("Cannot read a directory under {}: {}", root, ec.message());
+                ec.clear();
+                continue;
+            }
             // The iterator spells paths natively; the cache directory and
             // the patterns are canonical.
             llvm::SmallString<256> storage;
@@ -297,16 +315,16 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
                })) {
                 continue;
             }
-            // Sources only: a header claims no translation unit of its own.
-            // A suffix clang does not know is a source when the default
-            // command forces its language (`-x c++` for an extensionless
-            // tool).
+            // Sources only — every C-family input clang compiles as a unit,
+            // preprocessed and module interface files included; a header
+            // claims no translation unit of its own. A suffix clang does not
+            // know is a source when the default command forces its language
+            // (`-x c++` for an extensionless tool).
             auto ext = path::extension(entry_path);
             ext.consume_front(".");
             auto type = ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
-            bool source = type != types::TY_INVALID && !types::onlyPrecompileType(type) &&
-                          (types::isCXX(type) || type == types::TY_C || types::isObjC(type) ||
-                           types::isCuda(type));
+            bool source = type != types::TY_INVALID && types::isDerivedFromC(type) &&
+                          !types::onlyPrecompileType(type);
             if(!source) {
                 if(type != types::TY_INVALID) {
                     continue;
