@@ -147,12 +147,12 @@ struct CommandLang {
 
 static std::optional<CommandLang> command_lang(Workspace& workspace, llvm::StringRef path) {
     auto file = workspace.file_table.intern(path);
-    auto commands = workspace.view.commands(file);
+    auto commands = workspace.build.commands(file);
     if(commands.empty()) {
         return std::nullopt;
     }
     auto& command = commands.front();
-    auto applied = workspace.view.resolve(file, command.config, command.source, path, path).config;
+    auto applied = workspace.build.resolve(file, command.config, command.source, path, path).config;
 
     CommandLang result;
     auto language = workspace.cdb.forced_language(applied);
@@ -178,8 +178,7 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
     // resolved host) names the view being read; its command beats the
     // contributor union the way it does for the AST after an escalation.
     Fid host;
-    if(auto it = contexts.saved_contexts.find(session.path_id);
-       it != contexts.saved_contexts.end()) {
+    if(auto it = contexts.selections.find(session.path_id); it != contexts.selections.end()) {
         host = it->second.host_path_id;
     }
     if(!host.valid()) {

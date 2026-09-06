@@ -204,7 +204,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_await shutdown(stack);
         co_return;
     }
-    if(workspace.view.members().empty()) {
+    if(workspace.build.members().empty()) {
         LOG_ERROR("Nothing to index: no compile_commands.json found under {}", options.root);
         result.exit_code = 1;
         co_await shutdown(stack);
@@ -367,7 +367,7 @@ kota::task<> run_lint(BatchStack& stack,
                         options.root,
                         /*read_only_index=*/!options.with_index);
 
-    auto members = workspace.view.members();
+    auto members = workspace.build.members();
     if(members.empty()) {
         LOG_ERROR("Nothing to lint: no compile_commands.json found under {}", options.root);
         result.exit_code = 2;

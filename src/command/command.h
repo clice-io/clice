@@ -158,12 +158,25 @@ struct CommandRef {
     CommandSource source = CommandSource::Fallback;
 };
 
+/// One rule's edit of a command: flags to remove from it, or flags to
+/// append to it.
+struct CommandEdit {
+    enum class Kind : std::uint8_t {
+        Remove,
+        Append,
+    };
+
+    Kind kind;
+    std::vector<std::string> flags;
+};
+
 /// Config-rule edits applied on top of a base config (structured, no
-/// re-parse). Applied as remove first, then append; appends insert before
-/// the input slot so they always take effect for the compile.
+/// re-parse), in the order the rules declare them: a remove cancels the
+/// matching options of the base command and of the appends before it;
+/// appends insert before the input slot so they always take effect for
+/// the compile.
 struct CommandOptions {
-    llvm::ArrayRef<std::string> remove;
-    llvm::ArrayRef<std::string> append;
+    llvm::ArrayRef<CommandEdit> edits;
 
     /// Per-run additions in the resolved command's own dialect (a lint
     /// plan's clang-tool extra args). Unlike the config rule lists above
@@ -175,7 +188,7 @@ struct CommandOptions {
     llvm::ArrayRef<std::string> extra_append;
 
     bool empty() const {
-        return remove.empty() && append.empty() && extra_prepend.empty() && extra_append.empty();
+        return edits.empty() && extra_prepend.empty() && extra_append.empty();
     }
 };
 
@@ -340,10 +353,6 @@ public:
     /// launcher with nothing to launch.
     std::optional<ConfigID> intern_command(llvm::StringRef directory,
                                            llvm::ArrayRef<const char*> arguments);
-
-    /// The same for a command written as one line, tokenized with the
-    /// host's shell rules like a database entry's `command` field.
-    std::optional<ConfigID> intern_command_line(llvm::StringRef directory, llvm::StringRef command);
 
     /// Derive the language of `file` compiled under `id`: walk the
     /// language-selector state machine (-x applies to inputs after it,

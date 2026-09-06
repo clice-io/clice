@@ -8,6 +8,7 @@
 #include "command/search_config.h"
 #include "index/serialization.h"
 #include "sched/context.h"
+#include "sched/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
@@ -50,36 +51,6 @@ std::uint32_t Workspace::count_occurrences(Fid host_id, Fid target_id) const {
                                      null_resolver);
 }
 
-llvm::SmallVector<Fid> Workspace::rank_hosts(Fid header_path_id, llvm::ArrayRef<Fid> hosts) const {
-    auto header_path = file_table.resolve(header_path_id);
-    auto header_stem = llvm::sys::path::stem(header_path);
-    auto header_dir = llvm::sys::path::parent_path(header_path);
-
-    auto score = [&](Fid host_id) -> std::tuple<int, int, std::size_t> {
-        auto host_path = file_table.resolve(host_id);
-        int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
-        int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
-        // Longer shared prefix means "closer" in the tree; negate for
-        // ascending sort.
-        std::size_t common = 0;
-        auto n = std::min(host_path.size(), header_path.size());
-        while(common < n && host_path[common] == header_path[common]) {
-            ++common;
-        }
-        return {stem_match, same_dir, n - common};
-    };
-
-    llvm::SmallVector<Fid> ranked(hosts.begin(), hosts.end());
-    std::ranges::sort(ranked, [&](Fid a, Fid b) {
-        auto sa = score(a), sb = score(b);
-        if(sa != sb) {
-            return sa < sb;
-        }
-        return file_table.resolve(a) < file_table.resolve(b);
-    });
-    return ranked;
-}
-
 void Workspace::rescan_after_save(Fid path_id) {
     auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
@@ -101,24 +72,21 @@ void Workspace::rescan_after_save(Fid path_id) {
         // its own edges, as the startup scan does.
         Fid cmd_file = path_id;
         llvm::StringRef cmd_path = path;
-        if(!view.has_candidates(path_id)) {
-            for(auto host: rank_hosts(path_id, dep_graph.find_host_sources(path_id))) {
-                if(view.compiles(host)) {
-                    cmd_file = host;
-                    cmd_path = file_table.resolve(host);
-                    break;
-                }
+        if(build.entries(path_id).empty()) {
+            if(auto host = default_host(*this, path_id)) {
+                cmd_file = host->file;
+                cmd_path = file_table.resolve(host->file);
             }
         }
 
         llvm::SmallVector<CommandRef, 2> refs;
-        for(auto& command: view.commands(cmd_file)) {
+        for(auto& command: build.commands(cmd_file)) {
             refs.push_back(
-                view.resolve(path_id, command.config, command.source, {cmd_path, path}, cmd_path));
+                build.resolve(path_id, command.config, command.source, {cmd_path, path}, cmd_path));
         }
         if(refs.empty()) {
             refs.push_back(
-                view.resolve(path_id, view.builtin(path), CommandSource::Fallback, path, path));
+                build.resolve(path_id, build.builtin(path), CommandSource::Fallback, path, path));
         }
 
         DirListingCache dir_cache;

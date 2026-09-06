@@ -1,8 +1,10 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "command/command.h"
+#include "vfs/file_table.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -29,6 +31,23 @@ struct BootstrapReport {
     bool opened_store = false;
 };
 
+/// What loading the build found.
+struct BuildLoad {
+    /// Entries across every loaded database.
+    std::size_t entries = 0;
+
+    /// The build's translation units, the dependency graph's roots.
+    std::vector<Fid> members;
+};
+
+/// Register and load the build's sources — the databases the rules declare
+/// (existing or not; the tracker watches for them), else the one
+/// discovered under `root` — then enumerate the build's members and scan
+/// the dependency graph from them. The workspace's configuration is
+/// final. The one loading path of the server, the batch driver and
+/// `clice inspect`.
+BuildLoad load_build(Workspace& workspace, llvm::StringRef root);
+
 /// The one workspace loading sequence, shared by the server's initialize
 /// and the batch driver so the two can never drift apart: open the cache
 /// store and register its namespaces, discover and load
@@ -47,10 +66,5 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     IndexPump& pump,
                                     llvm::StringRef root,
                                     bool read_only_index = false);
-
-/// The active view's members with their effective commands: the input of
-/// a dependency scan. Shared by the startup scan and the CDB reload
-/// rescan so the two can never disagree on what a unit compiles as.
-llvm::SmallVector<CommandRef> scan_units(Workspace& workspace);
 
 }  // namespace clice

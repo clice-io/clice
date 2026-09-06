@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "command/argument_parser.h"
+#include "sched/hosting.h"
 #include "server/service/ast_family.h"
 #include "server/state/session_store.h"
 #include "support/logging.h"
@@ -75,11 +76,8 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
     llvm::StringSet<> seen_configs;
     bool dedup_hosts = resolver.header_mode(path, path_id) == HeaderMode::SelfContained;
 
-    auto hosts = ws.dep_graph.find_host_sources(path_id);
-    for(auto host_id: ws.rank_hosts(path_id, hosts)) {
-        auto commands = ws.view.commands(host_id);
-        if(commands.empty())
-            continue;
+    for(auto host_id: ranked_hosts(ws, path_id)) {
+        auto commands = ws.build.commands(host_id);
         auto host_path = ws.file_table.resolve(host_id);
         auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
         if(!host_uri_opt)
@@ -94,7 +92,7 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
         auto occurrences = ws.count_occurrences(host_id, path_id);
 
         for(auto& entry: commands) {
-            auto applied = ws.view
+            auto applied = ws.build
                                .resolve(path_id,
                                         entry.config,
                                         CommandSource::IncludeGraph,
@@ -137,11 +135,11 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
     // switchContext would then reject. Offered even when hosts
     // exist, so a host override can be switched back to the file's
     // own command.
-    if(auto entries = ws.view.candidates(path_id); !entries.empty()) {
+    if(auto entries = ws.build.entries(path_id); !entries.empty()) {
         auto uri_opt = lsp::URI::from_file_path(std::string(path));
         for(std::size_t i = 0; uri_opt && i < entries.size(); ++i) {
             auto applied =
-                ws.view.resolve(path_id, entries[i].config, CommandSource::CDBExact, path, path)
+                ws.build.resolve(path_id, entries[i].config, CommandSource::CDBExact, path, path)
                     .config;
             auto hash = ws.cdb.entry_hash_hex(applied);
             if(!seen_configs.insert(hash).second)
@@ -170,8 +168,8 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
                                                           const Session* session,
                                                           const ext::CurrentContextParams& params) {
     ext::CurrentContextResult result;
-    const SavedContext* choice =
-        session ? resolver.active_choice(ContextUse::Editor, session->path_id) : nullptr;
+    const Selection* choice =
+        session ? resolver.selection(ContextUse::Editor, session->path_id) : nullptr;
     if(choice && choice->host_path_id.valid()) {
         auto ctx_path = workspace.file_table.resolve(choice->host_path_id);
         auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
@@ -195,9 +193,10 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
         item.uri = params.uri;
         item.command_hash = choice->command_hash;
         item.label = std::format("config {}", choice->command_hash.substr(0, 8));
-        for(auto& entry: ws.view.candidates(session->path_id)) {
+        for(auto& entry: ws.build.entries(session->path_id)) {
             auto applied =
-                ws.view.resolve(session->path_id, entry.config, CommandSource::CDBExact, path, path)
+                ws.build
+                    .resolve(session->path_id, entry.config, CommandSource::CDBExact, path, path)
                     .config;
             if(ws.cdb.entry_hash_hex(applied) == choice->command_hash) {
                 auto desc = flags_label(ws, applied);
@@ -243,9 +242,9 @@ kota::task<ext::SwitchContextResult>
                             llvm::ArrayRef<llvm::StringRef> paths,
                             llvm::StringRef hash) -> std::optional<std::string> {
         auto entry_path = ws.file_table.resolve(entry_file);
-        for(auto& entry: ws.view.commands(entry_file)) {
+        for(auto& entry: ws.build.commands(entry_file)) {
             auto applied =
-                ws.view.resolve(entry_file, entry.config, entry.source, paths, entry_path).config;
+                ws.build.resolve(entry_file, entry.config, entry.source, paths, entry_path).config;
             if(ws.cdb.entry_hash_hex(applied) == hash) {
                 return ws.cdb.entry_hash_hex(entry.config);
             }
@@ -253,7 +252,7 @@ kota::task<ext::SwitchContextResult>
         return std::nullopt;
     };
 
-    SavedContext saved;
+    Selection saved;
     if(context_path_id == path_id && params.command_hash.has_value()) {
         // Pin one of the file's own CDB entries.
         auto base = find_command(path_id, path, *params.command_hash);
@@ -266,7 +265,7 @@ kota::task<ext::SwitchContextResult>
         // Pin a host source for a header: it must have a compile
         // command, actually (transitively) include this header, and —
         // for multi-configuration hosts — own the pinned entry.
-        if(!ws.view.compiles(context_path_id)) {
+        if(ws.build.commands(context_path_id).empty()) {
             co_return result;
         }
         if(ws.dep_graph.find_include_chain(context_path_id, path_id).empty()) {
@@ -307,7 +306,7 @@ kota::task<ext::SwitchContextResult>
     // the event without advancing the epoch; after a few such wakeups the
     // request reports failure instead of parking forever on a disk that
     // cannot take the metadata (the choice stays active in memory).
-    resolver.saved_contexts[path_id] = std::move(saved);
+    resolver.selections[path_id] = std::move(saved);
     ws.mark_contexts_dirty();
     auto ticket = ws.contexts_epoch;
     int failed_saves = 0;
@@ -330,8 +329,8 @@ kota::task<ext::SwitchContextResult>
 bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
     bool dropped_saved = false;
     for(auto& [session_id, session]: sessions.sessions) {
-        auto it = resolver.saved_contexts.find(session_id);
-        if(it == resolver.saved_contexts.end()) {
+        auto it = resolver.selections.find(session_id);
+        if(it == resolver.selections.end()) {
             continue;
         }
         auto& saved = it->second;
@@ -363,7 +362,7 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
                      workspace.file_table.resolve(session_id));
             resolver.drop_header_context(session_id);
             ast.switch_identity(*session);
-            resolver.saved_contexts.erase(it);
+            resolver.selections.erase(it);
             dropped_saved = true;
         }
     }

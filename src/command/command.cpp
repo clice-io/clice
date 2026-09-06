@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <deque>
 #include <format>
 #include <ranges>
 #include <string_view>
@@ -950,8 +951,10 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         }
         rule_key += '\1';
     };
-    append_section(options.remove);
-    append_section(options.append);
+    for(auto& edit: options.edits) {
+        rule_key += edit.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
+        append_section(edit.flags);
+    }
     append_section(options.extra_prepend);
     append_section(options.extra_append);
 
@@ -988,97 +991,97 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         return flags;
     };
 
-    std::vector<std::string> remove_source(options.remove.begin(), options.remove.end());
-    if(is_nvcc) {
-        /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
-        /// clear whichever form the translated base carries: numeric archs
-        /// become `--cuda-gpu-arch=`, non-numeric selections persist as
-        /// `-arch=` probe tokens — rewrite to both wildcards.
-        for(std::size_t i = 0; i < remove_source.size(); i += 1) {
-            llvm::StringRef flag = remove_source[i];
-            for(llvm::StringRef spelling:
-                {"-arch", "--gpu-architecture", "-gencode", "--generate-code"}) {
-                bool joined = flag.starts_with(spelling) && flag.substr(spelling.size()) == "=*";
-                bool separate =
-                    flag == spelling && i + 1 < remove_source.size() && remove_source[i + 1] == "*";
-                if(!joined && !separate) {
-                    continue;
-                }
-                if(separate) {
-                    remove_source.erase(remove_source.begin() + i + 1);
-                }
-                remove_source[i] = "--cuda-gpu-arch=*";
-                remove_source.insert(remove_source.begin() + i + 1, "-arch=*");
-                i += 1;
-                break;
-            }
-        }
-    }
-
-    /// Remove patterns are an independent list, not one command: translated
-    /// whole, nvcc's last-wins would swallow every alternative value of a
-    /// stateful option but the last. Each pattern translates alone —
-    /// standalone, so it reproduces exactly the flags the base translation
-    /// emitted — pairing a separate value token (never dash-led) with its
-    /// spelling.
-    std::vector<std::string> remove_flags;
-    if(is_nvcc) {
-        for(std::size_t i = 0; i < remove_source.size(); i += 1) {
-            std::size_t count = 1;
-            if(llvm::StringRef(remove_source[i]).starts_with("-") && i + 1 < remove_source.size() &&
-               !llvm::StringRef(remove_source[i + 1]).starts_with("-")) {
-                count = 2;
-            }
-            auto pattern = translate_rule_flags(llvm::ArrayRef(remove_source).slice(i, count),
-                                                /*edit=*/false);
-            remove_flags.insert(remove_flags.end(),
-                                std::make_move_iterator(pattern.begin()),
-                                std::make_move_iterator(pattern.end()));
-            i += count - 1;
-        }
-    } else {
-        remove_flags = std::move(remove_source);
-    }
-
-    std::vector<kota::option::ParsedArg> remove_args;
     auto remove_parse_options =
         kota::option::ParseOptions{.visibility = family_visibility(cfg.family)};
-    for(auto& parsed: option::table().parse(remove_flags, remove_parse_options)) {
-        if(parsed.has_value()) {
-            remove_args.push_back(*parsed);
-        }
-    }
-    auto get_id = [](const kota::option::ParsedArg& arg) {
-        return arg.id;
-    };
-    ranges::sort(remove_args, {}, get_id);
 
-    auto matches_remove = [&](const Arg& arg) {
-        auto range = ranges::equal_range(remove_args, arg.opt_id, {}, get_id);
-        for(auto& remove: range) {
-            /// All unknown options share one id; their identity is the
-            /// spelling (NVCC probe flags persist as unknown tokens). A
-            /// trailing `=*` wildcards the value part, mirroring the
-            /// known-option value wildcard below.
-            if(arg.opt_id == option::OPT_UNKNOWN) {
-                llvm::StringRef pattern = remove.spelling;
-                bool wildcard = pattern.consume_back("*") && pattern.ends_with("=");
-                if(wildcard ? llvm::StringRef(arg.spelling).starts_with(pattern)
-                            : arg.spelling == llvm::StringRef(remove.spelling)) {
-                    return true;
+    /// Parse one rule's remove list into option patterns. The parsed
+    /// patterns view the translated spellings, which therefore outlive
+    /// every match below.
+    std::deque<std::vector<std::string>> remove_storage;
+    auto parse_removes = [&](llvm::ArrayRef<std::string> flags) {
+        std::vector<std::string> remove_source(flags.begin(), flags.end());
+        if(is_nvcc) {
+            /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
+            /// clear whichever form the translated base carries: numeric archs
+            /// become `--cuda-gpu-arch=`, non-numeric selections persist as
+            /// `-arch=` probe tokens — rewrite to both wildcards.
+            for(std::size_t i = 0; i < remove_source.size(); i += 1) {
+                llvm::StringRef flag = remove_source[i];
+                for(llvm::StringRef spelling:
+                    {"-arch", "--gpu-architecture", "-gencode", "--generate-code"}) {
+                    bool joined =
+                        flag.starts_with(spelling) && flag.substr(spelling.size()) == "=*";
+                    bool separate = flag == spelling && i + 1 < remove_source.size() &&
+                                    remove_source[i + 1] == "*";
+                    if(!joined && !separate) {
+                        continue;
+                    }
+                    if(separate) {
+                        remove_source.erase(remove_source.begin() + i + 1);
+                    }
+                    remove_source[i] = "--cuda-gpu-arch=*";
+                    remove_source.insert(remove_source.begin() + i + 1, "-arch=*");
+                    i += 1;
+                    break;
                 }
-                continue;
-            }
-            if(remove.values.size() == 1 && remove.values[0] == "*") {
-                return true;
-            }
-            if(ranges::equal(arg.values, remove.values, [](const char* a, std::string_view b) {
-                   return std::string_view(a) == b;
-               })) {
-                return true;
             }
         }
-        return false;
+        /// Remove patterns are an independent list, not one command: translated
+        /// whole, nvcc's last-wins would swallow every alternative value of a
+        /// stateful option but the last. Each pattern translates alone —
+        /// standalone, so it reproduces exactly the flags the base translation
+        /// emitted — pairing a separate value token (never dash-led) with its
+        /// spelling.
+        auto& remove_flags = remove_storage.emplace_back();
+        if(is_nvcc) {
+            for(std::size_t i = 0; i < remove_source.size(); i += 1) {
+                std::size_t count = 1;
+                if(llvm::StringRef(remove_source[i]).starts_with("-") &&
+                   i + 1 < remove_source.size() &&
+                   !llvm::StringRef(remove_source[i + 1]).starts_with("-")) {
+                    count = 2;
+                }
+                auto pattern = translate_rule_flags(llvm::ArrayRef(remove_source).slice(i, count),
+                                                    /*edit=*/false);
+                remove_flags.insert(remove_flags.end(),
+                                    std::make_move_iterator(pattern.begin()),
+                                    std::make_move_iterator(pattern.end()));
+                i += count - 1;
+            }
+        } else {
+            remove_flags = std::move(remove_source);
+        }
+        std::vector<kota::option::ParsedArg> removes;
+        for(auto& parsed: option::table().parse(remove_flags, remove_parse_options)) {
+            if(parsed.has_value()) {
+                removes.push_back(*parsed);
+            }
+        }
+        return removes;
+    };
+
+    /// Whether a remove pattern names `arg` (a base Arg or an appended
+    /// LocalArg).
+    auto removes_arg = [](const kota::option::ParsedArg& remove, const auto& arg) {
+        if(remove.id != arg.opt_id) {
+            return false;
+        }
+        /// All unknown options share one id; their identity is the
+        /// spelling (NVCC probe flags persist as unknown tokens). A
+        /// trailing `=*` wildcards the value part, mirroring the
+        /// known-option value wildcard below.
+        if(arg.opt_id == option::OPT_UNKNOWN) {
+            llvm::StringRef pattern = remove.spelling;
+            bool wildcard = pattern.consume_back("*") && pattern.ends_with("=");
+            return wildcard ? llvm::StringRef(arg.spelling).starts_with(pattern)
+                            : arg.spelling == llvm::StringRef(remove.spelling);
+        }
+        if(remove.values.size() == 1 && remove.values[0] == "*") {
+            return true;
+        }
+        return ranges::equal(arg.values, remove.values, [](const char* a, std::string_view b) {
+            return std::string_view(a) == b;
+        });
     };
 
     /// Parse an edit list into structured args, absolutizing include paths
@@ -1124,12 +1127,33 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         }
     };
 
+    std::vector<kota::option::ParsedArg> remove_args;
+    std::vector<LocalArg> append_args;
+    for(auto& edit: options.edits) {
+        if(edit.kind == CommandEdit::Kind::Remove) {
+            auto removes = parse_removes(edit.flags);
+            // A remove reaches the appends before it, so a later rule can
+            // take back what an earlier one added.
+            llvm::erase_if(append_args, [&](const LocalArg& local) {
+                return llvm::any_of(removes, [&](const kota::option::ParsedArg& remove) {
+                    return removes_arg(remove, local);
+                });
+            });
+            remove_args.insert(remove_args.end(), removes.begin(), removes.end());
+        } else {
+            parse_edit(translate_rule_flags(edit.flags, /*edit=*/true), append_args);
+        }
+    }
+    parse_edit(options.extra_append, append_args);
+
     std::vector<LocalArg> prepend_args;
     parse_edit(options.extra_prepend, prepend_args);
 
-    std::vector<LocalArg> append_args;
-    parse_edit(translate_rule_flags(options.append, /*edit=*/true), append_args);
-    parse_edit(options.extra_append, append_args);
+    auto matches_remove = [&](const Arg& arg) {
+        return llvm::any_of(remove_args, [&](const kota::option::ParsedArg& remove) {
+            return removes_arg(remove, arg);
+        });
+    };
 
     /// Rebuild the sequence: prepends first, base args with removes
     /// cancelled, appends inserted before the input slot — an append always
@@ -1200,19 +1224,6 @@ std::optional<ConfigID> CompilationDatabase::intern_command(llvm::StringRef dire
         return std::nullopt;
     }
     return it->second;
-}
-
-std::optional<ConfigID> CompilationDatabase::intern_command_line(llvm::StringRef directory,
-                                                                 llvm::StringRef command) {
-    llvm::BumpPtrAllocator local;
-    llvm::StringSaver saver(local);
-    llvm::SmallVector<const char*, 32> arguments;
-#ifdef _WIN32
-    llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
-#else
-    llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
-#endif
-    return intern_command(directory, arguments);
 }
 
 std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& ref,

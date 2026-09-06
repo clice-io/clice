@@ -4,8 +4,9 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
-#include "sched/build_view.h"
+#include "sched/build.h"
 #include "support/filesystem.h"
+#include "support/shell.h"
 
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/raw_ostream.h"
@@ -36,9 +37,9 @@ std::vector<const char*> render_fallback(CompilationDatabase& db,
                                          const CommandOptions& options = {}) {
     Config config;
     config.finalize("");
-    BuildView view{config, db, db.files()};
+    Build build{config, db, db.files()};
     auto source = CommandSource::Fallback;
-    auto applied = db.apply_rules(view.builtin(file), options);
+    auto applied = db.apply_rules(build.builtin(file), options);
     CommandRef ref{db.files().intern(file), applied, db.input_kind(applied, file), source};
     auto argv = db.render_driver(ref);
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
@@ -117,34 +118,34 @@ TEST_CASE(RemoveAppend) {
     CompilationDatabase database{file_table};
     database.add_command("/fake", "main.cpp", args);
 
-    CommandOptions options;
+    std::vector<CommandEdit> edits;
+    CommandOptions options{.edits = edits};
+    auto remove_only = [&](std::vector<std::string> flags) {
+        edits = {
+            {CommandEdit::Kind::Remove, std::move(flags)}
+        };
+        options.edits = edits;
+    };
 
-    llvm::SmallVector<std::string> remove;
-    llvm::SmallVector<std::string> append;
-
-    remove = {"-DA"};
-    options.remove = remove;
+    remove_only({"-DA"});
     EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ -D B=0 main.cpp");
 
-    remove = {"-D", "A"};
-    options.remove = remove;
+    remove_only({"-D", "A"});
     EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ -D B=0 main.cpp");
 
-    remove = {"-DA", "-D", "B=0"};
-    options.remove = remove;
+    remove_only({"-DA", "-D", "B=0"});
     EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ main.cpp");
 
-    remove = {"-D*"};
-    options.remove = remove;
+    remove_only({"-D*"});
     EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ main.cpp");
 
-    remove = {"-D", "*"};
-    options.remove = remove;
+    remove_only({"-D", "*"});
     EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ main.cpp");
 
-    options.remove = {};
-    append = {"-D", "C"};
-    options.append = append;
+    edits = {
+        {CommandEdit::Kind::Append, {"-D", "C"}}
+    };
+    options.edits = edits;
     EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)),
               "clang++ -D A -D B=0 -D C main.cpp");
 };
@@ -157,9 +158,10 @@ TEST_CASE(AppendUnknownValue) {
     CompilationDatabase database{file_table};
     database.add_command("/fake", "main.cpp", "clang++ main.cpp"sv);
 
-    CommandOptions options;
-    llvm::SmallVector<std::string> append = {"-fnot-a-real-flag", "value"};
-    options.append = append;
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Append, {"-fnot-a-real-flag", "value"}}
+    };
+    CommandOptions options{.edits = edits};
     EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)),
               "clang++ -fnot-a-real-flag value main.cpp");
 };
@@ -171,9 +173,10 @@ TEST_CASE(AppendBeforeSlot) {
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.c", "clang -x c a.c -x none"sv);
 
-    CommandOptions options;
-    llvm::SmallVector<std::string> append = {"-x", "c++"};
-    options.append = append;
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Append, {"-x", "c++"}}
+    };
+    CommandOptions options{.edits = edits};
 
     EXPECT_EQ(print_argv(render_entry(database, "a.c", options)), "clang -x c -x c++ a.c -x none");
 
@@ -190,9 +193,10 @@ TEST_CASE(SelectorHistoryRestored) {
     auto base = database.candidate_entries("a.c").front().config;
     EXPECT_EQ(llvm::StringRef(database.input_kind(base, "a.c").value), "c++");
 
-    CommandOptions options;
-    llvm::SmallVector<std::string> remove = {"-x", "c++"};
-    options.remove = remove;
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Remove, {"-x", "c++"}}
+    };
+    CommandOptions options{.edits = edits};
     auto applied = database.apply_rules(base, options);
     EXPECT_EQ(llvm::StringRef(database.input_kind(applied, "a.c").value), "cuda");
 };
@@ -207,9 +211,10 @@ TEST_CASE(SelectorPositional) {
     auto base = database.candidate_entries("a.cu").front().config;
     EXPECT_EQ(llvm::StringRef(database.input_kind(base, "a.cu").value), "c++");
 
-    CommandOptions options;
-    llvm::SmallVector<std::string> remove = {"-x", "c++"};
-    options.remove = remove;
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Remove, {"-x", "c++"}}
+    };
+    CommandOptions options{.edits = edits};
     auto applied = database.apply_rules(base, options);
     EXPECT_EQ(llvm::StringRef(database.input_kind(applied, "a.cu").value), "cuda");
 
@@ -422,9 +427,10 @@ TEST_CASE(FallbackAppliesAppend) {
     /// users without a CDB rely on them to supply include paths.
     FileTable file_table;
     CompilationDatabase database{file_table};
-    CommandOptions options;
-    std::vector<std::string> append = {"-I/opt/include"};
-    options.append = append;
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Append, {"-I/opt/include"}}
+    };
+    CommandOptions options{.edits = edits};
 
     auto argv = print_argv(render_fallback(database, "unknown.cpp", options));
     EXPECT_CONTAINS(argv, "-std=c++20");
@@ -434,21 +440,47 @@ TEST_CASE(FallbackAppliesAppend) {
     EXPECT_CONTAINS(print_argv(render_fallback(database, "unknown.c", options)), "/opt/include");
 };
 
+TEST_CASE(LaterRemoveCancelsAppend) {
+    /// Edits apply in rule order: a later remove reaches what an earlier
+    /// rule appended, by option semantics (spelling-independent).
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "main.cpp", "clang++ main.cpp"sv);
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Append, {"-DFOO=1", "-DBAR"}},
+        {CommandEdit::Kind::Remove, {"-D", "FOO=1"}     },
+    };
+    CommandOptions options{.edits = edits};
+    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ -D BAR main.cpp");
+
+    /// The other way round the append wins: nothing before it to cancel.
+    std::vector<CommandEdit> reversed = {
+        {CommandEdit::Kind::Remove, {"-DFOO=1"}},
+        {CommandEdit::Kind::Append, {"-DFOO=1"}},
+    };
+    options.edits = reversed;
+    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ -D FOO=1 main.cpp");
+};
+
 TEST_CASE(InternedCommand) {
     /// A hand-written command normalizes like an entry: one ConfigID per
     /// (directory, spelling), the string and argv forms meeting on it, the
     /// input slot synthesized at the end.
     FileTable file_table;
     CompilationDatabase database{file_table};
-    auto spelled = *database.intern_command_line("/ws", "clang++ -std=c++20 -Iinclude");
+    auto tokens = tokenize_command("clang++ -std=c++20 -Iinclude");
+    llvm::SmallVector<const char*> tokenized;
+    for(auto& token: tokens) {
+        tokenized.push_back(token.c_str());
+    }
+    auto spelled = *database.intern_command("/ws", tokenized);
     llvm::SmallVector<const char*> argv = {"clang++", "-std=c++20", "-Iinclude"};
     EXPECT_EQ(spelled, *database.intern_command("/ws", argv));
     EXPECT_NE(spelled, *database.intern_command("/other", argv));
 
     /// Spellings that name no compiler are rejected, not asserted on.
-    EXPECT_FALSE(database.intern_command_line("/ws", "   ").has_value());
-    EXPECT_FALSE(database.intern_command_line("/ws", "ccache").has_value());
-    EXPECT_FALSE(database.intern_command_line("/ws", "ccache").has_value());
+    EXPECT_FALSE(database.intern_command("/ws", llvm::ArrayRef<const char*>{}).has_value());
+    EXPECT_FALSE(database.intern_command("/ws", {"ccache"}).has_value());
 
     CommandRef ref{file_table.intern("/ws/src/a.cpp"),
                    spelled,
@@ -566,7 +598,7 @@ TEST_CASE(CodegenFilter) {
     EXPECT_NOT_CONTAINS(argv, "-fcolor-diagnostics");
     EXPECT_NOT_CONTAINS(argv, "-g");
 
-    /// They survive in the full view.
+    /// They survive in the full build.
     auto full =
         print_argv(database.render_full(database.candidate_entries("main.cpp").front().config));
     EXPECT_CONTAINS(full, "-fPIC");

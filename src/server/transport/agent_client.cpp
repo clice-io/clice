@@ -134,7 +134,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         ProjectFilesResult result;
         llvm::DenseSet<Fid> seen;
 
-        for(auto member: ws.view.members()) {
+        for(auto member: ws.build.members()) {
             auto file_path = ws.file_table.resolve(member);
             if(file_path.empty())
                 continue;

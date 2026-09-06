@@ -24,29 +24,28 @@ struct Candidate {
 };
 
 /// The rules-applied edits of a set of files: every matching active rule
-/// in declaration order, each once, a later remove cancelling an earlier
-/// append of the same spelling.
+/// in declaration order, each once, its removes before its appends.
 struct Edits {
-    std::vector<std::string> append;
-    std::vector<std::string> remove;
+    std::vector<CommandEdit> edits;
+
+    bool empty() const {
+        return edits.empty();
+    }
 
     CommandOptions options(llvm::ArrayRef<std::string> extra_prepend = {},
                            llvm::ArrayRef<std::string> extra_append = {}) const {
-        return {.remove = remove,
-                .append = append,
-                .extra_prepend = extra_prepend,
-                .extra_append = extra_append};
+        return {.edits = edits, .extra_prepend = extra_prepend, .extra_append = extra_append};
     }
 };
 
-/// The build view: which of the database's entries and which hand-written
+/// The build: which of the database's entries and which hand-written
 /// commands apply to a file under the active configuration, and how the
-/// rules edit them. The one place that knows rule priority — the database
-/// stores entries per source in file order and nothing else consults the
-/// rules directly.
-class BuildView {
+/// rules edit them — a pure function of the configuration and the
+/// database, the one place that knows rule priority. The database stores
+/// entries per source in file order and nothing else consults the rules.
+class Build {
 public:
-    BuildView(Config& config, CompilationDatabase& cdb, FileTable& files) :
+    Build(Config& config, CompilationDatabase& cdb, FileTable& files) :
         config(config), cdb(cdb), files(files) {}
 
     /// The configuration tag every tagged rule is checked against; empty
@@ -64,29 +63,26 @@ public:
     /// Empty when no rule declares one — discovery's cue.
     llvm::SmallVector<llvm::StringRef> declared_sources() const;
 
-    /// A file's candidate entries in view order: entries from the sources
+    /// Every registered source in the priority order `path` sees: the
+    /// sources of rules matching the file first, then those of the other
+    /// active rules, each in declaration order; sources no rule declares
+    /// (discovered ones) last. Sources only inactive rules declare are
+    /// left out.
+    llvm::SmallVector<SourceID, 4> source_order(llvm::StringRef path) const;
+
+    /// A file's database entries in build order: entries from the sources
     /// of rules matching the file first, then from the other active rules'
     /// sources, each in declaration order; discovered sources (registered
     /// without a rule) last; within a source, file order. The first is the
     /// default selection. Entries of sources only inactive rules declare
     /// are excluded.
-    llvm::SmallVector<CompilationEntry, 2> candidates(Fid file) const;
+    llvm::SmallVector<CompilationEntry, 2> entries(Fid file) const;
 
-    bool has_candidates(Fid file) const {
-        return !candidates(file).empty();
-    }
-
-    /// The commands a file compiles under, in view order: its candidate
-    /// entries, or the default command of the first matching rule that
-    /// declares one. The first is the default selection; empty when the
-    /// file has neither.
+    /// The commands a file compiles under, in build order: its entries, or
+    /// the default command of the first matching rule that declares one.
+    /// The first is the default selection; empty when the file has neither
+    /// — such a file is never a header's host.
     llvm::SmallVector<Candidate, 2> commands(Fid file);
-
-    /// Whether the view compiles the file at all — the bar for hosting a
-    /// header's context.
-    bool compiles(Fid file) {
-        return !commands(file).empty();
-    }
 
     /// The edits the rules matching any of `paths` contribute, in
     /// declaration order, each rule once — a header borrowing a host's
@@ -97,7 +93,7 @@ public:
         return edits(llvm::ArrayRef(path));
     }
 
-    /// The builtin fallback command of a file the view does not compile
+    /// The builtin fallback command of a file the build does not compile
     /// (CommandSource::Fallback): the driver follows the language clang
     /// assigns to the file's extension.
     ConfigID builtin(llvm::StringRef path);
@@ -118,10 +114,14 @@ public:
     /// part of a file's persisted command identity.
     std::string edit_hash(llvm::ArrayRef<llvm::StringRef> paths) const;
 
-    /// Every translation unit of the active view: files with candidate
-    /// entries, plus the source files on disk that a default-command rule
-    /// matches.
+    /// Every translation unit of the build: files with entries, plus the
+    /// source files on disk that a default-command rule matches.
     std::vector<Fid> members() const;
+
+    /// The scan units of `members`: every command of every member, so a
+    /// header reachable through only one of a file's entries still finds
+    /// that host.
+    llvm::SmallVector<CommandRef> units(llvm::ArrayRef<Fid> members);
 
     /// Whether a file joins the background index: no matching active rule
     /// says `index = false`.

@@ -6,6 +6,7 @@
 #include "feature/feature.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "support/shell.h"
 
 #include "kota/async/io/system.h"
 #include "kota/codec/json/json.h"
@@ -181,13 +182,15 @@ void Config::finalize(llvm::StringRef workspace_root) {
         for(auto& database: rule.compile_commands) {
             compiled.compile_commands.push_back(anchored(database, anchor));
         }
-        compiled.default_command = rule.default_command;
-        if(auto* spelling = std::get_if<std::string>(&compiled.default_command)) {
-            substitute_workspace(*spelling, root);
+        // A string spelling is tokenized before `${workspace}` is
+        // substituted, so a root with spaces stays one argument.
+        if(auto* spelling = std::get_if<std::string>(&rule.default_command)) {
+            compiled.default_command = tokenize_command(*spelling);
         } else {
-            for(auto& arg: std::get<std::vector<std::string>>(compiled.default_command)) {
-                substitute_workspace(arg, root);
-            }
+            compiled.default_command = std::get<std::vector<std::string>>(rule.default_command);
+        }
+        for(auto& arg: compiled.default_command) {
+            substitute_workspace(arg, root);
         }
         compiled.directory = std::move(anchor);
         compiled.append.assign(rule.append.begin(), rule.append.end());
@@ -200,14 +203,6 @@ void Config::finalize(llvm::StringRef workspace_root) {
             compiled_rules.push_back(std::move(*compiled));
         }
     }
-    // The workspace-wide databases are the lowest-priority source: a
-    // trailing rule without patterns or tag.
-    if(!compile_commands.empty()) {
-        ConfigRule trailing;
-        trailing.compile_commands = compile_commands;
-        compiled_rules.push_back(*compile(trailing));
-    }
-
     auto tags = configurations();
     if(!tags.empty() && default_configuration.empty()) {
         LOG_WARN("Rules declare configurations {} but default_configuration is unset; using {}",
@@ -220,7 +215,7 @@ void Config::finalize(llvm::StringRef workspace_root) {
 }
 
 bool CompiledRule::has_default_command() const {
-    return std::visit([](const auto& spelling) { return !spelling.empty(); }, default_command);
+    return !default_command.empty();
 }
 
 bool CompiledRule::declares_sources() const {
@@ -313,12 +308,6 @@ std::optional<Config> Config::load(llvm::StringRef path,
     auto directory = path::parent_path(path).str();
     for(auto& rule: config.rules) {
         rule.directory = directory;
-    }
-    for(auto& database: config.compile_commands) {
-        substitute_workspace(database, workspace_root);
-        if(!path::is_absolute(database)) {
-            database = path::join(directory, database);
-        }
     }
     if(finalized)
         config.finalize(workspace_root);

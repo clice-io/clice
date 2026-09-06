@@ -2,7 +2,7 @@
 #include "test/platform.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "sched/build_view.h"
+#include "sched/build.h"
 #include "support/filesystem.h"
 
 namespace clice::testing {
@@ -24,12 +24,12 @@ struct Layout {
     Config config;
     FileTable files;
     CompilationDatabase cdb{files};
-    BuildView view{config, cdb, files};
+    Build build{config, cdb, files};
 
     explicit Layout(llvm::StringRef name) :
         root(path::join(data_dir(), "cdb", name)), config(Config::load_from_workspace(root)) {
-        view.reset_active();
-        for(auto source: view.declared_sources()) {
+        build.reset_active();
+        for(auto source: build.declared_sources()) {
             cdb.load(source);
         }
     }
@@ -50,26 +50,26 @@ struct Layout {
     std::vector<const char*> render(llvm::StringRef relative) {
         auto file = path(relative);
         auto id = files.intern(file);
-        auto commands = view.commands(id);
-        auto ref = commands.empty() ? view.resolve(id,
-                                                   view.builtin(file),
-                                                   CommandSource::Fallback,
-                                                   llvm::StringRef(file),
-                                                   file)
-                                    : view.resolve(id,
-                                                   commands.front().config,
-                                                   commands.front().source,
-                                                   llvm::StringRef(file),
-                                                   file);
+        auto commands = build.commands(id);
+        auto ref = commands.empty() ? build.resolve(id,
+                                                    build.builtin(file),
+                                                    CommandSource::Fallback,
+                                                    llvm::StringRef(file),
+                                                    file)
+                                    : build.resolve(id,
+                                                    commands.front().config,
+                                                    commands.front().source,
+                                                    llvm::StringRef(file),
+                                                    file);
         return cdb.render_driver(ref);
     }
 
     bool indexed(llvm::StringRef relative) {
-        return view.indexed(path(relative));
+        return build.indexed(path(relative));
     }
 };
 
-TEST_SUITE(BuildView) {
+TEST_SUITE(Build) {
 
 TEST_CASE(RuleBoundDatabaseWins) {
     /// The workspace database and a rule's database both list lib/x.cpp:
@@ -78,21 +78,22 @@ TEST_CASE(RuleBoundDatabaseWins) {
     Layout layout("rules_bound");
     ASSERT_EQ(layout.cdb.source_count(), 2U);
 
-    auto x = layout.view.candidates(layout.fid("lib/x.cpp"));
+    auto x = layout.build.entries(layout.fid("lib/x.cpp"));
     ASSERT_EQ(x.size(), 2U);
     EXPECT_TRUE(has_arg(layout.render("lib/x.cpp"), "LIB"));
     EXPECT_TRUE(has_arg(layout.render("src/a.cpp"), "ROOT"));
 
     /// Edits accumulate from the rules matching the file, headers included.
-    auto edits = layout.view.edits(llvm::StringRef(layout.path("lib/y.hxx")));
-    ASSERT_EQ(edits.append.size(), 2U);
-    EXPECT_EQ(edits.append[0], "-x");
-    EXPECT_TRUE(layout.view.edits(llvm::StringRef(layout.path("lib/x.cpp"))).append.empty());
+    auto edits = layout.build.edits(llvm::StringRef(layout.path("lib/y.hxx"))).edits;
+    ASSERT_EQ(edits.size(), 1U);
+    EXPECT_EQ(edits[0].kind, CommandEdit::Kind::Append);
+    EXPECT_EQ(edits[0].flags, (std::vector<std::string>{"-x", "c++-header"}));
+    EXPECT_TRUE(layout.build.edits(llvm::StringRef(layout.path("lib/x.cpp"))).empty());
 
-    auto members = layout.view.members();
+    auto members = layout.build.members();
     EXPECT_EQ(members.size(), 2U);
     for(auto member: members) {
-        EXPECT_TRUE(layout.view.indexed(layout.files.resolve(member)));
+        EXPECT_TRUE(layout.build.indexed(layout.files.resolve(member)));
     }
 };
 
@@ -101,22 +102,22 @@ TEST_CASE(DefaultCommandMembers) {
     /// its patterns claim, enumerates the matching sources as members, and
     /// a nested rule keeps some of them out of the index.
     Layout layout("default_command_only");
-    EXPECT_TRUE(layout.view.declared_sources().empty());
+    EXPECT_TRUE(layout.build.declared_sources().empty());
     EXPECT_TRUE(layout.config.declares_sources());
 
-    auto commands = layout.view.commands(layout.fid("src/main.cpp"));
+    auto commands = layout.build.commands(layout.fid("src/main.cpp"));
     ASSERT_EQ(commands.size(), 1U);
     EXPECT_EQ(commands.front().source, CommandSource::Default);
-    EXPECT_TRUE(layout.view.compiles(layout.fid("src/main.cpp")));
+    EXPECT_TRUE(!layout.build.commands(layout.fid("src/main.cpp")).empty());
     auto rendered = layout.render("src/main.cpp");
     EXPECT_TRUE(has_arg(rendered, "DEFAULTED"));
     EXPECT_TRUE(has_arg(rendered, layout.path("include")));
 
     /// A file no rule claims has no command; the builtin fallback serves it.
-    EXPECT_FALSE(layout.view.compiles(layout.fid("tools/other.cpp")));
+    EXPECT_FALSE(!layout.build.commands(layout.fid("tools/other.cpp")).empty());
     EXPECT_TRUE(has_arg(layout.render("tools/other.cpp"), "clang++"));
 
-    auto members = layout.view.members();
+    auto members = layout.build.members();
     ASSERT_EQ(members.size(), 2U);
     EXPECT_TRUE(llvm::is_contained(members, layout.fid("src/main.cpp")));
     EXPECT_TRUE(llvm::is_contained(members, layout.fid("src/skip/vendored.cpp")));
@@ -152,14 +153,14 @@ TEST_CASE(PatternRootsEnumerate) {
 
     FileTable files;
     CompilationDatabase cdb{files};
-    BuildView view{config, cdb, files};
-    view.reset_active();
-    auto members = view.members();
+    Build build{config, cdb, files};
+    build.reset_active();
+    auto members = build.members();
     ASSERT_EQ(members.size(), 2U);
     EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "src/main.cpp"))));
     EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "lib/util.cpp"))));
-    EXPECT_FALSE(view.compiles(files.intern(canonical(tmp, "other/skip.cpp"))));
-    auto util = view.commands(files.intern(canonical(tmp, "lib/util.cpp")));
+    EXPECT_TRUE(build.commands(files.intern(canonical(tmp, "other/skip.cpp"))).empty());
+    auto util = build.commands(files.intern(canonical(tmp, "lib/util.cpp")));
     ASSERT_EQ(util.size(), 1U);
     EXPECT_TRUE(has_arg(cdb.render_full(util.front().config), "LIB"));
 };
@@ -175,12 +176,12 @@ TEST_CASE(InvalidDefaultCommandIgnored) {
 
     FileTable files;
     CompilationDatabase cdb{files};
-    BuildView view{config, cdb, files};
-    view.reset_active();
+    Build build{config, cdb, files};
+    build.reset_active();
     auto main = files.intern(canonical(tmp, "main.cpp"));
-    EXPECT_TRUE(view.commands(main).empty());
-    EXPECT_EQ(view.members().size(), 1U);
-    EXPECT_NE(view.builtin(canonical(tmp, "main.cpp")), invalid_config);
+    EXPECT_TRUE(build.commands(main).empty());
+    EXPECT_EQ(build.members().size(), 1U);
+    EXPECT_NE(build.builtin(canonical(tmp, "main.cpp")), invalid_config);
 };
 
 TEST_CASE(DeclaredSourceOffDiscovery) {
@@ -188,7 +189,7 @@ TEST_CASE(DeclaredSourceOffDiscovery) {
     /// sitting at the root is not consulted.
     Layout layout("declared_ignores_discovered");
     EXPECT_TRUE(layout.config.declares_sources());
-    EXPECT_TRUE(layout.view.declared_sources().empty());
+    EXPECT_TRUE(layout.build.declared_sources().empty());
     EXPECT_EQ(layout.cdb.source_count(), 0U);
     EXPECT_TRUE(has_arg(layout.render("main.cpp"), "FROM_RULE"));
 };
@@ -216,19 +217,19 @@ TEST_CASE(InactiveConfigurationExcluded) {
 
     FileTable files;
     CompilationDatabase cdb{files};
-    BuildView view{config, cdb, files};
-    view.reset_active();
-    EXPECT_EQ(view.active_configuration(), "release");
-    ASSERT_EQ(view.declared_sources().size(), 1U);
+    Build build{config, cdb, files};
+    build.reset_active();
+    EXPECT_EQ(build.active_configuration(), "release");
+    ASSERT_EQ(build.declared_sources().size(), 1U);
     cdb.load(tmp.path("release"));
     cdb.load(tmp.path("debug"));
     ASSERT_EQ(cdb.source_count(), 2U);
 
     auto main = files.intern(canonical(tmp, "main.cpp"));
-    auto candidates = view.candidates(main);
+    auto candidates = build.entries(main);
     ASSERT_EQ(candidates.size(), 1U);
     EXPECT_TRUE(has_arg(cdb.render_full(candidates.front().config), "RELEASE"));
-    EXPECT_TRUE(view.edits(llvm::StringRef(canonical(tmp, "main.cpp"))).append.empty());
+    EXPECT_TRUE(build.edits(llvm::StringRef(canonical(tmp, "main.cpp"))).empty());
 };
 
 TEST_CASE(EditsAcrossHostAndHeader) {
@@ -243,25 +244,26 @@ TEST_CASE(EditsAcrossHostAndHeader) {
 
     FileTable files;
     CompilationDatabase cdb{files};
-    BuildView view{config, cdb, files};
-    view.reset_active();
+    Build build{config, cdb, files};
+    build.reset_active();
 
     std::string host = canonical(tmp, "src/main.cpp");
     std::string header = canonical(tmp, "include/x.h");
     llvm::StringRef both[] = {host, header};
-    auto edits = view.edits(both);
-    ASSERT_EQ(edits.append.size(), 2U);
-    EXPECT_EQ(edits.append[0], "-DB");
-    EXPECT_EQ(edits.append[1], "-DC");
-    ASSERT_EQ(edits.remove.size(), 1U);
-    EXPECT_EQ(edits.remove[0], "-DA");
+    auto edits = build.edits(both).edits;
+    ASSERT_EQ(edits.size(), 4U);
+    EXPECT_EQ(edits[0].flags, (std::vector<std::string>{"-DA"}));
+    EXPECT_EQ(edits[1].flags, (std::vector<std::string>{"-DB"}));
+    EXPECT_EQ(edits[2].kind, CommandEdit::Kind::Remove);
+    EXPECT_EQ(edits[2].flags, (std::vector<std::string>{"-DA"}));
+    EXPECT_EQ(edits[3].flags, (std::vector<std::string>{"-DC"}));
 
-    auto header_only = view.edits(llvm::StringRef(header));
-    ASSERT_EQ(header_only.append.size(), 2U);
-    EXPECT_EQ(header_only.append[0], "-DB");
+    auto header_only = build.edits(llvm::StringRef(header)).edits;
+    ASSERT_EQ(header_only.size(), 3U);
+    EXPECT_EQ(header_only[0].flags, (std::vector<std::string>{"-DB"}));
 };
 
-};  // TEST_SUITE(BuildView)
+};  // TEST_SUITE(Build)
 
 }  // namespace
 

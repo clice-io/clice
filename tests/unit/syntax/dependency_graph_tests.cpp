@@ -289,7 +289,10 @@ export module m;
     llvm::SmallVector<CommandRef> units;
     for(auto& entry: cdb.entries()) {
         std::vector<std::string> append{"-DENABLE_M"};
-        auto applied = cdb.apply_rules(entry.config, {.append = append});
+        std::vector<CommandEdit> edits = {
+            {CommandEdit::Kind::Append, {append.begin(), append.end()}},
+        };
+        auto applied = cdb.apply_rules(entry.config, {.edits = edits});
         units.push_back({entry.file,
                          applied,
                          cdb.input_kind(applied, cdb.files().resolve(entry.file)),

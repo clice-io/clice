@@ -48,7 +48,7 @@ void IndexPump::boost(Fid server_path_id) {
 bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
     // The one admission point of the background index: a rule's
     // `index = false` keeps its files out here, whichever path asked.
-    if(!workspace.view.indexed(workspace.file_table.resolve(server_path_id))) {
+    if(!workspace.build.indexed(workspace.file_table.resolve(server_path_id))) {
         return false;
     }
     // New debt voids the running round's freshness memos: a claim taken

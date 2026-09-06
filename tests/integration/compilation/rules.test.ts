@@ -57,7 +57,7 @@ test("databases load in declared order", async ({ session }) => {
         ],
         { at: "b/compile_commands.json" },
     );
-    workspace.write("clice.toml", 'compile_commands = ["a", "b"]\n');
+    workspace.write("clice.toml", '[[rules]]\ncompile_commands = ["a", "b"]\n');
     await client.initialize(workspace);
 
     const [main] = await client.openAndWait("main.cpp");
@@ -85,7 +85,7 @@ test("rule binds a subtree to its database", async ({ session }) => {
     });
     workspace.write(
         "clice.toml",
-        'compile_commands = ["cmake"]\n\n[[rules]]\npatterns = ["lib/**"]\ncompile_commands = ["lib/cmake"]\n',
+        '[[rules]]\npatterns = ["lib/**"]\ncompile_commands = ["lib/cmake"]\n\n[[rules]]\ncompile_commands = ["cmake"]\n',
     );
     await client.initialize(workspace);
 

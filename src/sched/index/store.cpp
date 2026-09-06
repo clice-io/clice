@@ -73,14 +73,14 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
                                llvm::ArrayRef<Fid> standalone_debt) {
     CDBSnapshot snapshot;
     for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
-        auto candidates = workspace.view.candidates(path_id);
+        auto candidates = workspace.build.entries(path_id);
         if(candidates.empty()) {
             // Entries only inactive configurations declare: not compiled
             // by this view, so not part of its identity.
             continue;
         }
         auto file = workspace.file_table.resolve(path_id).str();
-        auto rules = workspace.view.edit_hash(llvm::StringRef(file));
+        auto rules = workspace.build.edit_hash(llvm::StringRef(file));
         std::vector<std::string> sources;
         for(auto& candidate: candidates) {
             auto source = workspace.cdb.source_path(candidate.source).str();
@@ -102,11 +102,11 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
     // be snapshot to detect offline changes.
     auto add_standalone = [&](Fid tu) {
         auto file = workspace.file_table.resolve(tu);
-        if(workspace.view.has_candidates(tu)) {
+        if(!workspace.build.entries(tu).empty()) {
             return;
         }
         std::string selected;
-        if(auto commands = workspace.view.commands(tu); !commands.empty()) {
+        if(auto commands = workspace.build.commands(tu); !commands.empty()) {
             selected = workspace.cdb.entry_hash_hex(commands.front().config);
         }
         std::string host;
@@ -116,7 +116,7 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
             edit_paths.push_back(host);
         }
         edit_paths.push_back(file);
-        auto rules = workspace.view.edit_hash(edit_paths);
+        auto rules = workspace.build.edit_hash(edit_paths);
         snapshot.entries.push_back({
             .file = file.str(),
             .selected = std::move(selected),
@@ -1384,7 +1384,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     if(!read_only && db.corrupted()) {
         LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
         for(auto tu: llvm::make_first_range(project.manifests)) {
-            if(!workspace.view.has_candidates(tu)) {
+            if(workspace.build.entries(tu).empty()) {
                 report.add_reindex(tu);
             }
         }
@@ -1418,7 +1418,7 @@ llvm::SmallVector<Fid> IndexStore::standalone_of(llvm::ArrayRef<Fid> candidates)
     llvm::SmallVector<Fid> debt;
     llvm::DenseSet<Fid> seen;
     for(auto id: candidates) {
-        if(workspace.project_index.manifests.contains(id) || workspace.view.has_candidates(id) ||
+        if(workspace.project_index.manifests.contains(id) || !workspace.build.entries(id).empty() ||
            !seen.insert(id).second) {
             continue;
         }
@@ -1430,7 +1430,7 @@ llvm::SmallVector<Fid> IndexStore::standalone_of(llvm::ArrayRef<Fid> candidates)
 void IndexStore::retire_excluded(Report& report) {
     llvm::SmallVector<Fid> excluded;
     for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
-        if(!workspace.view.indexed(workspace.file_table.resolve(tu))) {
+        if(!workspace.build.indexed(workspace.file_table.resolve(tu))) {
             excluded.push_back(tu);
         }
     }
@@ -1526,7 +1526,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         std::string rules = entry.rules;
         if(entry.host.empty() && !old.host.empty()) {
             llvm::StringRef paths[] = {old.host, entry.file};
-            rules = workspace.view.edit_hash(paths);
+            rules = workspace.build.edit_hash(paths);
         }
         if(old.rules != rules || old.selected != entry.selected) {
             // The default command that claimed it is gone and no host
@@ -1549,7 +1549,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         auto host_id = workspace.file_table.intern(old.host);
-        if(!workspace.view.compiles(host_id) || llvm::is_contained(changed_ids, host_id)) {
+        if(workspace.build.commands(host_id).empty() || llvm::is_contained(changed_ids, host_id)) {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
                      entry.file);
             drop_index_into(server_id, report);
@@ -1587,7 +1587,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         auto server_id = workspace.file_table.intern(old.file);
-        if(workspace.view.compiles(server_id)) {
+        if(!workspace.build.commands(server_id).empty()) {
             continue;
         }
         bool healthy = llvm::all_of(old.sources, [&](const std::string& source) {
@@ -1608,7 +1608,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     // a vanished file's debt dies with its entry at the next save.
     for(auto& old: persisted.entries) {
         if(!old.hashes.empty() ||
-           workspace.view.has_candidates(workspace.file_table.intern(old.file))) {
+           !workspace.build.entries(workspace.file_table.intern(old.file)).empty()) {
             continue;
         }
         auto server_id = workspace.file_table.intern(old.file);

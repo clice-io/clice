@@ -1,7 +1,6 @@
-#include "sched/build_view.h"
+#include "sched/build.h"
 
 #include <format>
-#include <variant>
 
 #include "support/filesystem.h"
 
@@ -15,7 +14,7 @@
 
 namespace clice {
 
-void BuildView::reset_active() {
+void Build::reset_active() {
     auto tags = config.configurations();
     llvm::StringRef preferred = config.default_configuration;
     if(!preferred.empty() && llvm::is_contained(tags, preferred)) {
@@ -25,7 +24,7 @@ void BuildView::reset_active() {
     }
 }
 
-llvm::SmallVector<const CompiledRule*> BuildView::matching(llvm::StringRef path) const {
+llvm::SmallVector<const CompiledRule*> Build::matching(llvm::StringRef path) const {
     return config.matching_rules(path, active);
 }
 
@@ -33,7 +32,7 @@ static bool rule_active(const CompiledRule& rule, llvm::StringRef active) {
     return rule.configuration.empty() || rule.configuration == active;
 }
 
-llvm::SmallVector<llvm::StringRef> BuildView::declared_sources() const {
+llvm::SmallVector<llvm::StringRef> Build::declared_sources() const {
     llvm::SmallVector<llvm::StringRef> result;
     for(auto& rule: config.compiled_rules) {
         if(!rule_active(rule, active)) {
@@ -48,17 +47,7 @@ llvm::SmallVector<llvm::StringRef> BuildView::declared_sources() const {
     return result;
 }
 
-llvm::SmallVector<CompilationEntry, 2> BuildView::candidates(Fid file) const {
-    auto all = cdb.candidate_entries(file);
-    if(all.empty()) {
-        return {};
-    }
-
-    // Source priority: the sources of rules matching the file, then those
-    // of the other active rules, both in declaration order; sources no rule
-    // declares (discovered ones, the test source) last. A source only
-    // inactive rules declare stays out.
-    auto path = files.resolve(file);
+llvm::SmallVector<SourceID, 4> Build::source_order(llvm::StringRef path) const {
     auto matched = matching(path);
     llvm::SmallVector<SourceID, 4> order;
     llvm::SmallVector<SourceID, 4> declared;
@@ -84,15 +73,22 @@ llvm::SmallVector<CompilationEntry, 2> BuildView::candidates(Fid file) const {
             add_sources(rule);
         }
     }
-    for(auto& entry: all) {
-        if(!llvm::is_contained(order, entry.source) &&
-           !llvm::is_contained(declared, entry.source)) {
-            order.push_back(entry.source);
+    for(std::size_t i = 0; i < cdb.source_count(); i += 1) {
+        auto id = SourceID(i);
+        if(!llvm::is_contained(order, id) && !llvm::is_contained(declared, id)) {
+            order.push_back(id);
         }
     }
+    return order;
+}
 
+llvm::SmallVector<CompilationEntry, 2> Build::entries(Fid file) const {
+    auto all = cdb.candidate_entries(file);
+    if(all.empty()) {
+        return {};
+    }
     llvm::SmallVector<CompilationEntry, 2> result;
-    for(auto id: order) {
+    for(auto id: source_order(files.resolve(file))) {
         for(auto& entry: all) {
             if(entry.source == id) {
                 result.push_back(entry);
@@ -102,9 +98,9 @@ llvm::SmallVector<CompilationEntry, 2> BuildView::candidates(Fid file) const {
     return result;
 }
 
-llvm::SmallVector<Candidate, 2> BuildView::commands(Fid file) {
+llvm::SmallVector<Candidate, 2> Build::commands(Fid file) {
     llvm::SmallVector<Candidate, 2> result;
-    for(auto& entry: candidates(file)) {
+    for(auto& entry: entries(file)) {
         result.push_back({.config = entry.config, .source = CommandSource::CDBExact});
     }
     if(result.empty()) {
@@ -115,7 +111,7 @@ llvm::SmallVector<Candidate, 2> BuildView::commands(Fid file) {
     return result;
 }
 
-Edits BuildView::edits(llvm::ArrayRef<llvm::StringRef> paths) const {
+Edits Build::edits(llvm::ArrayRef<llvm::StringRef> paths) const {
     llvm::SmallVector<const CompiledRule*> matched;
     for(auto path: paths) {
         for(auto* rule: matching(path)) {
@@ -130,40 +126,31 @@ Edits BuildView::edits(llvm::ArrayRef<llvm::StringRef> paths) const {
         if(!llvm::is_contained(matched, &rule)) {
             continue;
         }
-        // A later rule's remove also cancels what an earlier rule appended:
-        // apply_rules removes from the base command only.
-        for(auto& flag: rule.remove) {
-            std::erase(result.append, flag);
-            result.remove.push_back(flag);
+        if(!rule.remove.empty()) {
+            result.edits.push_back({.kind = CommandEdit::Kind::Remove, .flags = rule.remove});
         }
-        result.append.insert(result.append.end(), rule.append.begin(), rule.append.end());
+        if(!rule.append.empty()) {
+            result.edits.push_back({.kind = CommandEdit::Kind::Append, .flags = rule.append});
+        }
     }
     return result;
 }
 
-std::optional<ConfigID> BuildView::default_command(llvm::StringRef path) {
+std::optional<ConfigID> Build::default_command(llvm::StringRef path) {
     for(auto* rule: matching(path)) {
         if(!rule->has_default_command()) {
             continue;
         }
-        return std::visit(
-            [&](const auto& spelling) {
-                if constexpr(std::is_same_v<std::decay_t<decltype(spelling)>, std::string>) {
-                    return cdb.intern_command_line(rule->directory, spelling);
-                } else {
-                    llvm::SmallVector<const char*, 16> argv;
-                    for(auto& arg: spelling) {
-                        argv.push_back(arg.c_str());
-                    }
-                    return cdb.intern_command(rule->directory, argv);
-                }
-            },
-            rule->default_command);
+        llvm::SmallVector<const char*, 16> argv;
+        for(auto& arg: rule->default_command) {
+            argv.push_back(arg.c_str());
+        }
+        return cdb.intern_command(rule->directory, argv);
     }
     return std::nullopt;
 }
 
-ConfigID BuildView::builtin(llvm::StringRef path) {
+ConfigID Build::builtin(llvm::StringRef path) {
     // Every C++ spelling (.cc, .cxx, .C, .hh) gets clang++; C, Objective-C
     // and unknown extensions get clang.
     namespace types = clang::driver::types;
@@ -185,46 +172,55 @@ ConfigID BuildView::builtin(llvm::StringRef path) {
     return *cdb.intern_command("", arguments);
 }
 
-CommandRef BuildView::resolve(Fid file,
-                              ConfigID base,
-                              CommandSource source,
-                              llvm::ArrayRef<llvm::StringRef> paths,
-                              llvm::StringRef language_path,
-                              llvm::ArrayRef<std::string> extra_prepend,
-                              llvm::ArrayRef<std::string> extra_append) {
+CommandRef Build::resolve(Fid file,
+                          ConfigID base,
+                          CommandSource source,
+                          llvm::ArrayRef<llvm::StringRef> paths,
+                          llvm::StringRef language_path,
+                          llvm::ArrayRef<std::string> extra_prepend,
+                          llvm::ArrayRef<std::string> extra_append) {
     auto edit = edits(paths);
     auto applied = cdb.apply_rules(base, edit.options(extra_prepend, extra_append));
     return {file, applied, cdb.input_kind(applied, language_path), source};
 }
 
-std::string BuildView::edit_hash(llvm::ArrayRef<llvm::StringRef> paths) const {
+std::string Build::edit_hash(llvm::ArrayRef<llvm::StringRef> paths) const {
     auto edit = edits(paths);
-    if(edit.append.empty() && edit.remove.empty()) {
+    if(edit.empty()) {
         return {};
     }
     std::string joined;
-    for(auto& arg: edit.append) {
-        joined += 'a';
-        joined += arg;
-        joined += '\0';
-    }
-    for(auto& arg: edit.remove) {
-        joined += 'r';
-        joined += arg;
-        joined += '\0';
+    for(auto& item: edit.edits) {
+        joined += item.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
+        for(auto& flag: item.flags) {
+            joined += flag;
+            joined += '\0';
+        }
+        joined += '\1';
     }
     return std::format("{:016x}", llvm::xxh3_64bits(joined));
 }
 
-bool BuildView::indexed(llvm::StringRef path) const {
+bool Build::indexed(llvm::StringRef path) const {
     return llvm::all_of(matching(path), [](const CompiledRule* rule) { return rule->index; });
 }
 
-std::vector<Fid> BuildView::members() const {
+llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {
+    llvm::SmallVector<CommandRef> result;
+    for(auto member: members) {
+        auto path = files.resolve(member);
+        for(auto& command: commands(member)) {
+            result.push_back(resolve(member, command.config, command.source, path, path));
+        }
+    }
+    return result;
+}
+
+std::vector<Fid> Build::members() const {
     std::vector<Fid> result;
     llvm::DenseSet<Fid> seen;
     for(auto& entry: cdb.entries()) {
-        if(seen.insert(entry.file).second && !candidates(entry.file).empty()) {
+        if(seen.insert(entry.file).second && !entries(entry.file).empty()) {
             result.push_back(entry.file);
         }
     }
@@ -238,7 +234,7 @@ static bool under(llvm::StringRef path, llvm::StringRef root) {
                             (root.ends_with("/") || path::is_separator(path[root.size()])));
 }
 
-void BuildView::enumerate_default_sources(std::vector<Fid>& out) const {
+void Build::enumerate_default_sources(std::vector<Fid>& out) const {
     llvm::SmallVector<const CompiledRule*> claimants;
     for(auto& rule: config.compiled_rules) {
         if(rule_active(rule, active) && rule.has_default_command()) {

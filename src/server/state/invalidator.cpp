@@ -2,7 +2,6 @@
 
 #include <utility>
 
-#include "sched/bootstrap.h"
 #include "sched/families/pcm.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -404,7 +403,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 }
 
                 workspace.dep_graph = DependencyGraph();
-                scan_dependency_graph(workspace.cdb, workspace.dep_graph, scan_units(workspace));
+                scan_dependency_graph(workspace.cdb,
+                                      workspace.dep_graph,
+                                      workspace.build.units(workspace.build.members()));
                 workspace.dep_graph.build_reverse_map();
                 workspace.context_epoch += 1;
 
@@ -506,7 +507,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // DiskRemoved case.) The graph rebuild above already
                     // dropped a retired file's source role, and the
                     // orphan recheck cleans choices through it.
-                    invalidate_entry(path_id, /*retired=*/!workspace.view.compiles(path_id));
+                    invalidate_entry(path_id,
+                                     /*retired=*/workspace.build.commands(path_id).empty());
                 }
 
                 dirty.recheck_contexts = true;

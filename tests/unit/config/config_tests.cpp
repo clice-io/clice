@@ -1,9 +1,10 @@
 #include <format>
 
+#include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "config/config.h"
-#include "sched/build_view.h"
+#include "sched/build.h"
 #include "support/filesystem.h"
 
 #include "kota/codec/dyn/decode.h"
@@ -71,10 +72,11 @@ void match_rules(const Config& config,
                  std::vector<std::string>& remove) {
     FileTable files;
     CompilationDatabase cdb{files};
-    BuildView view{const_cast<Config&>(config), cdb, files};
-    auto edits = view.edits(path);
-    append = std::move(edits.append);
-    remove = std::move(edits.remove);
+    Build build{const_cast<Config&>(config), cdb, files};
+    for(auto& edit: build.edits(path).edits) {
+        auto& out = edit.kind == CommandEdit::Kind::Remove ? remove : append;
+        out.insert(out.end(), edit.flags.begin(), edit.flags.end());
+    }
 }
 
 TEST_SUITE(Config) {
@@ -323,7 +325,7 @@ TEST_CASE(WorkspaceVarSubst) {
     Config config;
     config.project.cache_dir = "${workspace}/cache";
     config.project.logging_dir = "${workspace}/logs";
-    config.compile_commands = {"${workspace}/build"};
+    config.rules.push_back(ConfigRule{.compile_commands = {"${workspace}/build"}});
     config.finalize(tmp.root.str());
     EXPECT_EQ(std::string_view(config.project.cache_dir), at("cache"));
     EXPECT_EQ(std::string_view(config.project.logging_dir), at("logs"));
@@ -333,7 +335,6 @@ TEST_CASE(WorkspaceVarSubst) {
 
 TEST_CASE(ParseRuleSources) {
     auto result = kota::codec::toml::from_string<Config>(R"(
-compile_commands = ["build"]
 default_configuration = "debug"
 
 [[rules]]
@@ -347,7 +348,6 @@ default_command = ["clang", "-std=c17"]
 index = false
 )");
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->compile_commands.size(), 1u);
     EXPECT_EQ(std::string_view(result->default_configuration), "debug");
     ASSERT_EQ(result->rules.size(), 2u);
     EXPECT_EQ(std::string_view(result->rules[0].configuration), "debug");
@@ -373,17 +373,18 @@ TEST_CASE(AnchoredRules) {
     path::canonicalize(root);
     tmp.touch("sub/clice.toml",
               std::format(R"(
-compile_commands = ["build", "{}"]
-
 [[rules]]
 patterns = ["src/**"]
 configuration = "debug"
 compile_commands = ["out/debug"]
-default_command = "clang++ -std=c++20"
+default_command = "clang++ -std=c++20 -I${{workspace}}/include"
 
 [[rules]]
 patterns = ["**/*.hxx", "${{workspace}}/gen/**", "../shared/*.cpp", "*"]
 append = ["-x", "c++-header"]
+
+[[rules]]
+compile_commands = ["build", "{}"]
 )",
                           at("elsewhere/compile_commands.json")));
 
@@ -396,6 +397,10 @@ append = ["-x", "c++-header"]
     EXPECT_EQ(config.compiled_rules[0].directory, at("sub"));
     EXPECT_EQ(config.compiled_rules[0].patterns[0].root, at("sub/src"));
     EXPECT_TRUE(config.compiled_rules[0].declares_sources());
+    /// The string spelling is tokenized, then `${workspace}` substituted
+    /// per argument.
+    ASSERT_EQ(config.compiled_rules[0].default_command.size(), 3u);
+    EXPECT_EQ(config.compiled_rules[0].default_command[2], "-I" + at("include"));
     EXPECT_FALSE(config.compiled_rules[1].declares_sources());
     ASSERT_EQ(config.compiled_rules[1].patterns.size(), 4u);
     EXPECT_EQ(config.compiled_rules[1].patterns[0].root, root);
@@ -440,11 +445,12 @@ TEST_CASE(InitOptionsAnchorAtWorkspace) {
     std::string root = tmp.root.str().str();
     path::canonicalize(root);
     tmp.touch(".clice/config.toml", R"(
-compile_commands = ["../build"]
-
 [[rules]]
 patterns = ["../src/**"]
 append = ["-DFROM_FILE"]
+
+[[rules]]
+compile_commands = ["../build"]
 )");
 
     auto from_file = Config::load_from_workspace(root);
@@ -455,7 +461,7 @@ append = ["-DFROM_FILE"]
 
     auto config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
     auto ov = kota::codec::json::from_string(
-        R"({ "compile_commands": ["out"], "rules": [{ "patterns": ["src/**"], "compile_commands": ["cmake"] }] })",
+        R"({ "rules": [{ "patterns": ["src/**"], "compile_commands": ["cmake"] }, { "compile_commands": ["out"] }] })",
         config);
     ASSERT_TRUE(ov.has_value());
     config.finalize(root);
@@ -544,11 +550,11 @@ TEST_CASE(CompileCommandsList) {
         return p;
     };
     Config config;
-    config.compile_commands = {
-        "${workspace}/build",
-        at("abs/path/compile_commands.json"),
-        "out",
-    };
+    config.rules.push_back(ConfigRule{
+        .compile_commands = {
+                             "${workspace}/build", at("abs/path/compile_commands.json"),
+                             "out", }
+    });
     config.finalize(tmp.root.str());
     ASSERT_EQ(config.compiled_rules.size(), 1u);
     auto& databases = config.compiled_rules[0].compile_commands;
@@ -662,15 +668,17 @@ TEST_CASE(RuleOrderLaterRemoveWins) {
     });
     config.finalize("");
 
-    std::vector<std::string> append, remove;
-    match_rules(config, "/src/a.cpp", append, remove);
-
-    // -DFOO should have been stripped from append; -DBAR remains.
-    EXPECT_EQ(append.size(), 1u);
-    EXPECT_EQ(append[0], "-DBAR");
-    // remove is still forwarded so base CDB flags also get filtered.
-    EXPECT_EQ(remove.size(), 1u);
-    EXPECT_EQ(remove[0], "-DFOO");
+    // The edits stay in rule order; the remove takes effect against the
+    // earlier append when the command is built, and against the base.
+    FileTable files;
+    CompilationDatabase cdb{files};
+    cdb.add_command("/src", "/src/a.cpp", std::string_view("clang++ -DFOO a.cpp"));
+    Build build{config, cdb, files};
+    auto edits = build.edits(llvm::StringRef("/src/a.cpp"));
+    ASSERT_EQ(edits.edits.size(), 2u);
+    EXPECT_EQ(edits.edits[1].kind, CommandEdit::Kind::Remove);
+    EXPECT_EQ(print_argv(render_entry(cdb, "/src/a.cpp", edits.options())),
+              "clang++ -D BAR /src/a.cpp");
 }
 
 TEST_CASE(RuleOrderLaterAppendWins) {

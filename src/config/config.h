@@ -61,7 +61,10 @@ struct ConfigRule {
                          "load, and every entry applies to its own file "
                          "whatever the patterns say; the patterns and the "
                          "order decide which entry a file present in several "
-                         "databases gets by default.")
+                         "databases gets by default. A rule without patterns "
+                         "names the workspace's databases. When no rule "
+                         "declares a source, the workspace root and its "
+                         "immediate subdirectories are searched for one.")
     <std::vector<std::string>> compile_commands;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -69,8 +72,10 @@ struct ConfigRule {
                          "The compile command for matching files without a "
                          "database entry, without the source file: a string "
                          "tokenized like a shell command line, or an argv "
-                         "array. It runs from this configuration file's "
-                         "directory, and the matching source files on disk "
+                         "array. It runs from the directory of the configuration "
+                         "file it was read from (the workspace root for a rule "
+                         "passed through initializationOptions), and the "
+                         "matching source files on disk "
                          "join the background index — enumerated at startup, "
                          "so a file created later compiles when opened and "
                          "joins the index at the next start. Omitted means "
@@ -234,9 +239,10 @@ struct CompiledRule {
     std::string configuration;
     /// Absolute paths of the declared databases, in priority order.
     std::vector<std::string> compile_commands;
-    /// As written; empty string means none. Tokenized where it is consumed,
-    /// with `directory` as its working directory.
-    CommandSpelling default_command;
+    /// The command's argv (a string spelling tokenized with the host's
+    /// shell rules), `${workspace}` substituted; empty means none.
+    /// `directory` is its working directory.
+    std::vector<std::string> default_command;
     std::string directory;
     std::vector<std::string> append;
     std::vector<std::string> remove;
@@ -285,17 +291,6 @@ struct ConfigIssue {
 struct Config {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Compilation databases for the whole workspace, in "
-                         "priority order: a compile_commands.json or a directory "
-                         "containing one, relative to this configuration file. "
-                         "Equivalent to a trailing rule without patterns; see "
-                         "`[rules].compile_commands`. When neither this nor any "
-                         "rule declares a source, the workspace root and its "
-                         "immediate subdirectories are searched for one.")
-    <std::vector<std::string>> compile_commands;
-
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
                          "The build configuration active at startup, one of the "
                          "tags declared on rules. When rules carry tags and this "
                          "names none of them, the first declared tag is used and "
@@ -339,9 +334,8 @@ struct Config {
 
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path
-    /// canonicalization and anchoring, and rule compilation — the
-    /// top-level `compile_commands` become the last compiled rule. Run
-    /// once per load, after every source has been overlaid.
+    /// canonicalization and anchoring, and rule compilation. Run once per
+    /// load, after every source has been overlaid.
     void finalize(llvm::StringRef workspace_root);
 
     /// The compiled rules applying to `path` (absolute), in declaration
@@ -358,9 +352,8 @@ struct Config {
     llvm::SmallVector<llvm::StringRef> configurations() const;
 
     /// Try to load configuration from a TOML file. Its relative paths and
-    /// patterns anchor at the file's directory: every rule records it and
-    /// the top-level databases are made absolute here, so a source overlaid
-    /// later keeps its own anchor. Parse/validation problems are appended to
+    /// patterns anchor at the file's directory: every rule records it, so a
+    /// source overlaid later keeps its own anchor. Parse/validation problems are appended to
     /// `issues` when provided: decode failures as Error (the caller falls
     /// back to defaults), unknown keys as Warning (the rest of the file
     /// still applies). Set `finalized` to false when further config sources

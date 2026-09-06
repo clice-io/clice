@@ -12,7 +12,9 @@
 #include "feature/feature.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/build_view.h"
+#include "sched/bootstrap.h"
+#include "sched/context.h"
+#include "sched/workspace.h"
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
 #include "syntax/scan.h"
@@ -350,27 +352,6 @@ std::string sha256_hex(llvm::StringRef content) {
     return llvm::toHex(digest, /*LowerCase=*/true);
 }
 
-/// Nearest compile_commands.json from `start` upwards, like clangd.
-std::optional<std::string> find_cdb(llvm::StringRef start) {
-    llvm::SmallString<256> dir(start);
-    while(!dir.empty()) {
-        llvm::SmallString<256> candidate(dir);
-        path::append(candidate, "compile_commands.json");
-        if(fs::exists(candidate)) {
-            return std::string(candidate);
-        }
-        // parent_path returns a prefix into dir's own buffer; truncate in
-        // place instead of assign, which trips the SmallVector
-        // self-reference assert in Debug LLVM.
-        llvm::StringRef parent = path::parent_path(dir);
-        if(parent.size() == dir.size()) {
-            break;
-        }
-        dir.truncate(parent.size());
-    }
-    return std::nullopt;
-}
-
 std::vector<std::string> error_messages(CompilationUnit& unit, bool errors_only = false) {
     auto messages = unit.diagnostics() | std::views::filter([&](const Diagnostic& diagnostic) {
                         return !errors_only || diagnostic.id.level >= DiagnosticLevel::Error;
@@ -388,11 +369,6 @@ struct SourceFile {
     AnnotatedSource source;
     /// Module declaration facts from the dependency scan (directory mode).
     ScanResult scan;
-    /// The compile_commands.json governing the file, empty when none (and
-    /// in the explicit-flags channel). Module discovery and PCM attachment
-    /// are scoped per database, so nested projects that both declare a
-    /// module named `core` don't collide in one namespace.
-    std::string project;
 };
 
 /// The compile command for one file, arguments owned as strings so they
@@ -421,41 +397,22 @@ bool is_header_type(clang::driver::types::ID type) {
     return type == types::TY_CHeader || type == types::TY_CXXHeader;
 }
 
-/// A compilation database of the inspected tree with the view that reads
-/// it. inspect carries no clice.toml, so the view holds no rules: it is
-/// the same resolution the server performs, minus the edits.
-struct Project {
-    Config config;
-    CompilationDatabase database;
-    BuildView view;
-
-    Project(FileTable& files, llvm::StringRef directory) :
-        database(files), view(config, database, files) {
-        config.finalize(directory);
-        view.reset_active();
-    }
-};
-
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
 /// channel — the harness owns the flags, no compile_commands.json exists)
-/// apply uniformly to every input file; otherwise the file's entry in
-/// `project`, a language-compatible donor entry for headers, or default
-/// flags. On failure records the error on `entry` and returns nullopt.
+/// apply uniformly to every input file; otherwise the resolution the server
+/// performs for a background compile: the file's entry, a host's command
+/// for a header, a rule's default command, the builtin fallback. On failure
+/// records the error on `entry` and returns nullopt.
 std::optional<FileCommand> file_command(FileEntry& entry,
                                         const std::string& file,
                                         llvm::ArrayRef<std::string> flags,
                                         llvm::StringRef flags_directory,
-                                        Project* project) {
-    CompilationDatabase* database = project ? &project->database : nullptr;
-    auto has_entry = [&](llvm::StringRef path) {
-        return project && project->view.has_candidates(database->files().intern(path));
-    };
+                                        ContextResolver* contexts) {
     namespace types = clang::driver::types;
     auto type = file_type(file);
     bool is_header = is_header_type(type);
 
     FileCommand command;
-
     if(!flags.empty()) {
         bool is_cxx = type != types::TY_INVALID && types::isCXX(type);
         std::vector<const char*> driver_args = {is_cxx || is_header ? "clang++" : "clang"};
@@ -491,85 +448,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         return command;
     }
 
-    // A header without its own entry borrows the command of the nearest
-    // language-compatible translation unit in the database — the server
-    // resolves header contexts from host sources the same way, and generic
-    // default flags would drop the project's -I/-D/-std. Ranking: a C++
-    // donor beats a C one (a C++ header never takes a C command; an
-    // ambiguous .h prefers C++ but accepts C in a pure-C project), longest
-    // common path prefix breaks ties.
-    llvm::StringRef donor;
-    if(is_header && database != nullptr && !has_entry(file)) {
-        std::pair<int, std::size_t> best{-1, 0};
-        for(auto& candidate: database->entries()) {
-            llvm::StringRef donor_path = database->files().resolve(candidate.file);
-            auto donor_ext = path::extension(donor_path);
-            auto donor_type = donor_ext.empty()
-                                  ? types::TY_INVALID
-                                  : types::lookupTypeForExtension(donor_ext.drop_front());
-            bool donor_cxx = donor_type != types::TY_INVALID && types::isCXX(donor_type);
-            if(type == types::TY_CXXHeader && !donor_cxx) {
-                continue;
-            }
-            auto [it, _] = std::ranges::mismatch(donor_path, file);
-            std::pair<int, std::size_t> score{donor_cxx ? 1 : 0,
-                                              static_cast<std::size_t>(it - donor_path.begin())};
-            if(donor.empty() || score > best) {
-                best = score;
-                donor = donor_path;
-            }
-        }
-    }
-
-    if(has_entry(file)) {
-        auto file_id = database->files().intern(file);
-        auto candidate = project->view.candidates(file_id).front();
-        auto ref = project->view.resolve(file_id,
-                                         candidate.config,
-                                         CommandSource::CDBExact,
-                                         llvm::StringRef(file),
-                                         file);
-        command.arguments = to_strings(database->render(ref));
-        command.directory = database->config(ref.config).directory;
-    } else if(!donor.empty()) {
-        auto donor_id = database->files().intern(donor);
-        auto candidate = project->view.candidates(donor_id).front();
-        // The donor's language applies to the header itself — it compiles
-        // as a fragment of that TU's world, not by its own extension.
-        llvm::StringRef edit_paths[] = {donor, file};
-        auto ref = project->view.resolve(database->files().intern(file),
-                                         candidate.config,
-                                         CommandSource::IncludeGraph,
-                                         edit_paths,
-                                         donor);
-        command.arguments = to_strings(database->render(ref));
-        command.directory = database->config(ref.config).directory;
-    } else {
-        // No CDB entry for this file: query the toolchain with default
-        // flags. Uncached, but this path only runs for files outside any
-        // compilation database. C++ inputs pin the corpus-aligned c++20;
-        // other C-family languages keep their driver defaults so a .c or
-        // .m file is not misparsed as C++.
-        LOG_WARN("no compile command for {}; using default flags", file);
-        std::vector<const char*> driver_args;
-        if(type != types::TY_INVALID && types::isCXX(type)) {
-            driver_args = {"clang++", "-std=c++20", "-fsyntax-only", file.c_str()};
-        } else if(type == types::TY_CHeader) {
-            // An ambiguous header is C++ by default, like clangd; -x forces
-            // TU semantics instead of a precompiled-header job.
-            driver_args = {"clang++", "-x", "c++", "-std=c++20", "-fsyntax-only", file.c_str()};
-        } else {
-            driver_args = {"clang", "-fsyntax-only", file.c_str()};
-        }
-        auto cc1 = Toolchain::query(driver_args, file);
-        if(!cc1) {
-            entry.error = "toolchain_error";
-            entry.diagnostics = {std::move(cc1.error())};
-            return std::nullopt;
-        }
-        command.arguments = std::move(*cc1);
-        command.directory = path::parent_path(file).str();
-    }
+    contexts->resolve_command(file, command.directory, command.arguments, ContextUse::Background);
     return command;
 }
 
@@ -829,35 +708,24 @@ int run_inspect(const InspectOptions& opts) {
         }
     }
 
-    // Each file resolves against the compile_commands.json nearest to it,
-    // so a directory spanning nested projects picks up every inner
-    // database. Files without a CDB entry fall back to a per-file
-    // toolchain query in file_command. All databases share one file
-    // table: nested projects live in a single fid space.
-    FileTable file_table;
-    std::map<std::string, Project> databases;
-    auto database_for = [&](llvm::StringRef file) -> Project* {
-        auto cdb = find_cdb(path::parent_path(file));
-        if(!cdb) {
-            return nullptr;
-        }
-        auto [it, inserted] = databases.try_emplace(*cdb, file_table, path::parent_path(*cdb));
-        if(inserted && !it->second.database.load(*cdb)) {
-            // Keep the empty entry so the failure is logged once; its files
-            // take the default-flags fallback.
-            LOG_WARN("failed to load {}", *cdb);
-        }
-        return &it->second;
-    };
-
+    // The inspected tree is a workspace: its configuration, the databases
+    // it names (or the one discovered under it) and the dependency graph
+    // give every file the command the server would use — the same loading
+    // path as `clice serve`.
     llvm::StringRef unit_directory =
         is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
+    Workspace workspace;
+    ContextResolver contexts(workspace);
+    if(flags.empty()) {
+        workspace.config = Config::load_from_workspace(unit_directory);
+        load_build(workspace, unit_directory);
+    }
     auto command_for = [&](FileEntry& entry, const SourceFile& file) {
         return file_command(entry,
                             file.abs,
                             flags,
                             unit_directory,
-                            flags.empty() ? database_for(file.abs) : nullptr);
+                            flags.empty() ? &contexts : nullptr);
     };
 
     // Serial module builder (directory mode): scan for module declarations
@@ -865,19 +733,16 @@ int run_inspect(const InspectOptions& opts) {
     // files in the unit compile like they do against the server's module
     // pipeline. A dependency cycle leaves its modules unbuilt and surfaces
     // as ordinary compile errors on the importers.
-    std::map<std::string, llvm::StringMap<std::string>> pcms;
+    llvm::StringMap<std::string> pcms;
     std::vector<std::string> pcm_files;
     if(is_dir) {
         bool has_modules = false;
         for(auto& source: sources) {
             source.scan = scan_quick(source.source.content);
-            if(flags.empty()) {
-                source.project = find_cdb(path::parent_path(source.abs)).value_or("");
-            }
             has_modules |= source.scan.is_interface_unit || source.scan.need_preprocess;
         }
 
-        std::map<std::string, llvm::StringMap<SourceFile*>> interfaces;
+        llvm::StringMap<SourceFile*> interfaces;
         if(has_modules) {
             // Preprocessing scans run over the stripped unit through an
             // in-memory overlay.
@@ -921,8 +786,7 @@ int run_inspect(const InspectOptions& opts) {
                 if(!source.scan.is_interface_unit || source.scan.module_name.empty()) {
                     continue;
                 }
-                auto [it, inserted] =
-                    interfaces[source.project].try_emplace(source.scan.module_name, &source);
+                auto [it, inserted] = interfaces.try_emplace(source.scan.module_name, &source);
                 if(!inserted) {
                     output.files.find(source.rel)->second.error = "duplicate_module";
                 }
@@ -931,26 +795,23 @@ int run_inspect(const InspectOptions& opts) {
             // The quick scan only detects module declarations; imports can
             // be macro-formed, so dependency edges come from the
             // preprocessing scan.
-            for(const auto& [project, group]: interfaces) {
-                for(const auto& entry: group) {
-                    SourceFile& source = *entry.second;
-                    if(auto result = scan_with(source, scan_precise)) {
-                        source.scan.modules = std::move(result->modules);
-                    }
+            for(const auto& entry: interfaces) {
+                SourceFile& source = *entry.second;
+                if(auto result = scan_with(source, scan_precise)) {
+                    source.scan.modules = std::move(result->modules);
                 }
             }
         }
 
-        for(const auto& [project, group]: interfaces) {
-            llvm::StringMap<std::string>& project_pcms = pcms[project];
+        {
             llvm::StringSet<> visited;
             auto build = [&](auto&& self, llvm::StringRef name) -> void {
                 if(!visited.insert(name).second) {
                     return;
                 }
-                SourceFile& source = *group.find(name)->second;
+                SourceFile& source = *interfaces.find(name)->second;
                 for(auto& dep: source.scan.modules) {
-                    if(group.contains(dep)) {
+                    if(interfaces.contains(dep)) {
                         self(self, dep);
                     }
                 }
@@ -975,7 +836,7 @@ int run_inspect(const InspectOptions& opts) {
                 for(const auto& sibling: sources) {
                     params.add_remapped_file(sibling.abs, sibling.source.content);
                 }
-                for(const auto& pcm: project_pcms) {
+                for(const auto& pcm: pcms) {
                     params.pcms.try_emplace(pcm.getKey(), pcm.getValue());
                 }
 
@@ -986,9 +847,9 @@ int run_inspect(const InspectOptions& opts) {
                     entry.diagnostics = error_messages(unit);
                     return;
                 }
-                project_pcms.try_emplace(name, *tmp);
+                pcms.try_emplace(name, *tmp);
             };
-            for(const auto& entry: group) {
+            for(const auto& entry: interfaces) {
                 build(build, entry.getKey());
             }
         }
@@ -1008,14 +869,7 @@ int run_inspect(const InspectOptions& opts) {
         if(!command) {
             continue;
         }
-        run_feature(entry,
-                    *spec,
-                    source,
-                    sources,
-                    pcms[source.project],
-                    *command,
-                    config,
-                    participant);
+        run_feature(entry, *spec, source, sources, pcms, *command, config, participant);
     }
 
     for(auto& path: pcm_files) {

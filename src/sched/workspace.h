@@ -16,7 +16,7 @@
 #include "index/project_index.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/build_view.h"
+#include "sched/build.h"
 #include "sched/crash_budget.h"
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
@@ -119,8 +119,10 @@ enum class HeaderMode : std::uint32_t {
     NeedsContext = 2,
 };
 
-/// A user's context choice, persisted across sessions.
-struct SavedContext {
+/// The user's choice for a file in the editor (clice/switchContext): the
+/// host to borrow a command from, or one of the file's own entries.
+/// Persisted in the contexts blob; validated on didOpen.
+struct Selection {
     /// Header context host; invalid = none.
     Fid host_path_id;
 
@@ -212,7 +214,7 @@ struct Workspace {
 
     /// Which entries and hand-written commands apply to a file under the
     /// active configuration; the only reader of the rules.
-    BuildView view{config, cdb, file_table};
+    Build build{config, cdb, file_table};
 
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
     /// load_workspace() when cache_dir is configured; absent means caching
@@ -283,12 +285,6 @@ struct Workspace {
     /// inclusions of one header always share a spelling, and synthesis
     /// validates the real occurrence anyway.
     std::uint32_t count_occurrences(Fid host_id, Fid target_id) const;
-
-    /// Rank host source candidates for a header by relevance: a source
-    /// with the header's stem (utils.h -> utils.cpp) wins, then sources in
-    /// the same directory, then longer common path prefixes; ties break
-    /// lexicographically so the choice is deterministic.
-    llvm::SmallVector<Fid> rank_hosts(Fid header_path_id, llvm::ArrayRef<Fid> hosts) const;
 
     /// Rescan a file after it was saved to disk, from one read: refresh
     /// its include edges (so host lookups and context queries see includes

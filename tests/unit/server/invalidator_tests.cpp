@@ -1106,7 +1106,7 @@ TEST_CASE(CDBRemovedStillClaimed) {
     SessionStore store;
     workspace.config.rules.push_back(ConfigRule{.default_command = std::string("clang++")});
     workspace.config.finalize(tmp.root.str());
-    workspace.view.reset_active();
+    workspace.build.reset_active();
     auto gone_id = workspace.file_table.intern(tmp.path("gone.cpp"));
     auto json = build_cdb_json({
         {tmp.root, tmp.path("kept.cpp"), {}}
@@ -1171,11 +1171,11 @@ TEST_CASE(SurvivingEdgeKeepsChoice) {
     workspace.dep_graph.build_reverse_map();
 
     auto session = store.open(header);
-    resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
 
     ASTHarness harness(workspace, resolver, store);
     ASSERT_FALSE(ContextService{workspace, resolver, harness.ast}.drop_orphaned_choices(store));
-    ASSERT_TRUE(resolver.saved_contexts.contains(header));
+    ASSERT_TRUE(resolver.selections.contains(header));
 }
 
 TEST_CASE(RemovedEdgeDropsChoice) {
@@ -1189,7 +1189,7 @@ TEST_CASE(RemovedEdgeDropsChoice) {
     auto session = store.open(header);
     session->trial_done = true;
     resolver.header_contexts[header] = HeaderContext{};
-    resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
     auto generation = session->generation;
 
     ASTHarness harness(workspace, resolver, store);
@@ -1199,7 +1199,7 @@ TEST_CASE(RemovedEdgeDropsChoice) {
     ASSERT_FALSE(harness.ast.projections.current(header));
     ASSERT_FALSE(session->trial_done);
     ASSERT_EQ(session->generation, generation + 1);
-    ASSERT_FALSE(resolver.saved_contexts.contains(header));
+    ASSERT_FALSE(resolver.selections.contains(header));
 }
 
 TEST_CASE(VanishedOccurrenceDropsChoice) {
@@ -1217,11 +1217,11 @@ TEST_CASE(VanishedOccurrenceDropsChoice) {
     workspace.dep_graph.build_reverse_map();
 
     store.open(header);
-    resolver.saved_contexts[header] = SavedContext{host, 1, ""};
+    resolver.selections[header] = Selection{host, 1, ""};
 
     ASTHarness harness(workspace, resolver, store);
     ASSERT_TRUE(ContextService{workspace, resolver, harness.ast}.drop_orphaned_choices(store));
-    ASSERT_FALSE(resolver.saved_contexts.contains(header));
+    ASSERT_FALSE(resolver.selections.contains(header));
 }
 
 };  // TEST_SUITE(DropOrphanedChoices)

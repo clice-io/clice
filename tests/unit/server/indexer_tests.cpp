@@ -2105,9 +2105,11 @@ TEST_CASE(UndeclaredSourceRetires) {
                           R"("arguments": ["clang++", "-c", "main.cpp"]}}])",
                           json_escape(tmp.root)));
     auto load_declared = [&](IndexerFixture& f, std::vector<std::string> databases) {
-        f.workspace.config.compile_commands = std::move(databases);
+        ConfigRule rule;
+        rule.compile_commands.assign(databases.begin(), databases.end());
+        f.workspace.config.rules = {std::move(rule)};
         f.workspace.config.finalize(tmp.root);
-        for(auto source: f.workspace.view.declared_sources()) {
+        for(auto source: f.workspace.build.declared_sources()) {
             f.workspace.cdb.load(source);
         }
     };

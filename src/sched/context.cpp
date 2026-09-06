@@ -9,6 +9,7 @@
 
 #include "command/argument_parser.h"
 #include "command/search_config.h"
+#include "sched/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
@@ -44,7 +45,7 @@ static void log_command_decision(llvm::StringRef path,
 }
 
 /// Pick the candidate matching a pinned command (multi-configuration files
-/// and hosts), defaulting to the view's first candidate. `paths` are the
+/// and hosts), defaulting to the build's first command. `paths` are the
 /// files whose edits the published hash was computed with.
 static Candidate pick_pinned_config(Workspace& workspace,
                                     Fid file,
@@ -66,7 +67,7 @@ static Candidate pick_pinned_config(Workspace& workspace,
     if(!pinned_hash.empty()) {
         for(auto& entry: candidates) {
             auto ref =
-                workspace.view.resolve(file, entry.config, entry.source, paths, language_path);
+                workspace.build.resolve(file, entry.config, entry.source, paths, language_path);
             if(workspace.cdb.entry_hash_hex(ref.config) == pinned_hash) {
                 return entry;
             }
@@ -142,7 +143,7 @@ void ContextResolver::dump_choice_slices(
         artifacts.push_back({intern_path(entry.getKey()), intern_id(entry.second)});
     }
 
-    for(auto& [path_id, saved]: saved_contexts) {
+    for(auto& [path_id, saved]: selections) {
         CacheContextEntry entry;
         entry.file = intern_id(path_id);
         entry.host = saved.host_path_id.valid() ? intern_id(saved.host_path_id) : ~0u;
@@ -181,7 +182,7 @@ void ContextResolver::load_choice_slices(
         auto file = resolve(entry.file);
         if(file.empty())
             continue;
-        SavedContext saved;
+        Selection saved;
         if(entry.host != ~0u) {
             auto host = resolve(entry.host);
             if(host.empty())
@@ -193,7 +194,7 @@ void ContextResolver::load_choice_slices(
         }
         saved.command_hash = entry.command_hash;
         saved.base_hash = entry.base_hash;
-        saved_contexts[workspace.file_table.intern(file)] = std::move(saved);
+        selections[workspace.file_table.intern(file)] = std::move(saved);
     }
 
     for(auto& entry: artifacts) {
@@ -273,18 +274,18 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
             return false;
         }
         auto host_path = workspace.file_table.resolve(it->second);
-        auto commands = workspace.view.commands(it->second);
+        auto commands = workspace.build.commands(it->second);
         if(commands.empty()) {
             return false;
         }
         // The artifact is a fragment of the host TU: it compiles as the
         // host's language, under the host's effective command, with the
         // artifact path injected as the input.
-        auto ref = workspace.view.resolve(path_id,
-                                          commands.front().config,
-                                          CommandSource::IncludeGraph,
-                                          host_path,
-                                          host_path);
+        auto ref = workspace.build.resolve(path_id,
+                                           commands.front().config,
+                                           CommandSource::IncludeGraph,
+                                           host_path,
+                                           host_path);
         directory = workspace.cdb.config(ref.config).directory;
         arguments = to_strings(workspace.cdb.render(ref));
         if(host_path_id) {
@@ -302,7 +303,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     // diagnostics indicate missing includer state. An explicitly chosen
     // occurrence — even #0 — only has meaning under includer-context
     // semantics, so it forces synthesis regardless of the verdict.
-    const SavedContext* choice = active_choice(use, path_id);
+    const Selection* choice = selection(use, path_id);
     bool has_host_choice = choice && choice->host_path_id.valid();
     bool synthesize = header_mode(path, path_id) == HeaderMode::NeedsContext ||
                       (has_host_choice && choice->occurrence.has_value());
@@ -349,7 +350,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     }
 
     auto host_path = workspace.file_table.resolve(ctx_ptr->host_path_id);
-    auto commands = workspace.view.commands(ctx_ptr->host_path_id);
+    auto commands = workspace.build.commands(ctx_ptr->host_path_id);
     if(commands.empty()) {
         LOG_WARN("fill_header_context_args: host {} has no compile command", host_path);
         return false;
@@ -372,7 +373,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     // as the input; the synthesized preamble lands after the host's own
     // user-content flags (its -include runs first).
     auto ref =
-        workspace.view.resolve(path_id, base, CommandSource::IncludeGraph, edit_paths, host_path);
+        workspace.build.resolve(path_id, base, CommandSource::IncludeGraph, edit_paths, host_path);
     RenderOptions opts;
     if(!ctx_ptr->preamble_path.empty()) {
         opts.preamble = ctx_ptr->preamble_path.c_str();
@@ -409,7 +410,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     // default config for files without an entry.
     auto fill = [&](ConfigID base, CommandSource source) {
         auto ref =
-            workspace.view.resolve(path_id, base, source, path, path, extra_prepend, extra_append);
+            workspace.build.resolve(path_id, base, source, path, path, extra_prepend, extra_append);
         directory = workspace.cdb.config(ref.config).directory;
         arguments = to_strings(workspace.cdb.render(ref));
         if(out_ref) {
@@ -421,7 +422,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
         // Multi-config projects: honor the user's chosen entry, matched by
         // entry hash so the choice survives reordering.
         llvm::StringRef pinned_hash, pinned_base;
-        const SavedContext* choice = active_choice(use, path_id);
+        const Selection* choice = selection(use, path_id);
         if(choice && !choice->host_path_id.valid()) {
             pinned_hash = choice->command_hash;
             pinned_base = choice->base_hash;
@@ -436,7 +437,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
         fill(picked.config, picked.source);
     };
 
-    const SavedContext* choice = active_choice(use, path_id);
+    const Selection* choice = selection(use, path_id);
     bool has_host_choice = choice && choice->host_path_id.valid();
 
     // 1. If the file has an active header context via switchContext, use the
@@ -457,7 +458,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
 
     // 2. Real CDB entry for the file itself.
     tried.push_back("cdb");
-    auto commands = workspace.view.commands(path_id);
+    auto commands = workspace.build.commands(path_id);
     if(!commands.empty() && commands.front().source == CommandSource::CDBExact) {
         fill_from_cdb(commands);
         log_command_decision(path, tried, CommandSource::CDBExact, arguments);
@@ -484,7 +485,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     //    instead of failing silently.
     tried.push_back("fallback");
     auto source = commands.empty() ? CommandSource::Fallback : CommandSource::Default;
-    fill(commands.empty() ? workspace.view.builtin(path) : commands.front().config, source);
+    fill(commands.empty() ? workspace.build.builtin(path) : commands.front().config, source);
     log_command_decision(path, tried, source, arguments);
     return source;
 }
@@ -512,23 +513,17 @@ void ContextResolver::append_suffix_include(Fid path_id, std::string& text) {
 std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_path_id,
                                                                      ContextUse use,
                                                                      bool synthesize) {
-    // Find source files that transitively include this header.
-    auto hosts = workspace.dep_graph.find_host_sources(header_path_id);
-    if(hosts.empty()) {
-        LOG_DEBUG("resolve_header_context: no host sources for path_id={}", header_path_id);
-        return std::nullopt;
-    }
-
-    // If there's an active context override, prefer that host (and its
-    // chosen include occurrence).
+    // A pinned host (and its chosen include occurrence) wins while it
+    // still compiles and still includes the header; otherwise the build's
+    // default host.
     Fid host_path_id;
     std::optional<std::uint32_t> occurrence;
     std::vector<Fid> chain;
-    const SavedContext* choice = active_choice(use, header_path_id);
+    const Selection* choice = selection(use, header_path_id);
     bool has_host_choice = choice && choice->host_path_id.valid();
     if(has_host_choice) {
         auto preferred = choice->host_path_id;
-        if(workspace.view.compiles(preferred)) {
+        if(!workspace.build.commands(preferred).empty()) {
             auto c = workspace.dep_graph.find_include_chain(preferred, header_path_id);
             if(!c.empty()) {
                 host_path_id = preferred;
@@ -537,26 +532,14 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
             }
         }
     }
-
-    // Fall back to the most relevant host that has a real CDB entry —
-    // a host with a synthesized command would just be a fallback in disguise.
     if(chain.empty()) {
-        for(auto candidate: workspace.rank_hosts(header_path_id, hosts)) {
-            if(!workspace.view.compiles(candidate))
-                continue;
-            auto c = workspace.dep_graph.find_include_chain(candidate, header_path_id);
-            if(c.empty())
-                continue;
-            host_path_id = candidate;
-            chain = std::move(c);
-            break;
+        auto host = default_host(workspace, header_path_id);
+        if(!host) {
+            LOG_DEBUG("resolve_header_context: no host for path_id={}", header_path_id);
+            return std::nullopt;
         }
-    }
-
-    if(chain.empty()) {
-        LOG_DEBUG("resolve_header_context: no usable host with include chain for path_id={}",
-                  header_path_id);
-        return std::nullopt;
+        host_path_id = host->file;
+        chain = std::move(host->chain);
     }
 
     // Self-contained route: borrow the host's command, no prefix needed.
@@ -586,7 +569,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
     // search configuration, so same-named headers in different directories
     // cannot be confused.
     auto host_path = workspace.file_table.resolve(host_path_id);
-    auto commands = workspace.view.commands(host_path_id);
+    auto commands = workspace.build.commands(host_path_id);
     if(commands.empty()) {
         return std::nullopt;
     }
@@ -600,7 +583,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
                                      host_command_hash,
                                      host_base_hash);
     auto host_ref =
-        workspace.view.resolve(host_path_id, picked.config, picked.source, edit_paths, host_path);
+        workspace.build.resolve(host_path_id, picked.config, picked.source, edit_paths, host_path);
 
     auto search_config = workspace.cdb.search_config(host_ref);
     DirListingCache dir_cache;
@@ -775,15 +758,15 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
 
 bool ContextResolver::pin_alive(Fid entry_file,
                                 llvm::ArrayRef<llvm::StringRef> paths,
-                                const SavedContext& saved) const {
+                                const Selection& saved) const {
     auto entry_path = workspace.file_table.resolve(entry_file);
-    for(auto& entry: workspace.view.commands(entry_file)) {
+    for(auto& entry: workspace.build.commands(entry_file)) {
         if(!saved.base_hash.empty() &&
            workspace.cdb.entry_hash_hex(entry.config) == saved.base_hash) {
             return true;
         }
         auto ref =
-            workspace.view.resolve(entry_file, entry.config, entry.source, paths, entry_path);
+            workspace.build.resolve(entry_file, entry.config, entry.source, paths, entry_path);
         if(workspace.cdb.entry_hash_hex(ref.config) == saved.command_hash) {
             return true;
         }
@@ -798,7 +781,7 @@ void ContextResolver::validate_saved_context(Fid path_id) {
     // only if it still holds: the CDB or include graph may have changed
     // while the server was down, and a stale choice suppresses automatic
     // host resolution and strands the file on the fallback command.
-    if(auto it = saved_contexts.find(path_id); it != saved_contexts.end()) {
+    if(auto it = selections.find(path_id); it != selections.end()) {
         auto& ws = workspace;
         auto& saved = it->second;
 
@@ -807,15 +790,15 @@ void ContextResolver::validate_saved_context(Fid path_id) {
             auto host_path = ws.file_table.resolve(saved.host_path_id);
             llvm::StringRef edit_paths[] = {host_path, path};
             valid =
-                ws.view.compiles(saved.host_path_id) &&
+                !ws.build.commands(saved.host_path_id).empty() &&
                 !ws.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
                 (saved.command_hash.empty() || pin_alive(saved.host_path_id, edit_paths, saved));
         } else if(!saved.command_hash.empty()) {
-            valid = ws.view.compiles(path_id) && pin_alive(path_id, path, saved);
+            valid = !ws.build.commands(path_id).empty() && pin_alive(path_id, path, saved);
         }
         if(!valid) {
             LOG_INFO("didOpen: dropping stale saved context for {}", path);
-            saved_contexts.erase(it);
+            selections.erase(it);
             // The drop must reach the contexts blob, or the stale choice
             // resurrects from disk at the next start.
             workspace.mark_contexts_dirty();

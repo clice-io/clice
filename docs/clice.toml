@@ -8,12 +8,6 @@
 #
 # Relative paths and patterns resolve against the directory of this file.
 
-# Compilation databases for the whole workspace, in priority order: a
-# compile_commands.json or a directory containing one. When neither this nor
-# any rule declares a source, the workspace root and its immediate
-# subdirectories are searched for one.
-compile_commands = ["build"]
-
 # The build configuration active at startup, one of the tags declared on
 # rules below. When rules carry tags and this names none of them, the first
 # declared tag is used.
@@ -64,11 +58,14 @@ patterns = ["**/*"]
 # configuration = "debug"
 # Compilation databases these files take their commands from, in priority
 # order. Every entry applies to its own file; patterns and order only decide
-# which entry wins when a file appears in several databases.
+# which entry wins when a file appears in several databases. A rule without
+# patterns names the workspace's databases; when no rule declares a source,
+# the workspace root and its immediate subdirectories are searched for one.
 # compile_commands = ["build/debug"]
 # The compile command for matching files without a database entry, without
 # the source file: a shell-style string or an argv array, run from this
-# file's directory. Matching sources on disk join the background index.
+# file's directory. Matching sources on disk join the background index
+# (enumerated at startup).
 # default_command = "clang++ -std=c++20 -Iinclude"
 # Commands to append to the original command list (e.g., ["-std=c++17"]).
 append = []

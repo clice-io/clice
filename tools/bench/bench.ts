@@ -358,11 +358,10 @@ function initializationOptions(opts: Options): Record<string, unknown> {
         // Pin clice to the CDB selected for the comparison: a workspace
         // clice.toml may declare databases elsewhere, while the clangd run
         // always receives opts.cdbDir — the A/B must open the file under
-        // the same compilation command. Rules go too: one binding files to
-        // another database would outrank the pinned one, and clangd applies
-        // no flag edits either.
-        compile_commands: [opts.cdbDir],
-        rules: [],
+        // the same compilation command. The overlay replaces the file's
+        // rules wholesale, so none of its flag edits apply either, matching
+        // clangd.
+        rules: [{ compile_commands: [opts.cdbDir] }],
         project: {
             // Pin logs to where result() reads them (logFiles searches
             // <workspace>/.clice/logs); a clice.toml logging_dir would
