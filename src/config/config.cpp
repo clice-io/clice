@@ -180,7 +180,14 @@ void Config::finalize(llvm::StringRef workspace_root) {
         }
         compiled.configuration = rule.configuration;
         for(auto& database: rule.compile_commands) {
-            compiled.compile_commands.push_back(anchored(database, anchor));
+            auto full = anchored(database, anchor);
+            // The directory form is told from the file form by extension
+            // everywhere else; only the filesystem knows a directory
+            // spelled with a .json suffix.
+            if(fs::is_directory(full)) {
+                full = path::join(full, "compile_commands.json");
+            }
+            compiled.compile_commands.push_back(std::move(full));
         }
         // A string spelling is tokenized before `${workspace}` is
         // substituted, so a root with spaces stays one argument.
@@ -337,7 +344,7 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
 
     bool found = false;
     if(!workspace_root.empty()) {
-        for(auto* name: {"clice.toml", ".clice/config.toml"}) {
+        for(auto name: config_file_names) {
             auto config_path = path::join(workspace_root, name);
             if(!llvm::sys::fs::exists(config_path))
                 continue;

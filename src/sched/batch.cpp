@@ -190,7 +190,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
     workspace.config.project.enable_indexing.value = true;
 
-    bootstrap_workspace(workspace, stack.store, stack.pump, options.root);
+    auto report = bootstrap_workspace(workspace, stack.store, stack.pump, options.root);
 
     // The command's whole product is the persisted index: without storage
     // (cache failed to open, another process holds the index writer lock,
@@ -204,7 +204,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_await shutdown(stack);
         co_return;
     }
-    if(workspace.build.members().empty()) {
+    if(report.members.empty()) {
         LOG_ERROR("Nothing to index: no compile_commands.json found under {}", options.root);
         result.exit_code = 1;
         co_await shutdown(stack);
@@ -360,13 +360,13 @@ kota::task<> run_lint(BatchStack& stack,
     // or sweep writes, so the shutdown save commits nothing.
     workspace.config.project.enable_indexing.value = false;
 
-    bootstrap_workspace(workspace,
-                        stack.store,
-                        stack.pump,
-                        options.root,
-                        /*read_only_index=*/!options.with_index);
+    auto report = bootstrap_workspace(workspace,
+                                      stack.store,
+                                      stack.pump,
+                                      options.root,
+                                      /*read_only_index=*/!options.with_index);
 
-    auto members = workspace.build.members();
+    auto& members = report.members;
     if(members.empty()) {
         LOG_ERROR("Nothing to lint: no compile_commands.json found under {}", options.root);
         result.exit_code = 2;

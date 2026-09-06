@@ -155,6 +155,51 @@ TEST_CASE(CDBTickRelocates) {
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{other_id});
 }
 
+TEST_CASE(CDBTickRelocatesTwice) {
+    /// A replacement that never loads (malformed) vanishes before the next
+    /// one appears: the first database's entries still leave once a
+    /// replacement finally loads, and the phantom stops being watched.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("other.cpp", R"(int other() {})");
+
+    Workspace workspace;
+    SessionStore store;
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
+    auto other_id = workspace.file_table.intern(tmp.path("other.cpp"));
+
+    fs::remove_all(tmp.path("compile_commands.json"));
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    tmp.touch("build/compile_commands.json", "not a database");
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    fs::remove_all(tmp.path("build/compile_commands.json"));
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+
+    tmp.touch("out/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("other.cpp"), {}}
+    }));
+    auto events = tracker.tick_cdb(/*force=*/true);
+    ASSERT_EQ(events.size(), 2u);
+    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{other_id});
+    ASSERT_EQ(events[1].cdb.removed, llvm::SmallVector<Fid>{main_id});
+    EXPECT_TRUE(workspace.cdb.candidate_entries(main_id).empty());
+
+    /// The phantom is no longer watched: its late arrival changes nothing.
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    EXPECT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    EXPECT_TRUE(workspace.cdb.candidate_entries(main_id).empty());
+}
+
 TEST_CASE(WorkspaceTickStateMachine) {
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");

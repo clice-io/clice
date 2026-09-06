@@ -136,11 +136,12 @@ std::optional<IndexQuery::Cursor> Features::cursor_at(Fid path_id,
     return query.symbol_at(path_id, *offset);
 }
 
-/// The language selectors of a file's CDB entry: what the last -x forces,
-/// if any (the driver override beats every suffix heuristic), and the
-/// last -std value. Rules applied, like the resolve path's effective
-/// command.
+/// The language selectors of a file's own command — its first entry, or
+/// the default command claiming it: what the last -x forces, if any (the
+/// driver override beats every suffix heuristic), and the last -std
+/// value. Rules applied, like the resolve path's effective command.
 struct CommandLang {
+    CommandSource source;
     std::optional<bool> forces_c;
     std::string standard;
 };
@@ -154,7 +155,7 @@ static std::optional<CommandLang> command_lang(Workspace& workspace, llvm::Strin
     auto& command = commands.front();
     auto applied = workspace.build.resolve(file, command.config, command.source, path, path).config;
 
-    CommandLang result;
+    CommandLang result{.source = command.source};
     auto language = workspace.cdb.forced_language(applied);
     if(!language.empty()) {
         result.forces_c = language == "c" || language == "c-header";
@@ -170,7 +171,9 @@ static std::optional<CommandLang> command_lang(Workspace& workspace, llvm::Strin
 const clang::LangOptions& Features::index_lang_options(const Session& session) {
     auto path = workspace.file_table.resolve(session.path_id);
     auto own = command_lang(workspace, path);
-    if(own && own->forces_c) {
+    // A file's entry is its command; a default command yields to the host
+    // a header borrows from, in resolve_command's order.
+    if(own && own->forces_c && own->source == CommandSource::CDBExact) {
         return feature::index_lang_options("", *own->forces_c, own->standard);
     }
 
@@ -196,6 +199,10 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
                                            host_path.ends_with(".c"),
                                            host_lang ? llvm::StringRef(host_lang->standard)
                                                      : llvm::StringRef());
+    }
+
+    if(own && own->forces_c) {
+        return feature::index_lang_options("", *own->forces_c, own->standard);
     }
 
     auto& contributions = workspace.project_index.contributions;

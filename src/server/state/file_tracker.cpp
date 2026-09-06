@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <optional>
 #include <utility>
 
 #include "support/filesystem.h"
@@ -55,22 +56,22 @@ void FileTracker::track(SourceID id) {
     sources.push_back({.id = id, .applied = stat_cdb(workspace.cdb.source_path(id))});
 }
 
-std::optional<SourceID> FileTracker::tick_source(TrackedSource& tracked,
-                                                 bool force,
-                                                 llvm::SmallVectorImpl<FileEvent>& events) {
+llvm::SmallVector<SourceID, 1> FileTracker::tick_source(TrackedSource& tracked,
+                                                        bool force,
+                                                        llvm::SmallVectorImpl<FileEvent>& events) {
     auto path = workspace.cdb.source_path(tracked.id);
     auto current = stat_cdb(path);
     if(!force) {
         if(current == tracked.applied) {
             tracked.has_pending = false;
-            return std::nullopt;
+            return {};
         }
         // Generators rewrite the file in place; only act once the stamp
         // has been stable for two consecutive ticks (half-write guard).
         if(!tracked.has_pending || !(tracked.pending == current)) {
             tracked.pending = current;
             tracked.has_pending = true;
-            return std::nullopt;
+            return {};
         }
     }
     // A forced tick reloads unconditionally — the stamp gate would make a
@@ -82,7 +83,7 @@ std::optional<SourceID> FileTracker::tick_source(TrackedSource& tracked,
         // Deleted — usually mid-regeneration. Keep serving the loaded
         // entries; the rewrite lands as the next observed change.
         tracked.applied = current;
-        return std::nullopt;
+        return {};
     }
 
     auto diff = workspace.cdb.reload_and_diff(tracked.id);
@@ -90,7 +91,7 @@ std::optional<SourceID> FileTracker::tick_source(TrackedSource& tracked,
         // Stats fine but unreadable right now (e.g. still locked by the
         // generator). Leave `applied` alone: the stamp stays different, so
         // the reload is retried on a later tick instead of being lost.
-        return std::nullopt;
+        return {};
     }
     tracked.applied = current;
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
@@ -99,9 +100,9 @@ std::optional<SourceID> FileTracker::tick_source(TrackedSource& tracked,
              diff->removed.size(),
              diff->changed.size());
     push_delta(*diff, events);
-    auto superseded = std::exchange(tracked.supersedes, std::nullopt);
-    if(superseded) {
-        push_delta(workspace.cdb.unload_source(*superseded), events);
+    auto superseded = std::exchange(tracked.supersedes, {});
+    for(auto id: superseded) {
+        push_delta(workspace.cdb.unload_source(id), events);
     }
     return superseded;
 }
@@ -123,24 +124,28 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
             // Baselined as missing: the fresh file is a change against the
             // never-loaded source and goes through the normal
             // settle-and-reload path.
+            TrackedSource replacement{.id = *id};
             if(sources.empty()) {
                 LOG_INFO("Found compilation database: {}", found);
-                sources.push_back({.id = *id});
             } else {
-                // The vanished database keeps serving until its replacement
-                // has loaded, so an identical database regenerated elsewhere
-                // never leaves a gap; then its entries leave with it.
+                // Every watched database has vanished (that is what reopens
+                // discovery); they keep serving until the replacement has
+                // loaded, so an identical database regenerated elsewhere
+                // never leaves a gap, then their entries leave with them —
+                // a still-loaded one and a replacement that never loaded
+                // alike, or the former would outlive the next replacement.
                 LOG_INFO("Compilation database moved to {}", found);
-                sources.push_back({.id = *id, .supersedes = sources.back().id});
+                for(auto& tracked: sources) {
+                    replacement.supersedes.push_back(tracked.id);
+                }
             }
+            sources.push_back(std::move(replacement));
         }
     }
 
     llvm::SmallVector<SourceID, 1> superseded;
     for(auto& tracked: sources) {
-        if(auto gone = tick_source(tracked, force, events)) {
-            superseded.push_back(*gone);
-        }
+        superseded.append(tick_source(tracked, force, events));
     }
     llvm::erase_if(sources, [&](const TrackedSource& tracked) {
         return llvm::is_contained(superseded, tracked.id);

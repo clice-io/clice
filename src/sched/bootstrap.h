@@ -27,6 +27,10 @@ struct BootstrapReport {
     /// This call opened the cache store: the caller owns store-lifetime
     /// services (the server spawns its checkpoint task on this).
     bool opened_store = false;
+
+    /// The build's translation units as load_build enumerated them: the
+    /// batch drivers' work list, so they never walk the tree a second time.
+    std::vector<Fid> members;
 };
 
 /// What loading the build found.

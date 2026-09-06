@@ -358,7 +358,7 @@ A rule names files by pattern and says where they take their compile commands fr
 | ---------- | ----------------- | ------- |
 | `patterns` | `array of string` | `[]`    |
 
-Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed); an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
+Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the workspace root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
 
 </div>
 
@@ -378,7 +378,7 @@ Build configuration tag. A tagged rule applies only while that configuration is 
 | ------------------ | ----------------- | ------- |
 | `compile_commands` | `array of string` | `[]`    |
 
-Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file. All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, the workspace root and its immediate subdirectories are searched for one.
+Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the workspace root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, the workspace root and its immediate subdirectories are searched for one.
 
 </div>
 

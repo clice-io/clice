@@ -72,18 +72,14 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
 
     auto load = load_build(workspace, root);
     report.has_commands = !load.members.empty() || workspace.config.declares_sources();
-    if(load.members.empty()) {
-        // Persisted index shards are CDB-independent; load them so a
-        // database generated later (picked up by the CDB poll) starts from
-        // the previous session's index.
-        pump.claim_report(store.load(read_only_index).report);
-        return report;
-    }
-
+    report.members = std::move(load.members);
+    // Persisted index shards are CDB-independent; they load even with no
+    // member yet, so a database generated later (picked up by the CDB
+    // poll) starts from the previous session's index.
     pump.claim_report(store.load(read_only_index).report);
 
-    if(cfg.enable_indexing.value) {
-        for(auto member: load.members) {
+    if(cfg.enable_indexing.value && !report.members.empty()) {
+        for(auto member: report.members) {
             // Bulk sweep of unknown staleness: the hash gate decides per
             // file. DepsOnly — a cold start with a warm index cache must
             // keep serving the loaded shards, not blank every query until

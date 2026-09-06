@@ -401,8 +401,14 @@ TEST_CASE(DefaultFallback) {
     EXPECT_EQ(c_argv[0], "clang"sv);
     EXPECT_EQ(c_argv[1], "unknown.c"sv);
 
-    /// Other extensions also get plain clang.
-    EXPECT_EQ(render_fallback(database, "foo.h")[0], "clang"sv);
+    /// An ambiguous header is C++ by default, forced through -x so it
+    /// compiles as a translation unit; other extensions get plain clang.
+    auto h_argv = render_fallback(database, "foo.h");
+    ASSERT_EQ(h_argv.size(), 5U);
+    EXPECT_EQ(h_argv[0], "clang++"sv);
+    EXPECT_EQ(h_argv[2], "-x"sv);
+    EXPECT_EQ(h_argv[3], "c++"sv);
+    EXPECT_EQ(render_fallback(database, "foo.m")[0], "clang"sv);
 
     /// CUDA files pin cuda mode and the device-side view NVCC-backed
     /// commands default to (the render spells the unaliased form).

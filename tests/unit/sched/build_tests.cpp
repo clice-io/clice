@@ -239,7 +239,7 @@ TEST_CASE(EditsAcrossHostAndHeader) {
     Config config;
     config.rules.push_back(ConfigRule{.patterns = {"src/**"}, .append = {"-DA"}});
     config.rules.push_back(ConfigRule{.patterns = {"include/**"}, .append = {"-DB"}});
-    config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .remove = {"-DA"}, .append = {"-DC"}});
+    config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .append = {"-DC"}, .remove = {"-DA"}});
     config.finalize(tmp.root.str());
 
     FileTable files;

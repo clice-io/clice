@@ -151,8 +151,8 @@ std::optional<ConfigID> Build::default_command(llvm::StringRef path) {
 }
 
 ConfigID Build::builtin(llvm::StringRef path) {
-    // Every C++ spelling (.cc, .cxx, .C, .hh) gets clang++; C, Objective-C
-    // and unknown extensions get clang.
+    // Every C++ spelling (.cc, .cxx, .C, .hh) gets clang++, and so does the
+    // ambiguous .h; C, Objective-C and unknown extensions get clang.
     namespace types = clang::driver::types;
     auto ext = path::extension(path);
     ext.consume_front(".");
@@ -166,6 +166,10 @@ ConfigID Build::builtin(llvm::StringRef path) {
         arguments = {"clang++", "-std=c++20", "-x", "cuda", "--cuda-device-only"};
     } else if(type != types::TY_INVALID && types::isCXX(type)) {
         arguments = {"clang++", "-std=c++20"};
+    } else if(type == types::TY_CHeader) {
+        // C++ by default, like clangd; -x forces TU semantics instead of a
+        // precompiled-header job.
+        arguments = {"clang++", "-std=c++20", "-x", "c++"};
     } else {
         arguments = {"clang"};
     }

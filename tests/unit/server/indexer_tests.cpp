@@ -2357,6 +2357,48 @@ TEST_CASE(RecordedHostChangeDrops) {
     ASSERT_TRUE(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
+TEST_CASE(ExcludedHostChangeDrops) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+    auto header = tmp.path("dep.h");
+    auto claim = [&](IndexerFixture& f, std::string command) {
+        f.workspace.config.rules.push_back(ConfigRule{.patterns = {"**/*.cpp"},
+                                                      .default_command = std::move(command),
+                                                      .index = false});
+        f.workspace.config.finalize(tmp.root);
+    };
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        claim(f, "clang++ -DFOO=1 -c");
+        auto indexed = index_file(tmp, header);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
+        f.save();
+    }
+
+    // The host compiles under a rule's default command and stays out of
+    // the index itself, so no entry of its own records that command: the
+    // header's snapshot must carry it for the offline change to be seen,
+    // even while the host still includes the header.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    claim(f, "clang++ -DFOO=2 -c");
+    auto src_id = f.workspace.file_table.intern(src);
+    auto header_id = f.workspace.file_table.intern(header);
+    f.workspace.dep_graph.set_includes(src_id, 0, {{header_id}});
+    f.workspace.dep_graph.build_reverse_map();
+    f.load();
+
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
+    ASSERT_TRUE(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+}
+
 TEST_CASE(PinnedHostKeepsHeader) {
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");

@@ -396,6 +396,35 @@ bool is_header_type(clang::driver::types::ID type) {
     return type == types::TY_CHeader || type == types::TY_CXXHeader;
 }
 
+/// The workspace of a single inspected file: the nearest ancestor directory
+/// holding a configuration file or a compile_commands.json (the upward
+/// lookup clangd does), so a nested file resolves its command as the server
+/// would from the project root; its own directory when none does. Only the
+/// ancestors themselves are checked — scanning their subdirectories would
+/// let an unrelated sibling project's database win.
+std::string workspace_of(llvm::StringRef file) {
+    llvm::SmallString<256> dir(path::parent_path(file));
+    while(!dir.empty()) {
+        for(llvm::StringRef marker: config_file_names) {
+            if(fs::exists(path::join(dir, marker))) {
+                return std::string(dir);
+            }
+        }
+        if(fs::exists(path::join(dir, "compile_commands.json"))) {
+            return std::string(dir);
+        }
+        // parent_path returns a prefix into dir's own buffer; truncate in
+        // place instead of assign, which trips the SmallVector
+        // self-reference assert in Debug LLVM.
+        llvm::StringRef parent = path::parent_path(dir);
+        if(parent.size() == dir.size()) {
+            break;
+        }
+        dir.truncate(parent.size());
+    }
+    return path::parent_path(file).str();
+}
+
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
 /// channel — the harness owns the flags, no compile_commands.json exists)
 /// apply uniformly to every input file; otherwise the resolution the server
@@ -710,14 +739,16 @@ int run_inspect(const InspectOptions& opts) {
     // The inspected tree is a workspace: its configuration, the databases
     // it names (or the one discovered under it) and the dependency graph
     // give every file the command the server would use — the same loading
-    // path as `clice serve`.
+    // path as `clice serve`. A single file belongs to the nearest project
+    // above it.
     llvm::StringRef unit_directory =
         is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
     Workspace workspace;
     ContextResolver contexts(workspace);
     if(flags.empty()) {
-        workspace.config = Config::load_from_workspace(unit_directory);
-        load_build(workspace, unit_directory);
+        std::string root = is_dir ? std::string(abs_path) : workspace_of(abs_path);
+        workspace.config = Config::load_from_workspace(root);
+        load_build(workspace, root);
     }
     auto command_for = [&](FileEntry& entry, const SourceFile& file) {
         return file_command(entry,

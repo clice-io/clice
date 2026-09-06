@@ -95,7 +95,7 @@ public:
 
     /// The builtin fallback command of a file the build does not compile
     /// (CommandSource::Fallback): the driver follows the language clang
-    /// assigns to the file's extension.
+    /// assigns to the file's extension, an ambiguous `.h` counting as C++.
     ConfigID builtin(llvm::StringRef path);
 
     /// Apply the edits of `paths` (and a run's extras) to `base`: the

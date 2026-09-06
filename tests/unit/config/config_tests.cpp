@@ -542,8 +542,10 @@ TEST_CASE(WorkspaceSubstRepeated) {
 
 TEST_CASE(CompileCommandsList) {
     // Every top-level database path substitutes ${workspace} and anchors
-    // at the configuration directory; absolute ones pass through.
+    // at the configuration directory; absolute ones pass through, and an
+    // existing directory names the database under it whatever its suffix.
     TempDir tmp;
+    tmp.mkdir("build.json");
     auto at = [&](llvm::StringRef relative) {
         std::string p = tmp.path(relative);
         path::canonicalize(p);
@@ -553,15 +555,17 @@ TEST_CASE(CompileCommandsList) {
     config.rules.push_back(ConfigRule{
         .compile_commands = {
                              "${workspace}/build", at("abs/path/compile_commands.json"),
-                             "out", }
+                             "out", "build.json",
+                             }
     });
     config.finalize(tmp.root.str());
     ASSERT_EQ(config.compiled_rules.size(), 1u);
     auto& databases = config.compiled_rules[0].compile_commands;
-    ASSERT_EQ(databases.size(), 3u);
+    ASSERT_EQ(databases.size(), 4u);
     EXPECT_EQ(databases[0], at("build"));
     EXPECT_EQ(databases[1], at("abs/path/compile_commands.json"));
     EXPECT_EQ(databases[2], at("out"));
+    EXPECT_EQ(databases[3], at("build.json/compile_commands.json"));
 }
 
 TEST_CASE(TomlErrorLocated) {

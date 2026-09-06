@@ -35,6 +35,17 @@ std::string blob_key(llvm::StringRef path) {
     return std::format("{:016x}", llvm::xxh3_64bits(path));
 }
 
+/// Entry hash of a file's default selection — the candidate-order winner,
+/// or the default command claiming a file without entries; empty when the
+/// build does not compile it.
+std::string selected_hash(Workspace& workspace, Fid file) {
+    auto commands = workspace.build.commands(file);
+    if(commands.empty()) {
+        return {};
+    }
+    return workspace.cdb.entry_hash_hex(commands.front().config);
+}
+
 /// JSON layout of the persisted CDB snapshot (blob kind CDB): per source
 /// file, the sorted canonical command hashes of its entries and a hash of
 /// its matched config rules when the index state was last saved. A
@@ -56,6 +67,11 @@ struct CDBSnapshotEntry {
 
     std::string rules;
     std::string host;
+
+    /// Entry hash of the host's default selection. A host that is not
+    /// itself indexed (a default-command unit under `index = false`) has
+    /// no entry of its own to record its command in.
+    std::string host_selected;
 };
 
 struct CDBSnapshot {
@@ -105,23 +121,22 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
         if(!workspace.build.entries(tu).empty()) {
             return;
         }
-        std::string selected;
-        if(auto commands = workspace.build.commands(tu); !commands.empty()) {
-            selected = workspace.cdb.entry_hash_hex(commands.front().config);
-        }
         std::string host;
+        std::string host_selected;
         llvm::SmallVector<llvm::StringRef, 2> edit_paths;
         if(auto host_it = header_hosts.find(tu); host_it != header_hosts.end()) {
             host = workspace.file_table.resolve(host_it->second).str();
+            host_selected = selected_hash(workspace, host_it->second);
             edit_paths.push_back(host);
         }
         edit_paths.push_back(file);
         auto rules = workspace.build.edit_hash(edit_paths);
         snapshot.entries.push_back({
             .file = file.str(),
-            .selected = std::move(selected),
+            .selected = selected_hash(workspace, tu),
             .rules = std::move(rules),
             .host = std::move(host),
+            .host_selected = std::move(host_selected),
         });
     };
     for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
@@ -1524,9 +1539,11 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         // session; until then the recorded host stands in, or every host
         // edit would read as a rule change at each start.
         std::string rules = entry.rules;
+        std::string host_selected = entry.host_selected;
         if(entry.host.empty() && !old.host.empty()) {
             llvm::StringRef paths[] = {old.host, entry.file};
             rules = workspace.build.edit_hash(paths);
+            host_selected = selected_hash(workspace, workspace.file_table.intern(old.host));
         }
         if(old.rules != rules || old.selected != entry.selected) {
             // The default command that claimed it is gone and no host
@@ -1549,7 +1566,8 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         auto host_id = workspace.file_table.intern(old.host);
-        if(workspace.build.commands(host_id).empty() || llvm::is_contained(changed_ids, host_id)) {
+        if(workspace.build.commands(host_id).empty() || llvm::is_contained(changed_ids, host_id) ||
+           old.host_selected != host_selected) {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
                      entry.file);
             drop_index_into(server_id, report);

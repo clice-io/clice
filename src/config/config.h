@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <expected>
 #include <optional>
@@ -23,6 +24,10 @@ namespace clice {
 std::uint32_t default_stateless_worker_count();
 std::uint32_t default_max_stateless_worker_count();
 
+/// The configuration files a workspace root may hold, in lookup order.
+constexpr inline std::array<llvm::StringRef, 2> config_file_names = {"clice.toml",
+                                                                     ".clice/config.toml"};
+
 /// A compile command written by hand: one string tokenized like a shell
 /// command line, or an argv array.
 using CommandSpelling = std::variant<std::string, std::vector<std::string>>;
@@ -36,8 +41,10 @@ struct ConfigRule {
                          "Glob patterns selecting the files this rule applies "
                          "to. A relative pattern is anchored at this "
                          "configuration file's directory (`..` segments "
-                         "allowed); an absolute pattern or one starting with "
-                         "`**` matches the file's absolute path. "
+                         "allowed), or at the workspace root for a rule passed "
+                         "through initializationOptions; an absolute pattern "
+                         "or one starting with `**` matches the file's "
+                         "absolute path. "
                          "`*` matches within a path segment, `?` a single "
                          "character, `**` any number of segments, `{a,b}` "
                          "alternatives, `[0-9]` a character range, `[!...]` a "
@@ -57,8 +64,10 @@ struct ConfigRule {
                      description =
                          "Compilation databases, in priority order: a "
                          "compile_commands.json or a directory containing one, "
-                         "relative to this configuration file. All of them "
-                         "load, and every entry applies to its own file "
+                         "relative to this configuration file (to the "
+                         "workspace root for a rule passed through "
+                         "initializationOptions). All of them load, and every "
+                         "entry applies to its own file "
                          "whatever the patterns say; the patterns and the "
                          "order decide which entry a file present in several "
                          "databases gets by default. A rule without patterns "
@@ -237,7 +246,8 @@ struct CompiledRule {
 
     std::vector<Pattern> patterns;
     std::string configuration;
-    /// Absolute paths of the declared databases, in priority order.
+    /// Absolute paths of the declared databases, in priority order; an
+    /// existing directory resolved to the compile_commands.json under it.
     std::vector<std::string> compile_commands;
     /// The command's argv (a string spelling tokenized with the host's
     /// shell rules), `${workspace}` substituted; empty means none.

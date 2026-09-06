@@ -40,6 +40,7 @@ test("inspect treats bare headers as C++ in the fallback", () => {
         fs.writeFileSync(file, "namespace demo {\ninline int one() {\n    return 1;\n}\n}\n");
         const { files } = runInspect(cliceExecutable(), "folding_range", file);
         expect(files["single.h"]?.error ?? null).toBeNull();
+        expect(files["single.h"]?.diagnostics ?? null).toBeNull();
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -74,6 +75,36 @@ test("inspect headers borrow the nearest TU command", () => {
         );
         const { files } = runInspect(cliceExecutable(), "folding_range", path.join(tmp, "lib.h"));
         expect(files["lib.h"]?.error ?? null).toBeNull();
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("inspect nested file finds the project above it", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
+    try {
+        // The database sits at the project root, the file two directories
+        // down: only the ancestor lookup reaches it.
+        const file = path.join(tmp, "src", "lib", "main.cpp");
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(
+            file,
+            "#if !defined(NEED)\n#error missing project define\n#endif\nint x = NEED;\n",
+        );
+        fs.writeFileSync(
+            path.join(tmp, "compile_commands.json"),
+            JSON.stringify([
+                {
+                    directory: tmp,
+                    file,
+                    arguments: ["clang++", "-std=c++20", "-DNEED=1", "-fsyntax-only", file],
+                },
+            ]),
+        );
+        const { files } = runInspect(cliceExecutable(), "folding_range", file);
+        const entry = files["main.cpp"];
+        expect(entry?.error ?? null).toBeNull();
+        expect(entry?.diagnostics ?? null).toBeNull();
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
     }
