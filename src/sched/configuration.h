@@ -24,6 +24,14 @@ std::string read_selection(llvm::StringRef cache_dir);
 std::expected<void, std::error_code> write_selection(llvm::StringRef cache_dir,
                                                      llvm::StringRef configuration);
 
+/// Whether `name` is one of the tags the rules declare.
+bool declares_configuration(const Config& config, llvm::StringRef name);
+
+/// For the commands that run scripted (`clice index`, `lint`, `inspect`):
+/// a `requested` name no rule declares is an error, logged, not a
+/// fallback. True when the name is empty or declared.
+bool check_requested_configuration(const Config& config, llvm::StringRef requested);
+
 /// The configuration a session activates: `requested` (the command line),
 /// else the persisted selection, else the fallback. A name no rule declares
 /// is reported as guidance and skipped; the selection file is left as it

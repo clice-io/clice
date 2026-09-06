@@ -13,5 +13,10 @@
     "directory": "../..",
     "file": "gated.cpp",
     "arguments": ["clang++", "-std=c++20", "-DDEBUG", "gated.cpp"]
+  },
+  {
+    "directory": "../..",
+    "file": "shared.cpp",
+    "arguments": ["clang++", "-std=c++20", "shared.cpp"]
   }
 ]

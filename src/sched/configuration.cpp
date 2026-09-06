@@ -1,6 +1,7 @@
 #include "sched/configuration.h"
 
 #include "config/config.h"
+#include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
@@ -9,7 +10,6 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
@@ -59,6 +59,9 @@ std::string read_selection(llvm::StringRef cache_dir) {
 
 std::expected<void, std::error_code> write_selection(llvm::StringRef cache_dir,
                                                      llvm::StringRef configuration) {
+    if(cache_dir.empty()) {
+        return std::unexpected(std::make_error_code(std::errc::invalid_argument));
+    }
     if(auto ec = llvm::sys::fs::create_directories(cache_dir)) {
         return std::unexpected(ec);
     }
@@ -68,26 +71,31 @@ std::expected<void, std::error_code> write_selection(llvm::StringRef cache_dir,
     }
     auto path = state_path(cache_dir);
     llvm::SmallString<256> tmp_path;
-    int fd = -1;
-    if(auto ec = llvm::sys::fs::createUniqueFile(path + ".%%%%%%", fd, tmp_path)) {
+    if(auto ec = llvm::sys::fs::createUniqueFile(path + ".%%%%%%", tmp_path)) {
         return std::unexpected(ec);
     }
-    {
-        llvm::raw_fd_ostream out(fd, /*shouldClose=*/true);
-        out << *json << '\n';
-        out.close();
-        if(out.has_error()) {
-            auto ec = out.error();
-            out.clear_error();
-            llvm::sys::fs::remove(tmp_path);
-            return std::unexpected(ec);
-        }
+    auto written = fs::write(tmp_path, *json + '\n');
+    if(written) {
+        written = fs::rename(tmp_path, path);
     }
-    if(auto renamed = fs::rename(tmp_path, path); !renamed) {
+    if(!written) {
         llvm::sys::fs::remove(tmp_path);
-        return renamed;
     }
-    return {};
+    return written;
+}
+
+bool declares_configuration(const Config& config, llvm::StringRef name) {
+    return llvm::is_contained(config.configurations(), name);
+}
+
+bool check_requested_configuration(const Config& config, llvm::StringRef requested) {
+    if(requested.empty() || declares_configuration(config, requested)) {
+        return true;
+    }
+    LOG_ERROR("--configuration {} names no rule's configuration ({})",
+              requested,
+              llvm::join(config.configurations(), ", "));
+    return false;
 }
 
 std::string resolve_configuration(const Config& config, llvm::StringRef requested) {
@@ -101,10 +109,9 @@ std::string resolve_configuration(const Config& config, llvm::StringRef requeste
             LOG_INFO("Active configuration: {} (--configuration)", requested);
             return requested.str();
         }
-        LOG_GUIDANCE("--configuration {} names no rule's configuration ({}); using {}",
+        LOG_GUIDANCE("--configuration {} names no rule's configuration ({}); ignoring it",
                      requested,
-                     llvm::join(tags, ", "),
-                     fallback);
+                     llvm::join(tags, ", "));
     }
     if(auto selected = read_selection(config.project.cache_dir); !selected.empty()) {
         if(llvm::is_contained(tags, llvm::StringRef(selected))) {

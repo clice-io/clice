@@ -56,8 +56,9 @@ struct ConfigRule {
                          "Build configuration tag. A tagged rule applies only "
                          "while that configuration is active; an untagged rule "
                          "always applies. The distinct tags form the "
-                         "configuration menu, and `default_configuration` "
-                         "names the one active at startup.")
+                         "configuration menu; `--configuration`, the persisted "
+                         "selection and `default_configuration` pick the active "
+                         "one, in that order.")
     <std::string> configuration;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -306,8 +307,9 @@ struct ConfigIssue {
 struct Config {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "The build configuration active at startup, one of the "
-                         "tags declared on rules. When rules carry tags and this "
+                         "The build configuration to fall back on when neither "
+                         "`--configuration` nor a persisted selection names one: "
+                         "a tag declared on rules. When rules carry tags and this "
                          "names none of them, the first declared tag is used and "
                          "a warning is logged.")
     <std::string> default_configuration;

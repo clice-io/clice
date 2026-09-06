@@ -141,8 +141,20 @@ export class Workspace {
 
     /// The index library of a build configuration under the cache store
     /// (`index/<name>`); the anonymous configuration's is `default`.
-    indexLibrary(configuration = "default"): string {
-        return path.join(this.cacheRoot(), "index", configuration);
+    /// The index library directory of a configuration, if it exists:
+    /// `index/default` for the anonymous one, else the directory whose
+    /// name starts with the (lowercase) tag and the `~` before its hash.
+    indexLibrary(configuration?: string): string | undefined {
+        const dir = path.join(this.cacheRoot(), "index");
+        if (!fs.existsSync(dir)) {
+            return undefined;
+        }
+        const wanted =
+            configuration === undefined
+                ? (name: string) => name === "default"
+                : (name: string) => name.startsWith(`${configuration.toLowerCase()}~`);
+        const match = fs.readdirSync(dir).find(wanted);
+        return match === undefined ? undefined : path.join(dir, match);
     }
 
     private cacheBase(): string {

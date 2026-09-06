@@ -606,18 +606,14 @@ FsLocality filesystem_locality(llvm::StringRef dir) {
 std::string library_directory(const CacheStore& store, llvm::StringRef configuration) {
     std::string name = "default";
     if(!configuration.empty()) {
-        name = configuration.str();
-        bool safe = configuration.find_first_not_of('.') != llvm::StringRef::npos;
+        name = configuration.take_front(32).lower();
         for(char& c: name) {
-            if(!llvm::isAlnum(c) && c != '-' && c != '_' && c != '.') {
+            if(!llvm::isAlnum(c) && c != '-' && c != '_') {
                 c = '_';
-                safe = false;
             }
         }
-        if(!safe) {
-            name += std::format("-{:08x}",
-                                static_cast<std::uint32_t>(llvm::xxh3_64bits(configuration)));
-        }
+        name +=
+            std::format("~{:08x}", static_cast<std::uint32_t>(llvm::xxh3_64bits(configuration)));
     }
     return path::join(store.base_dir(), "index", name);
 }
@@ -629,7 +625,7 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
     read_only = read_only || store.read_only();
     auto library = library_directory(store, configuration);
     if(read_only) {
-        if(!llvm::sys::fs::exists(library)) {
+        if(!llvm::sys::fs::exists(path::join(library, lmdb_file_name))) {
             return nullptr;
         }
     } else if(auto ec = llvm::sys::fs::create_directories(library)) {

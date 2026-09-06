@@ -4,7 +4,7 @@
 
 clice 将 clang-tidy 集成为内置 Lint 引擎。独立运行的 clang-tidy 会分别处理每个 TU，而 clice 的架构支持跨 TU 协调，从而消除重复工作。
 
-**用法**：`clice lint [--workspace <dir>] [--workers <n>] [--index]`
+**用法**：`clice lint [--workspace <dir>] [--configuration <tag>] [--workers <n>] [--index]`
 
 对编译数据库中的每个翻译单元运行 clang-tidy，并使用 worker 池处理，
 输出诊断；发现问题时以非零状态退出。

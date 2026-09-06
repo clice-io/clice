@@ -107,7 +107,9 @@ struct NotifyMessage {
 /// public members; the composition itself lives entirely here.
 class MasterServer {
 public:
-    MasterServer(kota::event_loop& loop, std::string self_path);
+    MasterServer(kota::event_loop& loop,
+                 std::string self_path,
+                 std::string requested_configuration);
     ~MasterServer();
 
     void initialize();
@@ -242,7 +244,7 @@ public:
     /// The `--configuration` argument: the build configuration this
     /// session runs, over the persisted selection; empty takes the
     /// selection, else the default.
-    std::string configuration;
+    std::string requested_configuration;
     /// Problems found while loading clice.toml during initialize(), kept so
     /// LSPClient can publish them as diagnostics on the config file's URI.
     std::vector<ConfigIssue> config_issues;

@@ -347,10 +347,11 @@ test("cache dirs created on startup", async ({ session }) => {
     }
     // The index persists into a single LMDB database per configuration,
     // not a namespace dir.
-    expect(
-        fs.existsSync(path.join(workspace.indexLibrary(), "index.mdb")),
-        "index.mdb should be created",
-    ).toBe(true);
+    const library = workspace.indexLibrary();
+    expect(library, "the anonymous configuration's library").toBeDefined();
+    expect(fs.existsSync(path.join(library!, "index.mdb")), "index.mdb should be created").toBe(
+        true,
+    );
 });
 
 test("different flags different pch", async ({ session }) => {

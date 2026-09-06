@@ -13,7 +13,17 @@ import type {
 export function registerBuildConfiguration(client: ClientHandle, ext: vscode.ExtensionContext) {
     const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 101);
     status.command = "clice.switchConfiguration";
-    status.tooltip = "clice: active build configuration (click to switch)";
+
+    async function list(): Promise<ListConfigurationsResult | undefined> {
+        try {
+            return await client.sendRequest<ListConfigurationsResult>(
+                "clice/listConfigurations",
+                {},
+            );
+        } catch {
+            return undefined;
+        }
+    }
 
     /// Bumped by every refresh; a response is dropped when a newer request
     /// started while it was in flight.
@@ -22,38 +32,25 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
     async function refresh() {
         generation += 1;
         const current = generation;
-        let result: ListConfigurationsResult;
-        try {
-            result = await client.sendRequest<ListConfigurationsResult>(
-                "clice/listConfigurations",
-                {},
-            );
-        } catch {
-            // Server not ready; nothing to show.
-            if (current === generation) {
-                status.hide();
-            }
-            return;
-        }
+        const result = await list();
         if (current !== generation) {
             return;
         }
-        if (result.configurations.length === 0) {
+        if (!result || result.configurations.length === 0) {
             status.hide();
             return;
         }
         status.text = `$(settings-gear) ${result.active}`;
+        status.tooltip =
+            result.selected && result.selected !== result.active
+                ? `clice: build configuration ${result.active} is active; ${result.selected} is selected for the next start (click to switch)`
+                : "clice: active build configuration (click to switch)";
         status.show();
     }
 
     async function select() {
-        let result: ListConfigurationsResult;
-        try {
-            result = await client.sendRequest<ListConfigurationsResult>(
-                "clice/listConfigurations",
-                {},
-            );
-        } catch {
+        const result = await list();
+        if (!result) {
             vscode.window.showWarningMessage("clice: server not ready");
             return;
         }
@@ -67,6 +64,9 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
             const notes: string[] = [];
             if (name === result.active) {
                 notes.push("active");
+            }
+            if (name === result.selected && name !== result.active) {
+                notes.push("selected for the next start");
             }
             if (name === result.defaultConfiguration) {
                 notes.push("default");

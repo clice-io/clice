@@ -8,9 +8,6 @@ namespace clice::testing {
 
 namespace {
 
-/// A configuration with two tagged rules, `default_configuration` naming
-/// the second, finalized at the temp root (its cache directory is
-/// `.clice` there).
 Config tagged(const TempDir& tmp) {
     Config config;
     config.default_configuration = "release";
@@ -22,7 +19,7 @@ Config tagged(const TempDir& tmp) {
 
 TEST_SUITE(Configuration) {
 
-TEST_CASE(FallbackNamesDefaultElseFirst) {
+TEST_CASE(FallbackDefaultElseFirst) {
     TempDir tmp;
     auto config = tagged(tmp);
     EXPECT_EQ(fallback_configuration(config), "release");
@@ -48,12 +45,28 @@ TEST_CASE(SelectionRoundTrips) {
 
     tmp.touch(".clice/state.json", "not json");
     EXPECT_TRUE(read_selection(cache_dir).empty());
+    EXPECT_EQ(fs::read(path::join(cache_dir, "state.json")).value_or(""), "not json");
     EXPECT_TRUE(read_selection("").empty());
 };
 
+TEST_CASE(SelectionWriteFails) {
+    TempDir tmp;
+    EXPECT_FALSE(write_selection("", "release").has_value());
+    tmp.touch("blocked", "x");
+    EXPECT_FALSE(write_selection(tmp.path("blocked"), "release").has_value());
+};
+
+TEST_CASE(CheckRequested) {
+    TempDir tmp;
+    auto config = tagged(tmp);
+    EXPECT_TRUE(declares_configuration(config, "debug"));
+    EXPECT_FALSE(declares_configuration(config, "nope"));
+    EXPECT_TRUE(check_requested_configuration(config, ""));
+    EXPECT_TRUE(check_requested_configuration(config, "release"));
+    EXPECT_FALSE(check_requested_configuration(config, "nope"));
+};
+
 TEST_CASE(ResolvePrecedence) {
-    /// The command line beats the persisted selection, which beats the
-    /// fallback.
     TempDir tmp;
     auto config = tagged(tmp);
     EXPECT_EQ(resolve_configuration(config, ""), "release");
@@ -64,8 +77,6 @@ TEST_CASE(ResolvePrecedence) {
 };
 
 TEST_CASE(UnknownNameFallsBack) {
-    /// A name no rule declares is skipped, whichever layer holds it, and a
-    /// stale selection stays on disk untouched.
     TempDir tmp;
     auto config = tagged(tmp);
     EXPECT_EQ(resolve_configuration(config, "nope"), "release");
@@ -77,8 +88,6 @@ TEST_CASE(UnknownNameFallsBack) {
 };
 
 TEST_CASE(UntaggedIgnoresSelection) {
-    /// Without declared tags the configuration is anonymous whatever the
-    /// selection file or the command line says.
     TempDir tmp;
     Config config;
     config.rules.push_back(ConfigRule{.compile_commands = {"."}});

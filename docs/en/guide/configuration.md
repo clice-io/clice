@@ -32,7 +32,7 @@ Top-level options, written before any section.
 | ----------------------- | -------- | ------- |
 | `default_configuration` | `string` | `""`    |
 
-The build configuration active at startup, one of the tags declared on rules. When rules carry tags and this names none of them, the first declared tag is used and a warning is logged.
+The build configuration to fall back on when neither `--configuration` nor a persisted selection names one: a tag declared on rules. When rules carry tags and this names none of them, the first declared tag is used and a warning is logged.
 
 </div>
 
@@ -368,7 +368,7 @@ Glob patterns selecting the files this rule applies to. A relative pattern is an
 | --------------- | -------- | ------- |
 | `configuration` | `string` | `""`    |
 
-Build configuration tag. A tagged rule applies only while that configuration is active; an untagged rule always applies. The distinct tags form the configuration menu, and `default_configuration` names the one active at startup.
+Build configuration tag. A tagged rule applies only while that configuration is active; an untagged rule always applies. The distinct tags form the configuration menu; `--configuration`, the persisted selection and `default_configuration` pick the active one, in that order.
 
 </div>
 

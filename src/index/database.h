@@ -159,11 +159,12 @@ public:
 
 /// The directory of a build configuration's index library:
 /// `index/<name>` under the store's version directory, every
-/// configuration having a library of its own. The name is the
-/// configuration tag itself when it is filename-safe and `default` for
-/// the anonymous configuration; any other spelling is sanitized and
-/// suffixed with a hash of the original, so two tags never share a
-/// library.
+/// configuration having a library of its own. The anonymous
+/// configuration's is `default`; a tag's is its spelling lowercased and
+/// reduced to `[a-z0-9_-]`, then `~` and a hash of the original. The hash
+/// alone makes the name unique — filesystems fold case, Windows reserves
+/// device names and strips trailing dots, and no tag may alias `default`
+/// — while the prefix keeps it recognizable.
 std::string library_directory(const CacheStore& store, llvm::StringRef configuration);
 
 /// The configuration's library: a single `index.mdb` (plus its `-lock`
@@ -175,8 +176,8 @@ std::string library_directory(const CacheStore& store, llvm::StringRef configura
 /// the environment cannot be opened safely — only confirmed corruption
 /// (or a meta mismatch) is repaired by deleting and rebuilding the
 /// database; transient errors disable index persistence for the session
-/// and touch nothing. A read-only open of a library that does not exist
-/// yet is nullptr too; an existing one opens with MDB_RDONLY, which
+/// and touch nothing. A read-only open of a library without an
+/// `index.mdb` yet is nullptr too; an existing one opens with MDB_RDONLY, which
 /// still registers a reader slot in the `-lock` file — the one deviation
 /// from the cache store's read-only-touches-nothing contract.
 /// `initial_mapsize` overrides the default virtual map reservation

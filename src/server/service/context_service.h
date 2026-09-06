@@ -64,9 +64,11 @@ struct ContextService {
 
     /// clice/switchConfiguration: persist `name` as the configuration the
     /// next server start activates; the running one is unchanged. Fails
-    /// for a name no rule declares and when the choice cannot be
-    /// persisted — no cache directory, or the write failed.
-    ext::SwitchConfigurationResult switch_configuration(llvm::StringRef name);
+    /// for a name no rule declares, while `pinned` (the command line's
+    /// `--configuration`) owns the choice, and when the selection cannot
+    /// be persisted.
+    ext::SwitchConfigurationResult switch_configuration(llvm::StringRef name,
+                                                        llvm::StringRef pinned);
 
     /// Drop active context choices whose include edge no longer exists. A
     /// stale choice suppresses automatic host resolution, so it would strand

@@ -146,12 +146,14 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     }
 
     // Deterministic content-addressed PCM key over the source path and
-    // the frontend-relevant subset of the compile flags.
+    // the frontend-relevant subset of the compile flags, plus the build
+    // configuration whose library records the blob's dependency stamps.
     auto safe_module_name = module_name;
     std::ranges::replace(safe_module_name, ':', '-');
     auto pcm_key = std::format("{}-{}",
                                safe_module_name,
                                cache_key({clang::getClangFullVersion(),
+                                          workspace.build.active_configuration(),
                                           bp.directory,
                                           file_path,
                                           canonicalize(bp.arguments, ArgsProfile::Frontend)}));

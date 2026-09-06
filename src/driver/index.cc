@@ -121,6 +121,9 @@ int run_stats_once(llvm::StringRef root,
                    std::uint32_t top,
                    bool allow_retry) {
     auto config = Config::load_from_workspace(root);
+    if(!check_requested_configuration(config, requested_configuration)) {
+        return 1;
+    }
     auto configuration = resolve_configuration(config, requested_configuration);
     // Read-only: the default cache directory exists as soon as the config
     // resolves it, so only the versioned store inside it proves an index
@@ -144,6 +147,7 @@ int run_stats_once(llvm::StringRef root,
     Workspace workspace;
     workspace.config = std::move(config);
     workspace.store.emplace(std::move(*store));
+    workspace.build.reset_active(configuration);
     workspace.index_db = index::open_database(*workspace.store, configuration);
     if(!workspace.index_db) {
         LOG_ERROR("No index cache at {}; run `clice index` first",
@@ -334,17 +338,17 @@ int run_stats_once(llvm::StringRef root,
     return pending == 0 ? 0 : 1;
 }
 
-int run_stats(llvm::StringRef root, llvm::StringRef configuration, std::uint32_t top) {
+int run_stats(llvm::StringRef root, llvm::StringRef requested_configuration, std::uint32_t top) {
     constexpr std::uint32_t stats_attempts = 5;
     for(std::uint32_t attempt = 1; attempt < stats_attempts; attempt += 1) {
-        int rc = run_stats_once(root, configuration, top, /*allow_retry=*/true);
+        int rc = run_stats_once(root, requested_configuration, top, /*allow_retry=*/true);
         if(rc != stats_retry) {
             return rc;
         }
         LOG_DEBUG("Index cache is mid-save; retrying the stats read");
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
-    return run_stats_once(root, configuration, top, /*allow_retry=*/false);
+    return run_stats_once(root, requested_configuration, top, /*allow_retry=*/false);
 }
 
 }  // namespace

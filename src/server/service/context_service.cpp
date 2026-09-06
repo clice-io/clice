@@ -338,18 +338,19 @@ ext::ListConfigurationsResult ContextService::list_configurations() const {
     return result;
 }
 
-ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::StringRef name) {
-    if(!llvm::is_contained(workspace.config.configurations(), name)) {
+ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::StringRef name,
+                                                                    llvm::StringRef pinned) {
+    if(!declares_configuration(workspace.config, name)) {
         LOG_WARN("Cannot select configuration {}: no rule declares it", name);
         return {};
     }
-    llvm::StringRef cache_dir = workspace.config.project.cache_dir;
-    if(cache_dir.empty()) {
-        LOG_WARN("Cannot select configuration {}: no cache directory to persist the choice in",
-                 name);
+    if(!pinned.empty()) {
+        LOG_WARN("Cannot select configuration {}: --configuration {} pins this session's",
+                 name,
+                 pinned);
         return {};
     }
-    if(auto written = write_selection(cache_dir, name); !written) {
+    if(auto written = write_selection(workspace.config.project.cache_dir, name); !written) {
         LOG_WARN("Cannot persist the selected configuration {}: {}",
                  name,
                  written.error().message());

@@ -4,7 +4,7 @@
 
 clice integrates clang-tidy as a built-in linting engine. Unlike standalone clang-tidy which processes each TU independently, clice's architecture enables cross-TU coordination to eliminate redundant work.
 
-**Usage**: `clice lint [--workspace <dir>] [--workers <n>] [--index]`
+**Usage**: `clice lint [--workspace <dir>] [--configuration <tag>] [--workers <n>] [--index]`
 
 Runs clang-tidy over every translation unit in the compilation database with a
 worker pool, prints diagnostics, and exits non-zero when problems are found.

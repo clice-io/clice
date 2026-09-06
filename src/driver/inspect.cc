@@ -12,6 +12,7 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/bootstrap.h"
+#include "sched/configuration.h"
 #include "sched/context.h"
 #include "sched/workspace.h"
 #include "support/filesystem.h"
@@ -728,7 +729,11 @@ int run_inspect(const InspectOptions& opts) {
     if(flags.empty()) {
         std::string root = workspace_of(unit_directory);
         workspace.config = Config::load_from_workspace(root);
-        load_build(workspace, root, opts.configuration.value_or(""));
+        auto requested = opts.configuration.value_or("");
+        if(!check_requested_configuration(workspace.config, requested)) {
+            return 1;
+        }
+        load_build(workspace, root, resolve_configuration(workspace.config, requested));
     }
 
     // Directory mode covers what the build compiles under the tree, not only

@@ -256,8 +256,7 @@ TEST_CASE(ReadOnlyMissingDatabase) {
     // not leave behind.
     auto db = index::open_database(store, "", /*read_only=*/true);
     ASSERT_TRUE(db == nullptr);
-    ASSERT_FALSE(
-        llvm::sys::fs::exists(path::join(index::library_directory(store, ""), "index.mdb")));
+    ASSERT_FALSE(llvm::sys::fs::exists(index::library_directory(store, "")));
 }
 
 TEST_CASE(ReadOnlyServesExistingDatabase) {
@@ -298,8 +297,9 @@ TEST_CASE(LibraryPerConfiguration) {
     auto store = open_store(tmp, "lmdb");
     EXPECT_EQ(index::library_directory(store, ""),
               path::join(store.base_dir(), "index", "default"));
-    EXPECT_EQ(index::library_directory(store, "release"),
-              path::join(store.base_dir(), "index", "release"));
+    auto library = index::library_directory(store, "release");
+    EXPECT_EQ(path::parent_path(library), path::join(store.base_dir(), "index"));
+    EXPECT_TRUE(path::filename(library).starts_with("release~"));
 
     auto debug = index::open_database(store, "debug");
     auto release = index::open_database(store, "release");
@@ -315,21 +315,38 @@ TEST_CASE(LibraryPerConfiguration) {
 }
 
 TEST_CASE(LibraryNameSanitized) {
-    /// A tag that is not a safe file name is rewritten and disambiguated
-    /// by a hash of its original spelling, so tags that sanitize alike
-    /// still get distinct libraries; a plain tag keeps its spelling.
+    /// The name's prefix is the tag reduced to a safe lowercase spelling;
+    /// the hash behind the `~` tells apart tags that reduce alike, alias
+    /// each other on a case-folding filesystem, or spell `default`.
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto name = [&](llvm::StringRef configuration) {
         return path::filename(index::library_directory(store, configuration)).str();
     };
-    EXPECT_EQ(name("Debug-x86_64.v2"), "Debug-x86_64.v2");
-    auto slash = name("linux/arm");
-    EXPECT_TRUE(llvm::StringRef(slash).starts_with("linux_arm-"));
-    EXPECT_NE(slash, name("linux\\arm"));
-    EXPECT_NE(slash, name("linux arm"));
-    EXPECT_TRUE(llvm::StringRef(name("..")).starts_with("..-"));
-    EXPECT_NE(name("."), ".");
+    auto prefix = [&](llvm::StringRef configuration) {
+        auto full = name(configuration);
+        return llvm::StringRef(full).rsplit('~').first.str();
+    };
+    EXPECT_EQ(prefix("Debug-x86_64.v2"), "debug-x86_64_v2");
+    EXPECT_NE(name("Debug"), name("debug"));
+    EXPECT_EQ(prefix("linux/arm"), "linux_arm");
+    EXPECT_NE(name("linux/arm"), name("linux\\arm"));
+    EXPECT_NE(name("linux/arm"), name("linux arm"));
+    EXPECT_EQ(prefix("a~b"), "a_b");
+    EXPECT_EQ(prefix("release."), "release_");
+    EXPECT_EQ(prefix(".."), "__");
+    EXPECT_NE(name("default"), "default");
+    EXPECT_EQ(prefix(std::string(40, 'x')), std::string(32, 'x'));
+}
+
+TEST_CASE(LibraryBlockedByFile) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto library = index::library_directory(store, "x");
+    auto ec = llvm::sys::fs::create_directories(path::parent_path(library));
+    ASSERT_TRUE(!ec);
+    ASSERT_TRUE(fs::write(library, "x").has_value());
+    ASSERT_TRUE(index::open_database(store, "x") == nullptr);
 }
 
 TEST_CASE(OutstandingSnapshotsStack) {

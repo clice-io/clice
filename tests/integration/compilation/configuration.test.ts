@@ -5,7 +5,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { SETTLE_TIME, sleep, type CliceClient } from "@clice/tools/client";
+import { waitUntil, type CliceClient } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
 import { wireKeys, type ListConfigurationsResult } from "@clice/tools/protocol";
 import type { Workspace } from "@clice/tools/workspace";
@@ -25,7 +25,27 @@ async function switchAndRestart(
 }
 
 function runClice(...args: string[]) {
-    return spawnSync(cliceExecutable(), args, { encoding: "utf8", timeout: 120_000 });
+    return spawnSync(cliceExecutable(), args, {
+        encoding: "utf8",
+        timeout: 120_000,
+        maxBuffer: 64 * 1024 * 1024,
+    });
+}
+
+/// The server's log once the cold-start sweep has run its round: every
+/// unit the hash gate let through has logged its `Indexing` line by then.
+async function sweptLog(client: CliceClient): Promise<string> {
+    await waitUntil(
+        () => client.drainedStderr().toString("utf8").includes("[perf:index] phase=run "),
+        { timeout: 30_000, interval: 100, description: "the indexing sweep to finish" },
+    );
+    return client.drainedStderr().toString("utf8");
+}
+
+/// Whether the configuration's index library holds a database.
+function hasLibrary(workspace: Workspace, configuration: string): boolean {
+    const library = workspace.indexLibrary(configuration);
+    return library !== undefined && fs.existsSync(path.join(library, "index.mdb"));
 }
 
 test("menu and selection layers", async ({ session }) => {
@@ -87,13 +107,14 @@ test("each configuration keeps its own index", async ({ session }) => {
     const { client, workspace } = await session("cdb/two_configurations");
     const [main] = await client.openAndWait("main.cpp");
     expect(await client.waitForIndex(main, "debug_only")).toBe(true);
-    expect(fs.existsSync(path.join(workspace.indexLibrary("debug"), "index.mdb"))).toBe(true);
-    expect(fs.existsSync(workspace.indexLibrary("release"))).toBe(false);
+    expect(await sweptLog(client), "the cold start indexes").toContain("] Indexing ");
+    expect(hasLibrary(workspace, "debug")).toBe(true);
+    expect(workspace.indexLibrary("release")).toBeUndefined();
 
     const release = await switchAndRestart(session, client, workspace, "release");
     const [main2] = await release.openAndWait("main.cpp");
     expect(await release.waitForIndex(main2, "release_only")).toBe(true);
-    expect(fs.existsSync(path.join(workspace.indexLibrary("release"), "index.mdb"))).toBe(true);
+    expect(hasLibrary(workspace, "release")).toBe(true);
     expect(
         (await release.workspaceSymbols("debug_only"))?.length ?? 0,
         "the debug index is not consulted under release",
@@ -104,10 +125,33 @@ test("each configuration keeps its own index", async ({ session }) => {
     const debug = await switchAndRestart(session, release, workspace, "debug");
     const [main3] = await debug.openAndWait("main.cpp");
     expect(await debug.waitForIndex(main3, "debug_only")).toBe(true);
-    await sleep(SETTLE_TIME);
-    const log = debug.drainedStderr().toString("utf8");
+    const log = await sweptLog(debug);
     expect(log, "no unit was reindexed").not.toContain("] Indexing ");
     expect(log).not.toContain("reindexing");
+});
+
+test("artifacts are keyed per configuration", async ({ session }) => {
+    // shared.cpp compiles with the same command under both configurations,
+    // yet each configuration builds its own PCH: the dependency stamps that
+    // vouch for a PCH live in the configuration's library, so a blob one
+    // configuration rebuilt must never pass the other's check.
+    const { client, workspace } = await session("cdb/two_configurations");
+    const [shared] = await client.openAndWait("shared.cpp");
+    client.assertCleanCompile(shared);
+    const debugPch = workspace.pchFiles();
+    expect(debugPch.length).toBe(1);
+    const debugMtime = fs.statSync(debugPch[0]!).mtimeMs;
+
+    const release = await switchAndRestart(session, client, workspace, "release");
+    const [shared2] = await release.openAndWait("shared.cpp");
+    release.assertCleanCompile(shared2);
+    expect(workspace.pchFiles().length, "release builds a PCH of its own").toBe(2);
+
+    const debug = await switchAndRestart(session, release, workspace, "debug");
+    const [shared3] = await debug.openAndWait("shared.cpp");
+    debug.assertCleanCompile(shared3);
+    expect(workspace.pchFiles().length, "debug reuses its PCH").toBe(2);
+    expect(fs.statSync(debugPch[0]!).mtimeMs).toBe(debugMtime);
 });
 
 test("pins stay with their configuration", async ({ session }) => {
@@ -144,6 +188,10 @@ test("command line overrides the selection", async ({ session }) => {
     });
     const [gated] = await pinned.openAndWait("gated.cpp");
     pinned.assertHasErrors(gated, "the command line's debug is active");
+    expect(
+        await pinned.switchConfiguration("release"),
+        "the command line owns a pinned session's choice",
+    ).toEqual({ success: false });
     await pinned.shutdown();
 
     // An unknown command-line name is skipped: the selection still wins.
@@ -175,13 +223,13 @@ test("batch index per configuration", ({ session }) => {
 
     const indexed = runClice("index", ...release, "--workers", "2");
     expect(indexed.status, `stderr: ${indexed.stderr}`).toBe(0);
-    expect(indexed.stdout).toContain("Indexed 3 translation units in");
-    expect(fs.existsSync(path.join(workspace.indexLibrary("release"), "index.mdb"))).toBe(true);
+    expect(indexed.stdout).toContain("Indexed 4 translation units in");
+    expect(hasLibrary(workspace, "release")).toBe(true);
 
     const stats = runClice("index", "--stats", ...release);
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Configuration: release");
-    expect(stats.stdout).toContain("Translation units: 3");
+    expect(stats.stdout).toContain("Translation units: 4");
 
     // The default configuration's library was never written.
     const missing = runClice("index", "--stats", "--workspace", workspace.root);
@@ -190,11 +238,62 @@ test("batch index per configuration", ({ session }) => {
 
     const debug = runClice("index", "--workspace", workspace.root, "--workers", "2");
     expect(debug.status, `stderr: ${debug.stderr}`).toBe(0);
-    expect(debug.stdout).toContain("Indexed 3 translation units in");
-    expect(fs.existsSync(path.join(workspace.indexLibrary("debug"), "index.mdb"))).toBe(true);
+    expect(debug.stdout).toContain("Indexed 4 translation units in");
+    expect(hasLibrary(workspace, "debug")).toBe(true);
     const both = runClice("index", "--stats", "--workspace", workspace.root);
     expect(both.stdout).toContain("Configuration: debug");
-    expect(both.stdout).toContain("Translation units: 3");
+    expect(both.stdout).toContain("Translation units: 4");
+});
+
+test("scripted commands reject unknown names", ({ session }) => {
+    // The server falls back so an editor always starts; a batch or
+    // inspection run with a misspelt name must fail, not report success
+    // for another configuration.
+    const workspace = session.tmpdir();
+    fs.cpSync(path.join(DATA_DIR, "cdb", "two_configurations"), workspace.root, {
+        recursive: true,
+    });
+    const unknown = ["--workspace", workspace.root, "--configuration", "nope"];
+    for (const [command, status] of [
+        [["index", "--workers", "2"], 1],
+        [["index", "--stats"], 1],
+        [["lint", "--workers", "2"], 2],
+    ] as const) {
+        const run = runClice(...command, ...unknown);
+        expect(run.status, command.join(" ")).toBe(status);
+        expect(run.stderr, command.join(" ")).toContain("names no rule's configuration");
+    }
+    const gated = path.join(workspace.root, "gated.cpp");
+    expect(runClice("inspect", "--configuration", "nope", "hover", gated).status).toBe(1);
+    const inspect = (...args: string[]) => {
+        const run = runClice("inspect", ...args, "hover", gated);
+        expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+        const output = JSON.parse(run.stdout) as {
+            files: Record<string, { diagnostics?: string[] | null }>;
+        };
+        return Object.values(output.files).flatMap((file) => file.diagnostics ?? []);
+    };
+    expect(inspect(), "the default configuration lacks RELEASE").toEqual(
+        expect.arrayContaining([expect.stringContaining("missing RELEASE")]),
+    );
+    expect(inspect("--configuration", "release")).toEqual([]);
+});
+
+test("untagged rules have no menu", async ({ session }) => {
+    const { client, workspace } = await session("cdb/single_root");
+    expect(await client.listConfigurations()).toEqual({
+        configurations: [],
+        active: "",
+        selected: "",
+        defaultConfiguration: "",
+    });
+    expect(await client.switchConfiguration("debug")).toEqual({ success: false });
+    await client.shutdown();
+
+    // A selection left behind by another rule set is ignored, not applied.
+    workspace.write(".clice/state.json", '{"configuration": "debug"}\n');
+    const restarted = await session.spawn(workspace).initialize(workspace);
+    expect(await restarted.listConfigurations()).toMatchObject({ active: "", selected: "debug" });
 });
 
 test("default command per board", async ({ session }) => {

@@ -3,6 +3,7 @@
 #include <cassert>
 #include <format>
 
+#include "sched/configuration.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
@@ -18,7 +19,7 @@ namespace clice {
 
 void Build::reset_active(llvm::StringRef configuration) {
     assert(configuration.empty() ? config.configurations().empty()
-                                 : llvm::is_contained(config.configurations(), configuration));
+                                 : declares_configuration(config, configuration));
     claimed_sources.reset();
     active = configuration.str();
 }

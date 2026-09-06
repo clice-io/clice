@@ -24,6 +24,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     bool read_only_index) {
     BootstrapReport report;
     auto& cfg = workspace.config.project;
+    auto configuration = resolve_configuration(workspace.config, requested_configuration);
 
     if(!workspace.store && !cfg.cache_dir.empty()) {
         auto cache = CacheStore::open(cfg.cache_dir, cache_format_version);
@@ -55,24 +56,21 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
             // them.
             fs::remove_all(path::join(cfg.cache_dir, header_context_ns));
             workspace.store.emplace(std::move(*cache));
+            // A read-only bootstrap opens the index database read-only:
+            // no writer lock (a concurrent server or index run keeps
+            // owning it), while the persisted version stamps and artifact
+            // metadata still seed this session's fast paths. Its own
+            // metadata stays in memory and exits with it.
+            workspace.index_db =
+                index::open_database(*workspace.store, configuration, read_only_index);
             LOG_INFO("Cache store: {}", workspace.store->base_dir());
             report.opened_store = true;
         }
     }
 
-    auto load = load_build(workspace, root, requested_configuration);
+    auto load = load_build(workspace, root, configuration);
     report.has_commands = !load.members.empty() || workspace.build.declares_sources();
     report.members = std::move(load.members);
-    if(workspace.store && !workspace.index_db) {
-        // A read-only bootstrap opens the index database read-only: no
-        // writer lock (a concurrent server or index run keeps owning it),
-        // while the persisted version stamps and artifact metadata still
-        // seed this session's fast paths. Its own metadata stays in
-        // memory and exits with it.
-        workspace.index_db = index::open_database(*workspace.store,
-                                                  workspace.build.active_configuration(),
-                                                  read_only_index);
-    }
     // Persisted index shards are CDB-independent; they load even with no
     // member yet, so a database generated later (picked up by the CDB
     // poll) starts from the previous session's index.
@@ -93,12 +91,10 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     return report;
 }
 
-BuildLoad load_build(Workspace& workspace,
-                     llvm::StringRef root,
-                     llvm::StringRef requested_configuration) {
+BuildLoad load_build(Workspace& workspace, llvm::StringRef root, llvm::StringRef configuration) {
     BuildLoad load;
     workspace.cdb.set_workspace_root(root);
-    workspace.build.reset_active(resolve_configuration(workspace.config, requested_configuration));
+    workspace.build.reset_active(configuration);
 
     ScopedTimer cdb_timer;
     std::size_t entries = 0;

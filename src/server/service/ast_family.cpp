@@ -80,9 +80,13 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // the working directory) must stay in: quote includes and relative paths
     // resolve against them, so equal preamble text in different directories
     // can mean different content.  The clang version guards against reusing
-    // blobs a newer bundled clang would reject.
+    // blobs a newer bundled clang would reject, and the build configuration
+    // keeps the blob with the library that records its dependency stamps:
+    // shared across configurations, one could rebuild it while another's
+    // stamps still vouched for the old content.
     auto preamble_text = text.substr(0, bound);
     auto pch_key = cache_key({clang::getClangFullVersion(),
+                              workspace.build.active_configuration(),
                               directory,
                               path::parent_path(path),
                               preamble_text,

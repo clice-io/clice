@@ -56,7 +56,7 @@ public:
 
     /// Activate a configuration — a declared tag, or empty when the rules
     /// declare none (see resolve_configuration) — and forget the enumerated
-    /// members.
+    /// default sources.
     void reset_active(llvm::StringRef configuration);
 
     /// Whether an active rule declares a command source — a database or a

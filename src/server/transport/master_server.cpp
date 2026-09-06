@@ -36,13 +36,15 @@ namespace clice {
 /// working-set size.
 constexpr static std::size_t notify_log_limit = 128;
 
-MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
+MasterServer::MasterServer(kota::event_loop& loop,
+                           std::string self_path,
+                           std::string requested_configuration) :
     loop(loop), pool(loop), contexts(workspace),
     index_query(workspace, {.sessions = &sessions, .projections = &ast.projections, .pump = &pump}),
     agent_query(workspace, {.pump = &pump}),
     features(ast, dispatcher, index_query, workspace, contexts, pump, sessions),
     invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
-    self_path(std::move(self_path)) {
+    self_path(std::move(self_path)), requested_configuration(std::move(requested_configuration)) {
     pcm.register_runner();
     pch.register_runner();
     ast.register_runner();
@@ -645,7 +647,8 @@ void MasterServer::load_workspace() {
     if(workspace_root.empty())
         return;
 
-    auto report = bootstrap_workspace(workspace, index_store, pump, workspace_root, configuration);
+    auto report =
+        bootstrap_workspace(workspace, index_store, pump, workspace_root, requested_configuration);
     if(report.opened_store) {
         bg_tasks.spawn(cache_checkpoint_task());
     }
@@ -747,8 +750,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     }
 
     kota::event_loop loop;
-    MasterServer server(loop, self_path);
-    server.configuration = opts.configuration.value_or("");
+    MasterServer server(loop, self_path, opts.configuration.value_or(""));
     std::list<Connection> connections;
 
     if(mode == ServerMode::Pipe) {

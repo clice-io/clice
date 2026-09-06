@@ -649,7 +649,9 @@ void LSPClient::register_extensions() {
     peer.on_request(
         "clice/switchConfiguration",
         [this](RequestContext& ctx, const ext::SwitchConfigurationParams& params) -> RawResult {
-            co_return to_raw(this->server.context_service.switch_configuration(params.name));
+            co_return to_raw(this->server.context_service.switch_configuration(
+                params.name,
+                this->server.requested_configuration));
         });
 
     // ── Test hook ───────────────────────────────────────────────────
