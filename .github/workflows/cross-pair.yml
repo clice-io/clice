@@ -147,6 +147,11 @@ jobs:
         if: runner.os != 'Windows'
         run: chmod +x build/RelWithDebInfo/bin/*
 
+      - name: Process startup cost
+        shell: bash
+        run: |
+          for _ in 1 2; do time build/RelWithDebInfo/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }} --version; done
+
       - name: Unit tests
         timeout-minutes: 5
         run: pixi run -e test-run unit-test RelWithDebInfo

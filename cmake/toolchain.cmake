@@ -65,10 +65,12 @@ if(LLVM_RC_PATH)
     set(CMAKE_RC_COMPILER "${LLVM_RC_PATH}" CACHE FILEPATH "")
 endif()
 
-# A cached launcher whose binary is gone (sccache, after the switch to
-# ccache) would fail every compile; drop it so the lookup below runs again.
+# set(CACHE) below never replaces an existing entry, so a build tree
+# configured before the switch to ccache would keep sccache (or a path that
+# no longer exists) forever; drop such entries so the lookup runs again.
 foreach(lang C CXX)
-    if(CMAKE_${lang}_COMPILER_LAUNCHER AND NOT EXISTS "${CMAKE_${lang}_COMPILER_LAUNCHER}")
+    if(CMAKE_${lang}_COMPILER_LAUNCHER MATCHES "sccache"
+       OR (CMAKE_${lang}_COMPILER_LAUNCHER AND NOT EXISTS "${CMAKE_${lang}_COMPILER_LAUNCHER}"))
         unset(CMAKE_${lang}_COMPILER_LAUNCHER CACHE)
     endif()
 endforeach()
