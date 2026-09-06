@@ -726,6 +726,10 @@ int run_inspect(const InspectOptions& opts) {
         is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
     Workspace workspace;
     ContextResolver contexts(workspace);
+    if(!flags.empty() && opts.configuration.has_value()) {
+        LOG_ERROR("--configuration selects among the workspace's rules; --flags replaces them");
+        return 1;
+    }
     if(flags.empty()) {
         std::string root = workspace_of(unit_directory);
         workspace.config = Config::load_from_workspace(root);

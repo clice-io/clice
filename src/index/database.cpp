@@ -612,8 +612,7 @@ std::string library_directory(const CacheStore& store, llvm::StringRef configura
                 c = '_';
             }
         }
-        name +=
-            std::format("~{:08x}", static_cast<std::uint32_t>(llvm::xxh3_64bits(configuration)));
+        name += std::format("~{:016x}", llvm::xxh3_64bits(configuration));
     }
     return path::join(store.base_dir(), "index", name);
 }

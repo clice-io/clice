@@ -344,7 +344,7 @@ ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::String
         LOG_WARN("Cannot select configuration {}: no rule declares it", name);
         return {};
     }
-    if(!pinned.empty()) {
+    if(declares_configuration(workspace.config, pinned)) {
         LOG_WARN("Cannot select configuration {}: --configuration {} pins this session's",
                  name,
                  pinned);

@@ -65,8 +65,8 @@ struct ContextService {
     /// clice/switchConfiguration: persist `name` as the configuration the
     /// next server start activates; the running one is unchanged. Fails
     /// for a name no rule declares, while `pinned` (the command line's
-    /// `--configuration`) owns the choice, and when the selection cannot
-    /// be persisted.
+    /// `--configuration`, when it names a declared tag) owns the choice,
+    /// and when the selection cannot be persisted.
     ext::SwitchConfigurationResult switch_configuration(llvm::StringRef name,
                                                         llvm::StringRef pinned);
 

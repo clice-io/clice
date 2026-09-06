@@ -199,6 +199,9 @@ test("command line overrides the selection", async ({ session }) => {
         .spawn(workspace, { args: ["serve", "--configuration", "nope"] })
         .initialize(workspace);
     expect(await unknown.listConfigurations()).toMatchObject({ active: "release" });
+    expect(await unknown.switchConfiguration("debug"), "nothing pins this session").toEqual({
+        success: true,
+    });
 });
 
 test("unknown selection falls back untouched", async ({ session }) => {
@@ -265,6 +268,11 @@ test("scripted commands reject unknown names", ({ session }) => {
     }
     const gated = path.join(workspace.root, "gated.cpp");
     expect(runClice("inspect", "--configuration", "nope", "hover", gated).status).toBe(1);
+    expect(
+        runClice("inspect", "--configuration", "release", "--flags", '["clang++"]', "hover", gated)
+            .status,
+        "--flags replaces the rules the name would select among",
+    ).toBe(1);
     const inspect = (...args: string[]) => {
         const run = runClice("inspect", ...args, "hover", gated);
         expect(run.status, `stderr: ${run.stderr}`).toBe(0);
