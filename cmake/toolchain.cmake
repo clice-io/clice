@@ -67,10 +67,11 @@ endif()
 
 # set(CACHE) below never replaces an existing entry, so a build tree
 # configured before the switch to ccache would keep sccache (or a path that
-# no longer exists) forever; drop such entries so the lookup runs again.
+# no longer exists) forever; drop such entries so the lookup runs again. A
+# launcher given as a command name (distcc) is left alone.
 foreach(lang C CXX)
-    if(CMAKE_${lang}_COMPILER_LAUNCHER MATCHES "sccache"
-       OR (CMAKE_${lang}_COMPILER_LAUNCHER AND NOT EXISTS "${CMAKE_${lang}_COMPILER_LAUNCHER}"))
+    set(launcher "${CMAKE_${lang}_COMPILER_LAUNCHER}")
+    if(launcher MATCHES "sccache" OR (IS_ABSOLUTE "${launcher}" AND NOT EXISTS "${launcher}"))
         unset(CMAKE_${lang}_COMPILER_LAUNCHER CACHE)
     endif()
 endforeach()
