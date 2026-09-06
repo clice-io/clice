@@ -52,7 +52,7 @@ def main():
     print(f"#{view['number']} {view['title']}")
     print(
         f"{state} · {view['headRefName']} → {view['baseRefName']} · {view['headRefOid'][:8]}"
-        f" · by {login(view)} · +{view['additions']} −{view['deletions']} in {view['changedFiles']} files"
+        f" · by {login(view)} · +{view['additions']} -{view['deletions']} in {view['changedFiles']} files"
     )
     print(
         f"merge: {view['mergeable']} / {view['mergeStateStatus']} · review: {view['reviewDecision'] or 'none'}"

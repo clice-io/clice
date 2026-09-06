@@ -232,12 +232,12 @@ def clean(body):
 
 
 def is_finding(review, cleaned):
-    """A review body counts when it carries a finding: for bots a located
-    item rather than a per-commit "reviewed" notice or an all-clear, for
-    people any text on a review that is not an approval."""
-    if login(review) in BOTS:
-        return bool(re.search(r"\S+:\d+|Outside diff range|Nitpick", cleaned))
-    return bool(cleaned) and review.get("state") != "APPROVED"
+    """A bot review body counts when it carries a located finding rather than
+    a per-commit "reviewed" notice or an all-clear; people's review bodies are
+    not findings."""
+    if login(review) not in BOTS:
+        return False
+    return bool(re.search(r"\S+:\d+|Outside diff range|Nitpick", cleaned))
 
 
 def truncate(text, limit):
