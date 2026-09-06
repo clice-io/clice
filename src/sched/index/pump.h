@@ -58,7 +58,9 @@ public:
     /// the attempt's waiters wake (contract 15): the serving side decides
     /// whether the settled state can ever serve an open session and
     /// escalates it otherwise, so the waking waiters re-derive their route
-    /// against the escalated state.
+    /// against the escalated state. Also invoked for a boost the pump
+    /// refuses — a file a rule keeps out of the index — since no attempt
+    /// will ever settle for it.
     std::function<void(Fid path_id)> on_attempt_settled;
 
     /// Emitted when store rows that may be index-served changed (merged,
@@ -98,8 +100,9 @@ public:
     /// Add a file to the background indexing queue. A file enqueued twice
     /// keeps a single queue entry; its reason is upgraded to ContentChanged
     /// if either enqueue says so (a file both cascaded onto and edited is
-    /// as stale as the edit makes it).
-    void enqueue(Fid server_path_id, ReindexReason reason);
+    /// as stale as the edit makes it). False when a rule keeps the file out
+    /// of the index: nothing is queued and no attempt will ever settle.
+    bool enqueue(Fid server_path_id, ReindexReason reason);
 
     /// Someone is reading `server_path_id` through the index and nothing
     /// serves it yet: enqueue it at the front of the un-consumed queue and
@@ -163,11 +166,6 @@ public:
     /// Number of files remaining in the indexing queue.
     std::size_t pending_files() const {
         return index_queue_pos < index_queue.size() ? index_queue.size() - index_queue_pos : 0;
-    }
-
-    /// Total files that were enqueued in the current (or last) indexing round.
-    std::size_t total_queued() const {
-        return index_queue.size();
     }
 
     /// Files whose latest index attempt failed for good — rejected by the

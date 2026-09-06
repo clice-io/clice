@@ -190,7 +190,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
     workspace.config.project.enable_indexing.value = true;
 
-    bootstrap_workspace(workspace, stack.contexts, stack.store, stack.pump, options.root);
+    auto report = bootstrap_workspace(workspace, stack.store, stack.pump, options.root);
 
     // The command's whole product is the persisted index: without storage
     // (cache failed to open, another process holds the index writer lock,
@@ -204,7 +204,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_await shutdown(stack);
         co_return;
     }
-    if(workspace.cdb.entries().empty()) {
+    if(report.members.empty()) {
         LOG_ERROR("Nothing to index: no compile_commands.json found under {}", options.root);
         result.exit_code = 1;
         co_await shutdown(stack);
@@ -360,14 +360,14 @@ kota::task<> run_lint(BatchStack& stack,
     // or sweep writes, so the shutdown save commits nothing.
     workspace.config.project.enable_indexing.value = false;
 
-    bootstrap_workspace(workspace,
-                        stack.contexts,
-                        stack.store,
-                        stack.pump,
-                        options.root,
-                        /*read_only_index=*/!options.with_index);
+    auto report = bootstrap_workspace(workspace,
+                                      stack.store,
+                                      stack.pump,
+                                      options.root,
+                                      /*read_only_index=*/!options.with_index);
 
-    if(workspace.cdb.entries().empty()) {
+    auto& members = report.members;
+    if(members.empty()) {
         LOG_ERROR("Nothing to lint: no compile_commands.json found under {}", options.root);
         result.exit_code = 2;
         co_await shutdown(stack);
@@ -384,11 +384,8 @@ kota::task<> run_lint(BatchStack& stack,
     // One run per file: a file with several CDB entries lints once, under
     // the command resolve_command picks — same as the indexing sweep.
     llvm::SmallVector<Fid> tus;
-    llvm::DenseSet<Fid> seen;
-    for(auto& entry: workspace.cdb.entries()) {
-        if(seen.insert(entry.file).second) {
-            tus.push_back(entry.file);
-        }
+    for(auto member: members) {
+        tus.push_back(member);
     }
 
     BatchLifetime lifetime(stack);

@@ -2,13 +2,17 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "properties": {
+        "default_configuration": {
+            "type": "string",
+            "description": "The build configuration active at startup, one of the tags declared on rules. When rules carry tags and this names none of them, the first declared tag is used and a warning is logged.",
+            "default": ""
+        },
         "project": {
             "$ref": "#/$defs/ProjectConfig",
             "description": "The [project] section: project-wide server options.",
             "default": {
                 "cache_dir": "",
                 "logging_dir": "",
-                "compile_commands_paths": [],
                 "enable_indexing": true,
                 "readonly": "off",
                 "idle_timeout_ms": 3000,
@@ -81,14 +85,6 @@
                     "type": "string",
                     "description": "Directory for log files; empty derives `${cache_dir}/logs`. Each server session logs into its own timestamped subdirectory.",
                     "default": ""
-                },
-                "compile_commands_paths": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "description": "Paths searched for compile_commands.json — file paths, or directories to look inside. When these all miss — or the list is empty — the workspace root and then each of its immediate subdirectories are searched.",
-                    "default": []
                 },
                 "enable_indexing": {
                     "type": "boolean",
@@ -271,8 +267,36 @@
                     "items": {
                         "type": "string"
                     },
-                    "description": "Glob patterns selecting the files this rule applies to: `*` matches within a path segment (a pattern of just `*` matches any path), `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range.",
+                    "description": "Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the workspace root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.",
                     "default": []
+                },
+                "configuration": {
+                    "type": "string",
+                    "description": "Build configuration tag. A tagged rule applies only while that configuration is active; an untagged rule always applies. The distinct tags form the configuration menu, and `default_configuration` names the one active at startup.",
+                    "default": ""
+                },
+                "compile_commands": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the workspace root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, the workspace root and its immediate subdirectories are searched for one.",
+                    "default": []
+                },
+                "default_command": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    ],
+                    "description": "The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the workspace root for a rule passed through initializationOptions), and the matching source files on disk join the background index — enumerated at startup, so a file created later compiles when opened and joins the index at the next start. Omitted means none.",
+                    "default": ""
                 },
                 "append": {
                     "type": "array",
@@ -289,6 +313,11 @@
                     },
                     "description": "Compilation flags removed for matching files, e.g. `[\"-Wall\"]`.",
                     "default": []
+                },
+                "index": {
+                    "type": "boolean",
+                    "description": "Whether matching translation units join the background index. `false` keeps them out; they still compile when opened and still host the headers they include. Any matching rule saying `false` wins.",
+                    "default": true
                 }
             },
             "additionalProperties": false

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <functional>
 #include <string>
 #include <vector>
 
@@ -252,22 +251,12 @@ struct ScanReport {
     std::vector<UnresolvedInclude> unresolved;
 };
 
-/// Callback for per-file rule-based flag modification. Given a file path,
-/// populates `append`/`remove` with rule-configured arguments so they can be
-/// layered on top of the CDB command when extracting the search config.
-using RuleMatcher = std::function<
-    void(llvm::StringRef path, std::vector<std::string>& append, std::vector<std::string>& remove)>;
-
-/// Run the wavefront BFS scan over all files in the compilation database.
-/// Internally creates a local event loop for async I/O (file reads via worker
-/// thread pool, stat calls via libuv). Blocks until the scan is complete.
-///
-/// @param rule_matcher  Optional callback applied per context group so that
-///               `[[rules]]`-modified include/std flags are reflected in the
-///               dependency graph (otherwise rule-affected files would have
-///               stale resolution).
+/// Run the wavefront BFS scan from `units` — the translation units to scan,
+/// each with its effective (rules-applied) command. Internally creates a
+/// local event loop for async I/O (file reads via worker thread pool, stat
+/// calls via libuv). Blocks until the scan is complete.
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
                                  DependencyGraph& graph,
-                                 const RuleMatcher& rule_matcher = {});
+                                 llvm::ArrayRef<CommandRef> units);
 
 }  // namespace clice

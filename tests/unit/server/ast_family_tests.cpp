@@ -426,7 +426,7 @@ TEST_CASE(BufferImportBuildsPCM) {
                   {tmp.root, tmp.path("m.cppm"), {}},
                   {tmp.root, src,                {}},
     }));
-    scan_dependency_graph(stack.workspace.cdb, stack.workspace.dep_graph);
+    scan_all(stack.workspace.cdb, stack.workspace.dep_graph);
     stack.workspace.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);

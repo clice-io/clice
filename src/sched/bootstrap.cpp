@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "index/database.h"
-#include "sched/context.h"
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
 #include "sched/workspace.h"
@@ -17,7 +16,6 @@
 namespace clice {
 
 BootstrapReport bootstrap_workspace(Workspace& workspace,
-                                    ContextResolver& contexts,
                                     IndexStore& store,
                                     IndexPump& pump,
                                     llvm::StringRef root,
@@ -72,28 +70,65 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
         }
     }
 
-    workspace.cdb.set_workspace_root(root);
-    report.cdb_path = discover_compile_commands(workspace.config, root);
-    if(report.cdb_path.empty()) {
-        // Persisted index shards are CDB-independent; load them so a
-        // database generated later (picked up by the CDB poll) starts from
-        // the previous session's index.
-        pump.claim_report(store.load(read_only_index).report);
-        return report;
+    auto load = load_build(workspace, root);
+    report.has_commands = !load.members.empty() || workspace.build.declares_sources();
+    report.members = std::move(load.members);
+    // Persisted index shards are CDB-independent; they load even with no
+    // member yet, so a database generated later (picked up by the CDB
+    // poll) starts from the previous session's index.
+    auto loaded = store.load(read_only_index);
+    bool owed = !loaded.report.reindex().empty();
+    pump.claim_report(loaded.report);
+
+    if(cfg.enable_indexing.value && (!report.members.empty() || owed)) {
+        for(auto member: report.members) {
+            // Bulk sweep of unknown staleness: the hash gate decides per
+            // file. DepsOnly — a cold start with a warm index cache must
+            // keep serving the loaded shards, not blank every query until
+            // the sweep drains.
+            pump.enqueue(member, ReindexReason::DepsOnly);
+        }
+        pump.schedule();
     }
+    return report;
+}
+
+BuildLoad load_build(Workspace& workspace, llvm::StringRef root) {
+    BuildLoad load;
+    workspace.cdb.set_workspace_root(root);
+    workspace.build.reset_active();
 
     ScopedTimer cdb_timer;
-    auto count = workspace.cdb.load(report.cdb_path).value_or(0);
-    LOG_INFO("Loaded CDB from {} with {} entries", report.cdb_path, count);
-    LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", count, cdb_timer.ms());
+    std::size_t entries = 0;
+    llvm::SmallVector<std::string> paths;
+    for(auto declared: workspace.build.declared_sources()) {
+        paths.push_back(declared.str());
+    }
+    if(!workspace.build.declares_sources()) {
+        auto found = discover_compile_commands(root);
+        if(!found.empty()) {
+            paths.push_back(found);
+        }
+    }
+    for(auto& path: paths) {
+        auto id = workspace.cdb.add_source(path);
+        if(auto loaded = workspace.cdb.load_source(id)) {
+            LOG_INFO("Loaded CDB from {} with {} entries", workspace.cdb.source_path(id), *loaded);
+            entries += *loaded;
+        } else {
+            LOG_WARN("Compilation database {} is not readable yet", workspace.cdb.source_path(id));
+        }
+    }
+    LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", entries, cdb_timer.ms());
+
+    load.members = workspace.build.members();
+    if(load.members.empty()) {
+        return load;
+    }
 
     auto scan = scan_dependency_graph(workspace.cdb,
                                       workspace.dep_graph,
-                                      [&workspace](llvm::StringRef path,
-                                                   std::vector<std::string>& append,
-                                                   std::vector<std::string>& remove) {
-                                          workspace.config.match_rules(path, append, remove);
-                                      });
+                                      workspace.build.units(load.members));
     workspace.dep_graph.build_reverse_map();
 
     auto unresolved = scan.includes_found - scan.includes_resolved;
@@ -120,20 +155,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
              scan.total_files,
              scan.total_edges,
              scan.elapsed_ms);
-
-    pump.claim_report(store.load(read_only_index).report);
-
-    if(cfg.enable_indexing.value) {
-        for(auto& entry: workspace.cdb.entries()) {
-            // Bulk sweep of unknown staleness: the hash gate decides per
-            // file. DepsOnly — a cold start with a warm index cache must
-            // keep serving the loaded shards, not blank every query until
-            // the sweep drains.
-            pump.enqueue(entry.file, ReindexReason::DepsOnly);
-        }
-        pump.schedule();
-    }
-    return report;
+    return load;
 }
 
 }  // namespace clice

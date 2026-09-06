@@ -106,8 +106,7 @@ TEST_CASE(NewProviderDirtiesImporters) {
 TEST_CASE(ReloadProviderCascades) {
     // The CDB-reload flavor of provider appearance: the provider-set diff
     // drives the same sentinel cascade, and a consumer retired by the
-    // very same reload is enqueued harmlessly (its run falls to a skip)
-    // rather than having its deliberately-kept index dropped.
+    // very same reload leaves the index without a reindex being owed.
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
 
@@ -133,8 +132,9 @@ TEST_CASE(ReloadProviderCascades) {
     FileEvent events[] = {FileEvent::cdb_changed(std::move(delta))};
     auto dirty = invalidator.apply(events);
 
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, retired));
-    EXPECT_FALSE(llvm::is_contained(dirty.drop_index, retired));
+    EXPECT_FALSE(llvm::is_contained(dirty.reindex_content_changed, retired));
+    EXPECT_TRUE(llvm::is_contained(dirty.drop_index, retired));
+    EXPECT_TRUE(llvm::is_contained(dirty.clear_reindex, retired));
 }
 
 TEST_CASE(DiskRemovedDropsProvider) {
@@ -1084,12 +1084,45 @@ TEST_CASE(CDBRemovedDropsSourceRole) {
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-    // The rebuild resolves includes from the surviving entries only. A
-    // removed entry keeps its index — the last-known rows still serve.
+    // The rebuild resolves includes from the surviving entries only. The
+    // removed entry's rows leave the index: its database still loads and
+    // simply stopped compiling the file.
     ASSERT_TRUE(workspace.dep_graph.get_all_includes(gone_id).empty());
     ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<Fid>{kept_id});
-    ASSERT_TRUE(dirty.drop_index.empty());
+    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<Fid>{gone_id});
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
+}
+
+TEST_CASE(CDBRemovedStillClaimed) {
+    /// The entry left the database but a rule's default command still
+    /// claims the file: a command change, not a retirement — the rows are
+    /// rebuilt under the default command instead of leaving.
+    TempDir tmp;
+    tmp.touch("gone.cpp", R"(int x;)");
+    tmp.touch("kept.cpp", R"(int y;)");
+
+    Workspace workspace;
+    SessionStore store;
+    workspace.config.rules.push_back(ConfigRule{.default_command = std::string("clang++")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active();
+    auto gone_id = workspace.file_table.intern(tmp.path("gone.cpp"));
+    auto json = build_cdb_json({
+        {tmp.root, tmp.path("kept.cpp"), {}}
+    });
+    write_cdb(tmp, workspace.cdb, json);
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+    FileEvent::CDBDelta delta;
+    delta.removed = {gone_id};
+    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
+
+    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<Fid>{gone_id});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{gone_id});
+    ASSERT_TRUE(dirty.clear_reindex.empty());
 }
 
 TEST_CASE(CDBEmptyDeltaNoEffects) {
@@ -1138,11 +1171,11 @@ TEST_CASE(SurvivingEdgeKeepsChoice) {
     workspace.dep_graph.build_reverse_map();
 
     auto session = store.open(header);
-    resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
 
     ASTHarness harness(workspace, resolver, store);
     ASSERT_FALSE(ContextService{workspace, resolver, harness.ast}.drop_orphaned_choices(store));
-    ASSERT_TRUE(resolver.saved_contexts.contains(header));
+    ASSERT_TRUE(resolver.selections.contains(header));
 }
 
 TEST_CASE(RemovedEdgeDropsChoice) {
@@ -1156,7 +1189,7 @@ TEST_CASE(RemovedEdgeDropsChoice) {
     auto session = store.open(header);
     session->trial_done = true;
     resolver.header_contexts[header] = HeaderContext{};
-    resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
     auto generation = session->generation;
 
     ASTHarness harness(workspace, resolver, store);
@@ -1166,7 +1199,7 @@ TEST_CASE(RemovedEdgeDropsChoice) {
     ASSERT_FALSE(harness.ast.projections.current(header));
     ASSERT_FALSE(session->trial_done);
     ASSERT_EQ(session->generation, generation + 1);
-    ASSERT_FALSE(resolver.saved_contexts.contains(header));
+    ASSERT_FALSE(resolver.selections.contains(header));
 }
 
 TEST_CASE(VanishedOccurrenceDropsChoice) {
@@ -1184,11 +1217,11 @@ TEST_CASE(VanishedOccurrenceDropsChoice) {
     workspace.dep_graph.build_reverse_map();
 
     store.open(header);
-    resolver.saved_contexts[header] = SavedContext{host, 1, ""};
+    resolver.selections[header] = Selection{host, 1, ""};
 
     ASTHarness harness(workspace, resolver, store);
     ASSERT_TRUE(ContextService{workspace, resolver, harness.ast}.drop_orphaned_choices(store));
-    ASSERT_FALSE(resolver.saved_contexts.contains(header));
+    ASSERT_FALSE(resolver.selections.contains(header));
 }
 
 };  // TEST_SUITE(DropOrphanedChoices)

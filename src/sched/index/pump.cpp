@@ -25,7 +25,14 @@ IndexPump::IndexPump(kota::event_loop& loop,
 }
 
 void IndexPump::boost(Fid server_path_id) {
-    enqueue(server_path_id, ReindexReason::DepsOnly);
+    if(!enqueue(server_path_id, ReindexReason::DepsOnly)) {
+        // No attempt will ever settle for an excluded file: the serving
+        // side hears that now, or the session waits on the index forever.
+        if(on_attempt_settled) {
+            on_attempt_settled(server_path_id);
+        }
+        return;
+    }
     // Front of the un-consumed tail: the file someone is reading beats
     // the bulk backlog. A running round is not disturbed (its snapshot
     // semantics stay, see run_background_indexing); the slot then leads
@@ -38,16 +45,21 @@ void IndexPump::boost(Fid server_path_id) {
     schedule(/*immediate=*/true);
 }
 
-void IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
+bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
+    // The one admission point of the background index: a rule's
+    // `index = false` keeps its files out here, whichever path asked.
+    if(!workspace.build.indexed(workspace.file_table.resolve(server_path_id))) {
+        return false;
+    }
     // New debt voids the running round's freshness memos: a claim taken
     // after this recording must re-judge against the disk, or its skip
     // would settle the fresh ticket on a verdict memoized before the
     // change and the file would never re-index.
     store.begin_round();
-    if(!ledger.record(server_path_id, reason)) {
-        return;
+    if(ledger.record(server_path_id, reason)) {
+        index_queue.push_back(server_path_id);
     }
-    index_queue.push_back(server_path_id);
+    return true;
 }
 
 void IndexPump::claim_report(const IndexStore::Report& report) {

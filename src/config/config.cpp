@@ -2,16 +2,20 @@
 
 #include <algorithm>
 #include <array>
+#include <initializer_list>
 
 #include "feature/feature.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "support/shell.h"
 
 #include "kota/async/io/system.h"
 #include "kota/codec/json/json.h"
 #include "kota/codec/json/schema.h"
 #include "kota/codec/toml/toml.h"
 #include "kota/support/glob_pattern.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
@@ -43,6 +47,66 @@ std::uint32_t default_max_stateless_worker_count() {
     return count;
 }
 
+/// A literal path as the glob that matches only itself.
+static std::string glob_escape(llvm::StringRef literal) {
+    std::string escaped;
+    for(char c: literal) {
+        if(llvm::StringRef(R"(*?[]{}\)").contains(c)) {
+            escaped += '\\';
+        }
+        escaped += c;
+    }
+    return escaped;
+}
+
+/// Compile one pattern against absolute paths: the literal directory before
+/// the first wildcard segment is anchored (a relative one at `anchor`),
+/// dot-normalized and canonicalized, and the wildcard tail follows verbatim.
+/// A `**`-led pattern matches anywhere and enumerates from the workspace.
+/// `workspace_root` must be canonical: substituted into glob text, a native
+/// spelling's backslashes would read as escapes.
+static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
+                                                            llvm::StringRef anchor,
+                                                            llvm::StringRef workspace_root) {
+    // A substituted workspace root is path, never glob syntax: the wildcard
+    // search starts after it, and the literal prefix it lands in is escaped.
+    std::size_t search_from =
+        llvm::StringRef(pattern).starts_with("${workspace}") ? workspace_root.size() : 0;
+    substitute_workspace(pattern, workspace_root);
+    llvm::StringRef ref(pattern);
+    std::string text = pattern;
+    std::string root = workspace_root.str();
+    if(!ref.starts_with("**")) {
+        auto wildcard = ref.find_first_of(R"(*?[{\)", search_from);
+        auto cut = ref.rfind('/', wildcard == llvm::StringRef::npos ? ref.size() : wildcard);
+        llvm::SmallString<256> dir;
+        if(cut != llvm::StringRef::npos) {
+            dir = ref.take_front(cut + 1);
+        }
+        if(!path::is_rooted(dir)) {
+            llvm::SmallString<256> anchored(anchor);
+            if(!dir.empty()) {
+                path::append(anchored, dir);
+            }
+            dir = anchored;
+        }
+        path::remove_dots(dir, /*remove_dot_dot=*/true);
+        root = std::string(dir);
+        path::canonicalize(root);
+        text = glob_escape(root);
+        if(!text.ends_with('/')) {
+            text += '/';
+        }
+        text += cut == llvm::StringRef::npos ? ref : ref.drop_front(cut + 1);
+    }
+    auto glob = kota::GlobPattern::create(text);
+    if(!glob) {
+        LOG_WARN("Invalid glob pattern in rule: {}: {}", pattern, glob.error().message);
+        return std::nullopt;
+    }
+    return CompiledRule::Pattern{.glob = std::move(*glob), .root = std::move(root)};
+}
+
 void Config::finalize(llvm::StringRef workspace_root) {
     auto& p = project;
 
@@ -63,70 +127,144 @@ void Config::finalize(llvm::StringRef workspace_root) {
     reject_zero(p.min_stateless_worker_count,
                 defaults.min_stateless_worker_count,
                 "min_stateless_worker_count");
-    if(p.cache_dir.empty() && !workspace_root.empty()) {
-        p.cache_dir = path::join(workspace_root, ".clice");
+
+    this->workspace_root = workspace_root.str();
+    path::canonicalize(this->workspace_root);
+    llvm::StringRef root = this->workspace_root;
+
+    if(p.cache_dir.empty() && !root.empty()) {
+        p.cache_dir = path::join(root, ".clice");
         p.cache_dir_defaulted = true;
     }
     if(p.logging_dir.empty() && !p.cache_dir.empty())
         p.logging_dir = path::join(p.cache_dir, "logs");
 
-    // Variable substitution on string fields.
-    substitute_workspace(p.cache_dir, workspace_root);
-    substitute_workspace(p.logging_dir, workspace_root);
-    // Client-supplied dirs arrive in native spelling (backslashes, any
-    // drive case); canonicalize so artifact-prefix checks against
-    // pool-resolved paths hold.
-    path::canonicalize(p.cache_dir);
-    path::canonicalize(p.logging_dir);
-    for(auto& entry: p.compile_commands_paths)
-        substitute_workspace(entry, workspace_root);
+    // Variable substitution on string fields; a path still relative after
+    // it came from initializationOptions (load() anchored a file's own)
+    // and resolves against the workspace root.
+    for(std::string* dir: std::initializer_list<std::string*>{&p.cache_dir, &p.logging_dir}) {
+        substitute_workspace(*dir, root);
+        if(!dir->empty() && !root.empty() && !path::is_rooted(*dir)) {
+            *dir = path::join(root, *dir);
+        }
+        // Client-supplied dirs arrive in native spelling (backslashes, any
+        // drive case); canonicalize so artifact-prefix checks against
+        // pool-resolved paths hold.
+        path::canonicalize(*dir);
+    }
 
-    // Pre-compile glob patterns from rules.
+    auto anchored = [&](std::string value, llvm::StringRef anchor) {
+        substitute_workspace(value, root);
+        llvm::SmallString<256> full(value);
+        if(!path::is_rooted(full) && !anchor.empty()) {
+            full = anchor;
+            path::append(full, value);
+        }
+        path::remove_dots(full, /*remove_dot_dot=*/true);
+        std::string result(full);
+        path::canonicalize(result);
+        return result;
+    };
+
     compiled_rules.clear();
-    for(auto& rule: rules) {
+    auto compile = [&](const ConfigRule& rule) -> std::optional<CompiledRule> {
+        // A rule read from a file anchors at the file's directory, one from
+        // initializationOptions at the workspace root.
+        std::string anchor = rule.directory.empty() ? root.str() : std::string(rule.directory);
+        path::canonicalize(anchor);
         CompiledRule compiled;
-        for(auto& pattern_str: rule.patterns) {
-            auto pat = kota::GlobPattern::create(pattern_str);
-            if(!pat) {
-                LOG_WARN("Invalid glob pattern in rule: {}: {}", pattern_str, pat.error().message);
-                continue;
+        for(auto& pattern: rule.patterns) {
+            if(auto compiled_pattern = compile_pattern(pattern, anchor, root)) {
+                compiled.patterns.push_back(std::move(*compiled_pattern));
             }
-            compiled.patterns.push_back(std::move(*pat));
         }
-        // Drop the whole rule if no pattern compiled successfully — otherwise the
-        // append/remove flags would be silently attached to a rule that can never match.
-        if(compiled.patterns.empty()) {
-            if(!rule.patterns.empty())
-                LOG_WARN("Rule dropped: all glob patterns failed to compile");
-            continue;
+        // Without a valid pattern the rule can match nothing; its declared
+        // databases still load, since entries apply regardless of patterns.
+        if(compiled.patterns.empty() && !rule.patterns.empty()) {
+            LOG_WARN("Rule matches no file: all of its glob patterns failed to compile");
+            compiled.unmatchable = true;
         }
+        compiled.configuration = rule.configuration;
+        for(auto& database: rule.compile_commands) {
+            auto full = anchored(database, anchor);
+            // The directory form is told from the file form by extension
+            // everywhere else; only the filesystem knows a directory
+            // spelled with a .json suffix.
+            if(fs::is_directory(full)) {
+                full = path::join(full, "compile_commands.json");
+                path::canonicalize(full);
+            }
+            compiled.compile_commands.push_back(std::move(full));
+        }
+        // A string spelling is tokenized before `${workspace}` is
+        // substituted, so a root with spaces stays one argument.
+        if(auto* spelling = std::get_if<std::string>(&rule.default_command)) {
+            compiled.default_command = tokenize_command(*spelling);
+        } else {
+            compiled.default_command = std::get<std::vector<std::string>>(rule.default_command);
+        }
+        for(auto& arg: compiled.default_command) {
+            substitute_workspace(arg, root);
+        }
+        compiled.directory = std::move(anchor);
         compiled.append.assign(rule.append.begin(), rule.append.end());
         compiled.remove.assign(rule.remove.begin(), rule.remove.end());
-        compiled_rules.push_back(std::move(compiled));
+        compiled.index = rule.index;
+        return compiled;
+    };
+    for(auto& rule: rules) {
+        if(auto compiled = compile(rule)) {
+            compiled_rules.push_back(std::move(*compiled));
+        }
+    }
+    auto tags = configurations();
+    if(!tags.empty() && default_configuration.empty()) {
+        LOG_WARN("Rules declare configurations {} but default_configuration is unset; using {}",
+                 llvm::join(tags, ", "),
+                 tags.front());
+    } else if(!default_configuration.empty() &&
+              !llvm::is_contained(tags, llvm::StringRef(default_configuration))) {
+        LOG_WARN("default_configuration = {} names no rule's configuration", default_configuration);
     }
 }
 
-void Config::match_rules(llvm::StringRef file_path,
-                         std::vector<std::string>& append,
-                         std::vector<std::string>& remove) const {
-    // Rules are processed in declaration order so that a later rule can
-    // override an earlier one. Specifically, when a later rule removes
-    // an argument, we also strip any string-equal entry already added
-    // to `append` by an earlier matching rule — otherwise the append
-    // would silently survive (lookup applies removes to the base flags
-    // only, not to entries contributed via `append`).
-    for(auto& rule: compiled_rules) {
-        bool matched =
-            std::ranges::any_of(rule.patterns, [&](auto& pat) { return pat.match(file_path); });
-        if(!matched)
-            continue;
+bool CompiledRule::has_default_command() const {
+    return !default_command.empty();
+}
 
-        for(auto& r: rule.remove) {
-            std::erase(append, r);
-            remove.push_back(r);
-        }
-        append.insert(append.end(), rule.append.begin(), rule.append.end());
+bool CompiledRule::declares_sources() const {
+    return !compile_commands.empty() || (has_default_command() && !unmatchable);
+}
+
+bool CompiledRule::matches(llvm::StringRef path) const {
+    if(unmatchable) {
+        return false;
     }
+    return patterns.empty() || std::ranges::any_of(patterns, [&](const Pattern& pattern) {
+               return pattern.glob.match(path);
+           });
+}
+
+llvm::SmallVector<const CompiledRule*> Config::matching_rules(llvm::StringRef path,
+                                                              llvm::StringRef configuration) const {
+    llvm::SmallVector<const CompiledRule*> result;
+    for(auto& rule: compiled_rules) {
+        if((rule.configuration.empty() || rule.configuration == configuration) &&
+           rule.matches(path)) {
+            result.push_back(&rule);
+        }
+    }
+    return result;
+}
+
+llvm::SmallVector<llvm::StringRef> Config::configurations() const {
+    llvm::SmallVector<llvm::StringRef> tags;
+    for(auto& rule: compiled_rules) {
+        if(!rule.configuration.empty() && !llvm::is_contained(tags, rule.configuration)) {
+            tags.push_back(rule.configuration);
+        }
+    }
+    return tags;
 }
 
 /// Codec config that rejects unknown keys: the strict validation pass
@@ -180,6 +318,17 @@ std::optional<Config> Config::load(llvm::StringRef path,
     }
 
     auto config = std::move(*result);
+    auto directory = path::parent_path(path).str();
+    for(auto& rule: config.rules) {
+        rule.directory = directory;
+    }
+    for(std::string* dir: std::initializer_list<std::string*>{&config.project.cache_dir,
+                                                              &config.project.logging_dir}) {
+        substitute_workspace(*dir, workspace_root);
+        if(!dir->empty() && !path::is_rooted(*dir)) {
+            *dir = path::join(directory, *dir);
+        }
+    }
     if(finalized)
         config.finalize(workspace_root);
     LOG_INFO("Loaded config from {}", path);
@@ -208,7 +357,7 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
 
     bool found = false;
     if(!workspace_root.empty()) {
-        for(auto* name: {"clice.toml", ".clice/config.toml"}) {
+        for(auto name: config_file_names) {
             auto config_path = path::join(workspace_root, name);
             if(!llvm::sys::fs::exists(config_path))
                 continue;

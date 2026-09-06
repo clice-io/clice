@@ -1,9 +1,11 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <expected>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "feature/feature.h"
@@ -11,6 +13,7 @@
 #include "kota/codec/macro.h"
 #include "kota/meta/annotation.h"
 #include "kota/support/glob_pattern.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -21,17 +24,72 @@ namespace clice {
 std::uint32_t default_stateless_worker_count();
 std::uint32_t default_max_stateless_worker_count();
 
-/// A file-pattern rule that appends/removes compilation flags.
-/// Corresponds to `[[rules]]` in clice.toml.
+/// The configuration files a workspace root may hold, in lookup order.
+constexpr inline std::array<llvm::StringRef, 2> config_file_names = {"clice.toml",
+                                                                     ".clice/config.toml"};
+
+/// A compile command written by hand: one string tokenized like a shell
+/// command line, or an argv array.
+using CommandSpelling = std::variant<std::string, std::vector<std::string>>;
+
+/// A file-pattern rule: where matching files take their compile commands
+/// from and how those commands are edited. Corresponds to `[[rules]]` in
+/// clice.toml.
 struct ConfigRule {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Glob patterns selecting the files this rule applies "
-                         "to: `*` matches within a path segment (a pattern of "
-                         "just `*` matches any path), `?` a single character, "
-                         "`**` any number of segments, `{a,b}` alternatives, "
-                         "`[0-9]` a character range, `[!...]` a negated range.")
+                         "to. A relative pattern is anchored at this "
+                         "configuration file's directory (`..` segments "
+                         "allowed), or at the workspace root for a rule passed "
+                         "through initializationOptions; an absolute pattern "
+                         "or one starting with `**` matches the file's "
+                         "absolute path. "
+                         "`*` matches within a path segment, `?` a single "
+                         "character, `**` any number of segments, `{a,b}` "
+                         "alternatives, `[0-9]` a character range, `[!...]` a "
+                         "negated range. Omitted means every file.")
     <std::vector<std::string>> patterns;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Build configuration tag. A tagged rule applies only "
+                         "while that configuration is active; an untagged rule "
+                         "always applies. The distinct tags form the "
+                         "configuration menu, and `default_configuration` "
+                         "names the one active at startup.")
+    <std::string> configuration;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Compilation databases, in priority order: a "
+                         "compile_commands.json or a directory containing one, "
+                         "relative to this configuration file (to the "
+                         "workspace root for a rule passed through "
+                         "initializationOptions). All of them load, and every "
+                         "entry applies to its own file "
+                         "whatever the patterns say; the patterns and the "
+                         "order decide which entry a file present in several "
+                         "databases gets by default. A rule without patterns "
+                         "names the workspace's databases. When no rule "
+                         "declares a source, the workspace root and its "
+                         "immediate subdirectories are searched for one.")
+    <std::vector<std::string>> compile_commands;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "The compile command for matching files without a "
+                         "database entry, without the source file: a string "
+                         "tokenized like a shell command line, or an argv "
+                         "array. It runs from the directory of the configuration "
+                         "file it was read from (the workspace root for a rule "
+                         "passed through initializationOptions), and the "
+                         "matching source files on disk "
+                         "join the background index — enumerated at startup, "
+                         "so a file created later compiles when opened and "
+                         "joins the index at the next start. Omitted means "
+                         "none.")
+    <CommandSpelling> default_command;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -44,6 +102,21 @@ struct ConfigRule {
                          "Compilation flags removed for matching files, e.g. "
                          "`[\"-Wall\"]`.")
     <std::vector<std::string>> remove;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Whether matching translation units join the "
+                         "background index. `false` keeps them out; they still "
+                         "compile when opened and still host the headers they "
+                         "include. Any matching rule saying `false` wins.")
+    <bool> index = true;
+
+    /// Where the rule's relative paths and patterns anchor and its default
+    /// command runs: the directory of the configuration file it was read
+    /// from; empty for a rule from initializationOptions, which anchors at
+    /// the workspace root.
+    KOTATSU_ANNOTATE(skip = true)
+    <std::string> directory;
 };
 
 /// Corresponds to the `[project]` section in clice.toml. Field
@@ -75,14 +148,6 @@ struct ProjectConfig {
                          "Each server session logs into its own timestamped "
                          "subdirectory.")
     <std::string> logging_dir;
-
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Paths searched for compile_commands.json — file paths, "
-                         "or directories to look inside. When these all miss — or "
-                         "the list is empty — the workspace root and then each of "
-                         "its immediate subdirectories are searched.")
-    <std::vector<std::string>> compile_commands_paths;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -167,10 +232,45 @@ struct TrackerConfig {
     <std::uint32_t> workspace_poll_seconds = 30;
 };
 
+/// A rule after finalize(): patterns compiled, paths anchored.
 struct CompiledRule {
-    std::vector<kota::GlobPattern> patterns;
+    struct Pattern {
+        /// Matches the canonical absolute path: a relative pattern was
+        /// anchored at the configuration file's directory when compiled.
+        kota::GlobPattern glob;
+
+        /// The literal directory the pattern starts in (the workspace root
+        /// for `**`-led patterns): where the files it claims are enumerated.
+        std::string root;
+    };
+
+    std::vector<Pattern> patterns;
+    std::string configuration;
+    /// Absolute paths of the declared databases, in priority order; an
+    /// existing directory resolved to the compile_commands.json under it.
+    std::vector<std::string> compile_commands;
+    /// The command's argv (a string spelling tokenized with the host's
+    /// shell rules), `${workspace}` substituted; empty means none.
+    /// `directory` is its working directory.
+    std::vector<std::string> default_command;
+    std::string directory;
     std::vector<std::string> append;
     std::vector<std::string> remove;
+    bool index = true;
+
+    /// Every pattern failed to compile: the rule matches no file, but the
+    /// sources it declares still load.
+    bool unmatchable = false;
+
+    bool has_default_command() const;
+
+    /// Whether the rule declares a command source — databases, or a default
+    /// command the rule can actually hand out — rather than only editing
+    /// commands.
+    bool declares_sources() const;
+
+    /// Whether the rule applies to `path` (canonical absolute).
+    bool matches(llvm::StringRef path) const;
 };
 
 /// A problem found while loading a configuration file, carrying enough
@@ -205,6 +305,14 @@ struct ConfigIssue {
 /// values from the merged result.
 struct Config {
     KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "The build configuration active at startup, one of the "
+                         "tags declared on rules. When rules carry tags and this "
+                         "names none of them, the first declared tag is used and "
+                         "a warning is logged.")
+    <std::string> default_configuration;
+
+    KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [project] section: project-wide server options.")
     <ProjectConfig> project;
 
@@ -233,24 +341,36 @@ struct Config {
     KOTATSU_ANNOTATE(skip = true)
     <std::vector<CompiledRule>> compiled_rules;
 
+    /// The workspace root finalize() ran for, canonical: the `${workspace}`
+    /// value, the anchor of rules and databases no configuration file
+    /// supplied, and the enumeration root of `**`-led patterns.
+    KOTATSU_ANNOTATE(skip = true)
+    <std::string> workspace_root;
+
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path
-    /// canonicalization, and rule glob compilation. Run once per load,
-    /// after every source has been overlaid.
+    /// canonicalization and anchoring, and rule compilation. Run once per
+    /// load, after every source has been overlaid.
     void finalize(llvm::StringRef workspace_root);
 
-    /// Collect append/remove flags from all rules whose patterns match `path`.
-    void match_rules(llvm::StringRef path,
-                     std::vector<std::string>& append,
-                     std::vector<std::string>& remove) const;
+    /// The compiled rules applying to `path` (absolute), in declaration
+    /// order, restricted to untagged rules and rules tagged
+    /// `configuration`.
+    llvm::SmallVector<const CompiledRule*> matching_rules(llvm::StringRef path,
+                                                          llvm::StringRef configuration) const;
 
-    /// Try to load configuration from a TOML file. Parse/validation problems
-    /// are appended to `issues` when provided: decode failures as Error (the
-    /// caller falls back to defaults), unknown keys as Warning (the rest of
-    /// the file still applies). Set `finalized` to false when further config
-    /// sources will be overlaid before finalize() runs — derived fields
-    /// (cache_dir, logging_dir, ...) must be computed only once, from the
-    /// final merged values.
+    /// The distinct configuration tags, in first-appearance order.
+    llvm::SmallVector<llvm::StringRef> configurations() const;
+
+    /// Try to load configuration from a TOML file. Its relative paths and
+    /// patterns anchor at the file's directory: every rule records it, so a
+    /// source overlaid later keeps its own anchor. Parse/validation problems are appended to
+    /// `issues` when provided: decode failures as Error (the caller falls
+    /// back to defaults), unknown keys as Warning (the rest of the file
+    /// still applies). Set `finalized` to false when further config sources
+    /// will be overlaid before finalize() runs — derived fields (cache_dir,
+    /// logging_dir, ...) must be computed only once, from the final merged
+    /// values.
     static std::optional<Config> load(llvm::StringRef path,
                                       llvm::StringRef workspace_root,
                                       std::vector<ConfigIssue>* issues = nullptr,

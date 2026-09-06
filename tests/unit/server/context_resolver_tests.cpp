@@ -34,8 +34,8 @@ TEST_CASE(ChoiceNeedsSession) {
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
     auto pinned = candidates.back().config;
-    resolver.saved_contexts[file] =
-        SavedContext{Fid{}, std::nullopt, workspace.cdb.entry_hash_hex(pinned)};
+    resolver.selections[file] =
+        Selection{Fid{}, std::nullopt, workspace.cdb.entry_hash_hex(pinned)};
 
     // An open session honors the pinned CDB entry...
     auto session = store.open(file);
@@ -75,8 +75,8 @@ TEST_CASE(PinBaseSurvivesRules) {
 
     // A pin whose applied hash went stale (a rule edit since it was saved)
     // but whose base identity is recorded still selects its candidate...
-    resolver.saved_contexts[file] =
-        SavedContext{Fid{}, std::nullopt, "0123456789abcdef", workspace.cdb.entry_hash_hex(pinned)};
+    resolver.selections[file] =
+        Selection{Fid{}, std::nullopt, "0123456789abcdef", workspace.cdb.entry_hash_hex(pinned)};
     auto session = store.open(file);
     std::string directory;
     std::vector<std::string> arguments;
@@ -84,10 +84,53 @@ TEST_CASE(PinBaseSurvivesRules) {
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(pinned)));
 
     // ...while the same stale hash without a base falls back to the default.
-    resolver.saved_contexts[file] = SavedContext{Fid{}, std::nullopt, "0123456789abcdef", ""};
+    resolver.selections[file] = Selection{Fid{}, std::nullopt, "0123456789abcdef", ""};
     arguments.clear();
     resolver.resolve_command(path, directory, arguments, ContextUse::Editor);
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
+}
+
+TEST_CASE(DefaultSourceKeepsOwnCommand) {
+    /// A unity build under a default command: main.cpp includes part.cpp
+    /// and part.h. The included source is a unit of its own and keeps the
+    /// default command the index compiles it with; the header borrows
+    /// main.cpp's.
+    TempDir tmp;
+    tmp.touch("src/main.cpp", R"(#include "part.cpp"
+#include "part.h")");
+    tmp.touch("src/part.cpp", "");
+    tmp.touch("src/part.h", "");
+    Workspace workspace;
+    ContextResolver resolver(workspace);
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active();
+
+    auto main = workspace.file_table.intern(tmp.path("src/main.cpp"));
+    auto part = workspace.file_table.intern(tmp.path("src/part.cpp"));
+    auto header = workspace.file_table.intern(tmp.path("src/part.h"));
+    workspace.dep_graph.set_includes(main, 0, {{part}, {header}});
+    workspace.dep_graph.build_reverse_map();
+
+    std::string directory;
+    std::vector<std::string> arguments;
+    Fid host;
+    EXPECT_EQ(resolver.resolve_command(tmp.path("src/part.cpp"),
+                                       directory,
+                                       arguments,
+                                       ContextUse::Editor,
+                                       &host),
+              CommandSource::Default);
+    EXPECT_TRUE(
+        llvm::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
+    EXPECT_EQ(resolver.resolve_command(tmp.path("src/part.h"),
+                                       directory,
+                                       arguments,
+                                       ContextUse::Editor,
+                                       &host),
+              CommandSource::IncludeGraph);
+    EXPECT_EQ(host, main);
 }
 
 TEST_CASE(ValidateKeepsValidChoice) {
@@ -107,11 +150,11 @@ TEST_CASE(ValidateKeepsValidChoice) {
     auto header = workspace.file_table.intern(tmp.path("h.h"));
     workspace.dep_graph.set_includes(host, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
-    resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
 
     auto session = store.open(header);
     resolver.validate_saved_context(session->path_id);
-    ASSERT_TRUE(resolver.saved_contexts.contains(header));
+    ASSERT_TRUE(resolver.selections.contains(header));
 }
 
 TEST_CASE(ValidateDropsStaleChoice) {
@@ -135,17 +178,17 @@ TEST_CASE(ValidateDropsStaleChoice) {
     // A host pin whose CDB entry disappeared while the server was down.
     // The drop must dirty the contexts blob, or the stale choice
     // resurrects from disk at the next start.
-    resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
     auto header_session = store.open(header);
     resolver.validate_saved_context(header_session->path_id);
-    ASSERT_FALSE(resolver.saved_contexts.contains(header));
+    ASSERT_FALSE(resolver.selections.contains(header));
     ASSERT_TRUE(workspace.contexts_dirty);
 
     // A command pin whose hash matches no current CDB entry.
-    resolver.saved_contexts[main_file] = SavedContext{Fid{}, std::nullopt, "deadbeef"};
+    resolver.selections[main_file] = Selection{Fid{}, std::nullopt, "deadbeef"};
     auto main_session = store.open(main_file);
     resolver.validate_saved_context(main_session->path_id);
-    ASSERT_FALSE(resolver.saved_contexts.contains(main_file));
+    ASSERT_FALSE(resolver.selections.contains(main_file));
 }
 
 TEST_CASE(InvalidateDropsBorrowed) {

@@ -23,6 +23,9 @@ export function canonicalUri(uri: string): string {
 export interface CDBOptions {
     extraArgs?: string[] | undefined;
     std?: string | undefined;
+    /// Where the database is written, workspace-relative; default
+    /// compile_commands.json at the root.
+    at?: string | undefined;
 }
 
 export class Workspace {
@@ -107,7 +110,7 @@ export class Workspace {
                 std: options.std,
             }),
         );
-        this.write("compile_commands.json", JSON.stringify(data, null, 2));
+        this.write(options.at ?? "compile_commands.json", JSON.stringify(data, null, 2));
     }
 
     /// Generate compile_commands.json via CMake (workspaces with a

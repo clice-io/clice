@@ -6,8 +6,11 @@
 
 #include "test/temp_dir.h"
 #include "command/command.h"
+#include "support/filesystem.h"
+#include "syntax/dependency_graph.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice::testing {
@@ -64,6 +67,16 @@ inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef js
     cdb.load(tmp.path("compile_commands.json"));
 }
 
+/// Whether one argument contains `needle` once its separators are
+/// normalized: include paths absolutize with the native separator, and
+/// print_argv escapes backslashes, so the printed line cannot be searched
+/// for a `/`-spelled path.
+inline bool has_arg(llvm::ArrayRef<const char*> argv, llvm::StringRef needle) {
+    return llvm::any_of(argv, [&](const char* arg) {
+        return llvm::StringRef(path::convert_to_slash(arg)).contains(needle);
+    });
+}
+
 /// Rules-applied driver-level render of a file's default candidate, with
 /// the injected resource dir stripped so tests can assert exact argv.
 /// A file without candidates renders empty — the caller's assertion then
@@ -86,6 +99,19 @@ inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
         }
     }
     return argv;
+}
+
+/// Scan every entry of the database under its own command: the shape of a
+/// test that owns no configuration.
+inline ScanReport scan_all(CompilationDatabase& cdb, DependencyGraph& graph) {
+    llvm::SmallVector<CommandRef> units;
+    for(auto& entry: cdb.entries()) {
+        units.push_back({entry.file,
+                         entry.config,
+                         cdb.input_kind(entry.config, cdb.files().resolve(entry.file)),
+                         CommandSource::CDBExact});
+    }
+    return scan_dependency_graph(cdb, graph, units);
 }
 
 }  // namespace clice::testing

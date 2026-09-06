@@ -572,12 +572,12 @@ TEST_CASE(RuleFlagsTranslated) {
     // as the command: the remove matches the arch through its translated
     // spelling and the append reaches clang translated, not as raw nvcc
     // tokens.
-    CommandOptions options;
-    llvm::SmallVector<std::string> remove = {"-gencode", "arch=compute_75,code=sm_75"};
-    options.remove = remove;
-    llvm::SmallVector<std::string> append = {"--extended-lambda",
-                                             "--generate-code=arch=compute_90a,code=sm_90a"};
-    options.append = append;
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Remove, {"-gencode", "arch=compute_75,code=sm_75"}},
+        {CommandEdit::Kind::Append,
+         {"--extended-lambda", "--generate-code=arch=compute_90a,code=sm_90a"}},
+    };
+    CommandOptions options{.edits = edits};
 
     auto flags = db.render_full(
         db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options));
@@ -602,11 +602,10 @@ TEST_CASE(AppendOverridesBase) {
 
     // NVCC's stateful options are last-wins across the whole command, so an
     // appended disable must beat the state the base already translated.
-    CommandOptions options;
-    llvm::SmallVector<std::string> append = {"-rdc=false",
-                                             "--default-stream=legacy",
-                                             "-arch=sm_80"};
-    options.append = append;
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Append, {"-rdc=false", "--default-stream=legacy", "-arch=sm_80"}},
+    };
+    CommandOptions options{.edits = edits};
 
     auto flags = render_entry(db, "/tmp/kern.cu", options);
     auto count = std::ptrdiff_t(flags.size());
@@ -677,9 +676,11 @@ TEST_CASE(GencodeAppendAccumulates) {
                                           "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
-    auto arch_flags = [&](llvm::ArrayRef<std::string> append) {
-        CommandOptions options;
-        options.append = append;
+    auto arch_flags = [&](std::vector<std::string> append) {
+        std::vector<CommandEdit> edits = {
+            {CommandEdit::Kind::Append, std::move(append)}
+        };
+        CommandOptions options{.edits = edits};
         std::vector<std::string> result;
         for(llvm::StringRef flag: render_entry(db, "/tmp/kern.cu", options)) {
             if(flag.contains("arch")) {
@@ -692,7 +693,7 @@ TEST_CASE(GencodeAppendAccumulates) {
     // Appended -gencode entries accumulate onto the base's like nvcc's own,
     // and the newest architecture keeps winning: an older append changes
     // nothing.
-    llvm::SmallVector<std::string> older = {"-gencode=arch=compute_75,code=sm_75"};
+    std::vector<std::string> older = {"-gencode=arch=compute_75,code=sm_75"};
     auto kept = arch_flags(older);
     EXPECT_TRUE(std::ranges::contains(kept, "--offload-arch=sm_90"));
     EXPECT_FALSE(std::ranges::contains(kept, "--offload-arch=sm_75"));
@@ -700,7 +701,7 @@ TEST_CASE(GencodeAppendAccumulates) {
 
     // A newer append takes over — by numeric rank, not string order, which
     // would sort sm_100a below sm_90.
-    llvm::SmallVector<std::string> newer = {"-gencode=arch=compute_100a,code=sm_100a"};
+    std::vector<std::string> newer = {"-gencode=arch=compute_100a,code=sm_100a"};
     auto switched = arch_flags(newer);
     EXPECT_TRUE(std::ranges::contains(switched, "--offload-arch=sm_100a"));
     EXPECT_FALSE(std::ranges::contains(switched, "--offload-arch=sm_90"));
@@ -776,20 +777,23 @@ TEST_CASE(WildcardRemoveClearsArch) {
 
     // The wildcard must clear whichever form the base carries: numeric archs
     // translate to --offload-arch, non-numeric ones persist as probe tokens.
-    CommandOptions options;
-    llvm::SmallVector<std::string> remove = {"--generate-code=*"};
-    options.remove = remove;
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Remove, {"--generate-code=*"}}
+    };
+    CommandOptions options{.edits = edits};
     EXPECT_TRUE(arch_flags("/tmp/kern.cu", options).empty());
 
-    llvm::SmallVector<std::string> separate = {"-arch", "*"};
-    options.remove = separate;
+    edits = {
+        {CommandEdit::Kind::Remove, {"-arch", "*"}}
+    };
+    options.edits = edits;
     EXPECT_TRUE(arch_flags("/tmp/other.cu", options).empty());
     EXPECT_TRUE(arch_flags("/tmp/native.cu", options).empty());
 
     // Removes edit the base before appends land: replacing the architecture
     // through remove-wildcard + append keeps the appended one.
-    llvm::SmallVector<std::string> append = {"-gencode=arch=compute_90a,code=sm_90a"};
-    options.append = append;
+    edits.push_back({CommandEdit::Kind::Append, {"-gencode=arch=compute_90a,code=sm_90a"}});
+    options.edits = edits;
     auto replaced = arch_flags("/tmp/other.cu", options);
     EXPECT_FALSE(std::ranges::contains(replaced, "--offload-arch=sm_80"));
     EXPECT_TRUE(std::ranges::contains(replaced, "--offload-arch=sm_90a"));
@@ -807,9 +811,10 @@ TEST_CASE(RemoveMatchesUnknownSpelling) {
                                           "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
-    CommandOptions options;
-    llvm::SmallVector<std::string> remove = {"--allow-unsupported-compiler"};
-    options.remove = remove;
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Remove, {"--allow-unsupported-compiler"}},
+    };
+    CommandOptions options{.edits = edits};
 
     // Probe flags all parse as the shared unknown id; removal keys on the
     // spelling, so the other probe tokens survive.
@@ -837,11 +842,11 @@ TEST_CASE(RemoveListAlternatives) {
     // same stateful option becomes a pattern, where nvcc's last-wins over
     // the whole list would keep only the final one and leave the base's
     // g++-12 token in place.
-    CommandOptions options;
-    llvm::SmallVector<std::string> remove = {"-ccbin=/usr/bin/g++-13",
-                                             "-ccbin=/usr/bin/g++-12",
-                                             "--default-stream=per-thread"};
-    options.remove = remove;
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Remove,
+         {"-ccbin=/usr/bin/g++-13", "-ccbin=/usr/bin/g++-12", "--default-stream=per-thread"}},
+    };
+    CommandOptions options{.edits = edits};
 
     auto flags = db.render_full(
         db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options));
@@ -859,9 +864,11 @@ TEST_CASE(WildcardRemovesProbeValue) {
         {"nvcc", "-ccbin=/usr/bin/g++-12", "-target-dir", "sbsa-linux", "-c", "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
-    auto probe_flags = [&](llvm::ArrayRef<std::string> remove) {
-        CommandOptions options;
-        options.remove = remove;
+    auto probe_flags = [&](std::vector<std::string> remove) {
+        std::vector<CommandEdit> edits = {
+            {CommandEdit::Kind::Remove, std::move(remove)}
+        };
+        CommandOptions options{.edits = edits};
         auto applied = db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options);
         std::vector<std::string> result;
         for(llvm::StringRef flag: db.render_full(applied)) {
@@ -874,11 +881,11 @@ TEST_CASE(WildcardRemovesProbeValue) {
 
     // A probe token's identity is its whole spelling; `=*` wildcards the
     // value so the rule clears the concrete host compiler it never spelled.
-    llvm::SmallVector<std::string> ccbin = {"-ccbin=*"};
+    std::vector<std::string> ccbin = {"-ccbin=*"};
     std::vector<std::string> target_only = {"--target-directory=sbsa-linux"};
     EXPECT_EQ(probe_flags(ccbin), target_only);
 
-    llvm::SmallVector<std::string> target = {"--target-directory=*"};
+    std::vector<std::string> target = {"--target-directory=*"};
     std::vector<std::string> ccbin_only = {"-ccbin=/usr/bin/g++-12"};
     EXPECT_EQ(probe_flags(target), ccbin_only);
 }

@@ -25,11 +25,12 @@ test("without test defaults only the cache is pinned", () => {
     // A benchmark runs the server's real defaults: nothing but the cache
     // location is added, so the defaults stay spelled in the C++ config.
     const options = initializationOptionsFor(ws, {
-        initializationOptions: { project: { compile_commands_paths: ["/cdb"] } },
+        initializationOptions: { rules: [{ compile_commands: ["/cdb"] }] },
         testDefaults: false,
     });
     expect(options).toEqual({
-        project: { cache_dir: ws.path(".clice"), compile_commands_paths: ["/cdb"] },
+        rules: [{ compile_commands: ["/cdb"] }],
+        project: { cache_dir: ws.path(".clice") },
         tracker: {},
     });
 });

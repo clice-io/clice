@@ -645,11 +645,11 @@ void MasterServer::load_workspace() {
     if(workspace_root.empty())
         return;
 
-    auto report = bootstrap_workspace(workspace, contexts, index_store, pump, workspace_root);
+    auto report = bootstrap_workspace(workspace, index_store, pump, workspace_root);
     if(report.opened_store) {
         bg_tasks.spawn(cache_checkpoint_task());
     }
-    if(report.cdb_path.empty()) {
+    if(!report.has_commands) {
         LOG_GUIDANCE(
             "No compile_commands.json found in workspace {}. Compile commands will be "
             "guessed; see https://clice.io/en/guide/quick-start for setup.",

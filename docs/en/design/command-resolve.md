@@ -61,19 +61,30 @@ The classification also buys toolchain probing cache efficiency. Probing require
 
 ### Compilation Database
 
-`CompilationDatabase` loads `compile_commands.json`, parsing and deduplicating each entry into a mapping from the file's path to its `ConfigID` (a file may have several candidate entries; see [Compilation Context](compilation-context.md) for how one is chosen).
+`CompilationDatabase` holds the entries of every loaded **source** — a `compile_commands.json` registered by the configuration or discovered under the workspace. Each source loads, reloads and unloads independently; its entries are parsed and deduplicated into `ConfigID`s and kept in file order, because generators emit a file's several entries in a fixed configuration order. The database stores facts only: it does not decide which of a file's entries wins.
 
-On lookup, the database renders the file's effective command from the structured configuration — complete compilation flags plus the source file path, ready to be combined with toolchain results and submitted to the Clang frontend.
+Commands written by hand — a rule's `default_command`, the builtin fallback — go through the same normalization as an entry (`intern_command`), with the input slot synthesized at the end, so a declared command is probed, edited and rendered exactly like a database entry.
 
-For files without a CDB entry (e.g., a file the user opens that is not part of the project), `CompilationDatabase` synthesizes a default command -- selecting `clang` or `clang++ -std=c++20` based on the file extension. CUDA files (`.cu`/`.cuh`) additionally force `-x cuda`: `.cuh` is not an extension clang recognizes, so without it the driver would treat the file as linker input.
+### Build
 
-Configuration granularity is preserved throughout the pipeline: search-path extraction for dependency scanning is per configuration (different `-I` sets produce different search configs), while toolchain probing deduplicates further still, since user-content options do not affect probe results.
+`Build` is the one reader of the configuration's `[[rules]]` and the one place that knows which command a file compiles with — a pure function of the configuration and the database, shared by the server and every CLI entry point (`clice index`, `clice lint`, `clice inspect` load a workspace the same way). Every consumer — the context resolver, the dependency scan, the indexer, the context protocol — asks it rather than the database:
 
-### Configuration Rules
+- **Entries.** A file's database entries in build order: the sources of the rules matching the file first, then those of the other active rules, each in declaration order, discovered sources last; within one source, file order. The first entry is the default selection; a user's pin (`clice/switchContext`) can choose another. Entries never disappear because a pattern does not name their file — the rules only decide priority.
+- **Edits.** The `remove` and `append` lists of every matching active rule, applied in declaration order — a rule's removes before its appends, a later `remove` reaching what an earlier rule appended. A header borrowing a host's command carries the edits of both files, each rule once, so it sees the same macros the host compiles with.
+- **Commands.** What a file compiles under: its entries, or — when it has none — the `default_command` of the first matching rule that declares one. A file with neither gets the builtin command, whose driver follows the language clang assigns to the extension (`clang++ -std=c++20` for every C++ spelling and for the ambiguous `.h`, `-x cuda --cuda-device-only` for CUDA, plain `clang` for the rest).
+- **Members.** The translation units of the build: files with entries, plus the sources on disk that a `default_command` rule's patterns claim (headers never count), enumerated from the directories the patterns name. The dependency scan runs every command of every member, so a header reachable through only one of a file's entries still finds that host. The background index admits a member unless a matching rule says `index = false`; that check sits at the index queue, so every path that enqueues work — startup, a database reload, a save — honours it.
 
-Beyond the compilation commands in the CDB itself, users can append or remove compilation options via `[[rules]]` in `clice.toml`. Each rule contains file matching patterns (globs) and lists of options to append or remove.
+### Hosting
 
-When looking up a file's compilation command, matching rules are applied on top of the CDB command -- removals and appends operate on the classified argument structure (not raw strings), and the result is memoized per configuration. This allows users to fine-tune compilation flags at the project level without modifying the build system's output.
+A header without a command of its own compiles as part of a translation unit that includes it. The hosting layer ranks the includers the build compiles: units whose entries come from the databases the header's own rules name first, then the unit sharing the header's stem, then one in its directory, then path proximity. The first with an include chain to the header is its default host — the same answer for the editor, the background index, a save-time rescan and `clice inspect`. A file the build does not compile (one on the builtin command) never hosts.
+
+### Resolution
+
+The final command of a file is composed from those layers in a fixed order: the user's selection for the file in the editor (a pinned entry or a pinned host and include occurrence), else the file's first entry, else — for a header — its default host's command, else the first matching rule's `default_command`, else the builtin; then the rule edits of the file (and of the host it borrows from), then a run's extras (a lint plan's clang-tidy arguments). Selections apply to editor compiles only; background compiles resolve without them and cache nothing, so the index and the CLI see the build's own answer.
+
+Patterns are compiled against absolute paths: a relative pattern is anchored at the configuration file's directory (`..` segments included), or at the workspace root for rules passed through `initializationOptions`; an absolute or `**`-led one matches as written. Rules carrying a `configuration` tag apply only while that tag is active; the distinct tags form the configuration menu and `default_configuration` selects the startup one. When any rule declares a source (a database or a `default_command`), discovery is off: the declaration is the whole intent, and a database sitting at the workspace root is not consulted. Only a configuration declaring no source at all falls back to searching the root and its immediate subdirectories, in name order.
+
+Configuration granularity is preserved throughout the pipeline: search-path extraction for dependency scanning is per effective command (different `-I` sets produce different search configs), while toolchain probing deduplicates further still, since user-content options do not affect probe results.
 
 ### Toolchain
 
@@ -160,7 +171,7 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
 - **How are files without a CDB entry handled?**
 
-  A default command is synthesized. Based on the file extension, either `clang` or `clang++ -std=c++20` is selected, and the resource dir is injected. This ensures basic semantic analysis remains available even when a file is not in the CDB. For header files, the system also attempts to find a source file that includes it via the dependency graph and uses that source file's compilation command as context (see [Compilation Context](compilation-context.md)).
+  A header first looks for a source file that includes it through the dependency graph and borrows that file's command (see [Compilation Context](compilation-context.md)). Otherwise the first matching rule with a `default_command` supplies the command — the way to describe a project whose files all share one set of flags, or a scratch directory. Only a file with neither — no database entry, no host, and no matching rule declaring a `default_command` — gets the builtin command: `clang` or `clang++ -std=c++20` by the file's language, with the resource dir injected, so basic semantic analysis remains available and a guidance note explains that the command was guessed.
 
 ## Known Limitations
 
@@ -169,6 +180,8 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 - **SearchConfig does not support all search path options.** `-cxx-isystem` (system directories effective only in C++ mode), `-iwithsysroot` (prepends sysroot to path), and HeaderMap support are not yet implemented. These options are uncommon in practice but may appear in specific Apple or cross-compilation toolchains.
 
 - **Global impact of configuration rules.** `[[rules]]` in `clice.toml` can append or remove options from compilation commands. If the user modifies a rule that affects all files (e.g., appending a global `-I`), all files' compilation configurations change, potentially triggering a full re-index. There is currently no mechanism to detect which rule changes actually affect which files.
+
+- **Configuration tags are static.** A tagged rule set builds the menu, but switching the active configuration at runtime and keeping one index per configuration are not implemented yet: the tag named by `default_configuration` is active for the whole session.
 
 - **MSVC-style option parsing.** On non-Windows systems, MSVC-style option prefixes (`/U`, `/D`, `/I`) must be handled specially to prevent Unix absolute paths (such as `/Users/...`) from being misparsed as MSVC options. This is currently resolved by dynamically adjusting option visibility based on the driver name, but edge cases may still exist.
 

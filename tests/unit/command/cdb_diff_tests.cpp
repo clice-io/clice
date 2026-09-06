@@ -47,7 +47,7 @@ TEST_CASE(AddedEntry) {
                    {tmp.root.str(), "a.cpp", {}},
                    {tmp.root.str(), "b.cpp", {}}
     });
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
 
     ASSERT_EQ(diff->added.size(), 1U);
     EXPECT_EQ(diff->added[0], id_of(cdb, tmp, "b.cpp"));
@@ -72,7 +72,7 @@ TEST_CASE(RemovedEntry) {
                {
                    {tmp.root.str(), "a.cpp", {}}
     });
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
 
     ASSERT_EQ(diff->removed.size(), 1U);
     EXPECT_EQ(diff->removed[0], id_of(cdb, tmp, "b.cpp"));
@@ -96,7 +96,7 @@ TEST_CASE(ChangedFlag) {
                {
                    {tmp.root.str(), "a.cpp", {"-DFOO=2"}}
     });
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
 
     ASSERT_EQ(diff->changed.size(), 1U);
     EXPECT_EQ(diff->changed[0], id_of(cdb, tmp, "a.cpp"));
@@ -117,13 +117,13 @@ TEST_CASE(IdenticalReload) {
     });
     cdb.load(cdb_path);
 
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
     EXPECT_TRUE(diff->empty());
 };
 
-TEST_CASE(ReorderNoDiff) {
-    // A file's entries are compared as a set, so shuffling the JSON must not
-    // register as a change — even when one file owns several entries.
+TEST_CASE(ReorderChangesSelection) {
+    // Moving whole files around the JSON changes nothing, but swapping one
+    // file's entries does: the first entry is its default selection.
     TempDir tmp;
     FileTable file_table;
     CompilationDatabase cdb{file_table};
@@ -143,9 +143,12 @@ TEST_CASE(ReorderNoDiff) {
                    {tmp.root.str(), "a.cpp", {"-DB=1"}},
                    {tmp.root.str(), "a.cpp", {"-DA=1"}}
     });
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
 
-    EXPECT_TRUE(diff->empty());
+    ASSERT_TRUE(diff.has_value());
+    EXPECT_TRUE(diff->added.empty());
+    EXPECT_TRUE(diff->removed.empty());
+    EXPECT_EQ(diff->changed, llvm::SmallVector<Fid>{file_table.intern(tmp.path("a.cpp"))});
 };
 
 TEST_CASE(CodegenChangeIgnored) {
@@ -168,7 +171,7 @@ TEST_CASE(CodegenChangeIgnored) {
                {
                    {tmp.root.str(), "a.cpp", {"-fno-omit-frame-pointer", "-flto"}}
     });
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
 
     EXPECT_TRUE(diff->empty());
 };
@@ -191,7 +194,7 @@ TEST_CASE(OptLevelIsSemantic) {
                {
                    {tmp.root.str(), "a.cpp", {"-O3"}}
     });
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
 
     ASSERT_EQ(diff->changed.size(), 1U);
     EXPECT_EQ(diff->changed[0], id_of(cdb, tmp, "a.cpp"));
@@ -218,7 +221,7 @@ TEST_CASE(MultiEntryOneChanged) {
                    {tmp.root.str(), "a.cpp", {"-DA=2"}},
                    {tmp.root.str(), "a.cpp", {"-DB=1"}}
     });
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
 
     ASSERT_EQ(diff->changed.size(), 1U);
     EXPECT_EQ(diff->changed[0], id_of(cdb, tmp, "a.cpp"));
@@ -238,7 +241,7 @@ TEST_CASE(FirstLoadAllAdded) {
                    {tmp.root.str(), "a.cpp", {}},
                    {tmp.root.str(), "b.cpp", {}}
     });
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
 
     ASSERT_EQ(diff->added.size(), 2U);
     EXPECT_TRUE(contains(diff->added, id_of(cdb, tmp, "a.cpp")));
@@ -263,7 +266,7 @@ TEST_CASE(CorruptKeepsEntries) {
     ASSERT_TRUE(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
 
     tmp.touch("compile_commands.json", "<<< corrupted compile_commands.json >>>");
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
 
     ASSERT_FALSE(diff.has_value());
     EXPECT_TRUE(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
@@ -290,7 +293,7 @@ TEST_CASE(MissingFileFails) {
     cdb.load(cdb_path);
     fs::remove_all(cdb_path);
 
-    auto diff = cdb.reload_and_diff(cdb_path);
+    auto diff = cdb.reload_and_diff(cdb.add_source(cdb_path));
 
     ASSERT_FALSE(diff.has_value());
     EXPECT_TRUE(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));

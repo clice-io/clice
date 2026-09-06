@@ -2095,6 +2095,221 @@ TEST_CASE(RemovedEntryKeepsIndex) {
     ASSERT_FALSE(f.pump.pending_reason(tu_id).has_value());
 }
 
+TEST_CASE(UndeclaredSourceRetires) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    tmp.touch("a/compile_commands.json", "[]");
+    tmp.touch("b/compile_commands.json",
+              std::format(R"([{{"directory": "{}", "file": "main.cpp", )"
+                          R"("arguments": ["clang++", "-c", "main.cpp"]}}])",
+                          json_escape(tmp.root)));
+    auto load_declared = [&](IndexerFixture& f, std::vector<std::string> databases) {
+        ConfigRule rule;
+        rule.compile_commands.assign(databases.begin(), databases.end());
+        f.workspace.config.rules = {std::move(rule)};
+        f.workspace.config.finalize(tmp.root);
+        for(auto source: f.workspace.build.declared_sources()) {
+            f.workspace.cdb.load(source);
+        }
+    };
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        load_declared(f, {"a", "b"});
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // The configuration stopped declaring the database that listed the
+    // file. Unlike a declared database that failed to load, a dropped
+    // declaration is the build's final word: the rows leave.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    load_declared(f, {"a"});
+    f.load();
+
+    auto tu_id = f.workspace.file_table.intern(src);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(tu_id));
+    ASSERT_FALSE(f.pump.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(SourceRelocationPersists) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    auto listing = std::format(R"([{{"directory": "{}", "file": "main.cpp", )"
+                               R"("arguments": ["clang++", "-c", "main.cpp"]}}])",
+                               json_escape(tmp.root));
+    auto load_declared = [&](IndexerFixture& f) {
+        ConfigRule rule;
+        rule.compile_commands.assign({"a", "b"});
+        f.workspace.config.rules = {std::move(rule)};
+        f.workspace.config.finalize(tmp.root);
+        for(auto source: f.workspace.build.declared_sources()) {
+            f.workspace.cdb.load(source);
+        }
+    };
+
+    {
+        tmp.touch("a/compile_commands.json", listing);
+        tmp.touch("b/compile_commands.json", "[]");
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        load_declared(f);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // The file moved to the other database with the same command: the
+    // provenance change alone reindexes, so the snapshot records the
+    // database that now vouches for the rows.
+    tmp.touch("a/compile_commands.json", "[]");
+    tmp.touch("b/compile_commands.json", listing);
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    load_declared(f);
+    f.load();
+
+    auto tu_id = f.workspace.file_table.intern(src);
+    ASSERT_TRUE(f.pump.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(DiscoveredRelocationRetires) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    tmp.touch("other.cpp", "int other() { return 2; }\n");
+    auto src = tmp.path("main.cpp");
+    auto listing = [&](llvm::StringRef file) {
+        return std::format(R"([{{"directory": "{}", "file": "{}", )"
+                           R"("arguments": ["clang++", "-c", "{}"]}}])",
+                           json_escape(tmp.root),
+                           file,
+                           file);
+    };
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.config.finalize(tmp.root);
+        tmp.touch("compile_commands.json", listing("main.cpp"));
+        f.workspace.cdb.load(tmp.path("compile_commands.json"));
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // Discovery found the database elsewhere this session and loaded it:
+    // rows only the vanished one vouched for retire, like a dropped
+    // declaration's.
+    llvm::sys::fs::remove(tmp.path("compile_commands.json"));
+    tmp.touch("build/compile_commands.json", listing("other.cpp"));
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.config.finalize(tmp.root);
+    f.workspace.cdb.load(tmp.path("build/compile_commands.json"));
+    f.load();
+
+    auto tu_id = f.workspace.file_table.intern(src);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(tu_id));
+}
+
+TEST_CASE(DefaultCommandKept) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    auto claim = [&](IndexerFixture& f) {
+        f.workspace.config.rules.push_back(
+            ConfigRule{.default_command = std::string("clang++ -c")});
+        f.workspace.config.finalize(tmp.root);
+    };
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        claim(f);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // The same default command claims the file again: its recorded
+    // identity matches and nothing is owed.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    claim(f);
+    f.load();
+
+    auto tu_id = f.workspace.file_table.intern(src);
+    ASSERT_TRUE(f.workspace.project_index.manifests.contains(tu_id));
+    ASSERT_FALSE(f.pump.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(UnclaimedDefaultRetires) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.config.rules.push_back(
+            ConfigRule{.default_command = std::string("clang++ -c")});
+        f.workspace.config.finalize(tmp.root);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // The rule whose default command claimed the file is gone and nothing
+    // else compiles it: the rows leave instead of being rebuilt under the
+    // builtin fallback, and no debt survives for a unit the build left.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.load();
+
+    auto tu_id = f.workspace.file_table.intern(src);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(tu_id));
+    ASSERT_FALSE(f.pump.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(ExcludedRuleDropsIndex) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // A rule added since keeps the unit out of the index: the rows built
+    // last session leave, and nothing re-enqueues them.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+    f.workspace.config.rules.push_back(ConfigRule{.patterns = {"**/*.cpp"}, .index = false});
+    f.workspace.config.finalize(tmp.root);
+    f.load();
+
+    auto tu_id = f.workspace.file_table.intern(src);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(tu_id));
+    ASSERT_FALSE(f.pump.pending_reason(tu_id).has_value());
+}
+
 TEST_CASE(RuleChangeReindexed) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
@@ -2221,6 +2436,48 @@ TEST_CASE(RecordedHostChangeDrops) {
     f.load();
 
     auto header_id = f.workspace.file_table.intern(header);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
+    ASSERT_TRUE(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+}
+
+TEST_CASE(ExcludedHostChangeDrops) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+    auto header = tmp.path("dep.h");
+    auto claim = [&](IndexerFixture& f, std::string command) {
+        f.workspace.config.rules.push_back(ConfigRule{.patterns = {"**/*.cpp"},
+                                                      .default_command = std::move(command),
+                                                      .index = false});
+        f.workspace.config.finalize(tmp.root);
+    };
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        claim(f, "clang++ -DFOO=1 -c");
+        auto indexed = index_file(tmp, header);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
+        f.save();
+    }
+
+    // The host compiles under a rule's default command and stays out of
+    // the index itself, so no entry of its own records that command: the
+    // header's snapshot must carry it for the offline change to be seen,
+    // even while the host still includes the header.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    claim(f, "clang++ -DFOO=2 -c");
+    auto src_id = f.workspace.file_table.intern(src);
+    auto header_id = f.workspace.file_table.intern(header);
+    f.workspace.dep_graph.set_includes(src_id, 0, {{header_id}});
+    f.workspace.dep_graph.build_reverse_map();
+    f.load();
+
     ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
     ASSERT_TRUE(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
@@ -3225,7 +3482,7 @@ TEST_CASE(ModuleLintScanParity) {
                   {tmp.root, tmp.path("m.cppm"), {}},
                   {tmp.root, tmp.path("n.cppm"), {}},
     }));
-    scan_dependency_graph(f.workspace.cdb, f.workspace.dep_graph);
+    scan_all(f.workspace.cdb, f.workspace.dep_graph);
     f.workspace.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);

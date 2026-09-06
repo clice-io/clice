@@ -3,6 +3,8 @@
 #include "test/test.h"
 #include "server/state/file_tracker.h"
 
+#include "llvm/Support/Process.h"
+
 namespace clice::testing {
 namespace {
 
@@ -111,6 +113,158 @@ TEST_CASE(CDBTickDeleteRecreate) {
     ASSERT_EQ(events.size(), 1u);
     auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
+}
+
+TEST_CASE(CDBTickRetriesFailedLoad) {
+    /// A declared database unreadable at startup loads on a later tick even
+    /// when its stamp is unchanged by then.
+    TempDir tmp;
+    tmp.touch("compile_commands.json", "[ ");
+    Workspace workspace;
+    SessionStore store;
+    auto id = workspace.cdb.add_source(tmp.path("compile_commands.json"));
+    ASSERT_FALSE(workspace.cdb.load_source(id).has_value());
+    llvm::sys::fs::file_status before;
+    ASSERT_FALSE(
+        static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+
+    tmp.touch("compile_commands.json", "[]");
+    int fd = 0;
+    ASSERT_FALSE(
+        static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("compile_commands.json"),
+                                                          fd,
+                                                          llvm::sys::fs::CD_OpenExisting)));
+    ASSERT_FALSE(static_cast<bool>(
+        llvm::sys::fs::setLastAccessAndModificationTime(fd,
+                                                        before.getLastAccessedTime(),
+                                                        before.getLastModificationTime())));
+    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    EXPECT_TRUE(workspace.cdb.loaded(id));
+}
+
+TEST_CASE(CDBTickRelocates) {
+    /// The discovered database is deleted and one appears elsewhere among
+    /// the searched locations: the old entries leave with it and the new
+    /// ones load through the usual settle path.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("other.cpp", R"(int other() {})");
+
+    Workspace workspace;
+    SessionStore store;
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+
+    fs::remove_all(tmp.path("compile_commands.json"));
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("other.cpp"), {}}
+    }));
+    auto events = tracker.tick_cdb(/*force=*/true);
+    auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
+    auto other_id = workspace.file_table.intern(tmp.path("other.cpp"));
+    ASSERT_EQ(events.size(), 2u);
+    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{other_id});
+    ASSERT_EQ(events[1].cdb.removed, llvm::SmallVector<Fid>{main_id});
+    EXPECT_TRUE(workspace.cdb.candidate_entries(main_id).empty());
+
+    /// The replaced database is no longer watched; the replacement is.
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("other.cpp"), {"-DV2"}}
+    }));
+    events = tracker.tick_cdb(/*force=*/true);
+    ASSERT_EQ(events.size(), 1u);
+    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{other_id});
+}
+
+TEST_CASE(CDBTickOriginalReturns) {
+    /// The discovered database vanishes, a replacement that does not parse
+    /// appears, then the original comes back: the replacement is dropped, so
+    /// repairing it later cannot unload the database discovery prefers.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("other.cpp", R"(int other() {})");
+    Workspace workspace;
+    SessionStore store;
+    auto original = build_cdb_json({
+        {tmp.root, tmp.path("main.cpp"), {}}
+    });
+    write_cdb(tmp, workspace.cdb, original);
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+
+    fs::remove_all(tmp.path("compile_commands.json"));
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    tmp.touch("build/compile_commands.json", "not a database");
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+
+    tmp.touch("compile_commands.json", original);
+    tracker.tick_cdb(/*force=*/true);
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("other.cpp"), {}}
+    }));
+    auto events = tracker.tick_cdb(/*force=*/true);
+    auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
+    auto other_id = workspace.file_table.intern(tmp.path("other.cpp"));
+    EXPECT_TRUE(events.empty());
+    EXPECT_FALSE(workspace.cdb.candidate_entries(main_id).empty());
+    EXPECT_TRUE(workspace.cdb.candidate_entries(other_id).empty());
+}
+
+TEST_CASE(CDBTickRelocatesTwice) {
+    /// A replacement that never loads (malformed) vanishes before the next
+    /// one appears: the first database's entries still leave once a
+    /// replacement finally loads, and the phantom stops being watched.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("other.cpp", R"(int other() {})");
+
+    Workspace workspace;
+    SessionStore store;
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
+    auto other_id = workspace.file_table.intern(tmp.path("other.cpp"));
+
+    fs::remove_all(tmp.path("compile_commands.json"));
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    tmp.touch("build/compile_commands.json", "not a database");
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    fs::remove_all(tmp.path("build/compile_commands.json"));
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+
+    tmp.touch("out/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("other.cpp"), {}}
+    }));
+    auto events = tracker.tick_cdb(/*force=*/true);
+    ASSERT_EQ(events.size(), 2u);
+    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{other_id});
+    ASSERT_EQ(events[1].cdb.removed, llvm::SmallVector<Fid>{main_id});
+    EXPECT_TRUE(workspace.cdb.candidate_entries(main_id).empty());
+
+    /// The phantom is no longer watched: its late arrival changes nothing.
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    EXPECT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    EXPECT_TRUE(workspace.cdb.candidate_entries(main_id).empty());
 }
 
 TEST_CASE(WorkspaceTickStateMachine) {

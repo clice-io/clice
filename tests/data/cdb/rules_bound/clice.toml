@@ -1,0 +1,10 @@
+[[rules]]
+patterns = ["lib/**"]
+compile_commands = ["lib/cmake"]
+
+[[rules]]
+patterns = ["**/*.hxx"]
+append = ["-x", "c++-header"]
+
+[[rules]]
+compile_commands = ["cmake"]

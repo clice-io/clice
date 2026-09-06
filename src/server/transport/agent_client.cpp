@@ -134,12 +134,12 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         ProjectFilesResult result;
         llvm::DenseSet<Fid> seen;
 
-        for(auto& entry: ws.cdb.entries()) {
-            auto file_path = ws.file_table.resolve(entry.file);
+        for(auto member: ws.build.members()) {
+            auto file_path = ws.file_table.resolve(member);
             if(file_path.empty())
                 continue;
 
-            auto path_id = entry.file;
+            auto path_id = member;
             if(!seen.insert(path_id).second)
                 continue;
 

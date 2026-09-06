@@ -22,7 +22,7 @@ clice 实现了 [语言服务器协议](https://microsoft.github.io/language-ser
 
 为了让 clice 正确理解你的代码（例如找到头文件的位置），你需要提供 `compile_commands.json` 文件，也称为 [编译数据库](https://clang.llvm.org/docs/JSONCompilationDatabase.html)。编译数据库为每个源文件提供编译选项。
 
-默认情况下，clice 会在工作区根目录及其每个一级子目录（例如 `build/`）中查找 `compile_commands.json`，并使用找到的第一个文件。你可以通过 [clice.toml](./configuration.md) 中的 `compile_commands_paths` 选项指定确切路径。
+默认情况下，clice 会在工作区根目录及其每个一级子目录（例如 `build/`）中查找 `compile_commands.json`。你可以在 [clice.toml](./configuration.md) 中用 `compile_commands` 选项显式列出这些数据库，再用规则的 `default_command` 描述没有数据库条目的文件。
 
 ### CMake
 

@@ -131,6 +131,38 @@ test("cdb appears after startup", async ({ session }) => {
     ).toBe(true);
 });
 
+test("cdb relocates to another directory", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", GATED_MAIN);
+    workspace.writeCDB(["main.cpp"], {
+        extraArgs: ["-DFEATURE"],
+        at: "build/compile_commands.json",
+    });
+    await client.initialize(workspace);
+
+    const mainUri = workspace.uri("main.cpp");
+    await client.openAndWait("main.cpp");
+    client.assertNoErrors(mainUri, "the database under build/ defines FEATURE");
+
+    // The build directory is wiped and regenerated elsewhere: the old
+    // entries leave with their database and the new ones take over.
+    workspace.rm("build/compile_commands.json");
+    expect(await eventsOf(client, "cdb", { force: false })).toBe(0);
+    expect(await eventsOf(client, "cdb", { force: false })).toBe(0);
+    workspace.writeCDB(["main.cpp"], {
+        extraArgs: ["-DFEATURE", "-DMOVED"],
+        at: "out/compile_commands.json",
+    });
+    // The replacement settles for two ticks before it loads; the old
+    // entries keep serving meanwhile.
+    expect(await eventsOf(client, "cdb", { force: false })).toBe(0);
+    expect(await eventsOf(client, "cdb", { force: false })).toBeGreaterThan(0);
+    await client.waitForRecompile(mainUri);
+    client.assertNoErrors(mainUri, "the relocated database still defines FEATURE");
+    const contexts = await client.queryContext(mainUri);
+    expect(contexts.total, "only the relocated database's entry remains").toBe(1);
+});
+
 test("checkout updates workspace", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("header.h", HEADER_V1);

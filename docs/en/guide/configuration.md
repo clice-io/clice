@@ -10,6 +10,8 @@ Configuration is read once at server startup. Changing it — either file — re
 
 A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it.
 
+Relative paths and patterns in the file resolve against the directory of the configuration file itself; values passed through `initializationOptions` resolve against the workspace root.
+
 ## Variable Substitution
 
 The following variable is supported in string values:
@@ -17,6 +19,24 @@ The following variable is supported in string values:
 | Variable       | Description                                    |
 | -------------- | ---------------------------------------------- |
 | `${workspace}` | The workspace directory provided by the client |
+
+## Workspace
+
+Top-level options, written before any section.
+
+<!-- BEGIN GENERATED CONFIG: root -->
+
+<div class="config-option">
+
+| Option                  | Type     | Default |
+| ----------------------- | -------- | ------- |
+| `default_configuration` | `string` | `""`    |
+
+The build configuration active at startup, one of the tags declared on rules. When rules carry tags and this names none of them, the first declared tag is used and a warning is logged.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
 
 ## `[project]`
 
@@ -39,16 +59,6 @@ Directory for the unified on-disk cache (PCH, PCM and index artifacts). Empty de
 | `logging_dir` | `string` | `""`    |
 
 Directory for log files; empty derives `${cache_dir}/logs`. Each server session logs into its own timestamped subdirectory.
-
-</div>
-
-<div class="config-option">
-
-| Option                   | Type              | Default |
-| ------------------------ | ----------------- | ------- |
-| `compile_commands_paths` | `array of string` | `[]`    |
-
-Paths searched for compile_commands.json — file paths, or directories to look inside. When these all miss — or the list is empty — the workspace root and then each of its immediate subdirectories are searched.
 
 </div>
 
@@ -338,7 +348,7 @@ Maximum number of completion items (not yet implemented).
 
 ## `[[rules]]`
 
-`[[rules]]` is an array of rule objects. Rules are matched in declaration order — later rules override earlier ones.
+A rule names files by pattern and says where they take their compile commands from and how those commands are edited. Every rule matching a file applies, in declaration order: an earlier rule's databases rank first among the file's candidates, the first matching rule with a `default_command` supplies the command of a file without an entry, `append` and `remove` accumulate with a later `remove` cancelling an earlier `append`, and `index = false` on any matching rule keeps the file out of the index. A rule carrying a `configuration` tag applies only while that configuration is active; the distinct tags form the configuration menu.
 
 <!-- BEGIN GENERATED CONFIG: rules -->
 
@@ -348,7 +358,37 @@ Maximum number of completion items (not yet implemented).
 | ---------- | ----------------- | ------- |
 | `patterns` | `array of string` | `[]`    |
 
-Glob patterns selecting the files this rule applies to: `*` matches within a path segment (a pattern of just `*` matches any path), `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range.
+Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the workspace root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
+
+</div>
+
+<div class="config-option">
+
+| Option          | Type     | Default |
+| --------------- | -------- | ------- |
+| `configuration` | `string` | `""`    |
+
+Build configuration tag. A tagged rule applies only while that configuration is active; an untagged rule always applies. The distinct tags form the configuration menu, and `default_configuration` names the one active at startup.
+
+</div>
+
+<div class="config-option">
+
+| Option             | Type              | Default |
+| ------------------ | ----------------- | ------- |
+| `compile_commands` | `array of string` | `[]`    |
+
+Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the workspace root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, the workspace root and its immediate subdirectories are searched for one.
+
+</div>
+
+<div class="config-option">
+
+| Option            | Type                          | Default |
+| ----------------- | ----------------------------- | ------- |
+| `default_command` | `string` or `array of string` | `""`    |
+
+The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the workspace root for a rule passed through initializationOptions), and the matching source files on disk join the background index — enumerated at startup, so a file created later compiles when opened and joins the index at the next start. Omitted means none.
 
 </div>
 
@@ -372,19 +412,46 @@ Compilation flags removed for matching files, e.g. `["-Wall"]`.
 
 </div>
 
+<div class="config-option">
+
+| Option  | Type   | Default |
+| ------- | ------ | ------- |
+| `index` | `bool` | `true`  |
+
+Whether matching translation units join the background index. `false` keeps them out; they still compile when opened and still host the headers they include. Any matching rule saying `false` wins.
+
+</div>
+
 <!-- END GENERATED CONFIG -->
 
 ## Example
 
 ```toml
-[project]
-compile_commands_paths = ["${workspace}/build", "${workspace}/cmake-build-debug"]
-
 [[rules]]
-patterns = ["**/*"]
+compile_commands = ["build"]
 append = ["-std=c++23"]
 
 [[rules]]
-patterns = ["**/test/**"]
+patterns = ["test/**"]
 append = ["-DTEST_MODE"]
+```
+
+Two build directories as switchable configurations, and a project without a compilation database:
+
+```toml
+default_configuration = "debug"
+
+[[rules]]
+configuration = "debug"
+compile_commands = ["build/debug"]
+
+[[rules]]
+configuration = "release"
+compile_commands = ["build/release"]
+```
+
+```toml
+[[rules]]
+patterns = ["src/**", "include/**"]
+default_command = "arm-none-eabi-gcc -std=c23 -mcpu=cortex-m4 -Iinclude"
 ```

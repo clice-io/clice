@@ -8,6 +8,7 @@
 #include "command/search_config.h"
 #include "index/serialization.h"
 #include "sched/context.h"
+#include "sched/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
@@ -50,36 +51,6 @@ std::uint32_t Workspace::count_occurrences(Fid host_id, Fid target_id) const {
                                      null_resolver);
 }
 
-llvm::SmallVector<Fid> Workspace::rank_hosts(Fid header_path_id, llvm::ArrayRef<Fid> hosts) const {
-    auto header_path = file_table.resolve(header_path_id);
-    auto header_stem = llvm::sys::path::stem(header_path);
-    auto header_dir = llvm::sys::path::parent_path(header_path);
-
-    auto score = [&](Fid host_id) -> std::tuple<int, int, std::size_t> {
-        auto host_path = file_table.resolve(host_id);
-        int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
-        int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
-        // Longer shared prefix means "closer" in the tree; negate for
-        // ascending sort.
-        std::size_t common = 0;
-        auto n = std::min(host_path.size(), header_path.size());
-        while(common < n && host_path[common] == header_path[common]) {
-            ++common;
-        }
-        return {stem_match, same_dir, n - common};
-    };
-
-    llvm::SmallVector<Fid> ranked(hosts.begin(), hosts.end());
-    std::ranges::sort(ranked, [&](Fid a, Fid b) {
-        auto sa = score(a), sb = score(b);
-        if(sa != sb) {
-            return sa < sb;
-        }
-        return file_table.resolve(a) < file_table.resolve(b);
-    });
-    return ranked;
-}
-
 void Workspace::rescan_after_save(Fid path_id) {
     auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
@@ -94,50 +65,37 @@ void Workspace::rescan_after_save(Fid path_id) {
         const auto& scan =
             file_table.scan_of(path_id, observed->obs.hash, observed->content->getBuffer());
 
-        // Search paths come from the file's own command, or a host's for
-        // headers without a CDB entry; the synthesized default still
-        // resolves quote includes via the includer directory.
+        // Search paths come from the file's effective commands, or a host's
+        // for headers without one (the header's own edits on top, as its
+        // compile applies them); the builtin fallback still resolves quote
+        // includes via the includer directory. Every command contributes
+        // its own edges, as the startup scan does.
+        Fid cmd_file = path_id;
         llvm::StringRef cmd_path = path;
-        if(!cdb.has_entry(path)) {
-            for(auto host: rank_hosts(path_id, dep_graph.find_host_sources(path_id))) {
-                auto host_path = file_table.resolve(host);
-                if(cdb.has_entry(host_path)) {
-                    cmd_path = host_path;
-                    break;
-                }
+        if(!build.unit(path_id)) {
+            if(auto host = default_host(*this, path_id)) {
+                cmd_file = host->file;
+                cmd_path = file_table.resolve(host->file);
             }
         }
 
-        std::vector<std::string> rule_append, rule_remove;
-        config.match_rules(cmd_path, rule_append, rule_remove);
-        auto candidates = cdb.candidate_entries(cmd_path);
-        llvm::SmallVector<CommandRef> refs;
-        for(auto& entry: candidates) {
-            auto applied =
-                cdb.apply_rules(entry.config, {.remove = rule_remove, .append = rule_append});
+        llvm::SmallVector<CommandRef, 2> refs;
+        for(auto& command: build.commands(cmd_file)) {
             refs.push_back(
-                {entry.file, applied, cdb.input_kind(applied, cmd_path), CommandSource::CDBExact});
+                build.resolve(path_id, command.config, command.source, {cmd_path, path}, cmd_path));
         }
         if(refs.empty()) {
-            auto fallback = cdb.fallback_config(cmd_path);
-            auto applied =
-                cdb.apply_rules(fallback, {.remove = rule_remove, .append = rule_append});
             refs.push_back(
-                {path_id, applied, cdb.input_kind(applied, cmd_path), CommandSource::Fallback});
+                build.resolve(path_id, build.builtin(path), CommandSource::Fallback, path, path));
         }
 
-        // Resolve under every configuration: an include may only be
-        // reachable through the -I set of a non-first CDB entry. The local
-        // index serves as config id — prior keys were just cleared and
-        // consumers read the union.
         DirListingCache dir_cache;
         dir_cache.shared = &file_table;
         auto dir = llvm::sys::path::parent_path(path);
-        for(std::uint32_t ci = 0; ci < refs.size(); ++ci) {
-            auto search_config = cdb.search_config(refs[ci]);
+        auto entries = resolve_dir(dir, dir_cache);
+        for(auto [index, ref]: llvm::enumerate(refs)) {
+            auto search_config = cdb.search_config(ref);
             auto resolved_config = resolve_search_config(search_config, dir_cache);
-            auto entries = resolve_dir(dir, dir_cache);
-
             llvm::SmallVector<IncludeEdge> edges;
             for(auto& include: scan.includes) {
                 auto resolved = resolve_include(include.path,
@@ -152,7 +110,7 @@ void Workspace::rescan_after_save(Fid path_id) {
                     edges.push_back({file_table.intern(resolved->path), include.conditional});
                 }
             }
-            dep_graph.set_includes(path_id, ci, std::move(edges));
+            dep_graph.set_includes(path_id, static_cast<std::uint32_t>(index), std::move(edges));
         }
 
         dep_graph.build_reverse_map();
@@ -168,7 +126,9 @@ void Workspace::rescan_after_save(Fid path_id) {
         // with the same scan_module_decl() fallback the startup scan uses,
         // or this save would drop a guarded interface from both provider
         // maps and leave its importers unresolved until a reload.
-        if(scan.need_preprocess && !refs.empty()) {
+        if(scan.need_preprocess) {
+            // Under the default selection, as the startup scan preprocesses
+            // each unit under its own first command.
             auto& ref = refs.front();
             auto rendered = cdb.render(ref);
             llvm::SmallString<512> joined;
@@ -218,20 +178,7 @@ void Workspace::on_file_closed(Fid path_id) {
     enforce_loaded_budget();
 }
 
-std::string discover_compile_commands(const Config& config, llvm::StringRef workspace_root) {
-    for(auto& configured: config.project.compile_commands_paths) {
-        if(llvm::sys::fs::is_directory(configured)) {
-            auto candidate = path::join(configured, "compile_commands.json");
-            if(llvm::sys::fs::exists(candidate)) {
-                return candidate;
-            }
-        } else if(llvm::sys::fs::exists(configured)) {
-            return configured;
-        } else {
-            LOG_DEBUG("Configured compile_commands_path not found: {}", configured);
-        }
-    }
-
+std::string discover_compile_commands(llvm::StringRef workspace_root) {
     if(workspace_root.empty()) {
         return {};
     }
@@ -248,13 +195,20 @@ std::string discover_compile_commands(const Config& config, llvm::StringRef work
         return found;
     }
 
+    // Name order, so build/ and out/ side by side pick the same database on
+    // every start rather than whichever the directory listing yields first.
+    llvm::SmallVector<std::string> subdirectories;
     std::error_code ec;
     for(llvm::sys::fs::directory_iterator it(workspace_root, ec), end; it != end && !ec;
         it.increment(ec)) {
         if(it->type() == llvm::sys::fs::file_type::directory_file) {
-            if(auto found = try_candidate(it->path()); !found.empty()) {
-                return found;
-            }
+            subdirectories.push_back(it->path());
+        }
+    }
+    std::ranges::sort(subdirectories);
+    for(auto& subdirectory: subdirectories) {
+        if(auto found = try_candidate(subdirectory); !found.empty()) {
+            return found;
         }
     }
     return {};

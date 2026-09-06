@@ -141,11 +141,11 @@ enum class CommandSource : std::uint8_t {
     /// Header compiled in the context of a host source found through the
     /// include graph (automatic or via clice/switchContext).
     IncludeGraph,
-    /// Reserved for command transfer heuristics (e.g. nearest CDB entry);
-    /// no producer yet.
-    Inferred,
     /// Synthesized default command — no CDB entry and no usable host source.
     Fallback,
+    /// A rule's default_command: declared by the user for files without an
+    /// entry, so no guidance note.
+    Default,
 };
 
 /// A resolved command selection for one file: the final (rules-applied)
@@ -158,12 +158,25 @@ struct CommandRef {
     CommandSource source = CommandSource::Fallback;
 };
 
+/// One rule's edit of a command: flags to remove from it, or flags to
+/// append to it.
+struct CommandEdit {
+    enum class Kind : std::uint8_t {
+        Remove,
+        Append,
+    };
+
+    Kind kind;
+    std::vector<std::string> flags;
+};
+
 /// Config-rule edits applied on top of a base config (structured, no
-/// re-parse). Applied as remove first, then append; appends insert before
-/// the input slot so they always take effect for the compile.
+/// re-parse), in the order the rules declare them: a remove cancels the
+/// matching options of the base command and of the appends before it;
+/// appends insert before the input slot so they always take effect for
+/// the compile.
 struct CommandOptions {
-    llvm::ArrayRef<std::string> remove;
-    llvm::ArrayRef<std::string> append;
+    llvm::ArrayRef<CommandEdit> edits;
 
     /// Per-run additions in the resolved command's own dialect (a lint
     /// plan's clang-tool extra args). Unlike the config rule lists above
@@ -175,7 +188,7 @@ struct CommandOptions {
     llvm::ArrayRef<std::string> extra_append;
 
     bool empty() const {
-        return remove.empty() && append.empty() && extra_prepend.empty() && extra_append.empty();
+        return edits.empty() && extra_prepend.empty() && extra_append.empty();
     }
 };
 
@@ -185,17 +198,23 @@ struct RenderOptions {
     const char* preamble = nullptr;
 };
 
-/// A single entry in the compilation database.
+/// A loaded compilation database file. Ids are stable for the database's
+/// lifetime; a source reloads or unloads in place.
+enum class SourceID : std::uint32_t {};
+
+/// A single entry of one source.
 struct CompilationEntry {
     /// Fid of the source file (shared FileTable).
     Fid file;
 
     ConfigID config = invalid_config;
 
-    /// Wrapper prefix stripped at load (ccache, distcc, ...): display
-    /// provenance and the last tie-break of candidate ordering. Not part of
-    /// config identity.
-    llvm::ArrayRef<const char*> wrapper;
+    SourceID source;
+
+    /// Position of the entry in its source file. Generators emit a file's
+    /// entries in configuration order, so this is the default-selection
+    /// order within one source.
+    std::uint32_t ordinal = 0;
 };
 
 /// Render one structured argument back into argv fragments. Unknown args
@@ -221,7 +240,8 @@ struct CDBDiff {
     /// Files present only before the reload (lost all their entries).
     llvm::SmallVector<Fid> removed;
 
-    /// Files present on both sides whose set of command hashes differs.
+    /// Files present on both sides whose sequence of command hashes differs
+    /// — a reorder counts, since the first entry is the default selection.
     llvm::SmallVector<Fid> changed;
 
     bool empty() const {
@@ -248,21 +268,43 @@ public:
         return file_table;
     }
 
-    /// Load (or reload) the compilation database from the given file.
-    /// On success old entries are replaced, but the pools and configs
-    /// survive (path ids stay stable across reloads).
+    /// Register a database file, or look up its id when already known;
+    /// `path` may name a directory holding compile_commands.json. Nothing
+    /// is read until load_source().
+    SourceID add_source(llvm::StringRef path);
+
+    std::optional<SourceID> find_source(llvm::StringRef path) const;
+
+    llvm::StringRef source_path(SourceID id) const;
+
+    std::size_t source_count() const {
+        return source_files.size();
+    }
+
+    /// Load (or reload) one source from its file, returning its entry
+    /// count. On success the source's old entries are replaced; the pools
+    /// and configs survive (path ids stay stable across reloads).
     ///
     /// Parsing is atomic at the top level: if the file cannot be read, is
     /// not valid JSON, or has a root that is not an array, the previously
     /// loaded entries are kept and nullopt is returned. Individual
     /// malformed entries are still skipped — which means a file truncated
     /// mid-array loads as a partial set; the poll-side settle debounce is
-    /// what guards against reading half-written files. On success returns
-    /// the number of entries loaded.
+    /// what guards against reading half-written files.
+    std::optional<std::size_t> load_source(SourceID id);
+
+    /// Drop a source's entries (the source stays registered): the per-file
+    /// delta, like a reload's.
+    CDBDiff unload_source(SourceID id);
+
+    /// Whether the source's last load succeeded, so its entries are current.
+    bool loaded(SourceID id) const;
+
+    /// Register and load `path` in one step; the entry count on success.
     std::optional<std::size_t> load(llvm::StringRef path);
 
-    /// Reload the database from `path` and report the per-file delta against
-    /// the previously loaded entries.
+    /// Reload one source and report the per-file delta of the whole
+    /// database against its state before the reload.
     ///
     /// Entry identity is the entry hash (Frontend profile + directory), the
     /// same identity the rest of the system uses to pin a CDB entry (e.g.
@@ -271,19 +313,20 @@ public:
     /// deliberate. (Optimization level -O* is semantic, not codegen-only: it
     /// defines __OPTIMIZE__, so changing it does count.)
     ///
-    /// If `path` cannot be read or does not hold a JSON array, load() keeps
-    /// the old entries and nullopt is returned — the caller must retry
+    /// If the file cannot be read or does not hold a JSON array, the old
+    /// entries are kept and nullopt is returned — the caller must retry
     /// rather than treat the failure as "no change".
-    std::optional<CDBDiff> reload_and_diff(llvm::StringRef path);
+    std::optional<CDBDiff> reload_and_diff(SourceID id);
 
-    /// All entries for a file, in deterministic candidate order (the first
-    /// is the default selection). Empty when the file has none.
+    /// All entries for a file across every source, in (source, ordinal)
+    /// order — raw storage order; the build view decides the candidate
+    /// order. Empty when the file has none.
     llvm::ArrayRef<CompilationEntry> candidate_entries(Fid path_id) const;
     llvm::ArrayRef<CompilationEntry> candidate_entries(llvm::StringRef file);
 
     bool has_entry(llvm::StringRef file);
 
-    /// All entries, sorted by (file, candidate order).
+    /// All entries, sorted by (file, source, ordinal).
     llvm::ArrayRef<CompilationEntry> entries() const {
         return entry_list;
     }
@@ -298,8 +341,14 @@ public:
     /// (config, rule set).
     ConfigID apply_rules(ConfigID id, const CommandOptions& options);
 
-    /// The synthesized default command for a file without a CDB entry.
-    ConfigID fallback_config(llvm::StringRef file);
+    /// A command written by hand (a rule's default command, the builtin
+    /// fallback): normalized once through the entry pipeline with the
+    /// input slot synthesized at the end, memoized per (directory,
+    /// spelling). `directory` is its working directory. Nullopt (logged
+    /// once) when the spelling is not a compile command — blank, or a
+    /// launcher with nothing to launch.
+    std::optional<ConfigID> intern_command(llvm::StringRef directory,
+                                           llvm::ArrayRef<const char*> arguments);
 
     /// Derive the language of `file` compiled under `id`: walk the
     /// language-selector state machine (-x applies to inputs after it,
@@ -320,16 +369,12 @@ public:
     /// entry_hash formatted as the persistent/protocol form (16 hex chars).
     std::string entry_hash_hex(ConfigID id);
 
-    /// Map each file's path_id to the sorted entry hashes of its entries (a
-    /// file may own several entries with different flags) — the identity
-    /// reload_and_diff() diffs on and the indexer persists to catch command
-    /// changes across sessions.
+    /// Map each file's path_id to the entry hashes of its entries in storage
+    /// order (a file may own several entries with different flags; the
+    /// first is its default selection) — the identity reload_and_diff()
+    /// diffs on and the indexer persists to catch command changes across
+    /// sessions.
     llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>> command_hash_snapshot();
-
-    /// The entry hash of a file's default selection (its first candidate);
-    /// nullopt when the file has no entry. Persisted so an offline change
-    /// of the winning candidate is detected at startup.
-    std::optional<std::string> selected_hash(Fid path_id);
 
     /// Render the full compile argv for a ref: resolve the config through
     /// the toolchain (probe cached; may spawn the driver once per unique
@@ -361,8 +406,7 @@ public:
 
 #ifdef CLICE_ENABLE_TEST
 
-    /// Append one command and return its entry (candidate order among a
-    /// file's accumulated entries is content-based, not insertion-based);
+    /// Append one command to the test source and return its entry;
     /// nullopt when normalization fails.
     std::optional<CompilationEntry> add_command(llvm::StringRef directory,
                                                 llvm::StringRef file,
@@ -377,23 +421,16 @@ public:
 private:
     friend class Toolchain;
 
-    struct NormalizeResult {
-        ConfigID config = invalid_config;
-        llvm::ArrayRef<const char*> wrapper;
-    };
-
     /// The normalization pipeline (§ wrapper strip → driver info → @rsp
     /// expansion → nvcc translation → parse → classify → path normalize →
     /// dedup). `file` is the entry's normalized path used to pick the input
     /// slot among the command's inputs; invalid synthesizes the slot at the
     /// end.
-    std::optional<NormalizeResult> normalize(llvm::StringRef directory,
-                                             Fid file,
-                                             llvm::ArrayRef<const char*> arguments);
+    std::optional<ConfigID> normalize(llvm::StringRef directory,
+                                      Fid file,
+                                      llvm::ArrayRef<const char*> arguments);
 
-    std::optional<NormalizeResult> normalize(llvm::StringRef directory,
-                                             Fid file,
-                                             llvm::StringRef command);
+    std::optional<ConfigID> normalize(llvm::StringRef directory, Fid file, llvm::StringRef command);
 
     /// Expand @file tokens in place, driver-mode aware (CL commands
     /// tokenize with Windows rules).
@@ -410,10 +447,12 @@ private:
     /// Append the Frontend-view fragments of `id` (the hash input) to out.
     void render_identity(ConfigID id, std::string& out);
 
-    /// Stable candidate order within one file: entry hash first, then the
-    /// full render + wrapper bytes for hash-equal entries. Content-based —
-    /// generator reordering must not change the default selection.
-    void sort_entries(std::vector<CompilationEntry>& list);
+    /// Rebuild entry_list from every source's entries, sorted by (file,
+    /// source, ordinal).
+    void rebuild_entry_list();
+
+    std::optional<CompilationEntry> append_test_command(llvm::StringRef file,
+                                                        std::optional<ConfigID> normalized);
 
     std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();
 
@@ -426,7 +465,17 @@ private:
     /// driver in multi-CDB tools — nested databases share one id space).
     FileTable& file_table;
 
-    /// All compilation entries, sorted by (file, candidate order).
+    /// Registered sources: canonical file path and the entries its last
+    /// successful load produced (in file order).
+    struct Source {
+        std::string path;
+        std::vector<CompilationEntry> entries;
+        bool loaded = false;
+    };
+
+    std::vector<Source> source_files;
+
+    /// Every source's entries, sorted by (file, source, ordinal).
     std::vector<CompilationEntry> entry_list;
 
     std::string workspace_root;
@@ -435,7 +484,7 @@ private:
     llvm::DenseMap<std::uint32_t, std::uint64_t> entry_hashes;
     llvm::StringMap<std::uint32_t> rule_set_ids;
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> rule_applied;
-    llvm::StringMap<ConfigID> fallback_configs;
+    llvm::StringMap<ConfigID> interned_commands;
     llvm::DenseMap<std::uint32_t, SearchConfig> search_configs;
 
     std::unique_ptr<Toolchain> chain;

@@ -405,11 +405,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 workspace.dep_graph = DependencyGraph();
                 scan_dependency_graph(workspace.cdb,
                                       workspace.dep_graph,
-                                      [this](llvm::StringRef path,
-                                             std::vector<std::string>& append,
-                                             std::vector<std::string>& remove) {
-                                          workspace.config.match_rules(path, append, remove);
-                                      });
+                                      workspace.build.units(workspace.build.members()));
                 workspace.dep_graph.build_reverse_map();
                 workspace.context_epoch += 1;
 
@@ -438,14 +434,16 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // see, whether it appeared, changed or vanished. PCH/PCM
                 // keys embed the canonical flags, so pull-side caches miss
                 // naturally.
-                auto invalidate_entry = [&](Fid path_id, bool keep_index) {
+                auto invalidate_entry = [&](Fid path_id, bool retired) {
                     if(store.find(path_id)) {
                         // The next compile re-resolves the command (added:
                         // first real entry replaces the guessed one;
                         // changed: new flags; removed: fall back).
                         dirty.mark_ast_dirty.push_back(path_id);
                     }
-                    if(!keep_index) {
+                    if(retired) {
+                        dirty.add_retire(path_id);
+                    } else {
                         // The index was built under the old command, and
                         // the indexer's freshness gate validates content
                         // only: drop the TU's index so the queued reindex
@@ -493,22 +491,24 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 };
 
                 for(auto path_id: delta.added) {
-                    invalidate_entry(path_id, /*keep_index=*/false);
+                    invalidate_entry(path_id, /*retired=*/false);
                 }
                 for(auto path_id: delta.changed) {
-                    invalidate_entry(path_id, /*keep_index=*/false);
+                    invalidate_entry(path_id, /*retired=*/false);
                 }
                 for(auto path_id: delta.removed) {
-                    // A removed entry keeps its index: the last-known
-                    // content still serves navigation, same conservative
-                    // semantics as DiskRemoved. The graph rebuild above
-                    // already dropped the file's source role, and the
-                    // orphan recheck cleans choices through it. Import
-                    // bookkeeping stays: the file may live on as an
-                    // included header (the rebuild re-marked it), and a
-                    // truly retired entry is fenced by the reindexable
-                    // gate in dirty_unresolved_importer.
-                    invalidate_entry(path_id, /*keep_index=*/true);
+                    // The database that owned the entry reloaded fine and
+                    // no longer lists the file: the build stopped
+                    // compiling it, so its rows leave the index — unless a
+                    // rule's default command still claims it, which makes
+                    // this a command change. (A database that vanishes
+                    // keeps serving its entries — the tracker never
+                    // reloads a missing file — so this is not the
+                    // DiskRemoved case.) The graph rebuild above already
+                    // dropped a retired file's source role, and the
+                    // orphan recheck cleans choices through it.
+                    invalidate_entry(path_id,
+                                     /*retired=*/workspace.build.commands(path_id).empty());
                 }
 
                 dirty.recheck_contexts = true;

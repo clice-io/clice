@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cassert>
+#include <deque>
 #include <format>
 #include <ranges>
 #include <string_view>
+#include <tuple>
 
 #include "simdjson.h"
 #include "command/nvcc.h"
@@ -252,15 +254,12 @@ ConfigID CompilationDatabase::save_config(CompileConfig config, llvm::ArrayRef<A
     return ConfigID(id);
 }
 
-std::optional<CompilationDatabase::NormalizeResult>
-    CompilationDatabase::normalize(llvm::StringRef directory,
-                                   Fid file,
-                                   llvm::ArrayRef<const char*> arguments) {
+std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory,
+                                                       Fid file,
+                                                       llvm::ArrayRef<const char*> arguments) {
     if(arguments.empty()) {
         return std::nullopt;
     }
-
-    NormalizeResult result;
 
     /// Wrapper stripping: the prefix is entry provenance, not config
     /// identity — `ccache clang++ X` and `clang++ X` dedupe to one config.
@@ -270,11 +269,6 @@ std::optional<CompilationDatabase::NormalizeResult>
             LOG_WARN("Compiler launcher without a compiler: {}", print_argv(arguments));
             return std::nullopt;
         }
-        llvm::SmallVector<const char*, 4> wrapper;
-        for(const char* token: arguments.take_front(wrapper_len)) {
-            wrapper.push_back(strings.save(token).data());
-        }
-        result.wrapper = persist_strings(wrapper);
         arguments = arguments.drop_front(wrapper_len);
     }
 
@@ -505,12 +499,12 @@ std::optional<CompilationDatabase::NormalizeResult>
                               .values = local.values});
     }
 
-    result.config = save_config(config, local_args);
-    return result;
+    return save_config(config, local_args);
 }
 
-std::optional<CompilationDatabase::NormalizeResult>
-    CompilationDatabase::normalize(llvm::StringRef directory, Fid file, llvm::StringRef command) {
+std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory,
+                                                       Fid file,
+                                                       llvm::StringRef command) {
     llvm::BumpPtrAllocator local;
     llvm::StringSaver saver(local);
 
@@ -626,76 +620,79 @@ std::string CompilationDatabase::entry_hash_hex(ConfigID id) {
     return std::format("{:016x}", entry_hash(id));
 }
 
-void CompilationDatabase::sort_entries(std::vector<CompilationEntry>& list) {
-    /// Hash-equal candidates (codegen-only differences, wrapper-only
-    /// differences) still need a stable order: the full render decides,
-    /// content-based, so generator reordering never flips the default
-    /// selection.
-    /// Memoized in a pre-sized vector: the comparator materializes two keys
-    /// in one expression, so the memo storage must not relocate mid-compare
-    /// (a growing map would).
-    std::vector<std::optional<std::string>> full_keys(list.size());
-    auto full_key = [&](std::size_t index) -> const std::string& {
-        auto& slot = full_keys[index];
-        if(!slot) {
-            auto& entry = list[index];
-            auto& out = slot.emplace();
-            auto append = [&](std::string_view fragment) {
-                out += fragment;
-                out += '\0';
-            };
-            for(const char* token: entry.wrapper) {
-                append(token);
-            }
-            auto& cfg = config(entry.config);
-            append(cfg.driver);
-            if(cfg.subcommand) {
-                append(cfg.subcommand);
-            }
-            std::size_t index_of_slot = 0;
-            for(auto& arg: cfg.args) {
-                if(arg.cls == ArgClass::Input) {
-                    break;
-                }
-                index_of_slot += 1;
-            }
-            out += std::format("{}", index_of_slot);
-            out += '\0';
-            for(auto& arg: cfg.args) {
-                if(arg.cls == ArgClass::Input) {
-                    continue;
-                }
-                render_arg(arg, append);
-            }
-        }
-        return *slot;
-    };
-
-    std::vector<std::size_t> order(list.size());
-    for(std::size_t i = 0; i < order.size(); i += 1) {
-        order[i] = i;
+void CompilationDatabase::rebuild_entry_list() {
+    entry_list.clear();
+    for(auto& source: source_files) {
+        entry_list.insert(entry_list.end(), source.entries.begin(), source.entries.end());
     }
-    ranges::sort(order, [&](std::size_t a, std::size_t b) {
-        if(list[a].file != list[b].file) {
-            return list[a].file < list[b].file;
-        }
-        auto ha = entry_hash(list[a].config);
-        auto hb = entry_hash(list[b].config);
-        if(ha != hb) {
-            return ha < hb;
-        }
-        return full_key(a) < full_key(b);
+    ranges::sort(entry_list, [](const CompilationEntry& a, const CompilationEntry& b) {
+        return std::tie(a.file, a.source, a.ordinal) < std::tie(b.file, b.source, b.ordinal);
     });
+}
 
-    std::vector<CompilationEntry> sorted;
-    sorted.reserve(list.size());
-    for(auto index: order) {
-        sorted.push_back(list[index]);
+/// The registered spelling of a source: the database file itself (a path
+/// without the .json extension names a directory, existing or not, holding
+/// compile_commands.json), absolute, dot-free and canonical, so every
+/// spelling of one file finds the same source.
+static std::string source_key(llvm::StringRef path) {
+    llvm::SmallString<256> file(path);
+    if(path::extension(file) != ".json") {
+        path::append(file, "compile_commands.json");
     }
-    list = std::move(sorted);
+    fs::make_absolute(file);
+    path::remove_dots(file, /*remove_dot_dot=*/true);
+    std::string canonical(file);
+    path::canonicalize(canonical);
+    return canonical;
+}
+
+SourceID CompilationDatabase::add_source(llvm::StringRef path) {
+    auto key = source_key(path);
+    if(auto existing = find_source(key)) {
+        return *existing;
+    }
+    source_files.push_back({.path = std::move(key)});
+    return SourceID(source_files.size() - 1);
+}
+
+std::optional<SourceID> CompilationDatabase::find_source(llvm::StringRef path) const {
+    auto key = source_key(path);
+    for(std::size_t i = 0; i < source_files.size(); i += 1) {
+        if(source_files[i].path == key) {
+            return SourceID(i);
+        }
+    }
+    return std::nullopt;
+}
+
+llvm::StringRef CompilationDatabase::source_path(SourceID id) const {
+    return source_files[static_cast<std::size_t>(id)].path;
+}
+
+static CDBDiff diff_snapshots(const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>& before,
+                              const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>& after);
+
+CDBDiff CompilationDatabase::unload_source(SourceID id) {
+    auto before = command_hash_snapshot();
+    auto& source = source_files[static_cast<std::size_t>(id)];
+    source.entries.clear();
+    source.loaded = false;
+    rebuild_entry_list();
+    return diff_snapshots(before, command_hash_snapshot());
+}
+
+bool CompilationDatabase::loaded(SourceID id) const {
+    return source_files[static_cast<std::size_t>(id)].loaded;
 }
 
 std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
+    return load_source(add_source(path));
+}
+
+std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
+    auto& source = source_files[static_cast<std::size_t>(id)];
+    llvm::StringRef path = source.path;
+
     simdjson::padded_string json_buf;
     if(auto error = simdjson::padded_string::load(std::string(path)).get(json_buf)) {
         LOG_ERROR("Failed to read compilation database from {}: {}",
@@ -703,7 +700,6 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
                   simdjson::error_message(error));
         return std::nullopt;
     }
-
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(json_buf).get(doc)) {
@@ -728,7 +724,7 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
     // settle debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
 
-    std::size_t index = 0;
+    std::uint32_t index = 0;
     for(auto element: arr) {
         auto skip = llvm::make_scope_exit([&] { index += 1; });
 
@@ -795,7 +791,7 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
         path::remove_dots(file_abs, /*remove_dot_dot=*/true);
         auto path_id = file_table.intern(file_abs);
 
-        std::optional<NormalizeResult> normalized;
+        std::optional<ConfigID> normalized;
 
         simdjson::ondemand::array args_arr;
         if(!obj["arguments"].get_array().get(args_arr)) {
@@ -831,12 +827,15 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
         if(!normalized) {
             continue;
         }
-        new_entries.push_back({path_id, normalized->config, normalized->wrapper});
+        new_entries.push_back(
+            {.file = path_id, .config = *normalized, .source = id, .ordinal = index});
     }
 
-    sort_entries(new_entries);
-    entry_list = std::move(new_entries);
-    return entry_list.size();
+    auto count = new_entries.size();
+    source.entries = std::move(new_entries);
+    source.loaded = true;
+    rebuild_entry_list();
+    return count;
 }
 
 llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>
@@ -845,32 +844,12 @@ llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>
     for(auto& entry: entry_list) {
         snapshot[entry.file].push_back(entry_hash_hex(entry.config));
     }
-    // A file's entries have no inherent order for the diff, so sort each
-    // list to make the comparison in reload_and_diff() order-independent.
-    for(auto& bucket: snapshot) {
-        ranges::sort(bucket.second);
-    }
     return snapshot;
 }
 
-std::optional<std::string> CompilationDatabase::selected_hash(Fid path_id) {
-    auto candidates = candidate_entries(path_id);
-    if(candidates.empty()) {
-        return std::nullopt;
-    }
-    return entry_hash_hex(candidates.front().config);
-}
-
-std::optional<CDBDiff> CompilationDatabase::reload_and_diff(llvm::StringRef path) {
-    auto before = command_hash_snapshot();
-    if(!load(path)) {
-        // Unreadable or unparsable (e.g. still locked by the generator):
-        // the old entries were kept, and the caller must not treat this as
-        // "no change" — it has to retry.
-        return std::nullopt;
-    }
-    auto after = command_hash_snapshot();
-
+/// The per-file delta between two command hash snapshots.
+static CDBDiff diff_snapshots(const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>& before,
+                              const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>& after) {
     CDBDiff diff;
 
     for(auto& bucket: after) {
@@ -893,6 +872,17 @@ std::optional<CDBDiff> CompilationDatabase::reload_and_diff(llvm::StringRef path
     ranges::sort(diff.changed);
 
     return diff;
+}
+
+std::optional<CDBDiff> CompilationDatabase::reload_and_diff(SourceID id) {
+    auto before = command_hash_snapshot();
+    if(!load_source(id)) {
+        // Unreadable or unparsable (e.g. still locked by the generator):
+        // the old entries were kept, and the caller must not treat this as
+        // "no change" — it has to retry.
+        return std::nullopt;
+    }
+    return diff_snapshots(before, command_hash_snapshot());
 }
 
 llvm::ArrayRef<CompilationEntry> CompilationDatabase::candidate_entries(Fid path_id) const {
@@ -950,8 +940,10 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         }
         rule_key += '\1';
     };
-    append_section(options.remove);
-    append_section(options.append);
+    for(auto& edit: options.edits) {
+        rule_key += edit.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
+        append_section(edit.flags);
+    }
     append_section(options.extra_prepend);
     append_section(options.extra_append);
 
@@ -988,97 +980,97 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         return flags;
     };
 
-    std::vector<std::string> remove_source(options.remove.begin(), options.remove.end());
-    if(is_nvcc) {
-        /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
-        /// clear whichever form the translated base carries: numeric archs
-        /// become `--cuda-gpu-arch=`, non-numeric selections persist as
-        /// `-arch=` probe tokens — rewrite to both wildcards.
-        for(std::size_t i = 0; i < remove_source.size(); i += 1) {
-            llvm::StringRef flag = remove_source[i];
-            for(llvm::StringRef spelling:
-                {"-arch", "--gpu-architecture", "-gencode", "--generate-code"}) {
-                bool joined = flag.starts_with(spelling) && flag.substr(spelling.size()) == "=*";
-                bool separate =
-                    flag == spelling && i + 1 < remove_source.size() && remove_source[i + 1] == "*";
-                if(!joined && !separate) {
-                    continue;
-                }
-                if(separate) {
-                    remove_source.erase(remove_source.begin() + i + 1);
-                }
-                remove_source[i] = "--cuda-gpu-arch=*";
-                remove_source.insert(remove_source.begin() + i + 1, "-arch=*");
-                i += 1;
-                break;
-            }
-        }
-    }
-
-    /// Remove patterns are an independent list, not one command: translated
-    /// whole, nvcc's last-wins would swallow every alternative value of a
-    /// stateful option but the last. Each pattern translates alone —
-    /// standalone, so it reproduces exactly the flags the base translation
-    /// emitted — pairing a separate value token (never dash-led) with its
-    /// spelling.
-    std::vector<std::string> remove_flags;
-    if(is_nvcc) {
-        for(std::size_t i = 0; i < remove_source.size(); i += 1) {
-            std::size_t count = 1;
-            if(llvm::StringRef(remove_source[i]).starts_with("-") && i + 1 < remove_source.size() &&
-               !llvm::StringRef(remove_source[i + 1]).starts_with("-")) {
-                count = 2;
-            }
-            auto pattern = translate_rule_flags(llvm::ArrayRef(remove_source).slice(i, count),
-                                                /*edit=*/false);
-            remove_flags.insert(remove_flags.end(),
-                                std::make_move_iterator(pattern.begin()),
-                                std::make_move_iterator(pattern.end()));
-            i += count - 1;
-        }
-    } else {
-        remove_flags = std::move(remove_source);
-    }
-
-    std::vector<kota::option::ParsedArg> remove_args;
     auto remove_parse_options =
         kota::option::ParseOptions{.visibility = family_visibility(cfg.family)};
-    for(auto& parsed: option::table().parse(remove_flags, remove_parse_options)) {
-        if(parsed.has_value()) {
-            remove_args.push_back(*parsed);
-        }
-    }
-    auto get_id = [](const kota::option::ParsedArg& arg) {
-        return arg.id;
-    };
-    ranges::sort(remove_args, {}, get_id);
 
-    auto matches_remove = [&](const Arg& arg) {
-        auto range = ranges::equal_range(remove_args, arg.opt_id, {}, get_id);
-        for(auto& remove: range) {
-            /// All unknown options share one id; their identity is the
-            /// spelling (NVCC probe flags persist as unknown tokens). A
-            /// trailing `=*` wildcards the value part, mirroring the
-            /// known-option value wildcard below.
-            if(arg.opt_id == option::OPT_UNKNOWN) {
-                llvm::StringRef pattern = remove.spelling;
-                bool wildcard = pattern.consume_back("*") && pattern.ends_with("=");
-                if(wildcard ? llvm::StringRef(arg.spelling).starts_with(pattern)
-                            : arg.spelling == llvm::StringRef(remove.spelling)) {
-                    return true;
+    /// Parse one rule's remove list into option patterns. The parsed
+    /// patterns view the translated spellings, which therefore outlive
+    /// every match below.
+    std::deque<std::vector<std::string>> remove_storage;
+    auto parse_removes = [&](llvm::ArrayRef<std::string> flags) {
+        std::vector<std::string> remove_source(flags.begin(), flags.end());
+        if(is_nvcc) {
+            /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
+            /// clear whichever form the translated base carries: numeric archs
+            /// become `--cuda-gpu-arch=`, non-numeric selections persist as
+            /// `-arch=` probe tokens — rewrite to both wildcards.
+            for(std::size_t i = 0; i < remove_source.size(); i += 1) {
+                llvm::StringRef flag = remove_source[i];
+                for(llvm::StringRef spelling:
+                    {"-arch", "--gpu-architecture", "-gencode", "--generate-code"}) {
+                    bool joined =
+                        flag.starts_with(spelling) && flag.substr(spelling.size()) == "=*";
+                    bool separate = flag == spelling && i + 1 < remove_source.size() &&
+                                    remove_source[i + 1] == "*";
+                    if(!joined && !separate) {
+                        continue;
+                    }
+                    if(separate) {
+                        remove_source.erase(remove_source.begin() + i + 1);
+                    }
+                    remove_source[i] = "--cuda-gpu-arch=*";
+                    remove_source.insert(remove_source.begin() + i + 1, "-arch=*");
+                    i += 1;
+                    break;
                 }
-                continue;
-            }
-            if(remove.values.size() == 1 && remove.values[0] == "*") {
-                return true;
-            }
-            if(ranges::equal(arg.values, remove.values, [](const char* a, std::string_view b) {
-                   return std::string_view(a) == b;
-               })) {
-                return true;
             }
         }
-        return false;
+        /// Remove patterns are an independent list, not one command: translated
+        /// whole, nvcc's last-wins would swallow every alternative value of a
+        /// stateful option but the last. Each pattern translates alone —
+        /// standalone, so it reproduces exactly the flags the base translation
+        /// emitted — pairing a separate value token (never dash-led) with its
+        /// spelling.
+        auto& remove_flags = remove_storage.emplace_back();
+        if(is_nvcc) {
+            for(std::size_t i = 0; i < remove_source.size(); i += 1) {
+                std::size_t count = 1;
+                if(llvm::StringRef(remove_source[i]).starts_with("-") &&
+                   i + 1 < remove_source.size() &&
+                   !llvm::StringRef(remove_source[i + 1]).starts_with("-")) {
+                    count = 2;
+                }
+                auto pattern = translate_rule_flags(llvm::ArrayRef(remove_source).slice(i, count),
+                                                    /*edit=*/false);
+                remove_flags.insert(remove_flags.end(),
+                                    std::make_move_iterator(pattern.begin()),
+                                    std::make_move_iterator(pattern.end()));
+                i += count - 1;
+            }
+        } else {
+            remove_flags = std::move(remove_source);
+        }
+        std::vector<kota::option::ParsedArg> removes;
+        for(auto& parsed: option::table().parse(remove_flags, remove_parse_options)) {
+            if(parsed.has_value()) {
+                removes.push_back(*parsed);
+            }
+        }
+        return removes;
+    };
+
+    /// Whether a remove pattern names `arg` (a base Arg or an appended
+    /// LocalArg).
+    auto removes_arg = [](const kota::option::ParsedArg& remove, const auto& arg) {
+        if(remove.id != arg.opt_id) {
+            return false;
+        }
+        /// All unknown options share one id; their identity is the
+        /// spelling (NVCC probe flags persist as unknown tokens). A
+        /// trailing `=*` wildcards the value part, mirroring the
+        /// known-option value wildcard below.
+        if(arg.opt_id == option::OPT_UNKNOWN) {
+            llvm::StringRef pattern = remove.spelling;
+            bool wildcard = pattern.consume_back("*") && pattern.ends_with("=");
+            return wildcard ? llvm::StringRef(arg.spelling).starts_with(pattern)
+                            : arg.spelling == llvm::StringRef(remove.spelling);
+        }
+        if(remove.values.size() == 1 && remove.values[0] == "*") {
+            return true;
+        }
+        return ranges::equal(arg.values, remove.values, [](const char* a, std::string_view b) {
+            return std::string_view(a) == b;
+        });
     };
 
     /// Parse an edit list into structured args, absolutizing include paths
@@ -1124,12 +1116,33 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         }
     };
 
+    std::vector<kota::option::ParsedArg> remove_args;
+    std::vector<LocalArg> append_args;
+    for(auto& edit: options.edits) {
+        if(edit.kind == CommandEdit::Kind::Remove) {
+            auto removes = parse_removes(edit.flags);
+            // A remove reaches the appends before it, so a later rule can
+            // take back what an earlier one added.
+            llvm::erase_if(append_args, [&](const LocalArg& local) {
+                return llvm::any_of(removes, [&](const kota::option::ParsedArg& remove) {
+                    return removes_arg(remove, local);
+                });
+            });
+            remove_args.insert(remove_args.end(), removes.begin(), removes.end());
+        } else {
+            parse_edit(translate_rule_flags(edit.flags, /*edit=*/true), append_args);
+        }
+    }
+    parse_edit(options.extra_append, append_args);
+
     std::vector<LocalArg> prepend_args;
     parse_edit(options.extra_prepend, prepend_args);
 
-    std::vector<LocalArg> append_args;
-    parse_edit(translate_rule_flags(options.append, /*edit=*/true), append_args);
-    parse_edit(options.extra_append, append_args);
+    auto matches_remove = [&](const Arg& arg) {
+        return llvm::any_of(remove_args, [&](const kota::option::ParsedArg& remove) {
+            return removes_arg(remove, arg);
+        });
+    };
 
     /// Rebuild the sequence: prepends first, base args with removes
     /// cancelled, appends inserted before the input slot — an append always
@@ -1181,33 +1194,23 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     return result_id;
 }
 
-ConfigID CompilationDatabase::fallback_config(llvm::StringRef file) {
-    // Synthesize a default command so the file still compiles and produces
-    // diagnostics instead of failing silently. Config rule appends apply on
-    // top through the regular apply_rules path: users without a CDB rely on
-    // them to supply include paths.
-    llvm::SmallVector<const char*, 8> arguments;
-    llvm::StringRef variant;
-    if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
-        variant = "c++";
-        arguments = {"clang++", "-std=c++20"};
-    } else if(file.ends_with(".cu") || file.ends_with(".cuh")) {
-        /// Device-only pins the same device-side view NVCC-backed commands
-        /// default to, instead of whichever job the toolchain query happens
-        /// to pick from a two-sided compilation; a config rule appending
-        /// --cuda-host-only still wins as the later flag.
-        variant = "cuda";
-        arguments = {"clang++", "-std=c++20", "-x", "cuda", "--cuda-device-only"};
-    } else {
-        variant = "c";
-        arguments = {"clang"};
+std::optional<ConfigID> CompilationDatabase::intern_command(llvm::StringRef directory,
+                                                            llvm::ArrayRef<const char*> arguments) {
+    std::string key = directory.str();
+    for(const char* argument: arguments) {
+        key += '\0';
+        key += argument;
     }
-
-    auto [it, inserted] = fallback_configs.try_emplace(variant, invalid_config);
+    auto [it, inserted] = interned_commands.try_emplace(key, invalid_config);
     if(inserted) {
-        auto normalized = normalize("", Fid{}, arguments);
-        assert(normalized && "fallback synthesis cannot fail");
-        it->second = normalized->config;
+        if(auto normalized = normalize(directory, Fid{}, arguments)) {
+            it->second = *normalized;
+        } else {
+            LOG_WARN("Not a compile command: {}", print_argv(arguments));
+        }
+    }
+    if(it->second == invalid_config) {
+        return std::nullopt;
     }
     return it->second;
 }
@@ -1381,32 +1384,41 @@ SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
 #ifdef CLICE_ENABLE_TEST
 
 std::optional<CompilationEntry>
-    CompilationDatabase::add_command(llvm::StringRef directory,
-                                     llvm::StringRef file,
-                                     llvm::ArrayRef<const char*> arguments) {
-    auto path_id = file_table.intern(file);
-    auto normalized = normalize(directory, path_id, arguments);
+    CompilationDatabase::append_test_command(llvm::StringRef file,
+                                             std::optional<ConfigID> normalized) {
     if(!normalized) {
         return std::nullopt;
     }
-    CompilationEntry entry{path_id, normalized->config, normalized->wrapper};
-    entry_list.push_back(entry);
-    sort_entries(entry_list);
+    /// Tests accumulate commands into one anonymous source; its path is
+    /// empty, which no real database can have.
+    auto anonymous = std::ranges::find_if(source_files,
+                                          [](const Source& source) { return source.path.empty(); });
+    if(anonymous == source_files.end()) {
+        source_files.push_back({});
+        anonymous = source_files.end() - 1;
+    }
+    auto id = SourceID(anonymous - source_files.begin());
+    auto& source = *anonymous;
+    CompilationEntry entry{.file = file_table.intern(file),
+                           .config = *normalized,
+                           .source = id,
+                           .ordinal = static_cast<std::uint32_t>(source.entries.size())};
+    source.entries.push_back(entry);
+    rebuild_entry_list();
     return entry;
+}
+
+std::optional<CompilationEntry>
+    CompilationDatabase::add_command(llvm::StringRef directory,
+                                     llvm::StringRef file,
+                                     llvm::ArrayRef<const char*> arguments) {
+    return append_test_command(file, normalize(directory, file_table.intern(file), arguments));
 }
 
 std::optional<CompilationEntry> CompilationDatabase::add_command(llvm::StringRef directory,
                                                                  llvm::StringRef file,
                                                                  llvm::StringRef command) {
-    auto path_id = file_table.intern(file);
-    auto normalized = normalize(directory, path_id, command);
-    if(!normalized) {
-        return std::nullopt;
-    }
-    CompilationEntry entry{path_id, normalized->config, normalized->wrapper};
-    entry_list.push_back(entry);
-    sort_entries(entry_list);
-    return entry;
+    return append_test_command(file, normalize(directory, file_table.intern(file), command));
 }
 
 #endif

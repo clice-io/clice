@@ -45,18 +45,24 @@ struct CacheArtifactEntry {
     std::uint32_t host;  // index into the cache path table
 };
 
-/// Domain logic for compilation contexts of header files.
+/// Composes a file's final compile command from the layers below it and
+/// keeps the editor-side state that steers the composition.
 ///
-/// A header without its own compilation database entry borrows a host
-/// source's command through the include graph. ContextResolver owns that
-/// resolution and synthesis (prefix/suffix/self-snapshot files restoring the
-/// includer's preprocessor state) plus the context-domain state: self-
-/// containment verdicts, user context choices and synthesized-artifact
-/// attribution (all persisted through the index database), and the resolved header
-/// contexts, which outlive their sessions so a reopened header reuses its
-/// synthesized preamble. The editor-facing context protocol handlers
-/// (clice/queryContext, currentContext, switchContext) live on the server
-/// side and drive this state through its public surface.
+/// The build (`Build`) says what a file compiles as; the hosting layer
+/// (`default_host`) says which unit stands in for a header without a
+/// command of its own; the user's selection (clice/switchContext) may pin
+/// either. `resolve_command` applies them in that order — selection, own
+/// entry, host, default command, builtin — then the rule edits and a run's
+/// extras. Around the host branch it owns the header-context synthesis
+/// (prefix/suffix/self-snapshot files restoring the includer's
+/// preprocessor state) and the editor-only state: self-containment
+/// verdicts, selections and synthesized-artifact attribution (persisted
+/// through the index database), and the resolved header contexts, which
+/// outlive their sessions so a reopened header reuses its preamble. The
+/// protocol handlers (clice/queryContext, currentContext, switchContext)
+/// live on the server side and drive this state through its public surface.
+/// Background compiles (indexing, batch runs, `clice inspect`) pass
+/// ContextUse::Background: no selection, no cached context.
 class ContextResolver {
 public:
     explicit ContextResolver(Workspace& workspace) : workspace(workspace) {}
@@ -77,7 +83,7 @@ public:
     /// User context choices (clice/switchContext), persisted in the contexts blob
     /// and validated against the CDB and include graph on didOpen. The
     /// single source of truth for a file's active context.
-    llvm::DenseMap<Fid, SavedContext> saved_contexts;
+    llvm::DenseMap<Fid, Selection> selections;
 
     /// Host source of each synthesized artifact (prefix/suffix/snapshot
     /// file path -> host path_id), recorded at synthesis time and
@@ -231,6 +237,32 @@ public:
     /// line sits past the editor's EOF and is invisible to the client.
     void append_suffix_include(Fid path_id, std::string& text);
 
+    /// Validate a context choice persisted from an earlier run against the
+    /// current CDB and include graph, dropping it when stale. Called on
+    /// didOpen; a surviving entry is the file's active context.
+    void validate_saved_context(Fid path_id);
+
+    /// The file's selection, or nullptr — editor use only: selections
+    /// steer editor-facing compiles, never background indexing.
+    const Selection* selection(ContextUse use, Fid path_id) const {
+        if(use != ContextUse::Editor) {
+            return nullptr;
+        }
+        auto it = selections.find(path_id);
+        return it != selections.end() ? &it->second : nullptr;
+    }
+
+    /// Whether a pinned command choice still has a live basis among
+    /// `entry_file`'s candidates: its applied hash matches a candidate
+    /// under the current edits of `paths` (the host and the header for a
+    /// host pin), or its recorded base entry hash still names one (a rule
+    /// edit moves every applied hash; the base survives it). The validity
+    /// test shared by didOpen validation and the server's orphan pass.
+    bool pin_alive(Fid entry_file,
+                   llvm::ArrayRef<llvm::StringRef> paths,
+                   const Selection& saved) const;
+
+private:
     /// Fill compile arguments for a header from a host source's command found
     /// through the include graph, synthesizing a preamble prefix/suffix when
     /// the header needs includer context. Returns false when no usable host
@@ -243,30 +275,6 @@ public:
                                   Fid* host_path_id,
                                   CommandRef* out_ref = nullptr);
 
-    /// Validate a context choice persisted from an earlier run against the
-    /// current CDB and include graph, dropping it when stale. Called on
-    /// didOpen; a surviving entry is the file's active context.
-    void validate_saved_context(Fid path_id);
-
-    /// The file's context choice, or nullptr — editor use only: user
-    /// choices steer editor-facing compiles, never background indexing.
-    const SavedContext* active_choice(ContextUse use, Fid path_id) const {
-        if(use != ContextUse::Editor) {
-            return nullptr;
-        }
-        auto it = saved_contexts.find(path_id);
-        return it != saved_contexts.end() ? &it->second : nullptr;
-    }
-
-    /// Whether a pinned command choice still has a live basis among
-    /// `entry_path`'s CDB entries: its applied hash matches a candidate
-    /// under current rules, or its recorded base entry hash still names
-    /// one (a rule edit moves every applied hash; the base survives it).
-    /// The validity test shared by didOpen validation and the server's
-    /// orphan pass.
-    bool pin_alive(llvm::StringRef entry_path, const SavedContext& saved) const;
-
-private:
     std::optional<HeaderContext> resolve_header_context(Fid header_path_id,
                                                         ContextUse use,
                                                         bool synthesize);

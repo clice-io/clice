@@ -22,6 +22,13 @@ namespace path {
 
 using namespace llvm::sys::path;
 
+/// Whether `p` is spelled from a root, so no anchor may be prepended:
+/// absolute in the native style, or rooted without a drive (`/x`), which
+/// Windows resolves against the current drive and `is_absolute` rejects.
+inline bool is_rooted(llvm::StringRef p) {
+    return is_absolute(p) || has_root_directory(p);
+}
+
 template <typename... Args>
 std::string join(Args&&... args) {
     llvm::SmallString<128> path;

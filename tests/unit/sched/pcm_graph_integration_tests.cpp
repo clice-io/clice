@@ -166,7 +166,7 @@ struct ModuleTestEnv {
 
     void setup(llvm::ArrayRef<CDBEntry> entries, llvm::StringRef json) {
         write_cdb(tmp, cdb, json);
-        scan_dependency_graph(cdb, graph);
+        scan_all(cdb, graph);
     }
 
     std::uint32_t lookup(llvm::StringRef mod_name) {

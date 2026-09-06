@@ -245,10 +245,17 @@ private:
     /// index of every TU whose compile command changed while no server was
     /// running — content-based freshness cannot see command changes, so an
     /// adopted manifest would keep judging the old-command rows fresh, in
-    /// this session and after a restart. Entries that vanished keep their
-    /// index (last-known content still serves navigation), mirroring the
-    /// live CDB-reload treatment.
+    /// this session and after a restart. A TU the build stopped compiling
+    /// — every database that listed it is healthy and lists it no more, or
+    /// the default command that claimed it is gone — leaves the index; one
+    /// a database that failed to load listed keeps serving its last-known
+    /// rows, mirroring the live CDB-reload treatment.
     void reconcile_cdb_snapshot(Report& report);
+
+    /// Drop the index of every TU a rule's `index = false` keeps out: rows
+    /// built before the rule would otherwise serve on, since the pump never
+    /// rebuilds an excluded unit.
+    void retire_excluded(Report& report);
 
     /// Per-round FileVersion staleness verdicts: many TUs share the same
     /// versions, and one stat (or repair) per version per round is enough.

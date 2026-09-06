@@ -16,6 +16,7 @@
 #include "index/project_index.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
+#include "sched/build.h"
 #include "sched/crash_budget.h"
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
@@ -35,7 +36,7 @@ class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 8;
+constexpr inline std::uint32_t cache_format_version = 9;
 
 /// One dependency of a compilation artifact.
 ///
@@ -118,8 +119,10 @@ enum class HeaderMode : std::uint32_t {
     NeedsContext = 2,
 };
 
-/// A user's context choice, persisted across sessions.
-struct SavedContext {
+/// The user's choice for a file in the editor (clice/switchContext): the
+/// host to borrow a command from, or one of the file's own entries.
+/// Persisted in the contexts blob; validated on didOpen.
+struct Selection {
     /// Header context host; invalid = none.
     Fid host_path_id;
 
@@ -209,6 +212,10 @@ struct Workspace {
 
     CompilationDatabase cdb{file_table};
 
+    /// Which entries and hand-written commands apply to a file under the
+    /// active configuration; the only reader of the rules.
+    Build build{config, cdb, file_table};
+
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
     /// load_workspace() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
@@ -278,12 +285,6 @@ struct Workspace {
     /// inclusions of one header always share a spelling, and synthesis
     /// validates the real occurrence anyway.
     std::uint32_t count_occurrences(Fid host_id, Fid target_id) const;
-
-    /// Rank host source candidates for a header by relevance: a source
-    /// with the header's stem (utils.h -> utils.cpp) wins, then sources in
-    /// the same directory, then longer common path prefixes; ties break
-    /// lexicographically so the choice is deterministic.
-    llvm::SmallVector<Fid> rank_hosts(Fid header_path_id, llvm::ArrayRef<Fid> hosts) const;
 
     /// Rescan a file after it was saved to disk, from one read: refresh
     /// its include edges (so host lookups and context queries see includes
@@ -359,11 +360,11 @@ struct Workspace {
                        Fid exclude_path_id = {}) const;
 };
 
-/// Find the workspace's compile_commands.json: the configured paths first
-/// (a directory means <dir>/compile_commands.json), then the workspace root,
-/// then its direct subdirectories. Returns the empty string when none
-/// exists yet — the file tracker keeps looking on its CDB poll.
-std::string discover_compile_commands(const Config& config, llvm::StringRef workspace_root);
+/// Find a compile_commands.json when no rule declares one: the workspace
+/// root, then its direct subdirectories in name order. Returns the empty
+/// string when none exists yet — the file tracker keeps looking on its CDB
+/// poll.
+std::string discover_compile_commands(llvm::StringRef workspace_root);
 
 /// Capture a staleness snapshot from a build's reported inputs, interning
 /// the consumed versions into the shared table.

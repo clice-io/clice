@@ -260,7 +260,7 @@ TEST_CASE(EmptyCDB) {
     CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     EXPECT_EQ(graph.file_count(), 0u);
     EXPECT_EQ(graph.module_count(), 0u);
@@ -284,20 +284,31 @@ export module m;
         {tmp.root, tmp.path("src/m.cppm"), {}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb,
-                          graph,
-                          [](llvm::StringRef,
-                             std::vector<std::string>& append,
-                             std::vector<std::string>&) { append.push_back("-DENABLE_M"); });
+    /// The unit carries its effective command: the edit that unguards the
+    /// declaration is applied before the scan sees the file.
+    llvm::SmallVector<CommandRef> units;
+    for(auto& entry: cdb.entries()) {
+        std::vector<std::string> append{"-DENABLE_M"};
+        std::vector<CommandEdit> edits = {
+            {CommandEdit::Kind::Append, {append.begin(), append.end()}},
+        };
+        auto applied = cdb.apply_rules(entry.config, {.edits = edits});
+        units.push_back({entry.file,
+                         applied,
+                         cdb.input_kind(applied, cdb.files().resolve(entry.file)),
+                         CommandSource::CDBExact});
+    }
+    scan_dependency_graph(cdb, graph, units);
 
     EXPECT_EQ(graph.module_count(), 1u);
     EXPECT_EQ(graph.lookup_module("m").size(), 1u);
 }
 
 TEST_CASE(GuardedModulePerCandidate) {
-    /// Two candidates whose defines select different module names: each
-    /// scan unit must preprocess under its own group's command, not
-    /// whichever candidate sorts first.
+    /// Two candidates whose defines select different module names: every
+    /// entry is a scan unit preprocessed under its own command, so both
+    /// names resolve; a scan handed only the second unit sees only its
+    /// name.
     TempDir tmp;
     tmp.touch("src/m.cppm", R"(#ifdef V2
 export module m2;
@@ -314,15 +325,29 @@ export module m1;
         {tmp.root, tmp.path("src/m.cppm"), {"-DV2"}},
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     EXPECT_EQ(graph.lookup_module("m1").size(), 1u);
     EXPECT_EQ(graph.lookup_module("m2").size(), 1u);
 
+    auto file = file_table.intern(tmp.path("src/m.cppm"));
+    auto candidates = cdb.candidate_entries(file);
+    ASSERT_EQ(candidates.size(), 2u);
+    llvm::SmallVector<CommandRef> v2_units = {
+        {file,
+         candidates[1].config,
+         cdb.input_kind(candidates[1].config, tmp.path("src/m.cppm")),
+         CommandSource::CDBExact}
+    };
+    DependencyGraph graph_v2;
+    scan_dependency_graph(cdb, graph_v2, v2_units);
+    EXPECT_TRUE(graph_v2.lookup_module("m1").empty());
+    EXPECT_EQ(graph_v2.lookup_module("m2").size(), 1u);
+
     // A warm run must reproduce both: the module-decl memo keys by
-    // (content, rendered command), so each group resolves its own name.
+    // (content, rendered command), so each command resolves its own name.
     DependencyGraph graph2;
-    scan_dependency_graph(cdb, graph2);
+    scan_all(cdb, graph2);
     EXPECT_EQ(graph2.lookup_module("m1").size(), 1u);
     EXPECT_EQ(graph2.lookup_module("m2").size(), 1u);
 }
@@ -339,7 +364,7 @@ TEST_CASE(SingleFileNoIncludes) {
         {tmp.root, tmp.path("src/main.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     EXPECT_EQ(graph.file_count(), 1u);
     EXPECT_EQ(graph.edge_count(), 0u);
@@ -362,7 +387,7 @@ int main() { return x; }
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("include")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     EXPECT_GE(graph.file_count(), 1u);
     EXPECT_GE(graph.edge_count(), 1u);
@@ -386,7 +411,7 @@ int main() {}
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     // main->a, a->b, b->c across 4 waves.
     EXPECT_GE(graph.file_count(), 3u);
@@ -415,7 +440,7 @@ void b() {}
         {tmp.root, tmp.path("src/b.cpp"), inc},
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     EXPECT_GE(graph.file_count(), 2u);
     EXPECT_GE(graph.edge_count(), 2u);
@@ -440,7 +465,7 @@ TEST_CASE(ConditionalIncludes) {
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     // Both headers discovered (over-approximate).
     EXPECT_GE(graph.edge_count(), 2u);
@@ -475,7 +500,7 @@ export int foo() { return 42; }
         {tmp.root, tmp.path("src/mymod.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     auto result = graph.lookup_module("my.module");
     ASSERT_EQ(result.size(), 1u);
@@ -499,7 +524,7 @@ void impl() {}
         {tmp.root, tmp.path("src/mod.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     ASSERT_EQ(graph.lookup_module("my.mod:part").size(), 1u);
 }
@@ -529,7 +554,7 @@ int main() {}
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     // main->a, main->b, a->common, b->common.
     EXPECT_GE(graph.edge_count(), 4u);
@@ -556,7 +581,7 @@ int main() {}
          {"-iquote", tmp.path("quoted"), "-I", tmp.path("angled")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     EXPECT_GE(graph.edge_count(), 2u);
 }
@@ -576,7 +601,7 @@ int main() {}
         {tmp.root, tmp.path("src/main.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     EXPECT_EQ(graph.file_count(), 1u);
     EXPECT_EQ(graph.edge_count(), 0u);
@@ -607,7 +632,7 @@ void a_impl() {}
         {tmp.root, tmp.path("src/impl.cpp"),  {}},
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     EXPECT_EQ(graph.module_count(), 2u);
     ASSERT_FALSE(graph.lookup_module("mod.a").empty());
@@ -634,7 +659,7 @@ int main() {}
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     // main->h0->h1->h2->h3->h4 across 5 waves.
     EXPECT_GE(graph.edge_count(), 5u);
@@ -659,7 +684,7 @@ export int value() { return util; }
         {tmp.root, tmp.path("src/mymod.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_all(cdb, graph);
 
     ASSERT_FALSE(graph.lookup_module("my.lib").empty());
     EXPECT_GE(graph.edge_count(), 1u);
@@ -688,13 +713,13 @@ int main() {}
     write_cdb(tmp, cdb, json);
 
     DependencyGraph graph;
-    auto cold = scan_dependency_graph(cdb, graph);
+    auto cold = scan_all(cdb, graph);
     EXPECT_GE(graph.edge_count(), 1u);
 
     // A rescan against the same shared table skips the read and the lex
     // for every unchanged file (stat-validated through the shared pairs).
     DependencyGraph graph2;
-    auto warm = scan_dependency_graph(cdb, graph2);
+    auto warm = scan_all(cdb, graph2);
     EXPECT_GT(warm.scan_cache_hits, std::size_t(0));
     EXPECT_EQ(graph2.edge_count(), graph.edge_count());
     EXPECT_EQ(graph2.file_count(), graph.file_count());
