@@ -1,6 +1,8 @@
-/// # Comment folding — multi-line `/* */` and consecutive `//` line comments
+/// # Comment folding
 ///
 /// - status: unsupported
+///
+/// Multiline block comments and consecutive line comments do not fold yet
 
 // This is a long
 // multi-line comment

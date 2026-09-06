@@ -1,13 +1,13 @@
-/// # Definition and declaration alternate at the cursor site
+/// # Definition and declaration alternate
 ///
 /// - status: supported
 /// - verify: server
 ///
-/// On a use, go-to-definition reaches the definition. Invoked on the
-/// definition it steps to the declaration, and on the declaration it
-/// steps to the definition — the two sites alternate. A symbol defined
-/// inline, with no separate declaration, keeps its definition as the
-/// answer.
+/// Navigation alternates between a declaration and definition
+///
+/// A request from a use reaches the definition, while requests at the
+/// declaration or definition reach the other site. An inline symbol with
+/// no separate declaration keeps its definition as the answer.
 
 int §(decl)scale(int value);
 

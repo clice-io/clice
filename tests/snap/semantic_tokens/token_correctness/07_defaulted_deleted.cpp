@@ -1,6 +1,8 @@
-/// # Defaulted and deleted members — special-member names keep their definition tokens
+/// # Defaulted and deleted members
 ///
 /// - status: supported
+///
+/// Special-member names keep their definition tokens
 
 struct Session {
     §Session() = default;

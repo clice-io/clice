@@ -1,6 +1,8 @@
-/// # Tuple-protocol bindings — hints print the canonical type, not `tuple_element<I, T>::type`
+/// # Tuple-protocol bindings
 ///
 /// - status: supported
+///
+/// Hints print the canonical type, not `tuple_element<I, T>::type`
 
 struct IntPair {
     int a;

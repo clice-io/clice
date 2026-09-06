@@ -1,6 +1,9 @@
-/// # Nested symbol tree — symbols nest by their written scope; out-of-line definitions appear at their lexical position with qualified names
+/// # Nested symbol tree
 ///
 /// - status: supported
+///
+/// Symbols nest by their written scope; out-of-line definitions appear at their
+/// lexical position with qualified names
 
 namespace demo {
 

@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: symbol_information/06_virtual_modifiers.cpp
 ---
-final_method: { range: "19:9-19:13" }
+final_method: { range: "21:9-21:13" }
 ### method `draw`  
 
 ---
@@ -14,7 +14,7 @@ final_method: { range: "19:9-19:13" }
 public: void draw() final
 ```
 
-override_method: { range: "15:9-15:13" }
+override_method: { range: "17:9-17:13" }
 ### method `draw`  
 
 ---
@@ -26,7 +26,7 @@ override_method: { range: "15:9-15:13" }
 public: void draw() override
 ```
 
-pure_virtual: { range: "11:17-11:21" }
+pure_virtual: { range: "13:17-13:21" }
 ### method `draw`  
 
 ---

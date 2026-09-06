@@ -2,13 +2,13 @@
 created_at: 2026-08-01
 input_file: fold_kinds/16_coroutine_body.cpp
 ---
-- { range: "4:14-27:1", kind: namespace, collapsed_text: "{...}" }
-- { range: "7:24-9:1", kind: struct, collapsed_text: "{...}" }
-- { range: "12:24-19:1", kind: struct, collapsed_text: "{...}" }
-- { range: "21:21-25:1", kind: struct, collapsed_text: "{...}" }
-- { range: "29:12-37:1", kind: struct, collapsed_text: "{...}" }
-- { range: "30:24-36:5", kind: struct, collapsed_text: "{...}" }
-- { range: "39:12-45:1", kind: functionBody, collapsed_text: "{...}" }
-- { range: "41:20-43:5", kind: compoundStmt, collapsed_text: "{...}" }
-- { range: "47:12-53:1", kind: functionBody, collapsed_text: "{...}" }
-- { range: "48:31-52:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "7:14-30:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "10:24-12:1", kind: struct, collapsed_text: "{...}" }
+- { range: "15:24-22:1", kind: struct, collapsed_text: "{...}" }
+- { range: "24:21-28:1", kind: struct, collapsed_text: "{...}" }
+- { range: "32:12-40:1", kind: struct, collapsed_text: "{...}" }
+- { range: "33:24-39:5", kind: struct, collapsed_text: "{...}" }
+- { range: "42:12-48:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "44:20-46:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "50:12-56:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "51:31-55:5", kind: compoundStmt, collapsed_text: "{...}" }

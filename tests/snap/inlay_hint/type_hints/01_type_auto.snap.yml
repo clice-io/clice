@@ -2,6 +2,6 @@
 created_at: 2026-07-31
 input_file: type_hints/01_type_auto.cpp
 ---
-- { pos: "7:14", kind: Type, label: ": int" }
-- { pos: "8:19", kind: Type, label: ": const int &" }
-- { pos: "9:13", kind: Type, label: ": int *" }
+- { pos: "9:14", kind: Type, label: ": int" }
+- { pos: "10:19", kind: Type, label: ": const int &" }
+- { pos: "11:13", kind: Type, label: ": int *" }

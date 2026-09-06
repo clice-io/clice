@@ -2,4 +2,4 @@
 created_at: 2026-08-23
 input_file: embed_directives/01_embed.cpp
 ---
-- { range: "5:7-5:17", target: "${WS}/embed_directives/data.bin" }
+- { range: "7:7-7:17", target: "${WS}/embed_directives/data.bin" }

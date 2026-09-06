@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 int §(target_def)target(int value) {
     return value + 1;

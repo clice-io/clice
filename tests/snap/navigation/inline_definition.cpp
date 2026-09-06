@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 int §(def)twice(int value) {
     return value + value;

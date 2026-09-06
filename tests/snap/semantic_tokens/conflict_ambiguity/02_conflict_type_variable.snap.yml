@@ -2,4 +2,4 @@
 created_at: 2026-07-31
 input_file: conflict_ambiguity/02_conflict_type_variable.cpp
 ---
-- { loc: "9:13", text: "Thing", kind: conflict }
+- { loc: "11:13", text: "Thing", kind: conflict }

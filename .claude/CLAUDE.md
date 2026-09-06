@@ -10,6 +10,7 @@ Detailed knowledge lives in skills — load them at the moments their descriptio
 - **resolve-comments** — each watch round of an open PR: pulls unresolved review threads, fixes and resolves them, returns a summary.
 - **codex** — before delegating work to the codex CLI: adversarial plan review, code review, debugging, test writing, scoped implementation.
 - **docs** — the documentation system: generated pages, the en→zh translation pipeline, and their pixi commands. Read BEFORE editing anything under `docs/`.
+- **translate-docs** — what is translated and what stays verbatim in `docs/zh`, by page position and by term. Read BEFORE translating, reviewing or editing any zh page.
 - **build / test / format** — build the project, run suites, format sources.
 - **triage** — classify untriaged issues and produce the activity digest; label rules live in the skill's `rules.md`.
 - **release / upgrade-llvm** — release operations and LLVM upgrades.

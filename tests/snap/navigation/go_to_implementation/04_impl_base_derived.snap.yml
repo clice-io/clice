@@ -4,18 +4,18 @@ input_file: go_to_implementation/04_impl_base_derived.cpp
 ---
 base:
   definition:
-    - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "8:7-8:11" }
+    - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "10:7-10:11" }
   declaration:
-    - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "8:7-8:11" }
+    - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "10:7-10:11" }
   implementation:
-    - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "10:7-10:13" }
     - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "12:7-12:13" }
+    - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "14:7-14:13" }
   references:
-    - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "8:7-8:11" }
-    - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "10:16-10:20" }
+    - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "10:7-10:11" }
     - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "12:16-12:20" }
+    - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "14:16-14:20" }
   typeHierarchy:
-    - { name: "Base", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "8:7-8:11" }
+    - { name: "Base", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "10:7-10:11" }
   subtypes:
-    - { name: "Circle", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "10:7-10:13" }
-    - { name: "Square", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "12:7-12:13" }
+    - { name: "Circle", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "12:7-12:13" }
+    - { name: "Square", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "14:7-14:13" }

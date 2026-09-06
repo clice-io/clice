@@ -1,7 +1,7 @@
-/// - verify: server
-///
-/// Declaration-only symbols: definition falls back to the declarations
-/// instead of returning nothing.
+// - verify: server
+//
+// Declaration-only symbols: definition falls back to the declarations
+// instead of returning nothing.
 
 extern int §(var_decl)threshold;
 

@@ -3,8 +3,8 @@
 /// - status: supported
 /// - verify: server
 ///
-/// Incoming calls list every caller of a function, and a caller that
-/// invokes it more than once contributes each call site.
+/// Incoming calls list every caller of a function, and a caller that invokes it
+/// more than once contributes each call site
 
 int §(target)helper(int v) {
     return v;

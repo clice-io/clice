@@ -1,6 +1,8 @@
-/// # Parameter name hints — argument names at call sites and constructor calls
+/// # Parameter name hints
 ///
 /// - status: supported
+///
+/// Call sites show parameter names for functions and constructors
 
 void draw(int width, int height);
 

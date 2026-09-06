@@ -1,6 +1,8 @@
-/// # Function pointer calls — the prototype's parameter names show, not just the types
+/// # Function pointer calls
 ///
 /// - status: supported
+///
+/// The prototype's parameter names show, not just the types
 
 int main() {
     void (*callback)(int code, double value) = nullptr;

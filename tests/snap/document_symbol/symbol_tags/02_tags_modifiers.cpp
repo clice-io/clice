@@ -1,7 +1,10 @@
-/// # Access and storage indicators — public / private / protected, static, virtual and abstract markers on outline entries
+/// # Access and storage indicators
 ///
 /// - status: unsupported
 /// - issues: clangd#2123
+///
+/// Outline entries do not expose access, static, virtual or abstract modifiers
+/// yet
 
 class Base {
 public:

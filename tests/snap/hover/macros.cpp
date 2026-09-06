@@ -1,4 +1,4 @@
-/// - flags: ["-DFROM_CLI=7"]
+// - flags: ["-DFROM_CLI=7"]
 
 // The anchor keeps every directive below out of the preamble region, so
 // both verify paths see the live preprocessor record.

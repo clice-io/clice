@@ -4,49 +4,49 @@ input_file: go_to_declaration/06_decl_multiple.cpp
 ---
 first:
   definition:
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
   declaration:
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "9:4-9:9" }
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
   references:
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "8:4-8:9" }
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "9:4-9:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "10:4-10:9" }
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "16:11-16:16" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "18:11-18:16" }
   callHierarchy:
-    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
+    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
   incomingCalls:
-    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "15:4-15:8", fromRanges: ["16:11-16:23"] }
+    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "17:4-17:8", fromRanges: ["18:11-18:23"] }
 
 second:
   definition:
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
   declaration:
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "8:4-8:9" }
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "10:4-10:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
   references:
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "8:4-8:9" }
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "9:4-9:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "10:4-10:9" }
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "16:11-16:16" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "18:11-18:16" }
   callHierarchy:
-    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
+    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
   incomingCalls:
-    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "15:4-15:8", fromRanges: ["16:11-16:23"] }
+    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "17:4-17:8", fromRanges: ["18:11-18:23"] }
 
 use:
   definition:
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
   declaration:
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "8:4-8:9" }
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "9:4-9:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "10:4-10:9" }
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
   references:
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "8:4-8:9" }
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "9:4-9:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "10:4-10:9" }
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
-    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "16:11-16:16" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
+    - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "18:11-18:16" }
   callHierarchy:
-    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "11:4-11:9" }
+    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
   incomingCalls:
-    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "15:4-15:8", fromRanges: ["16:11-16:23"] }
+    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "17:4-17:8", fromRanges: ["18:11-18:23"] }

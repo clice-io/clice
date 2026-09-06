@@ -1,6 +1,8 @@
-/// # Definition rendering — the card includes the symbol's source definition
+/// # Definition rendering
 ///
 /// - status: supported
+///
+/// The card includes the symbol's source definition
 
 namespace retry {
 

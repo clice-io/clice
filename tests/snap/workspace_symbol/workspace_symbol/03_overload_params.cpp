@@ -1,8 +1,10 @@
-/// # Overload disambiguation — parameter types shown in results
+/// # Overload disambiguation
 ///
 /// - status: partial
-/// - verify: server
 /// - issues: clangd#1344
+/// - verify: server
+///
+/// Workspace symbol results omit parameter types, leaving overloads ambiguous
 ///
 /// Querying an overloaded name finds every overload, but each entry
 /// carries only the bare name — nothing tells the two `process` results

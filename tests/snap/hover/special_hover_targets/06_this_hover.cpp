@@ -1,6 +1,8 @@
-/// # `this` expression — hovering `this` shows the pointed-to class type
+/// # `this` expression
 ///
 /// - status: supported
+///
+/// Hovering `this` shows the pointed-to class type
 ///
 /// Works in a plain class and inside a class template.
 

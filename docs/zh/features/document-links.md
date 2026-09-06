@@ -11,92 +11,69 @@
 
 <!-- BEGIN GENERATED ITEMS: include_directives -->
 
-| 能力                                    | 状态     | 问题                                                        |
-| --------------------------------------- | -------- | ----------------------------------------------------------- |
-| 引号形式的包含指令                      | 支持     |                                                             |
-| 尖括号形式的包含指令                    | 支持     |                                                             |
-| 宏展开路径                              | 支持     | [clangd#2375](https://github.com/clangd/clangd/issues/2375) |
-| `#include_next` 和 `__has_include_next` | 部分支持 |                                                             |
-| `__has_include`                         | 支持     |                                                             |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 引号形式的包含指令
+**使用引号的包含指令**
 
-`#include "..."` 链接到解析出的头文件
+`#include "..."` 链接到解析得到的头文件
 
-文件中的每条包含指令都会建立链接，而不仅限于顶部 Preamble 处理过的包含指令。
+文件中的所有包含指令都有链接，不限于文件顶部 Preamble 中的那些。
 
-```cpp
-#include "header_a.h"
-#include "header_b.h"
-int x = 1;
-#include "header_c.h"
+```snap
+tests/snap/document_links/include_directives/01_quoted_include.cpp
 ```
 
-### 尖括号形式的包含指令
+<!-- END CAPABILITY -->
 
-`#include <...>` 链接到在搜索路径上找到的头文件
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-#include <header_a.h>
+**使用尖括号的包含指令**
+
+`#include <...>` 链接到在搜索路径中找到的头文件
+
+```snap
+tests/snap/document_links/include_directives/02_angle_include.cpp
 ```
 
-### 宏展开路径
+<!-- END CAPABILITY -->
 
-`#include MACRO` 将指令参数链接到宏展开后的目标
+<!-- BEGIN CAPABILITY: supported clangd#2375 -->
 
-```cpp
-#define HEADER "header_b.h"
-#include HEADER
+**宏展开后的路径**
+
+`#include MACRO` 将指令参数链接到宏展开后的目标文件
+
+```snap
+tests/snap/document_links/include_directives/03_macro_include.cpp
 ```
 
-### `#include_next` 和 `__has_include_next`
+<!-- END CAPABILITY -->
 
-链接会继续沿搜索路径向下查找
+<!-- BEGIN CAPABILITY: partial -->
 
-在搜索路径上，`first/wrap.h` 会遮蔽 `second/wrap.h`；其中的
-`#include_next`（由 `__has_include_next` 保护）会包含第二份副本。
-只有在包含该头文件的 TU 上下文中编译它时，才能解析到搜索路径中的下一项；
-单独打开时，它会作为独立 TU 编译，此时 clang 会有意将 `#include_next`
-当作普通包含指令处理，因此目前两个链接都会回到第一份副本（这也是
-快照所固定的行为）。
+**`#include_next` 和 `__has_include_next`**
 
-`main.cpp`：
+单独打开头文件时，`#include_next` 会链接回第一个匹配的头文件
 
-```cpp
-#include <wrap.h>
+在搜索路径中，`first/wrap.h` 遮蔽了 `second/wrap.h`；前者通过 `#include_next`（由 `__has_include_next` 检查把关）包含第二个同名头文件。只有在包含该头文件的 TU 上下文中编译它时，才会沿搜索路径解析到下一个匹配项。单独打开时，该头文件会作为独立的 TU 编译，此时 `#include_next` 的行为与普通包含指令相同，两个链接都会指回第一个同名头文件。
 
-int use_wrap = WRAP_FIRST + WRAP_SECOND;
+```snap
+tests/snap/document_links/include_directives/04_include_next/main.cpp
 ```
 
-`first/wrap.h`：
+<!-- END CAPABILITY -->
 
-```cpp
-#pragma once
+<!-- BEGIN CAPABILITY: supported -->
 
-#define WRAP_FIRST 1
+**`__has_include`**
 
-#if __has_include_next(<wrap.h>)
-#include_next <wrap.h>
-#endif
+被检查的路径链接到所探测的文件
+
+```snap
+tests/snap/document_links/include_directives/05_has_include.cpp
 ```
 
-`second/wrap.h`：
-
-```cpp
-#pragma once
-
-#define WRAP_SECOND 2
-```
-
-### `__has_include`
-
-被检查的路径会链接到其所探测的文件
-
-```cpp
-#if __has_include("header_c.h")
-#include "header_c.h"
-#endif
-```
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -104,32 +81,29 @@ int use_wrap = WRAP_FIRST + WRAP_SECOND;
 
 <!-- BEGIN GENERATED ITEMS: embed_directives -->
 
-| 能力          | 状态 | 问题 |
-| ------------- | ---- | ---- |
-| `#embed`      | 支持 |      |
-| `__has_embed` | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### `#embed`
+**`#embed`**
 
-资源路径会链接到嵌入的文件
+资源路径链接到嵌入的文件
 
-```cpp
-const char data[] = {
-#embed "data.bin"
-};
+```snap
+tests/snap/document_links/embed_directives/01_embed.cpp
 ```
 
-### `__has_embed`
+<!-- END CAPABILITY -->
 
-被检查的路径会链接到所探测的资源
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-#if __has_embed("data.bin")
-const char first_byte[] = {
-#embed "data.bin" limit(1)
-};
-#endif
+**`__has_embed`**
+
+被检查的路径链接到所探测的资源
+
+```snap
+tests/snap/document_links/embed_directives/02_has_embed.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -137,22 +111,19 @@ const char first_byte[] = {
 
 <!-- BEGIN GENERATED ITEMS: presentation -->
 
-| 能力               | 状态 | 问题 |
-| ------------------ | ---- | ---- |
-| 已解析路径工具提示 | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 已解析路径工具提示
+**解析后路径的工具提示**
 
-每个链接都以悬停工具提示的形式提供其目标的绝对路径
+每个链接都以目标文件的绝对路径作为悬停时的工具提示
 
-编辑器会在链接跳转提示旁显示该工具提示，例如
-`/usr/include/c++/14/vector (ctrl + click)`。快照仅固定链接目标；
-测试套件则针对本测试集中的每个测试样例，在服务器响应中验证工具提示
-与目标相符。
+编辑器会在打开链接的操作提示旁显示工具提示，例如 `/usr/include/c++/14/vector (ctrl + click)`。
 
-```cpp
-#include "header_a.h"
+```snap
+tests/snap/document_links/presentation/01_tooltip.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -160,20 +131,16 @@ const char first_byte[] = {
 
 <!-- BEGIN GENERATED ITEMS: module_declarations -->
 
-| 能力     | 状态   | 问题 |
-| -------- | ------ | ---- |
-| 模块目标 | 不支持 |      |
+<!-- BEGIN CAPABILITY: unsupported -->
 
-### 模块目标
+**模块目标**
 
-`import` 和 `module` 声明会链接到相应的接口文件
+`import` 和 `module` 声明尚未链接到接口文件
 
-```cpp
-export module app;
-
-import lib;
-import :part;
-export import lib.extra;
+```snap
+tests/snap/document_links/module_declarations/01_modules.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->

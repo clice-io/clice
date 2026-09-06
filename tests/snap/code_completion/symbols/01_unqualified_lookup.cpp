@@ -1,7 +1,10 @@
-/// # Unqualified lookup with fuzzy prefix matching — strong prefix matches survive, weak subsequence matches and unqualified namespace members do not
+/// # Fuzzy unqualified lookup
 ///
 /// - status: supported
 /// - diagnostics: expected
+///
+/// Strong prefix matches survive, weak subsequence matches and unqualified
+/// namespace members do not
 
 // The completion expression dangles as an unfinished statement.
 namespace A {

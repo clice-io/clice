@@ -3,9 +3,9 @@
 /// - status: supported
 /// - verify: server
 ///
-/// Go-to-declaration on a use resolves sites in other files: the
-/// prototype lives in a shared header and the out-of-line definition in a
-/// sibling source, and both are offered from a use in another file.
+/// Go-to-declaration on a use resolves sites in other files: the prototype
+/// lives in a shared header and the out-of-line definition in a sibling source,
+/// and both are offered from a use in another file
 
 #include "shared.h"
 

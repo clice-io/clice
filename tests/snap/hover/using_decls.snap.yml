@@ -2,58 +2,58 @@
 created_at: 2026-07-28
 input_file: using_decls.cpp
 ---
-01_using_function: { range: "10:2-10:5" }
-### function `foo`  
+01_using_function: { range: "6:4-6:8" }
+### function `open`  
 
 ---
 → `void`  
 
 ---
 ```cpp
-// In namespace using_func::ns
-void foo()
+// In namespace imported_function::library
+void open()
 ```
 
-02_using_overloads: { range: "18:35-18:38" }
-### `foo`  
+02_using_overloads: { range: "17:4-17:9" }
+### `write`  
 
 ---
 ```cpp
-// In namespace using_overloads
-using ns::foo
+// In namespace imported_overloads
+using library::write
 ```
 
-03_using_decl_site: { range: "24:10-24:13" }
-### function `bar`  
+03_using_decl_site: { range: "25:15-25:20" }
+### function `close`  
 
 ---
 → `void`  
 Parameters:  
-- `int`
+- `long`
 
 ---
 ```cpp
-// In namespace using_decl_site::ns
-void bar(int)
+// In namespace declaration_site::library
+void close(long)
 ```
 
-04_using_type: { range: "32:2-32:12" }
-### type `value_type`  
+04_using_type: { range: "34:4-34:14" }
+### type `index_type`  
 
 ---
-Type: `int`  
+Type: `long`  
 
 ---
 ```cpp
-// In B
-public: using value_type = int
+// In Base
+public: using index_type = long
 ```
 
-05_alias_directive: { range: "40:16-40:21" }
-### namespace `alias`  
+05_alias_directive: { range: "41:16-41:19" }
+### namespace `api`  
 
 ---
 ```cpp
-// In namespace alias_directive
-namespace alias = original
+// In namespace namespace_alias
+namespace api = implementation
 ```

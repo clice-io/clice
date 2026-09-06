@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 int §(decl)scale(int value);
 

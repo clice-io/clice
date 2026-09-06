@@ -1,6 +1,8 @@
-/// # Variadic template pack — the parameter pack renders as the callee's uninstantiated signature
+/// # Variadic template pack
 ///
 /// - status: supported
+///
+/// The parameter pack renders as the callee's uninstantiated signature
 
 template <typename... Args>
 void emit(Args... args);

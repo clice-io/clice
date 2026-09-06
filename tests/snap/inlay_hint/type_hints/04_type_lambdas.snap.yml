@@ -2,8 +2,8 @@
 created_at: 2026-07-31
 input_file: type_hints/04_type_lambdas.cpp
 ---
-- { pos: "8:17", kind: Type, label: ": (lambda)" }
-- { pos: "8:29", kind: Type, label: ": int" }
-- { pos: "8:49", kind: Type, label: "-> int" }
-- { pos: "11:13", kind: Type, label: ": (lambda)" }
-- { pos: "11:18", kind: Type, label: "-> double" }
+- { pos: "10:17", kind: Type, label: ": (lambda)" }
+- { pos: "10:29", kind: Type, label: ": int" }
+- { pos: "10:49", kind: Type, label: "-> int" }
+- { pos: "13:13", kind: Type, label: ": (lambda)" }
+- { pos: "13:18", kind: Type, label: "-> double" }

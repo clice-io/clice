@@ -4,24 +4,24 @@ input_file: go_to_implementation/01_impl_virtual_chain.cpp
 ---
 base:
   definition:
-    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "9:17-9:20" }
+    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "11:17-11:20" }
   declaration:
-    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "9:17-9:20" }
+    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "11:17-11:20" }
   implementation:
-    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "13:9-13:12" }
+    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "15:9-15:12" }
   references:
-    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "9:17-9:20" }
+    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "11:17-11:20" }
   callHierarchy:
-    - { name: "run", kind: Method, file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "9:17-9:20" }
+    - { name: "run", kind: Method, file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "11:17-11:20" }
 
 middle:
   definition:
-    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "13:9-13:12" }
+    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "15:9-15:12" }
   declaration:
-    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "13:9-13:12" }
+    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "15:9-15:12" }
   implementation:
-    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "17:9-17:12" }
+    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "19:9-19:12" }
   references:
-    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "13:9-13:12" }
+    - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "15:9-15:12" }
   callHierarchy:
-    - { name: "run", kind: Method, file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "13:9-13:12" }
+    - { name: "run", kind: Method, file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "15:9-15:12" }

@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: layout_information/03_vtable_offset.cpp
 ---
-first_virtual: { range: "8:17-8:21" }
+first_virtual: { range: "10:17-10:21" }
 ### method `draw`  
 
 ---
@@ -14,7 +14,7 @@ first_virtual: { range: "8:17-8:21" }
 public: virtual void draw()
 ```
 
-second_virtual: { range: "9:17-9:21" }
+second_virtual: { range: "11:17-11:21" }
 ### method `move`  
 
 ---

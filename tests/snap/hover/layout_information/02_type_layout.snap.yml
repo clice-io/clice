@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: layout_information/02_type_layout.cpp
 ---
-struct_size: { range: "10:7-10:13" }
+struct_size: { range: "12:7-12:13" }
 ### struct `Widget`  
 
 ---

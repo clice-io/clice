@@ -1,11 +1,11 @@
-/// # Dependent member navigation in uninstantiated templates
+/// # Dependent member navigation
 ///
 /// - status: supported
 /// - verify: server
 ///
-/// Inside a template that is never instantiated, a member accessed on an
-/// object of a dependent type resolves to the member declared on the
-/// corresponding class template.
+/// Inside a template that is never instantiated, a member accessed on an object
+/// of a dependent type resolves to the member declared on the corresponding
+/// class template
 
 template <typename T>
 struct Sink {

@@ -1,7 +1,7 @@
-/// - verify: server
-///
-/// Conditional directives reference the macro like expansions do, while
-/// builtin macros have no definition anywhere the index can serve.
+// - verify: server
+//
+// Conditional directives reference the macro like expansions do, while
+// builtin macros have no definition anywhere the index can serve.
 
 #define §(guard_def)FEATURE_ON
 

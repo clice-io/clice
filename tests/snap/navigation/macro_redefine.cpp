@@ -1,8 +1,8 @@
-/// - verify: server
-///
-/// Each `#define` of the same name is its own symbol: uses resolve to the
-/// definition live at that point, and `#undef` counts as a reference of
-/// the definition it cancels.
+// - verify: server
+//
+// Each `#define` of the same name is its own symbol: uses resolve to the
+// definition live at that point, and `#undef` counts as a reference of
+// the definition it cancels.
 
 #define §(first_def)PHASE 1
 

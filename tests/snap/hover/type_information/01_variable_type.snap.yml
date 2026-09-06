@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: type_information/01_variable_type.cpp
 ---
-01_pointer: { range: "11:5-11:8" }
+01_pointer: { range: "13:5-13:8" }
 ### variable `ptr`  
 
 ---
@@ -15,7 +15,7 @@ Value = `&target`
 int *ptr = &target
 ```
 
-02_reference: { range: "13:5-13:8" }
+02_reference: { range: "15:5-15:8" }
 ### variable `ref`  
 
 ---
@@ -27,7 +27,7 @@ Type: `int &`
 int &ref = target
 ```
 
-03_array: { range: "15:4-15:11" }
+03_array: { range: "17:4-17:11" }
 ### variable `numbers`  
 
 ---

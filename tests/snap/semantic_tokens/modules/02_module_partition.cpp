@@ -1,6 +1,8 @@
-/// # Module partitions — partition names in the module declaration
+/// # Module partitions
 ///
 /// - status: supported
+///
+/// Module declarations tokenize partition names
 
 export module demo.core:part;
 

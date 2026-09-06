@@ -2,8 +2,8 @@
 created_at: 2026-07-31
 input_file: modules/03_module_keyword_identifier.cpp
 ---
-- { loc: "5:11", text: "module", kind: struct, modifiers: [definition] }
-- { loc: "6:4", text: "module", kind: struct }
-- { loc: "6:11", text: "m", kind: variable, modifiers: [definition] }
-- { loc: "7:8", text: "import", kind: variable, modifiers: [definition] }
-- { loc: "8:8", text: "module", kind: variable, modifiers: [definition] }
+- { loc: "7:11", text: "module", kind: struct, modifiers: [definition] }
+- { loc: "8:4", text: "module", kind: struct }
+- { loc: "8:11", text: "m", kind: variable, modifiers: [definition] }
+- { loc: "9:8", text: "import", kind: variable, modifiers: [definition] }
+- { loc: "10:8", text: "module", kind: variable, modifiers: [definition] }

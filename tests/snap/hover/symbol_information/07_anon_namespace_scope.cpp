@@ -1,7 +1,9 @@
-/// # Anonymous namespace scope — `(anonymous namespace)` shows in the scope display
+/// # Anonymous namespace scope
 ///
 /// - status: partial
 /// - issues: clangd#436
+///
+/// `(anonymous namespace)` shows in the scope display
 ///
 /// The cards render, but the anonymous segment is dropped from the
 /// scope display: a top-level anonymous member shows no scope line at

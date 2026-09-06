@@ -3,4 +3,4 @@ created_at: 2026-08-02
 input_file: symbols/11_using_declaration.cpp
 ---
 pos:
-- { label: "helper_fn", kind: Function, detail: "(int x)", description: "int", edit: "15:12-15:16" }
+- { label: "helper_fn", kind: Function, detail: "(int x)", description: "int", edit: "17:12-17:16" }

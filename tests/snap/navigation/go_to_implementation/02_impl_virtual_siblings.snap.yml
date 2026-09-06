@@ -4,14 +4,14 @@ input_file: go_to_implementation/02_impl_virtual_siblings.cpp
 ---
 base:
   definition:
-    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "9:16-9:20" }
+    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "11:16-11:20" }
   declaration:
-    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "9:16-9:20" }
+    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "11:16-11:20" }
   implementation:
-    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "13:8-13:12" }
-    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "17:8-17:12" }
-    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "21:8-21:12" }
+    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "15:8-15:12" }
+    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "19:8-19:12" }
+    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "23:8-23:12" }
   references:
-    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "9:16-9:20" }
+    - { file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "11:16-11:20" }
   callHierarchy:
-    - { name: "area", kind: Method, file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "9:16-9:20" }
+    - { name: "area", kind: Method, file: "${WS}/go_to_implementation/02_impl_virtual_siblings.cpp", range: "11:16-11:20" }

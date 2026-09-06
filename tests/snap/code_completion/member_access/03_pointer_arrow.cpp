@@ -1,7 +1,9 @@
-/// # Pointer member access — `->` on a pointer completes the pointee's members
+/// # Pointer member access
 ///
 /// - status: supported
 /// - diagnostics: expected
+///
+/// `->` on a pointer completes the pointee's members
 
 // The member access expression is left dangling at the point.
 struct Node {

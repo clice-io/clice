@@ -1,6 +1,9 @@
-/// # Active parameter past a shorter overload — with the cursor in the second argument, only overloads that declare a second parameter remain
+/// # Active parameter beyond overload
 ///
 /// - status: supported
+///
+/// With the cursor in the second argument, only overloads that declare a second
+/// parameter remain
 
 void draw();
 void draw(int x);

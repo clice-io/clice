@@ -1,6 +1,8 @@
-/// # Nested aggregates — written braces recurse; omitted braces flatten into `.outer.inner=`
+/// # Nested aggregates
 ///
 /// - status: supported
+///
+/// Written braces recurse; omitted braces flatten into `.outer.inner=`
 
 struct Inner {
     int x;

@@ -1,6 +1,8 @@
-/// # Virtual and abstract — virtual methods, pure virtual methods and abstract classes
+/// # Virtual and abstract
 ///
 /// - status: supported
+///
+/// Virtual methods and abstract classes carry virtual or abstract modifiers
 
 struct §Shape {
     virtual int §area();

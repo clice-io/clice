@@ -1,6 +1,9 @@
-/// # Expansion sites and arguments — expansion names are macros, written arguments keep their semantics, definition bodies stay lexical
+/// # Expansion sites and arguments
 ///
 /// - status: supported
+///
+/// Expansion names are macros, written arguments keep their semantics,
+/// definition bodies stay lexical
 
 int value = 1;
 

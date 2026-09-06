@@ -1,7 +1,9 @@
-/// # Namespace-qualified lookup — `ns::` lists the namespace's own members
+/// # Namespace-qualified lookup
 ///
 /// - status: supported
 /// - diagnostics: expected
+///
+/// `ns::` lists the namespace's own members
 
 // The qualified-id is left dangling at the point.
 namespace geometry {

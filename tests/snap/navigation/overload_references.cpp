@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 int §(int_def)select(int value) {
     return value;

@@ -1,8 +1,8 @@
-/// - verify: server
-///
-/// Names spelled in macro arguments anchor at their spelling, so def/decl
-/// alternation works there like at plain sites, while the invocation
-/// token itself always resolves to the macro.
+// - verify: server
+//
+// Names spelled in macro arguments anchor at their spelling, so def/decl
+// alternation works there like at plain sites, while the invocation
+// token itself always resolves to the macro.
 
 #define §(macro_def_site)DECLARE_HOOK(name) int name(int value)
 

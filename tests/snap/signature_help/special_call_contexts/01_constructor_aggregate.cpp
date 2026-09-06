@@ -1,7 +1,10 @@
-/// # Constructors and aggregates — constructor calls render without a return arrow; aggregate initialization lists the fields in braces
+/// # Constructors and aggregates
 ///
 /// - status: supported
 /// - issues: clangd#726, clangd#2541
+///
+/// Constructor calls render without a return arrow; aggregate initialization
+/// lists the fields in braces
 
 struct Point {
     int x;

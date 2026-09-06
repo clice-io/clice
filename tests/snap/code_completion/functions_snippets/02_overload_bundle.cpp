@@ -1,7 +1,9 @@
-/// # Overload bundling — an overload set collapses into one entry with an overload count
+/// # Overload bundling
 ///
 /// - status: supported
 /// - diagnostics: expected
+///
+/// An overload set collapses into one entry with an overload count
 
 // The completion prefix cuts the initializer mid-expression.
 int foooo(int x);

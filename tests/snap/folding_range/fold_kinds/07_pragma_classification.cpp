@@ -1,6 +1,8 @@
-/// # Pragma classification — only the first argument token decides region/endregion
+/// # Pragma classification
 ///
 /// - status: supported
+///
+/// Only the first argument token decides region/endregion
 
 // The leading declaration ends the preamble so the pragmas below reach the
 // main-file parse on both the inspect and the server path.

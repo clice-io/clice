@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 struct Counter {
     static int §(member_decl)value;

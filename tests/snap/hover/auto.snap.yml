@@ -2,15 +2,15 @@
 created_at: 2026-07-28
 input_file: auto.cpp
 ---
-01_structured_bindings: { range: "13:2-13:6" }
+01_structured_bindings: { range: "13:4-13:8" }
 ### type `auto`  
 
 ---
 ```cpp
-S
+Dimensions
 ```
 
-02_undeduced_auto: { range: "21:2-21:6" }
+02_undeduced_auto: { range: "19:4-19:8" }
 ### type `auto`  
 
 ---
@@ -18,15 +18,15 @@ S
 /* not deduced */
 ```
 
-03_constrained_auto: { range: "28:2-28:6" }
+03_constrained_auto: { range: "26:7-26:11" }
 ### type `auto`  
 
 ---
 ```cpp
-int
+long
 ```
 
-04_auto_lambda: { range: "34:2-34:6" }
+04_auto_lambda: { range: "31:4-31:8" }
 ### type `auto`  
 
 ---
@@ -34,188 +34,167 @@ int
 class(lambda)
 ```
 
-05_auto_instantiation: { range: "42:2-42:6" }
+05_auto_instantiation: { range: "38:4-38:8" }
 ### type `auto`  
 
 ---
 ```cpp
-Foo<int>
+Container<long>
 ```
 
-06_auto_specialized: { range: "51:2-51:6" }
+06_auto_specialized: { range: "46:4-46:8" }
 ### type `auto`  
 
 ---
 ```cpp
-Foo<int>
+Container<long>
 ```
 
-07_simple_auto: { range: "58:2-58:6" }
+07_simple_auto: { range: "51:0-51:4" }
 ### type `auto`  
 
 ---
 ```cpp
-int
+long
 ```
 
-08_const_auto: { range: "65:8-65:12" }
+08_const_auto: { range: "55:6-55:10" }
 ### type `auto`  
 
 ---
 ```cpp
-int
+long
 ```
 
-09_const_auto_ref: { range: "72:8-72:12" }
+09_const_auto_ref: { range: "59:6-59:10" }
 ### type `auto`  
 
 ---
 ```cpp
-int
+long
 ```
 
-10_auto_ref: { range: "80:2-80:6" }
+10_auto_ref: { range: "64:0-64:4" }
 ### type `auto`  
 
 ---
 ```cpp
-int
+long
 ```
 
-11_auto_ptr: { range: "88:2-88:6" }
+11_auto_ptr: { range: "69:0-69:4" }
 ### type `auto`  
 
 ---
 ```cpp
-int
+long
 ```
 
-12_auto_from_pointer: { range: "96:2-96:6" }
+12_auto_from_pointer: { range: "74:0-74:4" }
 ### type `auto`  
 
 ---
 ```cpp
-int *
+long *
 ```
 
-13_auto_init_list: { range: "103:2-103:6" }
+13_auto_init_list: { range: "78:0-78:4" }
 ### type `auto`  
 
 ---
 ```cpp
-std::initializer_list<int>
+std::initializer_list<long>
 ```
 
-14_auto_conversion: { range: "110:11-110:15" }
+14_auto_conversion: { range: "83:13-83:17" }
 ### type `auto`  
 
 ---
 ```cpp
-int
+long
 ```
 
-15_auto_trailing_return: { range: "116:0-116:4" }
+15_auto_trailing_return: { range: "88:0-88:4" }
 ### type `auto`  
 
 ---
 ```cpp
-int
+long
 ```
 
-16_auto_trailing_decltype: { range: "124:0-124:4" }
-### type `auto`  
-
----
-auto function return with trailing type  
-
----
-```cpp
-Bar
-```
-
-17_auto_fn_return: { range: "132:0-132:4" }
-### type `auto`  
-
----
-auto in function return  
-
----
-```cpp
-Bar
-```
-
-18_auto_ref_fn_return: { range: "140:0-140:4" }
-### type `auto`  
-
----
-auto& in function return  
-
----
-```cpp
-Bar
-```
-
-19_auto_ptr_fn_return: { range: "149:0-149:4" }
-### type `auto`  
-
----
-auto\* in function return  
-
----
-```cpp
-Bar
-```
-
-20_const_auto_ref_fn_return: { range: "158:6-158:10" }
-### type `auto`  
-
----
-const auto& in function return  
-
----
-```cpp
-Bar
-```
-
-21_auto_fn_pointer: { range: "167:0-167:4" }
+16_auto_trailing_decltype: { range: "95:0-95:4" }
 ### type `auto`  
 
 ---
 ```cpp
-int
+Token
 ```
 
-22_auto_alias_int: { range: "173:0-173:4" }
+17_auto_fn_return: { range: "102:0-102:4" }
 ### type `auto`  
 
 ---
 ```cpp
-int_type // aka: int
+Token
 ```
 
-23_auto_alias_class: { range: "180:0-180:4" }
+18_auto_ref_fn_return: { range: "109:0-109:4" }
 ### type `auto`  
 
 ---
-auto on alias  
-
----
 ```cpp
-cls_type // aka: cls
+Token
 ```
 
-24_auto_alias_template: { range: "187:0-187:4" }
+19_auto_ptr_fn_return: { range: "117:0-117:4" }
 ### type `auto`  
 
 ---
-auto on alias  
+```cpp
+Token
+```
+
+20_const_auto_ref_fn_return: { range: "125:6-125:10" }
+### type `auto`  
 
 ---
 ```cpp
-templ<int>
+Token
 ```
 
-25_undeduced_auto_decl: { range: "194:2-194:6" }
+21_auto_fn_pointer: { range: "133:0-133:4" }
+### type `auto`  
+
+---
+```cpp
+long
+```
+
+22_auto_alias_int: { range: "138:0-138:4" }
+### type `auto`  
+
+---
+```cpp
+distance_type // aka: long
+```
+
+23_auto_alias_class: { range: "144:0-144:4" }
+### type `auto`  
+
+---
+```cpp
+state_type // aka: State
+```
+
+24_auto_alias_template: { range: "149:0-149:4" }
+### type `auto`  
+
+---
+```cpp
+Wrapper<long>
+```
+
+25_undeduced_auto_decl: { range: "154:4-154:8" }
 ### type `auto`  
 
 ---
@@ -223,7 +202,7 @@ templ<int>
 /* not deduced */
 ```
 
-26_undeduced_auto_return: { range: "201:0-201:4" }
+26_undeduced_auto_return: { range: "159:22-159:26" }
 ### type `auto`  
 
 ---
@@ -231,7 +210,7 @@ templ<int>
 /* not deduced */
 ```
 
-27_template_auto_param: { range: "208:9-208:13" }
+27_template_auto_param: { range: "165:10-165:14" }
 ### type `auto`  
 
 ---

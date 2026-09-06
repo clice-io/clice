@@ -1,6 +1,8 @@
-/// # Anonymous members — unnamed unions and structs vanish from the designator path
+/// # Anonymous members
 ///
 /// - status: supported
+///
+/// Unnamed unions and structs vanish from the designator path
 
 struct State {
     union {

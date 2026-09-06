@@ -1,7 +1,9 @@
-/// # Dot-separated module name — navigate each segment
+/// # Dot-separated module name
 ///
 /// - status: partial
 /// - verify: server
+///
+/// Only the leading segment of a dotted module name navigates to its interface
 ///
 /// Go-to-definition on the leading segment of a dot-separated module name
 /// reaches the module's interface unit; the segments after a dot do not

@@ -1,9 +1,11 @@
-/// # Most-vexing-parse — object init and function declaration hover distinctly
+/// # Most-vexing-parse
 ///
 /// - status: supported
 ///
-/// clangd tracks this as clangd#2225; clice reads the direct-init as a
-/// variable and the vexing form as a function declaration.
+/// Direct initialization and a function declaration have distinct hover cards
+///
+/// The direct initialization appears as a variable, while the most-vexing
+/// form appears as a function declaration.
 
 namespace mvp {
 

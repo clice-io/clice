@@ -1,6 +1,8 @@
-/// # `auto` parameters — a template with exactly one instantiation reveals the deduced type
+/// # `auto` parameters
 ///
 /// - status: supported
+///
+/// A template with exactly one instantiation reveals the deduced type
 
 int twice(auto x) {
     return x + x;

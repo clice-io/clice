@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 int §(leaf)settle(int value) {
     return value;

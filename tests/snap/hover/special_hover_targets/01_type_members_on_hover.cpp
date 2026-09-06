@@ -1,7 +1,9 @@
-/// # Members on type hover — hovering an enum or struct type lists its members
+/// # Members on type hover
 ///
 /// - status: partial
 /// - issues: clangd#959
+///
+/// Hovering an enum or struct type lists its members
 ///
 /// The card names the type (and a struct's layout), but the member list is
 /// not expanded — the body renders as `{}`.

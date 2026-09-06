@@ -1,6 +1,8 @@
-/// # Friend function definitions — a friend function defined inline in a class appears under that class
+/// # Friend function definitions
 ///
 /// - status: supported
+///
+/// A friend function defined inline in a class appears under that class
 
 struct Owner {
     friend void inline_friend(Owner& o) {}

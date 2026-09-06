@@ -3,9 +3,9 @@
 /// - status: unsupported
 /// - issues: clangd#550
 ///
-/// Symbols match by bare name only: `net::Socket` finds nothing even
-/// though `deep::net::Socket` exists, and neither does any other
-/// qualifier-prefixed form.
+/// Symbols match by bare name only: `net::Socket` finds nothing even though
+/// `deep::net::Socket` exists, and neither does any other qualifier-prefixed
+/// form
 
 // query: net::Socket
 

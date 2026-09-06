@@ -1,10 +1,10 @@
-/// # Function signature in the item detail
+/// # Call hierarchy item details
 ///
 /// - status: unsupported
 ///
-/// A call hierarchy item carries only its name; the function signature is
-/// not attached in a detail field, so overloads are indistinguishable in
-/// the hierarchy.
+/// A call hierarchy item carries only its name; the function signature is not
+/// attached in a detail field, so overloads are indistinguishable in the
+/// hierarchy
 
 int compute(int a, int b) {  // no signature attached to this item
     return a + b;

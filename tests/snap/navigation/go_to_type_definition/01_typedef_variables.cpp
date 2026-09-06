@@ -4,7 +4,7 @@
 /// - verify: server
 ///
 /// Go-to-type-definition on a local variable or a parameter reaches the
-/// definition of its type.
+/// definition of its type
 
 struct §(type)Widget {};
 

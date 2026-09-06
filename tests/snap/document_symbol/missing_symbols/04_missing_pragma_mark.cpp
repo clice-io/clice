@@ -1,6 +1,8 @@
-/// # `#pragma mark` navigation markers — editor section markers as outline entries
+/// # `#pragma mark` navigation markers
 ///
 /// - status: unsupported
+///
+/// Editor section markers do not appear in the outline yet
 
 #pragma mark - Lifecycle
 

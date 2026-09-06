@@ -3,9 +3,8 @@
 /// - status: unsupported
 /// - issues: clangd#2139
 ///
-/// The reference reply carries only locations, so a reader cannot tell a
-/// write from a read; annotating each result with its access kind is not
-/// offered.
+/// The reference reply carries only locations, so a reader cannot tell a write
+/// from a read; annotating each result with its access kind is not offered
 
 int use() {
     int x = 0;      // write

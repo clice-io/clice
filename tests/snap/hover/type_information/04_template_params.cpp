@@ -1,24 +1,17 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-/// # Template parameters — type, template-template, non-type
+/// # Template parameters
 ///
 /// - status: supported
+///
+/// Template hover distinguishes type, template-template and non-type parameters
 ///
 /// Each template parameter kind reports its form: a type parameter, a
 /// template-template parameter, and a non-type parameter with its default.
 
-// Template type parameter.
-namespace type_param {
-template <typename §(01_type_param)T = int> void foo();
-}
+namespace parameter_kinds {
+template <typename §(01_type_param)Value = long> void accept_type();
 
-// Template template parameter.
-namespace template_template_param {
-template <template<typename> class §(02_template_template_param)T> void foo();
-}
+template <template <typename> class §(02_template_template_param)Container>
+void accept_template();
 
-// Non-type template parameter.
-namespace non_type_param {
-template <int §(03_non_type_param)T = 5> void foo();
+template <long §(03_non_type_param)Count = 8> void accept_value();
 }

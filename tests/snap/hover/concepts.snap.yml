@@ -2,57 +2,57 @@
 created_at: 2026-07-28
 input_file: concepts.cpp
 ---
-01_concept_on_var: { range: "6:0-6:1" }
-### concept `F`  
+01_concept_on_var: { range: "4:0-4:7" }
+### concept `Numeric`  
 
 ---
 ```cpp
-// In namespace constrained_var
-template <class T>
-concept F = true
+// In namespace constrained_object
+template <typename T>
+concept Numeric = true
 ```
 
-02_concept_on_tparam: { range: "12:9-12:16" }
-### concept `Fooable`  
+02_concept_on_tparam: { range: "11:10-11:19" }
+### concept `Printable`  
 
 ---
 ```cpp
-// In namespace constrained_tparam
-template <class T>
-concept Fooable = true
+// In namespace constrained_parameter
+template <typename T>
+concept Printable = true
 ```
 
-03_constrained_tparam: { range: "19:17-19:19" }
-### type `TT`  
+03_constrained_tparam: { range: "18:23-18:30" }
+### type `Payload`  
 
 ---
 Type: `class`  
 
 ---
 ```cpp
-// In bar
-public: Fooable TT
+// In send
+public: Serializable Payload
 ```
 
-04_concept_on_auto_param: { range: "26:9-26:16" }
-### concept `Fooable`  
+04_concept_on_auto_param: { range: "25:11-25:19" }
+### concept `Hashable`  
 
 ---
 ```cpp
-// In namespace constrained_auto_param
-template <class T>
-concept Fooable = true
+// In namespace abbreviated_parameter
+template <typename T>
+concept Hashable = true
 ```
 
-05_concept_reference: { range: "32:9-32:16" }
-### concept `Fooable`  
+05_concept_reference: { range: "32:29-32:36" }
+### concept `Ordered`  
 
 ---
 Value = `true`  
 
 ---
 ```cpp
-// In namespace concept_reference
-template <class T>
-concept Fooable = true
+// In namespace concept_expression
+template <typename T>
+concept Ordered = true
 ```

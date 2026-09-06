@@ -1,8 +1,11 @@
-/// # Parameter placeholder snippets — calls insert tab-stop placeholders per argument; a no-argument function stays plain text
+/// # Parameter placeholder snippets
 ///
 /// - status: supported
 /// - config: {"bundle_overloads": false, "enable_function_arguments_snippet": true}
 /// - diagnostics: expected
+///
+/// Calls insert tab-stop placeholders per argument; a no-argument function
+/// stays plain text
 
 // The completion prefixes dangle as unfinished statements.
 int foooo(int x, float y);

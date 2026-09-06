@@ -1,7 +1,10 @@
-/// # Function signatures — parameter and return types in the `detail` field disambiguate overloads; constructors drop the `void` return type
+/// # Function signatures
 ///
 /// - status: supported
 /// - issues: clangd#520, clangd#601, clangd#1232
+///
+/// Parameter and return types in the `detail` field disambiguate overloads;
+/// constructors drop the `void` return type
 
 namespace detail {
 

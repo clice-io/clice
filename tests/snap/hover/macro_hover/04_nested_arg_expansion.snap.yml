@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: macro_hover/04_nested_arg_expansion.cpp
 ---
-01_nested_arg: { range: "13:18-13:27" }
+01_nested_arg: { range: "15:18-15:27" }
 ### macro `INNER_VAL`  
 
 ---

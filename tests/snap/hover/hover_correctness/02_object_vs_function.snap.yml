@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: hover_correctness/02_object_vs_function.cpp
 ---
-object_init: { range: "17:10-17:16" }
+object_init: { range: "19:10-19:16" }
 ### variable `active`  
 
 ---
@@ -14,7 +14,7 @@ Type: `Timer`
 Timer active(seconds)
 ```
 
-vexing_decl: { range: "18:10-18:15" }
+vexing_decl: { range: "20:10-20:15" }
 ### function `empty`  
 
 ---

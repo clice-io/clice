@@ -2,11 +2,11 @@
 created_at: 2026-07-31
 input_file: parameter_hints/02_param_suppression.cpp
 ---
-- { pos: "11:16", kind: Parameter, label: "height:", padding_right: true }
-- { pos: "15:20", kind: Parameter, label: "width:", padding_right: true }
-- { pos: "15:23", kind: Parameter, label: "height:", padding_right: true }
-- { pos: "24:13", kind: Parameter, label: "width:", padding_right: true }
-- { pos: "30:9", kind: Parameter, label: "width:", padding_right: true }
-- { pos: "30:23", kind: Parameter, label: "height:", padding_right: true }
+- { pos: "13:16", kind: Parameter, label: "height:", padding_right: true }
+- { pos: "17:20", kind: Parameter, label: "width:", padding_right: true }
+- { pos: "17:23", kind: Parameter, label: "height:", padding_right: true }
+- { pos: "26:13", kind: Parameter, label: "width:", padding_right: true }
 - { pos: "32:9", kind: Parameter, label: "width:", padding_right: true }
-- { pos: "32:12", kind: Parameter, label: "height:", padding_right: true }
+- { pos: "32:23", kind: Parameter, label: "height:", padding_right: true }
+- { pos: "34:9", kind: Parameter, label: "width:", padding_right: true }
+- { pos: "34:12", kind: Parameter, label: "height:", padding_right: true }

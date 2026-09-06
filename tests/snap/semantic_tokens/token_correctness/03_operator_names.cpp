@@ -1,6 +1,8 @@
-/// # Operator names — the `operator` keyword and call-site punctuation stay plain
+/// # Operator names
 ///
 /// - status: supported
+///
+/// The `operator` keyword and call-site punctuation stay plain
 ///
 /// An operator's written name is keyword plus punctuation, so no name
 /// token is painted: `operator` keeps its keyword classification and

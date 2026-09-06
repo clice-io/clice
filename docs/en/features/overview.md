@@ -1,8 +1,8 @@
-# Features Overview
+# Language Server Overview
 
 clice provides a suite of C++ development tools built on LLVM/Clang. This section documents what's implemented, what's planned, and links to relevant upstream issues.
 
-## LSP Editor Features
+## Features
 
 Language Server Protocol features available when using clice as an editor backend.
 
@@ -29,17 +29,6 @@ Language Server Protocol features available when using clice as an editor backen
 | Code Action      | Stub                                       | [code-action](./code-action.md)           |
 
 <!-- END GENERATED OVERVIEW -->
-
-## Lint
-
-Project-wide static analysis powered by clang-tidy, with cross-TU optimizations unique to clice.
-
-| Feature                | Status  | Page              |
-| ---------------------- | ------- | ----------------- |
-| clang-tidy integration | Partial | [lint](./lint.md) |
-
-The project-wide CLI (`clice lint`) is implemented; in-editor live
-diagnostics and cross-TU deduplication are still planned.
 
 ## Legend
 

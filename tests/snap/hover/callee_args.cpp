@@ -1,107 +1,90 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-// Extra info for function call.
-namespace fn_call {
-void fun(int arg_a, int &arg_b) {};
-void code() {
-  int a = 1, b = 2;
-  fun(a, §(01_arg_by_ref)b);
+namespace reference_argument {
+void exchange(long input, long& output) {}
+void run() {
+    long source = 3;
+    long target = 0;
+    exchange(source, §(01_arg_by_ref)target);
 }
 }
 
-// make_unique-like function call.
-namespace forwarded_arg {
-struct Foo {
-  explicit Foo(int arg_a) {}
+namespace forwarded_argument {
+struct Record {
+    explicit Record(long identifier) {}
 };
-template<class T, class... Args>
-T make(Args&&... args)
-{
+template <typename T, typename... Args> T construct(Args&&... args) {
     return T(args...);
 }
-
-void code() {
-  int a = 1;
-  auto foo = make<Foo>(§(02_forwarded_arg)a);
+void run() {
+    long identifier = 4;
+    auto record = construct<Record>(§(02_forwarded_arg)identifier);
 }
 }
 
-// Converted argument to const reference parameter.
-namespace converted_arg {
-void foobar(const float &arg);
-int main() {
-  int a = 0;
-  foobar(§(03_converted_arg)a);
+namespace converted_argument {
+void measure(const double& distance);
+void run() {
+    int distance = 5;
+    measure(§(03_converted_arg)distance);
 }
 }
 
-// Converted argument to explicit constructor.
-namespace converted_ctor_arg {
-struct Foo {
-  explicit Foo(const float& arg) {}
+namespace converted_constructor_argument {
+struct Measurement {
+    explicit Measurement(const double& distance) {}
 };
-int main() {
-  int a = 0;
-  Foo foo(§(04_converted_ctor_arg)a);
+void run() {
+    int distance = 6;
+    Measurement measurement(§(04_converted_ctor_arg)distance);
 }
 }
 
-// Literal passed to function call.
-namespace literal_arg {
-void fun(int arg_a, const int &arg_b) {};
-void code() {
-  int a = 1;
-  fun(a, §(05_literal_arg)2);
+namespace literal_argument {
+void compare(long actual, const long& expected) {}
+void run() {
+    compare(7, §(05_literal_arg)8);
 }
 }
 
-// Expression passed to function call.
-namespace expression_arg {
-void fun(int arg_a, const int &arg_b) {};
-void code() {
-  int a = 1;
-  fun(a, 1 §(06_expression_arg)+ 2);
+namespace expression_argument {
+void compare(long actual, const long& expected) {}
+void run() {
+    compare(7, 8 §(06_expression_arg)+ 9);
 }
 }
 
-// Expression passed by value.
-namespace expression_by_value {
-int add(int lhs, int rhs);
-int main() {
-  add(1 §(07_expression_by_value)+ 2, 3);
+namespace value_expression {
+long add(long left, long right);
+long run() {
+    return add(2 §(07_expression_by_value)+ 3, 4);
 }
 }
 
-// Literal converted to const reference parameter.
 namespace converted_literal {
-void foobar(const float &arg);
-int main() {
-  foobar(§(08_converted_literal)0);
+void measure(const double& distance);
+void run() {
+    measure(§(08_converted_literal)10);
 }
 }
 
-// Extra info for method call.
-namespace method_call {
-class C {
- public:
-  void fun(int arg_a = 3, int arg_b = 4) {}
+namespace method_argument {
+class Logger {
+public:
+    void write(long level = 1, long flags = 0) {}
 };
-void code() {
-  int a = 1, b = 2;
-  C c;
-  c.fun(§(09_method_arg_default)a, b);
+void run() {
+    long level = 2;
+    Logger logger;
+    logger.write(§(09_method_arg_default)level);
 }
 }
 
-// Variable converted through a converting constructor.
-namespace converting_ctor {
-struct Foo {
-  Foo(const int &);
+namespace converting_constructor {
+struct Key {
+    Key(const int& value);
 };
-void foo(Foo);
-void bar() {
-  const int x = 0;
-  foo(§(10_converting_ctor_arg)x);
+void lookup(Key key);
+void run() {
+    const int value = 11;
+    lookup(§(10_converting_ctor_arg)value);
 }
 }

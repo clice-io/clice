@@ -1,10 +1,9 @@
-/// # Switch between a source file and its header
+/// # Source-header switching
 ///
 /// - status: unsupported
 ///
-/// From `widget.cpp` a single command should jump to `widget.h` and
-/// back — the `textDocument/switchSourceHeader` request clangd clients
-/// rely on is not implemented.
+/// Source/header switching is not implemented, so users cannot jump directly
+/// between paired files
 
 // widget.h
 class Widget {

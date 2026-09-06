@@ -1,6 +1,8 @@
-/// # Definition text at every site — `#define`, use, `#ifdef` and `#undef` all show the macro's definition
+/// # Definition text at every site
 ///
 /// - status: supported
+///
+/// `#define`, use, `#ifdef` and `#undef` all show the macro's definition
 ///
 /// A macro's hover card carries its `#define` text wherever the name
 /// appears: the definition itself, a use, an `#ifdef` guard and an `#undef`.

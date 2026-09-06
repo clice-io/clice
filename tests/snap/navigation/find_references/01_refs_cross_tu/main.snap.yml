@@ -11,10 +11,10 @@ use:
   references:
     - { file: "${WS}/find_references/01_refs_cross_tu/lib.cpp", range: "2:4-2:11" }
     - { file: "${WS}/find_references/01_refs_cross_tu/lib.cpp", range: "7:11-7:18" }
-    - { file: "${WS}/find_references/01_refs_cross_tu/main.cpp", range: "13:11-13:18" }
+    - { file: "${WS}/find_references/01_refs_cross_tu/main.cpp", range: "12:11-12:18" }
     - { file: "${WS}/find_references/01_refs_cross_tu/shared.h", range: "2:4-2:11" }
   callHierarchy:
     - { name: "compute", kind: Function, file: "${WS}/find_references/01_refs_cross_tu/lib.cpp", range: "2:4-2:11" }
   incomingCalls:
     - { name: "again", kind: Function, file: "${WS}/find_references/01_refs_cross_tu/lib.cpp", range: "6:4-6:9", fromRanges: ["7:11-7:25"] }
-    - { name: "run", kind: Function, file: "${WS}/find_references/01_refs_cross_tu/main.cpp", range: "12:4-12:7", fromRanges: ["13:11-13:25"] }
+    - { name: "run", kind: Function, file: "${WS}/find_references/01_refs_cross_tu/main.cpp", range: "11:4-11:7", fromRanges: ["12:11-12:25"] }

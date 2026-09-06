@@ -3,8 +3,7 @@
 /// - status: supported
 /// - verify: server
 ///
-/// Outgoing calls list every function a body invokes, one entry per
-/// callee.
+/// Outgoing calls list every function a body invokes, one entry per callee
 
 int one() {
     return 1;

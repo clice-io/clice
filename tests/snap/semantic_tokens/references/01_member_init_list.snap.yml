@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: references/01_member_init_list.cpp
+---
+- { loc: "11:27", text: "width", kind: field }
+- { loc: "11:33", text: "w", kind: parameter }
+- { loc: "11:37", text: "height", kind: field }

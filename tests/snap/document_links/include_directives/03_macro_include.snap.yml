@@ -2,4 +2,4 @@
 created_at: 2026-08-23
 input_file: include_directives/03_macro_include.cpp
 ---
-- { range: "6:9-6:15", target: "${WS}/header_b.h" }
+- { range: "8:9-8:15", target: "${WS}/header_b.h" }

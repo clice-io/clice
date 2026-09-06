@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 enum class State {
     §(idle_def)Idle,

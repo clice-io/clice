@@ -2,5 +2,5 @@
 created_at: 2026-07-27
 input_file: refinements/01_collapsed_text.cpp
 ---
-- { range: "11:14-14:1", kind: struct, collapsed_text: "{...}" }
-- { range: "18:36-20:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "13:14-16:1", kind: struct, collapsed_text: "{...}" }
+- { range: "20:36-22:1", kind: functionBody, collapsed_text: "{...}" }

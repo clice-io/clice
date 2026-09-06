@@ -1,11 +1,13 @@
-/// # Inherited override docs — an override with no comment shows the base method's documentation
+/// # Inherited override docs
 ///
 /// - status: partial
 /// - issues: clangd#2504
 ///
-/// Hovering an overriding method that carries no comment of its own should
-/// surface the documentation from the method it overrides. clice does not
-/// inherit it yet — the override's card carries no description.
+/// An override with no comment does not inherit the base method's documentation
+/// yet
+///
+/// An overriding method with no comment of its own has no description on its
+/// hover card.
 
 namespace inherit_docs {
 struct Base {

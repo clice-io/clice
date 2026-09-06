@@ -1,7 +1,0 @@
----
-created_at: 2026-07-31
-input_file: declarations_references/06_concepts.cpp
----
-- { loc: "5:8", text: "Small", kind: concept, modifiers: [definition, templated] }
-- { loc: "7:10", text: "Small", kind: concept, modifiers: [templated] }
-- { loc: "11:13", text: "Small", kind: concept, modifiers: [templated] }

@@ -1,7 +1,9 @@
-/// # Hint suppression — arguments that already spell the parameter name, and `/*name=*/` comments
+/// # Hint suppression
 ///
 /// - status: supported
 /// - issues: clangd#1877
+///
+/// Named arguments and `/*name=*/` comments suppress parameter hints
 
 void draw(int width, int height);
 

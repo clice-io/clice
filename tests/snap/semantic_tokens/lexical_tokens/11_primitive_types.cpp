@@ -1,6 +1,8 @@
-/// # Primitive token type — a distinct kind for built-in types instead of plain `keyword`
+/// # Primitive token type
 ///
 /// - status: supported
+///
+/// Built-in types use a distinct token kind instead of plain `keyword`
 
 §int number = 0;
 §float ratio = 0.5f;

@@ -1,11 +1,11 @@
 ---
 name: codex
-description: Drive the codex CLI (GPT-5.6-sol) as a delegate — adversarial plan review, code review, debugging, test writing, scoped implementation. Read BEFORE invoking codex.
+description: Drive the codex CLI (GPT-6 astra) as a delegate — adversarial plan review, code review, debugging, test writing, scoped implementation. Read BEFORE invoking codex.
 ---
 
 # Codex Delegation
 
-`codex` is an installed CLI agent backed by GPT-5.6-sol — cheap, strong, and
+`codex` is an installed CLI agent backed by GPT-6 astra — cheap, strong, and
 independent of this session's blind spots. Prefer it for: adversarial review of
 a design or plan, pre-PR code review, root-causing a bug, adding tests to probe
 behavior, and implementing well-scoped tasks. The independence is the value: it
@@ -14,7 +14,7 @@ was not part of writing the thing it reviews.
 ## Invocation
 
 ```bash
-codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh \
+codex exec -m gpt-6-astra -c model_reasoning_effort=xhigh \
   --dangerously-bypass-approvals-and-sandbox \
   -o /tmp/codex-<topic>.md \
   "<prompt>"
@@ -28,8 +28,10 @@ codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh \
   working, no sleep polling.
 - The startup header prints `session id: <uuid>` — capture it whenever a
   follow-up round is plausible.
-- If `gpt-5.6-sol` is rejected (plan/auth), drop `-m` to use the account
+- If `gpt-6-astra` is rejected (plan/auth), drop `-m` to use the account
   default, and say so when reporting results.
+- `-c service_tier=fast` switches the run to the fast service tier; use it
+  when the maintainer asks for speed (long migrations, translation passes).
 - Prompt shape: the task, the exact files/commands in scope, and the answer
   format you want (e.g. "numbered findings, each with a minimal
   counterexample"). Codex reads files itself — point at paths instead of
@@ -43,7 +45,7 @@ The canonical code-review invocation is the standard form with a prompt that
 loads the repo rules and reviews the branch diff:
 
 ```bash
-codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh \
+codex exec -m gpt-6-astra -c model_reasoning_effort=xhigh \
   --dangerously-bypass-approvals-and-sandbox -o /tmp/codex-review-<topic>.md \
   "Read .claude/CLAUDE.md and .claude/skills/cpp-style/SKILL.md and apply
 their rules. Review the changes in 'git diff origin/main...HEAD' for
@@ -62,7 +64,7 @@ see the repo rules — use it only as a quick rules-blind supplementary pass
 (`--last` picks the newest session). Use it for successive adversarial rounds,
 "now fix what you found", or clarifying questions — never restate context in a
 fresh session. Execution-scoped flags are NOT inherited from the resumed
-session: repeat `-m gpt-5.6-sol`, `-c model_reasoning_effort=xhigh`,
+session: repeat `-m gpt-6-astra`, `-c model_reasoning_effort=xhigh`,
 `--dangerously-bypass-approvals-and-sandbox`, and a fresh `-o` path on every
 resume, or the follow-up silently runs on the default model at default
 effort, sandboxed, and without an output file. `codex exec fork <session-id>` branches one history

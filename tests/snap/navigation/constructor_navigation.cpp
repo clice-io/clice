@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 struct Session {
     §(ctor_decl)Session(int id);

@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: expression_context/07_record_value_misleading.cpp
 ---
-01_record_arg: { range: "19:15-19:16" }
+01_record_arg: { range: "21:15-21:16" }
 ### variable `t`  
 
 ---

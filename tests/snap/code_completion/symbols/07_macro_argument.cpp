@@ -1,7 +1,10 @@
-/// # Completion inside macro arguments — member access written as a macro argument completes as it would outside the macro
+/// # Completion inside macro arguments
 ///
 /// - status: supported
 /// - diagnostics: expected
+///
+/// Member access written as a macro argument completes as it would outside the
+/// macro
 
 #define WRAP(...) __VA_ARGS__
 

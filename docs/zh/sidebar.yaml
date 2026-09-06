@@ -6,7 +6,7 @@ guide:
     - configuration
 
 features:
-  label: 功能
+  label: 语言服务器
   items:
     - overview
     - completion
@@ -21,6 +21,11 @@ features:
     - document-symbols
     - folding-ranges
     - formatting
+
+cli:
+  label: 命令行
+  items:
+    - overview
     - lint
 
 design:

@@ -1,7 +1,9 @@
-/// # Mutable reference markers — `&` flags arguments passed by non-const lvalue reference
+/// # Mutable reference markers
 ///
 /// - status: supported
 /// - issues: clangd#1123
+///
+/// `&` flags arguments passed by non-const lvalue reference
 
 void mutate(int& value);
 void observe(const int& value);

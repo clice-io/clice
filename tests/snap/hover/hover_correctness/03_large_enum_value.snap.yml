@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: hover_correctness/03_large_enum_value.cpp
 ---
-max_value: { range: "10:4-10:7" }
+max_value: { range: "11:4-11:7" }
 ### enumerator `Max`  
 
 ---

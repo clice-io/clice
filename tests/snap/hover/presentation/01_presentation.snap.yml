@@ -3,7 +3,7 @@ created_at: 2026-08-06
 input_file: presentation/01_presentation.cpp
 ---
 default:
-  field: { range: "18:8-18:14" }
+  field: { range: "21:8-21:14" }
   ### field `second`  
 
   ---
@@ -17,7 +17,7 @@ default:
   public: int second
   ```
 
-  function: { range: "10:14-10:20" }
+  function: { range: "13:14-13:20" }
   ### function `answer`  
 
   ---
@@ -32,7 +32,7 @@ default:
   constexpr int answer(int p)
   ```
 
-  variable: { range: "14:4-14:9" }
+  variable: { range: "17:4-17:9" }
   ### variable `value`  
 
   ---
@@ -45,7 +45,7 @@ default:
   ```
 
 configured:
-  field: { range: "18:8-18:14" }
+  field: { range: "21:8-21:14" }
   field second
 
   Type: int
@@ -55,7 +55,7 @@ configured:
   // In Layout
   public: int second
 
-  function: { range: "10:14-10:20" }
+  function: { range: "13:14-13:20" }
   function answer
 
   → int
@@ -65,7 +65,7 @@ configured:
 
   constexpr int answer(int p)
 
-  variable: { range: "14:4-14:9" }
+  variable: { range: "17:4-17:9" }
   variable value
 
   Type: int

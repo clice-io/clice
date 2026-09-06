@@ -2,36 +2,36 @@
 created_at: 2026-08-23
 input_file: expression_context/02_callee_arguments.cpp
 ---
-01_by_name: { range: "17:12-17:13" }
-### variable `w`  
+01_by_name: { range: "15:11-15:17" }
+### variable `height`  
 
 ---
-Type: `int`  
-Value = `1024 (0x400)`  
-Passed as width  
+Type: `long`  
+Value = `720 (0x2d0)`  
+Passed as height  
 
 ---
 ```cpp
-// In demo
-int w = 1024
+// In apply
+long height = 720
 ```
 
-02_by_ref: { range: "17:15-17:21" }
-### variable `result`  
+02_by_ref: { range: "15:19-15:27" }
+### variable `previous`  
 
 ---
-Type: `int`  
+Type: `long`  
 Value = `0`  
-Passed by reference as out  
+Passed by reference as previous  
 
 ---
 ```cpp
-// In demo
-int result = 0
+// In apply
+long previous = 0
 ```
 
-03_literal: { range: "17:23-17:24" }
+03_literal: { range: "15:29-15:30" }
 ### `literal`  
 
 ---
-Passed as flags
+Passed as flags (converted to long)

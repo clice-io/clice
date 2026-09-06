@@ -1,6 +1,8 @@
-/// # Deduced `auto` variables — the hint shows the full variable type, qualifiers included
+/// # Deduced `auto` variables
 ///
 /// - status: supported
+///
+/// The hint shows the full variable type, qualifiers included
 
 int make();
 

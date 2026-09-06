@@ -1,6 +1,8 @@
-/// # Function signatures — return type, parameter names, defaults
+/// # Function signatures
 ///
 /// - status: supported
+///
+/// Function hover reports return types, parameter names and defaults
 ///
 /// A function's card lists its return type, each parameter with its name,
 /// and any default argument.

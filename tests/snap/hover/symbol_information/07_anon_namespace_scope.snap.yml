@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: symbol_information/07_anon_namespace_scope.cpp
 ---
-anon_var: { range: "10:4-10:10" }
+anon_var: { range: "12:4-12:10" }
 ### variable `hidden`  
 
 ---
@@ -14,7 +14,7 @@ Value = `1`
 int hidden = 1
 ```
 
-nested_anon_var: { range: "15:4-15:10" }
+nested_anon_var: { range: "17:4-17:10" }
 ### variable `nested`  
 
 ---

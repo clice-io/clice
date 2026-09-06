@@ -11,142 +11,65 @@
 
 <!-- BEGIN GENERATED ITEMS: symbol_hierarchy -->
 
-| 能力                   | 状态   | 问题                                                      |
-| ---------------------- | ------ | --------------------------------------------------------- |
-| 嵌套符号树             | 支持   |                                                           |
-| 符号范围和选择范围     | 支持   |                                                           |
-| 访问说明符分组         | 不支持 | [clangd#499](https://github.com/clangd/clangd/issues/499) |
-| 匿名作用域和内联作用域 | 支持   |                                                           |
-| UTF-16 位置编码        | 支持   |                                                           |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 嵌套符号树
+**嵌套符号树**
 
-符号按书写时所在的作用域嵌套；类外定义出现在其词法位置，并使用限定名称
+符号按代码中书写的作用域嵌套；作用域外的定义以限定名称显示在其实际书写的位置
 
-```cpp
-namespace demo {
-
-struct Point {
-    int x;
-    int y;
-
-    int manhattan() const;
-};
-
-int Point::manhattan() const {
-    return x + y;
-}
-
-enum class Axis { X, Y };
-
-int origin_distance(const Point& p);
-
-namespace inner {
-constexpr int level = 2;
-}
-
-}  // namespace demo
-
-// A reopened namespace gets its own outline node per written scope.
-namespace demo {
-int reopened();
-}
-
-namespace demo::nested {
-int compact();
-}
+```snap
+tests/snap/document_symbol/symbol_hierarchy/01_hierarchy_nesting.cpp
 ```
 
-### 符号范围和选择范围
+<!-- END CAPABILITY -->
 
-范围涵盖整个声明；选择范围涵盖完整的书写名称，包括 `~Widget`、`operator==` 和 `operator bool` 这样的多 Token 名称
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-namespace members {
+**符号范围和选择范围**
 
-struct Widget {
-    Widget();
-    explicit Widget(int size);
-    ~Widget();
+符号范围覆盖整个声明；选择范围覆盖完整书写的名称，包括 `~Widget`、`operator==` 和 `operator bool` 等由多个 Token 组成的名称
 
-    Widget& operator=(const Widget& other);
-    bool operator==(const Widget& other) const;
-    operator bool() const;
-
-    static int instances();
-
-    int size;
-    unsigned bits : 3;
-    const char* name = "widget";
-};
-
-Widget::Widget(int size) : size(size), bits(0) {}
-
-int Widget::instances() {
-    return 0;
-}
-
-}  // namespace members
+```snap
+tests/snap/document_symbol/symbol_hierarchy/02_hierarchy_selection_ranges.cpp
 ```
 
-### 访问说明符分组
+<!-- END CAPABILITY -->
 
-将 `public:` / `private:` / `protected:` 作为面包屑导航的分组节点
+<!-- BEGIN CAPABILITY: unsupported clangd#499 -->
 
-```cpp
-class Widget {
-public:
-    void draw();
-    void resize();
+**按访问说明符分组**
 
-private:
-    int width;
-    int height;
-};
+访问说明符尚未在大纲中形成分组节点
+
+```snap
+tests/snap/document_symbol/symbol_hierarchy/03_hierarchy_access_specifiers.cpp
 ```
 
-### 匿名作用域和内联作用域
+<!-- END CAPABILITY -->
 
-匿名命名空间、未命名结构体和联合体将其成员归入占位名称下；内联命名空间的成员仍位于内联命名空间节点下
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-namespace {
+**匿名作用域和内联作用域**
 
-int hidden_counter = 0;
+匿名命名空间、未命名结构体和联合体的成员归在占位名称下；内联命名空间的成员仍归在该内联命名空间节点下
 
-}  // namespace
-
-namespace misc {
-
-inline namespace v1 {
-
-int versioned();
-
-}  // namespace v1
-
-struct Outer {
-    struct {
-        int anonymous_member;
-    };
-
-    union {
-        int as_int;
-        float as_float;
-    };
-};
-
-}  // namespace misc
+```snap
+tests/snap/document_symbol/symbol_hierarchy/04_hierarchy_anonymous.cpp
 ```
 
-### UTF-16 位置编码
+<!-- END CAPABILITY -->
 
-非 ASCII 文本之后的列按 UTF-16 代码单元计数
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-// π ≈ 3.14159, 中文注释
-constexpr double 半径 = 2.0;
-constexpr double π值 = 3.14159; double area();
+**UTF-16 位置编码**
+
+非 ASCII 文本之后的列位置按 UTF-16 代码单元计数
+
+```snap
+tests/snap/document_symbol/symbol_hierarchy/05_hierarchy_utf16.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -154,224 +77,89 @@ constexpr double π值 = 3.14159; double area();
 
 <!-- BEGIN GENERATED ITEMS: symbol_kinds -->
 
-| 能力                | 状态     | 问题                                                              |
-| ------------------- | -------- | ----------------------------------------------------------------- |
-| 核心符号种类        | 支持     |                                                                   |
-| 模板声明            | 支持     |                                                                   |
-| 模板特化和推导指引  | 支持     |                                                                   |
-| 类型别名            | 支持     |                                                                   |
-| 显式实例化指令      | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658) |
-| 宏定义              | 支持     | [clangd#1744](https://github.com/clangd/clangd/issues/1744)       |
-| Preamble 区域中的宏 | 部分支持 |                                                                   |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 核心符号种类
+**核心符号种类**
 
-命名空间、类、结构体、联合体、枚举及其成员、函数、变量、字段、结构化绑定和 Lambda 都会出现在大纲中，并映射到相应的 LSP 符号种类
+命名空间、类、结构体、联合体、枚举及其成员、函数、变量、字段、结构化绑定（structured bindings）和 Lambda 都会出现在大纲中，并映射到相应的 LSP 符号种类
 
-```cpp
-namespace kinds {
-
-union Value {
-    int i;
-    float f;
-};
-
-enum Flags { FlagA, FlagB };
-
-enum class Mode : unsigned char { Fast, Safe };
-
-struct Pair {
-    struct Meta {
-        int tag;
-    };
-
-    int first;
-    int second;
-    static int instances;
-};
-
-Pair make_pair();
-
-auto [bound_first, bound_second] = make_pair();
-
-auto lambda = [](int x) {
-    return x * 2;
-};
-
-}  // namespace kinds
+```snap
+tests/snap/document_symbol/symbol_kinds/01_kinds_basic.cpp
 ```
 
-### 模板声明
+<!-- END CAPABILITY -->
 
-类模板、函数模板和变量模板的 detail 中带有 `template ` 前缀；Concept 和带 `concept auto` 参数的缩写函数模板也会出现
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-namespace templates {
+**模板声明**
 
-template <typename T>
-struct Box {
-    T value;
+类模板、函数模板和变量模板的详细信息带有 `template ` 前缀；Concept 和简写函数模板（使用 `concept auto` 参数）也会出现在大纲中
 
-    void reset();
-};
-
-template <typename T>
-void Box<T>::reset() {}
-
-template <typename T>
-T zero() {
-    return T();
-}
-
-template <typename T>
-constexpr T pi = T(3.14159);
-
-template <typename T>
-concept Small = sizeof(T) <= 4;
-
-void takes_concept(Small auto x);
-
-}  // namespace templates
+```snap
+tests/snap/document_symbol/symbol_kinds/02_kinds_templates.cpp
 ```
 
-### 模板特化和推导指引
+<!-- END CAPABILITY -->
 
-类模板和变量模板的显式特化与部分特化会出现在大纲中，其名称包含模板实参；成员嵌套在相应的特化下；推导指引显示推导出的签名
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-namespace spec {
+**模板特化和推导指引**
 
-template <typename T>
-struct Box {
-    T value;
-};
+类模板和变量模板的显式特化与偏特化会在名称中显示模板实参；成员嵌套在所属特化下；推导指引显示推导出的签名
 
-template <>
-struct Box<void> {};
-
-template <typename T>
-struct Box<T*> {
-    T* pointee;
-};
-
-template <typename T>
-T zero() {
-    return T();
-}
-
-template <>
-int zero<int>();
-
-template <typename T>
-constexpr T pi = T(3);
-
-template <>
-constexpr int pi<int> = 3;
-
-template <typename T>
-constexpr T* pi<T*> = nullptr;
-
-template <typename T>
-struct Deduced {
-    Deduced(T raw);
-};
-
-template <typename T>
-Deduced(T*) -> Deduced<T>;
-
-// Forces the implicit instantiation Box<int>, which must not appear.
-Box<int> instantiated;
-
-// An explicit class instantiation gets a childless node; the instantiated
-// members and the function instantiation (whose location clang records at
-// the primary) produce no symbols.
-template struct Box<char>;
-template long zero<long>();
-
-}  // namespace spec
+```snap
+tests/snap/document_symbol/symbol_kinds/03_kinds_specializations.cpp
 ```
 
-### 类型别名
+<!-- END CAPABILITY -->
 
-`typedef`、`using` 别名和别名模板会出现在大纲中，其 detail 为 `type alias`
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-namespace aliases {
+**类型别名**
 
-struct Widget {};
+`typedef`、`using` 别名和别名模板会出现在大纲中，详细信息为 `type alias`
 
-typedef Widget LegacyWidget;
-
-using ModernWidget = Widget;
-
-template <typename T>
-struct Box {};
-
-template <typename T>
-using BoxOf = Box<T>;
-
-struct Holder {
-    using Inner = Widget;
-};
-
-}  // namespace aliases
+```snap
+tests/snap/document_symbol/symbol_kinds/04_kinds_type_aliases.cpp
 ```
 
-### 显式实例化指令
+<!-- END CAPABILITY -->
 
-类形式显示为不含子节点的符号；clang 错误地将函数形式和变量形式定位到模板模式处，因此它们不会出现在大纲中
+<!-- BEGIN CAPABILITY: partial llvm#191658 -->
 
-```cpp
-template <typename T>
-struct Box {
-    T value;
-};
+**显式实例化指令**
 
-template struct Box<int>;
-extern template struct Box<char>;
+类的显式实例化显示为没有子节点的符号，而函数和变量的显式实例化尚未出现在大纲中
 
-template <typename T>
-void convert(T value) {}
-
-template void convert<int>(int);
-
-template <typename T>
-T zero = T();
-
-template int zero<int>;
+```snap
+tests/snap/document_symbol/symbol_kinds/05_kinds_explicit_instantiations.cpp
 ```
 
-### 宏定义
+<!-- END CAPABILITY -->
 
-对象式宏和函数式宏定义会出现在大纲中，函数式宏的 detail 为参数列表
+<!-- BEGIN CAPABILITY: supported clangd#1744 -->
 
-```cpp
-// The assertion holds the directives out of the preamble region, whose
-// live record the server path does not yet see.
-static_assert(true);
+**宏定义**
 
-#define MAX_BUFFER_SIZE 4096
-#define CHECK(cond, msg) ((cond) ? 0 : (msg))
-#define TRACE(...) log(__VA_ARGS__)
-#define SPLIT_\
-LIMIT 7
+对象式宏和函数式宏会出现在大纲中，函数式宏的详细信息还会列出参数
 
-struct Config {
-#define CONFIG_VERSION 3
-    int version = CONFIG_VERSION;
-};
+```snap
+tests/snap/document_symbol/symbol_kinds/06_kinds_macros.cpp
 ```
 
-### Preamble 区域中的宏
+<!-- END CAPABILITY -->
 
-前导指令段中的定义会出现在检查路径的大纲中，而服务器的 Preamble 记录尚未显示这些定义
+<!-- BEGIN CAPABILITY: partial -->
 
-```cpp
-#define PREAMBLE_LIMIT 8
-#define PREAMBLE_CHECK(cond) (!!(cond))
+**Preamble 区域中的宏**
 
-int after = PREAMBLE_LIMIT;
+对于编辑器发起的请求，文件开头连续预处理指令中的宏尚未列入大纲
+
+```snap
+tests/snap/document_symbol/symbol_kinds/07_macro_preamble.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -379,127 +167,77 @@ int after = PREAMBLE_LIMIT;
 
 <!-- BEGIN GENERATED ITEMS: symbol_detail -->
 
-| 能力                 | 状态   | 问题                                                                                                                                                                              |
-| -------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 函数签名             | 支持   | [clangd#520](https://github.com/clangd/clangd/issues/520), [clangd#601](https://github.com/clangd/clangd/issues/601), [clangd#1232](https://github.com/clangd/clangd/issues/1232) |
-| 变量和字段类型       | 支持   |                                                                                                                                                                                   |
-| 移除默认参数         | 支持   | [clangd#221](https://github.com/clangd/clangd/issues/221)                                                                                                                         |
-| 在详细信息中显示基类 | 不支持 |                                                                                                                                                                                   |
-| 多行签名范围         | 支持   | [clangd#2221](https://github.com/clangd/clangd/issues/2221)                                                                                                                       |
-| 带作用域的类型       | 支持   |                                                                                                                                                                                   |
+<!-- BEGIN CAPABILITY: supported clangd#520 clangd#601 clangd#1232 -->
 
-### 函数签名
+**函数签名**
 
 `detail` 字段中的参数类型和返回类型用于区分重载；构造函数省略 `void` 返回类型
 
-```cpp
-namespace detail {
-
-void process(int x);
-void process(const char* s);
-
-struct Task {
-    Task();
-    Task(int priority);
-
-    int run(bool async) const;
-};
-
-}  // namespace detail
+```snap
+tests/snap/document_symbol/symbol_detail/01_detail_signatures.cpp
 ```
 
-### 变量和字段类型
+<!-- END CAPABILITY -->
 
-`detail` 字段中的声明类型；Lambda 渲染为 `(lambda)`
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-namespace detail {
+**变量和字段类型**
 
-int timeout = 30;
-const char* logger_name = "core";
+变量的详细信息显示声明的类型，Lambda 则显示为 `(lambda)`
 
-struct Config {
-    unsigned retries;
-    double backoff;
-};
-
-auto on_error = [](int code) {
-    return code != 0;
-};
-
-}  // namespace detail
+```snap
+tests/snap/document_symbol/symbol_detail/02_detail_variable_types.cpp
 ```
 
-### 移除默认参数
+<!-- END CAPABILITY -->
 
-签名由函数类型派生，因此默认参数值绝不会出现在大纲中
+<!-- BEGIN CAPABILITY: supported clangd#221 -->
 
-```cpp
-namespace detail {
+**移除默认实参**
 
-void open_file(const char* path, int mode = 0644);
+签名根据函数类型生成，因此参数默认值不会出现在大纲中
 
-struct Server {
-    void listen(int port = 8080, int backlog = 128);
-};
-
-}  // namespace detail
+```snap
+tests/snap/document_symbol/symbol_detail/03_detail_default_arguments.cpp
 ```
 
-### 在详细信息中显示基类
+<!-- END CAPABILITY -->
 
-在派生类声明上显示 `: Shape`
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-struct Shape {};
+**详细信息中的基类**
 
-struct Circle : Shape {
-    double radius;
-};
+派生类的详细信息尚未包含其基类
+
+```snap
+tests/snap/document_symbol/symbol_detail/04_detail_base_classes.cpp
 ```
 
-### 多行签名范围
+<!-- END CAPABILITY -->
 
-符号范围从声明开头开始并涵盖完整签名，因此编辑器的粘滞滚动（sticky scroll）能够正确锚定
+<!-- BEGIN CAPABILITY: supported clangd#2221 -->
 
-```cpp
-struct Config {};
+**多行签名范围**
 
-void process_data(
-    const Config& cfg,
-    int flags
-) {}
+符号范围从声明起始处开始，覆盖完整签名，使编辑器的粘性滚动能够正确定位
+
+```snap
+tests/snap/document_symbol/symbol_detail/05_detail_multiline_signatures.cpp
 ```
 
-### 带作用域的类型
+<!-- END CAPABILITY -->
 
-显式写出的类作用域在详细信息中恰好出现一次，无论是嵌套类、模板标识、别名还是待决名
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-namespace scoped {
+**带作用域的类型**
 
-struct Outer {
-    struct Inner {};
-    template <typename T> struct Box {};
-    using Alias = int;
-};
+代码中书写的类作用域在详细信息中恰好出现一次，嵌套类、模板标识（template-id）、别名和依赖名称均如此
 
-struct User {
-    Outer::Inner plain;
-    Outer::Box<int> boxed;
-    Outer::Alias aliased;
-    const Outer::Inner frozen;
-};
-
-template <typename T>
-struct Holder {
-    typename T::type value;
-    typename T::inner::type deep;
-    typename T::template rebind<int> bound;
-};
-
-}  // namespace scoped
+```snap
+tests/snap/document_symbol/symbol_detail/06_detail_scoped_types.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -507,90 +245,65 @@ struct Holder {
 
 <!-- BEGIN GENERATED ITEMS: missing_symbols -->
 
-| 能力                    | 状态   | 问题                                                        |
-| ----------------------- | ------ | ----------------------------------------------------------- |
-| 包含指令                | 不支持 | [clangd#2226](https://github.com/clangd/clangd/issues/2226) |
-| 局部符号                | 支持   | [clangd#616](https://github.com/clangd/clangd/issues/616)   |
-| 模块声明                | 不支持 |                                                             |
-| `#pragma mark` 导航标记 | 不支持 |                                                             |
-| 友元函数定义            | 支持   |                                                             |
+<!-- BEGIN CAPABILITY: unsupported clangd#2226 -->
 
-### 包含指令
+**包含指令**
 
-大纲中的 `#include` 条目
+`#include` 指令尚未出现在大纲中
 
-```cpp
-#include "config.h"
-
-int uses_config();
+```snap
+tests/snap/document_symbol/missing_symbols/01_missing_includes.cpp
 ```
 
-### 局部符号
+<!-- END CAPABILITY -->
 
-函数体内声明的变量和类型作为子项嵌套在所属函数下
+<!-- BEGIN CAPABILITY: supported clangd#616 -->
 
-```cpp
-int compute() {
-    int local_sum = 0;
+**局部符号**
 
-    struct Accumulator {
-        int total;
-    };
+函数体内声明的变量和类型嵌套在所属函数下
 
-    auto twice = [](int x) {
-        return 2 * x;
-    };
-
-    struct Pair {
-        int a;
-        int b;
-    };
-
-    auto [first, second] = Pair{1, 2};
-
-    return local_sum + twice(first) + second;
-}
+```snap
+tests/snap/document_symbol/missing_symbols/02_local_symbols.cpp
 ```
 
-### 模块声明
+<!-- END CAPABILITY -->
 
-大纲中的 `export module`、`module` 和 `import` 声明
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-export module app.core;
+**模块声明**
 
-import std;
+模块声明尚未显示在大纲中
 
-export int core_entry();
+```snap
+tests/snap/document_symbol/missing_symbols/03_missing_modules.cpp
 ```
 
-### `#pragma mark` 导航标记
+<!-- END CAPABILITY -->
 
-以大纲条目形式显示的编辑器分节标记
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-#pragma mark - Lifecycle
+**`#pragma mark` 导航标记**
 
-void setup();
+编辑器分节标记尚未显示在大纲中
 
-#pragma mark - Rendering
-
-void draw();
+```snap
+tests/snap/document_symbol/missing_symbols/04_missing_pragma_mark.cpp
 ```
 
-### 友元函数定义
+<!-- END CAPABILITY -->
 
-在类中以内联方式定义的友元函数显示在该类之下
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Owner {
-    friend void inline_friend(Owner& o) {}
+**友元函数定义**
 
-    friend bool operator==(const Owner& lhs, const Owner& rhs) {
-        return &lhs == &rhs;
-    }
-};
+在类中内联定义的友元函数显示在该类下
+
+```snap
+tests/snap/document_symbol/missing_symbols/05_friend_definitions.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -598,37 +311,29 @@ struct Owner {
 
 <!-- BEGIN GENERATED ITEMS: symbol_tags -->
 
-| 能力                 | 状态   | 问题                                                        |
-| -------------------- | ------ | ----------------------------------------------------------- |
-| 弃用标签             | 不支持 |                                                             |
-| 访问权限和存储指示符 | 不支持 | [clangd#2123](https://github.com/clangd/clangd/issues/2123) |
+<!-- BEGIN CAPABILITY: unsupported -->
 
-### 弃用标签
+**弃用标签**
 
-用 LSP 的 `deprecated` 符号标签标记 `[[deprecated]]` 符号
+已弃用的符号尚未带有 LSP `deprecated` 符号标签
 
-```cpp
-[[deprecated("use open_v2")]] void open_v1();
-
-void open_v2();
+```snap
+tests/snap/document_symbol/symbol_tags/01_tags_deprecated.cpp
 ```
 
-### 访问权限和存储指示符
+<!-- END CAPABILITY -->
 
-大纲条目上的 public / private / protected、static、virtual 和 abstract 标记
+<!-- BEGIN CAPABILITY: unsupported clangd#2123 -->
 
-```cpp
-class Base {
-public:
-    virtual void render() = 0;
+**访问权限与存储属性标识**
 
-protected:
-    static int instances();
+大纲条目尚未显示访问权限、静态、虚或抽象修饰信息
 
-private:
-    int id;
-};
+```snap
+tests/snap/document_symbol/symbol_tags/02_tags_modifiers.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -636,47 +341,28 @@ private:
 
 <!-- BEGIN GENERATED ITEMS: location_correctness -->
 
-| 能力               | 状态 | 问题                                                        |
-| ------------------ | ---- | ----------------------------------------------------------- |
-| 宏展开产生的符号   | 支持 | [clangd#475](https://github.com/clangd/clangd/issues/475)   |
-| 宏实参中写出的名称 | 支持 | [clangd#1941](https://github.com/clangd/clangd/issues/1941) |
+<!-- BEGIN CAPABILITY: supported clangd#475 -->
 
-### 宏展开产生的符号
+**宏展开生成的符号**
 
-宏调用生成的符号定位于调用处，而不是宏定义处
+宏调用生成的符号定位到宏调用处，而非宏定义处
 
-```cpp
-// The assertion holds the directives out of the preamble region, whose
-// live record the server path does not yet see.
-static_assert(true);
-
-#define DEFINE_HANDLER(name) void name()
-
-DEFINE_HANDLER(on_ready);
-DEFINE_HANDLER(on_close);
-
-#define DECLARE_CLASS(X) class X
-DECLARE_CLASS(Generated) {
-    int member;
-};
+```snap
+tests/snap/document_symbol/location_correctness/01_macro_symbols.cpp
 ```
 
-### 宏实参中写出的名称
+<!-- END CAPABILITY -->
 
-选择范围指向宏实参中写出的名称；宏体中写出的名称则回退到调用处
+<!-- BEGIN CAPABILITY: supported clangd#1941 -->
 
-```cpp
-// The assertion holds the directives out of the preamble region, whose
-// live record the server path does not yet see.
-static_assert(true);
+**宏实参中书写的名称**
 
-#define VAR(X) int X = 1;
+选择范围指向宏实参中书写的名称；对于宏体中书写的名称，则回退到宏调用处
 
-VAR(from_argument)
-
-#define COUNTER() int counter_from_body = 0;
-
-COUNTER()
+```snap
+tests/snap/document_symbol/location_correctness/02_macro_argument_names.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->

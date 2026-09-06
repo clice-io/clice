@@ -1,10 +1,11 @@
-/// # Declaration vs definition comments — the declaration's doc wins over a definition-site comment
+/// # Declaration vs definition comments
 ///
 /// - status: supported
 ///
-/// clangd tracks this as clangd#829; clice already prefers the
-/// declaration's `///` documentation over the definition's plain `//` note,
-/// showing it at both the declaration and the definition site.
+/// The declaration's doc wins over a definition-site comment
+///
+/// The declaration's `///` documentation appears at both the declaration and
+/// definition sites instead of the definition's plain `//` note.
 
 namespace decldef {
 /// Public API documentation.

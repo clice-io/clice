@@ -14,7 +14,7 @@
 | `>`  | 模板闭合     | 更新上下文   |
 | `,`  | 实参分隔符   | 更新当前形参 |
 
-- [ ] 避免误触发——不要在注释、字符串字面量或函数定义中触发（[clangd#51](https://github.com/clangd/clangd/issues/51)、[clangd#289](https://github.com/clangd/clangd/issues/289)）
+- [ ] 避免误触发——不要在注释、字符串字面量中或定义函数时触发（[clangd#51](https://github.com/clangd/clangd/issues/51)、[clangd#289](https://github.com/clangd/clangd/issues/289)）
 
   ```cpp
   void foo(int x, int y) {  // should NOT trigger signature help
@@ -32,108 +32,89 @@
 
 <!-- BEGIN GENERATED ITEMS: overload_signatures -->
 
-| 能力                           | 状态 | 问题 |
-| ------------------------------ | ---- | ---- |
-| 函数重载                       | 支持 |      |
-| 当前形参跟踪                   | 支持 |      |
-| 成员函数重载                   | 支持 |      |
-| 标签中的默认实参               | 支持 |      |
-| C 风格可变参数函数             | 支持 |      |
-| 可变参数模板参数包             | 支持 |      |
-| 当前形参超出较短重载的参数范围 | 支持 |      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### 函数重载
+**函数重载**
 
-被调用函数的每个重载都带有参数列表和返回类型
+签名帮助列出所有重载及其形参列表和返回类型
 
-```cpp
-void foo();
-void foo(int x);
-void foo(int x, int y);
-
-int main() {
-    foo();
-}
+```snap
+tests/snap/signature_help/overload_signatures/01_overloads.cpp
 ```
 
-### 当前形参跟踪
+<!-- END CAPABILITY -->
 
-光标所在的形参会用方括号括起；光标位于第二个实参中
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-void bar(int first, double second, char third);
+**当前形参跟踪**
 
-int main() {
-    bar(1, 2.0, 'c');
-}
+光标所在实参对应的形参用括号标出；此处光标位于第二个实参中
+
+```snap
+tests/snap/signature_help/overload_signatures/02_active_parameter.cpp
 ```
 
-### 成员函数重载
+<!-- END CAPABILITY -->
 
-非 const 接收对象会列出 const 与非 const 重载；标签中不显示末尾的 const 限定符
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Buffer {
-    int at(int index);
-    int at(int index) const;
-};
+**成员函数重载**
 
-int main() {
-    Buffer b;
-    b.at(0);
-}
+调用对象为非 const 时，同时列出 const 和非 const 重载；标签中不显示尾部的 const 限定符
+
+```snap
+tests/snap/signature_help/overload_signatures/03_member_overloads.cpp
 ```
 
-### 标签中的默认实参
+<!-- END CAPABILITY -->
 
-带默认值的形参会在签名中显示其初始化式
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-void configure(int width, int height = 100, bool visible = true);
+**标签中的默认实参**
 
-int main() {
-    configure(1);
-}
+带有默认实参的形参会在签名中显示其初始化器
+
+```snap
+tests/snap/signature_help/overload_signatures/04_default_arguments.cpp
 ```
 
-### C 风格可变参数函数
+<!-- END CAPABILITY -->
 
-列出具名形参，标签中省略末尾的省略号
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-void record(int code, ...);
+**C 风格可变参数函数**
 
-int main() {
-    record(0);
-}
+标签中列出具名形参，省略尾部的省略号
+
+```snap
+tests/snap/signature_help/overload_signatures/05_variadic_cstyle.cpp
 ```
 
-### 可变参数模板参数包
+<!-- END CAPABILITY -->
 
-参数包显示为被调用函数未实例化时的签名
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename... Args>
-void emit(Args... args);
+**可变参数模板的参数包**
 
-int main() {
-    emit();
-}
+参数包按被调用函数尚未实例化的签名显示
+
+```snap
+tests/snap/signature_help/overload_signatures/06_variadic_template.cpp
 ```
 
-### 当前形参超出较短重载的参数范围
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**当前形参超出重载的形参范围**
 
 光标位于第二个实参中时，仅保留声明了第二个形参的重载
 
-```cpp
-void draw();
-void draw(int x);
-void draw(int x, int y);
-
-int main() {
-    draw(1, 2);
-}
+```snap
+tests/snap/signature_help/overload_signatures/07_active_beyond_last.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -151,7 +132,7 @@ int main() {
 
 - [ ] 优先显示用户提供的构造函数，而非编译器生成的构造函数（[clangd#1259](https://github.com/clangd/clangd/issues/1259)）
 
-- [ ] 按参数个数过滤依赖型重载候选项（[clangd#2342](https://github.com/clangd/clangd/issues/2342)）
+- [ ] 按参数个数过滤待决重载候选项（[clangd#2342](https://github.com/clangd/clangd/issues/2342)）
 
   ```cpp
   template<typename T>
@@ -160,7 +141,7 @@ int main() {
   }
   ```
 
-- [ ] 改进依赖型重载的启发式解析（[clangd#1083](https://github.com/clangd/clangd/issues/1083)）
+- [ ] 改进待决重载的启发式解析（[clangd#1083](https://github.com/clangd/clangd/issues/1083)）
 
 - [ ] 从显示的签名中去除 C++23 显式对象形参（[clangd#2284](https://github.com/clangd/clangd/issues/2284)）
 
@@ -174,116 +155,93 @@ int main() {
 
 <!-- BEGIN GENERATED ITEMS: special_call_contexts -->
 
-| 能力             | 状态 | 问题                                                                                                                   |
-| ---------------- | ---- | ---------------------------------------------------------------------------------------------------------------------- |
-| 构造函数和聚合体 | 支持 | [clangd#726](https://github.com/clangd/clangd/issues/726)、[clangd#2541](https://github.com/clangd/clangd/issues/2541) |
-| 函数指针调用     | 支持 |                                                                                                                        |
-| 模板实参列表     | 支持 | [clangd#299](https://github.com/clangd/clangd/issues/299)、[clangd#1387](https://github.com/clangd/clangd/issues/1387) |
-| 嵌套调用         | 支持 |                                                                                                                        |
-| 仿函数调用       | 支持 |                                                                                                                        |
-| Lambda 调用      | 支持 |                                                                                                                        |
-| new 表达式       | 支持 |                                                                                                                        |
+<!-- BEGIN CAPABILITY: supported clangd#726 clangd#2541 -->
 
-### 构造函数和聚合体
+**构造函数与聚合类型**
 
-构造函数调用不显示返回箭头；聚合初始化在花括号中列出字段
+构造函数调用的签名不显示返回类型箭头；聚合初始化在花括号中列出字段
 
-```cpp
-struct Point {
-    int x;
-    int y;
-};
-
-struct Widget {
-    Widget(int a, double b);
-};
-
-int main() {
-    Point p{1, 2};
-    Widget w(3, 4.0);
-}
+```snap
+tests/snap/signature_help/special_call_contexts/01_constructor_aggregate.cpp
 ```
 
-### 函数指针调用
+<!-- END CAPABILITY -->
 
-显示原型的参数名，而不仅仅是类型
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int main() {
-    void (*callback)(int code, double value) = nullptr;
-    callback(5, 1.5);
-}
+**函数指针调用**
+
+显示函数原型中的形参名称，而不仅是类型
+
+```snap
+tests/snap/signature_help/special_call_contexts/02_function_pointer.cpp
 ```
 
-### 模板实参列表
+<!-- END CAPABILITY -->
 
-模板参数显示为签名；类模板会标明其类别，而非返回类型
+<!-- BEGIN CAPABILITY: supported clangd#299 clangd#1387 -->
 
-```cpp
-template <typename T, typename U>
-struct Pair {};
+**模板实参列表**
 
-Pair<int,  double> p;
+模板形参作为签名显示；类模板的箭头指向其类别，而非返回类型
+
+```snap
+tests/snap/signature_help/special_call_contexts/03_template_arguments.cpp
 ```
 
-### 嵌套调用
+<!-- END CAPABILITY -->
 
-内层调用的签名帮助显示在内层标记处，外层调用的签名帮助显示在外层标记处
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int inner(int a);
-int outer(int b, int c);
+**嵌套调用**
 
-int main() {
-    outer(inner(1), 2);
-}
+在内层标记处显示内层调用的签名帮助，在外层标记处显示外层调用的签名帮助
+
+```snap
+tests/snap/signature_help/special_call_contexts/04_nested_calls.cpp
 ```
 
-### 仿函数调用
+<!-- END CAPABILITY -->
 
-调用对象时，会针对其 operator() 重载显示签名帮助
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Adder {
-    int operator()(int a, int b);
-};
+**函数对象调用**
 
-int main() {
-    Adder add;
-    add(1, 2);
-}
+调用对象时，签名帮助显示其 operator() 重载
+
+```snap
+tests/snap/signature_help/special_call_contexts/05_operator_call.cpp
 ```
 
-### Lambda 调用
+<!-- END CAPABILITY -->
 
-调用 Lambda 变量时会显示闭包的 operator() 参数
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int main() {
-    auto square = [](int n) {
-        return n * n;
-    };
-    square(3);
-}
+**Lambda 调用**
+
+调用 Lambda 变量时，显示闭包的 operator() 形参
+
+```snap
+tests/snap/signature_help/special_call_contexts/06_lambda_call.cpp
 ```
 
-### new 表达式
+<!-- END CAPABILITY -->
 
-new 表达式的构造函数参数用于提供签名帮助
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Node {
-    Node(int value, Node* next);
-};
+**new 表达式**
 
-int main() {
-    Node* n = new Node(0, nullptr);
-}
+new 表达式中的构造函数实参触发签名帮助
+
+```snap
+tests/snap/signature_help/special_call_contexts/07_new_expression.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-- [ ] 继承构造函数 — 从派生类调用时显示基类构造函数（[clangd#1363](https://github.com/clangd/clangd/issues/1363)）
+- [ ] 继承构造函数——从派生类调用时显示基类构造函数（[clangd#1363](https://github.com/clangd/clangd/issues/1363)）
 
   ```cpp
   struct Base { Base(int x, int y); };
@@ -298,14 +256,14 @@ int main() {
   m[^  // show operator[](const string& key)
   ```
 
-- [ ] Lambda 调用 — 显示 Lambda 名称而非 `operator()`（[clangd#86](https://github.com/clangd/clangd/issues/86)）
+- [ ] Lambda 调用——显示 Lambda 名称而非 `operator()`（[clangd#86](https://github.com/clangd/clangd/issues/86)）
 
   ```cpp
   auto validate = [](int x, int max) -> bool { ... };
   validate(^  // show "validate(int x, int max) -> bool", not "operator()(int x, int max)"
   ```
 
-- [ ] 函数指针调用 — 显示参数名（[clangd#1068](https://github.com/clangd/clangd/issues/1068)、[clangd#1729](https://github.com/clangd/clangd/issues/1729)）
+- [ ] 函数指针调用——显示参数名（[clangd#1068](https://github.com/clangd/clangd/issues/1068)、[clangd#1729](https://github.com/clangd/clangd/issues/1729)）
 
   ```cpp
   void (*callback)(int status, const char* msg);
@@ -314,7 +272,7 @@ int main() {
 
 - [ ] 对象初始化时的构造函数签名帮助
 
-- [ ] 宏函数调用 — 显示宏参数而非底层展开（[clangd#795](https://github.com/clangd/clangd/issues/795)）
+- [ ] 函数式宏调用——显示宏参数，而非底层展开内容（[clangd#795](https://github.com/clangd/clangd/issues/795)）
 
   ```cpp
   #define CHECK(cond, msg) do { if (!(cond)) fail(msg); } while(0)
@@ -323,7 +281,7 @@ int main() {
 
 ## 参数显示
 
-- [ ] 转发函数参数解析 — 对 `std::make_unique`、`emplace_back` 等显示底层构造函数参数（[clangd#517](https://github.com/clangd/clangd/issues/517)）
+- [ ] 转发函数参数解析——为 `std::make_unique`、`emplace_back` 等显示底层构造函数的参数（[clangd#517](https://github.com/clangd/clangd/issues/517)）
 
   ```cpp
   struct Widget { Widget(int width, int height); };
@@ -372,5 +330,5 @@ int main() {
   ```
 
 - [ ] 遵循 `documentationFormat` 能力（[clangd#945](https://github.com/clangd/clangd/issues/945)）
-- [ ] 通过继承构造函数传播文档（[clangd#1936](https://github.com/clangd/clangd/issues/1936)）
-- [ ] 重载集数量指示器
+- [ ] 通过继承的构造函数传递文档（[clangd#1936](https://github.com/clangd/clangd/issues/1936)）
+- [ ] 重载集中的重载数量指示器

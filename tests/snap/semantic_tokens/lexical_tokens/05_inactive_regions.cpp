@@ -1,6 +1,10 @@
-/// # Inactive regions — tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier; unclassified tokens become plain `identifier` carriers, so even a lone `}` line dims
+/// # Inactive regions
 ///
 /// - status: supported
+///
+/// Tokens in untaken branches keep their lexical kinds and carry the `inactive`
+/// modifier; unclassified tokens become plain `identifier` carriers, so even a
+/// lone `}` line dims
 
 int before = 0;
 

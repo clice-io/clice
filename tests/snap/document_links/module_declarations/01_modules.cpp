@@ -1,6 +1,8 @@
-/// # Module targets — `import` and `module` declarations link to their interface files
+/// # Module targets
 ///
 /// - status: unsupported
+///
+/// `import` and `module` declarations do not link to interface files yet
 
 export module app;
 

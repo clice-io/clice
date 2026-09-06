@@ -1,7 +1,9 @@
-/// # Inherited constructors — `using Base::Base` calls lose their parameter names
+/// # Inherited constructors
 ///
 /// - status: partial
 /// - issues: clangd#1364
+///
+/// `using Base::Base` calls lose their parameter names
 
 struct Base {
     Base(int width);

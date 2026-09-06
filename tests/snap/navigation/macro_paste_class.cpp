@@ -1,9 +1,9 @@
-/// - verify: server
-///
-/// Class and method names formed by token paste anchor at the
-/// registration-macro invocation, the gtest-style pattern: typed uses of
-/// the pasted name navigate there, and the base class lists the pasted
-/// derived type in its subtypes.
+// - verify: server
+//
+// Class and method names formed by token paste anchor at the
+// registration-macro invocation, the gtest-style pattern: typed uses of
+// the pasted name navigate there, and the base class lists the pasted
+// derived type in its subtypes.
 
 struct §(base)TestBase {
     virtual void §(run_decl)run() = 0;

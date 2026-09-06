@@ -1,8 +1,0 @@
----
-created_at: 2026-07-31
-input_file: declarations_references/19_alias_templates.cpp
----
-- { loc: "5:6", text: "Ptr", kind: type, modifiers: [definition, templated] }
-- { loc: "11:6", text: "BoxPtr", kind: type, modifiers: [definition, templated] }
-- { loc: "11:15", text: "Box", kind: struct, modifiers: [templated] }
-- { loc: "13:0", text: "Ptr", kind: type, modifiers: [templated] }

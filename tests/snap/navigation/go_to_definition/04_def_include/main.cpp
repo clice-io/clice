@@ -3,9 +3,9 @@
 /// - status: supported
 /// - verify: server
 ///
-/// Invoked on an `#include` line, go-to-definition opens the included
-/// file. This works for the leading includes compiled into the preamble
-/// (the PCH) as well as ordinary ones later in the file.
+/// Go-to-definition on an include opens the referenced file
+///
+/// Leading includes and ordinary includes later in the file behave alike.
 
 #include §(preamble_include)"panel.h"
 

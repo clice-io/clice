@@ -1,6 +1,8 @@
 /// # Template parameter list folding
 ///
 /// - status: unsupported
+///
+/// Multiline template parameter lists do not form folding ranges yet
 
 template<typename T>
 struct Less;

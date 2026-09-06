@@ -1,6 +1,8 @@
-/// # Default library — symbols declared in system headers
+/// # Default library
 ///
 /// - status: supported
+///
+/// Symbols from system headers carry the default-library modifier
 
 int before_includes = 0;
 

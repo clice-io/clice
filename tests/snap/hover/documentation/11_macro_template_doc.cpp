@@ -1,11 +1,13 @@
-/// # Template keyword from a macro — the docstring should survive the expansion
+/// # Template keyword from a macro
 ///
 /// - status: partial
 /// - issues: clangd#1226
 ///
+/// Documentation on a macro-produced template is missing from hover
+///
 /// When the `template` keyword is produced by a macro expansion, the
-/// declaration's doc comment should still appear on hover. clice currently
-/// drops it — the card carries no description.
+/// declaration's doc comment does not appear on hover, and the card carries
+/// no description.
 
 int anchor = 0;
 

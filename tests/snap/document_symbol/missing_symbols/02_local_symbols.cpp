@@ -1,7 +1,10 @@
-/// # Local symbols — variables and types declared inside function bodies nest under their function
+/// # Local symbols
 ///
 /// - status: supported
 /// - issues: clangd#616
+///
+/// Variables and types declared inside function bodies nest under their
+/// function
 
 int compute() {
     int local_sum = 0;

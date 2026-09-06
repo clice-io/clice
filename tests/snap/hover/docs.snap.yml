@@ -2,148 +2,148 @@
 created_at: 2026-07-28
 input_file: docs.cpp
 ---
-01_auto_class_doc: { range: "12:2-12:6" }
+01_auto_class_doc: { range: "11:4-11:8" }
 ### type `auto`  
 
 ---
-doc  
+Holds one payload.  
 
 ---
 ```cpp
-X<int>
+Packet<long>
 ```
 
-02_class_ref_doc: { range: "13:2-13:3" }
-### class `X<int>`  
+02_class_ref_doc: { range: "12:4-12:10" }
+### class `Packet<long>`  
 
 ---
-doc  
+Holds one payload.  
 
 ---
 ```cpp
-// In namespace docs_ast
-template <> class X<int> {}
+// In namespace template_docs
+template <> class Packet<long> {}
 ```
 
-03_function_doc: { range: "14:2-14:5" }
-### function `bar`  
+03_function_doc: { range: "13:4-13:8" }
+### function `send`  
 
 ---
 → `void`  
-doc  
+Sends one payload.  
 
 ---
 ```cpp
-// In namespace docs_ast
-template <> void bar<int>()
+// In namespace template_docs
+template <> void send<long>()
 ```
 
-04_auto_var_tmpl_doc: { range: "15:2-15:6" }
+04_auto_var_tmpl_doc: { range: "14:4-14:8" }
 ### type `auto`  
 
 ---
-doc  
+Holds one payload.  
 
 ---
 ```cpp
-docs_ast::X<int>
+template_docs::Packet<long>
 ```
 
-05_var_tmpl_ref_doc: { range: "15:11-15:14" }
-### variable `baz<docs_ast::X<int>>`  
+05_var_tmpl_ref_doc: { range: "14:17-14:24" }
+### variable `counter<template_docs::Packet<long>>`  
 
 ---
-Type: `docs_ast::X<int>`  
-doc  
+Type: `template_docs::Packet<long>`  
+Counts payloads.  
 
 ---
 ```cpp
-// In namespace docs_ast
-docs_ast::X<int> baz
+// In namespace template_docs
+template_docs::Packet<long> counter
 ```
 
-06_var_tmpl_assign_doc: { range: "16:2-16:5" }
-### variable `baz<int>`  
+06_var_tmpl_assign_doc: { range: "15:4-15:11" }
+### variable `counter<int>`  
 
 ---
 Type: `int`  
-doc  
+Counts payloads.  
 
 ---
 ```cpp
-// In namespace docs_ast
-int baz
+// In namespace template_docs
+int counter
 ```
 
-07_primary_doc: { range: "23:28-23:29" }
-### class `X`  
+07_primary_doc: { range: "21:28-21:35" }
+### class `Storage`  
 
 ---
-doc1  
+Generic storage.  
 
 ---
 ```cpp
-// In namespace docs_special
-template <typename T> class X {}
+// In namespace specialization_docs
+template <typename T> class Storage {}
 ```
 
-08_full_spec_doc: { range: "25:18-25:19" }
-### class `X<int>`  
+08_full_spec_doc: { range: "24:18-24:25" }
+### class `Storage<int>`  
 
 ---
 Size: 1 byte, alignment 1 byte  
-doc2  
+Integer storage.  
 
 ---
 ```cpp
-// In namespace docs_special
-template <> class X<int> {}
+// In namespace specialization_docs
+template <> class Storage<int> {}
 ```
 
-09_partial_spec_doc: { range: "27:28-27:29" }
-### class `X<T *>`  
+09_partial_spec_doc: { range: "27:28-27:35" }
+### class `Storage<T *>`  
 
 ---
-doc3  
+Pointer storage.  
 
 ---
 ```cpp
-// In namespace docs_special
-template <typename T> class X<T *> {}
+// In namespace specialization_docs
+template <typename T> class Storage<T *> {}
 ```
 
-10_primary_ref_doc: { range: "29:2-29:3" }
-### class `X<char>`  
+10_primary_ref_doc: { range: "30:4-30:11" }
+### class `Storage<char>`  
 
 ---
-doc1  
+Generic storage.  
 
 ---
 ```cpp
-// In namespace docs_special
-template <> class X<char> {}
+// In namespace specialization_docs
+template <> class Storage<char> {}
 ```
 
-11_full_spec_ref_doc: { range: "30:2-30:3" }
-### class `X<int>`  
+11_full_spec_ref_doc: { range: "31:4-31:11" }
+### class `Storage<int>`  
 
 ---
-doc2  
+Integer storage.  
 
 ---
 ```cpp
-// In namespace docs_special
-template <> class X<int> {}
+// In namespace specialization_docs
+template <> class Storage<int> {}
 ```
 
-12_partial_spec_ref_doc: { range: "31:2-31:3" }
-### class `X<int *>`  
+12_partial_spec_ref_doc: { range: "32:4-32:11" }
+### class `Storage<char *>`  
 
 ---
-doc3  
+Pointer storage.  
 
 ---
 ```cpp
-// In namespace docs_special
-template <> class X<int *> {}
+// In namespace specialization_docs
+template <> class Storage<char *> {}
 ```

@@ -6,7 +6,7 @@ guide:
     - configuration
 
 features:
-  label: Features
+  label: Language Server
   items:
     - overview
     - completion
@@ -21,6 +21,11 @@ features:
     - document-symbols
     - folding-ranges
     - formatting
+
+cli:
+  label: Command Line
+  items:
+    - overview
     - lint
 
 design:

@@ -2,67 +2,67 @@
 created_at: 2026-08-23
 input_file: documentation/01_doxygen_comments.cpp
 ---
-01_function: { range: "12:4-12:7" }
-### function `add`  
+01_function: { range: "11:5-11:9" }
+### function `join`  
 
 ---
-→ `int`  
+→ `long`  
 Parameters:  
-- `int a`
-- `int b`
+- `long left`
+- `long right`
 
-Adds two integers.  
+Joins two counters.  
 
 ---
 ```cpp
-// In namespace docs
-int add(int a, int b)
+// In namespace reference_docs
+long join(long left, long right)
 ```
 
-02_primary_def: { range: "15:29-15:32" }
-### struct `Box`  
+02_primary_def: { range: "14:29-14:34" }
+### struct `Store`  
 
 ---
-A box holding a value.  
+Stores an ordinary value.  
 
 ---
 ```cpp
-// In namespace docs
-template <typename T> struct Box {}
+// In namespace reference_docs
+template <typename T> struct Store {}
 ```
 
-03_spec_def: { range: "18:29-18:32" }
-### struct `Box<T *>`  
+03_spec_def: { range: "17:29-17:34" }
+### struct `Store<T *>`  
 
 ---
-A box of pointers.  
+Stores an indirect value.  
 
 ---
 ```cpp
-// In namespace docs
-template <typename T> struct Box<T *> {}
+// In namespace reference_docs
+template <typename T> struct Store<T *> {}
 ```
 
-04_primary_ref: { range: "21:4-21:7" }
-### struct `Box<int>`  
+04_primary_ref: { range: "20:4-20:9" }
+### struct `Store<long>`  
 
 ---
-A box holding a value.  
+Stores an ordinary value.  
 
 ---
 ```cpp
-// In namespace docs
-template <> struct Box<int> {}
+// In namespace reference_docs
+template <> struct Store<long> {}
 ```
 
-05_spec_ref: { range: "22:4-22:7" }
-### struct `Box<int *>`  
+05_spec_ref: { range: "21:4-21:9" }
+### struct `Store<long *>`  
 
 ---
-A box of pointers.  
+Stores an indirect value.  
 
 ---
 ```cpp
-// In namespace docs
-template <> struct Box<int *> {}
+// In namespace reference_docs
+template <> struct Store<long *> {}
 ```

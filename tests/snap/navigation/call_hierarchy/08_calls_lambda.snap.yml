@@ -4,13 +4,13 @@ input_file: call_hierarchy/08_calls_lambda.cpp
 ---
 foo:
   definition:
-    - { file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "9:5-9:8" }
+    - { file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "8:5-8:8" }
   declaration:
-    - { file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "9:5-9:8" }
+    - { file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "8:5-8:8" }
   references:
-    - { file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "9:5-9:8" }
-    - { file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "13:8-13:11" }
+    - { file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "8:5-8:8" }
+    - { file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "12:8-12:11" }
   callHierarchy:
-    - { name: "foo", kind: Function, file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "9:5-9:8" }
+    - { name: "foo", kind: Function, file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "8:5-8:8" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "11:5-11:8", fromRanges: ["13:8-13:13"] }
+    - { name: "use", kind: Function, file: "${WS}/call_hierarchy/08_calls_lambda.cpp", range: "10:5-10:8", fromRanges: ["12:8-12:13"] }
