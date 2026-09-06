@@ -472,6 +472,31 @@ compile_commands = ["../build"]
     EXPECT_EQ(config.compiled_rules[1].compile_commands[0], at("out"));
 }
 
+TEST_CASE(RelativeProjectDirsAnchor) {
+    /// A relative cache or log directory anchors where every other relative
+    /// path does: at its configuration file, or at the workspace root when
+    /// it came through initializationOptions.
+    TempDir tmp;
+    auto at = [&](llvm::StringRef relative) {
+        std::string p = tmp.path(relative);
+        path::canonicalize(p);
+        return p;
+    };
+    std::string root = tmp.root.str().str();
+    path::canonicalize(root);
+    tmp.touch("sub/clice.toml", "[project]\ncache_dir = \"cache\"\n");
+
+    auto loaded = Config::load(tmp.path("sub/clice.toml"), root);
+    ASSERT_TRUE(loaded.has_value());
+    EXPECT_EQ(std::string_view(loaded->project.cache_dir), at("sub/cache"));
+    EXPECT_EQ(std::string_view(loaded->project.logging_dir), at("sub/cache/logs"));
+
+    Config config;
+    config.project.logging_dir = "logs";
+    config.finalize(root);
+    EXPECT_EQ(std::string_view(config.project.logging_dir), at("logs"));
+}
+
 TEST_CASE(SourcesOffByDefault) {
     Config config;
     config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .append = {"-DX"}});

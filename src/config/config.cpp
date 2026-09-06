@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <initializer_list>
 
 #include "feature/feature.h"
 #include "support/filesystem.h"
@@ -138,14 +139,19 @@ void Config::finalize(llvm::StringRef workspace_root) {
     if(p.logging_dir.empty() && !p.cache_dir.empty())
         p.logging_dir = path::join(p.cache_dir, "logs");
 
-    // Variable substitution on string fields.
-    substitute_workspace(p.cache_dir, root);
-    substitute_workspace(p.logging_dir, root);
-    // Client-supplied dirs arrive in native spelling (backslashes, any
-    // drive case); canonicalize so artifact-prefix checks against
-    // pool-resolved paths hold.
-    path::canonicalize(p.cache_dir);
-    path::canonicalize(p.logging_dir);
+    // Variable substitution on string fields; a path still relative after
+    // it came from initializationOptions (load() anchored a file's own)
+    // and resolves against the workspace root.
+    for(std::string* dir: std::initializer_list<std::string*>{&p.cache_dir, &p.logging_dir}) {
+        substitute_workspace(*dir, root);
+        if(!dir->empty() && !root.empty() && !path::is_absolute(*dir)) {
+            *dir = path::join(root, *dir);
+        }
+        // Client-supplied dirs arrive in native spelling (backslashes, any
+        // drive case); canonicalize so artifact-prefix checks against
+        // pool-resolved paths hold.
+        path::canonicalize(*dir);
+    }
 
     auto anchored = [&](std::string value, llvm::StringRef anchor) {
         substitute_workspace(value, root);
@@ -314,6 +320,13 @@ std::optional<Config> Config::load(llvm::StringRef path,
     auto directory = path::parent_path(path).str();
     for(auto& rule: config.rules) {
         rule.directory = directory;
+    }
+    for(std::string* dir: std::initializer_list<std::string*>{&config.project.cache_dir,
+                                                              &config.project.logging_dir}) {
+        substitute_workspace(*dir, workspace_root);
+        if(!dir->empty() && !path::is_absolute(*dir)) {
+            *dir = path::join(directory, *dir);
+        }
     }
     if(finalized)
         config.finalize(workspace_root);
