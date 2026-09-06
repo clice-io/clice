@@ -1623,7 +1623,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     // that failed to load keeps its last-known entries serving. One the
     // configuration stopped declaring is gone on purpose; one discovery no
     // longer finds may come back.
-    bool declared = workspace.config.declares_sources();
+    bool declared = workspace.build.declares_sources();
     for(auto& old: persisted.entries) {
         if(old.hashes.empty() || old.sources.empty()) {
             continue;

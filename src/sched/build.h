@@ -58,6 +58,10 @@ public:
     /// first declared tag.
     void reset_active();
 
+    /// Whether an active rule declares a command source — a database or a
+    /// default command. Declared sources turn automatic discovery off.
+    bool declares_sources() const;
+
     /// The databases the active view compiles from, in priority order:
     /// the sources of every matching-or-not active rule, deduplicated.
     /// Empty when no rule declares one — discovery's cue.

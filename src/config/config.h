@@ -358,10 +358,6 @@ struct Config {
     llvm::SmallVector<const CompiledRule*> matching_rules(llvm::StringRef path,
                                                           llvm::StringRef configuration) const;
 
-    /// Whether any rule declares a command source: databases or a default
-    /// command. Declared sources turn automatic database discovery off.
-    bool declares_sources() const;
-
     /// The distinct configuration tags, in first-appearance order.
     llvm::SmallVector<llvm::StringRef> configurations() const;
 

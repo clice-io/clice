@@ -103,7 +103,7 @@ TEST_CASE(DefaultCommandMembers) {
     /// a nested rule keeps some of them out of the index.
     Layout layout("default_command_only");
     EXPECT_TRUE(layout.build.declared_sources().empty());
-    EXPECT_TRUE(layout.config.declares_sources());
+    EXPECT_TRUE(layout.build.declares_sources());
 
     auto commands = layout.build.commands(layout.fid("src/main.cpp"));
     ASSERT_EQ(commands.size(), 1U);
@@ -247,7 +247,7 @@ TEST_CASE(DeclaredSourceOffDiscovery) {
     /// A rule declaring a default command is the whole intent: the database
     /// sitting at the root is not consulted.
     Layout layout("declared_ignores_discovered");
-    EXPECT_TRUE(layout.config.declares_sources());
+    EXPECT_TRUE(layout.build.declares_sources());
     EXPECT_TRUE(layout.build.declared_sources().empty());
     EXPECT_EQ(layout.cdb.source_count(), 0U);
     EXPECT_TRUE(has_arg(layout.render("main.cpp"), "FROM_RULE"));
@@ -289,6 +289,24 @@ TEST_CASE(InactiveConfigurationExcluded) {
     ASSERT_EQ(candidates.size(), 1U);
     EXPECT_TRUE(has_arg(cdb.render_full(candidates.front().config), "RELEASE"));
     EXPECT_TRUE(build.edits(llvm::StringRef(canonical(tmp, "main.cpp"))).empty());
+};
+
+TEST_CASE(InactiveSourceKeepsDiscovery) {
+    /// Only an inactive configuration declares a database: the active one
+    /// has no source, so discovery stays on for it.
+    TempDir tmp;
+    Config config;
+    config.default_configuration = "release";
+    config.rules.push_back(ConfigRule{.configuration = "debug", .compile_commands = {"debug"}});
+    config.rules.push_back(ConfigRule{.configuration = "release", .append = {"-DNDEBUG"}});
+    config.finalize(tmp.root.str());
+
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active();
+    EXPECT_FALSE(build.declares_sources());
+    EXPECT_TRUE(build.declared_sources().empty());
 };
 
 TEST_CASE(EditsAcrossHostAndHeader) {

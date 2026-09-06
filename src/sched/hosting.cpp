@@ -35,14 +35,14 @@ llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header) {
         }
         int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
         int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
-        // Longer shared prefix means "closer" in the tree; negate for
-        // ascending sort.
+        // Longer shared prefix means "closer" in the tree; measured against
+        // the header's own length so every candidate shares one baseline.
         std::size_t common = 0;
         auto n = std::min(host_path.size(), header_path.size());
         while(common < n && host_path[common] == header_path[common]) {
             common += 1;
         }
-        return {source_rank, stem_match, same_dir, n - common};
+        return {source_rank, stem_match, same_dir, header_path.size() - common};
     };
     std::ranges::sort(hosts, [&](Fid a, Fid b) {
         auto sa = score(a), sb = score(b);

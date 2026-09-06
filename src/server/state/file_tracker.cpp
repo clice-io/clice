@@ -121,7 +121,7 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
     // is gone, so one regenerated elsewhere among the searched locations
     // takes over. Declared sources are registered (existing or not) and
     // only watched.
-    if(!workspace.config.declares_sources() &&
+    if(!workspace.build.declares_sources() &&
        llvm::none_of(sources,
                      [](const TrackedSource& tracked) { return tracked.applied.exists; })) {
         auto found = discover_compile_commands(workspace_root);

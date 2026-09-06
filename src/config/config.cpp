@@ -250,10 +250,6 @@ llvm::SmallVector<const CompiledRule*> Config::matching_rules(llvm::StringRef pa
     return result;
 }
 
-bool Config::declares_sources() const {
-    return std::ranges::any_of(compiled_rules, &CompiledRule::declares_sources);
-}
-
 llvm::SmallVector<llvm::StringRef> Config::configurations() const {
     llvm::SmallVector<llvm::StringRef> tags;
     for(auto& rule: compiled_rules) {

@@ -410,7 +410,6 @@ compile_commands = ["build", "{}"]
     EXPECT_TRUE(config.compiled_rules[2].patterns.empty());
     EXPECT_EQ(config.compiled_rules[2].compile_commands[0], at("sub/build"));
     EXPECT_EQ(config.compiled_rules[2].compile_commands[1], at("elsewhere/compile_commands.json"));
-    EXPECT_TRUE(config.declares_sources());
 
     auto tags = config.configurations();
     ASSERT_EQ(tags.size(), 1u);
@@ -477,7 +476,7 @@ TEST_CASE(SourcesOffByDefault) {
     Config config;
     config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .append = {"-DX"}});
     config.finalize("/ws");
-    EXPECT_FALSE(config.declares_sources());
+    EXPECT_FALSE(config.compiled_rules[0].declares_sources());
     EXPECT_TRUE(config.configurations().empty());
 }
 

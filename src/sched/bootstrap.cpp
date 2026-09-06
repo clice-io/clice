@@ -71,7 +71,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     }
 
     auto load = load_build(workspace, root);
-    report.has_commands = !load.members.empty() || workspace.config.declares_sources();
+    report.has_commands = !load.members.empty() || workspace.build.declares_sources();
     report.members = std::move(load.members);
     // Persisted index shards are CDB-independent; they load even with no
     // member yet, so a database generated later (picked up by the CDB
@@ -104,7 +104,7 @@ BuildLoad load_build(Workspace& workspace, llvm::StringRef root) {
     for(auto declared: workspace.build.declared_sources()) {
         paths.push_back(declared.str());
     }
-    if(!workspace.config.declares_sources()) {
+    if(!workspace.build.declares_sources()) {
         auto found = discover_compile_commands(root);
         if(!found.empty()) {
             paths.push_back(found);

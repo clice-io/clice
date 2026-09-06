@@ -33,6 +33,12 @@ static bool rule_active(const CompiledRule& rule, llvm::StringRef active) {
     return rule.configuration.empty() || rule.configuration == active;
 }
 
+bool Build::declares_sources() const {
+    return llvm::any_of(config.compiled_rules, [&](const CompiledRule& rule) {
+        return rule_active(rule, active) && rule.declares_sources();
+    });
+}
+
 llvm::SmallVector<llvm::StringRef> Build::declared_sources() const {
     llvm::SmallVector<llvm::StringRef> result;
     for(auto& rule: config.compiled_rules) {
@@ -253,7 +259,7 @@ static bool under(llvm::StringRef path, llvm::StringRef root) {
 void Build::enumerate_default_sources(std::vector<Fid>& out) {
     llvm::SmallVector<const CompiledRule*> claimants;
     for(auto& rule: config.compiled_rules) {
-        if(rule_active(rule, active) && rule.has_default_command()) {
+        if(rule_active(rule, active) && rule.has_default_command() && !rule.unmatchable) {
             claimants.push_back(&rule);
         }
     }
