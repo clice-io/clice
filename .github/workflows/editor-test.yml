@@ -42,7 +42,8 @@ jobs:
           echo "/opt/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
 
       - name: Restore VSCode download cache
-        uses: actions/cache@v6
+        id: vscode-cache
+        uses: actions/cache/restore@v6
         with:
           path: editors/vscode/.vscode-test
           key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package.json') }}
@@ -64,3 +65,10 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 20
         run: pixi run -e editor vscode-e2e RelWithDebInfo
+
+      - name: Save VSCode download cache
+        if: github.ref == 'refs/heads/main' && steps.vscode-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: editors/vscode/.vscode-test
+          key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package.json') }}
