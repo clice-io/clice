@@ -378,7 +378,7 @@ Build configuration tag. A tagged rule applies only while that configuration is 
 | ------------------ | ----------------- | ------- |
 | `compile_commands` | `array of string` | `[]`    |
 
-Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the workspace root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, the workspace root and its immediate subdirectories are searched for one.
+Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the workspace root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, every compile_commands.json in the workspace root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened.
 
 </div>
 
