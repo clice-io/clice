@@ -116,7 +116,7 @@ public:
 
     /// Every translation unit of the build: files with entries, plus the
     /// source files on disk that a default-command rule matches.
-    std::vector<Fid> members() const;
+    std::vector<Fid> members();
 
     /// The scan units of `members`: every command of every member, so a
     /// header reachable through only one of a file's entries still finds
@@ -138,7 +138,7 @@ private:
     /// Files a default-command rule claims: C-family sources (never
     /// headers) under the rules' pattern roots matching their patterns,
     /// skipping the cache directory and version control metadata.
-    void enumerate_default_sources(std::vector<Fid>& out) const;
+    void enumerate_default_sources(std::vector<Fid>& out);
 
     Config& config;
     CompilationDatabase& cdb;

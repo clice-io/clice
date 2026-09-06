@@ -258,6 +258,10 @@ struct CompiledRule {
     std::vector<std::string> remove;
     bool index = true;
 
+    /// Every pattern failed to compile: the rule matches no file, but the
+    /// sources it declares still load.
+    bool unmatchable = false;
+
     bool has_default_command() const;
 
     /// Whether the rule declares a command source (databases or a default

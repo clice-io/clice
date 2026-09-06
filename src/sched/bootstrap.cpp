@@ -76,9 +76,11 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     // Persisted index shards are CDB-independent; they load even with no
     // member yet, so a database generated later (picked up by the CDB
     // poll) starts from the previous session's index.
-    pump.claim_report(store.load(read_only_index).report);
+    auto loaded = store.load(read_only_index);
+    bool owed = !loaded.report.reindex().empty();
+    pump.claim_report(loaded.report);
 
-    if(cfg.enable_indexing.value && !report.members.empty()) {
+    if(cfg.enable_indexing.value && (!report.members.empty() || owed)) {
         for(auto member: report.members) {
             // Bulk sweep of unknown staleness: the hash gate decides per
             // file. DepsOnly — a cold start with a warm index cache must

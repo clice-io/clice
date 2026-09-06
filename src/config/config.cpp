@@ -172,11 +172,11 @@ void Config::finalize(llvm::StringRef workspace_root) {
                 compiled.patterns.push_back(std::move(*compiled_pattern));
             }
         }
-        // Drop the whole rule if no pattern compiled successfully — otherwise
-        // its flags would be silently attached to a rule that can never match.
+        // Without a valid pattern the rule can match nothing; its declared
+        // databases still load, since entries apply regardless of patterns.
         if(compiled.patterns.empty() && !rule.patterns.empty()) {
-            LOG_WARN("Rule dropped: all glob patterns failed to compile");
-            return std::nullopt;
+            LOG_WARN("Rule matches no file: all of its glob patterns failed to compile");
+            compiled.unmatchable = true;
         }
         compiled.configuration = rule.configuration;
         for(auto& database: rule.compile_commands) {
@@ -230,6 +230,9 @@ bool CompiledRule::declares_sources() const {
 }
 
 bool CompiledRule::matches(llvm::StringRef path) const {
+    if(unmatchable) {
+        return false;
+    }
     return patterns.empty() || std::ranges::any_of(patterns, [&](const Pattern& pattern) {
                return pattern.glob.match(path);
            });

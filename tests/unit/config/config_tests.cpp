@@ -483,9 +483,11 @@ TEST_CASE(SourcesOffByDefault) {
 
 TEST_CASE(InvalidGlobPattern) {
     Config config;
-    // All-invalid patterns: rule must be dropped entirely, not appended as empty.
+    // All-invalid patterns: the rule matches nothing (its flags never
+    // apply), but the database it declares still loads.
     config.rules.push_back(ConfigRule{
         .patterns = {"**/****.{c,cc}"},
+        .compile_commands = {"/elsewhere/compile_commands.json"},
         .append = {"-DSHOULD_NOT_APPEAR"},
     });
     // Mixed valid/invalid: only the invalid pattern is skipped; rule remains.
@@ -494,7 +496,10 @@ TEST_CASE(InvalidGlobPattern) {
         .append = {"-DCPP"},
     });
     config.finalize("");
-    EXPECT_EQ(config.compiled_rules.size(), 1u);
+    ASSERT_EQ(config.compiled_rules.size(), 2u);
+    EXPECT_TRUE(config.compiled_rules[0].unmatchable);
+    EXPECT_TRUE(config.compiled_rules[0].declares_sources());
+    EXPECT_FALSE(config.compiled_rules[1].unmatchable);
 
     std::vector<std::string> append, remove;
     match_rules(config, "/src/foo.cpp", append, remove);

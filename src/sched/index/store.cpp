@@ -12,6 +12,7 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/context.h"
+#include "sched/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
@@ -1575,16 +1576,19 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         // The dependency scan preceding this load saw the offline edits, so
-        // a recorded host that no longer includes the header cannot vouch
-        // for the borrowed command any more. Keep the rows serving (last
-        // known good, like the vanished-entry case above) while a rebuild
-        // re-selects a host; a Fallback resolution then changes nothing.
-        // The retained rows were still built through the old host, so keep
-        // that association until a landed rebuild overwrites it — an empty
-        // host persisted after a Fallback or failed rebuild would hit the
-        // `old.host.empty()` gate next session and never retry.
-        if(workspace.dep_graph.find_include_chain(host_id, server_id).empty()) {
-            LOG_INFO("Recorded host no longer includes {}; reindexing", entry.file);
+        // a recorded host that the build no longer ranks first — it stopped
+        // including the header, or a rule change moved another database
+        // ahead — cannot vouch for the borrowed command any more. Keep the
+        // rows serving (last known good, like the vanished-entry case
+        // above) while a rebuild re-selects a host; a Fallback resolution
+        // then changes nothing. The retained rows were still built through
+        // the old host, so keep that association until a landed rebuild
+        // overwrites it — an empty host persisted after a Fallback or
+        // failed rebuild would hit the `old.host.empty()` gate next session
+        // and never retry.
+        auto current = default_host(workspace, server_id);
+        if(!current || current->file != host_id) {
+            LOG_INFO("Default host of {} changed since the last session; reindexing", entry.file);
             header_hosts[server_id] = host_id;
             report.add_reindex(server_id);
             continue;

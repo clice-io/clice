@@ -165,6 +165,29 @@ TEST_CASE(PatternRootsEnumerate) {
     EXPECT_TRUE(has_arg(cdb.render_full(util.front().config), "LIB"));
 };
 
+TEST_CASE(ForcedLanguageMembers) {
+    /// An extensionless tool source joins the members when its default
+    /// command forces the language; a header never does.
+    TempDir tmp;
+    tmp.touch("src/tool", "int main() {}\n");
+    tmp.touch("src/util.h", "");
+    tmp.touch("src/data.txt", "");
+    Config config;
+    config.rules.push_back(
+        ConfigRule{.patterns = {"src/tool"}, .default_command = std::string("clang++ -x c++")});
+    config.rules.push_back(ConfigRule{.patterns = {"src/**"},
+                                      .default_command = std::string("clang++ -x c++-header")});
+    config.finalize(tmp.root.str());
+
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active();
+    auto members = build.members();
+    ASSERT_EQ(members.size(), 1U);
+    EXPECT_EQ(members.front(), files.intern(canonical(tmp, "src/tool")));
+};
+
 TEST_CASE(InvalidDefaultCommandIgnored) {
     /// A default command that names no compiler leaves its files without a
     /// command instead of aborting: they take the builtin fallback.

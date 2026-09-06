@@ -220,7 +220,7 @@ llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {
     return result;
 }
 
-std::vector<Fid> Build::members() const {
+std::vector<Fid> Build::members() {
     std::vector<Fid> result;
     llvm::DenseSet<Fid> seen;
     for(auto& entry: cdb.entries()) {
@@ -238,7 +238,7 @@ static bool under(llvm::StringRef path, llvm::StringRef root) {
                             (root.ends_with("/") || path::is_separator(path[root.size()])));
 }
 
-void Build::enumerate_default_sources(std::vector<Fid>& out) const {
+void Build::enumerate_default_sources(std::vector<Fid>& out) {
     llvm::SmallVector<const CompiledRule*> claimants;
     for(auto& rule: config.compiled_rules) {
         if(rule_active(rule, active) && rule.has_default_command()) {
@@ -291,20 +291,34 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) const {
                 }
                 continue;
             }
-            // Sources only: a header claims no translation unit of its own.
-            auto ext = path::extension(entry_path);
-            ext.consume_front(".");
-            auto type = ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
-            if(type == types::TY_INVALID || types::onlyPrecompileType(type) ||
-               !(types::isCXX(type) || type == types::TY_C || types::isObjC(type) ||
-                 types::isCuda(type))) {
-                continue;
-            }
             auto matched = matching(entry_path);
             if(!llvm::any_of(claimants, [&](const CompiledRule* rule) {
                    return llvm::is_contained(matched, rule);
                })) {
                 continue;
+            }
+            // Sources only: a header claims no translation unit of its own.
+            // A suffix clang does not know is a source when the default
+            // command forces its language (`-x c++` for an extensionless
+            // tool).
+            auto ext = path::extension(entry_path);
+            ext.consume_front(".");
+            auto type = ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
+            bool source = type != types::TY_INVALID && !types::onlyPrecompileType(type) &&
+                          (types::isCXX(type) || type == types::TY_C || types::isObjC(type) ||
+                           types::isCuda(type));
+            if(!source) {
+                if(type != types::TY_INVALID) {
+                    continue;
+                }
+                auto command = default_command(entry_path);
+                if(!command) {
+                    continue;
+                }
+                auto forced = cdb.forced_language(*command);
+                if(forced.empty() || forced.ends_with("-header")) {
+                    continue;
+                }
             }
             auto file = files.intern(entry_path);
             if(seen.insert(file).second) {

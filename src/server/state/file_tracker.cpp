@@ -53,7 +53,14 @@ static void push_delta(const CDBDiff& diff, llvm::SmallVectorImpl<FileEvent>& ev
 }
 
 void FileTracker::track(SourceID id) {
-    sources.push_back({.id = id, .applied = stat_cdb(workspace.cdb.source_path(id))});
+    // A source whose startup load failed (unreadable, mid-rewrite) stays
+    // baselined as missing, so the next tick reloads it even when its
+    // stamp never changes.
+    TrackedSource tracked{.id = id};
+    if(workspace.cdb.loaded(id)) {
+        tracked.applied = stat_cdb(workspace.cdb.source_path(id));
+    }
+    sources.push_back(std::move(tracked));
 }
 
 llvm::SmallVector<SourceID, 1> FileTracker::tick_source(TrackedSource& tracked,

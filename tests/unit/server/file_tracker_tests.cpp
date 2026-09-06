@@ -113,6 +113,37 @@ TEST_CASE(CDBTickDeleteRecreate) {
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
 }
 
+TEST_CASE(CDBTickRetriesFailedLoad) {
+    /// A declared database unreadable at startup loads on a later tick even
+    /// when its stamp is unchanged by then.
+    TempDir tmp;
+    tmp.touch("compile_commands.json", "[ ");
+    Workspace workspace;
+    SessionStore store;
+    auto id = workspace.cdb.add_source(tmp.path("compile_commands.json"));
+    ASSERT_FALSE(workspace.cdb.load_source(id).has_value());
+    llvm::sys::fs::file_status before;
+    ASSERT_FALSE(
+        static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+
+    tmp.touch("compile_commands.json", "[]");
+    int fd = 0;
+    ASSERT_FALSE(
+        static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("compile_commands.json"),
+                                                          fd,
+                                                          llvm::sys::fs::CD_OpenExisting)));
+    ASSERT_FALSE(static_cast<bool>(
+        llvm::sys::fs::setLastAccessAndModificationTime(fd,
+                                                        before.getLastAccessedTime(),
+                                                        before.getLastModificationTime())));
+    llvm::sys::fs::closeFile(fd);
+
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    EXPECT_TRUE(workspace.cdb.loaded(id));
+}
+
 TEST_CASE(CDBTickRelocates) {
     /// The discovered database is deleted and one appears elsewhere among
     /// the searched locations: the old entries leave with it and the new
