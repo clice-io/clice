@@ -152,7 +152,9 @@ function parseOptions(): Options {
 
     return {
         server,
-        binary,
+        // A bare name stays a PATH lookup; a path is anchored here, before
+        // the clangd process is started from the CDB directory instead.
+        binary: path.basename(binary) === binary ? binary : path.resolve(binary),
         workspace: path.resolve(values.workspace),
         cdbDir: "",
         file: values.file ?? null,
