@@ -65,6 +65,14 @@ if(LLVM_RC_PATH)
     set(CMAKE_RC_COMPILER "${LLVM_RC_PATH}" CACHE FILEPATH "")
 endif()
 
+# A cached launcher whose binary is gone (sccache, after the switch to
+# ccache) would fail every compile; drop it so the lookup below runs again.
+foreach(lang C CXX)
+    if(CMAKE_${lang}_COMPILER_LAUNCHER AND NOT EXISTS "${CMAKE_${lang}_COMPILER_LAUNCHER}")
+        unset(CMAKE_${lang}_COMPILER_LAUNCHER CACHE)
+    endif()
+endforeach()
+
 find_program(CCACHE_PATH "ccache")
 if(CCACHE_PATH)
     set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PATH}" CACHE FILEPATH "")

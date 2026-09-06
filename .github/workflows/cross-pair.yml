@@ -44,8 +44,9 @@ jobs:
         with:
           environments: ${{ inputs.pixi_env }}
 
+      # Restore only; saved below, after the build, on pushes to main.
       - name: Restore compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: .cache/ccache
           key: ${{ runner.os }}-RelWithDebInfo-${{ inputs.target_triple }}-ccache-${{ github.sha }}
@@ -61,6 +62,13 @@ jobs:
           pixi run -e "${{ inputs.pixi_env }}" cmake-config RelWithDebInfo OFF -- \
             "-DCLICE_TARGET_TRIPLE=${{ inputs.target_triple }}"
           pixi run -e "${{ inputs.pixi_env }}" cmake-build RelWithDebInfo
+
+      - name: Save compiler cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/ccache
+          key: ${{ runner.os }}-RelWithDebInfo-${{ inputs.target_triple }}-ccache-${{ github.sha }}
 
       # Package here, where the object files live (dsymutil needs them);
       # promotion to a release is still gated on the whole run being green.
