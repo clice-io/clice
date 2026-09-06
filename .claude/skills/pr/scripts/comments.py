@@ -45,10 +45,13 @@ query($owner: String!, $name: String!, $pr: Int!, $after: String) {
 """
 
 REVIEWS_QUERY = """
-query($owner: String!, $name: String!, $pr: Int!) {
+query($owner: String!, $name: String!, $pr: Int!, $before: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $pr) {
-      reviews(last: 50) { nodes { author { login } state body url commit { abbreviatedOid } } }
+      reviews(last: 50, before: $before) {
+        pageInfo { hasPreviousPage startCursor }
+        nodes { author { login } state body url commit { abbreviatedOid } }
+      }
     }
   }
 }
@@ -93,7 +96,15 @@ def fetch_threads(owner, name, pr):
 
 
 def fetch_reviews(owner, name, pr):
-    return graphql(REVIEWS_QUERY, owner=owner, name=name, pr=pr)["reviews"]["nodes"]
+    reviews, before = [], None
+    while True:
+        page = graphql(REVIEWS_QUERY, owner=owner, name=name, pr=pr, before=before)[
+            "reviews"
+        ]
+        reviews = page["nodes"] + reviews
+        if not page["pageInfo"]["hasPreviousPage"]:
+            return reviews
+        before = page["pageInfo"]["startCursor"]
 
 
 def strip_details(text):

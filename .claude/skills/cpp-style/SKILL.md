@@ -198,7 +198,7 @@ process(result.value());
 ## Style
 
 - Prefer `[[maybe_unused]]` over `(void)` for intentionally unused variables or parameters.
-- No `++`/`--`: write `x += 1` / `x -= 1`, in `for` heads too. Split fused forms like `if(++x > n)` into two statements.
+- Arithmetic counters step with `x += 1` / `x -= 1`, in `for` heads too — never `++`/`--`; split fused forms like `if(++x > n)` into two statements. Iterators and other types without `+=` are exempt. This applies to code you write or touch, not as a repository-wide sweep.
 
 ## Modern C++ Usage
 

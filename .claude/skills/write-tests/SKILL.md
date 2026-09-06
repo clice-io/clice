@@ -258,7 +258,9 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
   and which a library would break.
 - `tools/` runs under node's strip-only TypeScript: erasable syntax only (no
   constructor parameter properties, no enums).
-- Naming: no abbreviated file names, no subdirectories under `tools/`, no
-  decorative section comments. Framework and domain logic live in `tools/`;
-  test directories keep only what must be there (package.json, tsconfig,
-  thin vitest glue).
+- Naming: no abbreviated file names, no decorative section comments. New
+  modules join the subsystem directory they belong to (`tools/client`,
+  `tools/snap`, `tools/docs`, `tools/protocol`, each a subpath export of
+  `tools/package.json`); a new directory needs a new subsystem, not a new
+  file. Framework and domain logic live in `tools/`; test directories keep
+  only what must be there (package.json, tsconfig, thin vitest glue).

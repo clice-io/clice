@@ -22,9 +22,10 @@ codex exec -m gpt-6-astra -c model_reasoning_effort=xhigh \
 
 - Always pass `-o` — it writes the final reply to a file; stdout mixes it into
   the transcript and truncates easily. `-o` holds only the last assistant
-  message: never point it at a path the prompt asks codex to write its report
-  to (or one it might guess) — the message overwrites the report. Name it
-  `*-final-message.md` and let the prompt fix the report file name.
+  message: never point it at a file the prompt asks codex to write its report
+  to (or one it might guess) — the message overwrites the report. When the
+  prompt names a report file, give `-o` a clearly different name
+  (`*-final-message.md`).
 - The full bypass is deliberate: the sandbox breaks builds and tooling. Codex
   therefore runs with your permissions — scope the prompt accordingly.
 - xhigh runs take minutes to tens of minutes: run in the background and keep
@@ -143,8 +144,11 @@ only a fresh session recovers). Rules:
 
 ## Recovery
 
-To kill a hung run, `pgrep -f 'codex exe[c]' | xargs kill` — a plain
-`pkill -f 'codex exec'` matches your own shell's command line and kills it.
+To stop a hung run, kill the PID you recorded at launch (`$!` for a shell
+background job, the task's PID otherwise) and its subtree — other codex
+runs may be live in parallel. When the PID is lost, `pgrep -af 'codex
+exe[c]'` lists the candidates to pick from; never `pkill -f 'codex exec'`,
+which matches your own shell's command line and kills it.
 
 If a run dies before writing `-o`, the transcript is at
 `~/.codex/sessions/YYYY/MM/DD/*.jsonl`; the final reply is the last record
