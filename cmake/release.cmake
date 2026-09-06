@@ -38,6 +38,7 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:clice>" "${CLICE_STRIPPED}"
         DEPENDS clice
         COMMENT "Collecting PDB for clice"
+        VERBATIM
     )
 elseif(APPLE)
     add_custom_target(clice-strip
@@ -47,6 +48,7 @@ elseif(APPLE)
         COMMAND strip -x "${CLICE_STRIPPED}"
         DEPENDS clice
         COMMENT "Extracting dSYM and stripping clice"
+        VERBATIM
     )
 else()
     add_custom_target(clice-strip
@@ -54,9 +56,10 @@ else()
         COMMAND ${CMAKE_OBJCOPY} --only-keep-debug "$<TARGET_FILE:clice>" "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}"
         COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:clice>" "${CLICE_STRIPPED}"
         COMMAND ${CMAKE_STRIP} --strip-debug --strip-unneeded "${CLICE_STRIPPED}"
-        COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink="${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "${CLICE_STRIPPED}"
+        COMMAND ${CMAKE_OBJCOPY} "--add-gnu-debuglink=${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "${CLICE_STRIPPED}"
         DEPENDS clice
         COMMENT "Extracting debug symbols and stripping clice"
+        VERBATIM
     )
 endif()
 
@@ -69,10 +72,11 @@ add_custom_target(clice-pack
     COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/docs/clice.toml"
         "${PROJECT_SOURCE_DIR}/LICENSE" "${CLICE_PACK_DIR}/clice/"
     COMMAND ${CMAKE_COMMAND}
-        -DOUTPUT="${PROJECT_BINARY_DIR}/clice${CLICE_ARCHIVE_EXT}"
-        -DWORK_DIR="${CLICE_PACK_DIR}"
+        "-DOUTPUT=${PROJECT_BINARY_DIR}/clice${CLICE_ARCHIVE_EXT}"
+        "-DWORK_DIR=${CLICE_PACK_DIR}"
         -P "${PROJECT_SOURCE_DIR}/cmake/archive.cmake"
     COMMENT "Packaging clice distribution"
+    VERBATIM
 )
 
 # The released symbol package carries GSYM, not DWARF: it keeps everything
@@ -96,10 +100,14 @@ else()
     endif()
     # --merged-functions: ICF folds identical functions onto one address
     # range; without it only one of the folded names survives conversion.
-    # --quiet: the same folding trips thousands of benign line-table
-    # diagnostics that would otherwise drown the CI log.
-    set(CLICE_PACK_SYMBOL_CMD ${CLICE_GSYMUTIL} --convert "${CLICE_GSYM_INPUT}"
-        --merged-functions --quiet --out-file "${CLICE_SYMBOL_DIR}/pack/clice.gsym")
+    # The same folding trips one line-table warning per folded DIE, which
+    # gsym.cmake keeps out of the build log.
+    set(CLICE_PACK_SYMBOL_CMD ${CMAKE_COMMAND}
+        "-DGSYMUTIL=${CLICE_GSYMUTIL}"
+        "-DINPUT=${CLICE_GSYM_INPUT}"
+        "-DOUTPUT=${CLICE_SYMBOL_DIR}/pack/clice.gsym"
+        "-DLOG=${CLICE_SYMBOL_DIR}/gsymutil.log"
+        -P "${PROJECT_SOURCE_DIR}/cmake/gsym.cmake")
 endif()
 
 add_custom_target(clice-pack-symbol
@@ -108,8 +116,9 @@ add_custom_target(clice-pack-symbol
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}/pack"
     COMMAND ${CLICE_PACK_SYMBOL_CMD}
     COMMAND ${CMAKE_COMMAND}
-        -DOUTPUT="${PROJECT_BINARY_DIR}/clice-symbol${CLICE_SYMBOL_ARCHIVE_EXT}"
-        -DWORK_DIR="${CLICE_SYMBOL_DIR}/pack"
+        "-DOUTPUT=${PROJECT_BINARY_DIR}/clice-symbol${CLICE_SYMBOL_ARCHIVE_EXT}"
+        "-DWORK_DIR=${CLICE_SYMBOL_DIR}/pack"
         -P "${PROJECT_SOURCE_DIR}/cmake/archive.cmake"
     COMMENT "Packaging clice debug symbols"
+    VERBATIM
 )
