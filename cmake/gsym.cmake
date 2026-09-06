@@ -10,14 +10,18 @@ execute_process(
     RESULT_VARIABLE result
 )
 
-file(SIZE "${LOG}" log_size)
 if(NOT result EQUAL 0)
-    math(EXPR offset "${log_size} - 4000")
-    if(offset LESS 0)
-        set(offset 0)
+    set(tail "")
+    if(EXISTS "${LOG}")
+        file(SIZE "${LOG}" log_size)
+        math(EXPR offset "${log_size} - 4000")
+        if(offset LESS 0)
+            set(offset 0)
+        endif()
+        file(READ "${LOG}" tail OFFSET ${offset})
     endif()
-    file(READ "${LOG}" tail OFFSET ${offset})
     message(FATAL_ERROR "llvm-gsymutil failed (${result}); end of ${LOG}:\n${tail}")
 endif()
 
+file(SIZE "${LOG}" log_size)
 message(STATUS "Created: ${OUTPUT} (${log_size} bytes of diagnostics in ${LOG})")
