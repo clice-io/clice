@@ -231,12 +231,13 @@ def clean(body):
     return severity, re.sub(r"\n{3,}", "\n\n", text)
 
 
-def is_finding(author, cleaned):
-    """A bot review body counts when it carries a located finding, not a
-    per-commit "reviewed" notice or an all-clear."""
-    if author not in BOTS:
-        return bool(cleaned)
-    return bool(re.search(r"\S+:\d+|Outside diff range|Nitpick", cleaned))
+def is_finding(review, cleaned):
+    """A review body counts when it carries a finding: for bots a located
+    item rather than a per-commit "reviewed" notice or an all-clear, for
+    people any text on a review that is not an approval."""
+    if login(review) in BOTS:
+        return bool(re.search(r"\S+:\d+|Outside diff range|Nitpick", cleaned))
+    return bool(cleaned) and review.get("state") != "APPROVED"
 
 
 def truncate(text, limit):
@@ -305,7 +306,7 @@ def main():
     findings = []
     for review in reviews:
         severity, text = clean(review["body"])
-        if is_finding(login(review), text):
+        if is_finding(review, text):
             findings.append((review, severity, text))
     if findings:
         print("\nfindings in review bodies (no inline thread):")

@@ -64,7 +64,7 @@ def main():
         buckets.setdefault(check["bucket"], []).append(check)
     summary = " · ".join(
         f"{len(buckets[b])} {b}"
-        for b in ("pass", "fail", "pending", "cancel")
+        for b in ("pass", "fail", "pending", "skipping", "cancel")
         if b in buckets
     )
     print(f"checks: {summary or 'none'}")
@@ -75,7 +75,7 @@ def main():
 
     unresolved = sum(1 for thread in threads if not thread["isResolved"])
     findings = sum(
-        1 for review in reviews if is_finding(login(review), clean(review["body"])[1])
+        1 for review in reviews if is_finding(review, clean(review["body"])[1])
     )
     print(
         f"review threads: {unresolved} unresolved of {len(threads)} · findings in review bodies: {findings}"

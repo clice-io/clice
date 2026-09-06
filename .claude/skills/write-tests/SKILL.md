@@ -237,8 +237,9 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
 
 - zest constructs a fresh suite object for every `TEST_CASE`: no `reset()`
   / `clear()` helpers, shared initialization goes in `setup()`. A
-  default-constructed `Workspace` has no config defaults (`Config::with_defaults()`
-  or set them in `setup()`).
+  default-constructed `Workspace` already carries the real configuration
+  defaults (`Config` guarantees it; `BornValidDefaults` pins it) — no
+  defaults initialization is needed.
 - `ASSERT_*` never runs inside a coroutine — sample inside, assert outside.
   Do not name a local `failed` (the macro's own name). Error codes need
   `static_cast<bool>` in `ASSERT_FALSE`.
