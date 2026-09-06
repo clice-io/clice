@@ -1,9 +1,9 @@
 """Print a PR's review findings without the bot boilerplate.
 
-Unresolved review threads (every page) and the findings that bots post in
-review bodies instead of inline threads, each reduced to author, location,
-severity and the comment text. Badges, AI prompts, walkthroughs, tracking
-comments and reaction footers are dropped.
+Unresolved review threads (every page, every comment) and the findings that
+bots post in review bodies instead of inline threads, each reduced to
+author, location, severity and the comment text. Badges, AI prompts,
+walkthroughs, tracking comments and reaction footers are dropped.
 
     python3 comments.py [PR] [--all] [--max-chars N]
 """
@@ -27,6 +27,20 @@ NOISE_DETAILS = re.compile(
     re.I,
 )
 
+# The markup bots wrap findings in. Anything else between angle brackets is
+# code (`std::vector<int>`, `x < 0 && y > 1`) and stays.
+HTML_TAGS = re.compile(
+    r"</?(?:a|b|blockquote|br|code|details|div|em|h[1-6]|hr|i|img|li|ol|p|pre|span|strong"
+    r"|sub|summary|sup|table|tbody|td|th|thead|tr|ul)\b[^>\n]*>",
+    re.I,
+)
+
+CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
+
+NOISE_LINES = re.compile(
+    r"Useful\? React with|Codex Review$|automated review suggestions|Reviewed commit:|^-{3,}$"
+)
+
 THREADS_QUERY = """
 query($owner: String!, $name: String!, $pr: Int!, $after: String) {
   repository(owner: $owner, name: $name) {
@@ -36,8 +50,24 @@ query($owner: String!, $name: String!, $pr: Int!, $after: String) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id isResolved isOutdated path line originalLine
-          comments(first: 30) { nodes { author { login } body url } }
+          comments(first: 100) {
+            pageInfo { hasNextPage endCursor }
+            nodes { author { login } body url }
+          }
         }
+      }
+    }
+  }
+}
+"""
+
+THREAD_COMMENTS_QUERY = """
+query($id: ID!, $after: String) {
+  node(id: $id) {
+    ... on PullRequestReviewThread {
+      comments(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes { author { login } body url }
       }
     }
   }
@@ -58,12 +88,24 @@ query($owner: String!, $name: String!, $pr: Int!, $before: String) {
 """
 
 
-def gh(*args):
+def gh(*args, status_codes=()):
+    """Run gh and parse its JSON output.
+
+    `status_codes` are exit codes the command uses to report state rather
+    than failure (`gh pr checks` documents 8 for pending checks). Any other
+    non-zero exit that still printed JSON and nothing on stderr is such a
+    status too; a real failure prints its message on stderr and no JSON.
+    """
     result = subprocess.run(["gh", *args], capture_output=True, text=True)
-    if result.returncode != 0:
-        sys.exit(result.stderr.strip() or f"gh {' '.join(args)} failed")
     time.sleep(1)
-    return json.loads(result.stdout)
+    if result.returncode == 0 or result.returncode in status_codes:
+        return json.loads(result.stdout)
+    if not result.stderr.strip():
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError:
+            pass
+    sys.exit(result.stderr.strip() or f"gh {' '.join(args)} failed")
 
 
 def graphql(query, **variables):
@@ -71,7 +113,13 @@ def graphql(query, **variables):
     for key, value in variables.items():
         if value is not None:
             args += ["-F" if isinstance(value, int) else "-f", f"{key}={value}"]
-    return gh(*args)["data"]["repository"]["pullRequest"]
+    return gh(*args)["data"]
+
+
+def login(node):
+    """The author's login; GitHub returns a null author for deleted accounts."""
+    author = node.get("author")
+    return author["login"] if author else "ghost"
 
 
 def repo():
@@ -86,21 +134,34 @@ def current_pr():
 def fetch_threads(owner, name, pr):
     threads, after, title = [], None, ""
     while True:
-        page = graphql(THREADS_QUERY, owner=owner, name=name, pr=pr, after=after)
+        page = graphql(THREADS_QUERY, owner=owner, name=name, pr=pr, after=after)[
+            "repository"
+        ]["pullRequest"]
         title = page["title"]
         threads += page["reviewThreads"]["nodes"]
         info = page["reviewThreads"]["pageInfo"]
         if not info["hasNextPage"]:
-            return title, threads
+            break
         after = info["endCursor"]
+    for thread in threads:
+        comments = thread["comments"]
+        while comments["pageInfo"]["hasNextPage"]:
+            page = graphql(
+                THREAD_COMMENTS_QUERY,
+                id=thread["id"],
+                after=comments["pageInfo"]["endCursor"],
+            )
+            comments["nodes"] += page["node"]["comments"]["nodes"]
+            comments["pageInfo"] = page["node"]["comments"]["pageInfo"]
+    return title, threads
 
 
 def fetch_reviews(owner, name, pr):
     reviews, before = [], None
     while True:
         page = graphql(REVIEWS_QUERY, owner=owner, name=name, pr=pr, before=before)[
-            "reviews"
-        ]
+            "repository"
+        ]["pullRequest"]["reviews"]
         reviews = page["nodes"] + reviews
         if not page["pageInfo"]["hasPreviousPage"]:
             return reviews
@@ -120,6 +181,19 @@ def strip_details(text):
     while pattern.search(text):
         text = pattern.sub(replace, text)
     return text
+
+
+def strip_markup(text):
+    """Remove HTML markup outside code spans and fenced blocks."""
+    spans = []
+
+    def stash(match):
+        spans.append(match.group(0))
+        return f"\x00{len(spans) - 1}\x00"
+
+    text = CODE.sub(stash, text)
+    text = HTML_TAGS.sub("", text)
+    return re.sub(r"\x00(\d+)\x00", lambda m: spans[int(m.group(1))], text)
 
 
 def clean(body):
@@ -142,27 +216,25 @@ def clean(body):
         + (f"-{m.group(3)}" if m.group(3) else ""),
         text,
     )
-    text = re.sub(r"<[^>\n]+>", "", text)
+    text = strip_markup(text)
     text = re.sub(r"^(> ?)+", "", text, flags=re.M)
     text = re.sub(
         r"^\[!(?:CAUTION|NOTE|WARNING|TIP|IMPORTANT)\]\s*$", "", text, flags=re.M
     )
     text = re.sub(r"^\*\*[ \t]+", "**", text, flags=re.M)
-    noise = re.compile(
-        r"Useful\? React with|Codex Review$|automated review suggestions|Reviewed commit:|^-{3,}$"
-    )
     lines = [
-        line.rstrip() for line in text.splitlines() if not noise.search(line.strip())
+        line.rstrip()
+        for line in text.splitlines()
+        if not NOISE_LINES.search(line.strip())
     ]
     text = "\n".join(lines).strip()
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return severity, text
+    return severity, re.sub(r"\n{3,}", "\n\n", text)
 
 
-def is_finding(login, cleaned):
+def is_finding(author, cleaned):
     """A bot review body counts when it carries a located finding, not a
     per-commit "reviewed" notice or an all-clear."""
-    if login not in BOTS:
+    if author not in BOTS:
         return bool(cleaned)
     return bool(re.search(r"\S+:\d+|Outside diff range|Nitpick", cleaned))
 
@@ -218,7 +290,7 @@ def main():
             if on
         )
         print(
-            f"\n[{index}] {thread['id']}  {location}  {first['author']['login']}  {flags}".rstrip()
+            f"\n[{index}] {thread['id']}  {location}  {login(first)}  {flags}".rstrip()
         )
         print(indent(truncate(text, args.max_chars)))
         for reply in replies:
@@ -226,22 +298,20 @@ def main():
             if reply_text:
                 print(
                     indent(
-                        f"↳ {reply['author']['login']}: {truncate(reply_text, args.max_chars // 2)}",
-                        "    ",
+                        f"↳ {login(reply)}: {truncate(reply_text, args.max_chars // 2)}"
                     )
                 )
 
     findings = []
     for review in reviews:
-        login = review["author"]["login"]
         severity, text = clean(review["body"])
-        if is_finding(login, text):
+        if is_finding(login(review), text):
             findings.append((review, severity, text))
     if findings:
         print("\nfindings in review bodies (no inline thread):")
         for review, severity, text in findings:
             commit = review["commit"]["abbreviatedOid"] if review["commit"] else "?"
-            label = f"{review['author']['login']} @ {commit} {severity}".rstrip()
+            label = f"{login(review)} @ {commit} {severity}".rstrip()
             print(f"\n- {label}  {review['url']}")
             print(indent(truncate(text, args.max_chars)))
 

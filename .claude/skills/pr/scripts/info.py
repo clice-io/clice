@@ -15,6 +15,7 @@ from comments import (
     fetch_threads,
     gh,
     is_finding,
+    login,
     repo,
 )  # noqa: E402
 
@@ -38,7 +39,10 @@ def main():
 
     pr = args.pr or current_pr()
     view = gh("pr", "view", str(pr), "--json", VIEW_FIELDS)
-    checks = gh("pr", "checks", str(pr), "--json", "name,bucket,link")
+    # Exit code 8 means checks are pending; the JSON is printed either way.
+    checks = gh(
+        "pr", "checks", str(pr), "--json", "name,bucket,link", status_codes=(8,)
+    )
     owner, name = repo()
     _, threads = fetch_threads(owner, name, pr)
     reviews = fetch_reviews(owner, name, pr)
@@ -48,7 +52,7 @@ def main():
     print(f"#{view['number']} {view['title']}")
     print(
         f"{state} · {view['headRefName']} → {view['baseRefName']} · {view['headRefOid'][:8]}"
-        f" · by {view['author']['login']} · +{view['additions']} −{view['deletions']} in {view['changedFiles']} files"
+        f" · by {login(view)} · +{view['additions']} −{view['deletions']} in {view['changedFiles']} files"
     )
     print(
         f"merge: {view['mergeable']} / {view['mergeStateStatus']} · review: {view['reviewDecision'] or 'none'}"
@@ -71,9 +75,7 @@ def main():
 
     unresolved = sum(1 for thread in threads if not thread["isResolved"])
     findings = sum(
-        1
-        for review in reviews
-        if is_finding(review["author"]["login"], clean(review["body"])[1])
+        1 for review in reviews if is_finding(login(review), clean(review["body"])[1])
     )
     print(
         f"review threads: {unresolved} unresolved of {len(threads)} · findings in review bodies: {findings}"
