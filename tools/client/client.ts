@@ -156,6 +156,8 @@ export interface StartOptions {
     /// to play the hostile client.
     drainStderr?: boolean | undefined;
     args?: string[] | undefined;
+    /// Working directory of the server process; the caller's by default.
+    cwd?: string | undefined;
 }
 
 export interface InitializeOptions {
@@ -316,6 +318,7 @@ export class CliceClient {
     static start(executable: string, options: StartOptions = {}): CliceClient {
         const child = spawn(executable, options.args ?? ["serve"], {
             stdio: ["pipe", "pipe", "pipe"],
+            cwd: options.cwd,
         });
         const client = new CliceClient(child, { reader: child.stdout, writer: child.stdin });
         client.stderrDrainedFromStart = options.drainStderr !== false;
@@ -1026,9 +1029,13 @@ export class CliceClient {
     }
 
     /// clice/internal/poll (test hook): run one tracker tick and apply its
-    /// effects synchronously.
-    poll(loop: "cdb" | "workspace"): Promise<PollResult> {
-        return this.sendRequest(PollRequest, { loop });
+    /// effects synchronously. `force: false` takes the CDB loop through its
+    /// real stamp gate and settling debounce (see PollParams).
+    poll(loop: "cdb" | "workspace", options: { force?: boolean } = {}): Promise<PollResult> {
+        return this.sendRequest(PollRequest, {
+            loop,
+            ...(options.force === undefined ? {} : { force: options.force }),
+        });
     }
 
     /// clice/internal/stats (test hook): ownership gauges for

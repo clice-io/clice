@@ -644,8 +644,7 @@ void LSPClient::register_extensions() {
     // ── Test hook ───────────────────────────────────────────────────
 
     // Runs one file-tracker tick synchronously (see ext::PollParams).
-    // Test-only and not a stable API; the CDB tick runs with force=true,
-    // so the polling loop's two-tick settling debounce does not apply here.
+    // Test-only and not a stable API.
     peer.on_request(
         "clice/internal/poll",
         [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
@@ -657,7 +656,7 @@ void LSPClient::register_extensions() {
 
             llvm::SmallVector<FileEvent> events;
             if(params.loop == "cdb") {
-                events = srv.tracker->tick_cdb(/*force=*/true);
+                events = srv.tracker->tick_cdb(params.force.value_or(true));
             } else if(params.loop == "workspace") {
                 events = co_await srv.tracker->tick_workspace();
             } else {

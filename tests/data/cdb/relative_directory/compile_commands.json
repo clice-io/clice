@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "src",
+    "file": "main.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DRELATIVE", "main.cpp"]
+  }
+]

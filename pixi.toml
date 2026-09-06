@@ -219,7 +219,7 @@ depends-on = ["install-tests"]
 
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = './build/{{ type }}/bin/unit_tests --verbose'
+cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/data ./build/{{ type }}/bin/unit_tests --verbose'
 depends-on = [{ task = "check-feature-docs" }]
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/

@@ -81,6 +81,12 @@ struct SwitchContextResult {
 struct PollParams {
     /// Which loop to tick: "cdb" or "workspace".
     std::string loop;
+
+    /// CDB loop only; defaults to true. A forced tick reloads unconditionally
+    /// — no stamp gate, no settling debounce — so one request applies a
+    /// change deterministically. `false` runs the production tick, for
+    /// tests that pin the stamp gate itself.
+    std::optional<bool> force;
 };
 
 struct PollResult {

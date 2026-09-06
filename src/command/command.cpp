@@ -279,7 +279,9 @@ std::optional<CompilationDatabase::NormalizeResult>
     }
 
     CompileConfig config;
-    config.directory = directory.empty() ? "" : strings.save(directory).data();
+    llvm::SmallString<256> canonical_dir;
+    config.directory =
+        directory.empty() ? "" : strings.save(path::canonical(directory, canonical_dir)).data();
     config.driver = strings.save(arguments[0]).data();
     arguments = arguments.drop_front();
 

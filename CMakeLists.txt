@@ -264,6 +264,9 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/tests/unit"
     )
     target_link_libraries(unit_tests PRIVATE clice::server kota::zest kota::deco)
+    target_compile_definitions(unit_tests PRIVATE
+        CLICE_TESTS_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data"
+    )
     # The generated/ include dir propagates through clice::core, but the
     # generation order does not — depend explicitly so a test including
     # version.h cannot race the generator on a clean parallel build.

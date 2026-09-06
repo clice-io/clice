@@ -152,7 +152,9 @@ function parseOptions(): Options {
 
     return {
         server,
-        binary,
+        // A bare name stays a PATH lookup; a path is anchored here, before
+        // the clangd process is started from the CDB directory instead.
+        binary: path.basename(binary) === binary ? binary : path.resolve(binary),
         workspace: path.resolve(values.workspace),
         cdbDir: "",
         file: values.file ?? null,
@@ -263,9 +265,10 @@ function firstCDBEntry(cdbPath: string): string {
     if (first === undefined) {
         fail(`empty compile_commands.json at ${cdbPath}`);
     }
-    return path.isAbsolute(first.file)
-        ? first.file
-        : path.join(first.directory ?? path.dirname(cdbPath), first.file);
+    // A relative `directory` anchors at the database's own location, the
+    // way the server resolves it.
+    const directory = path.resolve(path.dirname(cdbPath), first.directory ?? ".");
+    return path.isAbsolute(first.file) ? first.file : path.join(directory, first.file);
 }
 
 function nowMs(): number {
@@ -367,7 +370,13 @@ function initializationOptions(opts: Options): Record<string, unknown> {
 }
 
 async function startServer(opts: Options): Promise<CliceClient> {
-    const client = CliceClient.start(opts.binary, { args: serverArgs(opts) });
+    const client = CliceClient.start(opts.binary, {
+        args: serverArgs(opts),
+        // A relative CDB `directory` anchors at the database for clice but
+        // at the process cwd for clangd; running clangd from the CDB
+        // directory makes both servers compile under the same command.
+        cwd: opts.server === "clangd" ? opts.cdbDir : undefined,
+    });
     await client.initialize(new Workspace(opts.workspace), {
         initializationOptions: initializationOptions(opts),
         testDefaults: false,
