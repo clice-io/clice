@@ -66,13 +66,20 @@ llvm::SmallVector<SourceID, 4> Build::source_order(llvm::StringRef path) const {
             }
         }
     };
+    // Inactive declarations hide a registered source only while the active
+    // configuration declares its own; under discovery every registered
+    // source was discovered, whatever an inactive rule says about its path.
+    bool declares = declares_sources();
     for(auto& rule: config.compiled_rules) {
-        for(auto& database: rule.compile_commands) {
-            if(auto id = cdb.find_source(database)) {
-                declared.push_back(*id);
+        bool active_rule = rule_active(rule, active);
+        if(active_rule || declares) {
+            for(auto& database: rule.compile_commands) {
+                if(auto id = cdb.find_source(database)) {
+                    declared.push_back(*id);
+                }
             }
         }
-        if(rule_active(rule, active) && llvm::is_contained(matched, &rule)) {
+        if(active_rule && llvm::is_contained(matched, &rule)) {
             add_sources(rule);
         }
     }

@@ -368,7 +368,7 @@ TEST_CASE(InactiveSourceKeepsDiscovery) {
     TempDir tmp;
     Config config;
     config.default_configuration = "release";
-    config.rules.push_back(ConfigRule{.configuration = "debug", .compile_commands = {"debug"}});
+    config.rules.push_back(ConfigRule{.configuration = "debug", .compile_commands = {"."}});
     config.rules.push_back(ConfigRule{.configuration = "release", .append = {"-DNDEBUG"}});
     config.finalize(tmp.root.str());
 
@@ -378,6 +378,18 @@ TEST_CASE(InactiveSourceKeepsDiscovery) {
     build.reset_active();
     EXPECT_FALSE(build.declares_sources());
     EXPECT_TRUE(build.declared_sources().empty());
+
+    /// The database the inactive configuration names is the one discovery
+    /// finds at the root: registered, it serves as a discovered source
+    /// rather than hiding behind the inactive declaration.
+    tmp.touch("main.cpp", "");
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    EXPECT_EQ(build.entries(files.intern(canonical(tmp, "main.cpp"))).size(), 1U);
+    EXPECT_EQ(build.members().size(), 1U);
 };
 
 TEST_CASE(EditsAcrossHostAndHeader) {

@@ -110,6 +110,36 @@ test("inspect nested file finds the project above it", () => {
     }
 });
 
+test("inspect directory finds the project above it", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
+    try {
+        // The database sits at the project root, the inspected directory one
+        // level down: the ancestor lookup serves directories too.
+        const file = path.join(tmp, "src", "main.cpp");
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(
+            file,
+            "#if !defined(NEED)\n#error missing project define\n#endif\nint x = NEED;\n",
+        );
+        fs.writeFileSync(
+            path.join(tmp, "compile_commands.json"),
+            JSON.stringify([
+                {
+                    directory: tmp,
+                    file,
+                    arguments: ["clang++", "-std=c++20", "-DNEED=1", "-fsyntax-only", file],
+                },
+            ]),
+        );
+        const { files } = runInspect(cliceExecutable(), "folding_range", path.join(tmp, "src"));
+        const entry = files["main.cpp"];
+        expect(entry?.error ?? null).toBeNull();
+        expect(entry?.diagnostics ?? null).toBeNull();
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
 test("inspect directory covers default-command sources", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
     try {

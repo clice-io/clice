@@ -396,14 +396,14 @@ bool is_header_type(clang::driver::types::ID type) {
     return type == types::TY_CHeader || type == types::TY_CXXHeader;
 }
 
-/// The workspace of a single inspected file: the nearest ancestor directory
-/// holding a configuration file or a compile_commands.json (the upward
-/// lookup clangd does), so a nested file resolves its command as the server
-/// would from the project root; its own directory when none does. Only the
-/// ancestors themselves are checked — scanning their subdirectories would
-/// let an unrelated sibling project's database win.
-std::string workspace_of(llvm::StringRef file) {
-    llvm::SmallString<256> dir(path::parent_path(file));
+/// The workspace an inspected directory belongs to: itself or the nearest
+/// ancestor holding a configuration file or a compile_commands.json (the
+/// upward lookup clangd does), so a nested tree resolves its commands as
+/// the server would from the project root; `start` itself when none does.
+/// Only the ancestors themselves are checked — scanning their
+/// subdirectories would let an unrelated sibling project's database win.
+std::string workspace_of(llvm::StringRef start) {
+    llvm::SmallString<256> dir(start);
     while(!dir.empty()) {
         for(llvm::StringRef marker: config_file_names) {
             if(fs::exists(path::join(dir, marker))) {
@@ -422,7 +422,7 @@ std::string workspace_of(llvm::StringRef file) {
         }
         dir.truncate(parent.size());
     }
-    return path::parent_path(file).str();
+    return start.str();
 }
 
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
@@ -711,14 +711,14 @@ int run_inspect(const InspectOptions& opts) {
     // The inspected tree is a workspace: its configuration, the databases
     // it names (or the one discovered under it) and the dependency graph
     // give every file the command the server would use — the same loading
-    // path as `clice serve`. A single file belongs to the nearest project
-    // above it.
+    // path as `clice serve`. The inspected tree belongs to the nearest
+    // project at or above it.
     llvm::StringRef unit_directory =
         is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
     Workspace workspace;
     ContextResolver contexts(workspace);
     if(flags.empty()) {
-        std::string root = is_dir ? std::string(abs_path) : workspace_of(abs_path);
+        std::string root = workspace_of(unit_directory);
         workspace.config = Config::load_from_workspace(root);
         load_build(workspace, root);
     }

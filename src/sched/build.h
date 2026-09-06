@@ -69,9 +69,9 @@ public:
 
     /// Every registered source in the priority order `path` sees: the
     /// sources of rules matching the file first, then those of the other
-    /// active rules, each in declaration order; sources no rule declares
-    /// (discovered ones) last. Sources only inactive rules declare are
-    /// left out.
+    /// active rules, each in declaration order; sources no active rule
+    /// declares (discovered ones) last. While the active configuration
+    /// declares sources, one only inactive rules declare is left out.
     llvm::SmallVector<SourceID, 4> source_order(llvm::StringRef path) const;
 
     /// A file's database entries in build order: entries from the sources

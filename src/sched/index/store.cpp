@@ -1511,7 +1511,8 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         // can survive a reload that still changes which entry is the
         // default selection.
         if(it != before.end() && it->second->hashes == entry.hashes &&
-           it->second->selected == entry.selected && it->second->rules == entry.rules) {
+           it->second->selected == entry.selected && it->second->rules == entry.rules &&
+           it->second->sources == entry.sources) {
             continue;
         }
         changed_ids.push_back(server_id);

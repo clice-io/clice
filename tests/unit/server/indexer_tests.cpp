@@ -2137,6 +2137,49 @@ TEST_CASE(UndeclaredSourceRetires) {
     ASSERT_FALSE(f.pump.pending_reason(tu_id).has_value());
 }
 
+TEST_CASE(SourceRelocationPersists) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    auto listing = std::format(R"([{{"directory": "{}", "file": "main.cpp", )"
+                               R"("arguments": ["clang++", "-c", "main.cpp"]}}])",
+                               json_escape(tmp.root));
+    auto load_declared = [&](IndexerFixture& f) {
+        ConfigRule rule;
+        rule.compile_commands.assign({"a", "b"});
+        f.workspace.config.rules = {std::move(rule)};
+        f.workspace.config.finalize(tmp.root);
+        for(auto source: f.workspace.build.declared_sources()) {
+            f.workspace.cdb.load(source);
+        }
+    };
+
+    {
+        tmp.touch("a/compile_commands.json", listing);
+        tmp.touch("b/compile_commands.json", "[]");
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        load_declared(f);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // The file moved to the other database with the same command: the
+    // provenance change alone reindexes, so the snapshot records the
+    // database that now vouches for the rows.
+    tmp.touch("a/compile_commands.json", "[]");
+    tmp.touch("b/compile_commands.json", listing);
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    load_declared(f);
+    f.load();
+
+    auto tu_id = f.workspace.file_table.intern(src);
+    ASSERT_TRUE(f.pump.pending_reason(tu_id).has_value());
+}
+
 TEST_CASE(DiscoveredRelocationRetires) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
