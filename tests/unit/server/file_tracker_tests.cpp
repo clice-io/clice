@@ -188,6 +188,40 @@ TEST_CASE(CDBTickRelocates) {
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{other_id});
 }
 
+TEST_CASE(CDBTickOriginalReturns) {
+    /// The discovered database vanishes, a replacement that does not parse
+    /// appears, then the original comes back: the replacement is dropped, so
+    /// repairing it later cannot unload the database discovery prefers.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("other.cpp", R"(int other() {})");
+    Workspace workspace;
+    SessionStore store;
+    auto original = build_cdb_json({
+        {tmp.root, tmp.path("main.cpp"), {}}
+    });
+    write_cdb(tmp, workspace.cdb, original);
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+
+    fs::remove_all(tmp.path("compile_commands.json"));
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    tmp.touch("build/compile_commands.json", "not a database");
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+
+    tmp.touch("compile_commands.json", original);
+    tracker.tick_cdb(/*force=*/true);
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("other.cpp"), {}}
+    }));
+    auto events = tracker.tick_cdb(/*force=*/true);
+    auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
+    auto other_id = workspace.file_table.intern(tmp.path("other.cpp"));
+    EXPECT_TRUE(events.empty());
+    EXPECT_FALSE(workspace.cdb.candidate_entries(main_id).empty());
+    EXPECT_TRUE(workspace.cdb.candidate_entries(other_id).empty());
+}
+
 TEST_CASE(CDBTickRelocatesTwice) {
     /// A replacement that never loads (malformed) vanishes before the next
     /// one appears: the first database's entries still leave once a

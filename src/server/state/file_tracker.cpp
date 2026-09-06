@@ -126,8 +126,17 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
                      [](const TrackedSource& tracked) { return tracked.applied.exists; })) {
         auto found = discover_compile_commands(workspace_root);
         auto id = found.empty() ? std::optional<SourceID>() : workspace.cdb.add_source(found);
-        if(id && llvm::none_of(sources,
-                               [&](const TrackedSource& tracked) { return tracked.id == *id; })) {
+        bool tracked_already = id && llvm::any_of(sources, [&](const TrackedSource& tracked) {
+                                   return tracked.id == *id;
+                               });
+        if(tracked_already) {
+            // The database discovery prefers is back before any replacement
+            // loaded; a replacement loading later would unload it, so its
+            // watch ends here.
+            llvm::erase_if(sources, [&](const TrackedSource& tracked) {
+                return tracked.id != *id && !tracked.applied.exists && !tracked.supersedes.empty();
+            });
+        } else if(id) {
             // Baselined as missing: the fresh file is a change against the
             // never-loaded source and goes through the normal
             // settle-and-reload path.

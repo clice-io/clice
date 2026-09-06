@@ -206,6 +206,36 @@ TEST_CASE(ForcedLanguageMembers) {
     EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "src/iface.cppm"))));
 };
 
+TEST_CASE(WorkspaceRuleClaimsKnownSources) {
+    /// A rule without patterns applies to every file, so its forced language
+    /// claims only what clang recognizes as a source: the configuration file
+    /// and an extensionless script stay out until a pattern names the script.
+    TempDir tmp;
+    tmp.touch("clice.toml", "");
+    tmp.touch("main.cpp", "");
+    tmp.touch("tool", "");
+    Config config;
+    config.rules.push_back(ConfigRule{.default_command = std::string("clang++ -x c++")});
+    config.finalize(tmp.root.str());
+
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active();
+    auto members = build.members();
+    ASSERT_EQ(members.size(), 1U);
+    EXPECT_EQ(members.front(), files.intern(canonical(tmp, "main.cpp")));
+
+    config.rules.insert(
+        config.rules.begin(),
+        ConfigRule{.patterns = {"tool"}, .default_command = std::string("clang++ -x c++")});
+    config.finalize(tmp.root.str());
+    build.reset_active();
+    members = build.members();
+    EXPECT_EQ(members.size(), 2U);
+    EXPECT_TRUE(llvm::is_contained(members, files.intern(canonical(tmp, "tool"))));
+};
+
 TEST_CASE(UnitsDeduplicated) {
     /// Two databases listing a file with the same command yield one scan
     /// unit; a differing command stays its own unit.
@@ -255,6 +285,33 @@ TEST_CASE(InvalidDefaultCommandIgnored) {
     EXPECT_TRUE(build.commands(main).empty());
     EXPECT_EQ(build.members().size(), 1U);
     EXPECT_NE(build.builtin(canonical(tmp, "main.cpp")), invalid_config);
+};
+
+TEST_CASE(UnmatchableRuleDeclaresNothing) {
+    /// A default-command rule whose every pattern is invalid can claim no
+    /// file, so it declares no source and discovery stays on; a database it
+    /// names still counts, since entries apply regardless of patterns.
+    TempDir tmp;
+    Config config;
+    config.rules.push_back(ConfigRule{
+        .patterns = {"**/****.{c,cc}"},
+        .default_command = std::string("clang++"),
+    });
+    config.finalize(tmp.root.str());
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active();
+    EXPECT_FALSE(build.declares_sources());
+    EXPECT_TRUE(build.members().empty());
+
+    config.rules.push_back(ConfigRule{
+        .patterns = {"**/****.{c,cc}"},
+        .compile_commands = {"build"},
+    });
+    config.finalize(tmp.root.str());
+    build.reset_active();
+    EXPECT_TRUE(build.declares_sources());
 };
 
 TEST_CASE(DeclaredSourceOffDiscovery) {

@@ -83,7 +83,7 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
         if(cut != llvm::StringRef::npos) {
             dir = ref.take_front(cut + 1);
         }
-        if(!path::is_absolute(dir)) {
+        if(!path::is_rooted(dir)) {
             llvm::SmallString<256> anchored(anchor);
             if(!dir.empty()) {
                 path::append(anchored, dir);
@@ -144,7 +144,7 @@ void Config::finalize(llvm::StringRef workspace_root) {
     // and resolves against the workspace root.
     for(std::string* dir: std::initializer_list<std::string*>{&p.cache_dir, &p.logging_dir}) {
         substitute_workspace(*dir, root);
-        if(!dir->empty() && !root.empty() && !path::is_absolute(*dir)) {
+        if(!dir->empty() && !root.empty() && !path::is_rooted(*dir)) {
             *dir = path::join(root, *dir);
         }
         // Client-supplied dirs arrive in native spelling (backslashes, any
@@ -156,7 +156,7 @@ void Config::finalize(llvm::StringRef workspace_root) {
     auto anchored = [&](std::string value, llvm::StringRef anchor) {
         substitute_workspace(value, root);
         llvm::SmallString<256> full(value);
-        if(!path::is_absolute(full) && !anchor.empty()) {
+        if(!path::is_rooted(full) && !anchor.empty()) {
             full = anchor;
             path::append(full, value);
         }
@@ -192,6 +192,7 @@ void Config::finalize(llvm::StringRef workspace_root) {
             // spelled with a .json suffix.
             if(fs::is_directory(full)) {
                 full = path::join(full, "compile_commands.json");
+                path::canonicalize(full);
             }
             compiled.compile_commands.push_back(std::move(full));
         }
@@ -232,7 +233,7 @@ bool CompiledRule::has_default_command() const {
 }
 
 bool CompiledRule::declares_sources() const {
-    return !compile_commands.empty() || has_default_command();
+    return !compile_commands.empty() || (has_default_command() && !unmatchable);
 }
 
 bool CompiledRule::matches(llvm::StringRef path) const {
@@ -324,7 +325,7 @@ std::optional<Config> Config::load(llvm::StringRef path,
     for(std::string* dir: std::initializer_list<std::string*>{&config.project.cache_dir,
                                                               &config.project.logging_dir}) {
         substitute_workspace(*dir, workspace_root);
-        if(!dir->empty() && !path::is_absolute(*dir)) {
+        if(!dir->empty() && !path::is_rooted(*dir)) {
             *dir = path::join(directory, *dir);
         }
     }

@@ -119,7 +119,9 @@ public:
     std::string edit_hash(llvm::ArrayRef<llvm::StringRef> paths) const;
 
     /// Every translation unit of the build: files with entries, plus the
-    /// source files on disk that a default-command rule matches.
+    /// source files on disk that a default-command rule matches — enumerated
+    /// once per active configuration, so a file created later compiles when
+    /// opened and joins at the next start.
     std::vector<Fid> members();
 
     /// The scan units of `members`: every command of every member, so a
@@ -141,15 +143,24 @@ public:
 private:
     llvm::SmallVector<const CompiledRule*> matching(llvm::StringRef path) const;
 
+    /// The first matching active rule declaring a default command.
+    const CompiledRule* default_rule(llvm::StringRef path) const;
+
+    /// The rule's default command interned; nullopt when it is not a
+    /// compile command.
+    std::optional<ConfigID> command_of(const CompiledRule& rule);
+
     /// The interned default command of the first matching active rule
     /// declaring one; nullopt when no rule does or its command is not a
     /// compile command.
     std::optional<ConfigID> default_command(llvm::StringRef path);
 
     /// Whether a default command compiles `path` as a unit: a C-family
-    /// source by suffix (never a header), or a suffix clang does not know
-    /// whose default command forces a language (`-x c++` for an
-    /// extensionless tool).
+    /// source by suffix (never a header), or a file a rule singles out by
+    /// pattern whose default command forces a language (`-x c++` for an
+    /// extensionless tool). A rule without patterns applies to every file,
+    /// so its forced language claims only what clang recognizes — or the
+    /// configuration file itself would become a unit.
     bool default_source(llvm::StringRef path);
 
     /// Files a default-command rule claims: C-family sources (never
@@ -161,6 +172,7 @@ private:
     CompilationDatabase& cdb;
     FileTable& files;
     std::string active;
+    std::optional<std::vector<Fid>> claimed_sources;
 };
 
 }  // namespace clice

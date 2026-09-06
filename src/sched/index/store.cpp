@@ -1624,6 +1624,12 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     // configuration stopped declaring is gone on purpose; one discovery no
     // longer finds may come back.
     bool declared = workspace.build.declares_sources();
+    // Under discovery a database that is no longer registered was either
+    // replaced by one that loaded, or merely vanished and may come back.
+    bool replaced = false;
+    for(std::uint32_t i = 0; !declared && i < workspace.cdb.source_count(); i += 1) {
+        replaced |= workspace.cdb.loaded(SourceID(i));
+    }
     for(auto& old: persisted.entries) {
         if(old.hashes.empty() || old.sources.empty()) {
             continue;
@@ -1634,7 +1640,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         }
         bool healthy = llvm::all_of(old.sources, [&](const std::string& source) {
             auto id = workspace.cdb.find_source(absolute_path(workspace, source));
-            return id ? workspace.cdb.loaded(*id) : declared;
+            return id ? workspace.cdb.loaded(*id) : declared || replaced;
         });
         if(!healthy) {
             continue;

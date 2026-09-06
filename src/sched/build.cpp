@@ -16,6 +16,7 @@
 namespace clice {
 
 void Build::reset_active() {
+    claimed_sources.reset();
     auto tags = config.configurations();
     llvm::StringRef preferred = config.default_configuration;
     if(!preferred.empty() && llvm::is_contained(tags, preferred)) {
@@ -143,18 +144,26 @@ Edits Build::edits(llvm::ArrayRef<llvm::StringRef> paths) const {
     return result;
 }
 
-std::optional<ConfigID> Build::default_command(llvm::StringRef path) {
+const CompiledRule* Build::default_rule(llvm::StringRef path) const {
     for(auto* rule: matching(path)) {
-        if(!rule->has_default_command()) {
-            continue;
+        if(rule->has_default_command()) {
+            return rule;
         }
-        llvm::SmallVector<const char*, 16> argv;
-        for(auto& arg: rule->default_command) {
-            argv.push_back(arg.c_str());
-        }
-        return cdb.intern_command(rule->directory, argv);
     }
-    return std::nullopt;
+    return nullptr;
+}
+
+std::optional<ConfigID> Build::command_of(const CompiledRule& rule) {
+    llvm::SmallVector<const char*, 16> argv;
+    for(auto& arg: rule.default_command) {
+        argv.push_back(arg.c_str());
+    }
+    return cdb.intern_command(rule.directory, argv);
+}
+
+std::optional<ConfigID> Build::default_command(llvm::StringRef path) {
+    auto* rule = default_rule(path);
+    return rule ? command_of(*rule) : std::nullopt;
 }
 
 ConfigID Build::builtin(llvm::StringRef path) {
@@ -246,7 +255,15 @@ std::vector<Fid> Build::members() {
             result.push_back(entry.file);
         }
     }
-    enumerate_default_sources(result);
+    if(!claimed_sources) {
+        claimed_sources.emplace();
+        enumerate_default_sources(*claimed_sources);
+    }
+    for(auto file: *claimed_sources) {
+        if(seen.insert(file).second) {
+            result.push_back(file);
+        }
+    }
     return result;
 }
 
@@ -267,7 +284,11 @@ bool Build::default_source(llvm::StringRef path) {
     if(type != types::TY_INVALID) {
         return types::isDerivedFromC(type) && !types::onlyPrecompileType(type);
     }
-    auto command = default_command(path);
+    auto* rule = default_rule(path);
+    if(!rule || rule->patterns.empty()) {
+        return false;
+    }
+    auto command = command_of(*rule);
     if(!command) {
         return false;
     }

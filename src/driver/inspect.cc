@@ -696,6 +696,54 @@ int run_inspect(const InspectOptions& opts) {
     InspectOutput output;
     output.feature = feature.str();
 
+    std::vector<std::string> flags;
+    if(opts.flags.has_value()) {
+        if(auto result = kota::codec::json::from_string(*opts.flags, flags); !result) {
+            LOG_ERROR("--flags is not a JSON string array: {}", result.error().message);
+            return 1;
+        }
+        if(flags.empty()) {
+            LOG_ERROR("--flags must name at least one compile flag");
+            return 1;
+        }
+    }
+
+    // The inspected tree is a workspace: its configuration, the databases
+    // it names (or the one discovered under it) and the dependency graph
+    // give every file the command the server would use — the same loading
+    // path as `clice serve`. A single file belongs to the nearest project
+    // above it.
+    llvm::StringRef unit_directory =
+        is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
+    Workspace workspace;
+    ContextResolver contexts(workspace);
+    if(flags.empty()) {
+        std::string root = is_dir ? std::string(abs_path) : workspace_of(abs_path);
+        workspace.config = Config::load_from_workspace(root);
+        load_build(workspace, root);
+    }
+
+    // Directory mode covers what the build compiles under the tree, not only
+    // what the suffix filter admits: a source without a known suffix that a
+    // default command claims (`-x c++`) is a member too.
+    if(is_dir && flags.empty()) {
+        llvm::StringSet<> listed;
+        for(auto& [rel, abs]: files) {
+            llvm::SmallString<256> storage;
+            listed.insert(path::canonical(abs, storage));
+        }
+        llvm::SmallString<256> storage;
+        auto root = path::canonical(abs_path, storage);
+        for(auto member: workspace.build.members()) {
+            auto abs = workspace.file_table.resolve(member);
+            if(!abs.starts_with(root) || abs.size() <= root.size() || abs[root.size()] != '/' ||
+               listed.contains(abs)) {
+                continue;
+            }
+            files.emplace_back(abs.drop_front(root.size() + 1).str(), abs.str());
+        }
+    }
+
     // Every readable file gets an entry up front: the hash of its stripped
     // content feeds the C++/TS stripper-twin check for support files too,
     // and module/feature errors below land on stable entries.
@@ -724,32 +772,6 @@ int run_inspect(const InspectOptions& opts) {
         sources.push_back({rel, abs, std::move(source), {}});
     }
 
-    std::vector<std::string> flags;
-    if(opts.flags.has_value()) {
-        if(auto result = kota::codec::json::from_string(*opts.flags, flags); !result) {
-            LOG_ERROR("--flags is not a JSON string array: {}", result.error().message);
-            return 1;
-        }
-        if(flags.empty()) {
-            LOG_ERROR("--flags must name at least one compile flag");
-            return 1;
-        }
-    }
-
-    // The inspected tree is a workspace: its configuration, the databases
-    // it names (or the one discovered under it) and the dependency graph
-    // give every file the command the server would use — the same loading
-    // path as `clice serve`. A single file belongs to the nearest project
-    // above it.
-    llvm::StringRef unit_directory =
-        is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
-    Workspace workspace;
-    ContextResolver contexts(workspace);
-    if(flags.empty()) {
-        std::string root = is_dir ? std::string(abs_path) : workspace_of(abs_path);
-        workspace.config = Config::load_from_workspace(root);
-        load_build(workspace, root);
-    }
     auto command_for = [&](FileEntry& entry, const SourceFile& file) {
         return file_command(entry,
                             file.abs,

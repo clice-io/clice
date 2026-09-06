@@ -264,8 +264,9 @@ struct CompiledRule {
 
     bool has_default_command() const;
 
-    /// Whether the rule declares a command source (databases or a default
-    /// command) rather than only editing commands.
+    /// Whether the rule declares a command source — databases, or a default
+    /// command the rule can actually hand out — rather than only editing
+    /// commands.
     bool declares_sources() const;
 
     /// Whether the rule applies to `path` (canonical absolute).

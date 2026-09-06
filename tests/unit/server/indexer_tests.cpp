@@ -2137,6 +2137,46 @@ TEST_CASE(UndeclaredSourceRetires) {
     ASSERT_FALSE(f.pump.pending_reason(tu_id).has_value());
 }
 
+TEST_CASE(DiscoveredRelocationRetires) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    tmp.touch("other.cpp", "int other() { return 2; }\n");
+    auto src = tmp.path("main.cpp");
+    auto listing = [&](llvm::StringRef file) {
+        return std::format(R"([{{"directory": "{}", "file": "{}", )"
+                           R"("arguments": ["clang++", "-c", "{}"]}}])",
+                           json_escape(tmp.root),
+                           file,
+                           file);
+    };
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.config.finalize(tmp.root);
+        tmp.touch("compile_commands.json", listing("main.cpp"));
+        f.workspace.cdb.load(tmp.path("compile_commands.json"));
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // Discovery found the database elsewhere this session and loaded it:
+    // rows only the vanished one vouched for retire, like a dropped
+    // declaration's.
+    llvm::sys::fs::remove(tmp.path("compile_commands.json"));
+    tmp.touch("build/compile_commands.json", listing("other.cpp"));
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.config.finalize(tmp.root);
+    f.workspace.cdb.load(tmp.path("build/compile_commands.json"));
+    f.load();
+
+    auto tu_id = f.workspace.file_table.intern(src);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(tu_id));
+}
+
 TEST_CASE(DefaultCommandKept) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
