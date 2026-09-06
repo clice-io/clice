@@ -94,9 +94,13 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    The name is a noun phrase of at most five words, with no dash details
    or terminal punctuation. The first prose paragraph is the card summary:
    one sentence, capitalized (unless it begins with code), with no terminal
-   punctuation. Further prose is reader-facing only. Put harness details —
-   why a fixture is server-only, why inspect and server differ, or what a
-   snapshot pins — in the adjacent `// snap:` block instead. The header is
+   punctuation. Further prose is reader-facing only: behavior the user can
+   observe, never internal class names, source paths, or mechanisms. Put
+   harness details — why a fixture is server-only, why inspect and server
+   differ, or what a snapshot pins — in the adjacent `// snap:` block
+   instead. `issues:` cites only issues that map to the capability and are
+   still current design-level items; a stale, version-specific bug report
+   ("Clangd 11 RC1 …") is padding, not evidence. The header is
    the first content in the file. Edge-case fixtures without a doc header
    stay at the corpus root, un-numbered; any explanatory prologue there uses
    ordinary `//` comments, not `///`.
@@ -180,7 +184,12 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
   names, no large comment blocks explaining layout or expected behavior.
 - Same-workspace exclusivity across files comes from the session lock —
   never touch `tests/data/*` outside a session, and never run two suites
-  concurrently.
+  concurrently. Probes and experiments copy a workspace to a temp dir
+  first; a server under test whose `.clice` gets deleted underneath it
+  fails every PCH build.
+- Tear down servers by the PIDs you recorded (and their subtree) — never
+  `pkill` by name. A pattern sweep kills a sibling run's servers, and those
+  deaths look exactly like the bug being hunted.
 
 ## Known pitfalls (each cost a real debugging session)
 
@@ -196,3 +205,60 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
 - Child stdout/stderr backpressure is real: an undrained pipe blocks the
   server; `spawnSync` has a 1MB default `maxBuffer` that silently kills
   children.
+- Every snap corpus directory carries a `.clang-format` with
+  `DisableFormat: true`. Without it `pixi run format` wraps long `///`
+  header lines (meta keys vanish silently) and reflows the code (every
+  snapshot drifts).
+- `§` is always a marker: a literal `(` right after it is written `§()`,
+  and fixture comments never contain a literal `§` — a full-dump canary once
+  collapsed to one line because of a `§` in its own comment.
+- Include-completion fixtures use a corpus-unique include prefix: the pixi
+  env's `$PREFIX/include` leaks into the search path and `-nostdinc` does
+  not stop it. Completion statements end with `;` — an unterminated
+  statement drags the next marker into recovery context.
+- Windows file timestamps tick at ~15.6 ms: two touches inside one tick
+  stat equal, so a test that needs distinct mtimes sets them explicitly.
+- LMDB reads come from a resident snapshot: `advance` after a write before
+  expecting visibility, and a test double wrapping `BlobDatabase` must
+  forward `advance`/`retire`/`grow` or the snapshot never moves. Probe blob
+  keys go through the path pool's canonical spelling (Windows 8.3 short
+  names hash differently).
+- `waitForIndex` cannot wait on a declaration-only name: `search_symbols`
+  skips symbols without a definition.
+- Tester's module compile once wrote no BMI at all (the syntax-only
+  overload cleared the output file) and module tests stayed green on
+  lexical tokens alone — when touching the Tester compile path, check that
+  a PCM is really produced.
+- Under `-ffreestanding` clang recognizes no library builtins
+  (`getBuiltinID` is 0): logic keyed on builtin recognition behaves
+  differently in unit tests than under a hosted `clice inspect`.
+
+## C++ unit tests (zest)
+
+- zest constructs a fresh suite object for every `TEST_CASE`: no `reset()`
+  / `clear()` helpers, shared initialization goes in `setup()`. A
+  default-constructed `Workspace` has no config defaults (`Config::with_defaults()`
+  or set them in `setup()`).
+- `ASSERT_*` never runs inside a coroutine — sample inside, assert outside.
+  Do not name a local `failed` (the macro's own name). Error codes need
+  `static_cast<bool>` in `ASSERT_FALSE`.
+- Filter with `--test-filter=<name>`; a bare positional name exits 1
+  silently.
+- `select("m")` looks up a point while `§(m)⟦...⟧` registers only a range:
+  a test that needs both annotates both (`§(m)⟦§(m)foo⟧`).
+
+## Tooling code (`tools/`)
+
+- Framework > mature library > handwritten: vitest's own concurrency
+  (`test.concurrent`, `maxConcurrency`) over a custom pool, `jsdiff` over a
+  hand-rolled diff, `util.parseArgs` over a custom argv parser; say why a
+  library is trustworthy (downloads, maintenance, already in the tree). The
+  one exception is byte-level twin code — `yamlStr` mirroring the C++ zest
+  escaping, the C++/TS annotation parsers — whose contract is byte identity
+  and which a library would break.
+- `tools/` runs under node's strip-only TypeScript: erasable syntax only (no
+  constructor parameter properties, no enums).
+- Naming: no abbreviated file names, no subdirectories under `tools/`, no
+  decorative section comments. Framework and domain logic live in `tools/`;
+  test directories keep only what must be there (package.json, tsconfig,
+  thin vitest glue).

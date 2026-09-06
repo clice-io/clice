@@ -39,6 +39,12 @@ While `hasNextPage` is true, fetch the next page with
 `reviewThreads(first: 100, after: "<endCursor>")` — never report from a
 partial listing.
 
+Findings also arrive as review bodies: the codex connector posts P2 items
+there with blob permalinks and no inline thread. Fetch
+`reviews(last: 20) { nodes { author { login } state body } }` in the same
+round and handle each finding in a bot review body like a thread; they have
+nothing to resolve, so list them as handled in the report.
+
 ## Handle each thread
 
 Analyze deeply before touching anything. A reviewer usually points at a
