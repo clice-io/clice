@@ -73,6 +73,37 @@ struct SwitchContextResult {
     bool stale = false;
 };
 
+/// clice/listConfigurations: the build configuration menu and the names
+/// the selection layers hold.
+struct ListConfigurationsParams {};
+
+struct ListConfigurationsResult {
+    /// The distinct `configuration` tags of the rules, in declaration
+    /// order; empty when the rules declare none.
+    std::vector<std::string> configurations;
+
+    /// The configuration this server process runs.
+    std::string active;
+
+    /// The persisted selection, applied at the next server start; empty
+    /// when none was made.
+    std::string selected;
+
+    /// The configuration active when nothing selects one.
+    std::string default_configuration;
+};
+
+/// clice/switchConfiguration: persist `name` as the selected
+/// configuration. The running server keeps its configuration; the choice
+/// takes effect when the client restarts it.
+struct SwitchConfigurationParams {
+    std::string name;
+};
+
+struct SwitchConfigurationResult {
+    bool success = false;
+};
+
 /// clice/internal/poll — TEST-ONLY, not a stable API. Synchronously runs
 /// one file-tracker tick (stat → diff → events → dispatch → effects) and
 /// responds only once the effects are applied, so integration tests can

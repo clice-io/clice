@@ -641,6 +641,17 @@ void LSPClient::register_extensions() {
             co_return to_raw(result);
         });
 
+    peer.on_request("clice/listConfigurations",
+                    [this](RequestContext& ctx, const ext::ListConfigurationsParams&) -> RawResult {
+                        co_return to_raw(this->server.context_service.list_configurations());
+                    });
+
+    peer.on_request(
+        "clice/switchConfiguration",
+        [this](RequestContext& ctx, const ext::SwitchConfigurationParams& params) -> RawResult {
+            co_return to_raw(this->server.context_service.switch_configuration(params.name));
+        });
+
     // ── Test hook ───────────────────────────────────────────────────
 
     // Runs one file-tracker tick synchronously (see ext::PollParams).

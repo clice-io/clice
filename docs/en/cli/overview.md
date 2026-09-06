@@ -13,3 +13,5 @@ clice is one binary. Editors launch `clice serve` and talk to it over LSP; the o
 | `doc`     | Extract documentation data from a project. Not implemented yet.           |                                |
 
 `index`, `inspect` and `query` work today but have no page yet; their options are documented by `clice <command> --help`.
+
+`serve`, `index`, `lint` and `inspect` take `--configuration <tag>` to pin the build configuration for the run, over the selection persisted from the editor; see [switching configurations](../guide/configuration.md#switching-configurations).

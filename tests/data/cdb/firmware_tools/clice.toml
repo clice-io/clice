@@ -1,0 +1,15 @@
+default_configuration = "board-a"
+
+[[rules]]
+configuration = "board-a"
+patterns = ["firmware/**"]
+compile_commands = ["firmware/out/board-a"]
+
+[[rules]]
+configuration = "board-b"
+patterns = ["firmware/**"]
+compile_commands = ["firmware/out/board-b"]
+
+[[rules]]
+patterns = ["tools/**"]
+compile_commands = ["tools/out"]

@@ -1,5 +1,6 @@
 #include "sched/build.h"
 
+#include <cassert>
 #include <format>
 
 #include "support/filesystem.h"
@@ -15,15 +16,11 @@
 
 namespace clice {
 
-void Build::reset_active() {
+void Build::reset_active(llvm::StringRef configuration) {
+    assert(configuration.empty() ? config.configurations().empty()
+                                 : llvm::is_contained(config.configurations(), configuration));
     claimed_sources.reset();
-    auto tags = config.configurations();
-    llvm::StringRef preferred = config.default_configuration;
-    if(!preferred.empty() && llvm::is_contained(tags, preferred)) {
-        active = preferred.str();
-    } else {
-        active = tags.empty() ? std::string() : tags.front().str();
-    }
+    active = configuration.str();
 }
 
 llvm::SmallVector<const CompiledRule*> Build::matching(llvm::StringRef path) const {

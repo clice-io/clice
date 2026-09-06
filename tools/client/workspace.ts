@@ -139,6 +139,12 @@ export class Workspace {
         return path.join(this.cacheBase(), only);
     }
 
+    /// The index library of a build configuration under the cache store
+    /// (`index/<name>`); the anonymous configuration's is `default`.
+    indexLibrary(configuration = "default"): string {
+        return path.join(this.cacheRoot(), "index", configuration);
+    }
+
     private cacheBase(): string {
         return this.path(path.join(".clice", "cache"));
     }

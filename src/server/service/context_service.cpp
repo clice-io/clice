@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "command/argument_parser.h"
+#include "sched/configuration.h"
 #include "sched/hosting.h"
 #include "server/service/ast_family.h"
 #include "server/state/session_store.h"
@@ -324,6 +325,38 @@ kota::task<ext::SwitchContextResult>
 
     result.success = true;
     co_return result;
+}
+
+ext::ListConfigurationsResult ContextService::list_configurations() const {
+    ext::ListConfigurationsResult result;
+    for(auto tag: workspace.config.configurations()) {
+        result.configurations.push_back(tag.str());
+    }
+    result.active = workspace.build.active_configuration().str();
+    result.selected = read_selection(workspace.config.project.cache_dir);
+    result.default_configuration = fallback_configuration(workspace.config).str();
+    return result;
+}
+
+ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::StringRef name) {
+    if(!llvm::is_contained(workspace.config.configurations(), name)) {
+        LOG_WARN("Cannot select configuration {}: no rule declares it", name);
+        return {};
+    }
+    llvm::StringRef cache_dir = workspace.config.project.cache_dir;
+    if(cache_dir.empty()) {
+        LOG_WARN("Cannot select configuration {}: no cache directory to persist the choice in",
+                 name);
+        return {};
+    }
+    if(auto written = write_selection(cache_dir, name); !written) {
+        LOG_WARN("Cannot persist the selected configuration {}: {}",
+                 name,
+                 written.error().message());
+        return {};
+    }
+    LOG_INFO("Selected configuration {}; it becomes active at the next start", name);
+    return {.success = true};
 }
 
 bool ContextService::drop_orphaned_choices(SessionStore& sessions) {

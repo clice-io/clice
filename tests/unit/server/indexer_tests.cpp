@@ -298,7 +298,7 @@ void open_store(TempDir& tmp, Workspace& workspace) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ASSERT_TRUE(store.has_value());
     workspace.store.emplace(std::move(*store));
-    workspace.index_db = index::open_lmdb_database(*workspace.store);
+    workspace.index_db = index::open_lmdb_database(*workspace.store, "");
 }
 
 /// Plant a blob between sessions (no fixture may be alive — the writer
@@ -306,7 +306,7 @@ void open_store(TempDir& tmp, Workspace& workspace) {
 void inject_blob(TempDir& tmp, index::IndexBlobKind kind, llvm::StringRef key, std::string bytes) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ASSERT_TRUE(store.has_value());
-    auto db = index::open_lmdb_database(*store);
+    auto db = index::open_lmdb_database(*store, "");
     ASSERT_TRUE(db != nullptr);
     index::BlobDatabase::Blob blob{kind, key.str(), std::move(bytes)};
     ASSERT_TRUE(db->write(blob, {}).empty());
@@ -467,7 +467,7 @@ TEST_CASE(SaveMigratesShardViews) {
     ASSERT_TRUE(store.has_value());
     workspace.store.emplace(std::move(*store));
     auto spy = std::make_unique<SnapshotSpy>();
-    spy->real = index::open_lmdb_database(*workspace.store);
+    spy->real = index::open_lmdb_database(*workspace.store, "");
     ASSERT_TRUE(spy->real != nullptr);
     auto* probe = spy.get();
     workspace.index_db = std::move(spy);
@@ -1734,7 +1734,7 @@ TEST_CASE(LmdbLoadServesAcrossSaves) {
         auto store = CacheStore::open(tmp.path("cache"), 1);
         ASSERT_TRUE(store.has_value());
         workspace.store.emplace(std::move(*store));
-        workspace.index_db = index::open_lmdb_database(*workspace.store);
+        workspace.index_db = index::open_lmdb_database(*workspace.store, "");
         ASSERT_TRUE(workspace.index_db != nullptr);
     };
 

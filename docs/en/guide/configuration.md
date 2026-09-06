@@ -455,3 +455,7 @@ compile_commands = ["build/release"]
 patterns = ["src/**", "include/**"]
 default_command = "arm-none-eabi-gcc -std=c23 -mcpu=cortex-m4 -Iinclude"
 ```
+
+## Switching Configurations
+
+The `configuration` tags on rules form a menu, and one tag is active per server process; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code the status bar shows the active configuration and clicking it opens the menu, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the VS Code extension does on its own. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index --stats` reports the index of the configuration it resolves the same way.

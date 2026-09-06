@@ -455,3 +455,7 @@ compile_commands = ["build/release"]
 patterns = ["src/**", "include/**"]
 default_command = "arm-none-eabi-gcc -std=c23 -mcpu=cortex-m4 -Iinclude"
 ```
+
+## 切换配置
+
+规则上的 `configuration` 标签构成一份菜单，每个服务器进程中有一个标签生效；不带标签的规则始终适用。生效的那个按优先级依次是 `--configuration <tag>` 参数（`clice serve`、`clice index`、`clice lint` 和 `clice inspect` 都接受它）、持久化的选择、`default_configuration`。选择在编辑器中完成——VS Code 的状态栏显示生效的配置，点击即可打开菜单，其他客户端调用 `clice/switchConfiguration`——并存放在 `state.json` 中，该文件位于 `cache_dir` 下，绝不写入 `clice.toml`；它在服务器再次启动时生效，VS Code 扩展会自行重启服务器。每个配置在 `cache_dir` 下保留各自的索引，因此来回切换绝不会重新索引某个配置已经索引过的内容。批处理命令也通过这些标签选择索引：`clice index --configuration release` 构建 release 配置的索引，`clice index --stats` 报告按同样方式解析出的配置所对应的索引。

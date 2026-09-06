@@ -645,7 +645,7 @@ void MasterServer::load_workspace() {
     if(workspace_root.empty())
         return;
 
-    auto report = bootstrap_workspace(workspace, index_store, pump, workspace_root);
+    auto report = bootstrap_workspace(workspace, index_store, pump, workspace_root, configuration);
     if(report.opened_store) {
         bg_tasks.spawn(cache_checkpoint_task());
     }
@@ -748,6 +748,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
 
     kota::event_loop loop;
     MasterServer server(loop, self_path);
+    server.configuration = opts.configuration.value_or("");
     std::list<Connection> connections;
 
     if(mode == ServerMode::Pipe) {

@@ -58,6 +58,16 @@ struct ContextService {
                                                         Fid context_path_id,
                                                         const ext::SwitchContextParams& params);
 
+    /// clice/listConfigurations: the configuration menu with the running,
+    /// persisted and default names.
+    ext::ListConfigurationsResult list_configurations() const;
+
+    /// clice/switchConfiguration: persist `name` as the configuration the
+    /// next server start activates; the running one is unchanged. Fails
+    /// for a name no rule declares and when the choice cannot be
+    /// persisted — no cache directory, or the write failed.
+    ext::SwitchConfigurationResult switch_configuration(llvm::StringRef name);
+
     /// Drop active context choices whose include edge no longer exists. A
     /// stale choice suppresses automatic host resolution, so it would strand
     /// the header on the fallback command (or silently pin its command hash

@@ -84,6 +84,14 @@ struct InspectOptions {
     <std::string> config;
 
     DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
+                 names = {"--configuration", "--configuration="},
+                 help =
+                     "Build configuration to activate, one of the tags declared on "
+                     "rules (default: the selected one, else default_configuration)",
+                 required = false)
+    <std::string> configuration;
+
+    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
                  names = {"--log-level", "--log-level="},
                  help = "Log level: trace, debug, info, warn, error, off",
                  required = false)
@@ -720,7 +728,7 @@ int run_inspect(const InspectOptions& opts) {
     if(flags.empty()) {
         std::string root = workspace_of(unit_directory);
         workspace.config = Config::load_from_workspace(root);
-        load_build(workspace, root);
+        load_build(workspace, root, opts.configuration.value_or(""));
     }
 
     // Directory mode covers what the build compiles under the tree, not only

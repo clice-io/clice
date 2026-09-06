@@ -50,6 +50,7 @@ flamegraph.svg
 *.vsix
 dist/
 out/
+!tests/data/cdb/**/out/
 cache/
 node_modules/
 .vscode-test/

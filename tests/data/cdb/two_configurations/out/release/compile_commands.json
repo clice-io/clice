@@ -1,0 +1,17 @@
+[
+  {
+    "directory": "../..",
+    "file": "main.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DRELEASE", "main.cpp"]
+  },
+  {
+    "directory": "../..",
+    "file": "other.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DRELEASE", "-DOTHER", "other.cpp"]
+  },
+  {
+    "directory": "../..",
+    "file": "gated.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DRELEASE", "gated.cpp"]
+  }
+]

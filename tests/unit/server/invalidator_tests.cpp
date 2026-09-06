@@ -1106,7 +1106,7 @@ TEST_CASE(CDBRemovedStillClaimed) {
     SessionStore store;
     workspace.config.rules.push_back(ConfigRule{.default_command = std::string("clang++")});
     workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active();
+    workspace.build.reset_active("");
     auto gone_id = workspace.file_table.intern(tmp.path("gone.cpp"));
     auto json = build_cdb_json({
         {tmp.root, tmp.path("kept.cpp"), {}}

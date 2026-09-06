@@ -21,6 +21,8 @@
 #include <thread>
 
 #include "command/command.h"
+#include "config/config.h"
+#include "sched/build.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/dependency_graph.h"
@@ -300,6 +302,7 @@ int main(int argc, const char** argv) {
 
     std::println("\nRunning {} cold start scan(s)...\n", runs);
 
+    Config config;
     DependencyGraph graph;
     std::vector<std::int64_t> elapsed_times;
     std::vector<std::int64_t> config_times;
@@ -318,8 +321,10 @@ int main(int argc, const char** argv) {
         cdb_storage.emplace(*table_storage);
         cdb_storage->load(cdb_path);
         graph = DependencyGraph{};
+        Build build{config, *cdb_storage, *table_storage};
+        build.reset_active("");
 
-        auto report = scan_dependency_graph(*cdb_storage, graph);
+        auto report = scan_dependency_graph(*cdb_storage, graph, build.units(build.members()));
 
         elapsed_times.push_back(report.elapsed_ms);
         config_times.push_back(report.config_ms);

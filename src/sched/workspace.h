@@ -36,7 +36,7 @@ class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 9;
+constexpr inline std::uint32_t cache_format_version = 10;
 
 /// One dependency of a compilation artifact.
 ///

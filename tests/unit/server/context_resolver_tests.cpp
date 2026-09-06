@@ -105,7 +105,7 @@ TEST_CASE(DefaultSourceKeepsOwnCommand) {
     workspace.config.rules.push_back(
         ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
     workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active();
+    workspace.build.reset_active("");
 
     auto main = workspace.file_table.intern(tmp.path("src/main.cpp"));
     auto part = workspace.file_table.intern(tmp.path("src/part.cpp"));

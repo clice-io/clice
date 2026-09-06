@@ -20,16 +20,20 @@ import {
 import { URI } from "vscode-uri";
 import {
     CurrentContextRequest,
+    ListConfigurationsRequest,
     LogFloodRequest,
     PollRequest,
     QueryContextRequest,
     StatsRequest,
+    SwitchConfigurationRequest,
     SwitchContextRequest,
     type CurrentContextResult,
+    type ListConfigurationsResult,
     type LogFloodResult,
     type PollResult,
     type QueryContextResult,
     type StatsResult,
+    type SwitchConfigurationResult,
     type SwitchContextResult,
 } from "../protocol/protocol.ts";
 import {
@@ -1026,6 +1030,14 @@ export class CliceClient {
             ...(options.commandHash === undefined ? {} : { commandHash: options.commandHash }),
             ...(options.epoch === undefined ? {} : { epoch: options.epoch }),
         });
+    }
+
+    listConfigurations(): Promise<ListConfigurationsResult> {
+        return this.sendRequest(ListConfigurationsRequest);
+    }
+
+    switchConfiguration(name: string): Promise<SwitchConfigurationResult> {
+        return this.sendRequest(SwitchConfigurationRequest, { name });
     }
 
     /// clice/internal/poll (test hook): run one tracker tick and apply its

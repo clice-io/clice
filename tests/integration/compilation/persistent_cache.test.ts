@@ -151,11 +151,6 @@ test("pch survives server restart", async ({ session }) => {
     c1.assertNoAnomaly();
     await c1.shutdown();
 
-    // A cache.json left in the store by an older clice must be removed by
-    // the next writable session.
-    const legacyCacheJson = path.join(workspace.cacheRoot(), "cache.json");
-    fs.writeFileSync(legacyCacheJson, "{}");
-
     // Session 2: restart server, reopen file.
     const c2 = session.spawn(workspace);
     await c2.initialize(workspace);
@@ -171,7 +166,6 @@ test("pch survives server restart", async ({ session }) => {
     expect(pchMtimeS2, "PCH file should not be rebuilt (mtime should be unchanged)").toBe(
         pchMtimeS1,
     );
-    expect(fs.existsSync(legacyCacheJson), "legacy cache.json should be removed").toBe(false);
 
     c2.assertNoAnomaly();
     await c2.shutdown();
@@ -351,9 +345,10 @@ test("cache dirs created on startup", async ({ session }) => {
             `${subdir}/ should be created`,
         ).toBe(true);
     }
-    // The index persists into a single LMDB database, not a namespace dir.
+    // The index persists into a single LMDB database per configuration,
+    // not a namespace dir.
     expect(
-        fs.existsSync(path.join(workspace.cacheRoot(), "index.mdb")),
+        fs.existsSync(path.join(workspace.indexLibrary(), "index.mdb")),
         "index.mdb should be created",
     ).toBe(true);
 });
