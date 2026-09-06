@@ -13,20 +13,20 @@ Language Server Protocol features available when using clice as an editor backen
 
 <!-- BEGIN GENERATED OVERVIEW -->
 
-| Feature          | Status                                     | Page                                      |
-| ---------------- | ------------------------------------------ | ----------------------------------------- |
-| Code Completion  | 31 supported                               | [completion](./completion.md)             |
-| Hover            | 34 supported · 21 partial · 11 unsupported | [hover](./hover.md)                       |
-| Signature Help   | 14 supported                               | [signature-help](./signature-help.md)     |
-| Code Navigation  | 44 supported · 14 partial · 34 unsupported | [navigation](./navigation.md)             |
-| Document Links   | 7 supported · 1 partial · 1 unsupported    | [document-links](./document-links.md)     |
-| Semantic Tokens  | 54 supported · 4 partial · 10 unsupported  | [semantic-tokens](./semantic-tokens.md)   |
-| Inlay Hints      | 31 supported · 6 partial · 4 unsupported   | [inlay-hints](./inlay-hints.md)           |
-| Folding Ranges   | 13 supported · 2 partial · 6 unsupported   | [folding-ranges](./folding-ranges.md)     |
-| Document Symbols | 18 supported · 2 partial · 7 unsupported   | [document-symbols](./document-symbols.md) |
-| Formatting       | Implemented                                | [formatting](./formatting.md)             |
-| Diagnostics      | Partial                                    | [diagnostics](./diagnostics.md)           |
-| Code Action      | Stub                                       | [code-action](./code-action.md)           |
+| Feature                                   | Status                                     |
+| ----------------------------------------- | ------------------------------------------ |
+| [Code Completion](./completion.md)        | 31 supported                               |
+| [Hover](./hover.md)                       | 34 supported · 21 partial · 11 unsupported |
+| [Signature Help](./signature-help.md)     | 14 supported                               |
+| [Code Navigation](./navigation.md)        | 44 supported · 14 partial · 34 unsupported |
+| [Document Links](./document-links.md)     | 7 supported · 1 partial · 1 unsupported    |
+| [Semantic Tokens](./semantic-tokens.md)   | 54 supported · 4 partial · 10 unsupported  |
+| [Inlay Hints](./inlay-hints.md)           | 31 supported · 6 partial · 4 unsupported   |
+| [Folding Ranges](./folding-ranges.md)     | 13 supported · 2 partial · 6 unsupported   |
+| [Document Symbols](./document-symbols.md) | 18 supported · 2 partial · 7 unsupported   |
+| [Formatting](./formatting.md)             | Implemented                                |
+| [Diagnostics](./diagnostics.md)           | Partial                                    |
+| [Code Action](./code-action.md)           | Stub                                       |
 
 <!-- END GENERATED OVERVIEW -->
 

@@ -369,7 +369,7 @@ function processOverview(
     problems: string[],
 ): [string, string, string] {
     const docPath = path.join(REPO_ROOT, OVERVIEW_DOC);
-    const rows: string[][] = [["Feature", "Status", "Page"]];
+    const rows: string[][] = [["Feature", "Status"]];
     for (const row of OVERVIEW_ROWS) {
         let status = row.label ?? "";
         const fixtures = (row.keys ?? []).flatMap((key) => fixturesByFeature.get(key) ?? []);
@@ -382,7 +382,7 @@ function processOverview(
                 .map((s) => `${counts.get(s)} ${s}`)
                 .join(" · ");
         }
-        rows.push([row.name, status, `[${row.page}](./${row.page}.md)`]);
+        rows.push([`[${row.name}](./${row.page}.md)`, status]);
     }
 
     const current = fs.readFileSync(docPath, "utf8").replaceAll("\r\n", "\n");
