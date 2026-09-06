@@ -3,6 +3,8 @@
 #include "test/test.h"
 #include "server/state/file_tracker.h"
 
+#include "llvm/Support/Process.h"
+
 namespace clice::testing {
 namespace {
 
@@ -137,7 +139,7 @@ TEST_CASE(CDBTickRetriesFailedLoad) {
         llvm::sys::fs::setLastAccessAndModificationTime(fd,
                                                         before.getLastAccessedTime(),
                                                         before.getLastModificationTime())));
-    llvm::sys::fs::closeFile(fd);
+    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
 
     ASSERT_TRUE(tracker.tick_cdb().empty());
     ASSERT_TRUE(tracker.tick_cdb().empty());
