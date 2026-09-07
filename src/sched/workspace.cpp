@@ -77,8 +77,10 @@ void Workspace::rescan_after_save(Fid path_id) {
             if(auto host = default_host(*this, path_id)) {
                 cmd_file = host->file;
                 cmd_path = file_table.resolve(host->file);
-            } else if(lender = command_lender(*this, path_id); lender) {
-                cmd_path = file_table.resolve(lender->unit);
+            } else if(build.commands(path_id).empty()) {
+                if(lender = command_lender(*this, path_id); lender) {
+                    cmd_path = file_table.resolve(lender->unit);
+                }
             }
         }
 

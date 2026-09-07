@@ -132,13 +132,13 @@ public:
 
     struct DefaultSourcesRefresh {
         llvm::SmallVector<Fid> appeared;
-        bool vanished = false;
+        llvm::SmallVector<Fid> vanished;
     };
 
     /// Enumerate the sources the default-command rules claim again and
     /// report the ones that appeared since the last enumeration — a file
-    /// created after startup joins the build — and whether any left. The
-    /// workspace sweep calls it every tick.
+    /// created after startup joins the build — and the ones that left it.
+    /// The workspace sweep calls it every tick.
     DefaultSourcesRefresh refresh_default_sources();
 
     /// The scan units of `members`: every command of every member, so a

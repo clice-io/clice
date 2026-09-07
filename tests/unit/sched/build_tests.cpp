@@ -390,20 +390,20 @@ TEST_CASE(RefreshDefaultSources) {
     ASSERT_EQ(build.members().size(), 1u);
     auto refresh = build.refresh_default_sources();
     EXPECT_TRUE(refresh.appeared.empty());
-    EXPECT_FALSE(refresh.vanished);
+    EXPECT_TRUE(refresh.vanished.empty());
 
     tmp.touch("src/later.cpp", "");
     auto later = files.intern(canonical(tmp, "src/later.cpp"));
     refresh = build.refresh_default_sources();
     EXPECT_EQ(refresh.appeared, llvm::SmallVector<Fid>{later});
-    EXPECT_FALSE(refresh.vanished);
+    EXPECT_TRUE(refresh.vanished.empty());
     EXPECT_TRUE(build.refresh_default_sources().appeared.empty());
     EXPECT_EQ(build.members().size(), 2u);
 
     fs::remove_all(tmp.path("src/later.cpp"));
     refresh = build.refresh_default_sources();
     EXPECT_TRUE(refresh.appeared.empty());
-    EXPECT_TRUE(refresh.vanished);
+    EXPECT_EQ(refresh.vanished, llvm::SmallVector<Fid>{later});
     EXPECT_EQ(build.members().size(), 1u);
 };
 

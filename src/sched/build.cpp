@@ -293,12 +293,17 @@ Build::DefaultSourcesRefresh Build::refresh_default_sources() {
     DefaultSourcesRefresh refresh;
     if(claimed_sources) {
         llvm::DenseSet<Fid> known(claimed_sources->begin(), claimed_sources->end());
+        llvm::DenseSet<Fid> now(current.begin(), current.end());
         for(auto file: current) {
             if(!known.contains(file)) {
                 refresh.appeared.push_back(file);
             }
         }
-        refresh.vanished = current.size() - refresh.appeared.size() < claimed_sources->size();
+        for(auto file: *claimed_sources) {
+            if(!now.contains(file)) {
+                refresh.vanished.push_back(file);
+            }
+        }
     }
     claimed_sources = std::move(current);
     return refresh;

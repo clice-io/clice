@@ -129,6 +129,8 @@ BuildLoad load_build(Workspace& workspace,
             return std::tuple(llvm::count_if(source, [](char c) { return path::is_separator(c); }),
                               llvm::StringRef(source));
         });
+        auto duplicates = std::ranges::unique(stable);
+        stable.erase(duplicates.begin(), duplicates.end());
         paths.append(stable.begin(), stable.end());
         if(paths.size() > 1) {
             LOG_INFO(

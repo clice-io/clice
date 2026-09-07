@@ -251,6 +251,9 @@ llvm::SmallVector<FileEvent> FileTracker::discover_around(Fid path_id) {
     if(!path::under(path, workspace_root)) {
         return events;
     }
+    // One delta for the whole chain: the invalidator rebuilds the graph
+    // per event.
+    CDBDiff found;
     for(auto& database: compile_commands_above(path::parent_path(path), workspace_root)) {
         if(workspace.cdb.find_source(database)) {
             continue;
@@ -258,10 +261,13 @@ llvm::SmallVector<FileEvent> FileTracker::discover_around(Fid path_id) {
         auto id = workspace.cdb.add_source(database);
         if(auto diff = workspace.cdb.reload_and_diff(id)) {
             LOG_INFO("Found compilation database: {}", database);
-            push_delta(*diff, events);
+            found.added.append(diff->added);
+            found.removed.append(diff->removed);
+            found.changed.append(diff->changed);
         }
         track(id);
     }
+    push_delta(found, events);
     return events;
 }
 
@@ -407,11 +413,8 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     // same gain of a command a database reload reports as added. One
     // deleted leaves through DiskRemoved, but no longer lends.
     auto refresh = workspace.build.refresh_default_sources();
-    if(refresh.vanished || !refresh.appeared.empty()) {
-        workspace.commands_epoch += 1;
-        // An empty delta still tells the borrowers of a vanished lender.
-        events.push_back(FileEvent::cdb_changed({.added = std::move(refresh.appeared)}));
-    }
+    push_delta({.added = std::move(refresh.appeared), .removed = std::move(refresh.vanished)},
+               events);
 
     LOG_PERF("tracker",
              "phase=workspace_sweep files={} changed={} removed={} elapsed_ms={}",
