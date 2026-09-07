@@ -22,7 +22,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     llvm::StringRef root,
                                     llvm::StringRef requested_configuration,
                                     bool read_only_index,
-                                    llvm::ArrayRef<std::string> nearby) {
+                                    bool scan_tree) {
     BootstrapReport report;
     auto& cfg = workspace.config.project;
     auto configuration = resolve_configuration(workspace.config, requested_configuration);
@@ -69,9 +69,15 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
         }
     }
 
-    auto remembered = store.remembered_sources();
-    remembered.insert(remembered.end(), nearby.begin(), nearby.end());
-    auto load = load_build(workspace, root, configuration, remembered);
+    auto nearby = store.remembered_sources();
+    if(scan_tree) {
+        workspace.build.reset_active(configuration);
+        if(!workspace.build.declares_sources()) {
+            auto below = compile_commands_below(root, cfg.cache_dir);
+            nearby.insert(nearby.end(), below.begin(), below.end());
+        }
+    }
+    auto load = load_build(workspace, root, configuration, nearby);
     report.has_commands = !load.members.empty() || workspace.build.declares_sources();
     report.members = std::move(load.members);
     // Persisted index shards are CDB-independent; they load even with no

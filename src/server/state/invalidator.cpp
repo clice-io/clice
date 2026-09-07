@@ -171,6 +171,24 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     // removals pays for one rebuild, not one per file.
     bool rebuild_reverse_map = false;
 
+    // The lender set changed: every borrowed or synthesized command may
+    // resolve differently now — which no delta can tell, so all of them
+    // recompile.
+    auto lenders_changed = [&] {
+        workspace.commands_epoch += 1;
+        for(auto guessed: contexts.guessed_commands) {
+            if(store.find(guessed)) {
+                dirty.mark_ast_dirty.push_back(guessed);
+            }
+        }
+    };
+    // A unit the lender index skipped for being absent is on disk now.
+    auto lender_returned = [&](Fid path_id) {
+        if(workspace.lenders.missing.contains(path_id)) {
+            lenders_changed();
+        }
+    };
+
     for(auto& event: events) {
         switch(event.kind) {
             case FileEvent::Kind::BufferOpened: {
@@ -185,6 +203,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
             case FileEvent::Kind::BufferSaved: {
                 auto path_id = event.path_id;
+                lender_returned(path_id);
                 // The disk now holds the buffer's content: the standard
                 // disk-content cascade covers everything a save invalidates —
                 // including anything a DiskChanged consumed while the buffer
@@ -300,16 +319,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
             case FileEvent::Kind::DiskChanged: {
                 auto path_id = event.path_id;
-                if(workspace.lenders.missing.contains(path_id)) {
-                    // A unit back on disk lends again: its would-be
-                    // borrowers pick anew.
-                    workspace.commands_epoch += 1;
-                    for(auto guessed: contexts.guessed_commands) {
-                        if(store.find(guessed)) {
-                            dirty.mark_ast_dirty.push_back(guessed);
-                        }
-                    }
-                }
+                lender_returned(path_id);
                 if(store.find(path_id)) {
                     // Open file: the buffer is the truth, so no disk rescan —
                     // what the disk change means for this file is decided by
@@ -375,13 +385,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 workspace.dep_graph.clear_includes(path_id);
                 rebuild_reverse_map = true;
                 workspace.context_epoch += 1;
-                // A deleted unit lends nothing: its borrowers pick anew.
-                workspace.commands_epoch += 1;
-                for(auto guessed: contexts.guessed_commands) {
-                    if(store.find(guessed)) {
-                        dirty.mark_ast_dirty.push_back(guessed);
-                    }
-                }
+                // A deleted unit lends nothing.
+                lenders_changed();
                 // Contexts hosted by (or chained through) the removed file
                 // are cleaned by the resolver's orphan pass.
                 dirty.recheck_contexts = true;
@@ -392,14 +397,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 break;
             }
             case FileEvent::Kind::CDBChanged: {
-                // A borrowed or synthesized command may have a real one now,
-                // or its lender's may have changed or gone — which no delta
-                // can tell, so every change recompiles them.
-                for(auto path_id: contexts.guessed_commands) {
-                    if(store.find(path_id)) {
-                        dirty.mark_ast_dirty.push_back(path_id);
-                    }
-                }
+                lenders_changed();
                 auto& delta = event.cdb;
                 if(delta.empty()) {
                     break;
@@ -433,7 +431,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                                       workspace.build.units(workspace.build.members()));
                 workspace.dep_graph.build_reverse_map();
                 workspace.context_epoch += 1;
-                workspace.commands_epoch += 1;
 
                 // A module name that just gained its first provider: its
                 // sentinel's dependents are the TUs that scanned it
