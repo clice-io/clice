@@ -270,6 +270,24 @@ TEST_CASE(UnitsDeduplicated) {
     EXPECT_EQ(build.units(members).size(), 2U);
 };
 
+TEST_CASE(CudaHeaderNotDefaultSource) {
+    /// A `.cuh` under a rule forcing CUDA stays a header: clang's extension
+    /// table does not know the suffix, but it names no unit.
+    TempDir tmp;
+    tmp.touch("cuda/kernel.cu", "");
+    tmp.touch("cuda/kernel.cuh", "");
+    Config config;
+    config.rules.push_back(
+        ConfigRule{.patterns = {"cuda/**"}, .default_command = std::string("clang++ -x cuda")});
+    config.finalize(tmp.root.str());
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active("");
+    EXPECT_EQ(build.members().size(), 1U);
+    EXPECT_FALSE(build.unit(files.intern(canonical(tmp, "cuda/kernel.cuh"))));
+};
+
 TEST_CASE(InvalidDefaultCommandIgnored) {
     /// A default command that names no compiler leaves its files without a
     /// command instead of aborting: they take the builtin fallback.

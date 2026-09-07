@@ -82,7 +82,15 @@ CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
 /// borrowing such a command would compile as that language, so only
 /// headers get that latitude.
 bool compatible(Language file, Language command, bool header) {
-    return file == Language::Any || file == command ||
+    if(file == Language::Any) {
+        return true;
+    }
+    // The specialized languages (OpenCL, assembler, ...) share `Other`
+    // without sharing anything else: no borrowing among them.
+    if(file == Language::Other || command == Language::Other) {
+        return false;
+    }
+    return file == command ||
            (header && file == Language::CXX &&
             (command == Language::CUDA || command == Language::HIP || command == Language::ObjCXX));
 }

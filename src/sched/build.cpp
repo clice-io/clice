@@ -318,6 +318,9 @@ bool Build::default_source(llvm::StringRef path) {
     if(type != types::TY_INVALID) {
         return types::isDerivedFromC(type) && !types::onlyPrecompileType(type);
     }
+    if(path::extension(path) == ".cuh") {
+        return false;
+    }
     auto* rule = default_rule(path);
     if(!rule || rule->patterns.empty()) {
         return false;

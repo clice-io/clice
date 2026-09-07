@@ -436,6 +436,9 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     // from disk (DiskRemoved) is news.
     llvm::erase_if(refresh.vanished,
                    [&](Fid file) { return !workspace.build.commands(file).empty(); });
+    for(auto file: refresh.appeared) {
+        seed(file);
+    }
     push_delta({.added = std::move(refresh.appeared), .removed = std::move(refresh.vanished)},
                events);
 

@@ -482,6 +482,43 @@ TEST_CASE(WorkspaceTickKeepsListedMember) {
     loop.run();
 }
 
+TEST_CASE(SweepSeedsAppearedMember) {
+    /// A file the sweep first sees as a new default-command member is
+    /// baselined then, so an edit before the next sweep is a change.
+    TempDir tmp;
+    tmp.touch("src/old.cpp", R"(int old() {})");
+    kota::event_loop loop;
+    Workspace workspace;
+    SessionStore store;
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    auto body = [&]() -> kota::task<> {
+        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
+        tmp.touch("src/new.cpp", R"(int fresh() {})");
+        auto appeared = co_await tracker.tick_workspace();
+        auto fresh = workspace.file_table.intern(tmp.path("src/new.cpp"));
+        EXPECT_EQ(appeared.size(), 1u);
+        if(appeared.size() == 1) {
+            EXPECT_EQ(appeared[0].cdb.added, llvm::SmallVector<Fid>{fresh});
+        }
+        workspace.dep_graph.set_includes(fresh, 0, {});
+        workspace.dep_graph.build_reverse_map();
+        tmp.touch("src/new.cpp", R"(int fresh() { return 1; })");
+        auto changed = co_await tracker.tick_workspace();
+        EXPECT_EQ(changed.size(), 1u);
+        if(changed.size() == 1) {
+            EXPECT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
+            EXPECT_EQ(changed[0].path_id, fresh);
+        }
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+}
+
 TEST_CASE(DiscoverySeedsBaseline) {
     /// A file a discovered database adds is baselined at the content the
     /// graph was scanned from, so an edit before the first sweep is seen.
