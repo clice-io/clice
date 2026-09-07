@@ -179,7 +179,7 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
 - **How are files without a CDB entry handled?**
 
-  A header first looks for a source file that includes it through the dependency graph and borrows that file's command (see [Compilation Context](compilation-context.md)). Otherwise the first matching rule with a `default_command` supplies the command — the way to describe a project whose files all share one set of flags, or a scratch directory. A file with none of those borrows a nearby unit's command (see [Inference](#inference)); only one with no compatible unit either gets the builtin command: `clang` or `clang++ -std=c++20` by the file's language, with the resource dir injected, so basic semantic analysis remains available and a guidance note explains that the command was guessed.
+  A header first looks for a source file that includes it through the dependency graph and borrows that file's command (see [Compilation Context](compilation-context.md)). Otherwise the first matching rule with a `default_command` supplies the command — the way to describe a project whose files all share one set of flags, or a scratch directory. A file with none of those borrows a nearby unit's command (see [Inference](#inference)); only one with no compatible unit either gets the builtin command: `clang` or `clang++ -std=c++20` based on the file's language, with the resource dir injected, so basic semantic analysis remains available and a guidance note explains that the command was guessed.
 
 ## Known Limitations
 

@@ -88,10 +88,11 @@ struct ConfigRule {
                          "file it was read from (the workspace root for a rule "
                          "passed through initializationOptions), and the "
                          "matching source files on disk "
-                         "join the background index — enumerated at startup "
-                         "and again on every workspace poll, so a file created "
-                         "later compiles when opened and joins the index within "
-                         "a poll period. Omitted means none.")
+                         "join the background index (unless the rule turns "
+                         "`index` off) — enumerated at startup and again on "
+                         "every workspace poll, so a file created later "
+                         "compiles when opened and joins the index within a "
+                         "poll period. Omitted means none.")
     <CommandSpelling> default_command;
 
     KOTATSU_ANNOTATE(defaulted = true,

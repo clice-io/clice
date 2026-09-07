@@ -159,6 +159,7 @@ void FileTracker::tick_source(TrackedSource& tracked,
         // Deleted — usually mid-regeneration. Keep serving the loaded
         // entries; the rewrite lands as the next observed change.
         tracked.applied = current;
+        tracked.reread = false;
         workspace.cdb.set_present(tracked.id, false);
         if(flips) {
             CDBDiff moved;
