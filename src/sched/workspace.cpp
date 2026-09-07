@@ -72,15 +72,25 @@ void Workspace::rescan_after_save(Fid path_id) {
         // its own edges, as the startup scan does.
         Fid cmd_file = path_id;
         llvm::StringRef cmd_path = path;
+        std::optional<Lender> lender;
         if(!build.unit(path_id)) {
             if(auto host = default_host(*this, path_id)) {
                 cmd_file = host->file;
                 cmd_path = file_table.resolve(host->file);
+            } else if(lender = command_lender(*this, path_id); lender) {
+                cmd_path = file_table.resolve(lender->unit);
             }
         }
 
         llvm::SmallVector<CommandRef, 2> refs;
-        for(auto& command: build.commands(cmd_file)) {
+        if(lender) {
+            refs.push_back(build.resolve(path_id,
+                                         lender->config,
+                                         CommandSource::Inferred,
+                                         {cmd_path, path},
+                                         cmd_path));
+        }
+        for(auto& command: lender ? llvm::SmallVector<Candidate, 2>{} : build.commands(cmd_file)) {
             refs.push_back(
                 build.resolve(path_id, command.config, command.source, {cmd_path, path}, cmd_path));
         }

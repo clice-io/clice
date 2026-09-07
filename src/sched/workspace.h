@@ -18,6 +18,7 @@
 #include "index/tu_index.h"
 #include "sched/build.h"
 #include "sched/crash_budget.h"
+#include "sched/hosting.h"
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
 #include "syntax/dependency_graph.h"
@@ -277,11 +278,8 @@ struct Workspace {
     /// or a member appears, not on saves like context_epoch.
     std::uint64_t commands_epoch = 1;
 
-    /// The units and their base commands by header search directory of
-    /// the command, for a header borrowing the command whose search
-    /// reaches it (see command_lender); rebuilt when commands_epoch moves.
-    llvm::StringMap<llvm::SmallVector<std::pair<Fid, ConfigID>>> search_dir_lenders;
-    std::uint64_t search_dir_lenders_epoch = 0;
+    /// What a file without a command can borrow (see command_lender).
+    LenderIndex lenders;
 
     /// Whether `path` is one of our own synthesized context artifacts
     /// (prefix/suffix/self-snapshot files under the cache directory). A

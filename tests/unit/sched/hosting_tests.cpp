@@ -173,6 +173,7 @@ TEST_CASE(LenderSearchDir) {
     workspace.config.finalize(tmp.root.str());
     workspace.build.reset_active("");
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
+        tmp.touch(file, "");
         auto command = std::format("clang++ {} {}", flags, tmp.path(file));
         return *workspace.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
     };
@@ -188,6 +189,23 @@ TEST_CASE(LenderSearchDir) {
 
     auto source = workspace.file_table.intern(tmp.path("include/api/new.cpp"));
     EXPECT_EQ(command_lender(workspace, source)->unit, near.file);
+};
+
+TEST_CASE(LenderSkipsDeleted) {
+    /// A listed unit gone from disk lends nothing.
+    TempDir tmp;
+    tmp.touch("src/x.h", "");
+    tmp.touch("far/lib.cpp", "");
+    Workspace workspace;
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    for(auto file: {"src/gone.cpp", "far/lib.cpp"}) {
+        auto command = std::format("clang++ {}", tmp.path(file));
+        workspace.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+    }
+    auto header = workspace.file_table.intern(tmp.path("src/x.h"));
+    auto lib = workspace.file_table.intern(tmp.path("far/lib.cpp"));
+    EXPECT_EQ(command_lender(workspace, header)->unit, lib);
 };
 
 TEST_CASE(LenderIgnoresCommandless) {

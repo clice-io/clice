@@ -77,6 +77,7 @@ void FileTracker::track(SourceID id) {
     TrackedSource tracked{.id = id};
     if(workspace.cdb.loaded(id)) {
         tracked.applied = stat_source(id);
+        tracked.reread = !workspace.cdb.response_files(id).empty();
         // Loaded, then deleted before this baseline: the load marked it
         // present, and an unchanged missing stamp would never correct it.
         workspace.cdb.set_present(id, tracked.applied.database.exists);

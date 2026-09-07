@@ -212,6 +212,30 @@ TEST_CASE(CDBBaselineSyncsPresence) {
     EXPECT_TRUE(tracker.tick_cdb().empty());
 }
 
+TEST_CASE(CDBBaselineRereadsResponses) {
+    /// A response file rewritten between the startup load and the
+    /// tracker's baseline: the first ticks reload the database once, so
+    /// the flags in memory catch up.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("flags.rsp", "-DONE\n");
+    Workspace workspace;
+    SessionStore store;
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
+    }));
+    tmp.touch("flags.rsp", "-DTWO\n");
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    EXPECT_TRUE(tracker.tick_cdb().empty());
+    auto events = tracker.tick_cdb();
+    ASSERT_EQ(events.size(), 1u);
+    auto main = workspace.file_table.intern(tmp.path("main.cpp"));
+    EXPECT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main});
+    EXPECT_TRUE(tracker.tick_cdb().empty());
+}
+
 TEST_CASE(CDBTickRenameOver) {
     /// A same-size rewrite renamed over the database within one mtime
     /// tick is a new file: an ordinary tick sees it where stable file

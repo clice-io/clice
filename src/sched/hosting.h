@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -7,6 +8,7 @@
 #include "vfs/file_table.h"
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace clice {
 
@@ -26,10 +28,36 @@ struct Host {
 /// the header's stem, its directory, and path proximity.
 llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header);
 
+/// The language family of a file by its suffix (`Any` when the suffix
+/// does not say: `.h`, an unknown extension) or of a command by the
+/// language it compiles its unit as.
+enum class Language : std::uint8_t {
+    Any,
+    C,
+    CXX,
+    CUDA,
+    Other,
+};
+
 /// A unit and the one of its base commands that another file borrows.
 struct Lender {
     Fid unit;
     ConfigID config;
+};
+
+/// The commands the build's units can lend — every command of every
+/// member still on disk, by unit path — and the header search
+/// directories they cover, as indexes into `commands`. Rebuilt when
+/// Workspace::commands_epoch moves, so a resolution scans no unit.
+struct LenderIndex {
+    struct Command {
+        Lender lender;
+        Language family;
+    };
+
+    llvm::SmallVector<Command> commands;
+    llvm::StringMap<llvm::SmallVector<std::uint32_t>> search_dirs;
+    std::uint64_t epoch = 0;
 };
 
 /// The lender of a file with neither an entry nor a host

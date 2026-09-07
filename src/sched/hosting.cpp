@@ -7,22 +7,13 @@
 #include "support/filesystem.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "clang/Driver/Types.h"
 
 namespace clice {
 
 namespace {
-
-/// The language family a file belongs to by its suffix, or `Any` when
-/// the suffix does not say (`.h`, an unknown extension).
-enum class Family : std::uint8_t {
-    Any,
-    C,
-    CXX,
-    CUDA,
-    Other,
-};
 
 /// Whether the suffix names a header — or nothing clang knows, which a
 /// file under a header search directory usually is (`.inc`, `.ipp`).
@@ -32,38 +23,38 @@ bool header_suffix(llvm::StringRef path) {
     return type == types::TY_INVALID || types::onlyPrecompileType(type);
 }
 
-Family family_of_suffix(llvm::StringRef path) {
+Language family_of_suffix(llvm::StringRef path) {
     namespace types = clang::driver::types;
     if(path::extension(path) == ".cuh") {
-        return Family::CUDA;
+        return Language::CUDA;
     }
     auto type = suffix_type(path);
     if(type == types::TY_INVALID || type == types::TY_CHeader) {
-        return Family::Any;
+        return Language::Any;
     }
     if(types::isCuda(type)) {
-        return Family::CUDA;
+        return Language::CUDA;
     }
     if(types::isCXX(type)) {
-        return Family::CXX;
+        return Language::CXX;
     }
-    return types::isDerivedFromC(type) ? Family::C : Family::Other;
+    return types::isDerivedFromC(type) ? Language::C : Language::Other;
 }
 
 /// The family of a file by the language its effective command compiles
 /// it as — a `-x` in the entry or a rule's append included.
-Family family_of_command(const CommandRef& command) {
+Language family_of_command(const CommandRef& command) {
     llvm::StringRef language = command.input.value;
     if(language.contains("cuda")) {
-        return Family::CUDA;
+        return Language::CUDA;
     }
     if(language.contains("c++")) {
-        return Family::CXX;
+        return Language::CXX;
     }
     if(language.starts_with("c") || language.starts_with("objective-c")) {
-        return Family::C;
+        return Language::C;
     }
-    return Family::Other;
+    return Language::Other;
 }
 
 CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
@@ -71,29 +62,13 @@ CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
     return workspace.build.resolve(unit, command.config, command.source, path, path);
 }
 
-/// The first of the unit's commands compiling it in the file's family —
-/// any when the file's suffix does not say — or none.
 /// Whether a file of `family` can be part of a command's translation
 /// unit. A CUDA unit is C++ with device code, so a C++ header fits it (a
 /// `.cuh` needs CUDA itself); a C++ source borrowing a CUDA command would
 /// compile as CUDA, so only headers get that latitude.
-bool compatible(Family file, Family command, bool header) {
-    return file == Family::Any || file == command ||
-           (header && file == Family::CXX && command == Family::CUDA);
-}
-
-const Candidate* compatible_command(Workspace& workspace,
-                                    Family family,
-                                    bool header,
-                                    Fid unit,
-                                    llvm::ArrayRef<Candidate> commands) {
-    if(family == Family::Any) {
-        return commands.empty() ? nullptr : &commands.front();
-    }
-    auto it = llvm::find_if(commands, [&](const Candidate& command) {
-        return compatible(family, family_of_command(effective(workspace, unit, command)), header);
-    });
-    return it == commands.end() ? nullptr : &*it;
+bool compatible(Language file, Language command, bool header) {
+    return file == Language::Any || file == command ||
+           (header && file == Language::CXX && command == Language::CUDA);
 }
 
 std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {
@@ -105,42 +80,37 @@ std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {
     return common;
 }
 
-/// The lenders whose command's header search directories contain `dir`,
-/// nearest directory first, by path and command within one.
-llvm::SmallVector<Lender> lenders_searching(Workspace& workspace, llvm::StringRef dir) {
-    auto& index = workspace.search_dir_lenders;
-    if(workspace.search_dir_lenders_epoch != workspace.commands_epoch) {
-        index.clear();
-        for(auto member: workspace.build.members()) {
-            for(auto& command: workspace.build.commands(member)) {
-                auto ref = effective(workspace, member, command);
-                for(auto& search_dir: workspace.cdb.search_config(ref).dirs) {
-                    auto canonical = search_dir.path;
-                    path::canonicalize(canonical);
-                    auto& bucket = index[canonical];
-                    if(!llvm::is_contained(bucket, std::pair(member, command.config))) {
-                        bucket.emplace_back(member, command.config);
-                    }
-                }
-            }
-        }
-        for(auto& bucket: index) {
-            std::ranges::sort(bucket.getValue(), {}, [&](const std::pair<Fid, ConfigID>& lender) {
-                return std::tuple(workspace.file_table.resolve(lender.first), lender.second);
-            });
-        }
-        workspace.search_dir_lenders_epoch = workspace.commands_epoch;
+const LenderIndex& lender_index(Workspace& workspace) {
+    auto& index = workspace.lenders;
+    if(index.epoch == workspace.commands_epoch) {
+        return index;
     }
-    llvm::SmallVector<Lender> lenders;
-    path::walk_ancestors(dir, "", [&](llvm::StringRef ancestor) {
-        if(auto it = index.find(ancestor); it != index.end()) {
-            for(auto& [unit, config]: it->second) {
-                lenders.push_back({.unit = unit, .config = config});
+    index.commands.clear();
+    index.search_dirs.clear();
+    auto members = workspace.build.members();
+    std::ranges::sort(members, {}, [&](Fid unit) { return workspace.file_table.resolve(unit); });
+    for(auto member: members) {
+        // A member a rule claims with a default command that is no compile
+        // command has none; a listed unit deleted from disk lends nothing.
+        if(!llvm::sys::fs::exists(workspace.file_table.resolve(member))) {
+            continue;
+        }
+        for(auto& command: workspace.build.commands(member)) {
+            auto ref = effective(workspace, member, command);
+            auto position = static_cast<std::uint32_t>(index.commands.size());
+            index.commands.push_back({
+                .lender = {.unit = member, .config = command.config},
+                .family = family_of_command(ref)
+            });
+            for(auto& search_dir: workspace.cdb.search_config(ref).dirs) {
+                auto canonical = search_dir.path;
+                path::canonicalize(canonical);
+                index.search_dirs[canonical].push_back(position);
             }
         }
-        return true;
-    });
-    return lenders;
+    }
+    index.epoch = workspace.commands_epoch;
+    return index;
 }
 
 }  // namespace
@@ -152,14 +122,16 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
     bool header = header_suffix(path);
     auto dir = path::parent_path(path);
     auto stem = path::stem(path);
+    auto& index = lender_index(workspace);
+    auto fits = [&](const LenderIndex::Command& command) {
+        return compatible(family, command.family, header);
+    };
 
-    // Every unit with a command of the family; a member a rule claims with
-    // a default command that is no compile command has none.
+    // Every unit with its first command of the family, in path order.
     llvm::SmallVector<Lender> units;
-    for(auto member: workspace.build.members()) {
-        auto commands = workspace.build.commands(member);
-        if(auto* command = compatible_command(workspace, family, header, member, commands)) {
-            units.push_back({.unit = member, .config = command->config});
+    for(auto& command: index.commands) {
+        if(fits(command) && (units.empty() || units.back().unit != command.lender.unit)) {
+            units.push_back(command.lender);
         }
     }
     if(units.empty()) {
@@ -180,20 +152,22 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
 
     // A header some command's header search reaches: that unit's code
     // finds it by that path, so the command is the one the header is
-    // written for.
+    // written for. Nearest directory first, by path and command within.
     if(header) {
-        for(auto& lender: lenders_searching(workspace, dir)) {
-            auto commands = workspace.build.commands(lender.unit);
-            auto command = llvm::find_if(commands, [&](const Candidate& candidate) {
-                return candidate.config == lender.config;
-            });
-            if(command != commands.end() && compatible_command(workspace,
-                                                               family,
-                                                               header,
-                                                               lender.unit,
-                                                               llvm::ArrayRef(*command))) {
-                return lender;
+        std::optional<Lender> found;
+        path::walk_ancestors(dir, "", [&](llvm::StringRef ancestor) {
+            if(auto it = index.search_dirs.find(ancestor); it != index.search_dirs.end()) {
+                for(auto position: it->second) {
+                    if(fits(index.commands[position])) {
+                        found = index.commands[position].lender;
+                        return false;
+                    }
+                }
             }
+            return true;
+        });
+        if(found) {
+            return found;
         }
     }
 
@@ -216,11 +190,11 @@ llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header) {
     llvm::SmallVector<Fid> hosts;
     for(auto candidate: workspace.dep_graph.find_host_sources(header)) {
         auto commands = workspace.build.commands(candidate);
-        if(compatible_command(workspace,
-                              family,
-                              /*header=*/true,
-                              candidate,
-                              llvm::ArrayRef(commands).take_front(1))) {
+        if(!commands.empty() &&
+           (family == Language::Any ||
+            compatible(family,
+                       family_of_command(effective(workspace, candidate, commands.front())),
+                       /*header=*/true))) {
             hosts.push_back(candidate);
         }
     }

@@ -365,6 +365,13 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 workspace.dep_graph.clear_includes(path_id);
                 rebuild_reverse_map = true;
                 workspace.context_epoch += 1;
+                // A deleted unit lends nothing: its borrowers pick anew.
+                workspace.commands_epoch += 1;
+                for(auto guessed: contexts.guessed_commands) {
+                    if(store.find(guessed)) {
+                        dirty.mark_ast_dirty.push_back(guessed);
+                    }
+                }
                 // Contexts hosted by (or chained through) the removed file
                 // are cleaned by the resolver's orphan pass.
                 dirty.recheck_contexts = true;
