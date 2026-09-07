@@ -35,6 +35,9 @@ Language family_of_suffix(llvm::StringRef path) {
     if(types::isCuda(type)) {
         return Language::CUDA;
     }
+    if(types::isObjC(type)) {
+        return types::isCXX(type) ? Language::ObjCXX : Language::ObjC;
+    }
     if(types::isCXX(type)) {
         return Language::CXX;
     }
@@ -48,10 +51,13 @@ Language family_of_command(const CommandRef& command) {
     if(language.contains("cuda")) {
         return Language::CUDA;
     }
+    if(language.starts_with("objective-c")) {
+        return language.contains("c++") ? Language::ObjCXX : Language::ObjC;
+    }
     if(language.contains("c++")) {
         return Language::CXX;
     }
-    if(language.starts_with("c") || language.starts_with("objective-c")) {
+    if(language.starts_with("c")) {
         return Language::C;
     }
     return Language::Other;
@@ -63,12 +69,14 @@ CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
 }
 
 /// Whether a file of `family` can be part of a command's translation
-/// unit. A CUDA unit is C++ with device code, so a C++ header fits it (a
-/// `.cuh` needs CUDA itself); a C++ source borrowing a CUDA command would
-/// compile as CUDA, so only headers get that latitude.
+/// unit. CUDA and Objective-C++ units are C++ with more, so a C++ header
+/// fits them (a `.cuh` or `.mm` needs its own); a C++ source borrowing
+/// such a command would compile as that language, so only headers get
+/// that latitude.
 bool compatible(Language file, Language command, bool header) {
     return file == Language::Any || file == command ||
-           (header && file == Language::CXX && command == Language::CUDA);
+           (header && file == Language::CXX &&
+            (command == Language::CUDA || command == Language::ObjCXX));
 }
 
 std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {
@@ -87,12 +95,14 @@ const LenderIndex& lender_index(Workspace& workspace) {
     }
     index.commands.clear();
     index.search_dirs.clear();
+    index.missing.clear();
     auto members = workspace.build.members();
     std::ranges::sort(members, {}, [&](Fid unit) { return workspace.file_table.resolve(unit); });
     for(auto member: members) {
         // A member a rule claims with a default command that is no compile
         // command has none; a listed unit deleted from disk lends nothing.
         if(!llvm::sys::fs::exists(workspace.file_table.resolve(member))) {
+            index.missing.insert(member);
             continue;
         }
         for(auto& command: workspace.build.commands(member)) {

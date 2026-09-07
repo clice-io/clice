@@ -221,6 +221,33 @@ llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspa
     return found;
 }
 
+llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_root,
+                                                      llvm::StringRef cache_dir) {
+    llvm::SmallVector<std::string> found;
+    std::error_code ec;
+    for(llvm::sys::fs::recursive_directory_iterator
+            it(workspace_root, ec, /*follow_symlinks=*/false),
+        end;
+        it != end;
+        it.increment(ec)) {
+        if(ec) {
+            LOG_WARN("Cannot read a directory under {}: {}", workspace_root, ec.message());
+            ec.clear();
+            continue;
+        }
+        llvm::SmallString<256> storage;
+        auto entry_path = path::canonical(it->path(), storage);
+        if(it->type() == llvm::sys::fs::file_type::directory_file) {
+            if(path::filename(entry_path) == ".git" || entry_path == cache_dir) {
+                it.no_push();
+            }
+        } else if(path::filename(entry_path) == "compile_commands.json") {
+            found.push_back(entry_path.str());
+        }
+    }
+    return found;
+}
+
 llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
                                                       llvm::StringRef workspace_root) {
     llvm::SmallVector<std::string> found;

@@ -67,11 +67,16 @@ BuildLoad load_build(Workspace& workspace,
 /// `read_only_index` loads the persisted index without queueing any
 /// reconciliation or sweep writes, so a later save commits nothing — for
 /// runs whose product must not touch the index (plain `clice lint`).
+///
+/// `nearby` joins the persisted index's remembered databases as the ones
+/// discovery would only meet later (see load_build): the batch commands
+/// pass what compile_commands_below finds.
 BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     IndexStore& store,
                                     IndexPump& pump,
                                     llvm::StringRef root,
                                     llvm::StringRef requested_configuration,
-                                    bool read_only_index = false);
+                                    bool read_only_index = false,
+                                    llvm::ArrayRef<std::string> nearby = {});
 
 }  // namespace clice

@@ -300,6 +300,16 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
             case FileEvent::Kind::DiskChanged: {
                 auto path_id = event.path_id;
+                if(workspace.lenders.missing.contains(path_id)) {
+                    // A unit back on disk lends again: its would-be
+                    // borrowers pick anew.
+                    workspace.commands_epoch += 1;
+                    for(auto guessed: contexts.guessed_commands) {
+                        if(store.find(guessed)) {
+                            dirty.mark_ast_dirty.push_back(guessed);
+                        }
+                    }
+                }
                 if(store.find(path_id)) {
                     // Open file: the buffer is the truth, so no disk rescan —
                     // what the disk change means for this file is decided by

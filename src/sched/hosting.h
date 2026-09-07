@@ -7,6 +7,7 @@
 #include "command/command.h"
 #include "vfs/file_table.h"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 
@@ -35,6 +36,8 @@ enum class Language : std::uint8_t {
     Any,
     C,
     CXX,
+    ObjC,
+    ObjCXX,
     CUDA,
     Other,
 };
@@ -57,6 +60,9 @@ struct LenderIndex {
 
     llvm::SmallVector<Command> commands;
     llvm::StringMap<llvm::SmallVector<std::uint32_t>> search_dirs;
+    /// The members left out for being absent from disk; one of them
+    /// reappearing changes the lender set (see Workspace::commands_epoch).
+    llvm::DenseSet<Fid> missing;
     std::uint64_t epoch = 0;
 };
 

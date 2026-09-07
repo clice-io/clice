@@ -21,7 +21,8 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     IndexPump& pump,
                                     llvm::StringRef root,
                                     llvm::StringRef requested_configuration,
-                                    bool read_only_index) {
+                                    bool read_only_index,
+                                    llvm::ArrayRef<std::string> nearby) {
     BootstrapReport report;
     auto& cfg = workspace.config.project;
     auto configuration = resolve_configuration(workspace.config, requested_configuration);
@@ -68,7 +69,9 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
         }
     }
 
-    auto load = load_build(workspace, root, configuration, store.remembered_sources());
+    auto remembered = store.remembered_sources();
+    remembered.insert(remembered.end(), nearby.begin(), nearby.end());
+    auto load = load_build(workspace, root, configuration, remembered);
     report.has_commands = !load.members.empty() || workspace.build.declares_sources();
     report.members = std::move(load.members);
     // Persisted index shards are CDB-independent; they load even with no

@@ -4,6 +4,7 @@
 /// borrows a nearby unit's command.
 
 import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
@@ -225,6 +226,18 @@ test("inspect loads the databases above its inputs", () => {
         expect(output.files[file], file).toBeDefined();
         expect(output.files[file]?.diagnostics ?? [], file).toEqual([]);
     }
+});
+
+test("batch indexing finds nested projects", ({ session }) => {
+    const workspace = session.tmpdir();
+    fs.cpSync(path.join(DATA_DIR, "cdb", "nested_projects"), workspace.root, { recursive: true });
+    const run = spawnSync(
+        cliceExecutable(),
+        ["index", "--workspace", workspace.root, "--workers", "2"],
+        { encoding: "utf8", timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+    );
+    expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+    expect(run.stdout).toContain("Indexed 3 translation units in");
 });
 
 test("header hosts match the language", async ({ session }) => {

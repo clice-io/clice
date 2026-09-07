@@ -374,6 +374,12 @@ struct Workspace {
 /// its CDB poll.
 llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspace_root);
 
+/// Every `compile_commands.json` under `workspace_root` (`.git` and the
+/// cache directory skipped): what the one-shot batch commands, which
+/// open no file, discover instead of waiting for a didOpen.
+llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_root,
+                                                      llvm::StringRef cache_dir);
+
 /// The `compile_commands.json` files in `start` and its ancestors up to
 /// `workspace_root`, nearest first: the databases a file deeper in the
 /// tree than startup discovery looks may compile from.

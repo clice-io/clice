@@ -205,7 +205,38 @@ TEST_CASE(LenderSkipsDeleted) {
     }
     auto header = workspace.file_table.intern(tmp.path("src/x.h"));
     auto lib = workspace.file_table.intern(tmp.path("far/lib.cpp"));
+    auto gone = workspace.file_table.intern(tmp.path("src/gone.cpp"));
     EXPECT_EQ(command_lender(workspace, header)->unit, lib);
+    EXPECT_TRUE(workspace.lenders.missing.contains(gone));
+
+    /// Back on disk, it lends once the lender set is known to have changed.
+    tmp.touch("src/gone.cpp", "");
+    workspace.commands_epoch += 1;
+    EXPECT_EQ(command_lender(workspace, header)->unit, gone);
+};
+
+TEST_CASE(LenderKeepsObjC) {
+    /// Objective-C is its own family: a `.m` never borrows a C command,
+    /// and a `.mm` unit hosts a C++ header the way a CUDA one does.
+    TempDir tmp;
+    tmp.touch("src/plain.c", "");
+    tmp.touch("src/impl.mm", "");
+    tmp.touch("src/x.hpp", "");
+    Workspace workspace;
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"src/*.c"}, .default_command = std::string("clang")});
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"src/*.mm"}, .default_command = std::string("clang++")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    auto objc = workspace.file_table.intern(tmp.path("src/new.m"));
+    auto impl = workspace.file_table.intern(tmp.path("src/impl.mm"));
+    auto hpp = workspace.file_table.intern(tmp.path("src/x.hpp"));
+    EXPECT_FALSE(command_lender(workspace, objc).has_value());
+    EXPECT_EQ(command_lender(workspace, hpp)->unit, impl);
+    workspace.dep_graph.set_includes(impl, 0, {{hpp}});
+    workspace.dep_graph.build_reverse_map();
+    EXPECT_EQ(ranked_hosts(workspace, hpp), llvm::SmallVector<Fid>{impl});
 };
 
 TEST_CASE(LenderIgnoresCommandless) {

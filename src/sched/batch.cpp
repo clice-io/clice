@@ -196,11 +196,14 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
     workspace.config.project.enable_indexing.value = true;
 
-    auto report = bootstrap_workspace(workspace,
-                                      stack.store,
-                                      stack.pump,
-                                      options.root,
-                                      options.configuration);
+    auto report = bootstrap_workspace(
+        workspace,
+        stack.store,
+        stack.pump,
+        options.root,
+        options.configuration,
+        /*read_only_index=*/false,
+        compile_commands_below(options.root, workspace.config.project.cache_dir));
 
     // The command's whole product is the persisted index: without storage
     // (cache failed to open, another process holds the index writer lock,
@@ -375,12 +378,14 @@ kota::task<> run_lint(BatchStack& stack,
     }
     workspace.config.project.enable_indexing.value = false;
 
-    auto report = bootstrap_workspace(workspace,
-                                      stack.store,
-                                      stack.pump,
-                                      options.root,
-                                      options.configuration,
-                                      /*read_only_index=*/!options.with_index);
+    auto report = bootstrap_workspace(
+        workspace,
+        stack.store,
+        stack.pump,
+        options.root,
+        options.configuration,
+        /*read_only_index=*/!options.with_index,
+        compile_commands_below(options.root, workspace.config.project.cache_dir));
 
     auto& members = report.members;
     if(members.empty()) {
