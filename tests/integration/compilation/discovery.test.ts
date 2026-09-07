@@ -6,6 +6,7 @@
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
 import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
+import { DATA_DIR } from "@clice/tools/compile-commands";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 function gated(macro: string): string {
@@ -206,6 +207,23 @@ test("inspect borrows the same way", ({ session }) => {
         files: Record<string, { diagnostics?: string[] | null }>;
     };
     expect(Object.values(output.files).flatMap((file) => file.diagnostics ?? [])).toEqual([]);
+});
+
+test("inspect loads the databases above its inputs", () => {
+    // A directory inspection meets the nested projects' databases the way
+    // opening their files would.
+    const run = spawnSync(
+        cliceExecutable(),
+        ["inspect", "hover", path.join(DATA_DIR, "cdb", "nested_projects")],
+        { encoding: "utf8", timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+    );
+    expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+    const output = JSON.parse(run.stdout) as {
+        files: Record<string, { diagnostics?: string[] | null }>;
+    };
+    for (const file of ["group-a/p1/main.cpp", "group-a/p2/main.cpp"]) {
+        expect(output.files[file]?.diagnostics ?? [], file).toEqual([]);
+    }
 });
 
 test("header hosts match the language", async ({ session }) => {

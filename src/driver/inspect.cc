@@ -723,7 +723,20 @@ int run_inspect(const InspectOptions& opts) {
         if(!check_requested_configuration(workspace.config, requested)) {
             return 1;
         }
-        load_build(workspace, root, resolve_configuration(workspace.config, requested));
+        // What the server discovers when a file is opened: the databases
+        // between each inspected file and the root.
+        llvm::StringSet<> directories;
+        llvm::SmallVector<std::string> nearby;
+        for(auto& [rel, abs]: files) {
+            if(directories.insert(path::parent_path(abs)).second) {
+                for(auto& database: compile_commands_above(path::parent_path(abs), root)) {
+                    if(!llvm::is_contained(nearby, database)) {
+                        nearby.push_back(database);
+                    }
+                }
+            }
+        }
+        load_build(workspace, root, resolve_configuration(workspace.config, requested), nearby);
     }
 
     // Directory mode covers what the build compiles under the tree, not only

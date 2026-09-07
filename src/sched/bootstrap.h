@@ -42,15 +42,17 @@ struct BuildLoad {
 /// Activate the build `configuration` (resolved, see
 /// resolve_configuration), register and load the build's sources — the
 /// databases the rules declare (existing or not; the tracker watches for
-/// them), else the ones discovered under `root` plus the `remembered`
-/// ones (the persisted index's, see IndexStore::remembered_sources) still
-/// there — then enumerate the build's members and scan the dependency
-/// graph from them. The workspace's configuration is final. The one
-/// loading path of the server, the batch driver and `clice inspect`.
+/// them), else the ones discovered under `root` plus `nearby`, the ones
+/// discovery would only meet later: the persisted index's (see
+/// IndexStore::remembered_sources) for the server, those above the
+/// inspected files for `clice inspect` (see compile_commands_above) —
+/// then enumerate the build's members and scan the dependency graph from
+/// them. The workspace's configuration is final. The one loading path of
+/// the server, the batch driver and `clice inspect`.
 BuildLoad load_build(Workspace& workspace,
                      llvm::StringRef root,
                      llvm::StringRef configuration,
-                     llvm::ArrayRef<std::string> remembered = {});
+                     llvm::ArrayRef<std::string> nearby = {});
 
 /// The one workspace loading sequence, shared by the server's initialize
 /// and the batch driver so the two can never drift apart: resolve the

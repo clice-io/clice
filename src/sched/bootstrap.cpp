@@ -94,7 +94,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
 BuildLoad load_build(Workspace& workspace,
                      llvm::StringRef root,
                      llvm::StringRef configuration,
-                     llvm::ArrayRef<std::string> remembered) {
+                     llvm::ArrayRef<std::string> nearby) {
     BuildLoad load;
     workspace.cdb.set_workspace_root(root);
     workspace.build.reset_active(configuration);
@@ -113,7 +113,7 @@ BuildLoad load_build(Workspace& workspace,
         // registration order — which the persisted command sequences
         // follow — does not depend on the order files were opened in.
         auto stable =
-            llvm::to_vector(llvm::make_filter_range(remembered, [&](const std::string& source) {
+            llvm::to_vector(llvm::make_filter_range(nearby, [&](const std::string& source) {
                 return path::under(source, root) && !llvm::is_contained(paths, source);
             }));
         std::ranges::sort(stable, {}, [](const std::string& source) {
