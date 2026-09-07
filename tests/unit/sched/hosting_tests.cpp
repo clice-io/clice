@@ -135,6 +135,17 @@ TEST_CASE(HostsMatchLanguage) {
     auto gpu_source = workspace.file_table.intern(tmp.path("gpu/new.cpp"));
     EXPECT_EQ(command_lender(workspace, gpu_header)->unit, kernel);
     EXPECT_FALSE(command_lender(workspace, gpu_source).has_value());
+
+    /// HIP is the same family.
+    tmp.touch("hip/kernel.hip", "");
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"hip/**"}, .default_command = std::string("clang++ -x hip")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    workspace.commands_epoch += 1;
+    auto hip = workspace.file_table.intern(tmp.path("hip/kernel.hip"));
+    auto hip_header = workspace.file_table.intern(tmp.path("hip/new.hpp"));
+    EXPECT_EQ(command_lender(workspace, hip_header)->unit, hip);
 };
 
 TEST_CASE(LenderSibling) {

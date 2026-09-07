@@ -24,7 +24,8 @@ struct Host {
 
 /// The translation units that can stand in for `header` — its includers
 /// the build compiles in a language the header can be part of (a `.h`
-/// in any, a `.hpp` in C++ or CUDA, a `.cuh` only in CUDA) — best first: units whose entries come
+/// in any, a `.hpp` in C++, CUDA, HIP or Objective-C++, a `.cuh` only in
+/// CUDA) — best first: units whose entries come
 /// from the databases the header's own rules name, then the unit sharing
 /// the header's stem, its directory, and path proximity.
 llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header);
@@ -38,7 +39,8 @@ enum class Language : std::uint8_t {
     CXX,
     ObjC,
     ObjCXX,
-    CUDA,
+    /// CUDA and HIP: C++ with device code.
+    Device,
     Other,
 };
 
