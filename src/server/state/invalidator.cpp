@@ -193,7 +193,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
         switch(event.kind) {
             case FileEvent::Kind::BufferOpened: {
                 // Buffer installation itself is SessionStore::apply_open's
-                // job; nothing cross-file to invalidate yet.
+                // job; nothing cross-file to invalidate yet — unless the
+                // file is a unit generated since the lender index skipped it.
+                lender_returned(event.path_id);
                 break;
             }
             case FileEvent::Kind::BufferEdited: {

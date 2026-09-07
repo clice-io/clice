@@ -280,6 +280,32 @@ TEST_CASE(CDBTickRenameOver) {
     }
 }
 
+TEST_CASE(CDBDiscoverRetriesRegistered) {
+    /// A database registered but never loaded — remembered from an earlier
+    /// session, absent at startup — loads when a file under it is opened
+    /// after it appeared.
+    TempDir tmp;
+    tmp.touch("a/main.cpp", R"(int main() {})");
+    Workspace workspace;
+    SessionStore store;
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    auto id = workspace.cdb.add_source(tmp.path("a/compile_commands.json"));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    auto main = workspace.file_table.intern(tmp.path("a/main.cpp"));
+    EXPECT_TRUE(tracker.discover_around(main).empty());
+
+    tmp.touch("a/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("a/main.cpp"), {}}
+    }));
+    auto events = tracker.discover_around(main);
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{main});
+    EXPECT_TRUE(workspace.cdb.loaded(id));
+    EXPECT_TRUE(tracker.discover_around(main).empty());
+}
+
 TEST_CASE(CDBTickDiscoversAround) {
     /// Opening a file registers the databases above it up to the root, at
     /// once; a file with a command, or outside the workspace, registers

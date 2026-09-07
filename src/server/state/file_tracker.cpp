@@ -252,20 +252,25 @@ llvm::SmallVector<FileEvent> FileTracker::discover_around(Fid path_id) {
         return events;
     }
     // One delta for the whole chain: the invalidator rebuilds the graph
-    // per event.
+    // per event. A registered database whose load failed so far (absent
+    // at startup, unreadable at an earlier open) gets another try: with
+    // polling off nothing else would.
     CDBDiff found;
     for(auto& database: compile_commands_above(path::parent_path(path), workspace_root)) {
-        if(workspace.cdb.find_source(database)) {
+        auto registered = workspace.cdb.find_source(database);
+        if(registered && workspace.cdb.loaded(*registered)) {
             continue;
         }
-        auto id = workspace.cdb.add_source(database);
+        auto id = registered ? *registered : workspace.cdb.add_source(database);
         if(auto diff = workspace.cdb.reload_and_diff(id)) {
             LOG_INFO("Found compilation database: {}", database);
             found.added.append(diff->added);
             found.removed.append(diff->removed);
             found.changed.append(diff->changed);
         }
-        track(id);
+        if(!registered) {
+            track(id);
+        }
     }
     push_delta(found, events);
     return events;
