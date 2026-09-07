@@ -70,6 +70,28 @@ static void push_delta(const CDBDiff& diff, llvm::SmallVectorImpl<FileEvent>& ev
     events.push_back(FileEvent::cdb_changed(std::move(delta)));
 }
 
+void FileTracker::seed(Fid path_id) {
+    if(baseline.contains(path_id)) {
+        return;
+    }
+    auto path = workspace.file_table.resolve(path_id);
+    llvm::sys::fs::file_status status;
+    FileState state;
+    state.missing = llvm::sys::fs::status(path, status).value() != 0;
+    if(!state.missing) {
+        auto obs = workspace.file_table.observe_for(path_id, status);
+        if(!obs) {
+            return;
+        }
+        state.size = obs->size;
+        state.mtime_ns = obs->mtime_ns;
+        state.hash = obs->hash;
+        state.uid_device = obs->uid_device;
+        state.uid_file = obs->uid_file;
+    }
+    baseline.try_emplace(path_id, state);
+}
+
 void FileTracker::track(SourceID id) {
     // A source whose startup load failed (unreadable, mid-rewrite) stays
     // baselined as missing, so the next tick reloads it even when its
@@ -199,6 +221,9 @@ void FileTracker::tick_source(TrackedSource& tracked,
              diff->added.size(),
              diff->removed.size(),
              diff->changed.size());
+    for(auto file: diff->added) {
+        seed(file);
+    }
     if(auto responses = workspace.cdb.response_files(tracked.id).size();
        responses > watched_responses) {
         LOG_INFO(
@@ -272,6 +297,9 @@ llvm::SmallVector<FileEvent> FileTracker::discover_around(Fid path_id) {
             track(id);
         }
     }
+    for(auto file: found.added) {
+        seed(file);
+    }
     push_delta(found, events);
     return events;
 }
@@ -336,25 +364,11 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
 
             auto it = baseline.find(path_id);
             if(it == baseline.end()) {
-                // First sight seeds the baseline silently. The startup
-                // scan usually observed the file already, so the common
-                // seed is a shared-pair hit with no second read.
-                FileState state;
-                state.missing = !exists;
-                if(exists) {
-                    auto obs = workspace.file_table.observe_for(path_id, status);
-                    if(!obs) {
-                        // Unreadable right now: don't seed a baseline that
-                        // would later compare as a change. Retry next tick.
-                        continue;
-                    }
-                    state.size = obs->size;
-                    state.mtime_ns = obs->mtime_ns;
-                    state.hash = obs->hash;
-                    state.uid_device = obs->uid_device;
-                    state.uid_file = obs->uid_file;
-                }
-                baseline.try_emplace(path_id, state);
+                // First sight seeds the baseline silently (an unreadable
+                // file waits for the next tick). The startup scan usually
+                // observed the file already, so the common seed is a
+                // shared-pair hit with no second read.
+                seed(path_id);
                 continue;
             }
 
@@ -418,6 +432,10 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     // same gain of a command a database reload reports as added. One
     // deleted leaves through DiskRemoved, but no longer lends.
     auto refresh = workspace.build.refresh_default_sources();
+    // One a database still lists keeps its command; only its removal
+    // from disk (DiskRemoved) is news.
+    llvm::erase_if(refresh.vanished,
+                   [&](Fid file) { return !workspace.build.commands(file).empty(); });
     push_delta({.added = std::move(refresh.appeared), .removed = std::move(refresh.vanished)},
                events);
 

@@ -39,8 +39,8 @@ enum class Language : std::uint8_t {
     CXX,
     ObjC,
     ObjCXX,
-    /// CUDA and HIP: C++ with device code.
-    Device,
+    CUDA,
+    HIP,
     Other,
 };
 

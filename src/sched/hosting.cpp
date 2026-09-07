@@ -26,14 +26,17 @@ bool header_suffix(llvm::StringRef path) {
 Language family_of_suffix(llvm::StringRef path) {
     namespace types = clang::driver::types;
     if(path::extension(path) == ".cuh") {
-        return Language::Device;
+        return Language::CUDA;
     }
     auto type = suffix_type(path);
     if(type == types::TY_INVALID || type == types::TY_CHeader) {
         return Language::Any;
     }
-    if(types::isCuda(type) || types::isHIP(type)) {
-        return Language::Device;
+    if(types::isCuda(type)) {
+        return Language::CUDA;
+    }
+    if(types::isHIP(type)) {
+        return Language::HIP;
     }
     if(types::isObjC(type)) {
         return types::isCXX(type) ? Language::ObjCXX : Language::ObjC;
@@ -50,8 +53,11 @@ Language family_of_suffix(llvm::StringRef path) {
 /// it as — a `-x` in the entry or a rule's append included.
 Language family_of_command(const CommandRef& command) {
     llvm::StringRef language = command.input.value;
-    if(language.contains("cuda") || language.contains("hip")) {
-        return Language::Device;
+    if(language.contains("cuda")) {
+        return Language::CUDA;
+    }
+    if(language.contains("hip")) {
+        return Language::HIP;
     }
     if(language.starts_with("objective-c")) {
         return language.contains("c++") ? Language::ObjCXX : Language::ObjC;
@@ -78,7 +84,7 @@ CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
 bool compatible(Language file, Language command, bool header) {
     return file == Language::Any || file == command ||
            (header && file == Language::CXX &&
-            (command == Language::Device || command == Language::ObjCXX));
+            (command == Language::CUDA || command == Language::HIP || command == Language::ObjCXX));
 }
 
 std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {

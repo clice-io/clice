@@ -128,6 +128,12 @@ private:
     /// Register `id` for watching, baselined at its current stamp.
     void track(SourceID id);
 
+    /// Seed the sweep baseline of `path_id` at its current content, unless
+    /// it has one; a file a database load just added to the graph would
+    /// otherwise be seeded at whatever the first sweep finds, an edit in
+    /// between silently taken as the original.
+    void seed(Fid path_id);
+
     /// Tick one source; the reload's events, if any.
     void tick_source(TrackedSource& tracked, bool force, llvm::SmallVectorImpl<FileEvent>& events);
 

@@ -150,7 +150,10 @@ TEST_CASE(HostsMatchLanguage) {
     workspace.commands_epoch += 1;
     auto hip = workspace.file_table.intern(tmp.path("hip/kernel.hip"));
     auto hip_header = workspace.file_table.intern(tmp.path("hip/new.hpp"));
+    auto hip_cuda = workspace.file_table.intern(tmp.path("hip/new.cu"));
     EXPECT_EQ(command_lender(workspace, hip_header)->unit, hip);
+    /// A `.cu` next to the HIP unit borrows the CUDA one further away.
+    EXPECT_EQ(command_lender(workspace, hip_cuda)->unit, kernel);
 };
 
 TEST_CASE(LenderSibling) {

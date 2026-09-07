@@ -444,6 +444,79 @@ TEST_CASE(WorkspaceTickStateMachine) {
     loop.run();
 }
 
+TEST_CASE(WorkspaceTickKeepsListedMember) {
+    /// A unit a database lists and a default command also claims keeps
+    /// its command when deleted: the sweep reports the removal, not a
+    /// lost command.
+    TempDir tmp;
+    tmp.touch("src/both.cpp", R"(int both() {})");
+    kota::event_loop loop;
+    Workspace workspace;
+    SessionStore store;
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("src/both.cpp"), {}}
+    }));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    auto both = workspace.file_table.intern(tmp.path("src/both.cpp"));
+    workspace.dep_graph.set_includes(both, 0, {});
+    workspace.dep_graph.build_reverse_map();
+    auto body = [&]() -> kota::task<> {
+        auto seeded = co_await tracker.tick_workspace();
+        EXPECT_TRUE(seeded.empty());
+        fs::remove_all(tmp.path("src/both.cpp"));
+        auto removed = co_await tracker.tick_workspace();
+        EXPECT_EQ(removed.size(), 1u);
+        if(removed.size() == 1) {
+            EXPECT_EQ(removed[0].kind, FileEvent::Kind::DiskRemoved);
+            EXPECT_EQ(removed[0].path_id, both);
+        }
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+}
+
+TEST_CASE(DiscoverySeedsBaseline) {
+    /// A file a discovered database adds is baselined at the content the
+    /// graph was scanned from, so an edit before the first sweep is seen.
+    TempDir tmp;
+    tmp.touch("a/main.cpp", R"(int main() {})");
+    tmp.touch("a/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("a/main.cpp"), {}}
+    }));
+    kota::event_loop loop;
+    Workspace workspace;
+    SessionStore store;
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    auto main = workspace.file_table.intern(tmp.path("a/main.cpp"));
+    EXPECT_EQ(tracker.discover_around(main).size(), 1u);
+    // What the invalidator's rescan of the delta does: the unit joins the
+    // graph the sweep walks.
+    workspace.dep_graph.set_includes(main, 0, {});
+    workspace.dep_graph.build_reverse_map();
+    tmp.touch("a/main.cpp", R"(int main() { return 1; })");
+    auto body = [&]() -> kota::task<> {
+        auto changed = co_await tracker.tick_workspace();
+        EXPECT_EQ(changed.size(), 1u);
+        if(changed.size() == 1) {
+            EXPECT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
+            EXPECT_EQ(changed[0].path_id, main);
+        }
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+}
+
 TEST_CASE(WorkspaceTickSkipsOpen) {
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
