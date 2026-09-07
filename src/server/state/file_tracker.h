@@ -135,8 +135,8 @@ private:
     llvm::SmallVector<Fid> shared_files(SourceID id) const;
 
     /// The source of each file's default entry, as the build ranks them
-    /// now.
-    llvm::SmallVector<SourceID> default_sources(llvm::ArrayRef<Fid> files) const;
+    /// now; none for a file the build no longer compiles.
+    llvm::SmallVector<std::optional<SourceID>> default_sources(llvm::ArrayRef<Fid> files) const;
 
     constexpr static std::size_t watched_responses = 64;
 

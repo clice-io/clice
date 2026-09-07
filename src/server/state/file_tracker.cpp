@@ -77,6 +77,9 @@ void FileTracker::track(SourceID id) {
     TrackedSource tracked{.id = id};
     if(workspace.cdb.loaded(id)) {
         tracked.applied = stat_source(id);
+        // Loaded, then deleted before this baseline: the load marked it
+        // present, and an unchanged missing stamp would never correct it.
+        workspace.cdb.set_present(id, tracked.applied.database.exists);
     }
     sources.push_back(std::move(tracked));
 }
@@ -97,17 +100,22 @@ llvm::SmallVector<Fid> FileTracker::shared_files(SourceID id) const {
     return shared;
 }
 
-llvm::SmallVector<SourceID> FileTracker::default_sources(llvm::ArrayRef<Fid> files) const {
-    return llvm::to_vector(llvm::map_range(files, [&](Fid file) {
-        return workspace.build.entries(file).front().source;
+llvm::SmallVector<std::optional<SourceID>>
+    FileTracker::default_sources(llvm::ArrayRef<Fid> files) const {
+    return llvm::to_vector(llvm::map_range(files, [&](Fid file) -> std::optional<SourceID> {
+        auto entries = workspace.build.entries(file);
+        if(entries.empty()) {
+            return std::nullopt;
+        }
+        return entries.front().source;
     }));
 }
 
 /// The files whose default entry moved between two rankings, into
 /// `changed`.
 static void push_moved(llvm::ArrayRef<Fid> files,
-                       llvm::ArrayRef<SourceID> before,
-                       llvm::ArrayRef<SourceID> after,
+                       llvm::ArrayRef<std::optional<SourceID>> before,
+                       llvm::ArrayRef<std::optional<SourceID>> after,
                        llvm::SmallVectorImpl<Fid>& changed) {
     for(auto [file, was, now]: llvm::zip(files, before, after)) {
         if(was != now && !llvm::is_contained(changed, file)) {
@@ -142,7 +150,7 @@ void FileTracker::tick_source(TrackedSource& tracked,
     bool flips = tracked.applied.database.exists != current.database.exists &&
                  workspace.build.discovered(tracked.id);
     llvm::SmallVector<Fid> shared;
-    llvm::SmallVector<SourceID> before;
+    llvm::SmallVector<std::optional<SourceID>> before;
     if(flips) {
         shared = shared_files(tracked.id);
         before = default_sources(shared);

@@ -73,6 +73,14 @@ CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
 
 /// The first of the unit's commands compiling it in the file's family —
 /// any when the file's suffix does not say — or none.
+/// Whether a file of `family` can be part of a command's translation
+/// unit: a CUDA unit is C++ with device code, so a C++ header fits it; a
+/// `.cuh` needs CUDA itself.
+bool compatible(Family file, Family command) {
+    return file == Family::Any || file == command ||
+           (file == Family::CXX && command == Family::CUDA);
+}
+
 const Candidate* compatible_command(Workspace& workspace,
                                     Family family,
                                     Fid unit,
@@ -81,7 +89,7 @@ const Candidate* compatible_command(Workspace& workspace,
         return commands.empty() ? nullptr : &commands.front();
     }
     auto it = llvm::find_if(commands, [&](const Candidate& command) {
-        return family_of_command(effective(workspace, unit, command)) == family;
+        return compatible(family, family_of_command(effective(workspace, unit, command)));
     });
     return it == commands.end() ? nullptr : &*it;
 }

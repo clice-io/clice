@@ -192,6 +192,26 @@ TEST_CASE(CDBTickRelocates) {
     EXPECT_EQ(workspace.build.entries(main_id).size(), 2u);
 }
 
+TEST_CASE(CDBBaselineSyncsPresence) {
+    /// A database loaded, then deleted before the tracker baselines it, is
+    /// absent from the start — its unchanged missing stamp never says so.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    Workspace workspace;
+    SessionStore store;
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    auto id = *workspace.cdb.find_source(tmp.path("compile_commands.json"));
+    ASSERT_TRUE(workspace.cdb.present(id));
+    fs::remove_all(tmp.path("compile_commands.json"));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    EXPECT_FALSE(workspace.cdb.present(id));
+    EXPECT_TRUE(tracker.tick_cdb().empty());
+}
+
 TEST_CASE(CDBTickRenameOver) {
     /// A same-size rewrite renamed over the database within one mtime
     /// tick is a new file: an ordinary tick sees it where stable file

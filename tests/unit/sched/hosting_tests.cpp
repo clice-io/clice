@@ -117,6 +117,16 @@ TEST_CASE(HostsMatchLanguage) {
 
     EXPECT_TRUE(ranked_hosts(workspace, hpp).empty());
     EXPECT_EQ(ranked_hosts(workspace, plain), llvm::SmallVector<Fid>{impl});
+
+    /// A CUDA unit is C++ with device code: it hosts a C++ header.
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    auto kernel = workspace.file_table.intern(tmp.path("gpu/kernel.cu"));
+    workspace.dep_graph.set_includes(kernel, 0, {{hpp}});
+    workspace.dep_graph.build_reverse_map();
+    EXPECT_EQ(ranked_hosts(workspace, hpp), llvm::SmallVector<Fid>{kernel});
 };
 
 TEST_CASE(LenderSibling) {
