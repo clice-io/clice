@@ -667,10 +667,16 @@ int run_inspect(const InspectOptions& opts) {
 
     /// (rel key, absolute path) per file, sorted by the map later.
     std::vector<std::pair<std::string, std::string>> files;
+    /// Every directory holding a file, whatever its suffix: a database
+    /// above it may list members the suffix filter does not admit.
+    llvm::StringSet<> directories;
     if(is_dir) {
         std::error_code ec;
         for(llvm::sys::fs::recursive_directory_iterator it(abs_path, ec), end; it != end && !ec;
             it.increment(ec)) {
+            if(it->type() == llvm::sys::fs::file_type::regular_file) {
+                directories.insert(path::parent_path(it->path()));
+            }
             if(!is_c_family_file(it->path())) {
                 continue;
             }
@@ -686,6 +692,7 @@ int run_inspect(const InspectOptions& opts) {
         }
     } else {
         files.emplace_back(path::filename(abs_path).str(), std::string(abs_path));
+        directories.insert(path::parent_path(abs_path));
     }
 
     InspectOutput output;
@@ -724,15 +731,12 @@ int run_inspect(const InspectOptions& opts) {
             return 1;
         }
         // What the server discovers when a file is opened: the databases
-        // between each inspected file and the root.
-        llvm::StringSet<> directories;
+        // between each inspected directory and the root.
         llvm::SmallVector<std::string> nearby;
-        for(auto& [rel, abs]: files) {
-            if(directories.insert(path::parent_path(abs)).second) {
-                for(auto& database: compile_commands_above(path::parent_path(abs), root)) {
-                    if(!llvm::is_contained(nearby, database)) {
-                        nearby.push_back(database);
-                    }
+        for(auto& directory: directories) {
+            for(auto& database: compile_commands_above(directory.getKey(), root)) {
+                if(!llvm::is_contained(nearby, database)) {
+                    nearby.push_back(database);
                 }
             }
         }

@@ -222,6 +222,7 @@ test("inspect loads the databases above its inputs", () => {
         files: Record<string, { diagnostics?: string[] | null }>;
     };
     for (const file of ["group-a/p1/main.cpp", "group-a/p2/main.cpp"]) {
+        expect(output.files[file], file).toBeDefined();
         expect(output.files[file]?.diagnostics ?? [], file).toEqual([]);
     }
 });
