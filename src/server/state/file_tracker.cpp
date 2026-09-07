@@ -121,7 +121,7 @@ void FileTracker::tick_source(TrackedSource& tracked,
                               llvm::SmallVectorImpl<FileEvent>& events) {
     auto current = stat_source(tracked.id);
     if(!force) {
-        if(current == tracked.applied) {
+        if(current == tracked.applied && !tracked.reread) {
             tracked.has_pending = false;
             return;
         }
@@ -172,14 +172,17 @@ void FileTracker::tick_source(TrackedSource& tracked,
         return;
     }
     // The stamps predate the read, so a rewrite landing meanwhile is seen
-    // next tick. A response file this reload first named has no such
-    // stamp: baselined as unknown, it reloads once more after settling,
-    // with one taken before that read.
+    // next tick; a response file this reload first named has none, so the
+    // source reloads once more after settling, with one taken before it.
     tracked.applied = current;
     tracked.applied.responses.clear();
+    tracked.reread = false;
     for(auto& response: workspace.cdb.response_files(tracked.id).take_front(watched_responses)) {
         auto it = known.find(response);
-        tracked.applied.responses.push_back(it != known.end() ? it->second : FileStamp{});
+        if(it == known.end()) {
+            tracked.reread = true;
+        }
+        tracked.applied.responses.push_back(it != known.end() ? it->second : stat_file(response));
     }
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
              workspace.cdb.source_path(tracked.id),
@@ -387,9 +390,8 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     auto refresh = workspace.build.refresh_default_sources();
     if(refresh.vanished || !refresh.appeared.empty()) {
         workspace.commands_epoch += 1;
-    }
-    if(!refresh.appeared.empty()) {
-        push_delta({.added = std::move(refresh.appeared)}, events);
+        // An empty delta still tells the borrowers of a vanished lender.
+        events.push_back(FileEvent::cdb_changed({.added = std::move(refresh.appeared)}));
     }
 
     LOG_PERF("tracker",

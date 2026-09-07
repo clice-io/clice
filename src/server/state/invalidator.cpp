@@ -375,6 +375,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 break;
             }
             case FileEvent::Kind::CDBChanged: {
+                // A borrowed or synthesized command may have a real one now,
+                // or its lender's may have changed or gone — which no delta
+                // can tell, so every change recompiles them.
+                for(auto path_id: contexts.guessed_commands) {
+                    if(store.find(path_id)) {
+                        dirty.mark_ast_dirty.push_back(path_id);
+                    }
+                }
                 auto& delta = event.cdb;
                 if(delta.empty()) {
                     break;
@@ -512,11 +520,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                                      /*retired=*/workspace.build.commands(path_id).empty());
                 }
 
-                for(auto path_id: contexts.guessed_commands) {
-                    if(store.find(path_id)) {
-                        dirty.mark_ast_dirty.push_back(path_id);
-                    }
-                }
                 dirty.recheck_contexts = true;
                 dirty.reschedule_indexing = true;
                 break;

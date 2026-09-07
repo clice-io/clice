@@ -118,6 +118,10 @@ private:
         /// Debounce: the stamp observed on the previous tick, not yet settled.
         SourceStamp pending;
         bool has_pending = false;
+        /// The last reload first named response files, whose stamps could
+        /// only be taken after it read them: reload once more, so a
+        /// rewrite landing in between is not missed.
+        bool reread = false;
     };
 
     /// Register `id` for watching, baselined at its current stamp.
