@@ -41,7 +41,9 @@ Language family_of_suffix(llvm::StringRef path) {
     if(types::isCXX(type)) {
         return Language::CXX;
     }
-    return types::isDerivedFromC(type) ? Language::C : Language::Other;
+    // Only plain C: OpenCL and the other C-derived languages need their
+    // own commands.
+    return type == types::TY_C || type == types::TY_PP_C ? Language::C : Language::Other;
 }
 
 /// The family of a file by the language its effective command compiles
@@ -57,7 +59,7 @@ Language family_of_command(const CommandRef& command) {
     if(language.contains("c++")) {
         return Language::CXX;
     }
-    if(language.starts_with("c")) {
+    if(language == "c" || language == "c-header" || language == "cpp-output") {
         return Language::C;
     }
     return Language::Other;

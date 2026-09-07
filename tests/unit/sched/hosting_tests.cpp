@@ -118,12 +118,17 @@ TEST_CASE(HostsMatchLanguage) {
     EXPECT_TRUE(ranked_hosts(workspace, hpp).empty());
     EXPECT_EQ(ranked_hosts(workspace, plain), llvm::SmallVector<Fid>{impl});
 
+    /// OpenCL is C-derived but not C: a `.cl` borrows no C command.
+    auto kernel_cl = workspace.file_table.intern(tmp.path("c/kernel.cl"));
+    EXPECT_FALSE(command_lender(workspace, kernel_cl).has_value());
+
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
     tmp.touch("gpu/kernel.cu", "");
     workspace.config.rules.push_back(
         ConfigRule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
     workspace.config.finalize(tmp.root.str());
     workspace.build.reset_active("");
+    workspace.commands_epoch += 1;
     auto kernel = workspace.file_table.intern(tmp.path("gpu/kernel.cu"));
     workspace.dep_graph.set_includes(kernel, 0, {{hpp}});
     workspace.dep_graph.build_reverse_map();
