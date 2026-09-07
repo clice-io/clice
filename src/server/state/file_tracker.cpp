@@ -198,6 +198,15 @@ void FileTracker::tick_source(TrackedSource& tracked,
              diff->added.size(),
              diff->removed.size(),
              diff->changed.size());
+    if(auto responses = workspace.cdb.response_files(tracked.id).size();
+       responses > watched_responses) {
+        LOG_INFO(
+            "Watching {} of the {} response files of {}; a change to another is picked "
+            "up with the database",
+            watched_responses,
+            responses,
+            workspace.cdb.source_path(tracked.id));
+    }
     if(flips) {
         push_moved(shared, before, default_sources(shared), diff->changed);
     }

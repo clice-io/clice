@@ -74,22 +74,24 @@ CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
 /// The first of the unit's commands compiling it in the file's family —
 /// any when the file's suffix does not say — or none.
 /// Whether a file of `family` can be part of a command's translation
-/// unit: a CUDA unit is C++ with device code, so a C++ header fits it; a
-/// `.cuh` needs CUDA itself.
-bool compatible(Family file, Family command) {
+/// unit. A CUDA unit is C++ with device code, so a C++ header fits it (a
+/// `.cuh` needs CUDA itself); a C++ source borrowing a CUDA command would
+/// compile as CUDA, so only headers get that latitude.
+bool compatible(Family file, Family command, bool header) {
     return file == Family::Any || file == command ||
-           (file == Family::CXX && command == Family::CUDA);
+           (header && file == Family::CXX && command == Family::CUDA);
 }
 
 const Candidate* compatible_command(Workspace& workspace,
                                     Family family,
+                                    bool header,
                                     Fid unit,
                                     llvm::ArrayRef<Candidate> commands) {
     if(family == Family::Any) {
         return commands.empty() ? nullptr : &commands.front();
     }
     auto it = llvm::find_if(commands, [&](const Candidate& command) {
-        return compatible(family, family_of_command(effective(workspace, unit, command)));
+        return compatible(family, family_of_command(effective(workspace, unit, command)), header);
     });
     return it == commands.end() ? nullptr : &*it;
 }
@@ -147,6 +149,7 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
     auto& files = workspace.file_table;
     auto path = files.resolve(file);
     auto family = family_of_suffix(path);
+    bool header = header_suffix(path);
     auto dir = path::parent_path(path);
     auto stem = path::stem(path);
 
@@ -155,7 +158,7 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
     llvm::SmallVector<Lender> units;
     for(auto member: workspace.build.members()) {
         auto commands = workspace.build.commands(member);
-        if(auto* command = compatible_command(workspace, family, member, commands)) {
+        if(auto* command = compatible_command(workspace, family, header, member, commands)) {
             units.push_back({.unit = member, .config = command->config});
         }
     }
@@ -178,14 +181,17 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
     // A header some command's header search reaches: that unit's code
     // finds it by that path, so the command is the one the header is
     // written for.
-    if(header_suffix(path)) {
+    if(header) {
         for(auto& lender: lenders_searching(workspace, dir)) {
             auto commands = workspace.build.commands(lender.unit);
             auto command = llvm::find_if(commands, [&](const Candidate& candidate) {
                 return candidate.config == lender.config;
             });
-            if(command != commands.end() &&
-               compatible_command(workspace, family, lender.unit, llvm::ArrayRef(*command))) {
+            if(command != commands.end() && compatible_command(workspace,
+                                                               family,
+                                                               header,
+                                                               lender.unit,
+                                                               llvm::ArrayRef(*command))) {
                 return lender;
             }
         }
@@ -212,6 +218,7 @@ llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header) {
         auto commands = workspace.build.commands(candidate);
         if(compatible_command(workspace,
                               family,
+                              /*header=*/true,
                               candidate,
                               llvm::ArrayRef(commands).take_front(1))) {
             hosts.push_back(candidate);

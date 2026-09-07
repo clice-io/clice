@@ -119,6 +119,7 @@ TEST_CASE(HostsMatchLanguage) {
     EXPECT_EQ(ranked_hosts(workspace, plain), llvm::SmallVector<Fid>{impl});
 
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
+    tmp.touch("gpu/kernel.cu", "");
     workspace.config.rules.push_back(
         ConfigRule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
     workspace.config.finalize(tmp.root.str());
@@ -127,6 +128,13 @@ TEST_CASE(HostsMatchLanguage) {
     workspace.dep_graph.set_includes(kernel, 0, {{hpp}});
     workspace.dep_graph.build_reverse_map();
     EXPECT_EQ(ranked_hosts(workspace, hpp), llvm::SmallVector<Fid>{kernel});
+
+    /// Only headers get that latitude: a C++ source borrowing the CUDA
+    /// command would compile as CUDA.
+    auto gpu_header = workspace.file_table.intern(tmp.path("gpu/new.hpp"));
+    auto gpu_source = workspace.file_table.intern(tmp.path("gpu/new.cpp"));
+    EXPECT_EQ(command_lender(workspace, gpu_header)->unit, kernel);
+    EXPECT_FALSE(command_lender(workspace, gpu_source).has_value());
 };
 
 TEST_CASE(LenderSibling) {

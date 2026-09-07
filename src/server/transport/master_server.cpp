@@ -200,6 +200,11 @@ void MasterServer::initialize() {
         // Construct after the workspace load so the tracker's baseline CDB
         // stamp matches the database that was just loaded.
         tracker = std::make_unique<FileTracker>(workspace, sessions, workspace_root);
+        // Documents opened before the workspace loaded missed their
+        // didOpen-time discovery.
+        for(auto& [path_id, session]: sessions.sessions) {
+            discover_around(path_id);
+        }
         auto& tracker_cfg = workspace.config.tracker;
         if(tracker_cfg.cdb_poll_seconds.value > 0) {
             bg_tasks.spawn(cdb_poll_task());
