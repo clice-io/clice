@@ -71,15 +71,21 @@ endif()
 # launcher given as a command name (distcc) is left alone.
 foreach(lang C CXX)
     set(launcher "${CMAKE_${lang}_COMPILER_LAUNCHER}")
-    if(launcher MATCHES "sccache" OR (IS_ABSOLUTE "${launcher}" AND NOT EXISTS "${launcher}"))
+    list(LENGTH launcher launcher_words)
+    if(launcher MATCHES "sccache"
+       OR (launcher_words EQUAL 1 AND IS_ABSOLUTE "${launcher}" AND NOT EXISTS "${launcher}"))
         unset(CMAKE_${lang}_COMPILER_LAUNCHER CACHE)
     endif()
 endforeach()
 
+# ccache treats a precompiled header as uncacheable unless it may ignore the
+# defines and time macros baked into it; the launcher carries that setting
+# so no per-machine ccache configuration is needed.
 find_program(CCACHE_PATH "ccache")
 if(CCACHE_PATH)
-    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PATH}" CACHE FILEPATH "")
-    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PATH}" CACHE FILEPATH "")
+    set(_launcher "${CMAKE_COMMAND};-E;env;CCACHE_SLOPPINESS=pch_defines,time_macros;${CCACHE_PATH}")
+    set(CMAKE_C_COMPILER_LAUNCHER "${_launcher}" CACHE STRING "")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${_launcher}" CACHE STRING "")
 endif()
 
 if(WIN32)
