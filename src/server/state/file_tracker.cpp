@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <optional>
+#include <ranges>
 #include <utility>
 
 #include "support/filesystem.h"
@@ -10,7 +11,9 @@
 #include "support/timer.h"
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
 
@@ -20,6 +23,8 @@ FileTracker::FileTracker(Workspace& workspace,
                          const SessionStore& store,
                          std::string workspace_root) :
     workspace(workspace), store(store), workspace_root(std::move(workspace_root)) {
+    // Discovery compares the root with the file table's spellings.
+    path::canonicalize(this->workspace_root);
     // A change landing between the workspace load and this stat is caught
     // anyway: the stamp only gates reloads, and the reload's diff is
     // computed from content, so it never reports spurious changes.
@@ -28,8 +33,8 @@ FileTracker::FileTracker(Workspace& workspace,
     }
 }
 
-FileTracker::CDBStamp FileTracker::stat_cdb(llvm::StringRef path) {
-    CDBStamp stamp;
+FileTracker::FileStamp FileTracker::stat_file(llvm::StringRef path) {
+    FileStamp stamp;
     llvm::sys::fs::file_status status;
     if(path.empty() || llvm::sys::fs::status(path, status)) {
         return stamp;
@@ -37,6 +42,19 @@ FileTracker::CDBStamp FileTracker::stat_cdb(llvm::StringRef path) {
     stamp.exists = true;
     stamp.size = status.getSize();
     stamp.mtime_ns = fs::mtime_ns(status);
+    if(fs::stable_file_ids) {
+        auto uid = status.getUniqueID();
+        stamp.uid_device = uid.getDevice();
+        stamp.uid_file = uid.getFile();
+    }
+    return stamp;
+}
+
+FileTracker::SourceStamp FileTracker::stat_source(SourceID id) const {
+    SourceStamp stamp{.database = stat_file(workspace.cdb.source_path(id))};
+    for(auto& response: workspace.cdb.response_files(id)) {
+        stamp.responses.push_back(stat_file(response));
+    }
     return stamp;
 }
 
@@ -58,115 +76,201 @@ void FileTracker::track(SourceID id) {
     // stamp never changes.
     TrackedSource tracked{.id = id};
     if(workspace.cdb.loaded(id)) {
-        tracked.applied = stat_cdb(workspace.cdb.source_path(id));
+        tracked.applied = stat_source(id);
+        tracked.reread = !workspace.cdb.response_files(id).empty();
+        // Loaded, then deleted before this baseline: the load marked it
+        // present, and an unchanged missing stamp would never correct it.
+        workspace.cdb.set_present(id, tracked.applied.database.exists);
     }
     sources.push_back(std::move(tracked));
 }
 
-llvm::SmallVector<SourceID, 1> FileTracker::tick_source(TrackedSource& tracked,
-                                                        bool force,
-                                                        llvm::SmallVectorImpl<FileEvent>& events) {
-    auto path = workspace.cdb.source_path(tracked.id);
-    auto current = stat_cdb(path);
+llvm::SmallVector<Fid> FileTracker::shared_files(SourceID id) const {
+    llvm::SmallVector<Fid> shared;
+    for(auto group: workspace.cdb.entries() | std::views::chunk_by([](const CompilationEntry& a,
+                                                                      const CompilationEntry& b) {
+                        return a.file == b.file;
+                    })) {
+        auto listed = [&](const CompilationEntry& entry) {
+            return entry.source == id;
+        };
+        if(std::ranges::any_of(group, listed) && !std::ranges::all_of(group, listed)) {
+            shared.push_back(group.front().file);
+        }
+    }
+    return shared;
+}
+
+llvm::SmallVector<std::optional<SourceID>>
+    FileTracker::default_sources(llvm::ArrayRef<Fid> files) const {
+    return llvm::to_vector(llvm::map_range(files, [&](Fid file) -> std::optional<SourceID> {
+        auto entries = workspace.build.entries(file);
+        if(entries.empty()) {
+            return std::nullopt;
+        }
+        return entries.front().source;
+    }));
+}
+
+/// The files whose default entry moved between two rankings, into
+/// `changed`.
+static void push_moved(llvm::ArrayRef<Fid> files,
+                       llvm::ArrayRef<std::optional<SourceID>> before,
+                       llvm::ArrayRef<std::optional<SourceID>> after,
+                       llvm::SmallVectorImpl<Fid>& changed) {
+    for(auto [file, was, now]: llvm::zip(files, before, after)) {
+        if(was != now && !llvm::is_contained(changed, file)) {
+            changed.push_back(file);
+        }
+    }
+}
+
+/// Deltas of one tick merge: the invalidator rebuilds the graph per event.
+static void append(CDBDiff& into, const CDBDiff& from) {
+    into.added.append(from.added);
+    into.removed.append(from.removed);
+    into.changed.append(from.changed);
+}
+
+void FileTracker::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta) {
+    auto current = stat_source(tracked.id);
     if(!force) {
-        if(current == tracked.applied) {
+        if(current == tracked.applied && !tracked.reread) {
             tracked.has_pending = false;
-            return {};
+            return;
         }
         // Generators rewrite the file in place; only act once the stamp
         // has been stable for two consecutive ticks (half-write guard).
         if(!tracked.has_pending || !(tracked.pending == current)) {
             tracked.pending = current;
             tracked.has_pending = true;
-            return {};
+            return;
         }
     }
     // A forced tick reloads unconditionally — the stamp gate would make a
     // same-size rewrite within mtime granularity invisible to the test
     // hook, and a spurious reload just yields an empty diff.
     tracked.has_pending = false;
-
-    if(!current.exists) {
+    // A discovered database's presence ranks it (see Build::source_order):
+    // the files whose default entry moves with it change command.
+    bool flips = tracked.applied.database.exists != current.database.exists &&
+                 workspace.build.discovered(tracked.id);
+    llvm::SmallVector<Fid> shared;
+    llvm::SmallVector<std::optional<SourceID>> before;
+    if(flips) {
+        shared = shared_files(tracked.id);
+        before = default_sources(shared);
+    }
+    if(!current.database.exists) {
         // Deleted — usually mid-regeneration. Keep serving the loaded
         // entries; the rewrite lands as the next observed change.
         tracked.applied = current;
-        return {};
+        tracked.reread = false;
+        workspace.cdb.set_present(tracked.id, false);
+        if(flips) {
+            push_moved(shared, before, default_sources(shared), delta.changed);
+        }
+        return;
     }
-
+    llvm::StringMap<FileStamp> known;
+    for(auto [response, stamp]:
+        llvm::zip(workspace.cdb.response_files(tracked.id), current.responses)) {
+        known[response] = stamp;
+    }
     auto diff = workspace.cdb.reload_and_diff(tracked.id);
     if(!diff) {
         // Stats fine but unreadable right now (e.g. still locked by the
         // generator). Leave `applied` alone: the stamp stays different, so
         // the reload is retried on a later tick instead of being lost.
-        return {};
+        return;
     }
+    // The stamps predate the read, so a rewrite landing meanwhile is seen
+    // next tick; a response file this reload first named has none, so the
+    // source reloads once more after settling, with one taken before it.
     tracked.applied = current;
+    tracked.applied.responses.clear();
+    tracked.reread = false;
+    for(auto& response: workspace.cdb.response_files(tracked.id)) {
+        auto it = known.find(response);
+        if(it == known.end()) {
+            tracked.reread = true;
+        }
+        tracked.applied.responses.push_back(it != known.end() ? it->second : stat_file(response));
+    }
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
-             path,
+             workspace.cdb.source_path(tracked.id),
              diff->added.size(),
              diff->removed.size(),
              diff->changed.size());
-    push_delta(*diff, events);
-    auto superseded = std::exchange(tracked.supersedes, {});
-    for(auto id: superseded) {
-        push_delta(workspace.cdb.unload_source(id), events);
+    if(flips) {
+        push_moved(shared, before, default_sources(shared), diff->changed);
     }
-    return superseded;
+    append(delta, *diff);
 }
 
 llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
     llvm::SmallVector<FileEvent> events;
-    // Nothing declared: keep looking while nothing is found, so a database
-    // generated after startup is picked up, and again once the found one
-    // is gone, so one regenerated elsewhere among the searched locations
-    // takes over. Declared sources are registered (existing or not) and
-    // only watched.
-    if(!workspace.build.declares_sources() &&
-       llvm::none_of(sources,
-                     [](const TrackedSource& tracked) { return tracked.applied.exists; })) {
-        auto found = discover_compile_commands(workspace_root);
-        auto id = found.empty() ? std::optional<SourceID>() : workspace.cdb.add_source(found);
-        bool tracked_already = id && llvm::any_of(sources, [&](const TrackedSource& tracked) {
-                                   return tracked.id == *id;
-                               });
-        if(tracked_already) {
-            // The database discovery prefers is back before any replacement
-            // loaded; a replacement loading later would unload it, so its
-            // watch ends here.
-            llvm::erase_if(sources, [&](const TrackedSource& tracked) {
-                return tracked.id != *id && !tracked.applied.exists && !tracked.supersedes.empty();
-            });
-        } else if(id) {
-            // Baselined as missing: the fresh file is a change against the
-            // never-loaded source and goes through the normal
-            // settle-and-reload path.
-            TrackedSource replacement{.id = *id};
-            if(sources.empty()) {
+    CDBDiff delta;
+    // Nothing declared: keep looking, so a database generated after
+    // startup — at the root, in a new subdirectory, or above a file open
+    // without one — is picked up. Declared sources are registered
+    // (existing or not) and only watched.
+    if(!workspace.build.declares_sources()) {
+        for(auto& found: discover_compile_commands(workspace_root)) {
+            auto id = workspace.cdb.add_source(found);
+            if(llvm::none_of(sources,
+                             [&](const TrackedSource& tracked) { return tracked.id == id; })) {
+                // Baselined as missing: the fresh file is a change against
+                // the never-loaded source and goes through the normal
+                // settle-and-reload path.
                 LOG_INFO("Found compilation database: {}", found);
-            } else {
-                // Every watched database has vanished (that is what reopens
-                // discovery); they keep serving until the replacement has
-                // loaded, so an identical database regenerated elsewhere
-                // never leaves a gap, then their entries leave with them —
-                // a still-loaded one and a replacement that never loaded
-                // alike, or the former would outlive the next replacement.
-                LOG_INFO("Compilation database moved to {}", found);
-                for(auto& tracked: sources) {
-                    replacement.supersedes.push_back(tracked.id);
-                }
+                track(id);
             }
-            sources.push_back(std::move(replacement));
+        }
+        for(auto& [path_id, session]: store.sessions) {
+            discover_into(path_id, delta);
         }
     }
-
-    llvm::SmallVector<SourceID, 1> superseded;
     for(auto& tracked: sources) {
-        superseded.append(tick_source(tracked, force, events));
+        tick_source(tracked, force, delta);
     }
-    llvm::erase_if(sources, [&](const TrackedSource& tracked) {
-        return llvm::is_contained(superseded, tracked.id);
-    });
+    push_delta(delta, events);
     return events;
+}
+
+llvm::SmallVector<FileEvent> FileTracker::discover_around(Fid path_id) {
+    llvm::SmallVector<FileEvent> events;
+    CDBDiff found;
+    discover_into(path_id, found);
+    push_delta(found, events);
+    return events;
+}
+
+void FileTracker::discover_into(Fid path_id, CDBDiff& found) {
+    if(workspace.build.declares_sources() || !workspace.build.commands(path_id).empty()) {
+        return;
+    }
+    auto path = workspace.file_table.resolve(path_id);
+    if(!path::under(path, workspace_root)) {
+        return;
+    }
+    // A registered database whose load failed so far (absent at startup,
+    // unreadable at an earlier open) gets another try: with polling off
+    // nothing else would.
+    for(auto& database: compile_commands_above(path::parent_path(path), workspace_root)) {
+        auto registered = workspace.cdb.find_source(database);
+        if(registered && workspace.cdb.loaded(*registered)) {
+            continue;
+        }
+        auto id = registered ? *registered : workspace.cdb.add_source(database);
+        if(auto diff = workspace.cdb.reload_and_diff(id)) {
+            LOG_INFO("Found compilation database: {}", database);
+            append(found, *diff);
+        }
+        if(!registered) {
+            track(id);
+        }
+    }
 }
 
 kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
@@ -306,6 +410,11 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
             return !still_known.contains(event.path_id);
         });
     }
+
+    // A file created under a default-command rule joins the build: the
+    // same gain of a command a database reload reports as added. One
+    // deleted left through DiskRemoved above, like any tracked file.
+    push_delta({.added = workspace.build.refresh_default_sources()}, events);
 
     LOG_PERF("tracker",
              "phase=workspace_sweep files={} changed={} removed={} elapsed_ms={}",

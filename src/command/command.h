@@ -18,6 +18,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "clang/Driver/Types.h"
 
 namespace llvm {
 
@@ -121,6 +122,11 @@ enum class ConfigID : std::uint32_t {};
 
 constexpr inline ConfigID invalid_config = ConfigID(~0u);
 
+/// The type clang assigns to a file by its extension (Types.def);
+/// TY_INVALID when it has none — `.cuh`, which clang does not list, and
+/// unknown suffixes alike.
+clang::driver::types::ID suffix_type(llvm::StringRef path);
+
 /// The language dimension of a command for one input file: the clang
 /// language name ("c++", "cuda", ...) selected by the governing selector or
 /// derived from the file extension; the raw extension itself when no table
@@ -146,6 +152,10 @@ enum class CommandSource : std::uint8_t {
     /// A rule's default_command: declared by the user for files without an
     /// entry, so no guidance note.
     Default,
+    /// Borrowed from a unit of the build near the file — a sibling, one
+    /// whose header search reaches it, or the closest by path — for a file
+    /// with neither an entry nor a host (see command_donor).
+    Inferred,
 };
 
 /// A resolved command selection for one file: the final (rules-applied)
@@ -299,6 +309,18 @@ public:
 
     /// Whether the source's last load succeeded, so its entries are current.
     bool loaded(SourceID id) const;
+
+    /// Whether the source's file exists on disk as last observed: set by a
+    /// successful load, then maintained by the file tracker's stats. A
+    /// discovered source that vanished keeps serving its entries but yields
+    /// to the present ones (see Build::source_order).
+    bool present(SourceID id) const;
+    void set_present(SourceID id, bool present);
+
+    /// The response files (`@file`) the source's commands name, readable
+    /// or not, as recorded by its last load: a change to one changes the
+    /// commands as much as an edit of the database itself.
+    llvm::ArrayRef<std::string> response_files(SourceID id) const;
 
     /// Register and load `path` in one step; the entry count on success.
     std::optional<std::size_t> load(llvm::StringRef path);
@@ -471,9 +493,15 @@ private:
         std::string path;
         std::vector<CompilationEntry> entries;
         bool loaded = false;
+        bool present = false;
+        std::vector<std::string> response_files;
     };
 
     std::vector<Source> source_files;
+
+    /// The source being loaded, which records the response files its
+    /// commands expand; nullopt outside a load.
+    std::optional<SourceID> loading;
 
     /// Every source's entries, sorted by (file, source, ordinal).
     std::vector<CompilationEntry> entry_list;

@@ -78,7 +78,7 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
     bool dedup_hosts = resolver.header_mode(path, path_id) == HeaderMode::SelfContained;
 
     for(auto host_id: ranked_hosts(ws, path_id)) {
-        auto commands = ws.build.commands(host_id);
+        auto commands = host_commands(ws, path_id, host_id);
         auto host_path = ws.file_table.resolve(host_id);
         auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
         if(!host_uri_opt)

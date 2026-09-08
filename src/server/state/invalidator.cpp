@@ -171,6 +171,17 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     // removals pays for one rebuild, not one per file.
     bool rebuild_reverse_map = false;
 
+    // The lender set changed: every borrowed or synthesized command may
+    // resolve differently now — which no delta can tell, so all of them
+    // recompile.
+    auto lenders_changed = [&] {
+        workspace.commands_epoch += 1;
+        for(auto guessed: contexts.guessed_commands) {
+            if(store.find(guessed)) {
+                dirty.mark_ast_dirty.push_back(guessed);
+            }
+        }
+    };
     for(auto& event: events) {
         switch(event.kind) {
             case FileEvent::Kind::BufferOpened: {
@@ -375,6 +386,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 break;
             }
             case FileEvent::Kind::CDBChanged: {
+                lenders_changed();
                 auto& delta = event.cdb;
                 if(delta.empty()) {
                     break;

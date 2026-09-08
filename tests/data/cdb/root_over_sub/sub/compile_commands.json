@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "..",
+    "file": "main.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DSUB", "main.cpp"]
+  },
+  {
+    "directory": "..",
+    "file": "extra.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DSUB", "extra.cpp"]
+  }
+]

@@ -73,8 +73,10 @@ struct ConfigRule {
                          "order decide which entry a file present in several "
                          "databases gets by default. A rule without patterns "
                          "names the workspace's databases. When no rule "
-                         "declares a source, the workspace root and its "
-                         "immediate subdirectories are searched for one.")
+                         "declares a source, every compile_commands.json in "
+                         "the workspace root and its immediate subdirectories "
+                         "loads, and so do the ones in the directories above "
+                         "a file when it is opened.")
     <std::vector<std::string>> compile_commands;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -86,10 +88,11 @@ struct ConfigRule {
                          "file it was read from (the workspace root for a rule "
                          "passed through initializationOptions), and the "
                          "matching source files on disk "
-                         "join the background index — enumerated at startup, "
-                         "so a file created later compiles when opened and "
-                         "joins the index at the next start. Omitted means "
-                         "none.")
+                         "join the background index (unless the rule turns "
+                         "`index` off) — enumerated at startup and again on "
+                         "every workspace poll, so a file created later "
+                         "compiles when opened and joins the index within a "
+                         "poll period. Omitted means none.")
     <CommandSpelling> default_command;
 
     KOTATSU_ANNOTATE(defaulted = true,

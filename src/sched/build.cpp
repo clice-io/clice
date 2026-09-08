@@ -53,10 +53,29 @@ llvm::SmallVector<llvm::StringRef> Build::declared_sources() const {
     return result;
 }
 
+llvm::SmallVector<SourceID, 4> Build::declared_ids() const {
+    llvm::SmallVector<SourceID, 4> declared;
+    bool declares = declares_sources();
+    for(auto& rule: config.compiled_rules) {
+        if(rule_active(rule, active) || declares) {
+            for(auto& database: rule.compile_commands) {
+                if(auto id = cdb.find_source(database)) {
+                    declared.push_back(*id);
+                }
+            }
+        }
+    }
+    return declared;
+}
+
+bool Build::discovered(SourceID id) const {
+    return !llvm::is_contained(declared_ids(), id);
+}
+
 llvm::SmallVector<SourceID, 4> Build::source_order(llvm::StringRef path) const {
     auto matched = matching(path);
     llvm::SmallVector<SourceID, 4> order;
-    llvm::SmallVector<SourceID, 4> declared;
+    auto declared = declared_ids();
     auto add_sources = [&](const CompiledRule& rule) {
         for(auto& database: rule.compile_commands) {
             if(auto id = cdb.find_source(database); id && !llvm::is_contained(order, *id)) {
@@ -64,20 +83,8 @@ llvm::SmallVector<SourceID, 4> Build::source_order(llvm::StringRef path) const {
             }
         }
     };
-    // Inactive declarations hide a registered source only while the active
-    // configuration declares its own; under discovery every registered
-    // source was discovered, whatever an inactive rule says about its path.
-    bool declares = declares_sources();
     for(auto& rule: config.compiled_rules) {
-        bool active_rule = rule_active(rule, active);
-        if(active_rule || declares) {
-            for(auto& database: rule.compile_commands) {
-                if(auto id = cdb.find_source(database)) {
-                    declared.push_back(*id);
-                }
-            }
-        }
-        if(active_rule && llvm::is_contained(matched, &rule)) {
+        if(rule_active(rule, active) && llvm::is_contained(matched, &rule)) {
             add_sources(rule);
         }
     }
@@ -86,12 +93,22 @@ llvm::SmallVector<SourceID, 4> Build::source_order(llvm::StringRef path) const {
             add_sources(rule);
         }
     }
+    llvm::SmallVector<SourceID, 4> discovered;
     for(std::size_t i = 0; i < cdb.source_count(); i += 1) {
         auto id = SourceID(i);
         if(!llvm::is_contained(order, id) && !llvm::is_contained(declared, id)) {
-            order.push_back(id);
+            discovered.push_back(id);
         }
     }
+    // A vanished database keeps serving its entries, but one regenerated
+    // elsewhere takes over the files both list.
+    auto rank = [&](SourceID id) {
+        auto source = cdb.source_path(id);
+        auto depth = llvm::count_if(source, [](char c) { return path::is_separator(c); });
+        return std::tuple(!cdb.present(id), depth, source);
+    };
+    std::ranges::sort(discovered, {}, rank);
+    order.append(discovered);
     return order;
 }
 
@@ -175,11 +192,9 @@ ConfigID Build::builtin(llvm::StringRef path) {
     // Every C++ spelling (.cc, .cxx, .C, .hh) gets clang++, and so does the
     // ambiguous .h; C, Objective-C and unknown extensions get clang.
     namespace types = clang::driver::types;
-    auto ext = path::extension(path);
-    ext.consume_front(".");
-    auto type = ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
+    auto type = suffix_type(path);
     llvm::SmallVector<const char*, 8> arguments;
-    if(ext == "cu" || ext == "cuh" || (type != types::TY_INVALID && types::isCuda(type))) {
+    if(path::extension(path) == ".cuh" || (type != types::TY_INVALID && types::isCuda(type))) {
         // Device-only pins the same device-side view NVCC-backed commands
         // default to, instead of whichever job the toolchain query happens
         // to pick from a two-sided compilation; a rule appending
@@ -272,10 +287,20 @@ std::vector<Fid> Build::members() {
     return result;
 }
 
-/// Whether `path` is `root` or lies under it.
-static bool under(llvm::StringRef path, llvm::StringRef root) {
-    return path == root || (path.starts_with(root) &&
-                            (root.ends_with("/") || path::is_separator(path[root.size()])));
+llvm::SmallVector<Fid> Build::refresh_default_sources() {
+    std::vector<Fid> current;
+    enumerate_default_sources(current);
+    llvm::SmallVector<Fid> appeared;
+    if(claimed_sources) {
+        llvm::DenseSet<Fid> known(claimed_sources->begin(), claimed_sources->end());
+        for(auto file: current) {
+            if(!known.contains(file)) {
+                appeared.push_back(file);
+            }
+        }
+    }
+    claimed_sources = std::move(current);
+    return appeared;
 }
 
 bool Build::default_source(llvm::StringRef path) {
@@ -283,11 +308,12 @@ bool Build::default_source(llvm::StringRef path) {
     // Every C-family input clang compiles as a unit, preprocessed and module
     // interface files included; a header claims no translation unit of its
     // own.
-    auto ext = path::extension(path);
-    ext.consume_front(".");
-    auto type = ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
+    auto type = suffix_type(path);
     if(type != types::TY_INVALID) {
         return types::isDerivedFromC(type) && !types::onlyPrecompileType(type);
+    }
+    if(path::extension(path) == ".cuh") {
+        return false;
     }
     auto* rule = default_rule(path);
     if(!rule || rule->patterns.empty()) {
@@ -339,7 +365,7 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
     }
     llvm::erase_if(roots, [&](llvm::StringRef root) {
         return llvm::any_of(roots, [&](llvm::StringRef other) {
-            return other != root && under(root, other);
+            return other != root && path::under(root, other);
         });
     });
 

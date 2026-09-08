@@ -272,6 +272,7 @@ void LSPClient::register_document_sync() {
             LOG_WARN("didOpen before the server is ready, accepting: {}", path);
         }
 
+        srv.discover_around(path_id);
         session = srv.open_session(path_id);
         srv.sessions.apply_open(*session, params.text_document.text, params.text_document.version);
 

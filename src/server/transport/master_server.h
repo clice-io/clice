@@ -120,6 +120,11 @@ public:
     std::shared_ptr<Session> find_session(Fid path_id);
     std::shared_ptr<Session> open_session(Fid path_id);
 
+    /// Before a file's first compile: register the databases discovery
+    /// finds between its directory and the workspace root (see
+    /// FileTracker::discover_around) so the compile finds its entry.
+    void discover_around(Fid path_id);
+
     /// Settle a freshly opened index-only buffer: escalate one that
     /// already diverged from its shard, or boost the file's background
     /// indexing when nothing can serve it. Escalated sessions need no

@@ -1,3 +1,5 @@
+#include <format>
+
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
@@ -94,6 +96,152 @@ TEST_CASE(ProximityWithinSource) {
     EXPECT_EQ(ranked[2], first);
     EXPECT_EQ(ranked[3], second);
     EXPECT_EQ(ranked[4], elsewhere);
+};
+
+TEST_CASE(HostsMatchLanguage) {
+    /// A C unit never hosts a C++ header; an ambiguous `.h` takes any host.
+    TempDir tmp;
+    tmp.touch("shared/types.hpp", "");
+    tmp.touch("shared/plain.h", "");
+    Workspace workspace;
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"c/**"}, .default_command = std::string("clang")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+
+    auto hpp = workspace.file_table.intern(tmp.path("shared/types.hpp"));
+    auto plain = workspace.file_table.intern(tmp.path("shared/plain.h"));
+    auto impl = workspace.file_table.intern(tmp.path("c/impl.c"));
+    workspace.dep_graph.set_includes(impl, 0, {{hpp}, {plain}});
+    workspace.dep_graph.build_reverse_map();
+
+    EXPECT_TRUE(ranked_hosts(workspace, hpp).empty());
+    EXPECT_EQ(ranked_hosts(workspace, plain), llvm::SmallVector<Fid>{impl});
+
+    /// A source borrows only its own language: a `.cl` or a `.m` next to
+    /// the C unit would compile as C under its command.
+    auto kernel_cl = workspace.file_table.intern(tmp.path("c/kernel.cl"));
+    auto objc = workspace.file_table.intern(tmp.path("c/new.m"));
+    EXPECT_FALSE(command_lender(workspace, kernel_cl).has_value());
+    EXPECT_FALSE(command_lender(workspace, objc).has_value());
+
+    /// An Objective-C++ unit is C++ with more: it hosts a C++ header.
+    tmp.touch("mac/impl.mm", "");
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"mac/**"}, .default_command = std::string("clang++")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    workspace.commands_epoch += 1;
+    auto impl_mm = workspace.file_table.intern(tmp.path("mac/impl.mm"));
+    workspace.dep_graph.set_includes(impl_mm, 0, {{hpp}});
+    workspace.dep_graph.build_reverse_map();
+    EXPECT_EQ(ranked_hosts(workspace, hpp), llvm::SmallVector<Fid>{impl_mm});
+
+    /// A CUDA unit is C++ with device code: it hosts a C++ header.
+    tmp.touch("gpu/kernel.cu", "");
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    workspace.commands_epoch += 1;
+    auto kernel = workspace.file_table.intern(tmp.path("gpu/kernel.cu"));
+    workspace.dep_graph.set_includes(kernel, 0, {{hpp}});
+    workspace.dep_graph.build_reverse_map();
+    EXPECT_EQ(ranked_hosts(workspace, hpp), (llvm::SmallVector<Fid>{kernel, impl_mm}));
+
+    /// Only headers get that latitude: a C++ source borrowing the CUDA
+    /// command would compile as CUDA.
+    auto gpu_header = workspace.file_table.intern(tmp.path("gpu/new.hpp"));
+    auto gpu_source = workspace.file_table.intern(tmp.path("gpu/new.cpp"));
+    EXPECT_EQ(command_lender(workspace, gpu_header)->unit, kernel);
+    EXPECT_FALSE(command_lender(workspace, gpu_source).has_value());
+
+    /// A host offers only the commands that fit the header: with a C entry
+    /// first and a C++ one second, a `.hpp` sees the second alone.
+    tmp.touch("dual/impl.c", "");
+    auto dual = workspace.file_table.intern(tmp.path("dual/impl.c"));
+    auto dual_hpp = workspace.file_table.intern(tmp.path("dual/x.hpp"));
+    auto c_command = std::format("clang -x c {}", tmp.path("dual/impl.c"));
+    auto cxx_command = std::format("clang++ -x c++ {}", tmp.path("dual/impl.c"));
+    workspace.cdb.add_command(tmp.root.str(), tmp.path("dual/impl.c"), llvm::StringRef(c_command));
+    auto cxx = *workspace.cdb.add_command(tmp.root.str(),
+                                          tmp.path("dual/impl.c"),
+                                          llvm::StringRef(cxx_command));
+    workspace.dep_graph.set_includes(dual, 0, {{dual_hpp}});
+    workspace.dep_graph.build_reverse_map();
+    auto fitting = host_commands(workspace, dual_hpp, dual);
+    ASSERT_EQ(fitting.size(), 1u);
+    EXPECT_EQ(fitting.front().config, cxx.config);
+    EXPECT_EQ(ranked_hosts(workspace, dual_hpp), llvm::SmallVector<Fid>{dual});
+};
+
+TEST_CASE(LenderSibling) {
+    /// A file without a command borrows from a unit in its directory, the
+    /// one sharing its stem before the first by name; a `.c` only from a C
+    /// unit, and nothing when the build has none.
+    TempDir tmp;
+    tmp.touch("src/aaa.cpp", "");
+    tmp.touch("src/x.cpp", "");
+    tmp.touch("src/x.h", "");
+    tmp.touch("src/new.cpp", "");
+    tmp.touch("src/plain.c", "");
+    Workspace workspace;
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+
+    auto header = workspace.file_table.intern(tmp.path("src/x.h"));
+    auto same_stem = workspace.file_table.intern(tmp.path("src/x.cpp"));
+    auto first = workspace.file_table.intern(tmp.path("src/aaa.cpp"));
+    auto other = workspace.file_table.intern(tmp.path("src/other.cpp"));
+    auto plain = workspace.file_table.intern(tmp.path("src/plain.c"));
+    EXPECT_EQ(command_lender(workspace, header)->unit, same_stem);
+    EXPECT_EQ(command_lender(workspace, other)->unit, first);
+    EXPECT_FALSE(command_lender(workspace, plain).has_value());
+};
+
+TEST_CASE(LenderSearchDir) {
+    /// A header under a command's header search directory borrows that
+    /// command — the entry that searches there, not the unit's first —
+    /// over the unit closest by path; a source there borrows the closest.
+    TempDir tmp;
+    tmp.touch("include/api/new.h", "");
+    Workspace workspace;
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
+        tmp.touch(file, "");
+        auto command = std::format("clang++ {} {}", flags, tmp.path(file));
+        return *workspace.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+    };
+    add("zzz/lib.cpp", "");
+    auto searching = add("zzz/lib.cpp", "-Iinclude");
+    auto near = add("include/near.cpp", "");
+
+    auto header = workspace.file_table.intern(tmp.path("include/api/new.h"));
+    auto lender = command_lender(workspace, header);
+    ASSERT_TRUE(lender.has_value());
+    EXPECT_EQ(lender->unit, searching.file);
+    EXPECT_EQ(lender->config, searching.config);
+
+    auto source = workspace.file_table.intern(tmp.path("include/api/new.cpp"));
+    EXPECT_EQ(command_lender(workspace, source)->unit, near.file);
+};
+
+TEST_CASE(LenderIgnoresCommandless) {
+    /// A member a rule claims with a default command that is no compile
+    /// command lends nothing.
+    TempDir tmp;
+    tmp.touch("src/a.cpp", "");
+    tmp.touch("src/b.cpp", "");
+    Workspace workspace;
+    workspace.config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    ASSERT_EQ(workspace.build.members().size(), 2u);
+    auto header = workspace.file_table.intern(tmp.path("src/new.h"));
+    EXPECT_FALSE(command_lender(workspace, header).has_value());
 };
 
 };  // TEST_SUITE(Hosting)

@@ -72,15 +72,27 @@ void Workspace::rescan_after_save(Fid path_id) {
         // its own edges, as the startup scan does.
         Fid cmd_file = path_id;
         llvm::StringRef cmd_path = path;
+        std::optional<Lender> lender;
         if(!build.unit(path_id)) {
             if(auto host = default_host(*this, path_id)) {
                 cmd_file = host->file;
                 cmd_path = file_table.resolve(host->file);
+            } else if(build.commands(path_id).empty()) {
+                if(lender = command_lender(*this, path_id); lender) {
+                    cmd_path = file_table.resolve(lender->unit);
+                }
             }
         }
 
         llvm::SmallVector<CommandRef, 2> refs;
-        for(auto& command: build.commands(cmd_file)) {
+        if(lender) {
+            refs.push_back(build.resolve(path_id,
+                                         lender->config,
+                                         CommandSource::Inferred,
+                                         {cmd_path, path},
+                                         cmd_path));
+        }
+        for(auto& command: lender ? llvm::SmallVector<Candidate, 2>{} : build.commands(cmd_file)) {
             refs.push_back(
                 build.resolve(path_id, command.config, command.source, {cmd_path, path}, cmd_path));
         }
@@ -178,24 +190,21 @@ void Workspace::on_file_closed(Fid path_id) {
     enforce_loaded_budget();
 }
 
-std::string discover_compile_commands(llvm::StringRef workspace_root) {
+static std::string database_in(llvm::StringRef dir) {
+    auto candidate = path::join(dir, "compile_commands.json");
+    return llvm::sys::fs::exists(candidate) ? candidate : std::string();
+}
+
+llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspace_root) {
+    llvm::SmallVector<std::string> found;
     if(workspace_root.empty()) {
-        return {};
-    }
-
-    auto try_candidate = [](llvm::StringRef dir) -> std::string {
-        auto candidate = path::join(dir, "compile_commands.json");
-        if(llvm::sys::fs::exists(candidate)) {
-            return candidate;
-        }
-        return {};
-    };
-
-    if(auto found = try_candidate(workspace_root); !found.empty()) {
         return found;
     }
+    if(auto database = database_in(workspace_root); !database.empty()) {
+        found.push_back(std::move(database));
+    }
 
-    // Name order, so build/ and out/ side by side pick the same database on
+    // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
     llvm::SmallVector<std::string> subdirectories;
     std::error_code ec;
@@ -207,11 +216,50 @@ std::string discover_compile_commands(llvm::StringRef workspace_root) {
     }
     std::ranges::sort(subdirectories);
     for(auto& subdirectory: subdirectories) {
-        if(auto found = try_candidate(subdirectory); !found.empty()) {
-            return found;
+        if(auto database = database_in(subdirectory); !database.empty()) {
+            found.push_back(std::move(database));
         }
     }
-    return {};
+    return found;
+}
+
+llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_root,
+                                                      llvm::StringRef cache_dir) {
+    llvm::SmallVector<std::string> found;
+    std::error_code ec;
+    for(llvm::sys::fs::recursive_directory_iterator
+            it(workspace_root, ec, /*follow_symlinks=*/false),
+        end;
+        it != end;
+        it.increment(ec)) {
+        if(ec) {
+            LOG_WARN("Cannot read a directory under {}: {}", workspace_root, ec.message());
+            ec.clear();
+            continue;
+        }
+        llvm::SmallString<256> storage;
+        auto entry_path = path::canonical(it->path(), storage);
+        if(it->type() == llvm::sys::fs::file_type::directory_file) {
+            if(path::filename(entry_path) == ".git" || entry_path == cache_dir) {
+                it.no_push();
+            }
+        } else if(path::filename(entry_path) == "compile_commands.json") {
+            found.push_back(entry_path.str());
+        }
+    }
+    return found;
+}
+
+llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
+                                                      llvm::StringRef workspace_root) {
+    llvm::SmallVector<std::string> found;
+    path::walk_ancestors(start, workspace_root, [&](llvm::StringRef dir) {
+        if(auto database = database_in(dir); !database.empty()) {
+            found.push_back(std::move(database));
+        }
+        return true;
+    });
+    return found;
 }
 
 DepsSnapshot capture_deps_snapshot(FileTable& files,

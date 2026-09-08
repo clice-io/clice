@@ -18,6 +18,7 @@
 #include "index/tu_index.h"
 #include "sched/build.h"
 #include "sched/crash_budget.h"
+#include "sched/hosting.h"
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
 #include "syntax/dependency_graph.h"
@@ -273,6 +274,13 @@ struct Workspace {
     /// picked from a stale listing without noticing.
     std::uint64_t context_epoch = 1;
 
+    /// Generation of the build's commands: bumped when a database reloads
+    /// or a member appears, not on saves like context_epoch.
+    std::uint64_t commands_epoch = 1;
+
+    /// What a file without a command can borrow (see command_lender).
+    LenderIndex lenders;
+
     /// Whether `path` is one of our own synthesized context artifacts
     /// (prefix/suffix/self-snapshot files under the cache directory). A
     /// user can open these for debugging; they must never go through
@@ -360,11 +368,23 @@ struct Workspace {
                        Fid exclude_path_id = {}) const;
 };
 
-/// Find a compile_commands.json when no rule declares one: the workspace
-/// root, then its direct subdirectories in name order. Returns the empty
-/// string when none exists yet — the file tracker keeps looking on its CDB
-/// poll.
-std::string discover_compile_commands(llvm::StringRef workspace_root);
+/// The `compile_commands.json` files to load when no rule declares one:
+/// the workspace root's, then those of its direct subdirectories in name
+/// order. Empty when none exists yet — the file tracker keeps looking on
+/// its CDB poll.
+llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspace_root);
+
+/// Every `compile_commands.json` under `workspace_root` (`.git` and the
+/// cache directory skipped): what the one-shot batch commands, which
+/// open no file, discover instead of waiting for a didOpen.
+llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_root,
+                                                      llvm::StringRef cache_dir);
+
+/// The `compile_commands.json` files in `start` and its ancestors up to
+/// `workspace_root`, nearest first: the databases a file deeper in the
+/// tree than startup discovery looks may compile from.
+llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
+                                                      llvm::StringRef workspace_root);
 
 /// Capture a staleness snapshot from a build's reported inputs, interning
 /// the consumed versions into the shared table.

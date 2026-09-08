@@ -65,7 +65,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     params.tidy_system_headers = plan.tidy_params.system_headers;
     params.tidy_extra_args = std::move(plan.tidy_params.extra_args);
     params.tidy_extra_args_before = std::move(plan.tidy_params.extra_args_before);
-    // Whole-TU runs stick to real commands; synthesized fallback commands
+    // Whole-TU runs stick to real commands; borrowed and synthesized ones
     // would fill the index (and the lint report) with guesses. A lint
     // plan's extra args join the driver command here, before toolchain
     // resolution — the driver interprets them (pass-throughs, --target)
@@ -80,7 +80,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                                            &host_path_id,
                                            extras.prepend,
                                            extras.append);
-    if(source == CommandSource::Fallback) {
+    if(source == CommandSource::Fallback || source == CommandSource::Inferred) {
         // A file whose manifest survives keeps serving its last-known rows,
         // so skipping it loses nothing. One without a manifest (dropped or
         // never built) stays uncovered — count that as a failure so a batch

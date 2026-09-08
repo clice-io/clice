@@ -21,7 +21,8 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     IndexPump& pump,
                                     llvm::StringRef root,
                                     llvm::StringRef requested_configuration,
-                                    bool read_only_index) {
+                                    bool read_only_index,
+                                    bool scan_tree) {
     BootstrapReport report;
     auto& cfg = workspace.config.project;
     auto configuration = resolve_configuration(workspace.config, requested_configuration);
@@ -68,7 +69,15 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
         }
     }
 
-    auto load = load_build(workspace, root, configuration);
+    auto nearby = store.remembered_sources();
+    if(scan_tree) {
+        workspace.build.reset_active(configuration);
+        if(!workspace.build.declares_sources()) {
+            auto below = compile_commands_below(root, cfg.cache_dir);
+            nearby.insert(nearby.end(), below.begin(), below.end());
+        }
+    }
+    auto load = load_build(workspace, root, configuration, nearby);
     report.has_commands = !load.members.empty() || workspace.build.declares_sources();
     report.members = std::move(load.members);
     // Persisted index shards are CDB-independent; they load even with no
@@ -91,7 +100,10 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     return report;
 }
 
-BuildLoad load_build(Workspace& workspace, llvm::StringRef root, llvm::StringRef configuration) {
+BuildLoad load_build(Workspace& workspace,
+                     llvm::StringRef root,
+                     llvm::StringRef configuration,
+                     llvm::ArrayRef<std::string> nearby) {
     BuildLoad load;
     workspace.cdb.set_workspace_root(root);
     workspace.build.reset_active(configuration);
@@ -103,9 +115,31 @@ BuildLoad load_build(Workspace& workspace, llvm::StringRef root, llvm::StringRef
         paths.push_back(declared.str());
     }
     if(!workspace.build.declares_sources()) {
-        auto found = discover_compile_commands(root);
-        if(!found.empty()) {
-            paths.push_back(found);
+        paths = discover_compile_commands(root);
+        // Registered whether still there or not, like a declared one: the
+        // tracker watches for its return, and the index it built keeps
+        // serving meanwhile. Sorted like Build::source_order ranks them, so
+        // registration order — which the persisted command sequences
+        // follow — does not depend on the order files were opened in.
+        auto stable =
+            llvm::to_vector(llvm::make_filter_range(nearby, [&](const std::string& source) {
+                return path::under(source, root) && !llvm::is_contained(paths, source);
+            }));
+        std::ranges::sort(stable, {}, [](const std::string& source) {
+            return std::tuple(llvm::count_if(source, [](char c) { return path::is_separator(c); }),
+                              llvm::StringRef(source));
+        });
+        auto duplicates = std::ranges::unique(stable);
+        stable.erase(duplicates.begin(), duplicates.end());
+        paths.append(stable.begin(), stable.end());
+        if(paths.size() > 1) {
+            LOG_INFO(
+                "No rule names a compilation database; the {} found apply in this order, "
+                "an earlier one winning for a file both list: {}. To switch between them "
+                "instead, declare each on a tagged rule: [[rules]] configuration = \"...\" "
+                "compile_commands = [\"...\"]",
+                paths.size(),
+                llvm::join(paths, ", "));
         }
     }
     for(auto& path: paths) {

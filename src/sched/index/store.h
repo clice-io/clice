@@ -118,6 +118,12 @@ public:
     /// with snapshot_stale set.
     kota::task<Report> save(llvm::SmallVector<Fid> debt);
 
+    /// The databases the persisted index was built from, as absolute
+    /// paths: what discovery registers at startup before anything is
+    /// opened, so a nested project's units keep their index across
+    /// sessions instead of being dropped as unlisted and rebuilt.
+    llvm::SmallVector<std::string> remembered_sources();
+
     /// Load the global blob, adopt every resolvable manifest, fetch the
     /// shard blobs the contributions expect, and sweep the rest.
     /// `read_only` keeps the sweeps in memory only: an out-of-process

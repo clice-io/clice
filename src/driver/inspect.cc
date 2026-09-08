@@ -393,13 +393,6 @@ void apply_command(CompilationParams& params, const FileCommand& command) {
     params.directory = command.directory;
 }
 
-clang::driver::types::ID file_type(llvm::StringRef file) {
-    namespace types = clang::driver::types;
-    auto ext = path::extension(file);
-    return ext.empty() ? types::TY_INVALID
-                       : types::lookupTypeForExtension(llvm::StringRef(ext).drop_front());
-}
-
 bool is_header_type(clang::driver::types::ID type) {
     namespace types = clang::driver::types;
     return type == types::TY_CHeader || type == types::TY_CXXHeader;
@@ -412,26 +405,19 @@ bool is_header_type(clang::driver::types::ID type) {
 /// Only the ancestors themselves are checked — scanning their
 /// subdirectories would let an unrelated sibling project's database win.
 std::string workspace_of(llvm::StringRef start) {
-    llvm::SmallString<256> dir(start);
-    while(!dir.empty()) {
-        for(llvm::StringRef marker: config_file_names) {
-            if(fs::exists(path::join(dir, marker))) {
-                return std::string(dir);
-            }
+    std::string root = start.str();
+    path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
+        bool marked = llvm::any_of(config_file_names,
+                                   [&](llvm::StringRef marker) {
+                                       return fs::exists(path::join(dir, marker));
+                                   }) ||
+                      fs::exists(path::join(dir, "compile_commands.json"));
+        if(marked) {
+            root = dir.str();
         }
-        if(fs::exists(path::join(dir, "compile_commands.json"))) {
-            return std::string(dir);
-        }
-        // parent_path returns a prefix into dir's own buffer; truncate in
-        // place instead of assign, which trips the SmallVector
-        // self-reference assert in Debug LLVM.
-        llvm::StringRef parent = path::parent_path(dir);
-        if(parent.size() == dir.size()) {
-            break;
-        }
-        dir.truncate(parent.size());
-    }
-    return start.str();
+        return !marked;
+    });
+    return root;
 }
 
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
@@ -446,7 +432,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
                                         llvm::StringRef flags_directory,
                                         ContextResolver* contexts) {
     namespace types = clang::driver::types;
-    auto type = file_type(file);
+    auto type = suffix_type(file);
     bool is_header = is_header_type(type);
 
     FileCommand command;
@@ -681,10 +667,16 @@ int run_inspect(const InspectOptions& opts) {
 
     /// (rel key, absolute path) per file, sorted by the map later.
     std::vector<std::pair<std::string, std::string>> files;
+    /// Every directory holding a file, whatever its suffix: a database
+    /// above it may list members the suffix filter does not admit.
+    llvm::StringSet<> directories;
     if(is_dir) {
         std::error_code ec;
         for(llvm::sys::fs::recursive_directory_iterator it(abs_path, ec), end; it != end && !ec;
             it.increment(ec)) {
+            if(it->type() == llvm::sys::fs::file_type::regular_file) {
+                directories.insert(path::parent_path(it->path()));
+            }
             if(!is_c_family_file(it->path())) {
                 continue;
             }
@@ -700,6 +692,7 @@ int run_inspect(const InspectOptions& opts) {
         }
     } else {
         files.emplace_back(path::filename(abs_path).str(), std::string(abs_path));
+        directories.insert(path::parent_path(abs_path));
     }
 
     InspectOutput output;
@@ -737,7 +730,17 @@ int run_inspect(const InspectOptions& opts) {
         if(!check_requested_configuration(workspace.config, requested)) {
             return 1;
         }
-        load_build(workspace, root, resolve_configuration(workspace.config, requested));
+        // What the server discovers when a file is opened: the databases
+        // between each inspected directory and the root.
+        llvm::SmallVector<std::string> nearby;
+        for(auto& directory: directories) {
+            for(auto& database: compile_commands_above(directory.getKey(), root)) {
+                if(!llvm::is_contained(nearby, database)) {
+                    nearby.push_back(database);
+                }
+            }
+        }
+        load_build(workspace, root, resolve_configuration(workspace.config, requested), nearby);
     }
 
     // Directory mode covers what the build compiles under the tree, not only
@@ -930,7 +933,7 @@ int run_inspect(const InspectOptions& opts) {
         // reach the fixture diagnostics gate, like the server path opening
         // every sibling — except headers, which may be valid only through
         // their includer and never compile standalone on either path.
-        if(!participant && is_header_type(file_type(source.abs))) {
+        if(!participant && is_header_type(suffix_type(source.abs))) {
             continue;
         }
         FileEntry& entry = output.files.find(source.rel)->second;

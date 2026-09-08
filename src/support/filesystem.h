@@ -10,6 +10,7 @@
 
 #include "support/format.h"
 
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -27,6 +28,32 @@ using namespace llvm::sys::path;
 /// Windows resolves against the current drive and `is_absolute` rejects.
 inline bool is_rooted(llvm::StringRef p) {
     return is_absolute(p) || has_root_directory(p);
+}
+
+/// Whether `p` is `root` or lies under it.
+inline bool under(llvm::StringRef p, llvm::StringRef root) {
+    return p == root ||
+           (p.starts_with(root) && (root.ends_with("/") || is_separator(p[root.size()])));
+}
+
+/// Visit `start` and its ancestors, nearest first, until `visit` returns
+/// false or `stop` has been visited (the filesystem root when empty).
+inline void walk_ancestors(llvm::StringRef start,
+                           llvm::StringRef stop,
+                           llvm::function_ref<bool(llvm::StringRef)> visit) {
+    while(stop.size() > 1 && is_separator(stop.back())) {
+        stop = stop.drop_back();
+    }
+    for(llvm::StringRef dir = start; !dir.empty();) {
+        if(!visit(dir) || dir == stop) {
+            return;
+        }
+        auto parent = parent_path(dir);
+        if(parent.size() == dir.size()) {
+            return;
+        }
+        dir = parent;
+    }
 }
 
 template <typename... Args>

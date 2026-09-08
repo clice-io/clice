@@ -200,7 +200,9 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
                                       stack.store,
                                       stack.pump,
                                       options.root,
-                                      options.configuration);
+                                      options.configuration,
+                                      /*read_only_index=*/false,
+                                      /*scan_tree=*/true);
 
     // The command's whole product is the persisted index: without storage
     // (cache failed to open, another process holds the index writer lock,
@@ -380,7 +382,8 @@ kota::task<> run_lint(BatchStack& stack,
                                       stack.pump,
                                       options.root,
                                       options.configuration,
-                                      /*read_only_index=*/!options.with_index);
+                                      /*read_only_index=*/!options.with_index,
+                                      /*scan_tree=*/true);
 
     auto& members = report.members;
     if(members.empty()) {

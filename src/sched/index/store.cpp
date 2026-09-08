@@ -109,7 +109,8 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
                                const llvm::DenseMap<Fid, Fid>& header_hosts,
                                llvm::ArrayRef<Fid> standalone_debt) {
     CDBSnapshot snapshot;
-    for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
+    for(auto& bucket: workspace.cdb.command_hash_snapshot()) {
+        auto path_id = bucket.first;
         auto candidates = workspace.build.entries(path_id);
         if(candidates.empty()) {
             // Entries only inactive configurations declare: not compiled
@@ -118,8 +119,13 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
         }
         auto file = workspace.file_table.resolve(path_id).str();
         auto rules = workspace.build.edit_hash(llvm::StringRef(file));
+        // In build order, which registration order — the order databases
+        // were discovered in — must not leak into: the sequence is the
+        // file's command identity across sessions.
+        std::vector<std::string> hashes;
         std::vector<std::string> sources;
         for(auto& candidate: candidates) {
+            hashes.push_back(workspace.cdb.entry_hash_hex(candidate.config));
             auto source = persisted_path(workspace, workspace.cdb.source_path(candidate.source));
             if(!llvm::is_contained(sources, source)) {
                 sources.push_back(std::move(source));
@@ -127,7 +133,7 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
         }
         snapshot.entries.push_back({
             .file = std::move(file),
-            .hashes = {hashes.begin(), hashes.end()},
+            .hashes = std::move(hashes),
             .selected = workspace.cdb.entry_hash_hex(candidates.front().config),
             .sources = std::move(sources),
             .rules = std::move(rules),
@@ -1476,6 +1482,28 @@ void IndexStore::retire_excluded(Report& report) {
                  workspace.file_table.resolve(tu));
         drop_index_into(tu, report);
     }
+}
+
+llvm::SmallVector<std::string> IndexStore::remembered_sources() {
+    llvm::SmallVector<std::string> sources;
+    if(!workspace.index_db) {
+        return sources;
+    }
+    auto blob = workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
+    CDBSnapshot persisted;
+    if(!blob ||
+       !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
+        return sources;
+    }
+    for(auto& entry: persisted.entries) {
+        for(auto& source: entry.sources) {
+            auto absolute = absolute_path(workspace, source);
+            if(!llvm::is_contained(sources, absolute)) {
+                sources.push_back(std::move(absolute));
+            }
+        }
+    }
+    return sources;
 }
 
 void IndexStore::reconcile_cdb_snapshot(Report& report) {
