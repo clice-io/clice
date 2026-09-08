@@ -236,6 +236,39 @@ TEST_CASE(CDBBaselineRereadsResponses) {
     EXPECT_TRUE(tracker.tick_cdb().empty());
 }
 
+TEST_CASE(CDBTickResponseTail) {
+    /// A database naming more response files than are watched every tick:
+    /// a rewrite of one past the first 64 is still noticed, within the
+    /// tail period.
+    TempDir tmp;
+    std::vector<CDBEntry> entries;
+    for(std::size_t i = 0; i < 70; i += 1) {
+        auto source = std::format("u{}.cpp", i);
+        auto rsp = std::format("flags{}.rsp", i);
+        tmp.touch(source, R"(int f() {})");
+        tmp.touch(rsp, "-DONE\n");
+        entries.push_back({tmp.root, tmp.path(source), {"@" + rsp}});
+    }
+    Workspace workspace;
+    SessionStore store;
+    write_cdb(tmp, workspace.cdb, build_cdb_json(entries));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    // The startup reread settles first.
+    for(int i = 0; i < 3; i += 1) {
+        tracker.tick_cdb();
+    }
+    // A longer content: the size change keeps the stamp comparison
+    // deterministic within mtime granularity.
+    tmp.touch("flags69.rsp", "-DTWO -DTHREE\n");
+    auto last = workspace.file_table.intern(tmp.path("u69.cpp"));
+    llvm::SmallVector<FileEvent> events;
+    for(int i = 0; i < 14 && events.empty(); i += 1) {
+        events = tracker.tick_cdb();
+    }
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{last});
+}
+
 TEST_CASE(CDBTickRenameOver) {
     /// A same-size rewrite renamed over the database within one mtime
     /// tick is a new file: an ordinary tick sees it where stable file

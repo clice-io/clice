@@ -596,7 +596,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
     // search configuration, so same-named headers in different directories
     // cannot be confused.
     auto host_path = workspace.file_table.resolve(host_path_id);
-    auto commands = workspace.build.commands(host_path_id);
+    auto commands = host_commands(workspace, chain.back(), host_path_id);
     if(commands.empty()) {
         return std::nullopt;
     }

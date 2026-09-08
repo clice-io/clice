@@ -41,8 +41,9 @@ public:
     /// a command. Stats every registered source — declared ones that do
     /// not exist yet included, which is how a database generated after
     /// startup is picked up — and the response files its commands name
-    /// (up to `watched_responses`; a generator emitting one per unit is
-    /// caught through the database's own stamp). Once a source's stamp
+    /// (the first `watched_responses` every tick, the rest every
+    /// `response_tail_period` ticks, so a generator emitting one per unit
+    /// costs a bounded number of stats). Once a source's stamp
     /// change has stayed stable for two consecutive ticks, reloads it and
     /// emits one CDBChanged event carrying the reload's diff. A discovered
     /// database vanishing or returning flips its presence, and the files
@@ -108,7 +109,9 @@ private:
         friend bool operator==(const SourceStamp&, const SourceStamp&) = default;
     };
 
-    SourceStamp stat_source(SourceID id) const;
+    /// `carry` supplies the stamps of the response files beyond
+    /// `watched_responses` on the ticks that skip them; null stats all.
+    SourceStamp stat_source(SourceID id, const SourceStamp* carry) const;
 
     /// One registered source's watch state.
     struct TrackedSource {
@@ -149,6 +152,8 @@ private:
     llvm::SmallVector<std::optional<SourceID>> default_sources(llvm::ArrayRef<Fid> files) const;
 
     constexpr static std::size_t watched_responses = 64;
+    constexpr static std::uint64_t response_tail_period = 10;
+    std::uint64_t cdb_ticks = 0;
 
     /// Last-known on-disk state of a tracked file.
     struct FileState {

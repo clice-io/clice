@@ -50,10 +50,11 @@ FileTracker::FileStamp FileTracker::stat_file(llvm::StringRef path) {
     return stamp;
 }
 
-FileTracker::SourceStamp FileTracker::stat_source(SourceID id) const {
+FileTracker::SourceStamp FileTracker::stat_source(SourceID id, const SourceStamp* carry) const {
     SourceStamp stamp{.database = stat_file(workspace.cdb.source_path(id))};
-    for(auto& response: workspace.cdb.response_files(id).take_front(watched_responses)) {
-        stamp.responses.push_back(stat_file(response));
+    for(auto [index, response]: llvm::enumerate(workspace.cdb.response_files(id))) {
+        bool carried = carry && index >= watched_responses && index < carry->responses.size();
+        stamp.responses.push_back(carried ? carry->responses[index] : stat_file(response));
     }
     return stamp;
 }
@@ -98,7 +99,7 @@ void FileTracker::track(SourceID id) {
     // stamp never changes.
     TrackedSource tracked{.id = id};
     if(workspace.cdb.loaded(id)) {
-        tracked.applied = stat_source(id);
+        tracked.applied = stat_source(id, nullptr);
         tracked.reread = !workspace.cdb.response_files(id).empty();
         // Loaded, then deleted before this baseline: the load marked it
         // present, and an unchanged missing stamp would never correct it.
@@ -155,7 +156,10 @@ static void append(CDBDiff& into, const CDBDiff& from) {
 }
 
 void FileTracker::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta) {
-    auto current = stat_source(tracked.id);
+    // A change seen is confirmed by the next tick's full stamp: carrying
+    // the tail would compare it equal to the baseline again.
+    bool whole = force || tracked.has_pending || cdb_ticks % response_tail_period == 0;
+    auto current = stat_source(tracked.id, whole ? nullptr : &tracked.applied);
     if(!force) {
         if(current == tracked.applied && !tracked.reread) {
             tracked.has_pending = false;
@@ -212,7 +216,7 @@ void FileTracker::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta
     tracked.applied = current;
     tracked.applied.responses.clear();
     tracked.reread = false;
-    for(auto& response: workspace.cdb.response_files(tracked.id).take_front(watched_responses)) {
+    for(auto& response: workspace.cdb.response_files(tracked.id)) {
         auto it = known.find(response);
         if(it == known.end()) {
             tracked.reread = true;
@@ -230,11 +234,12 @@ void FileTracker::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta
     if(auto responses = workspace.cdb.response_files(tracked.id).size();
        responses > watched_responses) {
         LOG_INFO(
-            "Watching {} of the {} response files of {}; a change to another is picked "
-            "up with the database",
-            watched_responses,
+            "{} names {} response files; the first {} are watched every poll, the rest "
+            "every {} polls",
+            workspace.cdb.source_path(tracked.id),
             responses,
-            workspace.cdb.source_path(tracked.id));
+            watched_responses,
+            response_tail_period);
     }
     if(flips) {
         push_moved(shared, before, default_sources(shared), diff->changed);
@@ -245,6 +250,7 @@ void FileTracker::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta
 llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
     llvm::SmallVector<FileEvent> events;
     CDBDiff delta;
+    cdb_ticks += 1;
     // Nothing declared: keep looking, so a database generated after
     // startup — at the root, in a new subdirectory, or above a file open
     // without one — is picked up. Declared sources are registered
