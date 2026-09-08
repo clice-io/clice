@@ -24,29 +24,16 @@ struct Host {
 
 /// The translation units that can stand in for `header` — its includers
 /// the build compiles in a language the header can be part of (a `.h`
-/// in any, a `.hpp` in C++ or CUDA, a `.cuh` only in CUDA) — best first:
-/// units whose entries come from the databases the header's own rules
-/// name, then the unit sharing the header's stem, its directory, and
-/// path proximity.
+/// in any, a `.hpp` in C++ and the languages built on it, a `.cuh` only
+/// in CUDA) — best first: units whose entries come from the databases
+/// the header's own rules name, then the unit sharing the header's stem,
+/// its directory, and path proximity.
 llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header);
 
 /// The commands of `host` that compile `header` in a language it can be
 /// part of, in the host's order: what the header may compile under, its
 /// first the default. Empty when the host cannot stand in for it.
 llvm::SmallVector<Candidate, 2> host_commands(Workspace& workspace, Fid header, Fid host);
-
-/// The language family of a file by its suffix (`Any` when the suffix
-/// does not say: `.h`, an unknown extension) or of a command by the
-/// language it compiles its unit as. C++ covers Objective-C++ and C
-/// Objective-C, CUDA covers HIP; `Other` is every language the build
-/// neither lends nor hosts across (OpenCL, assembler, ...).
-enum class Language : std::uint8_t {
-    Any,
-    C,
-    CXX,
-    CUDA,
-    Other,
-};
 
 /// A unit and the one of its base commands that another file borrows.
 struct Lender {
@@ -61,7 +48,8 @@ struct Lender {
 struct LenderIndex {
     struct Command {
         Lender lender;
-        Language family;
+        /// What the command compiles its unit as.
+        clang::driver::types::ID language;
     };
 
     llvm::SmallVector<Command> commands;
@@ -70,9 +58,9 @@ struct LenderIndex {
 };
 
 /// The lender of a file with neither an entry nor a host
-/// (CommandSource::Inferred), among the units the build compiles in the
-/// file's language family (a `.h` matches any, a `.c` never borrows C++):
-/// one in the file's directory — same stem first, then by name — with its
+/// (CommandSource::Inferred), among the units the build compiles in a
+/// language the file can be part of (a `.h` matches any, a `.c` never
+/// borrows C++): one in the file's directory — same stem first, then by name — with its
 /// first command; else, for a header, the unit whose command's header
 /// search directories contain it, nearest directory first, with that
 /// command; else the unit closest by path. Nullopt when the build has no

@@ -118,9 +118,24 @@ TEST_CASE(HostsMatchLanguage) {
     EXPECT_TRUE(ranked_hosts(workspace, hpp).empty());
     EXPECT_EQ(ranked_hosts(workspace, plain), llvm::SmallVector<Fid>{impl});
 
-    /// OpenCL is C-derived but not C: a `.cl` borrows nothing.
+    /// A source borrows only its own language: a `.cl` or a `.m` next to
+    /// the C unit would compile as C under its command.
     auto kernel_cl = workspace.file_table.intern(tmp.path("c/kernel.cl"));
+    auto objc = workspace.file_table.intern(tmp.path("c/new.m"));
     EXPECT_FALSE(command_lender(workspace, kernel_cl).has_value());
+    EXPECT_FALSE(command_lender(workspace, objc).has_value());
+
+    /// An Objective-C++ unit is C++ with more: it hosts a C++ header.
+    tmp.touch("mac/impl.mm", "");
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"mac/**"}, .default_command = std::string("clang++")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    workspace.commands_epoch += 1;
+    auto impl_mm = workspace.file_table.intern(tmp.path("mac/impl.mm"));
+    workspace.dep_graph.set_includes(impl_mm, 0, {{hpp}});
+    workspace.dep_graph.build_reverse_map();
+    EXPECT_EQ(ranked_hosts(workspace, hpp), llvm::SmallVector<Fid>{impl_mm});
 
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
     tmp.touch("gpu/kernel.cu", "");
@@ -132,7 +147,7 @@ TEST_CASE(HostsMatchLanguage) {
     auto kernel = workspace.file_table.intern(tmp.path("gpu/kernel.cu"));
     workspace.dep_graph.set_includes(kernel, 0, {{hpp}});
     workspace.dep_graph.build_reverse_map();
-    EXPECT_EQ(ranked_hosts(workspace, hpp), llvm::SmallVector<Fid>{kernel});
+    EXPECT_EQ(ranked_hosts(workspace, hpp), (llvm::SmallVector<Fid>{kernel, impl_mm}));
 
     /// Only headers get that latitude: a C++ source borrowing the CUDA
     /// command would compile as CUDA.

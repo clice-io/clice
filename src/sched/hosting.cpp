@@ -14,43 +14,19 @@ namespace clice {
 
 namespace {
 
+namespace types = clang::driver::types;
+
 /// Whether the suffix names a header — or nothing clang knows, which a
 /// file under a header search directory usually is (`.inc`, `.ipp`).
 bool header_suffix(llvm::StringRef path) {
-    namespace types = clang::driver::types;
     auto type = suffix_type(path);
     return type == types::TY_INVALID || types::onlyPrecompileType(type);
 }
 
-Language family_of_type(clang::driver::types::ID type) {
-    namespace types = clang::driver::types;
-    if(type == types::TY_INVALID || type == types::TY_CHeader) {
-        return Language::Any;
-    }
-    if(types::isCuda(type) || types::isHIP(type)) {
-        return Language::CUDA;
-    }
-    if(types::isCXX(type)) {
-        return Language::CXX;
-    }
-    if(type == types::TY_C || type == types::TY_PP_C || type == types::TY_ObjC ||
-       type == types::TY_PP_ObjC) {
-        return Language::C;
-    }
-    return Language::Other;
-}
-
-Language family_of_suffix(llvm::StringRef path) {
-    if(path::extension(path) == ".cuh") {
-        return Language::CUDA;
-    }
-    return family_of_type(suffix_type(path));
-}
-
-/// The family of a file by the language its effective command compiles
-/// it as — a `-x` in the entry or a rule's append included.
-Language family_of_command(const CommandRef& command) {
-    return family_of_type(clang::driver::types::lookupTypeForTypeSpecifier(command.input.value));
+/// The language a command compiles its unit as — a `-x` in the entry or
+/// a rule's append included, else the unit's suffix.
+types::ID language_of(const CommandRef& command) {
+    return types::lookupTypeForTypeSpecifier(command.input.value);
 }
 
 CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
@@ -58,18 +34,24 @@ CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
     return workspace.build.resolve(unit, command.config, command.source, path, path);
 }
 
-/// Whether a file of `family` can be part of a command's translation
-/// unit. A CUDA unit is C++ with more, so a C++ header fits it (a `.cuh`
-/// needs its own); a C++ source borrowing its command would compile as
-/// CUDA, so only headers get that latitude.
-bool compatible(Language file, Language command, bool header) {
-    if(file == Language::Any) {
+/// Whether the file at `path` can be part of a translation unit compiled
+/// as `language`. A source only in its own: rendering the borrowed
+/// command for it would otherwise force `-x`, and a `.cpp` compiled as
+/// CUDA or a `.m` as C is not the file. A header has latitude: a `.h`
+/// fits any, a C++ header every language built on C++ (Objective-C++,
+/// CUDA, HIP), a `.cuh` CUDA.
+bool compatible(llvm::StringRef path, types::ID language) {
+    auto file = suffix_type(path);
+    if(file == types::TY_INVALID) {
+        return path::extension(path) != ".cuh" || types::isCuda(language) || types::isHIP(language);
+    }
+    if(file == types::TY_CHeader) {
         return true;
     }
-    if(file == command) {
-        return file != Language::Other;
+    if(types::onlyPrecompileType(file) && types::isCXX(file)) {
+        return types::isCXX(language);
     }
-    return header && file == Language::CXX && command == Language::CUDA;
+    return file == language;
 }
 
 std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {
@@ -98,7 +80,7 @@ const LenderIndex& lender_index(Workspace& workspace) {
             auto position = static_cast<std::uint32_t>(index.commands.size());
             index.commands.push_back({
                 .lender = {.unit = member, .config = command.config},
-                .family = family_of_command(ref),
+                .language = language_of(ref),
             });
             for(auto& search_dir: workspace.cdb.search_config(ref).dirs) {
                 auto canonical = search_dir.path;
@@ -116,13 +98,12 @@ const LenderIndex& lender_index(Workspace& workspace) {
 std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
     auto& files = workspace.file_table;
     auto path = files.resolve(file);
-    auto family = family_of_suffix(path);
     bool header = header_suffix(path);
     auto dir = path::parent_path(path);
     auto stem = path::stem(path);
     auto& index = lender_index(workspace);
     auto fits = [&](const LenderIndex::Command& command) {
-        return compatible(family, command.family, header);
+        return compatible(path, command.language);
     };
 
     // Every unit with its first command of the family, in path order.
@@ -176,11 +157,10 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
 }
 
 llvm::SmallVector<Candidate, 2> host_commands(Workspace& workspace, Fid header, Fid host) {
-    auto family = family_of_suffix(workspace.file_table.resolve(header));
+    auto header_path = workspace.file_table.resolve(header);
     llvm::SmallVector<Candidate, 2> fitting;
     for(auto& command: workspace.build.commands(host)) {
-        auto ref = effective(workspace, host, command);
-        if(compatible(family, family_of_command(ref), /*header=*/true)) {
+        if(compatible(header_path, language_of(effective(workspace, host, command)))) {
             fitting.push_back(command);
         }
     }

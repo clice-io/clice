@@ -76,7 +76,7 @@ Commands written by hand — a rule's `default_command`, the builtin fallback �
 
 ### Hosting
 
-A header without a command of its own compiles as part of a translation unit that includes it. The hosting layer ranks the includers the build compiles in a language the header can be part of — a `.h` in any, a `.hpp` in C++ or CUDA, a `.cuh` only in CUDA, so a C++ header is never compiled as C: units whose entries come from the databases the header's own rules name first, then the unit sharing the header's stem, then one in its directory, then path proximity. The first with an include chain to the header is its default host — the same answer for the editor, the background index, a save-time rescan and `clice inspect`. A file the build does not compile (one on the builtin command) never hosts.
+A header without a command of its own compiles as part of a translation unit that includes it. The hosting layer ranks the includers the build compiles in a language the header can be part of — a `.h` in any, a `.hpp` in C++ and the languages built on it (Objective-C++, CUDA), a `.cuh` only in CUDA, so a C++ header is never compiled as C: units whose entries come from the databases the header's own rules name first, then the unit sharing the header's stem, then one in its directory, then path proximity. The first with an include chain to the header is its default host — the same answer for the editor, the background index, a save-time rescan and `clice inspect`. A file the build does not compile (one on the builtin command) never hosts.
 
 ### Discovery
 
@@ -84,7 +84,7 @@ When no rule declares a source, the build's databases are the `compile_commands.
 
 ### Inference
 
-A file with neither an entry nor a host, and no matching rule with a `default_command`, borrows the command of a nearby translation unit of its own language family — a `.h` matches any family, a `.c` never borrows a C++ command and a `.cpp` never a C one. The lender is a unit in the file's directory, the one sharing its stem first and then the first by name; else, for a header, the unit whose header search directories (`-I`, `-isystem`, `-iquote`) contain it, the nearest directory first — the unit's own code finds the header by that path, so its command is the one the header is written for; else the unit closest by path. The borrowed command carries the rule edits of both files and is labeled `Inferred`: the decision log names the lender, diagnostics about missing files get a guidance note, and the file stays outside the build — it is not indexed in the background, and `clice inspect` resolves it the same way.
+A file with neither an entry nor a host, and no matching rule with a `default_command`, borrows the command of a nearby translation unit of its own language — a `.h` matches any, a `.c` never borrows a C++ command and a `.cpp` never a C one. The lender is a unit in the file's directory, the one sharing its stem first and then the first by name; else, for a header, the unit whose header search directories (`-I`, `-isystem`, `-iquote`) contain it, the nearest directory first — the unit's own code finds the header by that path, so its command is the one the header is written for; else the unit closest by path. The borrowed command carries the rule edits of both files and is labeled `Inferred`: the decision log names the lender, diagnostics about missing files get a guidance note, and the file stays outside the build — it is not indexed in the background, and `clice inspect` resolves it the same way.
 
 ### Resolution
 
