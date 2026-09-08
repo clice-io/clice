@@ -2,9 +2,11 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "command/command.h"
+#include "sched/build.h"
 #include "vfs/file_table.h"
 
 #include "llvm/ADT/DenseSet.h"
@@ -29,6 +31,11 @@ struct Host {
 /// from the databases the header's own rules name, then the unit sharing
 /// the header's stem, its directory, and path proximity.
 llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header);
+
+/// The commands of `host` that compile `header` in a language it can be
+/// part of, in the host's order: what the header may compile under, its
+/// first the default. Empty when the host cannot stand in for it.
+llvm::SmallVector<Candidate, 2> host_commands(Workspace& workspace, Fid header, Fid host);
 
 /// The language family of a file by its suffix (`Any` when the suffix
 /// does not say: `.h`, an unknown extension) or of a command by the
@@ -58,6 +65,9 @@ struct LenderIndex {
     struct Command {
         Lender lender;
         Language family;
+        /// The input kind, which tells the specialized languages (`Other`)
+        /// apart.
+        std::string kind;
     };
 
     llvm::SmallVector<Command> commands;

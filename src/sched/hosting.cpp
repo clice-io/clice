@@ -81,14 +81,27 @@ CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
 /// header fits them (a `.cuh` or `.mm` needs its own); a C++ source
 /// borrowing such a command would compile as that language, so only
 /// headers get that latitude.
-bool compatible(Language file, Language command, bool header) {
+/// The name clang gives the suffix's type, telling one specialized
+/// language from another; empty for a suffix it does not know.
+llvm::StringRef kind_of_suffix(llvm::StringRef path) {
+    namespace types = clang::driver::types;
+    auto type = suffix_type(path);
+    return type == types::TY_INVALID ? llvm::StringRef()
+                                     : llvm::StringRef(types::getTypeName(type));
+}
+
+bool compatible(Language file,
+                llvm::StringRef file_kind,
+                Language command,
+                llvm::StringRef command_kind,
+                bool header) {
     if(file == Language::Any) {
         return true;
     }
     // The specialized languages (OpenCL, assembler, ...) share `Other`
-    // without sharing anything else: no borrowing among them.
+    // without sharing anything else: only the same kind matches.
     if(file == Language::Other || command == Language::Other) {
-        return false;
+        return file == command && file_kind == command_kind;
     }
     return file == command ||
            (header && file == Language::CXX &&
@@ -126,7 +139,8 @@ const LenderIndex& lender_index(Workspace& workspace) {
             auto position = static_cast<std::uint32_t>(index.commands.size());
             index.commands.push_back({
                 .lender = {.unit = member, .config = command.config},
-                .family = family_of_command(ref)
+                .family = family_of_command(ref),
+                .kind = ref.input.value,
             });
             for(auto& search_dir: workspace.cdb.search_config(ref).dirs) {
                 auto canonical = search_dir.path;
@@ -145,12 +159,13 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
     auto& files = workspace.file_table;
     auto path = files.resolve(file);
     auto family = family_of_suffix(path);
+    auto kind = kind_of_suffix(path);
     bool header = header_suffix(path);
     auto dir = path::parent_path(path);
     auto stem = path::stem(path);
     auto& index = lender_index(workspace);
     auto fits = [&](const LenderIndex::Command& command) {
-        return compatible(family, command.family, header);
+        return compatible(family, kind, command.family, command.kind, header);
     };
 
     // Every unit with its first command of the family, in path order.
@@ -203,24 +218,30 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
     });
 }
 
+llvm::SmallVector<Candidate, 2> host_commands(Workspace& workspace, Fid header, Fid host) {
+    auto header_path = workspace.file_table.resolve(header);
+    auto family = family_of_suffix(header_path);
+    auto kind = kind_of_suffix(header_path);
+    llvm::SmallVector<Candidate, 2> fitting;
+    for(auto& command: workspace.build.commands(host)) {
+        auto ref = effective(workspace, host, command);
+        if(compatible(family, kind, family_of_command(ref), ref.input.value, /*header=*/true)) {
+            fitting.push_back(command);
+        }
+    }
+    return fitting;
+}
+
 llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header) {
     auto& files = workspace.file_table;
     auto header_path = files.resolve(header);
     auto header_stem = llvm::sys::path::stem(header_path);
     auto header_dir = llvm::sys::path::parent_path(header_path);
     auto sources = workspace.build.source_order(header_path);
-    auto family = family_of_suffix(header_path);
 
-    // A host lends its first command (see pick_pinned_config), so that is
-    // the one whose language must fit.
     llvm::SmallVector<Fid> hosts;
     for(auto candidate: workspace.dep_graph.find_host_sources(header)) {
-        auto commands = workspace.build.commands(candidate);
-        if(!commands.empty() &&
-           (family == Language::Any ||
-            compatible(family,
-                       family_of_command(effective(workspace, candidate, commands.front())),
-                       /*header=*/true))) {
+        if(!host_commands(workspace, header, candidate).empty()) {
             hosts.push_back(candidate);
         }
     }

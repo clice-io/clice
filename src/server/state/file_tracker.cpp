@@ -147,9 +147,14 @@ static void push_moved(llvm::ArrayRef<Fid> files,
     }
 }
 
-void FileTracker::tick_source(TrackedSource& tracked,
-                              bool force,
-                              llvm::SmallVectorImpl<FileEvent>& events) {
+/// Deltas of one tick merge: the invalidator rebuilds the graph per event.
+static void append(CDBDiff& into, const CDBDiff& from) {
+    into.added.append(from.added);
+    into.removed.append(from.removed);
+    into.changed.append(from.changed);
+}
+
+void FileTracker::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta) {
     auto current = stat_source(tracked.id);
     if(!force) {
         if(current == tracked.applied && !tracked.reread) {
@@ -185,9 +190,7 @@ void FileTracker::tick_source(TrackedSource& tracked,
         tracked.reread = false;
         workspace.cdb.set_present(tracked.id, false);
         if(flips) {
-            CDBDiff moved;
-            push_moved(shared, before, default_sources(shared), moved.changed);
-            push_delta(moved, events);
+            push_moved(shared, before, default_sources(shared), delta.changed);
         }
         return;
     }
@@ -236,11 +239,12 @@ void FileTracker::tick_source(TrackedSource& tracked,
     if(flips) {
         push_moved(shared, before, default_sources(shared), diff->changed);
     }
-    push_delta(*diff, events);
+    append(delta, *diff);
 }
 
 llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
     llvm::SmallVector<FileEvent> events;
+    CDBDiff delta;
     // Nothing declared: keep looking, so a database generated after
     // startup — at the root, in a new subdirectory, or above a file open
     // without one — is picked up. Declared sources are registered
@@ -258,29 +262,35 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
             }
         }
         for(auto& [path_id, session]: store.sessions) {
-            events.append(discover_around(path_id));
+            discover_into(path_id, delta);
         }
     }
     for(auto& tracked: sources) {
-        tick_source(tracked, force, events);
+        tick_source(tracked, force, delta);
     }
+    push_delta(delta, events);
     return events;
 }
 
 llvm::SmallVector<FileEvent> FileTracker::discover_around(Fid path_id) {
     llvm::SmallVector<FileEvent> events;
+    CDBDiff found;
+    discover_into(path_id, found);
+    push_delta(found, events);
+    return events;
+}
+
+void FileTracker::discover_into(Fid path_id, CDBDiff& found) {
     if(workspace.build.declares_sources() || !workspace.build.commands(path_id).empty()) {
-        return events;
+        return;
     }
     auto path = workspace.file_table.resolve(path_id);
     if(!path::under(path, workspace_root)) {
-        return events;
+        return;
     }
-    // One delta for the whole chain: the invalidator rebuilds the graph
-    // per event. A registered database whose load failed so far (absent
-    // at startup, unreadable at an earlier open) gets another try: with
-    // polling off nothing else would.
-    CDBDiff found;
+    // A registered database whose load failed so far (absent at startup,
+    // unreadable at an earlier open) gets another try: with polling off
+    // nothing else would.
     for(auto& database: compile_commands_above(path::parent_path(path), workspace_root)) {
         auto registered = workspace.cdb.find_source(database);
         if(registered && workspace.cdb.loaded(*registered)) {
@@ -289,9 +299,7 @@ llvm::SmallVector<FileEvent> FileTracker::discover_around(Fid path_id) {
         auto id = registered ? *registered : workspace.cdb.add_source(database);
         if(auto diff = workspace.cdb.reload_and_diff(id)) {
             LOG_INFO("Found compilation database: {}", database);
-            found.added.append(diff->added);
-            found.removed.append(diff->removed);
-            found.changed.append(diff->changed);
+            append(found, *diff);
         }
         if(!registered) {
             track(id);
@@ -300,8 +308,6 @@ llvm::SmallVector<FileEvent> FileTracker::discover_around(Fid path_id) {
     for(auto file: found.added) {
         seed(file);
     }
-    push_delta(found, events);
-    return events;
 }
 
 kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
@@ -435,7 +441,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     // One a database still lists keeps its command; only its removal
     // from disk (DiskRemoved) is news.
     llvm::erase_if(refresh.vanished,
-                   [&](Fid file) { return !workspace.build.commands(file).empty(); });
+                   [&](Fid file) { return !workspace.build.entries(file).empty(); });
     for(auto file: refresh.appeared) {
         seed(file);
     }

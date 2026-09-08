@@ -135,7 +135,10 @@ private:
     void seed(Fid path_id);
 
     /// Tick one source; the reload's events, if any.
-    void tick_source(TrackedSource& tracked, bool force, llvm::SmallVectorImpl<FileEvent>& events);
+    void tick_source(TrackedSource& tracked, bool force, CDBDiff& delta);
+
+    /// discover_around's work, its delta merged into `delta`.
+    void discover_into(Fid path_id, CDBDiff& delta);
 
     /// The files the source and another one both list: the ones whose
     /// default entry may move with the source's presence.

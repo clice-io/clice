@@ -519,6 +519,64 @@ TEST_CASE(SweepSeedsAppearedMember) {
     loop.run();
 }
 
+TEST_CASE(WorkspaceTickVanishedUnseeded) {
+    /// A default-command member deleted before the sweep ever baselined
+    /// it: no DiskRemoved can follow, so the sweep reports the lost
+    /// command itself.
+    TempDir tmp;
+    tmp.touch("src/gone.cpp", R"(int gone() {})");
+    kota::event_loop loop;
+    Workspace workspace;
+    SessionStore store;
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    auto gone = workspace.file_table.intern(tmp.path("src/gone.cpp"));
+    EXPECT_EQ(workspace.build.members().size(), 1u);
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    fs::remove_all(tmp.path("src/gone.cpp"));
+    auto body = [&]() -> kota::task<> {
+        auto events = co_await tracker.tick_workspace();
+        EXPECT_EQ(events.size(), 1u);
+        if(events.size() == 1) {
+            EXPECT_EQ(events[0].kind, FileEvent::Kind::CDBChanged);
+            EXPECT_EQ(events[0].cdb.removed, llvm::SmallVector<Fid>{gone});
+        }
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+}
+
+TEST_CASE(CDBTickCoalescesSources) {
+    /// Two databases settling in one tick make one delta.
+    TempDir tmp;
+    tmp.touch("a/main.cpp", R"(int main() {})");
+    tmp.touch("b/other.cpp", R"(int other() {})");
+    Workspace workspace;
+    SessionStore store;
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    auto a = workspace.cdb.add_source(tmp.path("a/compile_commands.json"));
+    auto b = workspace.cdb.add_source(tmp.path("b/compile_commands.json"));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+    tmp.touch("a/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("a/main.cpp"), {}}
+    }));
+    tmp.touch("b/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("b/other.cpp"), {}}
+    }));
+    EXPECT_TRUE(tracker.tick_cdb().empty());
+    auto events = tracker.tick_cdb();
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].cdb.added.size(), 2u);
+    EXPECT_TRUE(workspace.cdb.loaded(a));
+    EXPECT_TRUE(workspace.cdb.loaded(b));
+}
+
 TEST_CASE(DiscoverySeedsBaseline) {
     /// A file a discovered database adds is baselined at the content the
     /// graph was scanned from, so an edit before the first sweep is seen.

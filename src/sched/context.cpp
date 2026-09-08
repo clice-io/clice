@@ -350,7 +350,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     }
 
     auto host_path = workspace.file_table.resolve(ctx_ptr->host_path_id);
-    auto commands = workspace.build.commands(ctx_ptr->host_path_id);
+    auto commands = host_commands(workspace, path_id, ctx_ptr->host_path_id);
     if(commands.empty()) {
         LOG_WARN("fill_header_context_args: host {} has no compile command", host_path);
         return false;

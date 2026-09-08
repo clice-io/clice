@@ -131,6 +131,17 @@ TEST_CASE(HostsMatchLanguage) {
     EXPECT_FALSE(command_lender(workspace, kernel_cl).has_value());
     EXPECT_FALSE(command_lender(workspace, asm_cl).has_value());
 
+    /// The same specialized language does lend.
+    tmp.touch("cl/lib.cl", "");
+    workspace.config.rules.push_back(
+        ConfigRule{.patterns = {"cl/**"}, .default_command = std::string("clang -x cl")});
+    workspace.config.finalize(tmp.root.str());
+    workspace.build.reset_active("");
+    workspace.commands_epoch += 1;
+    auto lib_cl = workspace.file_table.intern(tmp.path("cl/lib.cl"));
+    auto new_cl = workspace.file_table.intern(tmp.path("cl/new.cl"));
+    EXPECT_EQ(command_lender(workspace, new_cl)->unit, lib_cl);
+
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
     tmp.touch("gpu/kernel.cu", "");
     workspace.config.rules.push_back(
@@ -163,6 +174,24 @@ TEST_CASE(HostsMatchLanguage) {
     EXPECT_EQ(command_lender(workspace, hip_header)->unit, hip);
     /// A `.cu` next to the HIP unit borrows the CUDA one further away.
     EXPECT_EQ(command_lender(workspace, hip_cuda)->unit, kernel);
+
+    /// A host offers only the commands that fit the header: with a C entry
+    /// first and a C++ one second, a `.hpp` sees the second alone.
+    tmp.touch("dual/impl.c", "");
+    auto dual = workspace.file_table.intern(tmp.path("dual/impl.c"));
+    auto dual_hpp = workspace.file_table.intern(tmp.path("dual/x.hpp"));
+    auto c_command = std::format("clang -x c {}", tmp.path("dual/impl.c"));
+    auto cxx_command = std::format("clang++ -x c++ {}", tmp.path("dual/impl.c"));
+    workspace.cdb.add_command(tmp.root.str(), tmp.path("dual/impl.c"), llvm::StringRef(c_command));
+    auto cxx = *workspace.cdb.add_command(tmp.root.str(),
+                                          tmp.path("dual/impl.c"),
+                                          llvm::StringRef(cxx_command));
+    workspace.dep_graph.set_includes(dual, 0, {{dual_hpp}});
+    workspace.dep_graph.build_reverse_map();
+    auto fitting = host_commands(workspace, dual_hpp, dual);
+    ASSERT_EQ(fitting.size(), 1u);
+    EXPECT_EQ(fitting.front().config, cxx.config);
+    EXPECT_EQ(ranked_hosts(workspace, dual_hpp), llvm::SmallVector<Fid>{dual});
 };
 
 TEST_CASE(LenderSibling) {
