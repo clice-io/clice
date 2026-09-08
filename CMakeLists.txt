@@ -21,7 +21,7 @@ option(CLICE_ENABLE_TEST "Build unit tests" OFF)
 option(CLICE_CI_ENVIRONMENT "Enable CI-specific configuration" OFF)
 option(CLICE_ENABLE_BENCHMARK "Build benchmarks" OFF)
 
-# Global flags that apply to all targets (including FetchContent dependencies).
+# Global flags that apply to all targets (including CPM dependencies).
 if(NOT MSVC)
     add_compile_options(-ffunction-sections -fdata-sections)
 endif()

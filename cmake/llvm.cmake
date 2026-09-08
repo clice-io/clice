@@ -1,5 +1,4 @@
 include_guard()
-include(FetchContent)
 
 # Canonical target triple: the explicit CLICE_TARGET_TRIPLE for cross
 # builds, composed from the host otherwise. This exact spelling names the
@@ -47,11 +46,12 @@ function(_download_llvm LLVM_VERSION)
     set(_FILENAME "${_TRIPLE}.${_MODE}${_SUFFIX}.tar.xz")
     string(REPLACE "+" "%2B" _URL_VERSION "${LLVM_VERSION}")
 
-    FetchContent_Declare(llvm_prebuilt
+    CPMAddPackage(
+        NAME llvm_prebuilt
+        VERSION ${LLVM_VERSION}
         URL "https://github.com/clice-io/clice-llvm/releases/download/${_URL_VERSION}/${_FILENAME}"
-        SOURCE_SUBDIR _none
+        DOWNLOAD_ONLY YES
     )
-    FetchContent_MakeAvailable(llvm_prebuilt)
 
     set(LLVM_INSTALL_PATH "${llvm_prebuilt_SOURCE_DIR}" PARENT_SCOPE)
 endfunction()
