@@ -444,15 +444,25 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     // same gain of a command a database reload reports as added. One
     // deleted leaves through DiskRemoved, but no longer lends.
     auto refresh = workspace.build.refresh_default_sources();
-    // One a database still lists keeps its command; only its removal
-    // from disk (DiskRemoved) is news.
-    llvm::erase_if(refresh.vanished,
-                   [&](Fid file) { return !workspace.build.entries(file).empty(); });
     for(auto file: refresh.appeared) {
         seed(file);
     }
-    push_delta({.added = std::move(refresh.appeared), .removed = std::move(refresh.vanished)},
-               events);
+    push_delta({.added = std::move(refresh.appeared)}, events);
+    // A member that left is a file gone from disk, nothing else: the sweep
+    // above said so for the ones it had baselined, and one it never saw
+    // gets the same event, not a lost command that would drop the shard
+    // DiskRemoved keeps serving.
+    llvm::DenseSet<Fid> removed_now;
+    for(auto& event: events) {
+        if(event.kind == FileEvent::Kind::DiskRemoved) {
+            removed_now.insert(event.path_id);
+        }
+    }
+    for(auto file: refresh.vanished) {
+        if(!removed_now.contains(file)) {
+            events.push_back(FileEvent::disk_removed(file));
+        }
+    }
 
     LOG_PERF("tracker",
              "phase=workspace_sweep files={} changed={} removed={} elapsed_ms={}",

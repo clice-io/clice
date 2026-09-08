@@ -554,8 +554,8 @@ TEST_CASE(SweepSeedsAppearedMember) {
 
 TEST_CASE(WorkspaceTickVanishedUnseeded) {
     /// A default-command member deleted before the sweep ever baselined
-    /// it: no DiskRemoved can follow, so the sweep reports the lost
-    /// command itself.
+    /// it: the sweep itself cannot notice, so its leaving the build
+    /// reports the removal.
     TempDir tmp;
     tmp.touch("src/gone.cpp", R"(int gone() {})");
     kota::event_loop loop;
@@ -573,8 +573,8 @@ TEST_CASE(WorkspaceTickVanishedUnseeded) {
         auto events = co_await tracker.tick_workspace();
         EXPECT_EQ(events.size(), 1u);
         if(events.size() == 1) {
-            EXPECT_EQ(events[0].kind, FileEvent::Kind::CDBChanged);
-            EXPECT_EQ(events[0].cdb.removed, llvm::SmallVector<Fid>{gone});
+            EXPECT_EQ(events[0].kind, FileEvent::Kind::DiskRemoved);
+            EXPECT_EQ(events[0].path_id, gone);
         }
     };
     auto task = body();
