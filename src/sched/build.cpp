@@ -287,26 +287,20 @@ std::vector<Fid> Build::members() {
     return result;
 }
 
-Build::DefaultSourcesRefresh Build::refresh_default_sources() {
+llvm::SmallVector<Fid> Build::refresh_default_sources() {
     std::vector<Fid> current;
     enumerate_default_sources(current);
-    DefaultSourcesRefresh refresh;
+    llvm::SmallVector<Fid> appeared;
     if(claimed_sources) {
         llvm::DenseSet<Fid> known(claimed_sources->begin(), claimed_sources->end());
-        llvm::DenseSet<Fid> now(current.begin(), current.end());
         for(auto file: current) {
             if(!known.contains(file)) {
-                refresh.appeared.push_back(file);
-            }
-        }
-        for(auto file: *claimed_sources) {
-            if(!now.contains(file)) {
-                refresh.vanished.push_back(file);
+                appeared.push_back(file);
             }
         }
     }
     claimed_sources = std::move(current);
-    return refresh;
+    return appeared;
 }
 
 bool Build::default_source(llvm::StringRef path) {

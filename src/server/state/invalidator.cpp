@@ -182,20 +182,11 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
         }
     };
-    // A unit the lender index skipped for being absent is on disk now.
-    auto lender_returned = [&](Fid path_id) {
-        if(workspace.lenders.missing.contains(path_id)) {
-            lenders_changed();
-        }
-    };
-
     for(auto& event: events) {
         switch(event.kind) {
             case FileEvent::Kind::BufferOpened: {
                 // Buffer installation itself is SessionStore::apply_open's
-                // job; nothing cross-file to invalidate yet — unless the
-                // file is a unit generated since the lender index skipped it.
-                lender_returned(event.path_id);
+                // job; nothing cross-file to invalidate yet.
                 break;
             }
             case FileEvent::Kind::BufferEdited: {
@@ -205,7 +196,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
             case FileEvent::Kind::BufferSaved: {
                 auto path_id = event.path_id;
-                lender_returned(path_id);
                 // The disk now holds the buffer's content: the standard
                 // disk-content cascade covers everything a save invalidates —
                 // including anything a DiskChanged consumed while the buffer
@@ -321,7 +311,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
             case FileEvent::Kind::DiskChanged: {
                 auto path_id = event.path_id;
-                lender_returned(path_id);
                 if(store.find(path_id)) {
                     // Open file: the buffer is the truth, so no disk rescan —
                     // what the disk change means for this file is decided by
@@ -387,8 +376,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 workspace.dep_graph.clear_includes(path_id);
                 rebuild_reverse_map = true;
                 workspace.context_epoch += 1;
-                // A deleted unit lends nothing.
-                lenders_changed();
                 // Contexts hosted by (or chained through) the removed file
                 // are cleaned by the resolver's orphan pass.
                 dirty.recheck_contexts = true;

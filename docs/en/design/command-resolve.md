@@ -76,7 +76,7 @@ Commands written by hand — a rule's `default_command`, the builtin fallback �
 
 ### Hosting
 
-A header without a command of its own compiles as part of a translation unit that includes it. The hosting layer ranks the includers the build compiles in a language the header can be part of — a `.h` in any, a `.hpp` only in C++, a `.cuh` only in CUDA, so a C++ header is never compiled as C: units whose entries come from the databases the header's own rules name first, then the unit sharing the header's stem, then one in its directory, then path proximity. The first with an include chain to the header is its default host — the same answer for the editor, the background index, a save-time rescan and `clice inspect`. A file the build does not compile (one on the builtin command) never hosts.
+A header without a command of its own compiles as part of a translation unit that includes it. The hosting layer ranks the includers the build compiles in a language the header can be part of — a `.h` in any, a `.hpp` in C++ or CUDA, a `.cuh` only in CUDA, so a C++ header is never compiled as C: units whose entries come from the databases the header's own rules name first, then the unit sharing the header's stem, then one in its directory, then path proximity. The first with an include chain to the header is its default host — the same answer for the editor, the background index, a save-time rescan and `clice inspect`. A file the build does not compile (one on the builtin command) never hosts.
 
 ### Discovery
 

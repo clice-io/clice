@@ -7,7 +7,6 @@
 #include "support/filesystem.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "clang/Driver/Types.h"
 
@@ -23,52 +22,35 @@ bool header_suffix(llvm::StringRef path) {
     return type == types::TY_INVALID || types::onlyPrecompileType(type);
 }
 
-Language family_of_suffix(llvm::StringRef path) {
+Language family_of_type(clang::driver::types::ID type) {
     namespace types = clang::driver::types;
-    if(path::extension(path) == ".cuh") {
-        return Language::CUDA;
-    }
-    auto type = suffix_type(path);
     if(type == types::TY_INVALID || type == types::TY_CHeader) {
         return Language::Any;
     }
-    if(types::isCuda(type)) {
+    if(types::isCuda(type) || types::isHIP(type)) {
         return Language::CUDA;
-    }
-    if(types::isHIP(type)) {
-        return Language::HIP;
-    }
-    if(types::isObjC(type)) {
-        return types::isCXX(type) ? Language::ObjCXX : Language::ObjC;
     }
     if(types::isCXX(type)) {
         return Language::CXX;
     }
-    // Only plain C: OpenCL and the other C-derived languages need their
-    // own commands.
-    return type == types::TY_C || type == types::TY_PP_C ? Language::C : Language::Other;
+    if(type == types::TY_C || type == types::TY_PP_C || type == types::TY_ObjC ||
+       type == types::TY_PP_ObjC) {
+        return Language::C;
+    }
+    return Language::Other;
+}
+
+Language family_of_suffix(llvm::StringRef path) {
+    if(path::extension(path) == ".cuh") {
+        return Language::CUDA;
+    }
+    return family_of_type(suffix_type(path));
 }
 
 /// The family of a file by the language its effective command compiles
 /// it as — a `-x` in the entry or a rule's append included.
 Language family_of_command(const CommandRef& command) {
-    llvm::StringRef language = command.input.value;
-    if(language.contains("cuda")) {
-        return Language::CUDA;
-    }
-    if(language.contains("hip")) {
-        return Language::HIP;
-    }
-    if(language.starts_with("objective-c")) {
-        return language.contains("c++") ? Language::ObjCXX : Language::ObjC;
-    }
-    if(language.contains("c++")) {
-        return Language::CXX;
-    }
-    if(language == "c" || language == "c-header" || language == "cpp-output") {
-        return Language::C;
-    }
-    return Language::Other;
+    return family_of_type(clang::driver::types::lookupTypeForTypeSpecifier(command.input.value));
 }
 
 CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
@@ -77,35 +59,17 @@ CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
 }
 
 /// Whether a file of `family` can be part of a command's translation
-/// unit. CUDA, HIP and Objective-C++ units are C++ with more, so a C++
-/// header fits them (a `.cuh` or `.mm` needs its own); a C++ source
-/// borrowing such a command would compile as that language, so only
-/// headers get that latitude.
-/// The name clang gives the suffix's type, telling one specialized
-/// language from another; empty for a suffix it does not know.
-llvm::StringRef kind_of_suffix(llvm::StringRef path) {
-    namespace types = clang::driver::types;
-    auto type = suffix_type(path);
-    return type == types::TY_INVALID ? llvm::StringRef()
-                                     : llvm::StringRef(types::getTypeName(type));
-}
-
-bool compatible(Language file,
-                llvm::StringRef file_kind,
-                Language command,
-                llvm::StringRef command_kind,
-                bool header) {
+/// unit. A CUDA unit is C++ with more, so a C++ header fits it (a `.cuh`
+/// needs its own); a C++ source borrowing its command would compile as
+/// CUDA, so only headers get that latitude.
+bool compatible(Language file, Language command, bool header) {
     if(file == Language::Any) {
         return true;
     }
-    // The specialized languages (OpenCL, assembler, ...) share `Other`
-    // without sharing anything else: only the same kind matches.
-    if(file == Language::Other || command == Language::Other) {
-        return file == command && file_kind == command_kind;
+    if(file == command) {
+        return file != Language::Other;
     }
-    return file == command ||
-           (header && file == Language::CXX &&
-            (command == Language::CUDA || command == Language::HIP || command == Language::ObjCXX));
+    return header && file == Language::CXX && command == Language::CUDA;
 }
 
 std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {
@@ -124,23 +88,17 @@ const LenderIndex& lender_index(Workspace& workspace) {
     }
     index.commands.clear();
     index.search_dirs.clear();
-    index.missing.clear();
     auto members = workspace.build.members();
     std::ranges::sort(members, {}, [&](Fid unit) { return workspace.file_table.resolve(unit); });
     for(auto member: members) {
         // A member a rule claims with a default command that is no compile
-        // command has none; a listed unit deleted from disk lends nothing.
-        if(!llvm::sys::fs::exists(workspace.file_table.resolve(member))) {
-            index.missing.insert(member);
-            continue;
-        }
+        // command has none.
         for(auto& command: workspace.build.commands(member)) {
             auto ref = effective(workspace, member, command);
             auto position = static_cast<std::uint32_t>(index.commands.size());
             index.commands.push_back({
                 .lender = {.unit = member, .config = command.config},
                 .family = family_of_command(ref),
-                .kind = ref.input.value,
             });
             for(auto& search_dir: workspace.cdb.search_config(ref).dirs) {
                 auto canonical = search_dir.path;
@@ -159,13 +117,12 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
     auto& files = workspace.file_table;
     auto path = files.resolve(file);
     auto family = family_of_suffix(path);
-    auto kind = kind_of_suffix(path);
     bool header = header_suffix(path);
     auto dir = path::parent_path(path);
     auto stem = path::stem(path);
     auto& index = lender_index(workspace);
     auto fits = [&](const LenderIndex::Command& command) {
-        return compatible(family, kind, command.family, command.kind, header);
+        return compatible(family, command.family, header);
     };
 
     // Every unit with its first command of the family, in path order.
@@ -219,13 +176,11 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
 }
 
 llvm::SmallVector<Candidate, 2> host_commands(Workspace& workspace, Fid header, Fid host) {
-    auto header_path = workspace.file_table.resolve(header);
-    auto family = family_of_suffix(header_path);
-    auto kind = kind_of_suffix(header_path);
+    auto family = family_of_suffix(workspace.file_table.resolve(header));
     llvm::SmallVector<Candidate, 2> fitting;
     for(auto& command: workspace.build.commands(host)) {
         auto ref = effective(workspace, host, command);
-        if(compatible(family, kind, family_of_command(ref), ref.input.value, /*header=*/true)) {
+        if(compatible(family, family_of_command(ref), /*header=*/true)) {
             fitting.push_back(command);
         }
     }

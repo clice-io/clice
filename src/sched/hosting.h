@@ -2,14 +2,12 @@
 
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include "command/command.h"
 #include "sched/build.h"
 #include "vfs/file_table.h"
 
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 
@@ -26,10 +24,10 @@ struct Host {
 
 /// The translation units that can stand in for `header` — its includers
 /// the build compiles in a language the header can be part of (a `.h`
-/// in any, a `.hpp` in C++, CUDA, HIP or Objective-C++, a `.cuh` only in
-/// CUDA) — best first: units whose entries come
-/// from the databases the header's own rules name, then the unit sharing
-/// the header's stem, its directory, and path proximity.
+/// in any, a `.hpp` in C++ or CUDA, a `.cuh` only in CUDA) — best first:
+/// units whose entries come from the databases the header's own rules
+/// name, then the unit sharing the header's stem, its directory, and
+/// path proximity.
 llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header);
 
 /// The commands of `host` that compile `header` in a language it can be
@@ -39,15 +37,14 @@ llvm::SmallVector<Candidate, 2> host_commands(Workspace& workspace, Fid header, 
 
 /// The language family of a file by its suffix (`Any` when the suffix
 /// does not say: `.h`, an unknown extension) or of a command by the
-/// language it compiles its unit as.
+/// language it compiles its unit as. C++ covers Objective-C++ and C
+/// Objective-C, CUDA covers HIP; `Other` is every language the build
+/// neither lends nor hosts across (OpenCL, assembler, ...).
 enum class Language : std::uint8_t {
     Any,
     C,
     CXX,
-    ObjC,
-    ObjCXX,
     CUDA,
-    HIP,
     Other,
 };
 
@@ -58,23 +55,17 @@ struct Lender {
 };
 
 /// The commands the build's units can lend — every command of every
-/// member still on disk, by unit path — and the header search
-/// directories they cover, as indexes into `commands`. Rebuilt when
-/// Workspace::commands_epoch moves, so a resolution scans no unit.
+/// member, by unit path — and the header search directories they cover,
+/// as indexes into `commands`. Rebuilt when Workspace::commands_epoch
+/// moves, so a resolution scans no unit.
 struct LenderIndex {
     struct Command {
         Lender lender;
         Language family;
-        /// The input kind, which tells the specialized languages (`Other`)
-        /// apart.
-        std::string kind;
     };
 
     llvm::SmallVector<Command> commands;
     llvm::StringMap<llvm::SmallVector<std::uint32_t>> search_dirs;
-    /// The members left out for being absent from disk; one of them
-    /// reappearing changes the lender set (see Workspace::commands_epoch).
-    llvm::DenseSet<Fid> missing;
     std::uint64_t epoch = 0;
 };
 

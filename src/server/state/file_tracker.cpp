@@ -50,11 +50,10 @@ FileTracker::FileStamp FileTracker::stat_file(llvm::StringRef path) {
     return stamp;
 }
 
-FileTracker::SourceStamp FileTracker::stat_source(SourceID id, const SourceStamp* carry) const {
+FileTracker::SourceStamp FileTracker::stat_source(SourceID id) const {
     SourceStamp stamp{.database = stat_file(workspace.cdb.source_path(id))};
-    for(auto [index, response]: llvm::enumerate(workspace.cdb.response_files(id))) {
-        bool carried = carry && index >= watched_responses && index < carry->responses.size();
-        stamp.responses.push_back(carried ? carry->responses[index] : stat_file(response));
+    for(auto& response: workspace.cdb.response_files(id)) {
+        stamp.responses.push_back(stat_file(response));
     }
     return stamp;
 }
@@ -71,35 +70,13 @@ static void push_delta(const CDBDiff& diff, llvm::SmallVectorImpl<FileEvent>& ev
     events.push_back(FileEvent::cdb_changed(std::move(delta)));
 }
 
-void FileTracker::seed(Fid path_id) {
-    if(baseline.contains(path_id)) {
-        return;
-    }
-    auto path = workspace.file_table.resolve(path_id);
-    llvm::sys::fs::file_status status;
-    FileState state;
-    state.missing = llvm::sys::fs::status(path, status).value() != 0;
-    if(!state.missing) {
-        auto obs = workspace.file_table.observe_for(path_id, status);
-        if(!obs) {
-            return;
-        }
-        state.size = obs->size;
-        state.mtime_ns = obs->mtime_ns;
-        state.hash = obs->hash;
-        state.uid_device = obs->uid_device;
-        state.uid_file = obs->uid_file;
-    }
-    baseline.try_emplace(path_id, state);
-}
-
 void FileTracker::track(SourceID id) {
     // A source whose startup load failed (unreadable, mid-rewrite) stays
     // baselined as missing, so the next tick reloads it even when its
     // stamp never changes.
     TrackedSource tracked{.id = id};
     if(workspace.cdb.loaded(id)) {
-        tracked.applied = stat_source(id, nullptr);
+        tracked.applied = stat_source(id);
         tracked.reread = !workspace.cdb.response_files(id).empty();
         // Loaded, then deleted before this baseline: the load marked it
         // present, and an unchanged missing stamp would never correct it.
@@ -156,10 +133,7 @@ static void append(CDBDiff& into, const CDBDiff& from) {
 }
 
 void FileTracker::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta) {
-    // A change seen is confirmed by the next tick's full stamp: carrying
-    // the tail would compare it equal to the baseline again.
-    bool whole = force || tracked.has_pending || cdb_ticks % response_tail_period == 0;
-    auto current = stat_source(tracked.id, whole ? nullptr : &tracked.applied);
+    auto current = stat_source(tracked.id);
     if(!force) {
         if(current == tracked.applied && !tracked.reread) {
             tracked.has_pending = false;
@@ -228,19 +202,6 @@ void FileTracker::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta
              diff->added.size(),
              diff->removed.size(),
              diff->changed.size());
-    for(auto file: diff->added) {
-        seed(file);
-    }
-    if(auto responses = workspace.cdb.response_files(tracked.id).size();
-       responses > watched_responses) {
-        LOG_INFO(
-            "{} names {} response files; the first {} are watched every poll, the rest "
-            "every {} polls",
-            workspace.cdb.source_path(tracked.id),
-            responses,
-            watched_responses,
-            response_tail_period);
-    }
     if(flips) {
         push_moved(shared, before, default_sources(shared), diff->changed);
     }
@@ -250,7 +211,6 @@ void FileTracker::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta
 llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
     llvm::SmallVector<FileEvent> events;
     CDBDiff delta;
-    cdb_ticks += 1;
     // Nothing declared: keep looking, so a database generated after
     // startup — at the root, in a new subdirectory, or above a file open
     // without one — is picked up. Declared sources are registered
@@ -310,9 +270,6 @@ void FileTracker::discover_into(Fid path_id, CDBDiff& found) {
         if(!registered) {
             track(id);
         }
-    }
-    for(auto file: found.added) {
-        seed(file);
     }
 }
 
@@ -376,11 +333,25 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
 
             auto it = baseline.find(path_id);
             if(it == baseline.end()) {
-                // First sight seeds the baseline silently (an unreadable
-                // file waits for the next tick). The startup scan usually
-                // observed the file already, so the common seed is a
-                // shared-pair hit with no second read.
-                seed(path_id);
+                // First sight seeds the baseline silently. The startup
+                // scan usually observed the file already, so the common
+                // seed is a shared-pair hit with no second read.
+                FileState state;
+                state.missing = !exists;
+                if(exists) {
+                    auto obs = workspace.file_table.observe_for(path_id, status);
+                    if(!obs) {
+                        // Unreadable right now: don't seed a baseline that
+                        // would later compare as a change. Retry next tick.
+                        continue;
+                    }
+                    state.size = obs->size;
+                    state.mtime_ns = obs->mtime_ns;
+                    state.hash = obs->hash;
+                    state.uid_device = obs->uid_device;
+                    state.uid_file = obs->uid_file;
+                }
+                baseline.try_emplace(path_id, state);
                 continue;
             }
 
@@ -442,27 +413,8 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
 
     // A file created under a default-command rule joins the build: the
     // same gain of a command a database reload reports as added. One
-    // deleted leaves through DiskRemoved, but no longer lends.
-    auto refresh = workspace.build.refresh_default_sources();
-    for(auto file: refresh.appeared) {
-        seed(file);
-    }
-    push_delta({.added = std::move(refresh.appeared)}, events);
-    // A member that left is a file gone from disk, nothing else: the sweep
-    // above said so for the ones it had baselined, and one it never saw
-    // gets the same event, not a lost command that would drop the shard
-    // DiskRemoved keeps serving.
-    llvm::DenseSet<Fid> removed_now;
-    for(auto& event: events) {
-        if(event.kind == FileEvent::Kind::DiskRemoved) {
-            removed_now.insert(event.path_id);
-        }
-    }
-    for(auto file: refresh.vanished) {
-        if(!removed_now.contains(file)) {
-            events.push_back(FileEvent::disk_removed(file));
-        }
-    }
+    // deleted left through DiskRemoved above, like any tracked file.
+    push_delta({.added = workspace.build.refresh_default_sources()}, events);
 
     LOG_PERF("tracker",
              "phase=workspace_sweep files={} changed={} removed={} elapsed_ms={}",

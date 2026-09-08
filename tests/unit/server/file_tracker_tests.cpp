@@ -236,39 +236,6 @@ TEST_CASE(CDBBaselineRereadsResponses) {
     EXPECT_TRUE(tracker.tick_cdb().empty());
 }
 
-TEST_CASE(CDBTickResponseTail) {
-    /// A database naming more response files than are watched every tick:
-    /// a rewrite of one past the first 64 is still noticed, within the
-    /// tail period.
-    TempDir tmp;
-    std::vector<CDBEntry> entries;
-    for(std::size_t i = 0; i < 70; i += 1) {
-        auto source = std::format("u{}.cpp", i);
-        auto rsp = std::format("flags{}.rsp", i);
-        tmp.touch(source, R"(int f() {})");
-        tmp.touch(rsp, "-DONE\n");
-        entries.push_back({tmp.root, tmp.path(source), {"@" + rsp}});
-    }
-    Workspace workspace;
-    SessionStore store;
-    write_cdb(tmp, workspace.cdb, build_cdb_json(entries));
-    FileTracker tracker(workspace, store, tmp.root.str().str());
-    // The startup reread settles first.
-    for(int i = 0; i < 3; i += 1) {
-        tracker.tick_cdb();
-    }
-    // A longer content: the size change keeps the stamp comparison
-    // deterministic within mtime granularity.
-    tmp.touch("flags69.rsp", "-DTWO -DTHREE\n");
-    auto last = workspace.file_table.intern(tmp.path("u69.cpp"));
-    llvm::SmallVector<FileEvent> events;
-    for(int i = 0; i < 14 && events.empty(); i += 1) {
-        events = tracker.tick_cdb();
-    }
-    ASSERT_EQ(events.size(), 1u);
-    EXPECT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{last});
-}
-
 TEST_CASE(CDBTickRenameOver) {
     /// A same-size rewrite renamed over the database within one mtime
     /// tick is a new file: an ordinary tick sees it where stable file
@@ -515,73 +482,6 @@ TEST_CASE(WorkspaceTickKeepsListedMember) {
     loop.run();
 }
 
-TEST_CASE(SweepSeedsAppearedMember) {
-    /// A file the sweep first sees as a new default-command member is
-    /// baselined then, so an edit before the next sweep is a change.
-    TempDir tmp;
-    tmp.touch("src/old.cpp", R"(int old() {})");
-    kota::event_loop loop;
-    Workspace workspace;
-    SessionStore store;
-    workspace.config.rules.push_back(
-        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    FileTracker tracker(workspace, store, tmp.root.str().str());
-    auto body = [&]() -> kota::task<> {
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
-        tmp.touch("src/new.cpp", R"(int fresh() {})");
-        auto appeared = co_await tracker.tick_workspace();
-        auto fresh = workspace.file_table.intern(tmp.path("src/new.cpp"));
-        EXPECT_EQ(appeared.size(), 1u);
-        if(appeared.size() == 1) {
-            EXPECT_EQ(appeared[0].cdb.added, llvm::SmallVector<Fid>{fresh});
-        }
-        workspace.dep_graph.set_includes(fresh, 0, {});
-        workspace.dep_graph.build_reverse_map();
-        tmp.touch("src/new.cpp", R"(int fresh() { return 1; })");
-        auto changed = co_await tracker.tick_workspace();
-        EXPECT_EQ(changed.size(), 1u);
-        if(changed.size() == 1) {
-            EXPECT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
-            EXPECT_EQ(changed[0].path_id, fresh);
-        }
-    };
-    auto task = body();
-    loop.schedule(task);
-    loop.run();
-}
-
-TEST_CASE(WorkspaceTickVanishedUnseeded) {
-    /// A default-command member deleted before the sweep ever baselined
-    /// it: the sweep itself cannot notice, so its leaving the build
-    /// reports the removal.
-    TempDir tmp;
-    tmp.touch("src/gone.cpp", R"(int gone() {})");
-    kota::event_loop loop;
-    Workspace workspace;
-    SessionStore store;
-    workspace.config.rules.push_back(
-        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    auto gone = workspace.file_table.intern(tmp.path("src/gone.cpp"));
-    EXPECT_EQ(workspace.build.members().size(), 1u);
-    FileTracker tracker(workspace, store, tmp.root.str().str());
-    fs::remove_all(tmp.path("src/gone.cpp"));
-    auto body = [&]() -> kota::task<> {
-        auto events = co_await tracker.tick_workspace();
-        EXPECT_EQ(events.size(), 1u);
-        if(events.size() == 1) {
-            EXPECT_EQ(events[0].kind, FileEvent::Kind::DiskRemoved);
-            EXPECT_EQ(events[0].path_id, gone);
-        }
-    };
-    auto task = body();
-    loop.schedule(task);
-    loop.run();
-}
-
 TEST_CASE(CDBTickCoalescesSources) {
     /// Two databases settling in one tick make one delta.
     TempDir tmp;
@@ -608,41 +508,6 @@ TEST_CASE(CDBTickCoalescesSources) {
     EXPECT_EQ(events[0].cdb.added.size(), 2u);
     EXPECT_TRUE(workspace.cdb.loaded(a));
     EXPECT_TRUE(workspace.cdb.loaded(b));
-}
-
-TEST_CASE(DiscoverySeedsBaseline) {
-    /// A file a discovered database adds is baselined at the content the
-    /// graph was scanned from, so an edit before the first sweep is seen.
-    TempDir tmp;
-    tmp.touch("a/main.cpp", R"(int main() {})");
-    tmp.touch("a/compile_commands.json",
-              build_cdb_json({
-                  {tmp.root, tmp.path("a/main.cpp"), {}}
-    }));
-    kota::event_loop loop;
-    Workspace workspace;
-    SessionStore store;
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    FileTracker tracker(workspace, store, tmp.root.str().str());
-    auto main = workspace.file_table.intern(tmp.path("a/main.cpp"));
-    EXPECT_EQ(tracker.discover_around(main).size(), 1u);
-    // What the invalidator's rescan of the delta does: the unit joins the
-    // graph the sweep walks.
-    workspace.dep_graph.set_includes(main, 0, {});
-    workspace.dep_graph.build_reverse_map();
-    tmp.touch("a/main.cpp", R"(int main() { return 1; })");
-    auto body = [&]() -> kota::task<> {
-        auto changed = co_await tracker.tick_workspace();
-        EXPECT_EQ(changed.size(), 1u);
-        if(changed.size() == 1) {
-            EXPECT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
-            EXPECT_EQ(changed[0].path_id, main);
-        }
-    };
-    auto task = body();
-    loop.schedule(task);
-    loop.run();
 }
 
 TEST_CASE(WorkspaceTickSkipsOpen) {

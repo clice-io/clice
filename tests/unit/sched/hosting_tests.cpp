@@ -118,29 +118,9 @@ TEST_CASE(HostsMatchLanguage) {
     EXPECT_TRUE(ranked_hosts(workspace, hpp).empty());
     EXPECT_EQ(ranked_hosts(workspace, plain), llvm::SmallVector<Fid>{impl});
 
-    /// OpenCL is C-derived but not C: a `.cl` borrows no C command, nor
-    /// another specialized language's.
-    tmp.touch("asm/boot.s", "");
-    workspace.config.rules.push_back(
-        ConfigRule{.patterns = {"asm/**"}, .default_command = std::string("clang -x assembler")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    workspace.commands_epoch += 1;
+    /// OpenCL is C-derived but not C: a `.cl` borrows nothing.
     auto kernel_cl = workspace.file_table.intern(tmp.path("c/kernel.cl"));
-    auto asm_cl = workspace.file_table.intern(tmp.path("asm/kernel.cl"));
     EXPECT_FALSE(command_lender(workspace, kernel_cl).has_value());
-    EXPECT_FALSE(command_lender(workspace, asm_cl).has_value());
-
-    /// The same specialized language does lend.
-    tmp.touch("cl/lib.cl", "");
-    workspace.config.rules.push_back(
-        ConfigRule{.patterns = {"cl/**"}, .default_command = std::string("clang -x cl")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    workspace.commands_epoch += 1;
-    auto lib_cl = workspace.file_table.intern(tmp.path("cl/lib.cl"));
-    auto new_cl = workspace.file_table.intern(tmp.path("cl/new.cl"));
-    EXPECT_EQ(command_lender(workspace, new_cl)->unit, lib_cl);
 
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
     tmp.touch("gpu/kernel.cu", "");
@@ -160,20 +140,6 @@ TEST_CASE(HostsMatchLanguage) {
     auto gpu_source = workspace.file_table.intern(tmp.path("gpu/new.cpp"));
     EXPECT_EQ(command_lender(workspace, gpu_header)->unit, kernel);
     EXPECT_FALSE(command_lender(workspace, gpu_source).has_value());
-
-    /// HIP is the same family.
-    tmp.touch("hip/kernel.hip", "");
-    workspace.config.rules.push_back(
-        ConfigRule{.patterns = {"hip/**"}, .default_command = std::string("clang++ -x hip")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    workspace.commands_epoch += 1;
-    auto hip = workspace.file_table.intern(tmp.path("hip/kernel.hip"));
-    auto hip_header = workspace.file_table.intern(tmp.path("hip/new.hpp"));
-    auto hip_cuda = workspace.file_table.intern(tmp.path("hip/new.cu"));
-    EXPECT_EQ(command_lender(workspace, hip_header)->unit, hip);
-    /// A `.cu` next to the HIP unit borrows the CUDA one further away.
-    EXPECT_EQ(command_lender(workspace, hip_cuda)->unit, kernel);
 
     /// A host offers only the commands that fit the header: with a C entry
     /// first and a C++ one second, a `.hpp` sees the second alone.
@@ -246,54 +212,6 @@ TEST_CASE(LenderSearchDir) {
 
     auto source = workspace.file_table.intern(tmp.path("include/api/new.cpp"));
     EXPECT_EQ(command_lender(workspace, source)->unit, near.file);
-};
-
-TEST_CASE(LenderSkipsDeleted) {
-    /// A listed unit gone from disk lends nothing.
-    TempDir tmp;
-    tmp.touch("src/x.h", "");
-    tmp.touch("far/lib.cpp", "");
-    Workspace workspace;
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    for(auto file: {"src/gone.cpp", "far/lib.cpp"}) {
-        auto command = std::format("clang++ {}", tmp.path(file));
-        workspace.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
-    }
-    auto header = workspace.file_table.intern(tmp.path("src/x.h"));
-    auto lib = workspace.file_table.intern(tmp.path("far/lib.cpp"));
-    auto gone = workspace.file_table.intern(tmp.path("src/gone.cpp"));
-    EXPECT_EQ(command_lender(workspace, header)->unit, lib);
-    EXPECT_TRUE(workspace.lenders.missing.contains(gone));
-
-    /// Back on disk, it lends once the lender set is known to have changed.
-    tmp.touch("src/gone.cpp", "");
-    workspace.commands_epoch += 1;
-    EXPECT_EQ(command_lender(workspace, header)->unit, gone);
-};
-
-TEST_CASE(LenderKeepsObjC) {
-    /// Objective-C is its own family: a `.m` never borrows a C command,
-    /// and a `.mm` unit hosts a C++ header the way a CUDA one does.
-    TempDir tmp;
-    tmp.touch("src/plain.c", "");
-    tmp.touch("src/impl.mm", "");
-    tmp.touch("src/x.hpp", "");
-    Workspace workspace;
-    workspace.config.rules.push_back(
-        ConfigRule{.patterns = {"src/*.c"}, .default_command = std::string("clang")});
-    workspace.config.rules.push_back(
-        ConfigRule{.patterns = {"src/*.mm"}, .default_command = std::string("clang++")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    auto objc = workspace.file_table.intern(tmp.path("src/new.m"));
-    auto impl = workspace.file_table.intern(tmp.path("src/impl.mm"));
-    auto hpp = workspace.file_table.intern(tmp.path("src/x.hpp"));
-    EXPECT_FALSE(command_lender(workspace, objc).has_value());
-    EXPECT_EQ(command_lender(workspace, hpp)->unit, impl);
-    workspace.dep_graph.set_includes(impl, 0, {{hpp}});
-    workspace.dep_graph.build_reverse_map();
-    EXPECT_EQ(ranked_hosts(workspace, hpp), llvm::SmallVector<Fid>{impl});
 };
 
 TEST_CASE(LenderIgnoresCommandless) {

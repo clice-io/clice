@@ -40,11 +40,9 @@ public:
     /// its direct subdirectories and above every open file still without
     /// a command. Stats every registered source — declared ones that do
     /// not exist yet included, which is how a database generated after
-    /// startup is picked up — and the response files its commands name
-    /// (the first `watched_responses` every tick, the rest every
-    /// `response_tail_period` ticks, so a generator emitting one per unit
-    /// costs a bounded number of stats). Once a source's stamp
-    /// change has stayed stable for two consecutive ticks, reloads it and
+    /// startup is picked up — and the response files its commands name.
+    /// Once a source's stamp change has stayed stable for two consecutive
+    /// ticks, reloads it and
     /// emits one CDBChanged event carrying the reload's diff. A discovered
     /// database vanishing or returning flips its presence, and the files
     /// whose default entry moves with it change command (see
@@ -109,9 +107,7 @@ private:
         friend bool operator==(const SourceStamp&, const SourceStamp&) = default;
     };
 
-    /// `carry` supplies the stamps of the response files beyond
-    /// `watched_responses` on the ticks that skip them; null stats all.
-    SourceStamp stat_source(SourceID id, const SourceStamp* carry) const;
+    SourceStamp stat_source(SourceID id) const;
 
     /// One registered source's watch state.
     struct TrackedSource {
@@ -131,12 +127,6 @@ private:
     /// Register `id` for watching, baselined at its current stamp.
     void track(SourceID id);
 
-    /// Seed the sweep baseline of `path_id` at its current content, unless
-    /// it has one; a file a database load just added to the graph would
-    /// otherwise be seeded at whatever the first sweep finds, an edit in
-    /// between silently taken as the original.
-    void seed(Fid path_id);
-
     /// Tick one source; the reload's events, if any.
     void tick_source(TrackedSource& tracked, bool force, CDBDiff& delta);
 
@@ -150,10 +140,6 @@ private:
     /// The source of each file's default entry, as the build ranks them
     /// now; none for a file the build no longer compiles.
     llvm::SmallVector<std::optional<SourceID>> default_sources(llvm::ArrayRef<Fid> files) const;
-
-    constexpr static std::size_t watched_responses = 64;
-    constexpr static std::uint64_t response_tail_period = 10;
-    std::uint64_t cdb_ticks = 0;
 
     /// Last-known on-disk state of a tracked file.
     struct FileState {
