@@ -43,6 +43,35 @@ how it is phrased.
   in the report — chosen approach, rejected alternative, and why. The
   maintainer reviews these in one batch after the CI flow finishes;
   anything overturned becomes follow-up work or a dedicated refactor PR.
+- Low-priority corner case — a state no user workflow reaches, a
+  transition the plan never asked to handle: no code. Record it as an
+  accepted limitation in the report's Decisions block and in the area's
+  page under `temp/objectives/`; reproducibility alone is not a reason
+  to fix.
+
+## Convergence
+
+The bots review the whole diff on every push and remember nothing: a
+thread resolved with a rationale is re-derived and re-posted next push,
+and every mechanism a fix adds — a cache, a set, a period, an enum
+value, a second removal path — is a new surface with its own edge cases
+for the next round. A push that answers findings by adding mechanism
+guarantees the next round has findings.
+
+When a third consecutive round brings new threads, stop fixing and
+review the whole branch against its plan before touching another
+thread: list the mechanisms the fix commits added that the plan did not
+ask for, and whether each answers a user-visible failure or only a
+reviewer's hypothetical. Strip the ones that only answer hypotheticals
+(they are the churn), keep the plan's shape, record the remaining edges
+as accepted limitations, and push once. Threads the bots post after
+that get a rationale and a resolve, no code, unless one names a
+user-visible defect.
+
+If that review shows the plan's model itself is wrong — the reviewer is
+re-deriving an invariant the design cannot hold, not pointing at a
+missing branch — stop resolving and ask the maintainer before any
+further code: that is a design decision, not a review round.
 
 ## Resolve
 
