@@ -1,5 +1,4 @@
 include_guard()
-include(FetchContent)
 
 # Canonical target triple: the explicit CLICE_TARGET_TRIPLE for cross
 # builds, composed from the host otherwise. This exact spelling names the
@@ -46,12 +45,31 @@ function(_download_llvm LLVM_VERSION)
 
     set(_FILENAME "${_TRIPLE}.${_MODE}${_SUFFIX}.tar.xz")
     string(REPLACE "+" "%2B" _URL_VERSION "${LLVM_VERSION}")
+    # A release like 22.1.8+1 is not a CMake version; CPM hands VERSION to
+    # find_package when local packages are enabled.
+    string(REPLACE "+" "." _CMAKE_VERSION "${LLVM_VERSION}")
 
-    FetchContent_Declare(llvm_prebuilt
+    CPMAddPackage(
+        NAME llvm_prebuilt
+        VERSION ${_CMAKE_VERSION}
         URL "https://github.com/clice-io/clice-llvm/releases/download/${_URL_VERSION}/${_FILENAME}"
-        SOURCE_SUBDIR _none
+        DOWNLOAD_ONLY YES
     )
-    FetchContent_MakeAvailable(llvm_prebuilt)
+
+    if(NOT EXISTS "${llvm_prebuilt_SOURCE_DIR}/lib/cmake/llvm")
+        # An interrupted download leaves a directory in the cache that CPM
+        # would keep treating as the package; a directory the developer
+        # pointed at through CPM_llvm_prebuilt_SOURCE is theirs to fix.
+        cmake_path(IS_PREFIX CPM_SOURCE_CACHE "${llvm_prebuilt_SOURCE_DIR}" NORMALIZE _in_cache)
+        if(_in_cache)
+            file(REMOVE_RECURSE "${llvm_prebuilt_SOURCE_DIR}")
+            message(FATAL_ERROR
+                "The LLVM archive at ${llvm_prebuilt_SOURCE_DIR} was incomplete and has been "
+                "removed; run the configure again.")
+        endif()
+        message(FATAL_ERROR
+            "No LLVM install at ${llvm_prebuilt_SOURCE_DIR}: lib/cmake/llvm is missing.")
+    endif()
 
     set(LLVM_INSTALL_PATH "${llvm_prebuilt_SOURCE_DIR}" PARENT_SCOPE)
 endfunction()
@@ -59,9 +77,27 @@ endfunction()
 function(setup_llvm LLVM_VERSION)
     if(DEFINED LLVM_INSTALL_PATH AND NOT LLVM_INSTALL_PATH STREQUAL "")
         get_filename_component(LLVM_INSTALL_PATH "${LLVM_INSTALL_PATH}" ABSOLUTE)
-    elseif(DEFINED CLICE_OFFLINE_BUILD AND CLICE_OFFLINE_BUILD)
-        message(FATAL_ERROR "LLVM_INSTALL_PATH must be set in offline mode")
-    else()
+        if(NOT EXISTS "${LLVM_INSTALL_PATH}/lib/cmake/llvm")
+            # The path is cached below, so a wiped source cache would otherwise
+            # keep every later configure of this build tree pointed at nothing;
+            # a path given by hand is reported instead.
+            cmake_path(IS_PREFIX CPM_SOURCE_CACHE "${LLVM_INSTALL_PATH}" NORMALIZE _in_cache)
+            if(NOT _in_cache)
+                message(FATAL_ERROR
+                    "No LLVM install at ${LLVM_INSTALL_PATH}: lib/cmake/llvm is missing. Point "
+                    "LLVM_INSTALL_PATH at an LLVM install, or unset it (-ULLVM_INSTALL_PATH) to "
+                    "download the prebuilt one.")
+            endif()
+            message(STATUS "LLVM not found at ${LLVM_INSTALL_PATH}, downloading")
+            unset(LLVM_INSTALL_PATH)
+            unset(LLVM_INSTALL_PATH CACHE)
+        endif()
+    endif()
+
+    if(NOT DEFINED LLVM_INSTALL_PATH OR LLVM_INSTALL_PATH STREQUAL "")
+        if(CLICE_OFFLINE_BUILD)
+            message(FATAL_ERROR "LLVM_INSTALL_PATH must be set in offline mode")
+        endif()
         _download_llvm("${LLVM_VERSION}")
     endif()
 
