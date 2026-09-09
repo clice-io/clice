@@ -2,11 +2,39 @@
 """Run clang-tidy in parallel on all files in compile_commands.json."""
 
 import json
+import shlex
 import subprocess
 import sys
+import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+
+def without_pch(arguments: list[str]) -> list[str]:
+    """Drop the precompiled-header flags CMake adds for clang.
+
+    The PCH only exists after a build, and clang-tidy re-parses the headers
+    anyway; a `-Xclang X` pair is removed together.
+    """
+    out = []
+    skip = False
+    for i, arg in enumerate(arguments):
+        if skip:
+            skip = False
+            continue
+        if arg == "-Xclang" and i + 1 < len(arguments):
+            follower = arguments[i + 1]
+            if (
+                follower in ("-include-pch", "-include", "-fno-pch-timestamp")
+                or "cmake_pch" in follower
+            ):
+                skip = True
+                continue
+        if arg in ("-Winvalid-pch", "-fpch-instantiate-templates"):
+            continue
+        out.append(arg)
+    return out
 
 
 def main():
@@ -21,6 +49,12 @@ def main():
     src_dirs = (project_root / "src", project_root / "tests")
 
     cdb = json.loads(cdb_path.read_text())
+    for entry in cdb:
+        arguments = entry.pop("arguments", None) or shlex.split(entry.pop("command"))
+        entry["arguments"] = without_pch(arguments)
+    tidy_dir = tempfile.mkdtemp(prefix="clang-tidy-")
+    (Path(tidy_dir) / "compile_commands.json").write_text(json.dumps(cdb))
+
     files = [
         entry["file"]
         for entry in cdb
@@ -34,7 +68,7 @@ def main():
 
     def run(file: str) -> tuple[str, int, str]:
         result = subprocess.run(
-            ["clang-tidy", "-p", build_dir, "--quiet", file],
+            ["clang-tidy", "-p", tidy_dir, "--quiet", file],
             capture_output=True,
             text=True,
         )

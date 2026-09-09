@@ -71,7 +71,7 @@ endif()
 # launcher given as a command name (distcc) is left alone.
 foreach(lang C CXX)
     foreach(word IN LISTS CMAKE_${lang}_COMPILER_LAUNCHER)
-        if(word MATCHES "sccache" OR (IS_ABSOLUTE "${word}" AND NOT EXISTS "${word}"))
+        if(word MATCHES "(^|/)sccache(\\.exe)?$" OR (IS_ABSOLUTE "${word}" AND NOT EXISTS "${word}"))
             unset(CMAKE_${lang}_COMPILER_LAUNCHER CACHE)
             break()
         endif()
