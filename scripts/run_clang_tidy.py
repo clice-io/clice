@@ -2,13 +2,21 @@
 """Run clang-tidy in parallel on all files in compile_commands.json."""
 
 import json
+import os
 import shlex
 import subprocess
 import sys
-import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+
+def split_command(command: str) -> list[str]:
+    """Split a compile command the way the platform's shell would."""
+    if os.name != "nt":
+        return shlex.split(command)
+    words = shlex.split(command, posix=False)
+    return [w[1:-1] if len(w) >= 2 and w[0] == w[-1] == '"' else w for w in words]
 
 
 def without_pch(arguments: list[str]) -> list[str]:
@@ -50,10 +58,11 @@ def main():
 
     cdb = json.loads(cdb_path.read_text())
     for entry in cdb:
-        arguments = entry.pop("arguments", None) or shlex.split(entry.pop("command"))
+        arguments = entry.pop("arguments", None) or split_command(entry.pop("command"))
         entry["arguments"] = without_pch(arguments)
-    tidy_dir = tempfile.mkdtemp(prefix="clang-tidy-")
-    (Path(tidy_dir) / "compile_commands.json").write_text(json.dumps(cdb))
+    tidy_dir = Path(build_dir) / "clang-tidy"
+    tidy_dir.mkdir(exist_ok=True)
+    (tidy_dir / "compile_commands.json").write_text(json.dumps(cdb))
 
     files = [
         entry["file"]
@@ -68,7 +77,7 @@ def main():
 
     def run(file: str) -> tuple[str, int, str]:
         result = subprocess.run(
-            ["clang-tidy", "-p", tidy_dir, "--quiet", file],
+            ["clang-tidy", "-p", str(tidy_dir), "--quiet", file],
             capture_output=True,
             text=True,
         )
