@@ -1,13 +1,21 @@
 include_guard()
 
-# CPM keeps every download in CPM_SOURCE_CACHE, so a fresh build directory
-# reuses the dependency checkouts and the extracted LLVM archive instead of
-# fetching gigabytes again. The environment variable wins, so one cache can
-# serve several checkouts; a -D on the command line wins over both.
+# CPM keeps every download in CPM_SOURCE_CACHE, so every build directory of
+# every checkout reuses the dependency checkouts and the extracted LLVM
+# archive instead of fetching gigabytes again. The default is the user's
+# cache directory — the source tree may be read-only, and a build tree is
+# too short-lived; the CPM_SOURCE_CACHE environment variable and a -D on the
+# command line win over it.
 if(DEFINED ENV{CPM_SOURCE_CACHE})
     set(_cpm_cache_default "$ENV{CPM_SOURCE_CACHE}")
+elseif(WIN32 AND DEFINED ENV{LOCALAPPDATA})
+    file(TO_CMAKE_PATH "$ENV{LOCALAPPDATA}/clice/cpm" _cpm_cache_default)
+elseif(DEFINED ENV{XDG_CACHE_HOME})
+    set(_cpm_cache_default "$ENV{XDG_CACHE_HOME}/clice/cpm")
+elseif(DEFINED ENV{HOME})
+    set(_cpm_cache_default "$ENV{HOME}/.cache/clice/cpm")
 else()
-    set(_cpm_cache_default "${PROJECT_SOURCE_DIR}/.cache/cpm")
+    set(_cpm_cache_default "${CMAKE_BINARY_DIR}/cpm-cache")
 endif()
 set(CPM_SOURCE_CACHE "${_cpm_cache_default}" CACHE PATH "Directory to download CPM dependencies")
 include(${CMAKE_CURRENT_LIST_DIR}/CPM.cmake)
@@ -63,6 +71,9 @@ CPMAddPackage(
     GIT_SHALLOW TRUE
     DOWNLOAD_ONLY YES
 )
+if(NOT lmdb_SOURCE_DIR)
+    message(FATAL_ERROR "lmdb is built from its sources here; a local lmdb package cannot stand in for them.")
+endif()
 
 add_library(lmdb STATIC
     ${lmdb_SOURCE_DIR}/libraries/liblmdb/mdb.c

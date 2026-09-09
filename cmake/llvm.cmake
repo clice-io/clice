@@ -56,13 +56,19 @@ function(_download_llvm LLVM_VERSION)
         DOWNLOAD_ONLY YES
     )
 
-    # An interrupted download leaves an empty directory that CPM would keep
-    # treating as the package.
     if(NOT EXISTS "${llvm_prebuilt_SOURCE_DIR}/lib/cmake/llvm")
-        file(REMOVE_RECURSE "${llvm_prebuilt_SOURCE_DIR}")
+        # An interrupted download leaves a directory in the cache that CPM
+        # would keep treating as the package; a directory the developer
+        # pointed at through CPM_llvm_prebuilt_SOURCE is theirs to fix.
+        cmake_path(IS_PREFIX CPM_SOURCE_CACHE "${llvm_prebuilt_SOURCE_DIR}" NORMALIZE _in_cache)
+        if(_in_cache)
+            file(REMOVE_RECURSE "${llvm_prebuilt_SOURCE_DIR}")
+            message(FATAL_ERROR
+                "The LLVM archive at ${llvm_prebuilt_SOURCE_DIR} was incomplete and has been "
+                "removed; run the configure again.")
+        endif()
         message(FATAL_ERROR
-            "The LLVM archive at ${llvm_prebuilt_SOURCE_DIR} was incomplete and has been removed; "
-            "run the configure again.")
+            "No LLVM install at ${llvm_prebuilt_SOURCE_DIR}: lib/cmake/llvm is missing.")
     endif()
 
     set(LLVM_INSTALL_PATH "${llvm_prebuilt_SOURCE_DIR}" PARENT_SCOPE)
