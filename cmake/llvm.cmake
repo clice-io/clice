@@ -45,13 +45,25 @@ function(_download_llvm LLVM_VERSION)
 
     set(_FILENAME "${_TRIPLE}.${_MODE}${_SUFFIX}.tar.xz")
     string(REPLACE "+" "%2B" _URL_VERSION "${LLVM_VERSION}")
+    # A release like 22.1.8+1 is not a CMake version; CPM hands VERSION to
+    # find_package when local packages are enabled.
+    string(REPLACE "+" "." _CMAKE_VERSION "${LLVM_VERSION}")
 
     CPMAddPackage(
         NAME llvm_prebuilt
-        VERSION ${LLVM_VERSION}
+        VERSION ${_CMAKE_VERSION}
         URL "https://github.com/clice-io/clice-llvm/releases/download/${_URL_VERSION}/${_FILENAME}"
         DOWNLOAD_ONLY YES
     )
+
+    # An interrupted download leaves an empty directory that CPM would keep
+    # treating as the package.
+    if(NOT EXISTS "${llvm_prebuilt_SOURCE_DIR}/lib/cmake/llvm")
+        file(REMOVE_RECURSE "${llvm_prebuilt_SOURCE_DIR}")
+        message(FATAL_ERROR
+            "The LLVM archive at ${llvm_prebuilt_SOURCE_DIR} was incomplete and has been removed; "
+            "run the configure again.")
+    endif()
 
     set(LLVM_INSTALL_PATH "${llvm_prebuilt_SOURCE_DIR}" PARENT_SCOPE)
 endfunction()
@@ -59,9 +71,19 @@ endfunction()
 function(setup_llvm LLVM_VERSION)
     if(DEFINED LLVM_INSTALL_PATH AND NOT LLVM_INSTALL_PATH STREQUAL "")
         get_filename_component(LLVM_INSTALL_PATH "${LLVM_INSTALL_PATH}" ABSOLUTE)
-    elseif(DEFINED CLICE_OFFLINE_BUILD AND CLICE_OFFLINE_BUILD)
-        message(FATAL_ERROR "LLVM_INSTALL_PATH must be set in offline mode")
-    else()
+        if(NOT EXISTS "${LLVM_INSTALL_PATH}/lib/cmake/llvm")
+            # The path is cached below, so a wiped source cache would otherwise
+            # keep every later configure of this build tree pointed at nothing.
+            message(STATUS "LLVM not found at ${LLVM_INSTALL_PATH}, downloading")
+            unset(LLVM_INSTALL_PATH)
+            unset(LLVM_INSTALL_PATH CACHE)
+        endif()
+    endif()
+
+    if(NOT DEFINED LLVM_INSTALL_PATH OR LLVM_INSTALL_PATH STREQUAL "")
+        if(CLICE_OFFLINE_BUILD)
+            message(FATAL_ERROR "LLVM_INSTALL_PATH must be set in offline mode")
+        endif()
         _download_llvm("${LLVM_VERSION}")
     endif()
 

@@ -3,11 +3,18 @@ include_guard()
 # CPM keeps every download in CPM_SOURCE_CACHE, so a fresh build directory
 # reuses the dependency checkouts and the extracted LLVM archive instead of
 # fetching gigabytes again. The environment variable wins, so one cache can
-# serve several checkouts.
-if(NOT DEFINED CPM_SOURCE_CACHE AND NOT DEFINED ENV{CPM_SOURCE_CACHE})
-    set(CPM_SOURCE_CACHE "${PROJECT_SOURCE_DIR}/.cache/cpm")
+# serve several checkouts; a -D on the command line wins over both.
+if(DEFINED ENV{CPM_SOURCE_CACHE})
+    set(_cpm_cache_default "$ENV{CPM_SOURCE_CACHE}")
+else()
+    set(_cpm_cache_default "${PROJECT_SOURCE_DIR}/.cache/cpm")
 endif()
+set(CPM_SOURCE_CACHE "${_cpm_cache_default}" CACHE PATH "Directory to download CPM dependencies")
 include(${CMAKE_CURRENT_LIST_DIR}/CPM.cmake)
+
+# Without the cache CPM falls back to FetchContent under the build tree; keep
+# those checkouts from fetching on every reconfigure.
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
 include(${CMAKE_CURRENT_LIST_DIR}/llvm.cmake)
 setup_llvm("22.1.8")
