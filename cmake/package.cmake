@@ -18,6 +18,10 @@ else()
     set(_cpm_cache_default "${CMAKE_BINARY_DIR}/cpm-cache")
 endif()
 set(CPM_SOURCE_CACHE "${_cpm_cache_default}" CACHE PATH "Directory to download CPM dependencies")
+# CPM stores absolute package paths; the cache path must be absolute too for
+# the ownership checks in llvm.cmake.
+get_filename_component(_cpm_cache_abs "${CPM_SOURCE_CACHE}" ABSOLUTE)
+set(CPM_SOURCE_CACHE "${_cpm_cache_abs}" CACHE PATH "Directory to download CPM dependencies" FORCE)
 include(${CMAKE_CURRENT_LIST_DIR}/CPM.cmake)
 
 # Without the cache CPM falls back to FetchContent under the build tree; keep
