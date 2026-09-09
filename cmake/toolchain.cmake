@@ -70,17 +70,32 @@ endif()
 # no longer exists) forever; drop such entries so the lookup runs again. A
 # launcher given as a command name (distcc) is left alone.
 foreach(lang C CXX)
-    set(launcher "${CMAKE_${lang}_COMPILER_LAUNCHER}")
-    if(launcher MATCHES "sccache" OR (IS_ABSOLUTE "${launcher}" AND NOT EXISTS "${launcher}"))
-        unset(CMAKE_${lang}_COMPILER_LAUNCHER CACHE)
-    endif()
+    foreach(word IN LISTS CMAKE_${lang}_COMPILER_LAUNCHER)
+        if(word MATCHES "(^|/)sccache(\\.exe)?$" OR (IS_ABSOLUTE "${word}" AND NOT EXISTS "${word}"))
+            unset(CMAKE_${lang}_COMPILER_LAUNCHER CACHE)
+            break()
+        endif()
+    endforeach()
 endforeach()
 
+# ccache treats a precompiled header as uncacheable unless it may ignore the
+# defines and time macros baked into it; the launcher carries that setting
+# so no per-machine ccache configuration is needed. A bare ccache launcher —
+# from an earlier configure or given by hand — is wrapped the same way.
 find_program(CCACHE_PATH "ccache")
-if(CCACHE_PATH)
-    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PATH}" CACHE FILEPATH "")
-    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PATH}" CACHE FILEPATH "")
-endif()
+foreach(lang C CXX)
+    set(launcher "${CMAKE_${lang}_COMPILER_LAUNCHER}")
+    if(launcher MATCHES "^[^;]*ccache[^;]*$")
+        set(ccache "${launcher}")
+    elseif(launcher STREQUAL "" AND CCACHE_PATH)
+        set(ccache "${CCACHE_PATH}")
+    else()
+        continue()
+    endif()
+    set(CMAKE_${lang}_COMPILER_LAUNCHER
+        "${CMAKE_COMMAND};-E;env;CCACHE_SLOPPINESS=pch_defines,time_macros;${ccache}"
+        CACHE STRING "" FORCE)
+endforeach()
 
 if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "")

@@ -122,6 +122,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 include("${PROJECT_SOURCE_DIR}/cmake/package.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/pch.cmake")
 
 # Project-specific options (not applied to third-party deps).
 add_library(clice_options INTERFACE)
@@ -186,6 +187,7 @@ file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS
 add_library(clice-core STATIC ${CLICE_CORE_SOURCES})
 add_library(clice::core ALIAS clice-core)
 add_dependencies(clice-core generate_version_header)
+clice_precompile_headers(clice-core)
 
 target_include_directories(clice-core PUBLIC
     "${PROJECT_SOURCE_DIR}/src"
@@ -210,16 +212,19 @@ file(GLOB_RECURSE CLICE_CONFIG_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/
 add_library(clice-config STATIC ${CLICE_CONFIG_SOURCES})
 add_library(clice::config ALIAS clice-config)
 target_link_libraries(clice-config PUBLIC clice::core)
+clice_precompile_headers(clice-config)
 
 file(GLOB_RECURSE CLICE_WORKER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/worker/*.cpp")
 add_library(clice-worker STATIC ${CLICE_WORKER_SOURCES})
 add_library(clice::worker ALIAS clice-worker)
 target_link_libraries(clice-worker PUBLIC clice::config)
+clice_precompile_headers(clice-worker)
 
 file(GLOB_RECURSE CLICE_SCHED_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/sched/*.cpp")
 add_library(clice-sched STATIC ${CLICE_SCHED_SOURCES})
 add_library(clice::sched ALIAS clice-sched)
 target_link_libraries(clice-sched PUBLIC clice::worker)
+clice_precompile_headers(clice-sched)
 
 file(GLOB_RECURSE CLICE_SERVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/server/*.cpp")
 add_library(clice-server STATIC ${CLICE_SERVER_SOURCES})
@@ -228,10 +233,12 @@ add_library(clice::server ALIAS clice-server)
 # does not order another target's compilation after the custom command.
 add_dependencies(clice-server generate_version_header)
 target_link_libraries(clice-server PUBLIC clice::sched)
+clice_precompile_headers(clice-server)
 
 file(GLOB CLICE_DRIVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/driver/*.cc")
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc" ${CLICE_DRIVER_SOURCES})
 target_link_libraries(clice PRIVATE clice::server kota::deco)
+clice_precompile_headers(clice)
 add_dependencies(clice generate_version_header)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -264,6 +271,7 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/tests/unit"
     )
     target_link_libraries(unit_tests PRIVATE clice::server kota::zest kota::deco)
+    clice_precompile_headers(unit_tests)
     target_compile_definitions(unit_tests PRIVATE
         CLICE_TESTS_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data"
     )

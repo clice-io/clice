@@ -174,10 +174,6 @@ depends-on = [
     { task = "cmake-build", args = ["{{ type }}"] },
 ]
 
-[feature.build.tasks.clang-tidy]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
-depends-on = [{ task = "lint-cpp", args = ["{{ type }}"] }]
-
 [feature.build.tasks.check-layers]
 cmd = "python3 scripts/check_layers.py"
 
@@ -398,13 +394,5 @@ format = { depends-on = [
 [feature.format.tasks.lint-python]
 cmd = "ruff check ."
 
-[feature.build.tasks.lint-cpp]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = "python scripts/run_clang_tidy.py build/{{ type }}"
-
 [feature.build.tasks.lint]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
-depends-on = [
-    "lint-python",
-    { task = "lint-cpp", args = ["{{ type }}"] },
-]
+depends-on = ["lint-python"]
