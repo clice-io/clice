@@ -84,7 +84,9 @@ function(setup_llvm LLVM_VERSION)
             cmake_path(IS_PREFIX CPM_SOURCE_CACHE "${LLVM_INSTALL_PATH}" NORMALIZE _in_cache)
             if(NOT _in_cache)
                 message(FATAL_ERROR
-                    "No LLVM install at ${LLVM_INSTALL_PATH}: lib/cmake/llvm is missing.")
+                    "No LLVM install at ${LLVM_INSTALL_PATH}: lib/cmake/llvm is missing. Point "
+                    "LLVM_INSTALL_PATH at an LLVM install, or unset it (-ULLVM_INSTALL_PATH) to "
+                    "download the prebuilt one.")
             endif()
             message(STATUS "LLVM not found at ${LLVM_INSTALL_PATH}, downloading")
             unset(LLVM_INSTALL_PATH)
