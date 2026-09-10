@@ -130,8 +130,9 @@ process(result.value());
   Bugs here are always cross-function interleavings; a function-level read
   finds none of them.
 - Cancellation flows down the ownership tree through `task_group::cancel()`;
-  tokens and sources exist only to cross an ownership boundary, and the one
-  shutdown source lives in `MasterServer`. Graceful shutdown is not
+  tokens and sources exist only to cross an ownership boundary — the serve
+  mode shutdown source in `MasterServer`, the batch commands' in
+  `BatchLifetime`. Graceful shutdown is not
   cancellation — kota has no shield, a cancel cascades all the way down — so
   a shutdown is a cancellable serving phase bounded by `with_token`, then a
   non-cancellable drain that joins each task in order.
@@ -152,7 +153,7 @@ process(result.value());
 - **Variables, member fields, function names**: `snake_case`. Class member fields do NOT use any special suffix/prefix (no trailing `_`, no `m_` prefix).
 - **Class names, template parameter names, enum names**: `PascalCase`. Exception: some class names also use `snake_case` — follow the existing style in the project.
 - **Enum values**: `PascalCase`.
-- **Acronyms stay uppercase inside identifiers**: `PCHFamily`, `ASTProjection`, `TUIndex` — never `Pcm`, `Ast`, `Tu`.
+- **Acronyms stay uppercase in type names**: `PCHFamily`, `ASTProjection`, `TUIndex` — never `PcmFamily`, `AstProjection`.
 - Doc comments on declarations use `///`; the bar for when to write a
   comment at all is in CLAUDE.md.
 

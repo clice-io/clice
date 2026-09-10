@@ -56,7 +56,7 @@ Strategy:
 2. Fix type system and signature changes (requires understanding semantics)
 3. Update test expectations (AST structure changes affect test output)
 4. Ensure `pixi run unit-test RelWithDebInfo` passes
-5. Build `Debug` as well: the Linux and macOS Debug packages are shared-library builds, so every library clice uses directly must be listed in `cmake/llvm.cmake` — a static link resolves symbols from any archive pulled in transitively and hides a missing entry until the Debug leg fails with undefined symbols
+5. Build `Debug` as well, against the Step 1 `debug-asan` artifact — the release does not exist until Step 5, and the static `.llvm` package cannot show the problem: `gh run download <RUN_ID> -n x86_64-unknown-linux-gnu.debug-asan.tar.xz -D .llvm-download`, extract into `.llvm-debug`, then `pixi run cmake-config Debug ON -- "-DLLVM_INSTALL_PATH=.llvm-debug"`. The Linux and macOS Debug packages are shared-library builds, so every library clice uses directly must be listed in `cmake/llvm.cmake` — a static link resolves symbols from any archive pulled in transitively and hides a missing entry until the Debug leg fails with undefined symbols
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
