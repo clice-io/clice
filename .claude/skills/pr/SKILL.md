@@ -10,7 +10,7 @@ The development flow is: branch off `main` → write code (discussing requiremen
 ## Branch
 
 - Always branch from freshly fetched `origin/main` — `git fetch origin && git checkout -b <type>/<short-topic> origin/main` — never from the local `main`. `<type>` uses the conventional-commit types, e.g. `fix/hover-crash`, `chore/upgrade-llvm-23`.
-- An unpublished branch stacked on a predecessor that has since been squash-merged is rebased with `git rebase --onto origin/main <predecessor-tip>` before anything else (once the branch is an open PR, that rebase needs the maintainer's approval like any other) — a plain `git rebase origin/main` replays the predecessor's commits one at a time and stops on a conflict wherever their intermediate states differ from the squashed result. Never start a build or a suite on a tree with unresolved conflicts.
+- An unpublished branch stacked on a predecessor that has since been squash-merged is rebased, after `git fetch origin`, with `git rebase --onto origin/main <predecessor-tip>` before anything else (once the branch is an open PR, that rebase needs the maintainer's approval like any other) — a plain `git rebase origin/main` replays the predecessor's commits one at a time and stops on a conflict wherever their intermediate states differ from the squashed result. Never start a build or a suite on a tree with unresolved conflicts.
 
 ## Pre-push verification (every push, not just the first)
 
