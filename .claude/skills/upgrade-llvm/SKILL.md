@@ -36,6 +36,8 @@ pixi run cmake-config RelWithDebInfo ON -- "-DLLVM_INSTALL_PATH=.llvm"
 pixi run cmake-build RelWithDebInfo
 ```
 
+An existing build directory caches `LLVM_DIR` and `Clang_DIR` from the previous package, and `find_package` honours them before the `PATHS` we pass — the new package is silently ignored. Configure with `-ULLVM_DIR -UClang_DIR` added to the `--` arguments, or use a fresh build directory.
+
 Compilation will likely fail — that's what Step 3 addresses.
 
 ## Step 3: Adapt API Changes
@@ -54,6 +56,7 @@ Strategy:
 2. Fix type system and signature changes (requires understanding semantics)
 3. Update test expectations (AST structure changes affect test output)
 4. Ensure `pixi run unit-test RelWithDebInfo` passes
+5. Build `Debug` as well: it links LLVM as shared libraries, so every library clice uses directly must be listed in `cmake/llvm.cmake` — the static RelWithDebInfo link resolves transitive dependencies and hides a missing entry until the Debug leg fails with undefined symbols
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
@@ -98,7 +101,7 @@ git commit -m "chore: update LLVM to <VERSION>"
 git push
 ```
 
-Poll CI until all platforms pass. CMake downloads the correct artifact automatically based on the version and platform — no manifest file needed.
+Poll CI until all platforms pass. CMake downloads the correct artifact automatically based on the version and platform — no manifest file needed. Local build directories need the same `-ULLVM_DIR -UClang_DIR` reconfigure as Step 2, or they keep building against the old package.
 
 ## Step 7: Write LLVM Changelog (REQUIRED)
 

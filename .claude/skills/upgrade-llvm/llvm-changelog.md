@@ -33,3 +33,8 @@ Breaking changes encountered during each LLVM upgrade, with upstream commit refe
 | `size_t` and friends are named sugar types (`__size_t`), so e.g. `operator new`'s parameter prints as `__size_t` with an `aka unsigned long`. | `7c402b8b81d2` | [#149613](https://github.com/llvm/llvm-project/pull/149613) | Hover snapshots updated.                                                                                                                                            |
 | Anonymous tag types print as `(unnamed enum)`/`(unnamed struct)` uniformly.                                                                   | `4ef641916408` | [#169445](https://github.com/llvm/llvm-project/pull/169445) | Hover snapshots updated.                                                                                                                                            |
 | `PrintingPolicy::SuppressScope` now also drops written qualifiers of template names, and canonical tag types print fully qualified.           | `91cdd35008e9` | [#147835](https://github.com/llvm/llvm-project/pull/147835) | Inlay type hints lose nested-class scopes (`Nested<int>` instead of `S2::Nested<int>`, matching clangd); hover of `this` prints the namespace-qualified class type. |
+
+### Pitfalls found while adapting
+
+- `NestedNameSpecifier::getKind()` on a default-constructed specifier is `Null` and safe to call; `llvm_unreachable` fires only for the `Invalid` kind (the `DenseMap` sentinel), and `Invalid` converts to `true`, so `if(!NNS)` does not guard it. Test the kind explicitly.
+- `PrintingPolicy::SuppressScope` suppresses only two kinds of written scope in 22; a display helper that restores scopes must narrow to the same predicate, or it prints `S2::S2::Inner`.

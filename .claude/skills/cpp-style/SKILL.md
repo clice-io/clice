@@ -129,6 +129,16 @@ process(result.value());
   what the frame captured before suspending is still valid when it resumes.
   Bugs here are always cross-function interleavings; a function-level read
   finds none of them.
+- Cancellation flows down the ownership tree through `task_group::cancel()`;
+  tokens and sources exist only to cross an ownership boundary, and the one
+  shutdown source lives in `MasterServer`. Graceful shutdown is not
+  cancellation — kota has no shield, a cancel cascades all the way down — so
+  a shutdown is a cancellable serving phase bounded by `with_token`, then a
+  non-cancellable drain that joins each task in order.
+- `cancellation_token::wait()` completes by cancelling itself. Awaited
+  directly inside `when_any` it propagates that cancellation into the parent
+  frame and skips everything after the `co_await`; wrap it in `with_token`
+  (which catches internally) or add `.catch_cancel()`.
 
 ## Logging
 
@@ -142,6 +152,7 @@ process(result.value());
 - **Variables, member fields, function names**: `snake_case`. Class member fields do NOT use any special suffix/prefix (no trailing `_`, no `m_` prefix).
 - **Class names, template parameter names, enum names**: `PascalCase`. Exception: some class names also use `snake_case` — follow the existing style in the project.
 - **Enum values**: `PascalCase`.
+- **Acronyms stay uppercase inside identifiers**: `PCHFamily`, `ASTProjection`, `TUIndex` — never `Pcm`, `Ast`, `Tu`.
 - Doc comments on declarations use `///`; the bar for when to write a
   comment at all is in CLAUDE.md.
 
