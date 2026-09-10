@@ -36,5 +36,4 @@ Breaking changes encountered during each LLVM upgrade, with upstream commit refe
 
 ### Pitfalls found while adapting
 
-- `NestedNameSpecifier::getKind()` on a default-constructed specifier is `Null` and safe to call; `llvm_unreachable` fires only for the `Invalid` kind (the `DenseMap` sentinel), and `Invalid` converts to `true`, so `if(!NNS)` does not guard it. Test the kind explicitly.
-- `PrintingPolicy::SuppressScope` suppresses only two kinds of written scope in 22; a display helper that restores scopes must narrow to the same predicate, or it prints `S2::S2::Inner`.
+- A default-constructed `NestedNameSpecifier` is `Invalid`, not `Null` (`Null` is `std::nullopt`), and `Invalid` converts to `true`, so `if(!NNS)` does not guard it: `getKind()` on it hits `llvm_unreachable`. Initialize with `std::nullopt` and test the kind.

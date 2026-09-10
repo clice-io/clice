@@ -274,6 +274,10 @@ async function onSettingsChanged(
 }
 
 export async function activate(context: ExtensionContext) {
+    // Activation is onLanguage only (package.json), never workspaceContains,
+    // not even for a root clice.toml: with background indexing, activating is
+    // a real cost, and monorepos and vendored checkouts hold C++ the user never
+    // opens. A workspace with no C++ file opened yet gets no server; accepted.
     const channel = window.createOutputChannel("clice");
     const traceChannel = window.createOutputChannel("clice (LSP trace)");
     context.subscriptions.push(channel, traceChannel);
