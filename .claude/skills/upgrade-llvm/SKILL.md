@@ -36,6 +36,8 @@ pixi run cmake-config RelWithDebInfo ON -- "-DLLVM_INSTALL_PATH=.llvm"
 pixi run cmake-build RelWithDebInfo
 ```
 
+An existing build directory caches `LLVM_DIR` and `Clang_DIR` from the previous package, and `find_package` honours them before the `PATHS` we pass — the new package is silently ignored. Add `-ULLVM_DIR -UClang_DIR` to the `--` arguments, or use a fresh build directory.
+
 Compilation will likely fail — that's what Step 3 addresses.
 
 ## Step 3: Adapt API Changes
@@ -54,6 +56,7 @@ Strategy:
 2. Fix type system and signature changes (requires understanding semantics)
 3. Update test expectations (AST structure changes affect test output)
 4. Ensure `pixi run unit-test RelWithDebInfo` passes
+5. Expect the Debug leg to catch link-list gaps: the Linux and macOS Debug packages are shared-library builds, so every library clice uses directly must be listed in `cmake/llvm.cmake` — a static link resolves symbols from any archive pulled in transitively and hides a missing entry. To check before Step 5, build `Debug` against the Step 1 `debug-asan` artifact for your platform the same way Step 2 uses `releasedbg`
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
@@ -98,7 +101,7 @@ git commit -m "chore: update LLVM to <VERSION>"
 git push
 ```
 
-Poll CI until all platforms pass. CMake downloads the correct artifact automatically based on the version and platform — no manifest file needed.
+Poll CI until all platforms pass. CMake downloads the correct artifact automatically based on the version and platform — no manifest file needed. Local build directories keep building against the old package: `setup_llvm` skips the download while the cached `LLVM_INSTALL_PATH` still points at an existing install, and `find_package` keeps the cached `LLVM_DIR`/`Clang_DIR`. Reconfigure with `-ULLVM_INSTALL_PATH -ULLVM_DIR -UClang_DIR`, or use a fresh build directory.
 
 ## Step 7: Write LLVM Changelog (REQUIRED)
 

@@ -111,6 +111,10 @@ function(setup_llvm LLVM_VERSION)
     llvm_map_components_to_libnames(LLVM_RESOLVED
         support frontendopenmp option targetparser)
 
+    # Every library clice uses directly must be listed here. A static link
+    # resolves symbols from any archive pulled in transitively, so a missing
+    # entry only surfaces on the shared-library Debug packages (Linux and
+    # macOS) as undefined symbols.
     add_library(llvm-libs INTERFACE IMPORTED)
     target_link_libraries(llvm-libs INTERFACE
         ${LLVM_RESOLVED}

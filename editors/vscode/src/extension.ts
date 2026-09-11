@@ -274,6 +274,11 @@ async function onSettingsChanged(
 }
 
 export async function activate(context: ExtensionContext) {
+    // The manifest has no workspaceContains event, not even for a root
+    // clice.toml: with background indexing, activating is a real cost, and
+    // monorepos and vendored checkouts hold C++ the user never opens. Until a
+    // C, C++ or CUDA file is opened or a clice command is run there is no
+    // server; accepted.
     const channel = window.createOutputChannel("clice");
     const traceChannel = window.createOutputChannel("clice (LSP trace)");
     context.subscriptions.push(channel, traceChannel);

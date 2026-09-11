@@ -33,3 +33,7 @@ Breaking changes encountered during each LLVM upgrade, with upstream commit refe
 | `size_t` and friends are named sugar types (`__size_t`), so e.g. `operator new`'s parameter prints as `__size_t` with an `aka unsigned long`. | `7c402b8b81d2` | [#149613](https://github.com/llvm/llvm-project/pull/149613) | Hover snapshots updated.                                                                                                                                            |
 | Anonymous tag types print as `(unnamed enum)`/`(unnamed struct)` uniformly.                                                                   | `4ef641916408` | [#169445](https://github.com/llvm/llvm-project/pull/169445) | Hover snapshots updated.                                                                                                                                            |
 | `PrintingPolicy::SuppressScope` now also drops written qualifiers of template names, and canonical tag types print fully qualified.           | `91cdd35008e9` | [#147835](https://github.com/llvm/llvm-project/pull/147835) | Inlay type hints lose nested-class scopes (`Nested<int>` instead of `S2::Nested<int>`, matching clangd); hover of `this` prints the namespace-qualified class type. |
+
+### Pitfalls found while adapting
+
+- A default-constructed `NestedNameSpecifier` is `Invalid`, not `Null` (`Null` is `std::nullopt`), and `Invalid` converts to `true`, so `if(!NNS)` does not guard it: `getKind()` on it hits `llvm_unreachable`. Initialize with `std::nullopt` and test the kind.
