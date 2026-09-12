@@ -34,8 +34,9 @@ public:
     /// apart from its template.
     std::uint64_t entity(const clang::NamedDecl* decl);
 
-    /// The entity of a macro: its name and the canonical path of the file
-    /// defining it, empty for builtin and command-line macros.
+    /// The entity of a macro: its name and where the `#define` sits, as the
+    /// canonical path of the file and the offset in it. A builtin or
+    /// command-line macro has no file and is its name alone.
     std::uint64_t entity(llvm::StringRef name, clang::SourceLocation definition);
 
     /// The hash of a type, taken canonically.

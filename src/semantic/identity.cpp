@@ -328,7 +328,13 @@ std::uint64_t EntityTable::entity(llvm::StringRef name, clang::SourceLocation de
     Hasher hasher;
     hasher.add(Tag::Macro);
     hasher.add(name);
-    add_path(hasher, definition);
+    if(definition.isValid()) {
+        auto [fid, offset] = unit.decompose_location(definition);
+        if(!unit.is_builtin_file(fid)) {
+            hasher.add(unit.file_path(fid));
+            hasher.add(static_cast<std::uint64_t>(offset));
+        }
+    }
     return hasher.finish();
 }
 

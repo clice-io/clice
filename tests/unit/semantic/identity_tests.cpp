@@ -584,6 +584,26 @@ template<typename T> using Noise = decltype(::C<T>);
     EXPECT_EQ(entity_at(*this, "h.h", "f"), entity_at(other, "h.h", "f"));
 }
 
+TEST_CASE(MacroRedefinition) {
+    add_main("main.cpp", R"cpp(
+#define FOO 1
+#undef FOO
+#define FOO 2
+)cpp");
+    ASSERT_TRUE(compile());
+
+    std::vector<std::uint64_t> entities;
+    for(auto& [fid, directive]: unit->directives()) {
+        for(auto& macro: directive.macros) {
+            if(macro.kind == MacroRef::Def) {
+                entities.push_back(unit->entity(macro.macro));
+            }
+        }
+    }
+    ASSERT_EQ(entities.size(), 2U);
+    EXPECT_NE(entities[0], entities[1]);
+}
+
 TEST_CASE(CopyDeductionCandidate) {
     llvm::StringRef header = R"cpp(
 #pragma once
