@@ -264,7 +264,7 @@ std::uint64_t EntityTable::entity(const clang::NamedDecl* decl) {
         Hasher hasher;
         hasher.add(Tag::Cycle);
         hasher.add(static_cast<std::uint64_t>(decl->getKind()));
-        hasher.add(decl->getName());
+        add_declaration_name(hasher, decl->getDeclName());
         return hasher.finish();
     }
 
@@ -634,7 +634,7 @@ std::uint64_t EntityTable::expr_hash(const clang::Expr* expr) {
 
     llvm::FoldingSetNodeID id;
     Leaves leaves(*this, id);
-    ExprHasher(id, unit.context(), leaves).Visit(expr);
+    ExprHasher(id, leaves).Visit(expr);
 
     llvm::BumpPtrAllocator scratch;
     auto data = id.Intern(scratch);
@@ -690,7 +690,7 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
     if(decl->getParentFunctionOrMethod() || isa<ParmVarDecl>(decl)) {
         hasher.add(Tag::Local);
         hasher.add(static_cast<std::uint64_t>(decl->getKind()));
-        hasher.add(decl->getName());
+        add_declaration_name(hasher, decl->getDeclName());
         add_location(hasher, decl->getLocation());
         return;
     }
@@ -821,7 +821,7 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
     } else {
         hasher.add(Tag::Other);
         hasher.add(static_cast<std::uint64_t>(decl->getKind()));
-        hasher.add(decl->getName());
+        add_declaration_name(hasher, decl->getDeclName());
     }
 
     /// A namespace-scope declaration nothing outside the translation unit

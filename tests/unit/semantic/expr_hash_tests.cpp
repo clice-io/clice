@@ -102,7 +102,7 @@ struct Fidelity {
     llvm::FoldingSetNodeID profile(const Stmt* stmt) {
         llvm::FoldingSetNodeID id;
         PointerLeaves leaves(id, context);
-        ExprHasher(id, context, leaves).Visit(stmt);
+        ExprHasher(id, leaves).Visit(stmt);
         return id;
     }
 

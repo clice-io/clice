@@ -6,19 +6,20 @@
 /// (isSameConstraintExpr, isSameTemplateParameterList), with every
 /// pointer-valued leaf routed through ExprHashLeaves. Upstream feeds raw
 /// pointers to the FoldingSetNodeID, which is why Stmt::Profile cannot serve
-/// as a cross-process hash; the walk itself is pointer-free.
+/// as a cross-process hash; the walk adds only integers, strings and the
+/// constant null pointer.
 ///
 /// Kept: the C and C++ statement and expression visitors. Dropped: the
-/// OpenMP, OpenACC and Objective-C visitors (those nodes fall back to
-/// VisitStmt: statement class plus children), the non-canonical branches,
-/// and the ProfileLambdaExpr branch (a lambda profiles as its closure
-/// declaration, C++20 [temp.over.link]p5). Upstream changes are ported by
-/// reading StmtProfile.cpp's commit history between the two LLVM versions,
-/// not by diffing the files.
+/// OpenMP, OpenACC and Objective-C visitors, whose nodes fall through to
+/// the nearest kept parent visitor, ultimately statement class plus
+/// children, so their profile is coarser than upstream's; the non-canonical
+/// branches; and the ProfileLambdaExpr branch (a lambda profiles as its
+/// closure declaration, C++20 [temp.over.link]p5). Upstream changes are
+/// ported by reading StmtProfile.cpp's commit history between the two LLVM
+/// versions, not by diffing the files.
 
 #include "llvm/ADT/FoldingSet.h"
 #include "clang/AST/APValue.h"
-#include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/StmtVisitor.h"
@@ -33,8 +34,7 @@ namespace clice {
 /// that adds the same pointers reproduces clang's canonical profile bit for
 /// bit (the port's fidelity test), and the identity module's implementation
 /// makes the profile stable across processes and translation units.
-class ExprHashLeaves {
-public:
+struct ExprHashLeaves {
     virtual ~ExprHashLeaves() = default;
 
     /// A referenced declaration, possibly null. Upstream encodes template
@@ -67,19 +67,17 @@ public:
 /// hash the id's data.
 class ExprHasher : public clang::ConstStmtVisitor<ExprHasher> {
 public:
-    ExprHasher(llvm::FoldingSetNodeID& id,
-               const clang::ASTContext& context,
-               ExprHashLeaves& leaves) : id(id), context(context), leaves(leaves) {}
+    ExprHasher(llvm::FoldingSetNodeID& id, ExprHashLeaves& leaves) : id(id), leaves(leaves) {}
 
-    /// Statement class plus children: the default for every node without a
-    /// visitor of its own.
+    /// Statement class plus children: what every node reaches when no
+    /// visitor on its class chain says more.
     void VisitStmt(const clang::Stmt* stmt);
 
     void VisitTemplateArguments(const clang::TemplateArgumentLoc* arguments, unsigned count);
 
     void VisitTemplateArgument(const clang::TemplateArgument& argument);
 
-    /// The kept upstream visitors, in StmtProfile.cpp's order.
+    /// The kept upstream visitors.
     void VisitDeclStmt(const clang::DeclStmt* stmt);
     void VisitNullStmt(const clang::NullStmt* stmt);
     void VisitCompoundStmt(const clang::CompoundStmt* stmt);
@@ -125,6 +123,7 @@ public:
     void VisitParenListExpr(const clang::ParenListExpr* expr);
     void VisitUnaryOperator(const clang::UnaryOperator* expr);
     void VisitOffsetOfExpr(const clang::OffsetOfExpr* expr);
+    void VisitUnaryExprOrTypeTraitExpr(const clang::UnaryExprOrTypeTraitExpr* expr);
     void VisitArraySubscriptExpr(const clang::ArraySubscriptExpr* expr);
     void VisitMatrixSingleSubscriptExpr(const clang::MatrixSingleSubscriptExpr* expr);
     void VisitMatrixSubscriptExpr(const clang::MatrixSubscriptExpr* expr);
@@ -179,6 +178,7 @@ public:
     void VisitCXXUuidofExpr(const clang::CXXUuidofExpr* expr);
     void VisitMSPropertyRefExpr(const clang::MSPropertyRefExpr* expr);
     void VisitMSPropertySubscriptExpr(const clang::MSPropertySubscriptExpr* expr);
+    void VisitCXXPseudoDestructorExpr(const clang::CXXPseudoDestructorExpr* expr);
     void VisitCXXThisExpr(const clang::CXXThisExpr* expr);
     void VisitCXXThrowExpr(const clang::CXXThrowExpr* expr);
     void VisitCXXDefaultArgExpr(const clang::CXXDefaultArgExpr* expr);
@@ -221,16 +221,10 @@ public:
     void VisitHLSLOutArgExpr(const clang::HLSLOutArgExpr* expr);
 
 private:
-    friend class clang::StmtVisitorBase<llvm::make_const_ptr, ExprHasher>;
-
-    void VisitUnaryExprOrTypeTraitExpr(const clang::UnaryExprOrTypeTraitExpr* expr);
-    void VisitCXXPseudoDestructorExpr(const clang::CXXPseudoDestructorExpr* expr);
-
     /// The statement class alone; upstream's VisitStmtNoChildren.
     void visit_stmt_class(const clang::Stmt* stmt);
 
     llvm::FoldingSetNodeID& id;
-    const clang::ASTContext& context;
     ExprHashLeaves& leaves;
 };
 
