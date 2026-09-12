@@ -903,6 +903,25 @@ template<PARAMS> struct §(x)X { T1 a; T2 b; };
     EXPECT_NE(unit->entity(parameters->getParam(0)), unit->entity(parameters->getParam(1)));
 }
 
+TEST_CASE(FileScopeTypedefs) {
+    add_main("a.cpp", R"cpp(
+typedef struct { int §(field)x; } §(state)State;
+using §(alias)Result = int;
+)cpp");
+    ASSERT_TRUE(compile());
+
+    Tester other;
+    other.add_main("b.cpp", R"cpp(
+typedef struct { int §(field)x; } §(state)State;
+using §(alias)Result = int;
+)cpp");
+    ASSERT_TRUE(other.compile());
+
+    for(auto marker: {"state", "alias", "field"}) {
+        EXPECT_NE(entity_at(*this, "a.cpp", marker), entity_at(other, "b.cpp", marker));
+    }
+}
+
 TEST_CASE(HeaderAcrossUnits) {
     llvm::StringRef first = R"cpp(
 #pragma once

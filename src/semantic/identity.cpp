@@ -91,8 +91,14 @@ bool has_c_linkage(const clang::Decl* decl) {
 }
 
 /// Internal and unique-external linkage are per translation unit by the
-/// language; so is everything an anonymous namespace encloses.
-bool needs_path(const clang::NamedDecl* decl) {
+/// language; so is everything an anonymous namespace encloses. An
+/// unnamed type is defined once, and a typedef name has no linkage of
+/// its own: two source files may each declare a private `State`, so
+/// both carry their file. System headers are exempt for typedef names:
+/// they declare a name consistently, and several of them declare the
+/// same one (size_t), whichever is included first. A namespace alias
+/// only renames a namespace and stays shared.
+bool needs_path(const clang::NamedDecl* decl, const clang::SourceManager& SM) {
     if(!decl->getDeclContext()->getRedeclContext()->isFileContext()) {
         return false;
     }
@@ -106,7 +112,14 @@ bool needs_path(const clang::NamedDecl* decl) {
             return true;
         }
     }
-    return false;
+    if(auto* tag = llvm::dyn_cast<clang::TagDecl>(decl); tag && tag->getDeclName().isEmpty()) {
+        return true;
+    }
+    if(llvm::isa<clang::NamespaceAliasDecl>(decl)) {
+        return false;
+    }
+    return (linkage == clang::Linkage::None || llvm::isa<clang::TypedefNameDecl>(decl)) &&
+           !SM.isInSystemHeader(decl->getLocation());
 }
 
 bool is_template_parameter(const clang::Decl* decl) {
@@ -893,7 +906,7 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
     /// first declaration's file tells the copies apart. Judged by linkage,
     /// not visibility: a typedef or namespace alias has no linkage yet is
     /// shared by every unit that includes its header.
-    if(needs_path(decl)) {
+    if(needs_path(decl, unit.context().getSourceManager())) {
         add_path(hasher, decl->getLocation());
     }
 }
