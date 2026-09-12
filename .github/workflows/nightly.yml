@@ -43,8 +43,11 @@ jobs:
           # set publish-clice.yml refuses to promote without): path-filtered
           # runs (e.g. docs-only commits) build nothing, and packages expire
           # after 30 days. The artifacts API occasionally answers with an
-          # empty list for a while, so an empty or failed query is retried
-          # before giving up.
+          # empty or stale list for a while — either no pick at all, or a
+          # pick older than an already-tagged release because the newest
+          # runs are missing from the listing. Both mean the listing is
+          # wrong, never that main went backwards, so both are retried and
+          # then fail the run rather than promote a downgrade.
           PACKAGES="package-clice.x86_64-unknown-linux-gnu.tar.gz
                     package-clice.aarch64-unknown-linux-gnu.tar.gz
                     package-clice.aarch64-apple-darwin.tar.gz
@@ -52,6 +55,7 @@ jobs:
                     package-clice.x86_64-pc-windows-msvc.zip
                     package-clice.aarch64-pc-windows-msvc.zip"
           COUNT=$(wc -w <<< "$PACKAGES")
+          TAGS=$(git tag -l 'v*.*.*')
           COMMIT=""
           for ATTEMPT in 1 2 3; do
             if [ "$ATTEMPT" -gt 1 ]; then sleep 30; fi
@@ -75,10 +79,26 @@ jobs:
               COMMIT=$(awk -v run="$RUN" '$1 == run { print $2; exit }' <<< "$LIVE")
               if [ -n "$COMMIT" ]; then break; fi
             done
+            if [ -n "$COMMIT" ]; then
+              git rev-parse -q --verify "$COMMIT^{commit}" > /dev/null \
+                || git fetch origin "$COMMIT"
+              # Strictly older than any release ever tagged — nightly or
+              # stable — means the listing missed the newer runs, since a
+              # release is only tagged on a commit that was packaged.
+              for TAG in $TAGS; do
+                TAGGED=$(git rev-parse "$TAG^{commit}")
+                if [ "$COMMIT" != "$TAGGED" ] \
+                  && git merge-base --is-ancestor "$COMMIT" "$TAGGED"; then
+                  echo "pick $COMMIT predates $TAG ($TAGGED); stale listing"
+                  COMMIT=""
+                  break
+                fi
+              done
+            fi
             if [ -n "$COMMIT" ]; then break; fi
           done
           if [ -z "$COMMIT" ]; then
-            echo "::error::no recent green main run has live package artifacts"
+            echo "::error::no green main run at or past the newest release has live package artifacts"
             exit 1
           fi
           echo "Promoting $COMMIT"

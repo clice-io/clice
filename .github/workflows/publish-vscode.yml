@@ -205,7 +205,10 @@ jobs:
           FAILED=""
           for f in vsix/*.vsix; do
             OK=""
-            for ATTEMPT in 1 2 3; do
+            DELAY=30
+            # Marketplace timeouts can persist for minutes, not seconds:
+            # back off up to ~8 minutes per vsix before giving up.
+            for ATTEMPT in 1 2 3 4 5; do
               # --skip-duplicate: a rerun meets versions an earlier attempt
               # already published; that is success, not an error.
               if pixi run publish-vscode -p "$VSCE_PAT" $FLAG --skip-duplicate \
@@ -213,9 +216,10 @@ jobs:
                 OK=1
                 break
               fi
-              if [ "$ATTEMPT" -lt 3 ]; then
-                echo "publish failed for $f (attempt $ATTEMPT); retrying in 30s"
-                sleep 30
+              if [ "$ATTEMPT" -lt 5 ]; then
+                echo "publish failed for $f (attempt $ATTEMPT); retrying in ${DELAY}s"
+                sleep "$DELAY"
+                DELAY=$((DELAY * 2))
               fi
             done
             if [ -z "$OK" ]; then
