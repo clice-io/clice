@@ -90,10 +90,56 @@ bool has_c_linkage(const clang::Decl* decl) {
     return false;
 }
 
+/// Internal and unique-external linkage are per translation unit by the
+/// language; so is everything an anonymous namespace encloses.
+bool needs_path(const clang::NamedDecl* decl) {
+    if(!decl->getDeclContext()->getRedeclContext()->isFileContext()) {
+        return false;
+    }
+    auto linkage = decl->getLinkageInternal();
+    if(linkage == clang::Linkage::Internal || linkage == clang::Linkage::UniqueExternal) {
+        return true;
+    }
+    for(auto* context = decl->getDeclContext(); context; context = context->getParent()) {
+        if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context); ns && ns->isAnonymousNamespace()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool is_template_parameter(const clang::Decl* decl) {
     return llvm::isa<clang::TemplateTypeParmDecl,
                      clang::NonTypeTemplateParmDecl,
                      clang::TemplateTemplateParmDecl>(decl);
+}
+
+/// The declaration context an entity is named in. A template parameter
+/// of a class template may report an implicit deduction guide: clang
+/// builds the copy deduction candidate on the parameter list of whichever
+/// redeclaration it looked up, and adopting that list re-parents its
+/// parameters into the guide the first time the unit uses CTAD.
+const clang::DeclContext* context_of(const clang::Decl* decl) {
+    const clang::DeclContext* context = decl->getDeclContext();
+    auto* guide = llvm::dyn_cast<clang::CXXDeductionGuideDecl>(context);
+    if(!guide || !guide->isImplicit() || !is_template_parameter(decl)) {
+        return context;
+    }
+    auto* deduced =
+        llvm::dyn_cast_if_present<clang::RedeclarableTemplateDecl>(guide->getDeducedTemplate());
+    if(!deduced) {
+        return context;
+    }
+    for(auto* redecl: deduced->redecls()) {
+        if(!llvm::is_contained(redecl->getTemplateParameters()->asArray(), decl)) {
+            continue;
+        }
+        if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(redecl->getTemplatedDecl())) {
+            return record;
+        }
+        return redecl->getDeclContext();
+    }
+    return context;
 }
 
 }  // namespace
@@ -656,7 +702,7 @@ void EntityTable::add_context(Hasher& hasher, const clang::Decl* decl) {
         return;
     }
 
-    const clang::DeclContext* context = decl->getDeclContext();
+    const clang::DeclContext* context = context_of(decl);
     while(context && !context->isTranslationUnit()) {
         if(llvm::isa<clang::LinkageSpecDecl, clang::ExportDecl>(context)) {
             context = context->getParent();
@@ -826,8 +872,10 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
 
     /// A namespace-scope declaration nothing outside the translation unit
     /// can see is one entity per header, not per translation unit: its
-    /// first declaration's file tells the copies apart.
-    if(!decl->isExternallyVisible() && decl->getDeclContext()->getRedeclContext()->isFileContext()) {
+    /// first declaration's file tells the copies apart. Judged by linkage,
+    /// not visibility: a typedef or namespace alias has no linkage yet is
+    /// shared by every unit that includes its header.
+    if(needs_path(decl)) {
         add_path(hasher, decl->getLocation());
     }
 }
@@ -915,8 +963,13 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
     auto [fid, offset] = unit.decompose_location(expansion);
     hasher.add(unit.is_builtin_file(fid) ? llvm::StringRef() : unit.file_path(fid));
     hasher.add(static_cast<std::uint64_t>(offset));
-    hasher.add(static_cast<std::uint64_t>(
-        unit.decompose_location(unit.spelling_location(location)).second));
+    /// The spelling offset tells apart declarations one macro expansion
+    /// spells at different tokens of its body. A name pasted with `##` is
+    /// spelled in the scratch buffer, whose offsets depend on how many
+    /// pastes the unit did before: such a name is left to its expansion.
+    auto [spelling_fid, spelling_offset] =
+        unit.decompose_location(unit.spelling_location(location));
+    hasher.add(static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid) ? 0 : spelling_offset));
 }
 
 void EntityTable::add_path(Hasher& hasher, clang::SourceLocation location) {

@@ -584,6 +584,61 @@ template<typename T> using Noise = decltype(::C<T>);
     EXPECT_EQ(entity_at(*this, "h.h", "f"), entity_at(other, "h.h", "f"));
 }
 
+TEST_CASE(CopyDeductionCandidate) {
+    llvm::StringRef header = R"cpp(
+#pragma once
+template<typename §(t)T, typename §(d)D = int>
+struct Box {
+    Box(T*);
+    template<typename U, typename E> Box(Box<U, E>&&);
+};
+Box<char> make();
+)cpp";
+
+    add_file("box.h", header);
+    add_main("a.cpp", R"cpp(
+#include "box.h"
+Box deduced = make();
+)cpp");
+    ASSERT_TRUE(compile());
+
+    Tester other;
+    other.add_file("box.h", header);
+    other.add_main("b.cpp", R"cpp(
+#include "box.h"
+Box<char> spelled = make();
+)cpp");
+    ASSERT_TRUE(other.compile());
+
+    EXPECT_EQ(entity_at(*this, "box.h", "t"), entity_at(other, "box.h", "t"));
+    EXPECT_EQ(entity_at(*this, "box.h", "d"), entity_at(other, "box.h", "d"));
+}
+
+TEST_CASE(CopyDeductionCandidateRedeclared) {
+    llvm::StringRef header = R"cpp(
+#pragma once
+template<typename T> struct Box;
+template<typename §(t)T> struct Box { Box(T*); };
+Box<char> make();
+)cpp";
+
+    add_file("box.h", header);
+    add_main("a.cpp", R"cpp(
+#include "box.h"
+Box deduced = make();
+)cpp");
+    ASSERT_TRUE(compile());
+
+    Tester other;
+    other.add_file("box.h", header);
+    other.add_main("b.cpp", R"cpp(
+#include "box.h"
+)cpp");
+    ASSERT_TRUE(other.compile());
+
+    EXPECT_EQ(entity_at(*this, "box.h", "t"), entity_at(other, "box.h", "t"));
+}
+
 TEST_CASE(HeaderAcrossUnits) {
     llvm::StringRef first = R"cpp(
 #pragma once
