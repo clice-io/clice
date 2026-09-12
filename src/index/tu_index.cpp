@@ -110,15 +110,15 @@ public:
     /// Symbol-table registration shared by every row writer: name lookups
     /// need the entry even when a symbol's only rows are relations.
     index::SymbolHash ensure_symbol(const clang::NamedDecl* decl) {
-        auto symbol_id = unit.getSymbolID(decl);
-        auto [it, success] = symbols.try_emplace(symbol_id.hash);
+        auto hash = unit.entity(decl);
+        auto [it, success] = symbols.try_emplace(hash);
         if(success) {
             auto& symbol = it->second;
             symbol.name = display::name_of(decl);
             symbol.kind = SymbolKind::from(decl);
             symbol.scope = classify_scope(decl);
         }
-        return symbol_id.hash;
+        return hash;
     }
 
     void add_occurrence(const clang::NamedDecl* decl,
@@ -145,19 +145,19 @@ public:
             return;
         }
 
-        auto symbol_id = unit.getSymbolID(def);
+        auto hash = unit.entity(def);
         // Macros get a symbol-table entry like declarations do; without it
         // build() would default-construct a nameless entry when recording
         // reference files, and every name lookup for the macro would come
         // back empty.
-        auto [it, success] = symbols.try_emplace(symbol_id.hash);
+        auto [it, success] = symbols.try_emplace(hash);
         if(success) {
             auto& symbol = it->second;
             symbol.name = unit.token_spelling(location);
             symbol.kind = SymbolKind::Macro;
             symbol.scope = SymbolScope::External;
         }
-        index->occurrences.emplace_back(range, symbol_id.hash);
+        index->occurrences.emplace_back(range, hash);
 
         Relation relation{
             .kind = kind,
@@ -176,7 +176,7 @@ public:
             }
         }
 
-        index->relations[symbol_id.hash].emplace_back(relation);
+        index->relations[hash].emplace_back(relation);
     }
 
     /// A Definition/Declaration/Reference row mirroring an occurrence: it
@@ -227,9 +227,9 @@ public:
 
         Relation relation{
             .kind = kind,
-            .target_symbol = unit.getSymbolID(decls::normalize(target)).hash,
+            .target_symbol = unit.entity(decls::normalize(target)),
         };
-        index->relations[unit.getSymbolID(decls::normalize(decl)).hash].emplace_back(relation);
+        index->relations[unit.entity(decls::normalize(decl))].emplace_back(relation);
     }
 
     /// A call edge, landing at the call expression's location.
@@ -246,9 +246,9 @@ public:
         Relation relation{
             .kind = kind,
             .range = relation_range,
-            .target_symbol = unit.getSymbolID(decls::normalize(target)).hash,
+            .target_symbol = unit.entity(decls::normalize(target)),
         };
-        index->relations[unit.getSymbolID(decls::normalize(decl)).hash].emplace_back(relation);
+        index->relations[unit.entity(decls::normalize(decl))].emplace_back(relation);
     }
 
     /// Module names are indexed like macro names: an occurrence plus a

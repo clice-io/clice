@@ -412,17 +412,39 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     auto path = workspace.file_table.resolve(file);
     std::optional<Cursor> cursor;
     auto hit = [&](const index::Shard& rows) {
+        // Several symbols can share the name span: a module imported
+        // through a macro sits under the macro's own occurrence. The
+        // name spells what the macro expanded to; the macro itself is
+        // reached at its definition.
+        llvm::SmallVector<index::Occurrence, 2> candidates;
         rows.lookup(offset, [&](const index::Occurrence& occurrence) {
-            cursor = Cursor{
-                .symbol = occurrence.target,
-                .site = {.file = file,
-                         .path = path,
-                         .range = to_local(occurrence),
-                         .coords = serving.coords},
-            };
-            return false;
+            if(!candidates.empty() && !(candidates.front().range == occurrence.range)) {
+                return false;
+            }
+            candidates.push_back(occurrence);
+            return true;
         });
-        return cursor.has_value();
+        if(candidates.empty()) {
+            return false;
+        }
+        auto chosen = candidates.front();
+        if(candidates.size() > 1) {
+            for(auto& candidate: candidates) {
+                auto info = symbol_info(candidate.target);
+                if(info && info->kind != SymbolKind::Macro) {
+                    chosen = candidate;
+                    break;
+                }
+            }
+        }
+        cursor = Cursor{
+            .symbol = chosen.target,
+            .site = {.file = file,
+                     .path = path,
+                     .range = to_local(chosen),
+                     .coords = serving.coords},
+        };
+        return true;
     };
     if(hit(*serving.rows)) {
         return cursor;

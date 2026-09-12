@@ -249,11 +249,12 @@ public:
     /// each with the hash of the bytes the compiler actually consumed.
     std::vector<DepFile> deps();
 
-    /// Get symbol ID for given declaration.
-    index::SymbolID getSymbolID(const clang::NamedDecl* decl);
+    /// The entity of a declaration (semantic/identity.h), memoized for the
+    /// unit's lifetime.
+    std::uint64_t entity(const clang::NamedDecl* decl);
 
-    /// Get symbol ID for given marco.
-    index::SymbolID getSymbolID(const clang::MacroInfo* macro);
+    /// The entity of a macro definition.
+    std::uint64_t entity(const clang::MacroInfo* macro);
 
 protected:
     Self* self;

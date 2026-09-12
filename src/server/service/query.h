@@ -284,7 +284,7 @@ private:
 
     /// Each open session whose overlay preamble entry may serve: the blob
     /// was built from this very file (identical preambles share one PCH,
-    /// but macro USRs embed the source path) and the buffer still starts
+    /// but macro entities embed the defining file) and the buffer still starts
     /// with the blob's preamble.
     void visit_preambles(
         llvm::function_ref<bool(Fid, const Session&, const index::TUIndex&)> visitor) const;
