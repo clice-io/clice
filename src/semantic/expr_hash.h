@@ -114,7 +114,6 @@ public:
     void VisitConstantExpr(const clang::ConstantExpr* expr);
     void VisitDeclRefExpr(const clang::DeclRefExpr* expr);
     void VisitSYCLUniqueStableNameExpr(const clang::SYCLUniqueStableNameExpr* expr);
-    void VisitUnresolvedSYCLKernelCallStmt(const clang::UnresolvedSYCLKernelCallStmt* stmt);
     void VisitPredefinedExpr(const clang::PredefinedExpr* expr);
     void VisitIntegerLiteral(const clang::IntegerLiteral* expr);
     void VisitFixedPointLiteral(const clang::FixedPointLiteral* expr);
@@ -155,7 +154,6 @@ public:
     void VisitNoInitExpr(const clang::NoInitExpr* expr);
     void VisitImplicitValueInitExpr(const clang::ImplicitValueInitExpr* expr);
     void VisitExtVectorElementExpr(const clang::ExtVectorElementExpr* expr);
-    void VisitMatrixElementExpr(const clang::MatrixElementExpr* expr);
     void VisitBlockExpr(const clang::BlockExpr* expr);
     void VisitGenericSelectionExpr(const clang::GenericSelectionExpr* expr);
     void VisitPseudoObjectExpr(const clang::PseudoObjectExpr* expr);
@@ -189,7 +187,6 @@ public:
     void VisitCXXConstructExpr(const clang::CXXConstructExpr* expr);
     void VisitCXXInheritedCtorInitExpr(const clang::CXXInheritedCtorInitExpr* expr);
     void VisitCXXFunctionalCastExpr(const clang::CXXFunctionalCastExpr* expr);
-    void VisitCXXReflectExpr(const clang::CXXReflectExpr* expr);
     void VisitCXXDeleteExpr(const clang::CXXDeleteExpr* expr);
     void VisitCXXNewExpr(const clang::CXXNewExpr* expr);
     void VisitOverloadExpr(const clang::OverloadExpr* expr);
