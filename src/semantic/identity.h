@@ -54,6 +54,7 @@ private:
     void add_self(Hasher& hasher, const clang::NamedDecl* decl);
     void add_function(Hasher& hasher, const clang::FunctionDecl* function);
     void add_location(Hasher& hasher, clang::SourceLocation location);
+    void add_macro_history(Hasher& hasher, clang::SourceLocation location);
     void add_path(Hasher& hasher, clang::SourceLocation location);
     void add_declaration_name(Hasher& hasher, clang::DeclarationName name);
     void add_type(Hasher& hasher, clang::QualType type);

@@ -820,6 +820,25 @@ void §(f2)f(decltype(b));
     EXPECT_NE(entity_at(*this, "main.cpp", "f1"), entity_at(*this, "main.cpp", "f2"));
 }
 
+TEST_CASE(MacroArgumentPreExpanded) {
+    add_main("main.cpp", R"cpp(
+#define F void f(decltype([]{})) {}
+#define TWO F F
+#define ID(...) __VA_ARGS__
+ID(TWO)
+)cpp");
+    ASSERT_TRUE(compile());
+
+    std::set<std::uint64_t> entities;
+    for(auto* decl: unit->tu()->decls()) {
+        if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
+           function && function->getName() == "f") {
+            entities.insert(unit->entity(decls::normalize(function)));
+        }
+    }
+    EXPECT_EQ(entities.size(), 2U);
+}
+
 TEST_CASE(CpuSpecificVersions) {
     add_main("main.cpp", R"cpp(
 __attribute__((cpu_specific(generic))) void §(generic)f() {}

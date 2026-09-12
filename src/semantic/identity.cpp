@@ -994,21 +994,31 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
     if(location.isInvalid()) {
         return;
     }
-    auto& SM = unit.context().getSourceManager();
     auto [fid, offset] = unit.decompose_location(unit.expansion_location(location));
     hasher.add(unit.is_builtin_file(fid) ? llvm::StringRef() : unit.file_path(fid));
     hasher.add(static_cast<std::uint64_t>(offset));
-    /// Under the expansion, each level of macro nesting adds where its
-    /// token is spelled: one expansion can spell several declarations, a
-    /// macro invoked twice inside another macro's body spells the same
-    /// tokens from two places, and so does an argument the body uses
-    /// twice, which is why the walk follows expansions rather than macro
-    /// callers. A name pasted with `##` is spelled in the scratch buffer,
-    /// whose offsets depend on how many pastes the unit did before: that
-    /// level is left out.
+    add_macro_history(hasher, location);
+}
+
+/// Under the expansion, each level of macro nesting adds where its token
+/// is spelled: one expansion can spell several declarations, a macro
+/// invoked twice inside another macro's body spells the same tokens from
+/// two places, and so does an argument the body uses twice, which is why
+/// the walk follows expansions rather than macro callers. A pre-expanded
+/// argument is spelled inside its own expansion, whose history is walked
+/// in turn. A name pasted with `##` is spelled in the scratch buffer,
+/// whose offsets depend on how many pastes the unit did before: that
+/// level is left out.
+void EntityTable::add_macro_history(Hasher& hasher, clang::SourceLocation location) {
+    auto& SM = unit.context().getSourceManager();
     for(auto level = location; level.isMacroID();
         level = SM.getImmediateExpansionRange(level).getBegin()) {
-        auto [spelling_fid, spelling_offset] = unit.decompose_location(SM.getSpellingLoc(level));
+        auto spelling = SM.getImmediateSpellingLoc(level);
+        if(spelling.isMacroID()) {
+            add_macro_history(hasher, spelling);
+            continue;
+        }
+        auto [spelling_fid, spelling_offset] = unit.decompose_location(spelling);
         hasher.add(
             static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid) ? 0 : spelling_offset));
     }
