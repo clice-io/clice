@@ -659,6 +659,124 @@ Box deduced = make();
     EXPECT_EQ(entity_at(*this, "box.h", "t"), entity_at(other, "box.h", "t"));
 }
 
+TEST_CASE(ComplexSubobjectArgument) {
+    add_main("main.cpp", R"cpp(
+inline _Complex int z;
+template<int*> struct X;
+template<> struct §(real)X<&__real__ z> {};
+template<> struct §(imag)X<&__imag__ z> {};
+)cpp");
+    ASSERT_TRUE(compile());
+
+    EXPECT_NE(entity_at(*this, "main.cpp", "real"), entity_at(*this, "main.cpp", "imag"));
+}
+
+TEST_CASE(ImplicitConstructorUse) {
+    llvm::StringRef header = R"cpp(
+#pragma once
+struct §(s)S { int x; };
+)cpp";
+    auto copy_constructor = [](Tester& tester) {
+        auto* record = llvm::cast<clang::CXXRecordDecl>(find_decl(tester, "s.h", "s"));
+        for(auto* ctor: record->ctors()) {
+            if(ctor->isCopyConstructor()) {
+                return tester.unit->entity(ctor);
+            }
+        }
+        LOG_FATAL("no copy constructor declared");
+    };
+
+    add_file("s.h", header);
+    add_main("a.cpp", R"cpp(
+#include "s.h"
+inline S a;
+inline S b(a);
+)cpp");
+    ASSERT_TRUE(compile());
+
+    Tester other;
+    other.add_file("s.h", header);
+    other.add_main("b.cpp", R"cpp(
+#include "s.h"
+struct T : S { using S::S; };
+)cpp");
+    ASSERT_TRUE(other.compile());
+
+    EXPECT_EQ(copy_constructor(*this), copy_constructor(other));
+}
+
+TEST_CASE(NestedMacroLambdas) {
+    add_main("main.cpp", R"cpp(
+#define L []{}
+#define BOTH auto a = L; auto b = L;
+BOTH
+void §(f1)f(decltype(a));
+void §(f2)f(decltype(b));
+)cpp");
+    ASSERT_TRUE(compile());
+
+    EXPECT_NE(entity_at(*this, "main.cpp", "f1"), entity_at(*this, "main.cpp", "f2"));
+}
+
+TEST_CASE(TemplateNameSpelling) {
+    llvm::StringRef header = R"cpp(
+#pragma once
+namespace N { template<class> struct A; }
+using N::A;
+template<class, template<class> class> inline int v;
+#ifdef WARM
+template<class T> using Seed = decltype(v<T, N::A>);
+#endif
+template<class T> auto §(f)f() -> decltype(v<T, A>);
+)cpp";
+
+    add_file("h.h", header);
+    add_main("a.cpp", R"cpp(
+#define WARM
+#include "h.h"
+)cpp");
+    ASSERT_TRUE(compile());
+
+    Tester other;
+    other.add_file("h.h", header);
+    other.add_main("b.cpp", R"cpp(
+#include "h.h"
+)cpp");
+    ASSERT_TRUE(other.compile());
+
+    EXPECT_EQ(entity_at(*this, "h.h", "f"), entity_at(other, "h.h", "f"));
+}
+
+TEST_CASE(ArrayFillerArgument) {
+    llvm::StringRef header = R"cpp(
+#pragma once
+struct S { int a[2]; };
+template<S> struct X;
+#ifdef WARM
+using Seed = X<S{{0, 0}}>;
+#endif
+template<> struct §(x)X<S{{0}}> {};
+void §(f)f(X<S{{0}}>);
+)cpp";
+
+    add_file("h.h", header);
+    add_main("a.cpp", R"cpp(
+#define WARM
+#include "h.h"
+)cpp");
+    ASSERT_TRUE(compile());
+
+    Tester other;
+    other.add_file("h.h", header);
+    other.add_main("b.cpp", R"cpp(
+#include "h.h"
+)cpp");
+    ASSERT_TRUE(other.compile());
+
+    EXPECT_EQ(entity_at(*this, "h.h", "x"), entity_at(other, "h.h", "x"));
+    EXPECT_EQ(entity_at(*this, "h.h", "f"), entity_at(other, "h.h", "f"));
+}
+
 TEST_CASE(HeaderAcrossUnits) {
     llvm::StringRef first = R"cpp(
 #pragma once

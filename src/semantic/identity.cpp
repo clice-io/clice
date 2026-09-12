@@ -936,9 +936,18 @@ void EntityTable::add_function(Hasher& hasher, const clang::FunctionDecl* functi
 
     /// The type as written: the first declaration's spelling agrees across
     /// translation units, while getType() is rewritten to the deduced
-    /// return type in whichever unit defines the function.
+    /// return type in whichever unit defines the function. The exception
+    /// specification is not part of the identity: redeclarations must
+    /// agree on it, and an implicit member's is resolved only in the
+    /// units that use the member.
     auto* written = function->getTypeSourceInfo();
-    add_type(hasher, written ? written->getType() : function->getType());
+    QualType type = written ? written->getType() : function->getType();
+    if(type->getAs<FunctionProtoType>()) {
+        type = unit.context().getFunctionTypeWithExceptionSpec(
+            type,
+            FunctionProtoType::ExceptionSpecInfo());
+    }
+    add_type(hasher, type);
 
     if(auto* method = dyn_cast<CXXMethodDecl>(function)) {
         hasher.add(static_cast<std::uint64_t>(method->isExplicitObjectMemberFunction()));
@@ -966,18 +975,22 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
     if(location.isInvalid()) {
         return;
     }
-    auto expansion = unit.expansion_location(location);
-    auto [fid, offset] = unit.decompose_location(expansion);
+    auto& SM = unit.context().getSourceManager();
+    auto [fid, offset] = unit.decompose_location(unit.expansion_location(location));
     hasher.add(unit.is_builtin_file(fid) ? llvm::StringRef() : unit.file_path(fid));
     hasher.add(static_cast<std::uint64_t>(offset));
-    /// The spelling offset tells apart declarations one macro expansion
-    /// spells at different tokens of its body. A name pasted with `##` is
-    /// spelled in the scratch buffer, whose offsets depend on how many
-    /// pastes the unit did before: such a name is left to its expansion.
-    auto [spelling_fid, spelling_offset] =
-        unit.decompose_location(unit.spelling_location(location));
-    hasher.add(
-        static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid) ? 0 : spelling_offset));
+    /// Under the expansion, each level of macro nesting adds where its
+    /// token is spelled: one expansion can spell several declarations,
+    /// and a macro invoked twice inside another macro's body spells the
+    /// same tokens from two places. A name pasted with `##` is spelled in
+    /// the scratch buffer, whose offsets depend on how many pastes the
+    /// unit did before: that level is left out.
+    for(auto level = location; level.isMacroID(); level = SM.getImmediateMacroCallerLoc(level)) {
+        auto [spelling_fid, spelling_offset] =
+            unit.decompose_location(SM.getSpellingLoc(level));
+        hasher.add(
+            static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid) ? 0 : spelling_offset));
+    }
 }
 
 void EntityTable::add_path(Hasher& hasher, clang::SourceLocation location) {
@@ -1074,6 +1087,14 @@ void EntityTable::add_nested_name_specifier(Hasher& hasher, clang::NestedNameSpe
 
 void EntityTable::add_template_name(Hasher& hasher, clang::TemplateName name) {
     using namespace clang;
+
+    /// Canonical, as clang profiles it: a qualified or using-introduced
+    /// spelling of the same template is the same name. Unresolved sets
+    /// have no canonical form.
+    if(name.getKind() != TemplateName::OverloadedTemplate &&
+       name.getKind() != TemplateName::AssumedTemplate) {
+        name = unit.context().getCanonicalTemplateName(name);
+    }
 
     hasher.add(Tag::TemplateName);
     hasher.add(static_cast<std::uint64_t>(name.getKind()));
@@ -1288,6 +1309,11 @@ void EntityTable::add_value(Hasher& hasher, const clang::APValue& value) {
                     so_far = array->getElementType();
                     continue;
                 }
+                if(auto* complex = so_far->getAs<ComplexType>()) {
+                    hasher.add(static_cast<std::uint64_t>(entry.getAsArrayIndex()));
+                    so_far = complex->getElementType();
+                    continue;
+                }
                 auto member = entry.getAsBaseOrMember();
                 auto* named = cast<NamedDecl>(member.getPointer());
                 hasher.add(entity(named));
@@ -1308,13 +1334,43 @@ void EntityTable::add_value(Hasher& hasher, const clang::APValue& value) {
             break;
         }
         case APValue::Array: {
-            hasher.add(static_cast<std::uint64_t>(value.getArraySize()));
-            hasher.add(static_cast<std::uint64_t>(value.getArrayInitializedElts()));
-            for(unsigned i = 0; i < value.getArrayInitializedElts(); i += 1) {
-                add_value(hasher, value.getArrayInitializedElt(i));
+            /// Trailing elements equal to the filler count as filler, so the
+            /// hash does not depend on whether clang stored the value
+            /// expanded; the layout mirrors APValue::Profile.
+            unsigned size = value.getArraySize();
+            hasher.add(static_cast<std::uint64_t>(size));
+            if(size == 0) {
+                break;
             }
-            if(value.hasArrayFiller()) {
-                add_value(hasher, value.getArrayFiller());
+            auto hash_of = [&](const APValue& element) {
+                Hasher sub;
+                add_value(sub, element);
+                return sub.finish();
+            };
+            unsigned n = value.getArrayInitializedElts();
+            auto filler = hash_of(value.hasArrayFiller() ? value.getArrayFiller()
+                                                         : value.getArrayInitializedElt(n - 1));
+            hasher.add(filler);
+            unsigned fillers = size - n;
+            while(true) {
+                if(n == 0) {
+                    hasher.add(static_cast<std::uint64_t>(fillers));
+                    break;
+                }
+                if(n != size) {
+                    auto element = hash_of(value.getArrayInitializedElt(n - 1));
+                    if(element != filler) {
+                        hasher.add(static_cast<std::uint64_t>(fillers));
+                        hasher.add(element);
+                        n -= 1;
+                        break;
+                    }
+                }
+                fillers += 1;
+                n -= 1;
+            }
+            for(; n != 0; n -= 1) {
+                hasher.add(hash_of(value.getArrayInitializedElt(n - 1)));
             }
             break;
         }

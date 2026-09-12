@@ -146,10 +146,26 @@ const clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clan
 
 }  // namespace
 
+/// An explicit specialization named before it is declared keeps that
+/// first, undeclared node as its canonical declaration.
+template <typename Spec>
+bool explicitly_specialized(const Spec* spec) {
+    for(auto* redecl: spec->redecls()) {
+        if(llvm::cast<Spec>(redecl)->getSpecializationKind() ==
+           clang::TSK_ExplicitSpecialization) {
+            return true;
+        }
+    }
+    return false;
+}
+
 auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
     assert(decl);
     if(auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
         auto kind = CTSD->getTemplateSpecializationKind();
+        if(kind == clang::TSK_Undeclared && explicitly_specialized(CTSD)) {
+            return CTSD;
+        }
         if(kind == clang::TSK_Undeclared) {
             /// Instantiation is lazy: an undeclared specialization carries no
             /// pattern link yet. Select the pattern instantiation would use so
@@ -174,6 +190,9 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
 
     if(auto VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(decl)) {
         if(VTSD->getSpecializationKind() == clang::TSK_Undeclared) {
+            if(explicitly_specialized(VTSD)) {
+                return VTSD;
+            }
             return undeclared_pattern<clang::VarTemplatePartialSpecializationDecl>(VTSD);
         }
     }
