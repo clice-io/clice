@@ -739,12 +739,17 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
     }
 
     /// Block scope: shadowing makes the name insufficient, and two
-    /// included files can put the same offset in the same function.
+    /// included files can put the same offset in the same function. A
+    /// local class's implicit members all sit at the class's location,
+    /// so a function keeps its signature.
     if(decl->getParentFunctionOrMethod() || isa<ParmVarDecl>(decl)) {
         hasher.add(Tag::Local);
         hasher.add(static_cast<std::uint64_t>(decl->getKind()));
         add_declaration_name(hasher, decl->getDeclName());
         add_location(hasher, decl->getLocation());
+        if(auto* function = dyn_cast<FunctionDecl>(decl)) {
+            add_function(hasher, function);
+        }
         return;
     }
 
@@ -765,6 +770,12 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
         if(record && record->isLambda()) {
             hasher.add(Tag::Lambda);
             add_location(hasher, tag->getLocation());
+            /// A lambda in an initializer or default argument is copied
+            /// into every instantiation of its variable template or
+            /// template; the declaration it belongs to tells them apart.
+            if(auto* owner = dyn_cast_if_present<NamedDecl>(record->getLambdaContextDecl())) {
+                hasher.add(entity(owner));
+            }
         } else if(tag->getDeclName().isEmpty()) {
             if(auto* typedef_name = tag->getTypedefNameForAnonDecl()) {
                 hasher.add(Tag::TypedefName);
@@ -943,9 +954,9 @@ void EntityTable::add_function(Hasher& hasher, const clang::FunctionDecl* functi
     auto* written = function->getTypeSourceInfo();
     QualType type = written ? written->getType() : function->getType();
     if(type->getAs<FunctionProtoType>()) {
-        type = unit.context().getFunctionTypeWithExceptionSpec(
-            type,
-            FunctionProtoType::ExceptionSpecInfo());
+        type =
+            unit.context().getFunctionTypeWithExceptionSpec(type,
+                                                            FunctionProtoType::ExceptionSpecInfo());
     }
     add_type(hasher, type);
 
@@ -958,6 +969,14 @@ void EntityTable::add_function(Hasher& hasher, const clang::FunctionDecl* functi
     if(function->isMultiVersion()) {
         if(auto* target = function->getAttr<TargetAttr>()) {
             hasher.add(target->getFeaturesStr());
+        }
+        if(auto* version = function->getAttr<TargetVersionAttr>()) {
+            hasher.add(version->getNamesStr());
+        }
+        if(auto* specific = function->getAttr<CPUSpecificAttr>()) {
+            for(auto* cpu: specific->cpus()) {
+                hasher.add(cpu->getName());
+            }
         }
     }
 
@@ -980,14 +999,16 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
     hasher.add(unit.is_builtin_file(fid) ? llvm::StringRef() : unit.file_path(fid));
     hasher.add(static_cast<std::uint64_t>(offset));
     /// Under the expansion, each level of macro nesting adds where its
-    /// token is spelled: one expansion can spell several declarations,
-    /// and a macro invoked twice inside another macro's body spells the
-    /// same tokens from two places. A name pasted with `##` is spelled in
-    /// the scratch buffer, whose offsets depend on how many pastes the
-    /// unit did before: that level is left out.
-    for(auto level = location; level.isMacroID(); level = SM.getImmediateMacroCallerLoc(level)) {
-        auto [spelling_fid, spelling_offset] =
-            unit.decompose_location(SM.getSpellingLoc(level));
+    /// token is spelled: one expansion can spell several declarations, a
+    /// macro invoked twice inside another macro's body spells the same
+    /// tokens from two places, and so does an argument the body uses
+    /// twice, which is why the walk follows expansions rather than macro
+    /// callers. A name pasted with `##` is spelled in the scratch buffer,
+    /// whose offsets depend on how many pastes the unit did before: that
+    /// level is left out.
+    for(auto level = location; level.isMacroID();
+        level = SM.getImmediateExpansionRange(level).getBegin()) {
+        auto [spelling_fid, spelling_offset] = unit.decompose_location(SM.getSpellingLoc(level));
         hasher.add(
             static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid) ? 0 : spelling_offset));
     }

@@ -151,8 +151,7 @@ const clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clan
 template <typename Spec>
 bool explicitly_specialized(const Spec* spec) {
     for(auto* redecl: spec->redecls()) {
-        if(llvm::cast<Spec>(redecl)->getSpecializationKind() ==
-           clang::TSK_ExplicitSpecialization) {
+        if(llvm::cast<Spec>(redecl)->getSpecializationKind() == clang::TSK_ExplicitSpecialization) {
             return true;
         }
     }

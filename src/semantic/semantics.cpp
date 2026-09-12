@@ -261,6 +261,12 @@ bool is_implicit(const clang::Stmt* statement) {
 
     // Refs to operator() and [] are (almost?) always implicit as part of calls.
     if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(statement)) {
+        // An implicit variable (the coroutine promise, range-for holders)
+        // has no written name; its references sit on the keyword that
+        // desugars to them.
+        if(auto* VD = llvm::dyn_cast<clang::VarDecl>(DRE->getDecl()); VD && VD->isImplicit()) {
+            return true;
+        }
         if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(DRE->getDecl())) {
             switch(FD->getOverloadedOperator()) {
                 case clang::OO_Call:

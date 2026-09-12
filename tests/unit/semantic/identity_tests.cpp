@@ -1,4 +1,5 @@
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -775,6 +776,58 @@ void §(f)f(X<S{{0}}>);
 
     EXPECT_EQ(entity_at(*this, "h.h", "x"), entity_at(other, "h.h", "x"));
     EXPECT_EQ(entity_at(*this, "h.h", "f"), entity_at(other, "h.h", "f"));
+}
+
+TEST_CASE(InstantiatedLambdas) {
+    add_main("main.cpp", R"cpp(
+template<class T> inline auto v = []{};
+void §(f1)f(decltype(v<int>));
+void §(f2)f(decltype(v<double>));
+)cpp");
+    ASSERT_TRUE(compile());
+
+    EXPECT_NE(entity_at(*this, "main.cpp", "f1"), entity_at(*this, "main.cpp", "f2"));
+}
+
+TEST_CASE(LocalClassConstructors) {
+    add_main("main.cpp", R"cpp(
+void f() {
+    struct §(s)S {};
+    S a;
+    S b(a);
+    S c(static_cast<S&&>(a));
+}
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto* record = llvm::cast<clang::CXXRecordDecl>(find_decl(*this, "main.cpp", "s"));
+    std::set<std::uint64_t> entities;
+    for(auto* ctor: record->ctors()) {
+        entities.insert(unit->entity(ctor));
+    }
+    EXPECT_EQ(entities.size(), 3U);
+}
+
+TEST_CASE(MacroArgumentTwice) {
+    add_main("main.cpp", R"cpp(
+#define BOTH(X) auto a = X; auto b = X;
+BOTH([]{})
+void §(f1)f(decltype(a));
+void §(f2)f(decltype(b));
+)cpp");
+    ASSERT_TRUE(compile());
+
+    EXPECT_NE(entity_at(*this, "main.cpp", "f1"), entity_at(*this, "main.cpp", "f2"));
+}
+
+TEST_CASE(CpuSpecificVersions) {
+    add_main("main.cpp", R"cpp(
+__attribute__((cpu_specific(generic))) void §(generic)f() {}
+__attribute__((cpu_specific(pentium_4))) void §(pentium)f() {}
+)cpp");
+    ASSERT_TRUE(compile());
+
+    EXPECT_NE(entity_at(*this, "main.cpp", "generic"), entity_at(*this, "main.cpp", "pentium"));
 }
 
 TEST_CASE(HeaderAcrossUnits) {
