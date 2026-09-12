@@ -947,16 +947,21 @@ void EntityTable::add_function(Hasher& hasher, const clang::FunctionDecl* functi
 
     /// The type as written: the first declaration's spelling agrees across
     /// translation units, while getType() is rewritten to the deduced
-    /// return type in whichever unit defines the function. The exception
-    /// specification is not part of the identity: redeclarations must
-    /// agree on it, and an implicit member's is resolved only in the
-    /// units that use the member.
+    /// return type in whichever unit defines the function. Neither the
+    /// exception specification nor the attributes in ExtInfo (noreturn,
+    /// the calling convention) can distinguish two functions of one
+    /// name: a redeclaration may add them, and which declaration a unit
+    /// sees first depends on its include order.
     auto* written = function->getTypeSourceInfo();
     QualType type = written ? written->getType() : function->getType();
     if(type->getAs<FunctionProtoType>()) {
         type =
             unit.context().getFunctionTypeWithExceptionSpec(type,
                                                             FunctionProtoType::ExceptionSpecInfo());
+    }
+    if(auto* function_type = type->getAs<FunctionType>()) {
+        type =
+            QualType(unit.context().adjustFunctionType(function_type, FunctionType::ExtInfo()), 0);
     }
     add_type(hasher, type);
 

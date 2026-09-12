@@ -768,6 +768,7 @@ using mark_coroutine = decltype([]() -> Task {
 
 TEST_CASE(LanguageExtensions) {
     Tester opencl;
+    opencl.triple = "x86_64-unknown-linux-gnu";
     opencl.add_main("main.cpp", R"cpp(
 using mark_as_type = decltype(__builtin_astype(1, float));
 using mark_addrspace = decltype(addrspace_cast<__global int*>((__generic int*)nullptr));

@@ -8,6 +8,7 @@
 #include "semantic/decls.h"
 #include "support/logging.h"
 
+#include "llvm/Support/Path.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 
@@ -18,9 +19,20 @@ namespace {
 /// Every named declaration of a compile, keyed by file and the offset of
 /// its name; a template and the declaration it describes share an offset
 /// and the template wins, matching what an occurrence resolves to.
+/// Whether the file is the fixture, by the path both sides spell natively.
+bool is_fixture(Tester& tester, clang::FileID fid, llvm::StringRef file) {
+    llvm::SmallString<128> expected(TestVFS::path(file));
+    llvm::sys::path::native(expected);
+    llvm::sys::path::remove_dots(expected, true);
+    llvm::SmallString<128> actual(tester.unit->file_path(fid));
+    llvm::sys::path::native(actual);
+    llvm::sys::path::remove_dots(actual, true);
+    return actual == expected;
+}
+
 struct Located : clang::RecursiveASTVisitor<Located> {
     clang::SourceManager& SM;
-    std::map<std::pair<std::string, std::uint32_t>, const clang::NamedDecl*> decls;
+    std::map<std::pair<clang::FileID, std::uint32_t>, const clang::NamedDecl*> decls;
 
     explicit Located(clang::SourceManager& SM) : SM(SM) {}
 
@@ -34,10 +46,7 @@ struct Located : clang::RecursiveASTVisitor<Located> {
             return true;
         }
         auto [fid, offset] = SM.getDecomposedLoc(SM.getSpellingLoc(location));
-        auto entry = SM.getFileEntryRefForID(fid);
-        if(entry) {
-            decls.try_emplace({entry->getName().str(), offset}, decl);
-        }
+        decls.try_emplace({fid, offset}, decl);
         return true;
     }
 };
@@ -47,7 +56,7 @@ const clang::NamedDecl* find_decl(Tester& tester, llvm::StringRef file, llvm::St
     located.TraverseDecl(tester.unit->tu());
     auto offset = tester[file, marker];
     for(auto& [key, decl]: located.decls) {
-        if(key.second == offset && llvm::StringRef(key.first).ends_with(file)) {
+        if(key.second == offset && is_fixture(tester, key.first, file)) {
             return decl;
         }
     }
@@ -61,7 +70,7 @@ std::uint64_t entity_at(Tester& tester, llvm::StringRef file, llvm::StringRef ma
 
 std::uint64_t macro_entity(Tester& tester, llvm::StringRef file, llvm::StringRef name) {
     for(auto& [fid, directive]: tester.unit->directives()) {
-        if(!llvm::StringRef(tester.unit->file_path(fid)).ends_with(file)) {
+        if(!is_fixture(tester, fid, file)) {
             continue;
         }
         for(auto& macro: directive.macros) {
@@ -840,6 +849,7 @@ ID(TWO)
 }
 
 TEST_CASE(CpuSpecificVersions) {
+    triple = "x86_64-unknown-linux-gnu";
     add_main("main.cpp", R"cpp(
 __attribute__((cpu_specific(generic))) void §(generic)f() {}
 __attribute__((cpu_specific(pentium_4))) void §(pentium)f() {}
@@ -847,6 +857,50 @@ __attribute__((cpu_specific(pentium_4))) void §(pentium)f() {}
     ASSERT_TRUE(compile());
 
     EXPECT_NE(entity_at(*this, "main.cpp", "generic"), entity_at(*this, "main.cpp", "pentium"));
+}
+
+TEST_CASE(NoreturnRedeclarationOrder) {
+    llvm::StringRef plain = R"cpp(
+#pragma once
+void §(f)f();
+)cpp";
+    llvm::StringRef attributed = R"cpp(
+#pragma once
+__attribute__((noreturn)) void §(f)f();
+)cpp";
+
+    add_file("plain.h", plain);
+    add_file("attributed.h", attributed);
+    add_main("a.cpp", R"cpp(
+#include "plain.h"
+#include "attributed.h"
+)cpp");
+    ASSERT_TRUE(compile());
+
+    Tester other;
+    other.add_file("plain.h", plain);
+    other.add_file("attributed.h", attributed);
+    other.add_main("b.cpp", R"cpp(
+#include "attributed.h"
+#include "plain.h"
+)cpp");
+    ASSERT_TRUE(other.compile());
+
+    EXPECT_EQ(entity_at(*this, "plain.h", "f"), entity_at(other, "plain.h", "f"));
+    EXPECT_EQ(entity_at(*this, "plain.h", "f"), entity_at(*this, "attributed.h", "f"));
+}
+
+TEST_CASE(PastedTemplateParameters) {
+    add_main("main.cpp", R"cpp(
+#define PARAMS class T##1, class T##2
+template<PARAMS> struct §(x)X { T1 a; T2 b; };
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto* parameters = llvm::cast<clang::ClassTemplateDecl>(find_decl(*this, "main.cpp", "x"))
+                           ->getTemplateParameters();
+    ASSERT_EQ(parameters->size(), 2U);
+    EXPECT_NE(unit->entity(parameters->getParam(0)), unit->entity(parameters->getParam(1)));
 }
 
 TEST_CASE(HeaderAcrossUnits) {
