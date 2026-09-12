@@ -101,7 +101,8 @@ bool needs_path(const clang::NamedDecl* decl) {
         return true;
     }
     for(auto* context = decl->getDeclContext(); context; context = context->getParent()) {
-        if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context); ns && ns->isAnonymousNamespace()) {
+        if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context);
+           ns && ns->isAnonymousNamespace()) {
             return true;
         }
     }
@@ -588,7 +589,8 @@ std::uint64_t EntityTable::type_hash(clang::QualType type) {
         case Type::PackExpansion: {
             auto* expansion = cast<PackExpansionType>(T);
             add_type(hasher, expansion->getPattern());
-            hasher.add(static_cast<std::uint64_t>(expansion->getNumExpansions().toInternalRepresentation()));
+            hasher.add(static_cast<std::uint64_t>(
+                expansion->getNumExpansions().toInternalRepresentation()));
             break;
         }
 
@@ -690,9 +692,8 @@ std::uint64_t EntityTable::expr_hash(const clang::Expr* expr) {
 
     llvm::BumpPtrAllocator scratch;
     auto data = id.Intern(scratch);
-    auto result = llvm::xxh3_64bits(
-        llvm::StringRef(reinterpret_cast<const char*>(data.getData()),
-                        data.getSize() * sizeof(unsigned)));
+    auto result = llvm::xxh3_64bits(llvm::StringRef(reinterpret_cast<const char*>(data.getData()),
+                                                    data.getSize() * sizeof(unsigned)));
     exprs[expr] = result;
     return result;
 }
@@ -975,7 +976,8 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
     /// pastes the unit did before: such a name is left to its expansion.
     auto [spelling_fid, spelling_offset] =
         unit.decompose_location(unit.spelling_location(location));
-    hasher.add(static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid) ? 0 : spelling_offset));
+    hasher.add(
+        static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid) ? 0 : spelling_offset));
 }
 
 void EntityTable::add_path(Hasher& hasher, clang::SourceLocation location) {
@@ -1042,8 +1044,7 @@ void EntityTable::add_expr(Hasher& hasher, const clang::Expr* expr) {
     }
 }
 
-void EntityTable::add_nested_name_specifier(Hasher& hasher,
-                                            clang::NestedNameSpecifier specifier) {
+void EntityTable::add_nested_name_specifier(Hasher& hasher, clang::NestedNameSpecifier specifier) {
     using namespace clang;
 
     specifier = specifier.getCanonical();
@@ -1175,7 +1176,8 @@ void EntityTable::add_template_argument(Hasher& hasher, const clang::TemplateArg
         }
         case TemplateArgument::TemplateExpansion: {
             add_template_name(hasher, argument.getAsTemplateOrTemplatePattern());
-            hasher.add(static_cast<std::uint64_t>(argument.getNumTemplateExpansions().toInternalRepresentation()));
+            hasher.add(static_cast<std::uint64_t>(
+                argument.getNumTemplateExpansions().toInternalRepresentation()));
             break;
         }
         case TemplateArgument::Expression: {
