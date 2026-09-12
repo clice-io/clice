@@ -1,5 +1,4 @@
 #include "compile/implement.h"
-#include "index/usr.h"
 #include "semantic/display.h"
 #include "support/filesystem.h"
 
@@ -349,33 +348,19 @@ std::vector<DepFile> CompilationUnitRef::deps() {
     return result;
 }
 
-index::SymbolID CompilationUnitRef::getSymbolID(const clang::NamedDecl* decl) {
-    uint64_t hash;
-    auto iter = self->symbol_hash_cache.find(decl);
-    if(iter != self->symbol_hash_cache.end()) {
-        hash = iter->second;
-    } else {
-        llvm::SmallString<128> usr;
-        index::generateUSRForDecl(decl, usr);
-        hash = llvm::xxh3_64bits(usr);
-        self->symbol_hash_cache.try_emplace(decl, hash);
+std::uint64_t CompilationUnitRef::entity(const clang::NamedDecl* decl) {
+    if(!self->entities) {
+        self->entities = std::make_unique<EntityTable>(*this);
     }
-    return index::SymbolID{hash, display::name_of(decl, {.qualified = false})};
+    return self->entities->entity(decl);
 }
 
-index::SymbolID CompilationUnitRef::getSymbolID(const clang::MacroInfo* macro) {
-    std::uint64_t hash;
-    auto name = token_spelling(macro->getDefinitionLoc());
-    auto iter = self->symbol_hash_cache.find(macro);
-    if(iter != self->symbol_hash_cache.end()) {
-        hash = iter->second;
-    } else {
-        llvm::SmallString<128> usr;
-        index::generateUSRForMacro(name, macro->getDefinitionLoc(), self->SM(), usr);
-        hash = llvm::xxh3_64bits(usr);
-        self->symbol_hash_cache.try_emplace(macro, hash);
+std::uint64_t CompilationUnitRef::entity(const clang::MacroInfo* macro) {
+    if(!self->entities) {
+        self->entities = std::make_unique<EntityTable>(*this);
     }
-    return index::SymbolID{hash, std::move(name)};
+    auto location = macro->getDefinitionLoc();
+    return self->entities->entity(token_spelling(location), location);
 }
 
 clang::TranslationUnitDecl* CompilationUnitRef::tu() {

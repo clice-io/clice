@@ -3,6 +3,7 @@
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
 #include "compile/diagnostic.h"
+#include "semantic/identity.h"
 #include "semantic/semantics.h"
 
 #include "clang/Frontend/CompilerInstance.h"
@@ -83,8 +84,8 @@ struct CompilationUnitRef::Self {
     /// Cache for file path. It is used to avoid multiple file path lookup.
     llvm::DenseMap<clang::FileEntryRef, llvm::StringRef> path_cache;
 
-    /// Cache for symbol id.
-    llvm::DenseMap<const void*, std::uint64_t> symbol_hash_cache;
+    /// Lazily built, see CompilationUnitRef::entity().
+    std::unique_ptr<EntityTable> entities;
 
     /// Cache for line starts of the main file.
     std::vector<std::uint32_t> line_starts_cache;

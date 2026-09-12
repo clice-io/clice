@@ -56,7 +56,9 @@ Strategy:
 2. Fix type system and signature changes (requires understanding semantics)
 3. Update test expectations (AST structure changes affect test output)
 4. Ensure `pixi run unit-test RelWithDebInfo` passes
-5. Expect the Debug leg to catch link-list gaps: the Linux and macOS Debug packages are shared-library builds, so every library clice uses directly must be listed in `cmake/llvm.cmake` — a static link resolves symbols from any archive pulled in transitively and hides a missing entry. To check before Step 5, build `Debug` against the Step 1 `debug-asan` artifact for your platform the same way Step 2 uses `releasedbg`
+5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an agent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `unit_tests --test-filter=expr_hash` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
+6. Bump `index_format_version` in `src/index/serialization.h`: entity hashes (`src/semantic/identity.cpp`) follow clang's canonicalization rules, so they can change silently across versions and an old index would otherwise keep serving stale symbols
+7. Expect the Debug leg to catch link-list gaps: the Linux and macOS Debug packages are shared-library builds, so every library clice uses directly must be listed in `cmake/llvm.cmake` — a static link resolves symbols from any archive pulled in transitively and hides a missing entry. To check before Step 5, build `Debug` against the Step 1 `debug-asan` artifact for your platform the same way Step 2 uses `releasedbg`
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
