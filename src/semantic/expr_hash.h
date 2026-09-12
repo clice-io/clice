@@ -221,6 +221,11 @@ public:
     void VisitHLSLOutArgExpr(const clang::HLSLOutArgExpr* expr);
 
 private:
+    friend class clang::StmtVisitorBase<llvm::make_const_ptr, ExprHasher>;
+
+    void VisitUnaryExprOrTypeTraitExpr(const clang::UnaryExprOrTypeTraitExpr* expr);
+    void VisitCXXPseudoDestructorExpr(const clang::CXXPseudoDestructorExpr* expr);
+
     /// The statement class alone; upstream's VisitStmtNoChildren.
     void visit_stmt_class(const clang::Stmt* stmt);
 
