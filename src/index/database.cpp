@@ -72,6 +72,9 @@ std::optional<int> acquire_writer_lock(llvm::StringRef library) {
     stamp.seek(0);
     stamp << llvm::sys::Process::getProcessId() << '\n';
     stamp.flush();
+    // Best effort: a lock left unstamped only costs the next process the
+    // pid in its message, while an errored stream aborts in its destructor.
+    stamp.clear_error();
     return lock_fd;
 }
 

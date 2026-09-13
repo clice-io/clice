@@ -22,6 +22,7 @@
 #include "support/timer.h"
 
 #include "kota/meta/enum.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 
@@ -653,7 +654,7 @@ std::vector<index::SymbolHash> matching_symbols(IndexView& view,
     std::vector<index::SymbolHash> matches;
     if(wanted.consume_front("#")) {
         index::SymbolHash hash = 0;
-        if(!wanted.getAsInteger(16, hash)) {
+        if(!wanted.getAsInteger(16, hash) && !index::reserved_key(hash)) {
             matches.push_back(hash);
         }
         return matches;
@@ -693,7 +694,10 @@ int run_show_symbol(IndexView& view, llvm::StringRef wanted) {
                      query.qualified_name(hash),
                      flag_names(info->flags),
                      kota::meta::enum_name(index::name_form(info->flags), "Other"));
-        for(auto parent = info->parent; parent != 0;) {
+        // A persisted parent column can be cyclic; the tables only reject
+        // reserved values.
+        llvm::DenseSet<index::SymbolHash> visited{hash};
+        for(auto parent = info->parent; parent != 0 && visited.insert(parent).second;) {
             auto scope = query.symbol_info(parent);
             if(!scope) {
                 std::println("  parent {}: unknown", format_hash(parent));
@@ -722,15 +726,20 @@ int run_show_symbol(IndexView& view, llvm::StringRef wanted) {
             std::size_t references = 0;
         };
 
+        // Straight from every shard: the query's fan-out follows the global
+        // table's reference bitmaps, which a file-local symbol has no entry
+        // in.
         std::map<std::string, Counts> per_file;
-        for(auto& site: query.sites(hash, RelationKind::Definition)) {
-            per_file[site.path.str()].definitions += 1;
-        }
-        for(auto& site: query.sites(hash, RelationKind::Declaration)) {
-            per_file[site.path.str()].declarations += 1;
-        }
-        for(auto& site: query.sites(hash, RelationKind::Reference)) {
-            per_file[site.path.str()].references += 1;
+        for(auto& [path_id, shard]: view.workspace.shards) {
+            auto count = [&](RelationKind kind, std::size_t Counts::* field) {
+                shard.lookup(hash, kind, [&](const index::Relation&) {
+                    per_file[view.path_of(path_id).str()].*field += 1;
+                    return true;
+                });
+            };
+            count(RelationKind::Definition, &Counts::definitions);
+            count(RelationKind::Declaration, &Counts::declarations);
+            count(RelationKind::Reference, &Counts::references);
         }
         for(auto& [path, counts]: per_file) {
             std::println("  {}: definitions={} declarations={} references={}",
@@ -802,6 +811,13 @@ int run_show_file(IndexView& view, llvm::StringRef argument) {
                  relations);
     for(auto& [kind, count]: by_kind) {
         std::println("    {}={}", kind, count);
+    }
+    for(std::size_t k = 0; k < blob.local_syms.size(); k += 1) {
+        std::println("    local {}  kind={}  name={}{}",
+                     format_hash(blob.sym_hashes[blob.local_syms[k]]),
+                     kind_name(SymbolKind(blob.local_kinds[k])),
+                     blob.local_names[k],
+                     blob.local_args[k]);
     }
     return 0;
 }
