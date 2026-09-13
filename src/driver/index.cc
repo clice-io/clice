@@ -222,6 +222,15 @@ struct IndexView {
     }
 };
 
+/// An inspected file: a relative argument names a file under the
+/// workspace, whatever the process working directory.
+std::string inspected_path(const IndexView& view, llvm::StringRef argument) {
+    if(path::is_absolute(argument)) {
+        return workspace_root(argument);
+    }
+    return workspace_root(path::join(view.workspace.config.workspace_root, argument));
+}
+
 /// Sentinel of open_index: the load raced a live writer's batch; the caller
 /// retries instead of reporting over the mid-write state.
 constexpr int open_retry = -1;
@@ -496,10 +505,9 @@ IndexStats collect_stats(IndexView& view) {
         stats.references_per_symbol.add(symbol.reference_files.cardinality());
         stats.name_lengths.add(symbol.name.size());
     }
-    std::string global;
-    llvm::raw_string_ostream os(global);
-    project.serialize_global(os, workspace.file_table);
-    stats.global_bytes = global.size();
+    if(auto blob = workspace.index_db->read(index::IndexBlobKind::Global, "global")) {
+        stats.global_bytes = blob.buffer->getBufferSize();
+    }
     return stats;
 }
 
@@ -741,7 +749,7 @@ int run_show_symbol(IndexView& view, llvm::StringRef wanted) {
 }
 
 int run_show_file(IndexView& view, llvm::StringRef argument) {
-    auto path = workspace_root(argument);
+    auto path = inspected_path(view, argument);
     auto file = view.workspace.file_table.find(path);
     auto shard_it = file ? view.workspace.shards.find(*file) : view.workspace.shards.end();
     if(shard_it == view.workspace.shards.end()) {
@@ -811,7 +819,7 @@ int run_show_file(IndexView& view, llvm::StringRef argument) {
 }
 
 int run_show_tu(IndexView& view, llvm::StringRef argument) {
-    auto path = workspace_root(argument);
+    auto path = inspected_path(view, argument);
     auto& files = view.workspace.file_table;
     auto tu = files.find(path);
     auto manifest_it = tu ? view.project().manifests.find(*tu) : view.project().manifests.end();
@@ -894,6 +902,14 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
 
            auto ws = workspace_root(opts.workspace.value_or(""));
            auto configuration = opts.configuration.value_or("");
+           std::size_t modes = (opts.show_symbol ? 1 : 0) + (opts.show_file ? 1 : 0) +
+                               (opts.show_tu ? 1 : 0) + (opts.stats || opts.variants ? 1 : 0);
+           if(modes > 1) {
+               LOG_ERROR(
+                   "--stats, --variants, --show-symbol, --show-file and --show-tu are "
+                   "separate modes; pass one of them");
+               return;
+           }
            if(opts.show_symbol) {
                exit_code = with_index(ws, configuration, [&](IndexView& view) {
                    return run_show_symbol(view, *opts.show_symbol);

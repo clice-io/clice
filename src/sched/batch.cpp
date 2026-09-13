@@ -207,7 +207,9 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     ScopedTimer timer;
     auto& workspace = stack.workspace;
 
-    if(!start_batch(stack, options.root, options.workers, options.self_path, "index")) {
+    bool started = start_batch(stack, options.root, options.workers, options.self_path, "index");
+    result.log_dir = stack.log_dir;
+    if(!started) {
         result.exit_code = 1;
         // A failed later spawn leaves earlier workers and their I/O tasks
         // live; unstopped they keep the batch event loop spinning and the
@@ -235,7 +237,6 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     // or an unreadable global blob disabled persistence) the run would
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
-    result.log_dir = stack.log_dir;
     if(!workspace.index_db) {
         LOG_ERROR("Cannot persist the index at {}: the warning above says why; fix that and rerun",
                   std::string_view(workspace.config.project.cache_dir));

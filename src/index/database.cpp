@@ -80,6 +80,8 @@ std::optional<int> acquire_writer_lock(llvm::StringRef library) {
 
 void release_writer_lock(int lock_fd) {
     if(lock_fd != -1) {
+        // The stamp names the holder; an unheld lock reads as nobody.
+        llvm::sys::fs::resize_file(lock_fd, 0);
         llvm::sys::fs::unlockFile(lock_fd);
         llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
     }
