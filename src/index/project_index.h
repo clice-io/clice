@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <expected>
 #include <utility>
 
 #include "index/manifest.h"
@@ -96,16 +97,18 @@ struct ProjectIndex {
 
     /// Restore the global blob, interning its paths and file versions
     /// (id-for-id, which is why it must run before anything else interns a
-    /// version) into `files`. Returns false for an unreadable or
-    /// old-format blob, leaving the index (and `files`) untouched — the
-    /// caller treats that as "no index on disk" and rebuilds in the
-    /// background. Manifests are loaded separately (apply_manifest per
-    /// blob); `manifest_pins` maps each pinned TU's tu_fv to the
-    /// generation stamp its manifest must carry to be adopted.
-    bool load_global(this ProjectIndex& self,
-                     llvm::StringRef data,
-                     clice::FileTable& files,
-                     llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
+    /// version) into `files`. An unreadable, old-format or corrupt blob is
+    /// rejected with the violated invariant, leaving the index (and
+    /// `files`) untouched — the caller treats that as "no index on disk"
+    /// and rebuilds in the background. Manifests are loaded separately
+    /// (apply_manifest per blob); `manifest_pins` maps each pinned TU's
+    /// tu_fv to the generation stamp its manifest must carry to be
+    /// adopted.
+    std::expected<void, llvm::StringRef>
+        load_global(this ProjectIndex& self,
+                    llvm::StringRef data,
+                    clice::FileTable& files,
+                    llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
 };
 
 }  // namespace clice::index

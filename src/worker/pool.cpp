@@ -10,6 +10,7 @@
 
 #include "kota/async/io/system.h"
 #include "kota/ipc/transport.h"
+#include "llvm/ADT/StringExtras.h"
 
 namespace clice {
 
@@ -18,7 +19,9 @@ namespace {
 /// Coroutine that drains a worker's stderr pipe.
 /// Workers write their own log files, so this only captures unexpected output
 /// (crash stacktraces, assertion failures, sanitizer reports, etc.).
-kota::task<> drain_stderr(kota::pipe stderr_pipe, std::string prefix) {
+kota::task<> drain_stderr(kota::pipe stderr_pipe,
+                          std::string prefix,
+                          std::shared_ptr<StderrTail> tail) {
     std::string buffer;
     while(true) {
         auto result = co_await stderr_pipe.read();
@@ -38,6 +41,7 @@ kota::task<> drain_stderr(kota::pipe stderr_pipe, std::string prefix) {
             auto line = buffer.substr(pos, nl - pos);
             if(!line.empty()) {
                 LOG_WARN("{} {}", prefix, line);
+                tail->add(std::move(line));
             }
             pos = nl + 1;
         }
@@ -46,7 +50,9 @@ kota::task<> drain_stderr(kota::pipe stderr_pipe, std::string prefix) {
 
     if(!buffer.empty()) {
         LOG_WARN("{} {}", prefix, buffer);
+        tail->add(std::move(buffer));
     }
+    tail->drained = true;
 }
 
 /// IO pump wrapper owning a peer reference, so the peer object outlives its
@@ -137,10 +143,11 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
                                                                   std::move(spawn.stdin_pipe));
     auto peer = std::make_shared<kota::ipc::BincodePeer>(loop, std::move(transport));
 
-    worker_tasks.spawn(drain_stderr(std::move(spawn.stderr_pipe), "[" + name + "]"));
+    auto stderr_tail = std::make_shared<StderrTail>();
+    worker_tasks.spawn(drain_stderr(std::move(spawn.stderr_pipe), "[" + name + "]", stderr_tail));
     worker_tasks.spawn(run_peer(peer));
 
-    return SpawnedProcess{std::move(spawn.proc), std::move(peer)};
+    return SpawnedProcess{std::move(spawn.proc), std::move(peer), std::move(stderr_tail)};
 }
 
 void WorkerPool::install_evict_handler(WorkerProcess& worker, std::size_t index) {
@@ -175,6 +182,7 @@ bool WorkerPool::spawn_worker(bool stateful) {
     workers.push_back(WorkerProcess{
         .proc = std::move(spawned->proc),
         .peer = std::move(spawned->peer),
+        .stderr_tail = std::move(spawned->stderr_tail),
         .name = name,
         .state = SlotState::Alive,
         .spawn_time = std::chrono::steady_clock::now(),
@@ -199,6 +207,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     auto& w = workers[index];
     w.proc = std::move(spawned->proc);
     w.peer = std::move(spawned->peer);
+    w.stderr_tail = std::move(spawned->stderr_tail);
     w.state = SlotState::Alive;
     w.owned_documents = 0;
     w.busy = false;
@@ -483,6 +492,18 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         co_return;
     }
 
+    // The final diagnostic can still sit in the stderr pipe when the exit
+    // is observed; give the drain a bounded moment to reach EOF — a
+    // grandchild holding the pipe open must not stall the respawn. The
+    // slot is already dying, so a shutdown meanwhile skips its reaped pid.
+    if(auto tail = workers[index].stderr_tail) {
+        for(int attempt = 0; attempt < 20 && !tail->drained; attempt += 1) {
+            co_await kota::sleep(std::chrono::milliseconds(50), loop);
+        }
+        if(stop_scope.cancelled())
+            co_return;
+    }
+
     if(process_crash(index, stateful, exit_code, exit_signal)) {
         workers[index].state = SlotState::Respawning;
         worker_tasks.spawn(
@@ -502,6 +523,13 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     auto& workers = stateful ? stateful_workers : stateless_workers;
     auto& w = workers[index];
     mark_worker_dead(index, stateful, false);
+
+    // Ahead of the anomaly report, which aborts Debug builds.
+    if(w.stderr_tail && !w.stderr_tail->lines.empty()) {
+        LOG_ERROR("Last stderr of crashed worker {}:\n{}",
+                  w.name,
+                  llvm::join(w.stderr_tail->lines, "\n"));
+    }
 
     // POSIX SIGHUP == 1 by value: Windows' <csignal> does not define the
     // macro, and a worker can only receive it on POSIX anyway.

@@ -3151,7 +3151,7 @@ TEST_CASE(RoundSnapshotBoundary) {
     f.run_round();
 
     ASSERT_EQ(f.pump.pending_files(), 0u);
-    ASSERT_EQ(f.pump.failed_files(), 3u);
+    ASSERT_EQ(f.pump.failed().size(), 3u);
     ASSERT_TRUE(f.pump.is_idle());
 }
 
@@ -3187,7 +3187,7 @@ TEST_CASE(PauseResumesRound) {
 
     ASSERT_TRUE(paused);
     ASSERT_EQ(f.pump.pending_files(), 0u);
-    ASSERT_EQ(f.pump.failed_files(), 2u);
+    ASSERT_EQ(f.pump.failed().size(), 2u);
     ASSERT_TRUE(f.pump.is_idle());
 }
 
@@ -3397,7 +3397,7 @@ TEST_CASE(DispatchDeferKeepsDebt) {
     // The claim was consumed but never settled: the debt stands for a
     // later round, and nothing was counted as failed.
     ASSERT_TRUE(f.pump.pending_reason(id) == ReindexReason::ContentChanged);
-    ASSERT_EQ(f.pump.failed_files(), 0u);
+    ASSERT_EQ(f.pump.failed().size(), 0u);
     ASSERT_TRUE(f.pump.is_idle());
 }
 
@@ -3443,7 +3443,7 @@ TEST_CASE(LandingVetoDropsResult) {
     ASSERT_EQ(asks, 2);
     ASSERT_FALSE(f.workspace.shards.contains(id));
     ASSERT_FALSE(f.pump.pending_reason(id).has_value());
-    ASSERT_EQ(f.pump.failed_files(), 0u);
+    ASSERT_EQ(f.pump.failed().size(), 0u);
 }
 
 TEST_CASE(BoostRearmsIdleTimer) {
@@ -3461,7 +3461,7 @@ TEST_CASE(BoostRearmsIdleTimer) {
     f.loop.run();
 
     ASSERT_TRUE(f.pump.is_idle());
-    ASSERT_EQ(f.pump.failed_files(), 1u);
+    ASSERT_EQ(f.pump.failed().size(), 1u);
 }
 
 };  // TEST_SUITE(IndexReports)

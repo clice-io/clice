@@ -1,6 +1,7 @@
 #include "index/tu_index.h"
 
 #include <algorithm>
+#include <ranges>
 #include <tuple>
 
 #include "compile/compilation_unit.h"
@@ -180,8 +181,8 @@ public:
     Symbol describe(const clang::NamedDecl* decl) {
         Symbol symbol;
         auto flags = SymbolFlags::None;
-        /// A deduction guide is listed under its label rather than the
-        /// template's name, which completion prefers for its candidates.
+        // A deduction guide is listed under its label rather than the
+        // template's name, which completion prefers for its candidates.
         if(llvm::isa<clang::CXXDeductionGuideDecl>(decl)) {
             symbol.name = display::name_of(decl);
         } else {
@@ -202,8 +203,8 @@ public:
         if(is_specialization(decl)) {
             flags |= SymbolFlags::Specialization;
         }
-        /// Attributes accumulate along the redeclaration chain; the last
-        /// declaration carries them all.
+        // Attributes accumulate along the redeclaration chain; the last
+        // declaration carries them all.
         if(decl->getMostRecentDecl()->getAvailability() == clang::AR_Deprecated) {
             flags |= SymbolFlags::Deprecated;
         }
@@ -237,7 +238,7 @@ public:
     }
 
     void add_macro(const clang::MacroInfo* def, RelationKind kind, clang::SourceLocation location) {
-        /// FIXME: Figure out when location is MacroID.
+        // FIXME: Figure out when location is MacroID.
         if(location.isMacroID()) {
             return;
         }
@@ -298,14 +299,14 @@ public:
         Relation relation{.kind = kind, .range = range, .target_symbol = 0};
 
         if(kind.isDeclOrDef()) {
-            /// FIXME: why definition or declaration has invalid source range? implicit node?
+            // FIXME: why definition or declaration has invalid source range? implicit node?
             auto source_range = decl->getSourceRange();
             if(source_range.isValid()) {
                 auto [def_fid, definition_range] = unit.decompose_expansion_range(source_range);
-                /// A declaration can begin in another file, e.g. when a
-                /// header-defined macro spells its leading tokens. Such a
-                /// range is meaningless in this file's coordinates; leave
-                /// the definition range empty instead of storing it.
+                // A declaration can begin in another file, e.g. when a
+                // header-defined macro spells its leading tokens. Such a
+                // range is meaningless in this file's coordinates; leave
+                // the definition range empty instead of storing it.
                 if(fid == def_fid) {
                     relation.set_definition_range(definition_range);
                 }
@@ -321,8 +322,8 @@ public:
                            RelationKind kind,
                            const clang::NamedDecl* target,
                            clang::SourceRange anchor) {
-        /// The anchor only routes the row to a file's index; symbol pairs
-        /// carry no range of their own.
+        // The anchor only routes the row to a file's index; symbol pairs
+        // carry no range of their own.
         auto fid = unit.decompose_expansion_range(anchor).first;
         auto* index = file_index(fid);
         if(!index) {
@@ -482,9 +483,9 @@ public:
             return;
         }
 
-        /// Constructions are call edges too, but only written ones — an
-        /// implicit copy or elided temporary has no paren/brace form and
-        /// would flood the constructor's callers.
+        // Constructions are call edges too, but only written ones — an
+        // implicit copy or elided temporary has no paren/brace form and
+        // would flood the constructor's callers.
         if(auto* CCE = node.get<clang::CXXConstructExpr>()) {
             if(!CCE->getParenOrBraceRange().isValid()) {
                 return;
@@ -503,7 +504,7 @@ public:
             return;
         }
 
-        /// The type of a value declaration, for go-to-type-definition.
+        // The type of a value declaration, for go-to-type-definition.
         if(llvm::isa<clang::FieldDecl,
                      clang::BindingDecl,
                      clang::NonTypeTemplateParmDecl,
@@ -545,7 +546,7 @@ public:
             return;
         }
 
-        /// Base/derived edges, recorded at the defining declaration.
+        // Base/derived edges, recorded at the defining declaration.
         if(auto* TD = llvm::dyn_cast<clang::TagDecl>(D)) {
             if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(TD)) {
                 switch(CTSD->getSpecializationKind()) {
@@ -565,7 +566,7 @@ public:
             if(auto* CRD = llvm::dyn_cast<clang::CXXRecordDecl>(TD)) {
                 if(auto* def = CRD->getDefinition()) {
                     for(auto& base: CRD->bases()) {
-                        /// FIXME: Handle dependent base class.
+                        // FIXME: Handle dependent base class.
                         if(auto target = types::decl_of(base.getType())) {
                             add_pair_relation(def,
                                               RelationKind::Base,
@@ -634,38 +635,38 @@ public:
     void project_semantics(const Semantics& semantics) {
         auto entries = semantics.node_entries();
 
-        for(std::uint32_t i = 0; i < entries.size(); i++) {
+        for(std::uint32_t i = 0; i < entries.size(); i += 1) {
             const SemanticNode& node = entries[i].node;
-            /// Macros are projected from the directives below; includes and
-            /// imports have their own pipelines.
+            // Macros are projected from the directives below; includes and
+            // imports have their own pipelines.
             if(!node.is_ast()) {
                 continue;
             }
 
             for(auto& occurrence: resolve_occurrences(semantics, i, &unit.resolver())) {
-                /// Macro-generated names anchor at written source, following
-                /// clang's file-location rule: argument tokens at their
-                /// spelling in the invocation, body and pasted tokens at the
-                /// invocation point. Nothing may anchor inside a `#define`
-                /// body — those tokens have no meaning of their own, each
-                /// expansion assigns one, and projecting a TU's expansion
-                /// back into the shared definition is deliberately banned.
+                // Macro-generated names anchor at written source, following
+                // clang's file-location rule: argument tokens at their
+                // spelling in the invocation, body and pasted tokens at the
+                // invocation point. Nothing may anchor inside a `#define`
+                // body — those tokens have no meaning of their own, each
+                // expansion assigns one, and projecting a TU's expansion
+                // back into the shared definition is deliberately banned.
                 auto location = unit.file_location(occurrence.location);
 
-                /// An occurrence claims "this range spells the name", so it
-                /// exists only where that holds. Names conjured by a macro
-                /// body or token paste still get the self-relation below —
-                /// reference lists and jump targets keep the invocation row —
-                /// but the invocation token itself stays the macro's, not
-                /// theirs.
+                // An occurrence claims "this range spells the name", so it
+                // exists only where that holds. Names conjured by a macro
+                // body or token paste still get the self-relation below —
+                // reference lists and jump targets keep the invocation row —
+                // but the invocation token itself stays the macro's, not
+                // theirs.
                 if(location == unit.spelling_location(occurrence.location)) {
                     add_occurrence(occurrence.decl, occurrence.kind, location);
                 }
 
-                /// Every occurrence is mirrored as a self-relation with the
-                /// identical range, so find-references on the occurring decl
-                /// finds this row and cursor-site detection can match the
-                /// two ranges exactly.
+                // Every occurrence is mirrored as a self-relation with the
+                // identical range, so find-references on the occurring decl
+                // finds this row and cursor-site detection can match the
+                // two ranges exactly.
                 add_self_relation(occurrence.decl, occurrence.kind, location);
             }
 
@@ -692,9 +693,9 @@ public:
 
     std::string build(const PreambleExtras* extras) {
         ScopedTimer semantics_timer;
-        /// The main-file-only shape is the one features share, cached on the
-        /// unit; the whole-TU shape is transient — projected and dropped.
-        /// Both phases below share the one build.
+        // The main-file-only shape is the one features share, cached on the
+        // unit; the whole-TU shape is transient — projected and dropped.
+        // Both phases below share the one build.
         std::optional<Semantics> full;
         if(!main_file_only) {
             full.emplace(Semantics::build(unit, false));
@@ -719,56 +720,21 @@ public:
         }
         tree = IncludeTree::from(unit, indexed_fids);
 
-        // The canonical file is decided across every file's rows: a
-        // definition wins over a declaration, and between equals the
-        // lowest path id, so the choice is a pure function of the rows.
-        auto adopt = [](Symbol& symbol, std::uint32_t path_id, bool definition) {
-            bool defined = has_flag(symbol.flags, SymbolFlags::HasDefinition);
-            if(definition && !defined) {
-                symbol.flags |= SymbolFlags::HasDefinition;
-                symbol.file = path_id;
-                return;
-            }
-            if(definition == defined && (symbol.file == no_file || path_id < symbol.file)) {
-                symbol.file = path_id;
-            }
-        };
-        for(auto& [fid, index]: file_indices) {
-            // Synthetic buffers have no path of their own and their rows
-            // are never encoded (see the encode loop below).
-            if(fid != unit.main_file() && tree.node_of(fid) == ~0u) {
-                continue;
-            }
-            auto path_id = tree.path_id(fid);
-            for(auto& [symbol_id, relations]: index.relations) {
-                auto& symbol = symbols[symbol_id];
-                symbol.reference_files.add(path_id);
-                for(auto& relation: relations) {
-                    if(relation.kind == RelationKind::Definition) {
-                        adopt(symbol, path_id, true);
-                    } else if(relation.kind == RelationKind::Declaration) {
-                        adopt(symbol, path_id, false);
-                    }
-                }
-            }
-        }
-        auto finish_ms = finish_timer.ms_f();
-
-        // Encode one blob per path. A header entered several times (its
-        // FileIDs differ, its path id does not) contributes the union of
-        // its entries' rows: write_shard canonicalizes — sorts and
-        // deduplicates — so concatenation is union.
-        ScopedTimer encode_timer;
+        // Rows are keyed by FileID while they accumulate, by path from here
+        // on. A header entered several times (its FileIDs differ, its path
+        // id does not) contributes the union of its entries' rows:
+        // write_shard canonicalizes — sorts and deduplicates — so
+        // concatenation is union. A file with no include edge is a
+        // synthetic buffer (predefines, <command line>): it has no real
+        // path to attribute rows to, and path_id() would misfile them
+        // under the source file. Real files forced in via -include are not
+        // affected — clang records their include edge in the predefines
+        // buffer, which is a valid location. The main file legitimately
+        // has no edge.
         llvm::DenseMap<std::uint32_t, FileIndex> by_path;
         llvm::DenseMap<std::uint32_t, clang::FileID> path_fids;
         for(auto& [fid, index]: file_indices) {
-            // A file with no include edge is a synthetic buffer (predefines,
-            // <command line>): it has no real path to attribute rows to, and
-            // path_id() would misfile them under the source file. Real files
-            // forced in via -include are not affected — clang records their
-            // include edge in the predefines buffer, which is a valid
-            // location. The main file legitimately has no edge.
-            if(fid != unit.main_file() && tree.node_of(fid) == ~0u) {
+            if(fid != unit.main_file() && tree.node_of(fid) == no_node) {
                 continue;
             }
             auto path_id = tree.path_id(fid);
@@ -787,21 +753,42 @@ public:
             }
         }
 
+        // The canonical file is decided across every file's rows: a
+        // definition wins over a declaration, and between equals the
+        // lowest path id, so the choice is a pure function of the rows.
+        auto adopt = [](Symbol& symbol, std::uint32_t path_id, bool definition) {
+            bool defined = has_flag(symbol.flags, SymbolFlags::HasDefinition);
+            if(definition && !defined) {
+                symbol.flags |= SymbolFlags::HasDefinition;
+                symbol.file = path_id;
+                return;
+            }
+            if(definition == defined && (symbol.file == no_file || path_id < symbol.file)) {
+                symbol.file = path_id;
+            }
+        };
+        for(auto& [path_id, rows]: by_path) {
+            for(auto& [symbol_id, relations]: rows.relations) {
+                auto& symbol = symbols[symbol_id];
+                symbol.reference_files.add(path_id);
+                for(auto& relation: relations) {
+                    if(relation.kind == RelationKind::Definition) {
+                        adopt(symbol, path_id, true);
+                    } else if(relation.kind == RelationKind::Declaration) {
+                        adopt(symbol, path_id, false);
+                    }
+                }
+            }
+        }
+        auto finish_ms = finish_timer.ms_f();
+
+        ScopedTimer encode_timer;
         auto resolve = [&](SymbolHash hash) -> std::optional<SymbolIdentity> {
             auto it = symbols.find(hash);
             if(it == symbols.end()) {
                 return std::nullopt;
             }
-            auto& symbol = it->second;
-            return SymbolIdentity{
-                .name = symbol.name,
-                .args = symbol.args,
-                .parent = symbol.parent,
-                .kind = symbol.kind,
-                .scope = symbol.scope,
-                .flags = symbol.flags,
-                .file = symbol.file,
-            };
+            return it->second.identity();
         };
 
         llvm::SmallVector<std::uint32_t> path_ids;
@@ -932,7 +919,14 @@ llvm::StringRef bitmap_bytes(kota::codec::fbs::table_view<Symbol> symbol) {
 
 TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     auto root = WireView::from_bytes(blob_bytes(data));
-    if(!root.valid() || root[&EnvelopeBlob::format_version] != index_format_version) {
+    if(!root.valid()) {
+        LOG_DEBUG("Rejecting TU index: structural verification failed");
+        return {};
+    }
+    if(root[&EnvelopeBlob::format_version] != index_format_version) {
+        LOG_DEBUG("Rejecting TU index: format version {}, this build reads {}",
+                  root[&EnvelopeBlob::format_version],
+                  index_format_version);
         return {};
     }
 
@@ -943,14 +937,16 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // unchecked — an empty table marks a corrupt envelope.
     auto count = root[&EnvelopeBlob::paths].size();
     if(count == 0) {
+        LOG_DEBUG("Rejecting TU index: empty path table");
         return {};
     }
-    // A parent names another node or the root (~0); consumers index their
+    // A parent names another node or the root; consumers index their
     // per-node tables with it unchecked.
     auto nodes = root[&EnvelopeBlob::nodes];
     for(std::size_t i = 0; i < nodes.size(); i += 1) {
         IncludeNode node = nodes.at(i);
-        if(node.file >= count || (node.parent != ~0u && node.parent >= nodes.size())) {
+        if(node.file >= count || (node.parent != no_node && node.parent >= nodes.size())) {
+            LOG_DEBUG("Rejecting TU index: include node past the path or node table");
             return {};
         }
     }
@@ -962,6 +958,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     for(std::size_t i = 0; i < symbols.size(); i += 1) {
         auto entry = symbols.at(i);
         if(reserved_key(entry.get<0>()) || reserved_key(entry.get<1>()[&Symbol::parent])) {
+            LOG_DEBUG("Rejecting TU index: reserved symbol hash or parent");
             return {};
         }
     }
@@ -973,6 +970,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     for(std::size_t i = 0; i < sections.size(); i += 1) {
         auto path_id = sections.at(i)[&FileSection::path_id];
         if(path_id >= count || (i != 0 && path_id <= previous_path_id)) {
+            LOG_DEBUG("Rejecting TU index: section path ids are not strictly ascending");
             return {};
         }
         previous_path_id = path_id;
@@ -1040,20 +1038,14 @@ llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {
 }
 
 std::optional<std::uint32_t> TUIndex::section_of(std::uint32_t path_id) const {
-    std::uint32_t lo = 0;
-    std::uint32_t hi = section_count();
-    while(lo < hi) {
-        auto mid = lo + (hi - lo) / 2;
-        if(section_path(mid) < path_id) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
+    auto sections = std::views::iota(std::uint32_t(0), section_count());
+    auto it = std::ranges::lower_bound(sections, path_id, {}, [&](std::uint32_t i) {
+        return section_path(i);
+    });
+    if(it == sections.end() || section_path(*it) != path_id) {
+        return std::nullopt;
     }
-    if(lo < section_count() && section_path(lo) == path_id) {
-        return lo;
-    }
-    return std::nullopt;
+    return *it;
 }
 
 const Shard& TUIndex::shard_of(std::uint32_t path_id) const {

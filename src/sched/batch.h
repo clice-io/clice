@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "worker/protocol.h"
 
@@ -11,6 +12,15 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
+
+/// A snapshot of a batch index run's progress within the current round:
+/// units settled (indexed, skipped as fresh, or failed) against the
+/// round's total, and the files failed for good so far.
+struct BatchProgress {
+    std::size_t completed = 0;
+    std::size_t total = 0;
+    std::size_t failed = 0;
+};
 
 struct BatchOptions {
     std::string root;
@@ -24,6 +34,10 @@ struct BatchOptions {
 
     /// Path of the clice binary, for spawning workers.
     std::string self_path;
+
+    /// Called on the event loop when a round begins or ends and every ten
+    /// seconds in between; null for no progress reporting.
+    llvm::function_ref<void(const BatchProgress&)> on_progress;
 };
 
 /// What a batch indexing run did, for the driver's report. The run's own
@@ -40,10 +54,20 @@ struct BatchResult {
     bool completed = false;
 
     std::size_t indexed_tus = 0;
+
+    /// Units in the index without a compile command of their own: headers
+    /// indexed standalone under a borrowed host command, by this run or an
+    /// earlier one.
+    std::size_t standalone_headers = 0;
     std::size_t shard_count = 0;
     std::uint64_t shard_bytes = 0;
     std::size_t symbol_count = 0;
-    std::size_t failed_files = 0;
+
+    /// Paths of the units that failed for good, sorted.
+    std::vector<std::string> failed;
+
+    /// The session log directory; empty when file logging is off.
+    std::string log_dir;
 
     /// Index state remained that the final save could not commit; a rerun
     /// cannot resume from it.

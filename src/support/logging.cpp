@@ -2,6 +2,8 @@
 
 #include <array>
 #include <chrono>
+#include <ctime>
+#include <format>
 #include <memory>
 #include <string>
 
@@ -23,6 +25,7 @@
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/Signals.h"
 
 namespace clice::logging {
@@ -49,6 +52,19 @@ void stderr_logger(std::string_view name, const Options& options) {
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
+}
+
+std::string session_log_directory(std::string_view logging_dir) {
+    auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", &local);
+    return path::join(logging_dir, std::format("{}_{}", stamp, llvm::sys::Process::getProcessId()));
 }
 
 bool file_logger(std::string_view name,

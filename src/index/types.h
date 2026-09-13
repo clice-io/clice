@@ -156,6 +156,18 @@ constexpr NameForm name_form(SymbolFlags flags) {
 /// No canonical file: the symbol has rows but none of them declares it.
 constexpr inline std::uint32_t no_file = ~0u;
 
+/// A symbol's identity as a blob reader hands it out; the strings borrow
+/// the blob's bytes.
+struct SymbolIdentity {
+    llvm::StringRef name;
+    llvm::StringRef args;
+    SymbolHash parent = 0;
+    SymbolKind kind;
+    SymbolScope scope = SymbolScope::External;
+    SymbolFlags flags = SymbolFlags::None;
+    std::uint32_t file = no_file;
+};
+
 struct Symbol {
     /// The symbol's own name: an identifier, or the rendering of a special
     /// name ("~Foo", "operator<<", "operator int"). A presentation for
@@ -186,22 +198,23 @@ struct Symbol {
     /// All files that referenced this symbol.
     Bitmap reference_files;
 
+    /// The identity a reader hands out for this row; the strings borrow it.
+    SymbolIdentity identity() const {
+        return {
+            .name = name,
+            .args = args,
+            .parent = parent,
+            .kind = kind,
+            .scope = scope,
+            .flags = flags,
+            .file = file,
+        };
+    }
+
     friend bool operator==(const Symbol&, const Symbol&) = default;
 };
 
 using SymbolTable = llvm::DenseMap<SymbolHash, Symbol>;
-
-/// A symbol's identity as a blob reader hands it out; the strings borrow
-/// the blob's bytes.
-struct SymbolIdentity {
-    llvm::StringRef name;
-    llvm::StringRef args;
-    SymbolHash parent = 0;
-    SymbolKind kind;
-    SymbolScope scope = SymbolScope::External;
-    SymbolFlags flags = SymbolFlags::None;
-    std::uint32_t file = no_file;
-};
 
 /// A symbol as queries hand it out: its identity plus the stored facts,
 /// owned — the strings outlive whichever table answered.
@@ -212,6 +225,17 @@ struct SymbolRef {
     SymbolHash parent = 0;
     SymbolKind kind;
     SymbolFlags flags = SymbolFlags::None;
+
+    static SymbolRef from(SymbolHash hash, const SymbolIdentity& identity) {
+        return {
+            .hash = hash,
+            .name = identity.name.str(),
+            .args = identity.args.str(),
+            .parent = identity.parent,
+            .kind = identity.kind,
+            .flags = identity.flags,
+        };
+    }
 
     /// The name with a specialization's arguments, as display shows it.
     std::string display_name() const {

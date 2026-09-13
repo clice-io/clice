@@ -109,6 +109,10 @@ extern Options options;
 
 void stderr_logger(std::string_view name, const Options& options);
 
+/// The per-session log directory under `logging_dir`: the local start
+/// time and the pid, so a run is found by the clock on the wall.
+std::string session_log_directory(std::string_view logging_dir);
+
 /// Log to <dir>/<name>.log, replaying lines buffered by stderr_logger.
 /// With mirror_stderr, every line is also written to stderr — the master
 /// uses this so editors can show its log; workers must pass false (their

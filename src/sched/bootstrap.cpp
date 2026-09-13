@@ -133,7 +133,7 @@ BuildLoad load_build(Workspace& workspace,
         stable.erase(duplicates.begin(), duplicates.end());
         paths.append(stable.begin(), stable.end());
         if(paths.size() > 1) {
-            LOG_INFO(
+            LOG_WARN(
                 "No rule names a compilation database; the {} found apply in this order, "
                 "an earlier one winning for a file both list: {}. To switch between them "
                 "instead, declare each on a tagged rule: [[rules]] configuration = \"...\" "

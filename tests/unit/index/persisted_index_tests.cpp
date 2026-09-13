@@ -182,7 +182,7 @@ TEST_CASE(GlobalVersionGate) {
 
     auto stale = kota::codec::fbs::to_bytes(VersionOnly{});
     ASSERT_TRUE(stale.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*stale), pool, pins));
+    ASSERT_FALSE(loaded.load_global(bytes_of(*stale), pool, pins).has_value());
 
     auto current = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
     ASSERT_TRUE(current.has_value());
@@ -190,7 +190,7 @@ TEST_CASE(GlobalVersionGate) {
     ASSERT_TRUE(loaded.symbols.empty());
     ASSERT_TRUE(pins.empty());
 
-    ASSERT_FALSE(loaded.load_global("not a flatbuffer", pool, pins));
+    ASSERT_FALSE(loaded.load_global("not a flatbuffer", pool, pins).has_value());
 }
 
 /// Field order MUST mirror GlobalBlob (project_index.cpp).
@@ -274,7 +274,7 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     ASSERT_TRUE(corrupt.has_value());
     index::ProjectIndex rejecting;
     clice::FileTable untouched;
-    ASSERT_FALSE(rejecting.load_global(bytes_of(*corrupt), untouched, pins));
+    ASSERT_FALSE(rejecting.load_global(bytes_of(*corrupt), untouched, pins).has_value());
     ASSERT_TRUE(rejecting.symbols.empty());
     ASSERT_TRUE(untouched.versions.empty());
     ASSERT_FALSE(untouched.find("/proj/partial.h").has_value());
@@ -298,7 +298,7 @@ TEST_CASE(UncoveredBitmapIdRejected) {
     auto uncovered = encode(mirror);
     ASSERT_TRUE(uncovered.has_value());
     index::ProjectIndex loaded;
-    ASSERT_FALSE(loaded.load_global(bytes_of(*uncovered), pool, pins));
+    ASSERT_FALSE(loaded.load_global(bytes_of(*uncovered), pool, pins).has_value());
     ASSERT_TRUE(loaded.symbols.empty());
 
     mirror.sym_paths = {
@@ -329,7 +329,7 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     auto dup_id = encode(mirror);
     ASSERT_TRUE(dup_id.has_value());
     index::ProjectIndex loaded;
-    ASSERT_FALSE(loaded.load_global(bytes_of(*dup_id), pool, pins));
+    ASSERT_FALSE(loaded.load_global(bytes_of(*dup_id), pool, pins).has_value());
     ASSERT_TRUE(pool.versions.empty());
 
     mirror.fv_ids = {7, 8};
@@ -337,7 +337,7 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     mirror.fv_hashes = {0x1, 0x1};
     auto dup_pair = encode(mirror);
     ASSERT_TRUE(dup_pair.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*dup_pair), pool, pins));
+    ASSERT_FALSE(loaded.load_global(bytes_of(*dup_pair), pool, pins).has_value());
 
     // The same path under two content hashes is the legitimate shape: two
     // observed versions of one file. The table adopts the writer's id
@@ -376,7 +376,7 @@ TEST_CASE(GlobalBadCounterRejected) {
     mirror.next_fv_id = 7;
     auto lagging = encode(mirror);
     ASSERT_TRUE(lagging.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*lagging), pool, pins));
+    ASSERT_FALSE(loaded.load_global(bytes_of(*lagging), pool, pins).has_value());
 
     mirror.next_fv_id = llvm::DenseMapInfo<std::uint32_t>::getTombstoneKey();
     mirror.fv_ids = {};
@@ -386,14 +386,14 @@ TEST_CASE(GlobalBadCounterRejected) {
     mirror.fv_mtimes = {};
     auto reserved = encode(mirror);
     ASSERT_TRUE(reserved.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*reserved), pool, pins));
+    ASSERT_FALSE(loaded.load_global(bytes_of(*reserved), pool, pins).has_value());
 
     // A garbage high-water mark far beyond any real table must reject
     // before the id-space resize tries to allocate it.
     mirror.next_fv_id = 0xf0000000;
     auto oversized = encode(mirror);
     ASSERT_TRUE(oversized.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*oversized), pool, pins));
+    ASSERT_FALSE(loaded.load_global(bytes_of(*oversized), pool, pins).has_value());
 }
 
 TEST_CASE(GlobalRoundTripSymbolFacts) {
@@ -454,7 +454,7 @@ TEST_CASE(UncoveredFileIdRejected) {
     auto uncovered = encode(mirror);
     ASSERT_TRUE(uncovered.has_value());
     index::ProjectIndex rejecting;
-    ASSERT_FALSE(rejecting.load_global(bytes_of(*uncovered), pool, pins));
+    ASSERT_FALSE(rejecting.load_global(bytes_of(*uncovered), pool, pins).has_value());
     ASSERT_TRUE(rejecting.symbols.empty());
 }
 
@@ -479,7 +479,7 @@ TEST_CASE(GlobalDuplicateSymbolRejected) {
     auto dup = encode(mirror);
     ASSERT_TRUE(dup.has_value());
     index::ProjectIndex loaded;
-    ASSERT_FALSE(loaded.load_global(bytes_of(*dup), pool, pins));
+    ASSERT_FALSE(loaded.load_global(bytes_of(*dup), pool, pins).has_value());
     ASSERT_TRUE(loaded.symbols.empty());
 
     mirror.sym_hashes = {42, 43};
@@ -508,7 +508,7 @@ TEST_CASE(GlobalReservedKeysRejected) {
         mirror.fv_mtimes = {1};
         auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
-        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
+        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     {
         GlobalBlobMirror mirror;
@@ -524,7 +524,7 @@ TEST_CASE(GlobalReservedKeysRejected) {
         };
         auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
-        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
+        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     {
         GlobalBlobMirror mirror;
@@ -536,7 +536,7 @@ TEST_CASE(GlobalReservedKeysRejected) {
         mirror.sym_bitmaps = {index::write_bitmap(clice::Bitmap{})};
         auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
-        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
+        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     {
         GlobalBlobMirror mirror;
@@ -546,7 +546,7 @@ TEST_CASE(GlobalReservedKeysRejected) {
         };
         auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
-        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
+        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     ASSERT_TRUE(pool.versions.empty());
     ASSERT_TRUE(loaded.symbols.empty());

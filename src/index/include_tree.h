@@ -16,6 +16,11 @@ class CompilationUnitRef;
 
 namespace clice::index {
 
+/// The parent of a node whose directive sits in the TU's own file, and
+/// node_of's answer for a file entered without a directive: the TU root is
+/// not itself a node.
+constexpr inline std::uint32_t no_node = ~0u;
+
 /// One entered file of an include tree: which file was entered, through
 /// which include directive (the parent node's file at `line`), and where.
 /// Multiple entries of one file (headers without guards) are distinct
@@ -25,9 +30,8 @@ namespace clice::index {
 struct IncludeNode {
     std::uint32_t file = 0;
 
-    /// Index of the including node, ~0 when the directive sits in the
-    /// TU's own file (the TU root is not itself a node).
-    std::uint32_t parent = ~0u;
+    /// Index of the including node.
+    std::uint32_t parent = no_node;
 
     /// 1-based line of the include directive in the parent.
     std::uint32_t line = 0;
@@ -56,7 +60,7 @@ struct IncludeTree {
     std::vector<IncludeNode> nodes;
 
     /// Build-time only: each FileID (one header context) to the node that
-    /// entered it, ~0 for a file entered without an include directive.
+    /// entered it, no_node for a file entered without an include directive.
     /// FileIDs mean nothing outside the compilation.
     llvm::DenseMap<clang::FileID, std::uint32_t> file_nodes;
 
@@ -71,7 +75,7 @@ struct IncludeTree {
     static IncludeTree from(CompilationUnitRef unit,
                             llvm::ArrayRef<clang::FileID> indexed_fids = {});
 
-    /// The node that entered `fid`, or ~0 for a file entered without an
+    /// The node that entered `fid`, or no_node for a file entered without an
     /// include directive (the main file, synthetic buffers) — and,
     /// defensively, for a fid missing from the table: the indexer must
     /// never crash on unexpected input.
@@ -87,7 +91,7 @@ struct IncludeTree {
     /// of misattributing them.
     std::uint32_t path_id(clang::FileID fid) const {
         auto node = node_of(fid);
-        if(node != ~0u) {
+        if(node != no_node) {
             return nodes[node].file;
         }
         return paths.size() - 1;

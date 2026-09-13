@@ -1252,8 +1252,10 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
         return result;
     }
     llvm::DenseMap<VersionID, std::uint64_t> manifest_pins;
-    if(!project.load_global(global.buffer->getBuffer(), workspace.file_table, manifest_pins)) {
-        LOG_INFO("Discarding old-format index global blob");
+    if(auto loaded =
+           project.load_global(global.buffer->getBuffer(), workspace.file_table, manifest_pins);
+       !loaded) {
+        LOG_INFO("Discarding the index global blob: {}", loaded.error());
         sweep_all();
         load_metadata();
         if(!read_only) {

@@ -22,6 +22,9 @@ namespace clice::index {
 /// the file agrees produce byte-identical blobs and share one identity.
 using RowsHash = std::uint64_t;
 
+struct RowColumns;
+struct LiveFilter;
+
 /// Zero-copy reader over a shard blob, plus the live-variant mask the
 /// indexer maintains: a variant whose last contributing TU was removed or
 /// replaced stops serving immediately, and its rows are erased for real by
@@ -79,9 +82,6 @@ public:
     /// re-read the file from disk under a content_hash check.
     llvm::StringRef content() const;
 
-    /// Whether the content is pure ASCII (and therefore not stored).
-    bool ascii() const;
-
     /// Whether `text` is the exact content the rows were built from —
     /// the freshness comparison for disk state. Compares by size and
     /// hash, so it works for ASCII blobs, whose text is not stored.
@@ -137,7 +137,9 @@ private:
         Bitmap big;
     };
 
-    bool row_live(bool occurrence, std::uint32_t row) const;
+    /// The live mask resolved against one side's mask columns, built once
+    /// per query.
+    LiveFilter live_filter(const RowColumns& columns) const;
 
     std::unique_ptr<llvm::MemoryBuffer> buffer;
     Live live;

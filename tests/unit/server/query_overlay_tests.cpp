@@ -443,7 +443,7 @@ TEST_CASE(AsciiPreviewFromDisk) {
     index::write_shard(rows, {}, text, os);
     workspace.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    ASSERT_TRUE(workspace.shards[path_id].ascii());
+    ASSERT_TRUE(workspace.shards[path_id].content().empty());
     workspace.project_index.symbols[sym].name = "value";
     workspace.project_index.symbols[sym].reference_files.add(path_id.raw);
 

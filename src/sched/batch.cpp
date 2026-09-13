@@ -1,9 +1,9 @@
 #include "sched/batch.h"
 
+#include <algorithm>
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
-#include <format>
 
 #include "config/config.h"
 #include "sched/bootstrap.h"
@@ -44,6 +44,10 @@ struct BatchStack {
     TURunFamily turun{graph, workspace, contexts, pcm, store, pool};
     IndexPump pump{loop, workspace, turun, store, pool};
 
+    /// The session log directory start_batch created; empty when file
+    /// logging is off.
+    std::string log_dir;
+
     explicit BatchStack(kota::event_loop& loop) : loop(loop), pool(loop), graph(loop) {
         pcm.register_runner();
         turun.register_runner();
@@ -81,15 +85,39 @@ kota::task<> watch_signal(int signum, kota::cancellation_source& stop, bool& sto
     }
 }
 
-/// Periodically checkpoint the cache store manifest so last-accessed
-/// times survive crashes on long runs (the store itself is passive).
-kota::task<> checkpoint_task(Workspace& workspace) {
+/// Periodically checkpoint the cache store manifest (the store itself is
+/// passive) and persist the index, so a crash on a long run loses at most
+/// one interval of work: the pump saves only at round end, and a round
+/// covers the whole workspace on a cold run.
+kota::task<> checkpoint_task(BatchStack& stack) {
     constexpr auto interval = std::chrono::minutes(5);
     while(true) {
         co_await kota::sleep(interval);
-        if(workspace.store) {
-            co_await kota::queue([&workspace] { workspace.store->checkpoint(); });
+        if(stack.workspace.store) {
+            co_await kota::queue([&stack] { stack.workspace.store->checkpoint(); });
         }
+        stack.pump.claim_report(co_await stack.store.save(stack.pump.save_debt()));
+    }
+}
+
+/// The current round's progress to the driver's callback; nothing before
+/// the first round has a total.
+void report_progress(BatchStack& stack, const BatchOptions& options) {
+    auto& round = stack.pump.progress();
+    if(!options.on_progress || round.total == 0) {
+        return;
+    }
+    options.on_progress(
+        {.completed = round.completed, .total = round.total, .failed = stack.pump.failed().size()});
+}
+
+/// A paced report on top of the round boundaries: one unit can take
+/// longer than the pace, and a run must not fall silent while it runs.
+kota::task<> progress_ticker(BatchStack& stack, const BatchOptions& options) {
+    constexpr auto pace = std::chrono::seconds(10);
+    while(true) {
+        co_await kota::sleep(pace);
+        report_progress(stack, options);
     }
 }
 
@@ -112,7 +140,7 @@ struct BatchLifetime {
     explicit BatchLifetime(BatchStack& stack) : stack(stack), aux(stack.loop) {
         aux.spawn(watch_signal(SIGINT, stop, stop_requested));
         aux.spawn(watch_signal(SIGTERM, stop, stop_requested));
-        aux.spawn(checkpoint_task(stack.workspace));
+        aux.spawn(checkpoint_task(stack));
     }
 
     kota::cancellation_token token() {
@@ -153,12 +181,10 @@ bool start_batch(BatchStack& stack,
 
     std::string session_log_dir;
     if(!cfg.logging_dir.empty()) {
-        auto now = std::chrono::system_clock::now();
-        auto pid = llvm::sys::Process::getProcessId();
-        session_log_dir =
-            path::join(cfg.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
+        session_log_dir = logging::session_log_directory(cfg.logging_dir);
         if(logging::file_logger(log_tag, session_log_dir, logging::options)) {
             LOG_INFO("Session log directory: {}", session_log_dir);
+            stack.log_dir = session_log_dir;
         }
     }
 
@@ -181,7 +207,9 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     ScopedTimer timer;
     auto& workspace = stack.workspace;
 
-    if(!start_batch(stack, options.root, options.workers, options.self_path, "index")) {
+    bool started = start_batch(stack, options.root, options.workers, options.self_path, "index");
+    result.log_dir = stack.log_dir;
+    if(!started) {
         result.exit_code = 1;
         // A failed later spawn leaves earlier workers and their I/O tasks
         // live; unstopped they keep the batch event loop spinning and the
@@ -210,7 +238,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
     if(!workspace.index_db) {
-        LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
+        LOG_ERROR("Cannot persist the index at {}: the warning above says why; fix that and rerun",
                   std::string_view(workspace.config.project.cache_dir));
         result.exit_code = 1;
         co_await shutdown(stack);
@@ -223,7 +251,13 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_return;
     }
 
+    auto progress = stack.pump.on_progress_changed.connect([&] {
+        if(stack.pump.progress().stage != IndexPump::Progress::Stage::Report) {
+            report_progress(stack, options);
+        }
+    });
     BatchLifetime lifetime(stack);
+    lifetime.aux.spawn(progress_ticker(stack, options));
     co_await kota::with_token(wait_until_indexed(stack.pump), lifetime.token());
     if(co_await lifetime.finish()) {
         result.interrupted = true;
@@ -233,16 +267,24 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
 
     result.completed = true;
     result.indexed_tus = stack.pump.indexed_files();
+    for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
+        if(!workspace.build.unit(tu)) {
+            result.standalone_headers += 1;
+        }
+    }
     result.shard_count = workspace.shards.size();
     for(auto& shard: llvm::make_second_range(workspace.shards)) {
         result.shard_bytes += shard.bytes().size();
     }
     result.symbol_count = workspace.project_index.symbols.size();
-    result.failed_files = stack.pump.failed_files();
+    for(auto file: stack.pump.failed()) {
+        result.failed.emplace_back(workspace.file_table.resolve(file));
+    }
+    std::ranges::sort(result.failed);
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
     result.unsaved = stack.store.has_unsaved_state();
-    if(result.failed_files != 0 || result.unsaved) {
+    if(!result.failed.empty() || result.unsaved) {
         result.exit_code = 1;
     }
     result.seconds = timer.ms() / 1000.0;
@@ -430,7 +472,7 @@ kota::task<> run_lint(BatchStack& stack,
 
     result.completed = true;
     result.checked_tus = sweep.checked;
-    result.failed_tus = sweep.failed + stack.pump.failed_files();
+    result.failed_tus = sweep.failed + stack.pump.failed().size();
     result.findings = sweep.findings;
     // The shutdown save was the last retry: with --index the persisted
     // index is part of the product, so unsaved state must fail the run

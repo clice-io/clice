@@ -376,11 +376,19 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
                             break;
                         }
                         case PendingLedger::FailureVerdict::Requeued: {
-                            LOG_INFO("[{}/{}] Index requeued for {}: {}",
-                                     index,
-                                     total,
-                                     file_path,
-                                     outcome.error);
+                            if(crashed) {
+                                LOG_WARN("[{}/{}] Worker crashed while indexing {}; requeued: {}",
+                                         index,
+                                         total,
+                                         file_path,
+                                         outcome.error);
+                            } else {
+                                LOG_INFO("[{}/{}] Index requeued for {}: {}",
+                                         index,
+                                         total,
+                                         file_path,
+                                         outcome.error);
+                            }
                             break;
                         }
                     }

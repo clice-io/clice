@@ -16,7 +16,7 @@ static std::uint32_t add_include_chain(CompilationUnitRef unit,
                                        llvm::StringMap<std::uint32_t>& path_table) {
     auto include_loc = unit.include_location(fid);
     if(include_loc.isInvalid()) {
-        return -1;
+        return no_node;
     }
 
     auto [iter, success] = tree.file_nodes.try_emplace(fid, tree.nodes.size());
@@ -41,8 +41,8 @@ static std::uint32_t add_include_chain(CompilationUnitRef unit,
         // The node of the file CONTAINING the directive — the parent
         // consumers pair `line` with. Recursing on the directive's own fid
         // (not the presumed include loc, which names the containing
-        // file's includer and sat one level off) bottoms out at -1 for
-        // directives written in the main file.
+        // file's includer and sat one level off) bottoms out at no_node
+        // for directives written in the main file.
         auto parent = add_include_chain(unit, unit.file_id(include_loc), tree, path_table);
         tree.nodes[index].parent = parent;
     }
@@ -99,7 +99,7 @@ IncludeTree IncludeTree::from(CompilationUnitRef unit, llvm::ArrayRef<clang::Fil
         }
     };
     for(auto& [fid, node]: tree.file_nodes) {
-        if(node != ~0u) {
+        if(node != no_node) {
             hash_fid(fid, tree.nodes[node].file);
         }
     }
@@ -112,7 +112,7 @@ std::uint32_t IncludeTree::node_of(clang::FileID fid) const {
     if(it == file_nodes.end()) [[unlikely]] {
         LOG_WARN("IncludeTree: fid {} missing from file table, attributing to main file",
                  fid.getHashValue());
-        return -1;
+        return no_node;
     }
     return it->second;
 }
