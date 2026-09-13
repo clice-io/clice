@@ -43,14 +43,18 @@ protocol::SymbolKind symbol_kind(SymbolKind kind) {
 }
 
 std::optional<protocol::SymbolInformation> symbol_information(const index::SymbolRef& symbol,
-                                                              const Site& site) {
+                                                              const Site& site,
+                                                              llvm::StringRef container) {
     auto mapped = location(site);
     if(!mapped) {
         return std::nullopt;
     }
     protocol::SymbolInformation info;
-    info.name = symbol.name;
+    info.name = symbol.display_name();
     info.kind = symbol_kind(symbol.kind);
+    if(!container.empty()) {
+        info.container_name = container.str();
+    }
     info.location = std::move(*mapped);
     return info;
 }
@@ -62,7 +66,7 @@ static std::optional<Item> hierarchy_item(const index::SymbolRef& symbol, const 
         return std::nullopt;
     }
     Item item;
-    item.name = symbol.name;
+    item.name = symbol.display_name();
     item.kind = symbol_kind(symbol.kind);
     item.uri = std::move(mapped->uri);
     item.range = mapped->range;

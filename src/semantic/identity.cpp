@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "semantic/decls.h"
 #include "semantic/expr_hash.h"
 
 #include "llvm/ADT/APFloat.h"
@@ -350,6 +351,34 @@ std::uint64_t EntityTable::entity(llvm::StringRef name, clang::SourceLocation de
         }
     }
     return hasher.finish();
+}
+
+std::uint64_t EntityTable::module_entity(llvm::StringRef name) {
+    Hasher hasher;
+    hasher.add(Tag::Module);
+    hasher.add(name);
+    return hasher.finish();
+}
+
+std::uint64_t EntityTable::parent(const clang::NamedDecl* decl) {
+    if(auto* templated = llvm::dyn_cast<clang::RedeclarableTemplateDecl>(decl)) {
+        decl = templated->getTemplatedDecl();
+    }
+    if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(decl)) {
+        decl = shadow->getTargetDecl();
+    }
+
+    /// Linkage specifications, export blocks and the nameless contexts
+    /// (requires-expression bodies, blocks) are transparent to a qualified
+    /// name.
+    for(const clang::DeclContext* context = context_of(decl);
+        context && !context->isTranslationUnit();
+        context = context->getParent()) {
+        if(auto* named = llvm::dyn_cast<clang::NamedDecl>(context)) {
+            return entity(decls::normalize(named));
+        }
+    }
+    return 0;
 }
 
 std::uint64_t EntityTable::type_hash(clang::QualType type) {

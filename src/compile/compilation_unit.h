@@ -256,6 +256,13 @@ public:
     /// The entity of a macro definition.
     std::uint64_t entity(const clang::MacroInfo* macro);
 
+    /// The entity of a named module.
+    std::uint64_t module_entity(llvm::StringRef name);
+
+    /// The entity of the symbol a declaration is named in (its parent in a
+    /// qualified name), 0 at the translation unit.
+    std::uint64_t parent(const clang::NamedDecl* decl);
+
 protected:
     Self* self;
 };

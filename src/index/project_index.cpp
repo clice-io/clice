@@ -61,7 +61,13 @@ struct GlobalBlob {
     /// reject the blob so everything is reindexed.
     std::vector<std::uint64_t> sym_hashes;
     std::vector<std::string> sym_names;
+    std::vector<std::string> sym_args;
+    std::vector<std::uint64_t> sym_parents;
     std::vector<std::uint8_t> sym_kinds;
+    std::vector<std::uint16_t> sym_flags;
+    /// Pool ids like the bitmaps', `no_file` for a symbol without a
+    /// declaring row.
+    std::vector<std::uint32_t> sym_files;
     std::vector<std::vector<std::byte>> sym_bitmaps;
 
     /// tu_fv -> generation stamp of every manifest current at this save.
@@ -72,7 +78,7 @@ struct GlobalBlob {
     std::vector<std::uint32_t> manifest_fvs;
     std::vector<std::uint64_t> manifest_gens;
 
-    /// Pool id -> path for every id the symbol bitmaps reference.
+    /// Pool id -> path for every id the symbol bitmaps and files reference.
     std::vector<std::pair<std::uint32_t, std::string>> sym_paths;
 };
 
@@ -119,6 +125,10 @@ bool ProjectIndex::merge(this ProjectIndex& self,
                 valid = false;
                 return false;
             }
+            if(identity.file != no_file && identity.file >= file_ids_map.size()) {
+                valid = false;
+                return false;
+            }
             staged.push_back({hash, identity, std::move(references)});
             return true;
         });
@@ -130,8 +140,18 @@ bool ProjectIndex::merge(this ProjectIndex& self,
         auto& target = self.symbols[hash];
         if(target.name.empty()) {
             target.name = std::string(identity.name);
+            target.args = std::string(identity.args);
+            target.parent = identity.parent;
             target.kind = identity.kind;
         }
+        // A definition wins the canonical file over a declaration; between
+        // equals the first unit to report one keeps it.
+        bool defined = has_flag(target.flags, SymbolFlags::HasDefinition);
+        bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
+        if(identity.file != no_file && (target.file == no_file || (defines && !defined))) {
+            target.file = file_ids_map[identity.file].raw;
+        }
+        target.flags |= identity.flags;
         for(auto ref: references) {
             target.reference_files.add(file_ids_map[ref].raw);
         }
@@ -147,7 +167,7 @@ bool ProjectIndex::knows_file_versions(this const ProjectIndex& self,
         return false;
     }
     for(auto& node: manifest.nodes) {
-        if(!files.knows_version(node.fv)) {
+        if(!files.knows_version(VersionID{node.file})) {
             return false;
         }
     }
@@ -231,7 +251,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
     for(auto& manifest: llvm::make_second_range(self.manifests)) {
         referenced.insert(manifest.tu_fv);
         for(auto& node: manifest.nodes) {
-            referenced.insert(node.fv);
+            referenced.insert(VersionID{node.file});
         }
         for(auto& [fv, hash]: manifest.contributions) {
             referenced.insert(fv);
@@ -262,22 +282,33 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
         blob.manifest_gens.push_back(manifest.global_gen);
     }
 
-    Bitmap bitmap_referenced;
+    Bitmap referenced_ids;
     blob.sym_hashes.reserve(self.symbols.size());
     blob.sym_names.reserve(self.symbols.size());
+    blob.sym_args.reserve(self.symbols.size());
+    blob.sym_parents.reserve(self.symbols.size());
     blob.sym_kinds.reserve(self.symbols.size());
+    blob.sym_flags.reserve(self.symbols.size());
+    blob.sym_files.reserve(self.symbols.size());
     blob.sym_bitmaps.reserve(self.symbols.size());
     for(auto& [hash, symbol]: self.symbols) {
         blob.sym_hashes.push_back(hash);
         // Moved out for the write and moved back below; the table itself
         // stays untouched in between so the two iterations pair up.
         blob.sym_names.push_back(std::move(symbol.name));
+        blob.sym_args.push_back(std::move(symbol.args));
+        blob.sym_parents.push_back(symbol.parent);
         blob.sym_kinds.push_back(symbol.kind.value());
+        blob.sym_flags.push_back(static_cast<std::uint16_t>(symbol.flags));
+        blob.sym_files.push_back(symbol.file);
         blob.sym_bitmaps.push_back(write_bitmap(symbol.reference_files));
-        bitmap_referenced |= symbol.reference_files;
+        referenced_ids |= symbol.reference_files;
+        if(symbol.file != no_file) {
+            referenced_ids.add(symbol.file);
+        }
     }
-    blob.sym_paths.reserve(bitmap_referenced.cardinality());
-    for(auto id: bitmap_referenced) {
+    blob.sym_paths.reserve(referenced_ids.cardinality());
+    for(auto id: referenced_ids) {
         blob.sym_paths.emplace_back(id, files.resolve(Fid{id}).str());
     }
 
@@ -286,6 +317,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
     std::size_t i = 0;
     for(auto& symbol: llvm::make_second_range(self.symbols)) {
         symbol.name = std::move(blob.sym_names[i]);
+        symbol.args = std::move(blob.sym_args[i]);
         i += 1;
     }
 }
@@ -305,7 +337,9 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         return false;
     }
     auto sym_count = blob.sym_hashes.size();
-    if(blob.sym_names.size() != sym_count || blob.sym_kinds.size() != sym_count ||
+    if(blob.sym_names.size() != sym_count || blob.sym_args.size() != sym_count ||
+       blob.sym_parents.size() != sym_count || blob.sym_kinds.size() != sym_count ||
+       blob.sym_flags.size() != sym_count || blob.sym_files.size() != sym_count ||
        blob.sym_bitmaps.size() != sym_count) {
         return false;
     }
@@ -392,13 +426,24 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         }
     }
 
-    // The writer emits a path-table entry for every id its bitmaps
-    // reference; an uncovered id dropped here would silently lose the
-    // symbol's reference files with every manifest still fresh — reject
-    // the blob so everything is reindexed instead.
+    // The writer emits a path-table entry for every id its bitmaps and
+    // file columns reference; an uncovered id dropped here would silently
+    // lose the symbol's reference files with every manifest still fresh —
+    // reject the blob so everything is reindexed instead.
     llvm::DenseSet<std::uint32_t> covered;
     for(auto id: llvm::make_first_range(blob.sym_paths)) {
         covered.insert(id);
+    }
+    // Reserved keys first: probing a DenseSet FOR a sentinel value matches
+    // empty or tombstoned buckets, so contains() could spuriously accept
+    // exactly the ids the tables cannot hold.
+    auto uncovered = [&](std::uint32_t id) {
+        return reserved_key(id) || !covered.contains(id);
+    };
+    for(auto file: blob.sym_files) {
+        if(file != no_file && uncovered(file)) {
+            return false;
+        }
     }
     std::vector<Bitmap> bitmaps;
     bitmaps.reserve(sym_count);
@@ -408,10 +453,7 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
             return false;
         }
         for(auto id: *decoded) {
-            // Reserved keys first: probing a DenseSet FOR a sentinel value
-            // matches empty or tombstoned buckets, so contains() could
-            // spuriously accept exactly the ids the tables cannot hold.
-            if(reserved_key(id) || !covered.contains(id)) {
+            if(uncovered(id)) {
                 return false;
             }
         }
@@ -456,7 +498,13 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         }
         auto& symbol = self.symbols[blob.sym_hashes[k]];
         symbol.name = std::move(blob.sym_names[k]);
+        symbol.args = std::move(blob.sym_args[k]);
+        symbol.parent = blob.sym_parents[k];
         symbol.kind = SymbolKind(blob.sym_kinds[k]);
+        symbol.flags = static_cast<SymbolFlags>(blob.sym_flags[k]);
+        if(blob.sym_files[k] != no_file) {
+            symbol.file = remap.find(blob.sym_files[k])->second.raw;
+        }
         symbol.reference_files = std::move(remapped);
     }
 

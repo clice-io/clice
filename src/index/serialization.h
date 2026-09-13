@@ -108,8 +108,11 @@ namespace clice::index {
 /// file, not that file's includer; v11: file-version stamps are the file
 /// table's corroborated shared stamps, adopted verbatim at load, and the
 /// artifact metadata blobs joined the database; v12: symbol hashes are
-/// entities computed by semantic/identity, not hashes of USRs).
-constexpr inline std::uint32_t index_format_version = 12;
+/// entities computed by semantic/identity; v13: symbol rows carry the bare
+/// name, parent, specialization arguments, flags and canonical file, the
+/// include tree is one node type on the wire and in manifests, and module
+/// names are keyed by their entity).
+constexpr inline std::uint32_t index_format_version = 13;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

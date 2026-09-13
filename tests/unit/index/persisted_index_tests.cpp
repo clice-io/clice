@@ -20,7 +20,7 @@ TEST_CASE(ManifestRoundTrip) {
     manifest.built_at = 1234567;
     manifest.tu_fv = VersionID{300};
     // A root node, a multi-byte-varint line, and a parent that FOLLOWS its
-    // child (the include graph resolves parent chains after appending).
+    // child (the include tree resolves parent chains after appending).
     manifest.nodes = {
         {300, ~0u, 1    },
         {301, 2,   70000},
@@ -98,7 +98,7 @@ index::ProjectIndex build_project(clice::FileTable& pool,
     index::TUManifest manifest;
     manifest.tu_fv = pool.intern_version(pool.intern(tu), 0x1111);
     manifest.nodes = {
-        {fv, ~0u, 3}
+        {fv.raw, ~0u, 3}
     };
     manifest.contributions = {
         {fv, 777}
@@ -206,12 +206,28 @@ struct GlobalBlobMirror {
     std::vector<std::int64_t> fv_mtimes;
     std::vector<std::uint64_t> sym_hashes;
     std::vector<std::string> sym_names;
+    std::vector<std::string> sym_args;
+    std::vector<std::uint64_t> sym_parents;
     std::vector<std::uint8_t> sym_kinds;
+    std::vector<std::uint16_t> sym_flags;
+    std::vector<std::uint32_t> sym_files;
     std::vector<std::vector<std::byte>> sym_bitmaps;
     std::vector<std::uint32_t> manifest_fvs;
     std::vector<std::uint64_t> manifest_gens;
     std::vector<std::pair<std::uint32_t, std::string>> sym_paths;
 };
+
+/// Encode a mirror whose symbol fact columns the test left at their
+/// defaults: sized to the hash column, no arguments, no parent, no flags,
+/// no file.
+auto encode(GlobalBlobMirror& mirror) {
+    auto count = mirror.sym_hashes.size();
+    mirror.sym_args.resize(count);
+    mirror.sym_parents.resize(count, 0);
+    mirror.sym_flags.resize(count, 0);
+    mirror.sym_files.resize(count, index::no_file);
+    return kota::codec::fbs::to_bytes(mirror);
+}
 
 TEST_CASE(GlobalBitmapPayloadGate) {
     // A malformed reference bitmap must fail the whole load: normalized to
@@ -232,7 +248,7 @@ TEST_CASE(GlobalBitmapPayloadGate) {
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto valid = kota::codec::fbs::to_bytes(mirror);
+    auto valid = encode(mirror);
     ASSERT_TRUE(valid.has_value());
     index::ProjectIndex loaded;
     ASSERT_TRUE(loaded.load_global(bytes_of(*valid), pool, pins));
@@ -254,7 +270,7 @@ TEST_CASE(GlobalBitmapPayloadGate) {
         index::write_bitmap(bits),
         {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}}
     };
-    auto corrupt = kota::codec::fbs::to_bytes(mirror);
+    auto corrupt = encode(mirror);
     ASSERT_TRUE(corrupt.has_value());
     index::ProjectIndex rejecting;
     clice::FileTable untouched;
@@ -279,7 +295,7 @@ TEST_CASE(UncoveredBitmapIdRejected) {
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto uncovered = kota::codec::fbs::to_bytes(mirror);
+    auto uncovered = encode(mirror);
     ASSERT_TRUE(uncovered.has_value());
     index::ProjectIndex loaded;
     ASSERT_FALSE(loaded.load_global(bytes_of(*uncovered), pool, pins));
@@ -288,7 +304,7 @@ TEST_CASE(UncoveredBitmapIdRejected) {
     mirror.sym_paths = {
         {3, "/proj/ref.h"}
     };
-    auto covered = kota::codec::fbs::to_bytes(mirror);
+    auto covered = encode(mirror);
     ASSERT_TRUE(covered.has_value());
     ASSERT_TRUE(loaded.load_global(bytes_of(*covered), pool, pins));
     ASSERT_TRUE(loaded.symbols.contains(42));
@@ -310,7 +326,7 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto dup_id = kota::codec::fbs::to_bytes(mirror);
+    auto dup_id = encode(mirror);
     ASSERT_TRUE(dup_id.has_value());
     index::ProjectIndex loaded;
     ASSERT_FALSE(loaded.load_global(bytes_of(*dup_id), pool, pins));
@@ -319,7 +335,7 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     mirror.fv_ids = {7, 8};
     mirror.fv_paths = {"/proj/a.h", "/proj/a.h"};
     mirror.fv_hashes = {0x1, 0x1};
-    auto dup_pair = kota::codec::fbs::to_bytes(mirror);
+    auto dup_pair = encode(mirror);
     ASSERT_TRUE(dup_pair.has_value());
     ASSERT_FALSE(loaded.load_global(bytes_of(*dup_pair), pool, pins));
 
@@ -328,7 +344,7 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     // space up to its counter; garbage-collected ids stay behind as
     // holes, not live versions.
     mirror.fv_hashes = {0x1, 0x2};
-    auto distinct = kota::codec::fbs::to_bytes(mirror);
+    auto distinct = encode(mirror);
     ASSERT_TRUE(distinct.has_value());
     ASSERT_TRUE(loaded.load_global(bytes_of(*distinct), pool, pins));
     ASSERT_EQ(pool.versions.size(), std::size_t(9));
@@ -352,13 +368,13 @@ TEST_CASE(GlobalBadCounterRejected) {
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto ahead = kota::codec::fbs::to_bytes(mirror);
+    auto ahead = encode(mirror);
     ASSERT_TRUE(ahead.has_value());
     index::ProjectIndex loaded;
     ASSERT_TRUE(loaded.load_global(bytes_of(*ahead), pool, pins));
 
     mirror.next_fv_id = 7;
-    auto lagging = kota::codec::fbs::to_bytes(mirror);
+    auto lagging = encode(mirror);
     ASSERT_TRUE(lagging.has_value());
     ASSERT_FALSE(loaded.load_global(bytes_of(*lagging), pool, pins));
 
@@ -368,16 +384,78 @@ TEST_CASE(GlobalBadCounterRejected) {
     mirror.fv_hashes = {};
     mirror.fv_sizes = {};
     mirror.fv_mtimes = {};
-    auto reserved = kota::codec::fbs::to_bytes(mirror);
+    auto reserved = encode(mirror);
     ASSERT_TRUE(reserved.has_value());
     ASSERT_FALSE(loaded.load_global(bytes_of(*reserved), pool, pins));
 
     // A garbage high-water mark far beyond any real table must reject
     // before the id-space resize tries to allocate it.
     mirror.next_fv_id = 0xf0000000;
-    auto oversized = kota::codec::fbs::to_bytes(mirror);
+    auto oversized = encode(mirror);
     ASSERT_TRUE(oversized.has_value());
     ASSERT_FALSE(loaded.load_global(bytes_of(*oversized), pool, pins));
+}
+
+TEST_CASE(GlobalRoundTripSymbolFacts) {
+    clice::FileTable pool;
+    index::ProjectIndex project;
+    auto file = pool.intern("/proj/facts.h");
+    auto& parent = project.symbols[7];
+    parent.name = "ns";
+    parent.kind = SymbolKind::Namespace;
+    auto& symbol = project.symbols[42];
+    symbol.name = "Box";
+    symbol.args = "<int>";
+    symbol.parent = 7;
+    symbol.kind = SymbolKind::Struct;
+    symbol.flags = index::SymbolFlags::HasDefinition | index::SymbolFlags::Specialization;
+    symbol.file = file.raw;
+
+    llvm::SmallString<1024> buf;
+    llvm::raw_svector_ostream os(buf);
+    project.serialize_global(os, pool);
+
+    // The file column follows the path across pools like the bitmaps do.
+    clice::FileTable fresh;
+    fresh.intern("/proj/opened-first.cpp");
+    index::ProjectIndex loaded;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
+    ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
+    auto& restored = loaded.symbols[42];
+    ASSERT_EQ(restored.name, "Box");
+    ASSERT_EQ(restored.args, "<int>");
+    ASSERT_EQ(restored.parent, 7u);
+    ASSERT_EQ(static_cast<std::uint16_t>(restored.flags), static_cast<std::uint16_t>(symbol.flags));
+    auto moved = fresh.find("/proj/facts.h");
+    ASSERT_TRUE(moved.has_value());
+    ASSERT_EQ(restored.file, moved->raw);
+    ASSERT_EQ(loaded.symbols[7].file, index::no_file);
+}
+
+TEST_CASE(UncoveredFileIdRejected) {
+    // A file id the path table does not cover would resolve to whatever
+    // this session interned at that id: reject it like an uncovered
+    // bitmap id.
+    GlobalBlobMirror mirror;
+    mirror.format_version = index::index_format_version;
+    mirror.sym_hashes = {42};
+    mirror.sym_names = {"sym"};
+    mirror.sym_kinds = {0};
+    mirror.sym_bitmaps = {index::write_bitmap(clice::Bitmap{})};
+
+    clice::FileTable pool;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
+    auto control = encode(mirror);
+    ASSERT_TRUE(control.has_value());
+    index::ProjectIndex loaded;
+    ASSERT_TRUE(loaded.load_global(bytes_of(*control), pool, pins));
+
+    mirror.sym_files = {5};
+    auto uncovered = encode(mirror);
+    ASSERT_TRUE(uncovered.has_value());
+    index::ProjectIndex rejecting;
+    ASSERT_FALSE(rejecting.load_global(bytes_of(*uncovered), pool, pins));
+    ASSERT_TRUE(rejecting.symbols.empty());
 }
 
 TEST_CASE(GlobalDuplicateSymbolRejected) {
@@ -398,14 +476,14 @@ TEST_CASE(GlobalDuplicateSymbolRejected) {
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto dup = kota::codec::fbs::to_bytes(mirror);
+    auto dup = encode(mirror);
     ASSERT_TRUE(dup.has_value());
     index::ProjectIndex loaded;
     ASSERT_FALSE(loaded.load_global(bytes_of(*dup), pool, pins));
     ASSERT_TRUE(loaded.symbols.empty());
 
     mirror.sym_hashes = {42, 43};
-    auto distinct = kota::codec::fbs::to_bytes(mirror);
+    auto distinct = encode(mirror);
     ASSERT_TRUE(distinct.has_value());
     ASSERT_TRUE(loaded.load_global(bytes_of(*distinct), pool, pins));
     ASSERT_EQ(loaded.symbols.size(), std::size_t(2));
@@ -428,7 +506,7 @@ TEST_CASE(GlobalReservedKeysRejected) {
         mirror.fv_hashes = {0x1};
         mirror.fv_sizes = {1};
         mirror.fv_mtimes = {1};
-        auto bytes = kota::codec::fbs::to_bytes(mirror);
+        auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
         ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
     }
@@ -444,7 +522,7 @@ TEST_CASE(GlobalReservedKeysRejected) {
         mirror.sym_paths = {
             {3, "/proj/ref.h"}
         };
-        auto bytes = kota::codec::fbs::to_bytes(mirror);
+        auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
         ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
     }
@@ -454,7 +532,7 @@ TEST_CASE(GlobalReservedKeysRejected) {
         mirror.sym_paths = {
             {0xfffffffeu, "/proj/ref.h"}
         };
-        auto bytes = kota::codec::fbs::to_bytes(mirror);
+        auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
         ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
     }
@@ -470,11 +548,11 @@ TEST_CASE(UnknownFileVersionsDetected) {
     index::TUManifest manifest;
     manifest.tu_fv = known;
     manifest.nodes = {
-        {known, ~0u, 1}
+        {known.raw, ~0u, 1}
     };
     ASSERT_TRUE(project.knows_file_versions(pool, manifest));
 
-    manifest.nodes.push_back({VersionID{known.raw + 1}, ~0u, 2});
+    manifest.nodes.push_back({known.raw + 1, ~0u, 2});
     ASSERT_FALSE(project.knows_file_versions(pool, manifest));
 }
 

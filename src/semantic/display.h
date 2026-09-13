@@ -125,6 +125,10 @@ auto identifier_of(const clang::Expr* expr) -> llvm::StringRef;
 /// nameless entities yield an empty string.
 auto name_of(const clang::NamedDecl* decl, const Options& options = {}) -> std::string;
 
+/// The template arguments of a template specialization as written in the
+/// source code ("<int, 4>"). Empty if the decl is not a specialization.
+auto template_args(const clang::NamedDecl& decl) -> std::string;
+
 /// A short human-readable summary of an expression, e.g. for block-end
 /// hints: names, literals, and simple unary/binary operator forms.
 auto summarize(const clang::Expr* expr) -> std::string;

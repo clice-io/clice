@@ -638,7 +638,7 @@ auto index_hover(const index::SymbolRef& info,
                  llvm::StringRef definition_text,
                  llvm::StringRef comment) -> HoverInfo {
     HoverInfo hover;
-    hover.name = info.name;
+    hover.name = info.display_name();
     hover.kind = info.kind;
     hover.definition = definition_text.str();
     hover.documentation = comment.str();

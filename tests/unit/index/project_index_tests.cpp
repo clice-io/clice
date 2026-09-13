@@ -75,14 +75,69 @@ TEST_CASE(MergeCollectsExternalSymbols) {
     ASSERT_EQ(find_symbol(project, "local_fn"), 0u);
 }
 
+TEST_CASE(MergeUnionsSymbolFacts) {
+    add_file("shared.h", R"(
+        namespace lib { int shared_fn(); }
+    )");
+    add_main("user.cpp", R"(
+        #include "shared.h"
+        int use() { return lib::shared_fn(); }
+    )");
+    ASSERT_TRUE(compile());
+
+    clice::FileTable pool;
+    index::ProjectIndex project;
+    auto view = build_view();
+    ASSERT_TRUE(view.loaded());
+    ASSERT_TRUE(project.merge(view, intern_paths(view, pool)));
+
+    // A declaration-only unit places the symbol at its declaring header.
+    auto hash = find_symbol(project, "shared_fn");
+    ASSERT_TRUE(hash != 0);
+    auto& declared = project.symbols[hash];
+    ASSERT_EQ(declared.parent, find_symbol(project, "lib"));
+    ASSERT_FALSE(index::has_flag(declared.flags, index::SymbolFlags::HasDefinition));
+    auto header = pool.find(view.path(0).ends_with("shared.h") ? view.path(0) : view.path(1));
+    ASSERT_TRUE(header.has_value());
+    ASSERT_EQ(declared.file, header->raw);
+
+    // The defining unit moves the canonical file to its definition and
+    // adds its bits to the union.
+    Tester definer;
+    definer.add_file("shared.h", R"(
+        namespace lib { int shared_fn(); }
+    )");
+    definer.add_main("lib.cpp", R"(
+        #include "shared.h"
+        [[deprecated]] int lib::shared_fn() { return 1; }
+    )");
+    ASSERT_TRUE(definer.compile());
+    std::string definer_wire = index::build_tu_index(*definer.unit);
+    auto definer_view = index::TUIndex::from_bytes(definer_wire);
+    ASSERT_TRUE(definer_view.loaded());
+    ASSERT_TRUE(project.merge(definer_view, intern_paths(definer_view, pool)));
+
+    auto& defined = project.symbols[hash];
+    ASSERT_TRUE(index::has_flag(defined.flags, index::SymbolFlags::HasDefinition));
+    ASSERT_TRUE(index::has_flag(defined.flags, index::SymbolFlags::Deprecated));
+    auto definition = pool.find(definer_view.path(definer_view.path_count() - 1));
+    ASSERT_TRUE(definition.has_value());
+    ASSERT_EQ(defined.file, definition->raw);
+    ASSERT_EQ(defined.reference_files.cardinality(), 3u);
+}
+
 TEST_CASE(MergeRejectsBadBitmap) {
     // Field order MUST mirror the envelope layout (tu_index.cpp) up to
     // `symbols`: the builder always writes valid bitmap images, so a
     // malformed one has to be planted by hand.
     struct SymbolMirror {
         std::string name;
+        std::string args;
+        std::uint64_t parent = 0;
         std::uint8_t kind = 0;
         std::uint8_t scope = 0;
+        std::uint16_t flags = 0;
+        std::uint32_t file = index::no_file;
         std::vector<std::byte> reference_files;
     };
 
@@ -91,7 +146,7 @@ TEST_CASE(MergeRejectsBadBitmap) {
         std::int64_t built_at = 0;
         std::vector<std::string> paths;
         std::vector<std::uint64_t> path_hashes;
-        std::vector<index::IncludeLocation> locations;
+        std::vector<index::IncludeNode> nodes;
         llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
     };
 

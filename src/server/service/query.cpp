@@ -469,14 +469,21 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
 
 std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
     std::optional<SymbolRef> found;
-    auto adopt = [&](llvm::StringRef name, SymbolKind kind) {
-        found = SymbolRef{.hash = hash, .name = std::string(name), .kind = kind};
+    auto adopt = [&](const index::SymbolIdentity& identity) {
+        found = SymbolRef{
+            .hash = hash,
+            .name = std::string(identity.name),
+            .args = std::string(identity.args),
+            .parent = identity.parent,
+            .kind = identity.kind,
+            .flags = identity.flags,
+        };
     };
 
     // Open sessions first: they hold every symbol of their unsaved buffers.
     visit_sessions([&](Fid path_id, const Session&) -> bool {
         if(auto identity = sources.projections->projection(path_id)->index->find_symbol(hash)) {
-            adopt(identity->name, identity->kind);
+            adopt(*identity);
             return false;
         }
         return true;
@@ -487,7 +494,12 @@ std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
 
     auto it = workspace.project_index.symbols.find(hash);
     if(it != workspace.project_index.symbols.end()) {
-        adopt(it->second.name, it->second.kind);
+        auto& symbol = it->second;
+        adopt({.name = symbol.name,
+               .args = symbol.args,
+               .parent = symbol.parent,
+               .kind = symbol.kind,
+               .flags = symbol.flags});
         return found;
     }
 
@@ -495,7 +507,7 @@ std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
     // headers no disk TU has been indexed with) is in no disk table.
     visit_overlays([&](const index::TUIndex& state) {
         if(auto identity = state.find_symbol(hash)) {
-            adopt(identity->name, identity->kind);
+            adopt(*identity);
         }
         return !found;
     });
@@ -509,11 +521,39 @@ std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
     SymbolKind kind;
     for(auto& [path_id, shard]: workspace.shards) {
         if(shard.find_symbol(hash, name, kind)) {
-            adopt(name, kind);
+            adopt({.name = name, .kind = kind});
             return found;
         }
     }
     return std::nullopt;
+}
+
+std::string IndexQuery::qualified_name(index::SymbolHash hash) const {
+    auto symbol = symbol_info(hash);
+    if(!symbol) {
+        return {};
+    }
+    llvm::SmallVector<std::string, 4> scopes;
+    // A parent chain follows declaration contexts, so it is acyclic as
+    // built; the guard keeps a corrupted parent column from spinning.
+    llvm::DenseSet<index::SymbolHash> visited{hash};
+    for(auto parent = symbol->parent; parent != 0 && visited.insert(parent).second;) {
+        auto scope = symbol_info(parent);
+        if(!scope) {
+            break;
+        }
+        if(!index::has_flag(scope->flags, index::SymbolFlags::InlineNamespace)) {
+            scopes.push_back(scope->display_name());
+        }
+        parent = scope->parent;
+    }
+    std::string result;
+    for(auto& scope: llvm::reverse(scopes)) {
+        result += scope;
+        result += "::";
+    }
+    result += symbol->display_name();
+    return result;
 }
 
 std::vector<Site> IndexQuery::sites(index::SymbolHash hash, RelationKind kind) const {
@@ -767,7 +807,6 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
         int score;
         llvm::StringRef name;
         index::SymbolHash hash;
-        SymbolKind kind;
     };
 
     std::vector<Candidate> candidates;
@@ -778,12 +817,19 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
         }
         auto rank = score(name);
         if(rank >= 0) {
-            candidates.push_back({.score = rank, .name = name, .hash = hash, .kind = kind});
+            candidates.push_back({.score = rank, .name = name, .hash = hash});
         }
     };
 
+    // Only defined symbols are listed. The project table's flag is the
+    // union over every indexed unit, so it spares the shard read that
+    // would otherwise reject each declaration-only match; a session's
+    // own rows cover just its main file, and its headers' definitions are
+    // found through the preamble and PCH overlays by the site check.
     for(auto& [hash, symbol]: workspace.project_index.symbols) {
-        consider(hash, symbol.name, symbol.kind);
+        if(index::has_flag(symbol.flags, index::SymbolFlags::HasDefinition)) {
+            consider(hash, symbol.name, symbol.kind);
+        }
     }
     visit_sessions([&](Fid path_id, const Session&) -> bool {
         sources.projections->projection(path_id)->index->iterate_symbols(
@@ -809,12 +855,7 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
         auto candidate = candidates.back();
         candidates.pop_back();
         if(auto site = first_site(candidate.hash, RelationKind::Definition)) {
-            results.push_back({
-                .symbol = {.hash = candidate.hash,
-                           .name = std::string(candidate.name),
-                           .kind = candidate.kind},
-                .site = *site,
-            });
+            results.push_back({.symbol = *symbol_info(candidate.hash), .site = *site});
         }
     }
     // The query is arbitrary LSP input; its length is logged instead of its
@@ -846,12 +887,19 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
 
     if(!locator.name.empty()) {
         std::string query_lower = locator.name.lower();
+        // A qualified query ("ns::Foo") is matched against the qualified
+        // name, a bare one against the symbol's own name.
+        bool qualified = locator.name.contains("::");
         std::vector<Located> candidates;
         std::vector<Located> exact_matches;
 
         for(auto& [hash, symbol]: workspace.project_index.symbols) {
             if(symbol.name.empty() ||
-               llvm::StringRef(symbol.name).lower().find(query_lower) == std::string::npos) {
+               !index::has_flag(symbol.flags, index::SymbolFlags::HasDefinition)) {
+                continue;
+            }
+            auto name = qualified ? qualified_name(hash) : symbol.name + symbol.args;
+            if(llvm::StringRef(name).lower().find(query_lower) == std::string::npos) {
                 continue;
             }
             auto site = first_site(hash, RelationKind::Definition);
@@ -869,12 +917,9 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
                 }
             }
 
-            bool is_exact = llvm::StringRef(symbol.name).lower() == query_lower ||
-                            llvm::StringRef(symbol.name).ends_with(("::" + locator.name).str());
-            Located located{
-                .symbol = {.hash = hash, .name = symbol.name, .kind = symbol.kind},
-                .site = *site,
-            };
+            bool is_exact = llvm::StringRef(name).lower() == query_lower ||
+                            llvm::StringRef(name).ends_with(("::" + locator.name).str());
+            Located located{.symbol = *symbol_info(hash), .site = *site};
             if(is_exact)
                 exact_matches.push_back(std::move(located));
             else
@@ -979,13 +1024,13 @@ std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& 
         bool root_is_document = is_document(manifest.tu_fv);
         llvm::SmallVector<bool> document_nodes(manifest.nodes.size());
         for(auto [i, node]: llvm::enumerate(manifest.nodes)) {
-            document_nodes[i] = is_document(node.fv);
+            document_nodes[i] = is_document(VersionID{node.file});
         }
         for(const auto& node: manifest.nodes) {
             if(node.parent == ~0u ? !root_is_document : !document_nodes[node.parent]) {
                 continue;
             }
-            const auto* target = version_of(node.fv);
+            const auto* target = version_of(VersionID{node.file});
             if(!target) {
                 continue;
             }

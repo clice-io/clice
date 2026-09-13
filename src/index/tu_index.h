@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "feature/feature.h"
-#include "index/include_graph.h"
+#include "index/include_tree.h"
 #include "index/shard.h"
 #include "index/types.h"
 
@@ -24,7 +24,7 @@ class CompilationUnitRef;
 namespace clice::index {
 
 /// Index one TU and encode the result as its envelope bytes: the include
-/// graph (interned into a manifest), the TU's symbol table with
+/// tree (remapped into a manifest), the TU's symbol table with
 /// per-symbol reference files (merged into the project table), and one
 /// self-contained shard blob per file that received rows (stored or
 /// merged into the file's disk shard). Rows of a header entered several
@@ -45,7 +45,7 @@ std::string build_preamble_index(CompilationUnitRef unit,
                                  llvm::ArrayRef<std::uint32_t> inactive_regions,
                                  llvm::ArrayRef<std::uint8_t> open_conditionals);
 
-/// Zero-copy reader over an envelope: the graph, the per-file blob hashes
+/// Zero-copy reader over an envelope: the tree, the per-file blob hashes
 /// and the blob bytes themselves are read straight off the wire — a new
 /// variant's bytes are sliced out and written or merged without ever
 /// decoding the envelope around them — and symbol names are touched only
@@ -58,7 +58,7 @@ public:
 
     /// Wrap verified envelope bytes without owning them (the caller keeps
     /// the bytes alive). Verification gates the format version and bounds
-    /// every path id the graph and sections carry; corrupt bytes load as
+    /// every path id the tree and sections carry; corrupt bytes load as
     /// an empty reader. Symbol reference-file ids are NOT validated —
     /// iterate_symbols hands them out raw and the consumer bounds them.
     /// Section blob bytes are verified per section: structurally by
@@ -82,7 +82,7 @@ public:
 
     std::int64_t built_at() const;
 
-    /// The main file's path is always the last id, by IncludeGraph
+    /// The main file's path is always the last id, by IncludeTree
     /// convention.
     std::uint32_t path_count() const;
 
@@ -90,9 +90,10 @@ public:
 
     std::uint64_t path_hash(std::uint32_t id) const;
 
-    std::uint32_t location_count() const;
+    std::uint32_t node_count() const;
 
-    IncludeLocation location(std::uint32_t i) const;
+    /// One node of the include tree, its file a path id of this envelope.
+    IncludeNode node(std::uint32_t i) const;
 
     std::uint32_t section_count() const;
 

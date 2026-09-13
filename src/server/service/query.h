@@ -147,6 +147,12 @@ public:
     /// (TU-local names live only there).
     std::optional<SymbolRef> symbol_info(index::SymbolHash hash) const;
 
+    /// The symbol's name qualified by its parent chain ("ns::Outer::name",
+    /// a specialization's arguments included), inline namespaces skipped.
+    /// The chain stops at the translation unit or at a parent no table
+    /// knows. Empty for an unknown hash.
+    std::string qualified_name(index::SymbolHash hash) const;
+
     /// Every site carrying a relation of `kind` for the symbol, across all
     /// serving sources, deduplicated — a row present in both a disk shard
     /// and an overlay comes out identical.

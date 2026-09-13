@@ -15,6 +15,8 @@
 
 #include "llvm/Support/xxhash.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
+#include "clang/Basic/SourceManager.h"
 
 namespace clice::index {
 
@@ -45,12 +47,12 @@ struct EnvelopeBlob {
     /// Milliseconds since epoch, sampled before the build started.
     std::int64_t built_at = 0;
 
-    /// The include graph (IncludeGraph's persisted vectors): the path
-    /// table, the consumed-content hash per path, and every include edge
-    /// of the parse.
+    /// The include tree (IncludeTree's persisted vectors): the path table,
+    /// the consumed-content hash per path, and every include edge of the
+    /// parse.
     std::vector<std::string> paths;
     std::vector<std::uint64_t> path_hashes;
-    std::vector<IncludeLocation> locations;
+    std::vector<IncludeNode> nodes;
 
     SymbolTable symbols;
 
@@ -87,6 +89,60 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
     return SymbolScope::External;
 }
 
+NameForm name_form_of(clang::DeclarationName name) {
+    switch(name.getNameKind()) {
+        case clang::DeclarationName::Identifier: return NameForm::Identifier;
+        case clang::DeclarationName::CXXConstructorName: return NameForm::Constructor;
+        case clang::DeclarationName::CXXDestructorName: return NameForm::Destructor;
+        case clang::DeclarationName::CXXConversionFunctionName: return NameForm::Conversion;
+        case clang::DeclarationName::CXXOperatorName: return NameForm::Operator;
+        case clang::DeclarationName::CXXLiteralOperatorName: return NameForm::Literal;
+        case clang::DeclarationName::CXXDeductionGuideName:
+        case clang::DeclarationName::CXXUsingDirective:
+        case clang::DeclarationName::ObjCZeroArgSelector:
+        case clang::DeclarationName::ObjCOneArgSelector:
+        case clang::DeclarationName::ObjCMultiArgSelector: return NameForm::Other;
+    }
+    std::unreachable();
+}
+
+/// Instantiations never reach the symbol table (decls::normalize folds
+/// them into their pattern), so a specialization node here was written.
+bool is_specialization(const clang::NamedDecl* decl) {
+    if(llvm::isa<clang::ClassTemplateSpecializationDecl, clang::VarTemplateSpecializationDecl>(
+           decl)) {
+        return true;
+    }
+    if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        return function->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization;
+    }
+    return false;
+}
+
+/// clangd's rule for what unqualified completion may offer from an index:
+/// namespace-scope declarations, and the enumerators of unscoped enums at
+/// namespace or class scope. Members are Sema's after `.`, and a
+/// specialization shares its template's name.
+bool is_completable(const clang::NamedDecl* decl) {
+    if(is_specialization(decl)) {
+        return false;
+    }
+    auto namespace_scope = [](const clang::DeclContext* context) {
+        return context->isTranslationUnit() || context->isNamespace() ||
+               llvm::isa<clang::LinkageSpecDecl, clang::ExportDecl>(context);
+    };
+    const clang::DeclContext* context = decl->getDeclContext();
+    if(namespace_scope(context)) {
+        return true;
+    }
+    if(auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(context)) {
+        const clang::DeclContext* outer = enumeration->getDeclContext();
+        return !enumeration->isScoped() &&
+               (namespace_scope(outer) || llvm::isa<clang::CXXRecordDecl>(outer));
+    }
+    return false;
+}
+
 /// Projects the unit's semantic map into TUIndex rows: occurrences and
 /// relations from the resolve facts, macros from the preprocessor directives.
 class Projector {
@@ -113,12 +169,59 @@ public:
         auto hash = unit.entity(decl);
         auto [it, success] = symbols.try_emplace(hash);
         if(success) {
-            auto& symbol = it->second;
-            symbol.name = display::name_of(decl);
-            symbol.kind = SymbolKind::from(decl);
-            symbol.scope = classify_scope(decl);
+            it->second = describe(decl);
         }
         return hash;
+    }
+
+    /// What the symbol table records about a declaration besides its
+    /// rows. The facts the rows decide — HasDefinition and the canonical
+    /// file — are filled in once every row is projected.
+    Symbol describe(const clang::NamedDecl* decl) {
+        Symbol symbol;
+        auto flags = SymbolFlags::None;
+        /// A deduction guide is listed under its label rather than the
+        /// template's name, which completion prefers for its candidates.
+        if(llvm::isa<clang::CXXDeductionGuideDecl>(decl)) {
+            symbol.name = display::name_of(decl);
+        } else {
+            symbol.name =
+                display::name_of(decl, {.suppress_ctor_template_args = true, .qualified = false});
+        }
+        if(symbol.name.empty()) {
+            symbol.name = display::name_of(decl);
+            flags |= SymbolFlags::Unnamed;
+        }
+        symbol.args = display::template_args(*decl);
+        symbol.parent = unit.parent(decl);
+        symbol.kind = SymbolKind::from(decl);
+        symbol.scope = classify_scope(decl);
+        if(decls::is_templated(decl)) {
+            flags |= SymbolFlags::Template;
+        }
+        if(is_specialization(decl)) {
+            flags |= SymbolFlags::Specialization;
+        }
+        /// Attributes accumulate along the redeclaration chain; the last
+        /// declaration carries them all.
+        if(decl->getMostRecentDecl()->getAvailability() == clang::AR_Deprecated) {
+            flags |= SymbolFlags::Deprecated;
+        }
+        if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl); ns && ns->isInline()) {
+            flags |= SymbolFlags::InlineNamespace;
+        }
+        auto location = decl->getLocation();
+        if(location.isMacroID()) {
+            flags |= SymbolFlags::SpelledInMacro;
+        }
+        if(unit.context().getSourceManager().isInSystemHeader(location)) {
+            flags |= SymbolFlags::SystemHeader;
+        }
+        if(is_completable(decl)) {
+            flags |= SymbolFlags::Completable;
+        }
+        symbol.flags = with_form(flags, name_form_of(decl->getDeclName()));
+        return symbol;
     }
 
     void add_occurrence(const clang::NamedDecl* decl,
@@ -156,6 +259,7 @@ public:
             symbol.name = unit.token_spelling(location);
             symbol.kind = SymbolKind::Macro;
             symbol.scope = SymbolScope::External;
+            symbol.flags = SymbolFlags::Completable;
         }
         index->occurrences.emplace_back(range, hash);
 
@@ -252,8 +356,8 @@ public:
     }
 
     /// Module names are indexed like macro names: an occurrence plus a
-    /// Definition/Reference relation keyed by a hash of the full module
-    /// name, so navigation flows through the ordinary index pipeline.
+    /// Definition/Reference relation keyed by the module's entity, so
+    /// navigation flows through the ordinary index pipeline.
     void index_modules(const Semantics& semantics) {
         auto emit = [&](llvm::StringRef name,
                         clang::FileID fid,
@@ -264,9 +368,7 @@ public:
             auto* index = file_index(fid);
             if(!index)
                 return;
-            llvm::SmallString<64> usr("@module@");
-            usr += name;
-            auto hash = llvm::xxh3_64bits(usr);
+            auto hash = unit.module_entity(name);
 
             index->occurrences.emplace_back(range, hash);
             Relation relation{
@@ -615,11 +717,34 @@ public:
         for(auto& [fid, index]: file_indices) {
             indexed_fids.push_back(fid);
         }
-        graph = IncludeGraph::from(unit, indexed_fids);
+        tree = IncludeTree::from(unit, indexed_fids);
 
+        // The canonical file is decided across every file's rows: a
+        // definition wins over a declaration, and between equals the
+        // lowest path id, so the choice is a pure function of the rows.
+        auto adopt = [](Symbol& symbol, std::uint32_t path_id, bool definition) {
+            bool defined = has_flag(symbol.flags, SymbolFlags::HasDefinition);
+            if(definition && !defined) {
+                symbol.flags |= SymbolFlags::HasDefinition;
+                symbol.file = path_id;
+                return;
+            }
+            if(definition == defined && (symbol.file == no_file || path_id < symbol.file)) {
+                symbol.file = path_id;
+            }
+        };
         for(auto& [fid, index]: file_indices) {
-            for(auto symbol_id: llvm::make_first_range(index.relations)) {
-                symbols[symbol_id].reference_files.add(graph.path_id(fid));
+            auto path_id = tree.path_id(fid);
+            for(auto& [symbol_id, relations]: index.relations) {
+                auto& symbol = symbols[symbol_id];
+                symbol.reference_files.add(path_id);
+                for(auto& relation: relations) {
+                    if(relation.kind == RelationKind::Definition) {
+                        adopt(symbol, path_id, true);
+                    } else if(relation.kind == RelationKind::Declaration) {
+                        adopt(symbol, path_id, false);
+                    }
+                }
             }
         }
         auto finish_ms = finish_timer.ms_f();
@@ -638,11 +763,10 @@ public:
             // forced in via -include are not affected — clang records their
             // include edge in the predefines buffer, which is a valid
             // location. The main file legitimately has no edge.
-            if(fid != unit.main_file() &&
-               graph.include_location_id(fid) == static_cast<std::uint32_t>(-1)) {
+            if(fid != unit.main_file() && tree.node_of(fid) == ~0u) {
                 continue;
             }
-            auto path_id = graph.path_id(fid);
+            auto path_id = tree.path_id(fid);
             path_fids.try_emplace(path_id, fid);
             auto& into = by_path[path_id];
             if(into.empty()) {
@@ -663,7 +787,16 @@ public:
             if(it == symbols.end()) {
                 return std::nullopt;
             }
-            return SymbolIdentity{it->second.name, it->second.kind, it->second.scope};
+            auto& symbol = it->second;
+            return SymbolIdentity{
+                .name = symbol.name,
+                .args = symbol.args,
+                .parent = symbol.parent,
+                .kind = symbol.kind,
+                .scope = symbol.scope,
+                .flags = symbol.flags,
+                .file = symbol.file,
+            };
         };
 
         llvm::SmallVector<std::uint32_t> path_ids;
@@ -690,9 +823,9 @@ public:
         EnvelopeBlob blob;
         blob.format_version = index_format_version;
         blob.built_at = unit.build_at().count();
-        blob.paths = std::move(graph.paths);
-        blob.path_hashes = std::move(graph.path_hashes);
-        blob.locations = std::move(graph.locations);
+        blob.paths = std::move(tree.paths);
+        blob.path_hashes = std::move(tree.path_hashes);
+        blob.nodes = std::move(tree.nodes);
         blob.symbols = std::move(symbols);
         blob.sections = std::move(sections);
         if(extras) {
@@ -723,11 +856,11 @@ public:
 private:
     CompilationUnitRef unit;
     bool main_file_only;
-    IncludeGraph graph;
+    IncludeTree tree;
     SymbolTable symbols;
     /// Build-time working state keyed by FileID — clang::FileID means
     /// nothing outside the compilation, so it never leaves the builder;
-    /// the encode step converts it through graph.path_id.
+    /// the encode step converts it through tree.path_id.
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
     llvm::DenseMap<std::uint32_t, const clang::NamedDecl*> enclosing_cache;
 };
@@ -769,9 +902,15 @@ WireView wire_root(llvm::StringRef data) {
 }
 
 SymbolIdentity identity_of(kota::codec::fbs::table_view<Symbol> symbol) {
-    return {to_ref(symbol[&Symbol::name]),
-            SymbolKind(symbol[&Symbol::kind]),
-            symbol[&Symbol::scope]};
+    return {
+        .name = to_ref(symbol[&Symbol::name]),
+        .args = to_ref(symbol[&Symbol::args]),
+        .parent = symbol[&Symbol::parent],
+        .kind = SymbolKind(symbol[&Symbol::kind]),
+        .scope = symbol[&Symbol::scope],
+        .flags = symbol[&Symbol::flags],
+        .file = symbol[&Symbol::file],
+    };
 }
 
 /// The symbol's serialized reference bitmap (the Bitmap repr's byte image)
@@ -801,10 +940,10 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     if(count == 0) {
         return {};
     }
-    auto locations = root[&EnvelopeBlob::locations];
-    for(std::size_t i = 0; i < locations.size(); i += 1) {
-        IncludeLocation location = locations.at(i);
-        if(location.path_id >= count) {
+    auto nodes = root[&EnvelopeBlob::nodes];
+    for(std::size_t i = 0; i < nodes.size(); i += 1) {
+        IncludeNode node = nodes.at(i);
+        if(node.file >= count) {
             return {};
         }
     }
@@ -856,13 +995,12 @@ std::uint64_t TUIndex::path_hash(std::uint32_t id) const {
     return id < hashes.size() ? hashes.at(id) : 0;
 }
 
-std::uint32_t TUIndex::location_count() const {
-    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::locations].size())
-                    : 0;
+std::uint32_t TUIndex::node_count() const {
+    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::nodes].size()) : 0;
 }
 
-IncludeLocation TUIndex::location(std::uint32_t i) const {
-    return wire_root(data)[&EnvelopeBlob::locations].at(i);
+IncludeNode TUIndex::node(std::uint32_t i) const {
+    return wire_root(data)[&EnvelopeBlob::nodes].at(i);
 }
 
 std::uint32_t TUIndex::section_count() const {

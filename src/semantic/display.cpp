@@ -107,14 +107,23 @@ auto template_specialization_arg_locs(const clang::NamedDecl& decl)
     return std::nullopt;
 }
 
-/// The template arguments of a template specialization as written in the
-/// source code. Empty if the decl is not a specialization.
+}  // namespace
+
 std::string template_args(const clang::NamedDecl& decl) {
     std::string args;
     llvm::raw_string_ostream os(args);
     clang::PrintingPolicy policy(decl.getASTContext().getLangOpts());
     if(auto arg_locs = template_specialization_arg_locs(decl)) {
         clang::printTemplateArgumentList(os, *arg_locs, policy);
+    } else if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(&decl)) {
+        /// An explicit specialization's written arguments are not always
+        /// recorded; the converted ones spell the same specialization. An
+        /// explicitly specialized member of a class template reports the
+        /// same kind but has no argument list of its own.
+        if(const auto* args = function->getTemplateSpecializationArgs();
+           args && function->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            clang::printTemplateArgumentList(os, args->asArray(), policy);
+        }
     } else if(auto* record = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(&decl)) {
         /// FIXME: Fix cases when getTypeAsWritten returns null inside clang
         /// AST, e.g. friend decls. Currently we fallback to template
@@ -127,6 +136,8 @@ std::string template_args(const clang::NamedDecl& decl) {
     }
     return args;
 }
+
+namespace {
 
 /// The qualified name of the decl, skipping unwritten scopes like inline
 /// and anonymous namespaces.
@@ -254,7 +265,7 @@ namespace {
 /// corners (deduction guides print the plain template name, literal
 /// operators keep a space after `operator ""`); unifying the two printers
 /// is a deliberate, snapshot-reviewed change.
-std::string bare_name(const clang::NamedDecl* decl) {
+std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
     llvm::SmallString<128> result;
 
     /// Use the language options of the declaration's context so that C++ types
@@ -270,14 +281,22 @@ std::string bare_name(const clang::NamedDecl* decl) {
             break;
         }
 
-        case clang::DeclarationName::CXXConstructorName: {
-            result += name.getCXXNameType().getAsString(policy);
-            break;
-        }
-
+        case clang::DeclarationName::CXXConstructorName:
         case clang::DeclarationName::CXXDestructorName: {
-            result += '~';
-            result += name.getCXXNameType().getAsString(policy);
+            if(name.getNameKind() == clang::DeclarationName::CXXDestructorName) {
+                result += '~';
+            }
+            auto type = name.getCXXNameType();
+            /// A class template's own constructor and destructor name the
+            /// injected class name, whose parameters the option drops.
+            auto* injected = options.suppress_ctor_template_args
+                                 ? type->getAs<clang::InjectedClassNameType>()
+                                 : nullptr;
+            if(injected) {
+                result += injected->getDecl()->getName();
+            } else {
+                result += type.getAsString(policy);
+            }
             break;
         }
 
@@ -332,7 +351,7 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
     assert(decl);
 
     if(!options.qualified) {
-        return bare_name(decl);
+        return bare_name(decl, options);
     }
 
     std::string name;

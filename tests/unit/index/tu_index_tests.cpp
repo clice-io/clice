@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <format>
+#include <optional>
 #include <set>
 
 #include "test/test.h"
@@ -9,6 +10,7 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "semantic/selection.h"
+#include "support/logging.h"
 
 #include "llvm/Support/thread.h"
 #include "llvm/Support/xxhash.h"
@@ -77,12 +79,41 @@ void decode_index(const std::string& envelope) {
         [&](index::SymbolHash hash, const index::SymbolIdentity& identity, llvm::StringRef bitmap) {
             auto& symbol = tu_index.symbols[hash];
             symbol.name = identity.name.str();
+            symbol.args = identity.args.str();
+            symbol.parent = identity.parent;
             symbol.kind = identity.kind;
             symbol.scope = identity.scope;
+            symbol.flags = identity.flags;
+            symbol.file = identity.file;
             symbol.reference_files =
                 index::read_bitmap(bitmap.data(), bitmap.size()).value_or(Bitmap{});
             return true;
         });
+}
+
+/// The one symbol with this name (and specialization arguments) in the
+/// decoded table.
+std::pair<index::SymbolHash, index::Symbol> symbol_named(llvm::StringRef name,
+                                                         llvm::StringRef args = "",
+                                                         std::optional<SymbolKind> kind = {}) {
+    std::optional<std::pair<index::SymbolHash, index::Symbol>> found;
+    for(auto& [hash, symbol]: tu_index.symbols) {
+        if(symbol.name == name && symbol.args == args &&
+           (!kind || symbol.kind.value() == kind->value())) {
+            if(found) {
+                LOG_FATAL("symbol {}{} is not unique", name, args);
+            }
+            found.emplace(hash, symbol);
+        }
+    }
+    if(!found) {
+        LOG_FATAL("no symbol {}{}", name, args);
+    }
+    return *found;
+}
+
+bool has(const index::Symbol& symbol, index::SymbolFlags flag) {
+    return index::has_flag(symbol.flags, flag);
 }
 
 void build_index(llvm::StringRef code,
@@ -743,6 +774,8 @@ TEST_CASE(ModuleName) {
     auto& index = tu_index.main_file_index;
     auto occs = select("m");
     ASSERT_FALSE(occs.empty());
+    ASSERT_EQ(occs.front().target, unit->module_entity("foo"));
+    ASSERT_EQ(symbol_named("foo").second.kind.value(), SymbolKind(SymbolKind::Module).value());
 
     auto it = index.relations.find(occs.front().target);
     ASSERT_TRUE(it != index.relations.end());
@@ -1088,6 +1121,177 @@ TEST_CASE(ScopeTULocal) {
     ASSERT_EQ(found, expected);
 }
 
+TEST_CASE(BareNameAndParentChain) {
+    build_index(R"(
+        namespace ns { struct Outer { struct Inner { void method(); }; }; }
+        void ns::Outer::Inner::method() {}
+        namespace ns { inline namespace v1 { enum Color { Red }; } }
+        void local_host() { struct Local { int field; }; }
+    )");
+
+    auto [ns, ns_symbol] = symbol_named("ns");
+    auto [outer, outer_symbol] = symbol_named("Outer");
+    auto [inner, inner_symbol] = symbol_named("Inner");
+    auto [method, method_symbol] = symbol_named("method");
+    ASSERT_EQ(ns_symbol.parent, 0u);
+    ASSERT_EQ(outer_symbol.parent, ns);
+    ASSERT_EQ(inner_symbol.parent, outer);
+    ASSERT_EQ(method_symbol.parent, inner);
+
+    auto [v1, v1_symbol] = symbol_named("v1");
+    ASSERT_TRUE(has(v1_symbol, index::SymbolFlags::InlineNamespace));
+    ASSERT_EQ(v1_symbol.parent, ns);
+    auto [color, color_symbol] = symbol_named("Color");
+    ASSERT_EQ(color_symbol.parent, v1);
+    ASSERT_EQ(symbol_named("Red").second.parent, color);
+
+    auto [host, host_symbol] = symbol_named("local_host");
+    auto [local, local_symbol] = symbol_named("Local");
+    ASSERT_EQ(local_symbol.parent, host);
+    ASSERT_EQ(symbol_named("field").second.parent, local);
+}
+
+TEST_CASE(SpecializationArguments) {
+    build_index(R"(
+        template <typename T> struct Box { T value; };
+        template <> struct Box<int> { int value; };
+        template <typename T> struct Box<T*> { T* value; };
+        template <typename T> T identity(T t) { return t; }
+        template <> int identity<int>(int t) { return t; }
+        Box<int> a;
+        Box<double> b;
+        Box<char*> c;
+    )");
+
+    auto [primary, primary_symbol] = symbol_named("Box");
+    ASSERT_TRUE(has(primary_symbol, index::SymbolFlags::Template));
+    ASSERT_FALSE(has(primary_symbol, index::SymbolFlags::Specialization));
+    ASSERT_TRUE(has(primary_symbol, index::SymbolFlags::Completable));
+
+    auto [full, full_symbol] = symbol_named("Box", "<int>");
+    ASSERT_TRUE(has(full_symbol, index::SymbolFlags::Specialization));
+    ASSERT_FALSE(has(full_symbol, index::SymbolFlags::Template));
+    ASSERT_FALSE(has(full_symbol, index::SymbolFlags::Completable));
+
+    auto [partial, partial_symbol] = symbol_named("Box", "<T *>");
+    ASSERT_TRUE(has(partial_symbol, index::SymbolFlags::Specialization));
+    ASSERT_TRUE(has(partial_symbol, index::SymbolFlags::Template));
+
+    // Members of the full specialization hang off it; the primary's
+    // members and every instantiation's off the primary.
+    std::set<index::SymbolHash> value_parents;
+    for(auto& [hash, symbol]: tu_index.symbols) {
+        if(symbol.name == "value") {
+            value_parents.insert(symbol.parent);
+        }
+    }
+    ASSERT_EQ(value_parents, (std::set<index::SymbolHash>{primary, full, partial}));
+
+    auto [function, function_symbol] = symbol_named("identity", "<int>");
+    ASSERT_TRUE(has(function_symbol, index::SymbolFlags::Specialization));
+    ASSERT_TRUE(has(symbol_named("identity").second, index::SymbolFlags::Template));
+}
+
+TEST_CASE(SymbolFacts) {
+    build_index(R"(
+        [[deprecated]] void old();
+        struct { int in_anonymous; } anonymous_instance;
+        #define DECLARE(name) void name();
+        DECLARE(spelled)
+        enum Unscoped { Plain };
+        struct Holder {
+            enum Nested { Inner };
+            enum class Scoped { Hidden };
+            Holder();
+            ~Holder();
+            operator int();
+            void member();
+        };
+        bool operator==(Holder, Holder);
+    )");
+
+    ASSERT_TRUE(has(symbol_named("old").second, index::SymbolFlags::Deprecated));
+    auto holder = symbol_named("Holder", "", SymbolKind::Struct).second;
+    ASSERT_FALSE(has(holder, index::SymbolFlags::Deprecated));
+
+    auto [anonymous, anonymous_symbol] = symbol_named("(anonymous struct)");
+    ASSERT_TRUE(has(anonymous_symbol, index::SymbolFlags::Unnamed));
+    ASSERT_EQ(symbol_named("in_anonymous").second.parent, anonymous);
+
+    ASSERT_TRUE(has(symbol_named("spelled").second, index::SymbolFlags::SpelledInMacro));
+    ASSERT_FALSE(has(symbol_named("old").second, index::SymbolFlags::SpelledInMacro));
+    ASSERT_FALSE(has(symbol_named("old").second, index::SymbolFlags::SystemHeader));
+
+    ASSERT_TRUE(has(symbol_named("old").second, index::SymbolFlags::Completable));
+    ASSERT_TRUE(has(symbol_named("Plain").second, index::SymbolFlags::Completable));
+    ASSERT_TRUE(has(symbol_named("Inner").second, index::SymbolFlags::Completable));
+    ASSERT_FALSE(has(symbol_named("Hidden").second, index::SymbolFlags::Completable));
+    ASSERT_FALSE(has(symbol_named("member").second, index::SymbolFlags::Completable));
+    ASSERT_TRUE(has(symbol_named("DECLARE").second, index::SymbolFlags::Completable));
+
+    using index::NameForm;
+    ASSERT_EQ(index::name_form(symbol_named("member").second.flags), NameForm::Identifier);
+    ASSERT_EQ(index::name_form(holder.flags), NameForm::Identifier);
+    ASSERT_EQ(index::name_form(symbol_named("~Holder").second.flags), NameForm::Destructor);
+    ASSERT_EQ(index::name_form(symbol_named("operator int").second.flags), NameForm::Conversion);
+    ASSERT_EQ(index::name_form(symbol_named("operator==").second.flags), NameForm::Operator);
+    std::size_t constructors = 0;
+    for(auto& [hash, symbol]: tu_index.symbols) {
+        if(index::name_form(symbol.flags) == NameForm::Constructor) {
+            ASSERT_EQ(symbol.name, "Holder");
+            constructors += 1;
+        }
+    }
+    ASSERT_EQ(constructors, std::size_t(1));
+}
+
+TEST_CASE(CanonicalFile) {
+    add_file("header.h", R"(
+        int declared_twice();
+        int header_only();
+        inline int header_defined() { return 1; }
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int declared_twice();
+        int declared_twice() { return header_only() + header_defined(); }
+        int main_only();
+    )");
+    ASSERT_TRUE(compile());
+    decode_index(index::build_tu_index(*unit));
+
+    auto main_path = tu_index.view.path_count() - 1;
+    auto header_path = [&] {
+        for(std::uint32_t id = 0; id < tu_index.view.path_count(); id += 1) {
+            if(tu_index.view.path(id).ends_with("header.h")) {
+                return id;
+            }
+        }
+        LOG_FATAL("header.h is not in the path table");
+    }();
+
+    auto twice = symbol_named("declared_twice").second;
+    ASSERT_TRUE(has(twice, index::SymbolFlags::HasDefinition));
+    ASSERT_EQ(twice.file, main_path);
+
+    auto only = symbol_named("header_only").second;
+    ASSERT_FALSE(has(only, index::SymbolFlags::HasDefinition));
+    ASSERT_EQ(only.file, header_path);
+
+    auto defined = symbol_named("header_defined").second;
+    ASSERT_TRUE(has(defined, index::SymbolFlags::HasDefinition));
+    ASSERT_EQ(defined.file, header_path);
+    ASSERT_TRUE(has(defined, index::SymbolFlags::Completable));
+
+    // A main-file-only build keeps no header rows: a symbol the main file
+    // merely uses has no declaring row at all.
+    decode_index(index::build_tu_index(*unit, true));
+    auto used = symbol_named("header_only").second;
+    ASSERT_FALSE(has(used, index::SymbolFlags::HasDefinition));
+    ASSERT_EQ(used.file, index::no_file);
+    ASSERT_EQ(symbol_named("main_only").second.file, tu_index.view.path_count() - 1);
+}
+
 TEST_CASE(PreambleDefaultArgument) {
     // An out-of-line definition inherits the default argument expression
     // from the in-class declaration; its DeclRefExpr is located in the
@@ -1183,11 +1387,11 @@ int x = 1;
 )");
     ASSERT_TRUE(compile_with_pch());
 
-    auto graph = index::IncludeGraph::from(*unit);
+    auto tree = index::IncludeTree::from(*unit);
     auto fid = unit->file_id(TestVFS::path("foo.h"));
     ASSERT_TRUE(fid.isValid());
-    ASSERT_EQ(graph.include_location_id(fid), static_cast<std::uint32_t>(-1));
-    ASSERT_EQ(graph.path_id(fid), static_cast<std::uint32_t>(graph.paths.size() - 1));
+    ASSERT_EQ(tree.node_of(fid), static_cast<std::uint32_t>(-1));
+    ASSERT_EQ(tree.path_id(fid), static_cast<std::uint32_t>(tree.paths.size() - 1));
 }
 
 TEST_CASE(PreambleFidResolved) {
@@ -1206,10 +1410,10 @@ int x = 1;
     auto fid = unit->file_id(TestVFS::path("foo.h"));
     ASSERT_TRUE(fid.isValid());
 
-    auto graph = index::IncludeGraph::from(*unit, {fid});
-    auto include = graph.include_location_id(fid);
-    ASSERT_TRUE(include != static_cast<std::uint32_t>(-1));
-    ASSERT_TRUE(graph.path(graph.path_id(fid)).ends_with("foo.h"));
+    auto tree = index::IncludeTree::from(*unit, {fid});
+    auto node = tree.node_of(fid);
+    ASSERT_TRUE(node != static_cast<std::uint32_t>(-1));
+    ASSERT_TRUE(tree.paths[tree.path_id(fid)].ends_with("foo.h"));
 }
 
 TEST_CASE(DeepExpressionChain) {
@@ -1441,7 +1645,7 @@ struct MirrorEnvelope {
     std::int64_t built_at = 0;
     std::vector<std::string> paths;
     std::vector<std::uint64_t> path_hashes;
-    std::vector<index::IncludeLocation> locations;
+    std::vector<index::IncludeNode> nodes;
     index::SymbolTable symbols{};
     std::vector<MirrorSection> sections;
 };
@@ -1466,14 +1670,14 @@ TEST_CASE(FromRejectsOutOfRangePathIds) {
     // the rejections below come from the hostile values.
     MirrorEnvelope honest;
     honest.paths = {"/proj/main.cpp"};
-    honest.locations.push_back({.path_id = 0, .line = 1, .include = 0});
+    honest.nodes.push_back({.file = 0, .parent = 0, .line = 1});
     honest.sections.push_back({.path_id = 0});
     ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
 
     {
         MirrorEnvelope hostile;
         hostile.paths = {"/proj/main.cpp"};
-        hostile.locations.push_back({.path_id = 7, .line = 1, .include = 0});
+        hostile.nodes.push_back({.file = 7, .parent = 0, .line = 1});
         ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
     }
     {

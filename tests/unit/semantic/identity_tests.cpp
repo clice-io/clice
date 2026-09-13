@@ -970,6 +970,42 @@ struct §(other)Other {};
     EXPECT_NE(entity_at(*this, "first.h", "ov"), entity_at(*this, "first.h", "ov2"));
 }
 
+TEST_CASE(ParentChain) {
+    add_main("main.cpp", R"cpp(
+namespace §(ns)ns {
+extern "C" { void §(c)c_linkage(); }
+template <typename T> struct §(box)Box { void §(method)method(); };
+template <> struct §(spec)Box<int> { void §(spec_method)method(); };
+void §(fn)fn() { struct §(local)Local {}; }
+}
+void §(global)global();
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto parent = [&](llvm::StringRef marker) {
+        return unit->parent(find_decl(*this, "main.cpp", marker));
+    };
+    EXPECT_EQ(parent("global"), 0u);
+    EXPECT_EQ(parent("ns"), 0u);
+    EXPECT_EQ(parent("c"), entity("ns"));
+    EXPECT_EQ(parent("box"), entity("ns"));
+    EXPECT_EQ(parent("method"), entity("box"));
+    EXPECT_EQ(parent("spec_method"), entity("spec"));
+    EXPECT_NE(entity("spec"), entity("box"));
+    EXPECT_EQ(parent("local"), entity("fn"));
+}
+
+TEST_CASE(ModuleEntity) {
+    add_main("main.cpp", "int x;");
+    ASSERT_TRUE(compile());
+    Tester other;
+    other.add_main("main.cpp", "int y;");
+    ASSERT_TRUE(other.compile());
+
+    EXPECT_EQ(unit->module_entity("foo"), other.unit->module_entity("foo"));
+    EXPECT_NE(unit->module_entity("foo"), unit->module_entity("foo:part"));
+}
+
 };  // TEST_SUITE(identity)
 
 }  // namespace

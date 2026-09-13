@@ -76,7 +76,7 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
     blob.node_count = static_cast<std::uint32_t>(manifest.nodes.size());
     blob.nodes.reserve(manifest.nodes.size() * 6);
     for(auto& node: manifest.nodes) {
-        write_varint(blob.nodes, node.fv.raw);
+        write_varint(blob.nodes, node.file);
         write_varint(blob.nodes, node.parent + 1);
         write_varint(blob.nodes, node.line);
     }
@@ -128,14 +128,14 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         if(fv > id_max || line > id_max) {
             return std::nullopt;
         }
-        // Parents may follow their children (the include graph resolves
+        // Parents may follow their children (the include tree resolves
         // parent chains after appending the child), so only bounds are
         // checked; consumers walking parents must carry their own visited
         // set.
         if(parent > blob.node_count) {
             return std::nullopt;
         }
-        manifest.nodes.push_back({VersionID{static_cast<std::uint32_t>(fv)},
+        manifest.nodes.push_back({static_cast<std::uint32_t>(fv),
                                   static_cast<std::uint32_t>(parent) - 1,
                                   static_cast<std::uint32_t>(line)});
     }
