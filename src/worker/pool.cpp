@@ -500,6 +500,8 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         for(int attempt = 0; attempt < 20 && !tail->drained; attempt += 1) {
             co_await kota::sleep(std::chrono::milliseconds(50), loop);
         }
+        if(stop_scope.cancelled())
+            co_return;
     }
 
     if(process_crash(index, stateful, exit_code, exit_signal)) {
