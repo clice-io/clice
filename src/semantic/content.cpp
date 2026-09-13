@@ -11,6 +11,7 @@
 #include "semantic/decls.h"
 #include "semantic/hasher.h"
 #include "semantic/semantics.h"
+#include "semantic/types.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/GraphTraits.h"
@@ -631,6 +632,73 @@ private:
     /// Edges from every reference, and per unit the entities the
     /// references selected: a dependency set alone cannot tell which of
     /// two overloads a call bound to, but the diagnostics can.
+    /// The declarations a specialization's template arguments name: an
+    /// instantiated body depends on their definitions even where it never
+    /// spells the parameter (`sizeof(T)` written as `__builtin_choose_expr`
+    /// on it), and equal entities do not mean equal definitions.
+    void argument_targets(const clang::Decl* decl,
+                          llvm::SmallVectorImpl<std::uint32_t>& out) const {
+        const clang::TemplateArgumentList* arguments = nullptr;
+        if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
+            arguments = &CTSD->getTemplateArgs();
+        } else if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            arguments = FD->getTemplateSpecializationArgs();
+        } else if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(decl)) {
+            arguments = &VTSD->getTemplateArgs();
+        }
+        if(arguments) {
+            for(auto& argument: arguments->asArray()) {
+                add_argument(argument, out);
+            }
+        }
+    }
+
+    void add_argument(const clang::TemplateArgument& argument,
+                      llvm::SmallVectorImpl<std::uint32_t>& out) const {
+        switch(argument.getKind()) {
+            case clang::TemplateArgument::Type: {
+                auto type = argument.getAsType().getNonReferenceType();
+                while(true) {
+                    if(auto* pointer = type->getAs<clang::PointerType>()) {
+                        type = pointer->getPointeeType();
+                    } else if(auto* array = type->getAsArrayTypeUnsafe()) {
+                        type = array->getElementType();
+                    } else {
+                        break;
+                    }
+                }
+                for(auto* decl: types::decls_of(type)) {
+                    targets(decl, out);
+                }
+                break;
+            }
+            case clang::TemplateArgument::Declaration: {
+                targets(argument.getAsDecl(), out);
+                break;
+            }
+            case clang::TemplateArgument::Template:
+            case clang::TemplateArgument::TemplateExpansion: {
+                if(auto* TD = argument.getAsTemplateOrTemplatePattern().getAsTemplateDecl()) {
+                    targets(TD, out);
+                }
+                break;
+            }
+            case clang::TemplateArgument::Pack: {
+                for(auto& element: argument.pack_elements()) {
+                    add_argument(element, out);
+                }
+                break;
+            }
+            case clang::TemplateArgument::Null:
+            case clang::TemplateArgument::NullPtr:
+            case clang::TemplateArgument::Integral:
+            case clang::TemplateArgument::StructuralValue:
+            case clang::TemplateArgument::Expression: {
+                break;
+            }
+        }
+    }
+
     /// Whether a declaration's entity carries its source position: locals
     /// and parameters, template parameters and lambda members are told
     /// apart by where they are written (semantic/identity.h).
@@ -648,10 +716,21 @@ private:
         std::vector<llvm::DenseSet<std::uint32_t>> deps(table.units.size());
         referenced.resize(table.units.size());
         llvm::SmallVector<std::uint32_t, 8> found;
+        auto entries = semantics.node_entries();
         for(std::uint32_t i = 0; i < attribution.size(); i += 1) {
             auto owner = attribution[i];
             if(owner == no_unit) {
                 continue;
+            }
+            if(auto* decl = entries[i].node.get<clang::Decl>();
+               decl && decls::is_instantiation(decl)) {
+                found.clear();
+                argument_targets(decl, found);
+                for(auto target: found) {
+                    if(target != owner) {
+                        deps[owner].insert(target);
+                    }
+                }
             }
             for(auto& reference: resolve_references(semantics, i, &resolver)) {
                 // The unit's own text already tells which local a name binds

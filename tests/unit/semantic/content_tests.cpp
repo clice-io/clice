@@ -838,6 +838,16 @@ TEST_CASE(InstantiationDependencies) {
     EXPECT_TRUE(a.depends("call.h", "call", "s.h", "inspect"));
 }
 
+TEST_CASE(TemplateArguments) {
+    File s = {"s.h", "#pragma once\nstruct §(s)S { int a; };\n"};
+    File t = {"t.h", "#pragma once\ntemplate <typename T> int §(f)f() { return 1; }\n"};
+    Compiled a;
+    ASSERT_TRUE(
+        a.compile({s, t}, {"main.cpp", "#include \"s.h\"\n#include \"t.h\"\nint r = f<S*>();\n"}));
+
+    EXPECT_TRUE(a.depends("t.h", "f", "s.h", "s"));
+}
+
 TEST_CASE(ExplicitInstantiation) {
     File v = {"v.h", R"cpp(
 #pragma once
