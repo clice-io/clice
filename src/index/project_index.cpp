@@ -326,29 +326,33 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
     }
 }
 
-bool ProjectIndex::load_global(this ProjectIndex& self,
-                               llvm::StringRef data,
-                               clice::FileTable& files,
-                               llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
+std::expected<void, llvm::StringRef>
+    ProjectIndex::load_global(this ProjectIndex& self,
+                              llvm::StringRef data,
+                              clice::FileTable& files,
+                              llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
     GlobalBlob blob;
-    if(!deserialize_blob(data, blob) || blob.format_version != index_format_version) {
-        return false;
+    if(!deserialize_blob(data, blob)) {
+        return std::unexpected("not a readable global blob");
+    }
+    if(blob.format_version != index_format_version) {
+        return std::unexpected("written by another index format version");
     }
 
     auto count = blob.fv_ids.size();
     if(blob.fv_paths.size() != count || blob.fv_hashes.size() != count ||
        blob.fv_sizes.size() != count || blob.fv_mtimes.size() != count) {
-        return false;
+        return std::unexpected("file version columns do not line up");
     }
     auto sym_count = blob.sym_hashes.size();
     if(blob.sym_names.size() != sym_count || blob.sym_args.size() != sym_count ||
        blob.sym_parents.size() != sym_count || blob.sym_kinds.size() != sym_count ||
        blob.sym_flags.size() != sym_count || blob.sym_files.size() != sym_count ||
        blob.sym_bitmaps.size() != sym_count) {
-        return false;
+        return std::unexpected("symbol columns do not line up");
     }
     if(blob.manifest_gens.size() != blob.manifest_fvs.size()) {
-        return false;
+        return std::unexpected("manifest pin columns do not line up");
     }
 
     // Every value check runs before the first mutation: a blob rejected
@@ -362,12 +366,12 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     // entry.
     for(auto& path: blob.fv_paths) {
         if(path.empty()) {
-            return false;
+            return std::unexpected("empty file version path");
         }
     }
     for(auto& path: llvm::make_second_range(blob.sym_paths)) {
         if(path.empty()) {
-            return false;
+            return std::unexpected("empty symbol path");
         }
     }
 
@@ -378,32 +382,32 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     // it — a bound that (with the sentinels at the top of the id space)
     // also keeps every id non-reserved.
     if(reserved_key(blob.next_fv_id) || blob.next_fv_id > max_persisted_versions) {
-        return false;
+        return std::unexpected("file version counter out of range");
     }
     for(auto id: blob.fv_ids) {
         if(id >= blob.next_fv_id) {
-            return false;
+            return std::unexpected("file version id past the counter");
         }
     }
     for(auto hash: blob.sym_hashes) {
         if(reserved_key(hash)) {
-            return false;
+            return std::unexpected("reserved symbol hash");
         }
     }
     // Parents are looked up as keys too (qualified_name's chain walk).
     for(auto parent: blob.sym_parents) {
         if(reserved_key(parent)) {
-            return false;
+            return std::unexpected("reserved symbol parent");
         }
     }
     for(auto id: llvm::make_first_range(blob.sym_paths)) {
         if(reserved_key(id)) {
-            return false;
+            return std::unexpected("reserved path id");
         }
     }
     for(auto fv: blob.manifest_fvs) {
         if(reserved_key(fv)) {
-            return false;
+            return std::unexpected("reserved manifest pin");
         }
     }
 
@@ -415,24 +419,24 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     // entry's identity and reference bitmap.
     llvm::DenseSet<std::uint32_t> blob_fvs(blob.fv_ids.begin(), blob.fv_ids.end());
     if(blob_fvs.size() != count) {
-        return false;
+        return std::unexpected("duplicate file version id");
     }
     llvm::DenseSet<std::pair<llvm::StringRef, std::uint64_t>> blob_versions;
     for(std::size_t i = 0; i < count; i += 1) {
         if(!blob_versions.insert({llvm::StringRef(blob.fv_paths[i]), blob.fv_hashes[i]}).second) {
-            return false;
+            return std::unexpected("duplicate file version");
         }
     }
     llvm::DenseSet<SymbolHash> blob_syms(blob.sym_hashes.begin(), blob.sym_hashes.end());
     if(blob_syms.size() != sym_count) {
-        return false;
+        return std::unexpected("duplicate symbol hash");
     }
 
     // The writer only pins manifests whose tu_fv survived the same save's
     // garbage collection, so an unresolvable pin marks a corrupt blob.
     for(auto fv: blob.manifest_fvs) {
         if(!blob_fvs.contains(fv)) {
-            return false;
+            return std::unexpected("manifest pin names an unknown file version");
         }
     }
 
@@ -452,7 +456,7 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     };
     for(auto file: blob.sym_files) {
         if(file != no_file && uncovered(file)) {
-            return false;
+            return std::unexpected("symbol file outside the path table");
         }
     }
     std::vector<Bitmap> bitmaps;
@@ -460,11 +464,11 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     for(auto& image: blob.sym_bitmaps) {
         auto decoded = read_bitmap(image.data(), image.size());
         if(!decoded) {
-            return false;
+            return std::unexpected("reference bitmap does not decode");
         }
         for(auto id: *decoded) {
             if(uncovered(id)) {
-                return false;
+                return std::unexpected("reference file outside the path table");
             }
         }
         bitmaps.push_back(std::move(*decoded));
@@ -518,7 +522,7 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         symbol.reference_files = std::move(remapped);
     }
 
-    return true;
+    return {};
 }
 
 }  // namespace clice::index

@@ -126,17 +126,6 @@ void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
     }
 }
 
-SymbolRef to_ref(index::SymbolHash hash, const index::Symbol& symbol) {
-    return {
-        .hash = hash,
-        .name = symbol.name,
-        .args = symbol.args,
-        .parent = symbol.parent,
-        .kind = symbol.kind,
-        .flags = symbol.flags,
-    };
-}
-
 /// Name matching for searches: a symbol is looked up by its displayed
 /// name, so a specialization answers to `Box<int>` as well as `Box`.
 /// Most symbols carry no arguments and match on the stored name alone.
@@ -149,15 +138,28 @@ bool name_contains(const index::Symbol& symbol, llvm::StringRef query_lower) {
 }
 
 bool is_indexable_kind(SymbolKind kind) {
-    return kind == SymbolKind::Namespace || kind == SymbolKind::Class ||
-           kind == SymbolKind::Struct || kind == SymbolKind::Union || kind == SymbolKind::Enum ||
-           kind == SymbolKind::Type || kind == SymbolKind::Field ||
-           kind == SymbolKind::EnumMember || kind == SymbolKind::Function ||
-           kind == SymbolKind::Method || kind == SymbolKind::Variable ||
-           kind == SymbolKind::Parameter || kind == SymbolKind::Macro ||
-           kind == SymbolKind::Concept || kind == SymbolKind::Module ||
-           kind == SymbolKind::Operator || kind == SymbolKind::MacroParameter ||
-           kind == SymbolKind::Label || kind == SymbolKind::Attribute;
+    switch(kind) {
+        case SymbolKind::Namespace:
+        case SymbolKind::Class:
+        case SymbolKind::Struct:
+        case SymbolKind::Union:
+        case SymbolKind::Enum:
+        case SymbolKind::Type:
+        case SymbolKind::Field:
+        case SymbolKind::EnumMember:
+        case SymbolKind::Function:
+        case SymbolKind::Method:
+        case SymbolKind::Variable:
+        case SymbolKind::Parameter:
+        case SymbolKind::Macro:
+        case SymbolKind::Concept:
+        case SymbolKind::Module:
+        case SymbolKind::Operator:
+        case SymbolKind::MacroParameter:
+        case SymbolKind::Label:
+        case SymbolKind::Attribute: return true;
+        default: return false;
+    }
 }
 
 }  // namespace
@@ -492,14 +494,7 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
 std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
     std::optional<SymbolRef> found;
     auto adopt = [&](const index::SymbolIdentity& identity) {
-        found = SymbolRef{
-            .hash = hash,
-            .name = std::string(identity.name),
-            .args = std::string(identity.args),
-            .parent = identity.parent,
-            .kind = identity.kind,
-            .flags = identity.flags,
-        };
+        found = SymbolRef::from(hash, identity);
     };
 
     // Open sessions first: they hold every symbol of their unsaved buffers.
@@ -516,7 +511,7 @@ std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
 
     auto it = workspace.project_index.symbols.find(hash);
     if(it != workspace.project_index.symbols.end()) {
-        return to_ref(hash, it->second);
+        return SymbolRef::from(hash, it->second.identity());
     }
 
     // A symbol that exists only under an open buffer's context (or in
@@ -990,7 +985,7 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
 
             bool is_exact = llvm::StringRef(name).lower() == query_lower ||
                             llvm::StringRef(name).ends_with(("::" + locator.name).str());
-            Located located{.symbol = to_ref(hash, symbol), .site = *site};
+            Located located{.symbol = SymbolRef::from(hash, symbol.identity()), .site = *site};
             if(is_exact)
                 exact_matches.push_back(std::move(located));
             else
@@ -1023,7 +1018,7 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
                 auto position = serving.coords.to_position(r.range.begin);
                 if(position && position->line == target_line) {
                     found = Located{
-                        .symbol = to_ref(hash, symbol),
+                        .symbol = SymbolRef::from(hash, symbol.identity()),
                         .site = {.file = *path_id,
                                  .path = path,
                                  .range = r.range,
@@ -1055,7 +1050,7 @@ std::vector<IndexQuery::Located> IndexQuery::definitions_in(Fid file) const {
         }
         serving.rows->lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
             result.push_back({
-                .symbol = to_ref(hash, symbol),
+                .symbol = SymbolRef::from(hash, symbol.identity()),
                 .site = {.file = file, .path = path, .range = r.range, .coords = serving.coords},
             });
             return true;
@@ -1086,7 +1081,7 @@ std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& 
     };
 
     // A directive line of the document is a node whose parent node entered
-    // this file: the TU root (parent == ~0u) when the document is the TU
+    // this file: the TU root (parent == no_node) when the document is the TU
     // itself, or any node of the document's own file version otherwise
     // (directives inside included headers hang off the node of the file
     // that contains them).
@@ -1098,7 +1093,7 @@ std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& 
             document_nodes[i] = is_document(VersionID{node.file});
         }
         for(const auto& node: manifest.nodes) {
-            if(node.parent == ~0u ? !root_is_document : !document_nodes[node.parent]) {
+            if(node.parent == index::no_node ? !root_is_document : !document_nodes[node.parent]) {
                 continue;
             }
             const auto* target = version_of(VersionID{node.file});

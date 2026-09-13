@@ -166,7 +166,6 @@ TEST_CASE(AsciiContentOmitted) {
     });
     auto shard = make_shard(write_fresh(rows, content));
 
-    ASSERT_TRUE(shard.ascii());
     ASSERT_TRUE(shard.content().empty());
     ASSERT_EQ(shard.content_size(), static_cast<std::uint32_t>(content.size()));
     ASSERT_EQ(shard.content_hash(), llvm::xxh3_64bits(content));
@@ -184,7 +183,6 @@ TEST_CASE(NonAsciiContentStored) {
     });
     auto shard = make_shard(write_fresh(rows, content));
 
-    ASSERT_FALSE(shard.ascii());
     ASSERT_EQ(shard.content(), llvm::StringRef(content));
 
     auto expected = kota::ipc::lsp::build_line_starts(content);

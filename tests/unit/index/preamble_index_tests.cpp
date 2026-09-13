@@ -149,7 +149,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
         auto& shard = state->shard_of(state->section_path(i));
         EXPECT_TRUE(shard.content_size() > 0);
         EXPECT_FALSE(shard.line_starts().empty());
-        EXPECT_TRUE(shard.ascii());
+        EXPECT_TRUE(shard.content().empty());
         EXPECT_TRUE(shard.content().empty());
     }
 }
