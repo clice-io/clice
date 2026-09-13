@@ -437,10 +437,11 @@ TEST_CASE(LocalSymbolNames) {
 
     auto local = hash_at(shard, point("use"));
     ASSERT_TRUE(local != 0);
-    std::string name;
-    SymbolKind kind;
-    ASSERT_TRUE(shard.find_symbol(local, name, kind));
-    ASSERT_EQ(name, "helper");
+    auto local_identity = shard.find_symbol(local);
+    ASSERT_TRUE(local_identity.has_value());
+    ASSERT_EQ(local_identity->name, "helper");
+    ASSERT_TRUE(index::has_flag(local_identity->flags, index::SymbolFlags::HasDefinition));
+    ASSERT_EQ(local_identity->parent, 0u);
 
     // External names live in the ProjectIndex, never in the blob.
     auto external = [&] {
@@ -456,7 +457,7 @@ TEST_CASE(LocalSymbolNames) {
         return result;
     }();
     ASSERT_TRUE(external != 0);
-    ASSERT_FALSE(shard.find_symbol(external, name, kind));
+    ASSERT_FALSE(shard.find_symbol(external).has_value());
 }
 
 TEST_CASE(MergedLocalNames) {
@@ -476,10 +477,9 @@ TEST_CASE(MergedLocalNames) {
 
     auto local = hash_at(shard, point("local"));
     ASSERT_TRUE(local != 0);
-    std::string name;
-    SymbolKind kind;
-    ASSERT_TRUE(shard.find_symbol(local, name, kind));
-    ASSERT_EQ(name, "helper");
+    auto local_identity = shard.find_symbol(local);
+    ASSERT_TRUE(local_identity.has_value());
+    ASSERT_EQ(local_identity->name, "helper");
 }
 
 TEST_CASE(WideSymbolIds) {
@@ -504,9 +504,7 @@ TEST_CASE(UnloadedShardNoops) {
     index::Shard shard;
     shard.lookup(0, [&](const index::Occurrence&) { return true; });
     shard.lookup(1, RelationKind::Reference, [&](const index::Relation&) { return true; });
-    std::string name;
-    SymbolKind kind;
-    ASSERT_FALSE(shard.find_symbol(1, name, kind));
+    ASSERT_FALSE(shard.find_symbol(1).has_value());
     ASSERT_TRUE(shard.content().empty());
     ASSERT_TRUE(shard.line_starts().empty());
 }

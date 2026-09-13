@@ -476,7 +476,10 @@ bool validate(BlobView root) {
     auto local_scopes = to_array_ref(root[&ShardBlob::local_scopes]);
     if(!sparse_ok(local_syms, local_kinds.size(), sym_hashes.size()) ||
        local_scopes.size() != local_kinds.size() ||
-       root[&ShardBlob::local_names].size() != local_kinds.size()) {
+       root[&ShardBlob::local_names].size() != local_kinds.size() ||
+       root[&ShardBlob::local_args].size() != local_kinds.size() ||
+       to_array_ref(root[&ShardBlob::local_parents]).size() != local_kinds.size() ||
+       to_array_ref(root[&ShardBlob::local_flags]).size() != local_kinds.size()) {
         return false;
     }
 
@@ -877,27 +880,32 @@ void
     }
 }
 
-bool Shard::find_symbol(SymbolHash hash, std::string& name, SymbolKind& kind) const {
+std::optional<SymbolIdentity> Shard::find_symbol(SymbolHash hash) const {
     if(!buffer) {
-        return false;
+        return std::nullopt;
     }
     auto root = root_of(*buffer);
     auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
     auto it = std::ranges::lower_bound(sym_hashes, hash);
     if(it == sym_hashes.end() || *it != hash) {
-        return false;
+        return std::nullopt;
     }
     auto id = static_cast<std::uint32_t>(it - sym_hashes.begin());
 
     auto local_syms = to_array_ref(root[&ShardBlob::local_syms]);
     auto local_it = std::ranges::lower_bound(local_syms, id);
     if(local_it == local_syms.end() || *local_it != id) {
-        return false;
+        return std::nullopt;
     }
     auto local = local_it - local_syms.begin();
-    name = std::string(root[&ShardBlob::local_names].at(local));
-    kind = SymbolKind(to_array_ref(root[&ShardBlob::local_kinds])[local]);
-    return true;
+    return SymbolIdentity{
+        .name = to_ref(root[&ShardBlob::local_names].at(local)),
+        .args = to_ref(root[&ShardBlob::local_args].at(local)),
+        .parent = to_array_ref(root[&ShardBlob::local_parents])[local],
+        .kind = SymbolKind(to_array_ref(root[&ShardBlob::local_kinds])[local]),
+        .scope = static_cast<SymbolScope>(to_array_ref(root[&ShardBlob::local_scopes])[local]),
+        .flags = static_cast<SymbolFlags>(to_array_ref(root[&ShardBlob::local_flags])[local]),
+    };
 }
 
 std::span<const std::uint32_t> Shard::line_starts() const {
@@ -1254,6 +1262,9 @@ struct LocalInfo {
     std::string name;
     std::uint8_t kind;
     std::uint8_t scope;
+    std::string args;
+    std::uint64_t parent;
+    std::uint16_t flags;
 };
 
 /// Collect one blob's local symbols; symbols the merged rows no longer
@@ -1264,9 +1275,18 @@ void collect_locals(BlobView root, llvm::DenseMap<std::uint64_t, LocalInfo>& loc
     auto kinds = to_array_ref(root[&ShardBlob::local_kinds]);
     auto scopes = to_array_ref(root[&ShardBlob::local_scopes]);
     auto names = root[&ShardBlob::local_names];
+    auto args = root[&ShardBlob::local_args];
+    auto parents = to_array_ref(root[&ShardBlob::local_parents]);
+    auto flags = to_array_ref(root[&ShardBlob::local_flags]);
     for(std::uint32_t k = 0; k < local_syms.size(); k += 1) {
         auto hash = sym_hashes[local_syms[k]];
-        locals.try_emplace(hash, LocalInfo{std::string(names.at(k)), kinds[k], scopes[k]});
+        locals.try_emplace(hash,
+                           LocalInfo{std::string(names.at(k)),
+                                     kinds[k],
+                                     scopes[k],
+                                     std::string(args.at(k)),
+                                     parents[k],
+                                     flags[k]});
     }
 }
 
@@ -1374,6 +1394,9 @@ void emit_blob(MergedRows<MaskT>& merged,
         blob.local_names.push_back(info->name);
         blob.local_kinds.push_back(info->kind);
         blob.local_scopes.push_back(info->scope);
+        blob.local_args.push_back(info->args);
+        blob.local_parents.push_back(info->parent);
+        blob.local_flags.push_back(info->flags);
     }
 
     auto tier = tier_of(blob.variants.empty() ? 1 : blob.variants.size());
@@ -1604,7 +1627,10 @@ void write_shard(const FileIndex& rows,
             locals.try_emplace(hash,
                                LocalInfo{std::string(found->name),
                                          found->kind.value(),
-                                         static_cast<std::uint8_t>(found->scope)});
+                                         static_cast<std::uint8_t>(found->scope),
+                                         std::string(found->args),
+                                         found->parent,
+                                         static_cast<std::uint16_t>(found->flags)});
         }
     }
 

@@ -287,13 +287,12 @@ std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
                 result += '~';
             }
             auto type = name.getCXXNameType();
-            /// A class template's own constructor and destructor name the
-            /// injected class name, whose parameters the option drops.
-            auto* injected = options.suppress_ctor_template_args
-                                 ? type->getAs<clang::InjectedClassNameType>()
-                                 : nullptr;
-            if(injected) {
-                result += injected->getDecl()->getName();
+            /// The type prints with its scope and, for a class template's
+            /// own members, with the template's parameters; the option asks
+            /// for the class's name alone.
+            auto* record = options.suppress_ctor_template_args ? type->getAsRecordDecl() : nullptr;
+            if(record) {
+                result += record->getName();
             } else {
                 result += type.getAsString(policy);
             }

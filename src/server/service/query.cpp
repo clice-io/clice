@@ -126,6 +126,28 @@ void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
     }
 }
 
+SymbolRef to_ref(index::SymbolHash hash, const index::Symbol& symbol) {
+    return {
+        .hash = hash,
+        .name = symbol.name,
+        .args = symbol.args,
+        .parent = symbol.parent,
+        .kind = symbol.kind,
+        .flags = symbol.flags,
+    };
+}
+
+/// Name matching for searches: a symbol is looked up by its displayed
+/// name, so a specialization answers to `Box<int>` as well as `Box`.
+/// Most symbols carry no arguments and match on the stored name alone.
+bool name_contains(const index::Symbol& symbol, llvm::StringRef query_lower) {
+    if(symbol.args.empty()) {
+        return llvm::StringRef(symbol.name).lower().find(query_lower) != std::string::npos;
+    }
+    return llvm::StringRef(symbol.name + symbol.args).lower().find(query_lower) !=
+           std::string::npos;
+}
+
 bool is_indexable_kind(SymbolKind kind) {
     return kind == SymbolKind::Namespace || kind == SymbolKind::Class ||
            kind == SymbolKind::Struct || kind == SymbolKind::Union || kind == SymbolKind::Enum ||
@@ -494,13 +516,7 @@ std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
 
     auto it = workspace.project_index.symbols.find(hash);
     if(it != workspace.project_index.symbols.end()) {
-        auto& symbol = it->second;
-        adopt({.name = symbol.name,
-               .args = symbol.args,
-               .parent = symbol.parent,
-               .kind = symbol.kind,
-               .flags = symbol.flags});
-        return found;
+        return to_ref(hash, it->second);
     }
 
     // A symbol that exists only under an open buffer's context (or in
@@ -517,18 +533,16 @@ std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
 
     // Each shard stores exactly the local symbols its occurrences
     // reference, so a TU-local name is in the shard that produced it.
-    std::string name;
-    SymbolKind kind;
     for(auto& [path_id, shard]: workspace.shards) {
-        if(shard.find_symbol(hash, name, kind)) {
-            adopt({.name = name, .kind = kind});
+        if(auto identity = shard.find_symbol(hash)) {
+            adopt(*identity);
             return found;
         }
     }
     return std::nullopt;
 }
 
-std::string IndexQuery::qualified_name(index::SymbolHash hash) const {
+std::string IndexQuery::container_name(index::SymbolHash hash) const {
     auto symbol = symbol_info(hash);
     if(!symbol) {
         return {};
@@ -549,11 +563,24 @@ std::string IndexQuery::qualified_name(index::SymbolHash hash) const {
     }
     std::string result;
     for(auto& scope: llvm::reverse(scopes)) {
+        if(!result.empty()) {
+            result += "::";
+        }
         result += scope;
-        result += "::";
     }
-    result += symbol->display_name();
     return result;
+}
+
+std::string IndexQuery::qualified_name(index::SymbolHash hash) const {
+    auto symbol = symbol_info(hash);
+    if(!symbol) {
+        return {};
+    }
+    auto container = container_name(hash);
+    if(container.empty()) {
+        return symbol->display_name();
+    }
+    return container + "::" + symbol->display_name();
 }
 
 std::vector<Site> IndexQuery::sites(index::SymbolHash hash, RelationKind kind) const {
@@ -805,21 +832,26 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
 
     struct Candidate {
         int score;
-        llvm::StringRef name;
+        std::string name;
         index::SymbolHash hash;
     };
 
     std::vector<Candidate> candidates;
     llvm::DenseSet<index::SymbolHash> seen;
-    auto consider = [&](index::SymbolHash hash, llvm::StringRef name, SymbolKind kind) {
-        if(!is_indexable_kind(kind) || name.empty() || !seen.insert(hash).second) {
-            return;
-        }
-        auto rank = score(name);
-        if(rank >= 0) {
-            candidates.push_back({.score = rank, .name = name, .hash = hash});
-        }
-    };
+    // Matched and ranked by the displayed name, so a specialization
+    // answers to `Box<int>` as well as `Box`.
+    auto consider =
+        [&](index::SymbolHash hash, llvm::StringRef name, llvm::StringRef args, SymbolKind kind) {
+            if(!is_indexable_kind(kind) || name.empty() || !seen.insert(hash).second) {
+                return;
+            }
+            llvm::SmallString<64> display(name);
+            display += args;
+            auto rank = score(display);
+            if(rank >= 0) {
+                candidates.push_back({.score = rank, .name = std::string(display), .hash = hash});
+            }
+        };
 
     // Only defined symbols are listed. The project table's flag is the
     // union over every indexed unit, so it spares the shard read that
@@ -828,13 +860,13 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
     // found through the preamble and PCH overlays by the site check.
     for(auto& [hash, symbol]: workspace.project_index.symbols) {
         if(index::has_flag(symbol.flags, index::SymbolFlags::HasDefinition)) {
-            consider(hash, symbol.name, symbol.kind);
+            consider(hash, symbol.name, symbol.args, symbol.kind);
         }
     }
     visit_sessions([&](Fid path_id, const Session&) -> bool {
         sources.projections->projection(path_id)->index->iterate_symbols(
             [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, llvm::StringRef) {
-                consider(hash, symbol.name, symbol.kind);
+                consider(hash, symbol.name, symbol.args, symbol.kind);
                 return true;
             });
         return true;
@@ -898,10 +930,12 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
                !index::has_flag(symbol.flags, index::SymbolFlags::HasDefinition)) {
                 continue;
             }
-            auto name = qualified ? qualified_name(hash) : symbol.name + symbol.args;
-            if(llvm::StringRef(name).lower().find(query_lower) == std::string::npos) {
+            if(qualified ? llvm::StringRef(qualified_name(hash)).lower().find(query_lower) ==
+                               std::string::npos
+                         : !name_contains(symbol, query_lower)) {
                 continue;
             }
+            auto name = qualified ? qualified_name(hash) : symbol.name + symbol.args;
             auto site = first_site(hash, RelationKind::Definition);
             if(!site) {
                 continue;
@@ -919,7 +953,7 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
 
             bool is_exact = llvm::StringRef(name).lower() == query_lower ||
                             llvm::StringRef(name).ends_with(("::" + locator.name).str());
-            Located located{.symbol = *symbol_info(hash), .site = *site};
+            Located located{.symbol = to_ref(hash, symbol), .site = *site};
             if(is_exact)
                 exact_matches.push_back(std::move(located));
             else
@@ -952,11 +986,11 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
                 auto position = serving.coords.to_position(r.range.begin);
                 if(position && position->line == target_line) {
                     found = Located{
-                        .symbol = {.hash = hash, .name = symbol.name, .kind = symbol.kind},
+                        .symbol = to_ref(hash, symbol),
                         .site = {.file = *path_id,
-                                   .path = path,
-                                   .range = r.range,
-                                   .coords = serving.coords},
+                                 .path = path,
+                                 .range = r.range,
+                                 .coords = serving.coords},
                     };
                     return false;
                 }
@@ -984,7 +1018,7 @@ std::vector<IndexQuery::Located> IndexQuery::definitions_in(Fid file) const {
         }
         serving.rows->lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
             result.push_back({
-                .symbol = {.hash = hash, .name = symbol.name, .kind = symbol.kind},
+                .symbol = to_ref(hash, symbol),
                 .site = {.file = file, .path = path, .range = r.range, .coords = serving.coords},
             });
             return true;

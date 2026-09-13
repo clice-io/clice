@@ -1010,7 +1010,7 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
 Features::RawResult Features::workspace_symbol(llvm::StringRef text) {
     std::vector<protocol::SymbolInformation> results;
     for(auto& located: query.search(text, 100)) {
-        auto container = query.qualified_name(located.symbol.parent);
+        auto container = query.container_name(located.symbol.hash);
         if(auto info = to_lsp::symbol_information(located.symbol, located.site, container)) {
             results.push_back(std::move(*info));
         }

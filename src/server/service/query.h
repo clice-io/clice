@@ -147,10 +147,15 @@ public:
     /// (TU-local names live only there).
     std::optional<SymbolRef> symbol_info(index::SymbolHash hash) const;
 
-    /// The symbol's name qualified by its parent chain ("ns::Outer::name",
-    /// a specialization's arguments included), inline namespaces skipped.
-    /// The chain stops at the translation unit or at a parent no table
-    /// knows. Empty for an unknown hash.
+    /// The qualified name of the symbol's container ("ns::Outer" for
+    /// `ns::Outer::name`), inline namespaces skipped: the parent chain up
+    /// to the translation unit or to a parent no table knows. Empty at
+    /// the translation unit and for an unknown hash.
+    std::string container_name(index::SymbolHash hash) const;
+
+    /// The symbol's name qualified by its container, a specialization's
+    /// arguments included ("ns::Outer::name<int>"). Empty for an unknown
+    /// hash.
     std::string qualified_name(index::SymbolHash hash) const;
 
     /// Every site carrying a relation of `kind` for the symbol, across all

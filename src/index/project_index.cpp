@@ -108,7 +108,7 @@ bool ProjectIndex::merge(this ProjectIndex& self,
             if(identity.scope != SymbolScope::External) {
                 return true;
             }
-            if(reserved_key(hash)) {
+            if(reserved_key(hash) || reserved_key(identity.parent)) {
                 valid = false;
                 return false;
             }
@@ -144,11 +144,12 @@ bool ProjectIndex::merge(this ProjectIndex& self,
             target.parent = identity.parent;
             target.kind = identity.kind;
         }
-        // A definition wins the canonical file over a declaration; between
-        // equals the first unit to report one keeps it.
-        bool defined = has_flag(target.flags, SymbolFlags::HasDefinition);
+        // A unit that defines the symbol always places it: the table never
+        // retracts a unit's earlier report, so an old definition bit must
+        // not pin the file after the definition moved. Declarations only
+        // fill an empty slot.
         bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
-        if(identity.file != no_file && (target.file == no_file || (defines && !defined))) {
+        if(identity.file != no_file && (target.file == no_file || defines)) {
             target.file = file_ids_map[identity.file].raw;
         }
         target.flags |= identity.flags;
@@ -383,6 +384,12 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     }
     for(auto hash: blob.sym_hashes) {
         if(reserved_key(hash)) {
+            return false;
+        }
+    }
+    // Parents are looked up as keys too (qualified_name's chain walk).
+    for(auto parent: blob.sym_parents) {
+        if(reserved_key(parent)) {
             return false;
         }
     }

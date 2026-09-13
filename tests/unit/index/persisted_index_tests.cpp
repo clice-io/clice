@@ -529,6 +529,18 @@ TEST_CASE(GlobalReservedKeysRejected) {
     {
         GlobalBlobMirror mirror;
         mirror.format_version = index::index_format_version;
+        mirror.sym_hashes = {42};
+        mirror.sym_names = {"sym"};
+        mirror.sym_parents = {~std::uint64_t(0)};
+        mirror.sym_kinds = {0};
+        mirror.sym_bitmaps = {index::write_bitmap(clice::Bitmap{})};
+        auto bytes = encode(mirror);
+        ASSERT_TRUE(bytes.has_value());
+        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
+    }
+    {
+        GlobalBlobMirror mirror;
+        mirror.format_version = index::index_format_version;
         mirror.sym_paths = {
             {0xfffffffeu, "/proj/ref.h"}
         };

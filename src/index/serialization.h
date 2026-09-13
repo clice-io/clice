@@ -230,6 +230,9 @@ struct ShardBlob {
     std::vector<std::string> local_names;
     std::vector<std::uint8_t> local_kinds;
     std::vector<std::uint8_t> local_scopes;
+    std::vector<std::string> local_args;
+    std::vector<std::uint64_t> local_parents;
+    std::vector<std::uint16_t> local_flags;
 
     /// Occurrences sorted by (begin, end, symbol hash).
     RowRanges occs;

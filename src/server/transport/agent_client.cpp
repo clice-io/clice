@@ -275,7 +275,8 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                !index::has_flag(symbol.flags, index::SymbolFlags::HasDefinition))
                 continue;
             if(!query_lower.empty() &&
-               llvm::StringRef(symbol.name).lower().find(query_lower) == std::string::npos)
+               llvm::StringRef(symbol.name + symbol.args).lower().find(query_lower) ==
+                   std::string::npos)
                 continue;
             if(params.kind_filter.has_value()) {
                 auto kind_name = std::string(symbol_kind_name(symbol.kind));
@@ -296,8 +297,8 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 .line = lines->start,
                 .symbol_id = hash,
             };
-            if(symbol.parent != 0) {
-                entry.container = srv.agent_query.qualified_name(symbol.parent);
+            if(auto container = srv.agent_query.container_name(hash); !container.empty()) {
+                entry.container = std::move(container);
             }
             result.symbols.push_back(std::move(entry));
         }

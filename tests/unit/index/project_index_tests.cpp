@@ -124,6 +124,25 @@ TEST_CASE(MergeUnionsSymbolFacts) {
     ASSERT_TRUE(definition.has_value());
     ASSERT_EQ(defined.file, definition->raw);
     ASSERT_EQ(defined.reference_files.cardinality(), 3u);
+
+    // The table never retracts a unit's report, so a definition that
+    // moved to another unit must still win the file over the old bit.
+    Tester mover;
+    mover.add_file("shared.h", R"(
+        namespace lib { int shared_fn(); }
+    )");
+    mover.add_main("moved.cpp", R"(
+        #include "shared.h"
+        int lib::shared_fn() { return 2; }
+    )");
+    ASSERT_TRUE(mover.compile());
+    std::string mover_wire = index::build_tu_index(*mover.unit);
+    auto mover_view = index::TUIndex::from_bytes(mover_wire);
+    ASSERT_TRUE(mover_view.loaded());
+    ASSERT_TRUE(project.merge(mover_view, intern_paths(mover_view, pool)));
+    auto moved = pool.find(mover_view.path(mover_view.path_count() - 1));
+    ASSERT_TRUE(moved.has_value());
+    ASSERT_EQ(project.symbols[hash].file, moved->raw);
 }
 
 TEST_CASE(MergeRejectsBadBitmap) {

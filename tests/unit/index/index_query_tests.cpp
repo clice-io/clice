@@ -168,7 +168,9 @@ TEST_CASE(QualifiedNames) {
         namespace outer { inline namespace v2 { namespace inner {
             template <typename T> struct Widget { void §(method)⟦§(method)paint⟧(); };
             template <> struct Widget<int> { void paint() {} };
-        } } }
+        }
+        void versioned() {}
+        } }
         template <typename T> void outer::inner::Widget<T>::paint() {}
     )");
     ASSERT_TRUE(compile());
@@ -198,6 +200,17 @@ TEST_CASE(QualifiedNames) {
     ASSERT_EQ(by_bare.size(), std::size_t(1));
     ASSERT_EQ(by_bare.front().symbol.hash, by_qualified.front().symbol.hash);
     ASSERT_TRUE(query.locate({.name = "v2::Widget"}).empty());
+
+    // Search matches the displayed name too, and a member of an inline
+    // namespace reports the enclosing named one as its container.
+    auto searched = query.search("Widget<int>", 10);
+    ASSERT_EQ(searched.size(), std::size_t(1));
+    ASSERT_EQ(searched.front().symbol.hash, by_qualified.front().symbol.hash);
+    ASSERT_EQ(query.container_name(searched.front().symbol.hash), "outer::inner");
+    auto versioned = query.search("versioned", 10);
+    ASSERT_EQ(versioned.size(), std::size_t(1));
+    ASSERT_EQ(query.container_name(versioned.front().symbol.hash), "outer");
+    ASSERT_EQ(query.qualified_name(versioned.front().symbol.hash), "outer::versioned");
 }
 
 TEST_CASE(LocalSymbolName) {

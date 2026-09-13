@@ -1208,6 +1208,7 @@ TEST_CASE(SymbolFacts) {
             void member();
         };
         bool operator==(Holder, Holder);
+        namespace n { struct Scoped { Scoped(); ~Scoped(); }; }
     )");
 
     ASSERT_TRUE(has(symbol_named("old").second, index::SymbolFlags::Deprecated));
@@ -1235,14 +1236,16 @@ TEST_CASE(SymbolFacts) {
     ASSERT_EQ(index::name_form(symbol_named("~Holder").second.flags), NameForm::Destructor);
     ASSERT_EQ(index::name_form(symbol_named("operator int").second.flags), NameForm::Conversion);
     ASSERT_EQ(index::name_form(symbol_named("operator==").second.flags), NameForm::Operator);
-    std::size_t constructors = 0;
-    for(auto& [hash, symbol]: tu_index.symbols) {
-        if(index::name_form(symbol.flags) == NameForm::Constructor) {
-            ASSERT_EQ(symbol.name, "Holder");
-            constructors += 1;
-        }
-    }
-    ASSERT_EQ(constructors, std::size_t(1));
+    auto [holder_class, holder_symbol] = symbol_named("Holder", "", SymbolKind::Struct);
+    auto constructor = symbol_named("Holder", "", SymbolKind::Method).second;
+    ASSERT_EQ(index::name_form(constructor.flags), NameForm::Constructor);
+    ASSERT_EQ(constructor.parent, holder_class);
+
+    // A scoped class's constructor and destructor spell the class's own
+    // name, never its qualifier.
+    auto [scoped, scoped_symbol] = symbol_named("Scoped", "", SymbolKind::Struct);
+    ASSERT_EQ(symbol_named("Scoped", "", SymbolKind::Method).second.parent, scoped);
+    ASSERT_EQ(symbol_named("~Scoped").second.parent, scoped);
 }
 
 TEST_CASE(CanonicalFile) {

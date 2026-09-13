@@ -35,10 +35,8 @@ std::optional<index::SymbolRef> resolve(index::SymbolHash hash) {
         return index::SymbolRef{.name = std::string(identity->name), .kind = identity->kind};
     }
     auto main_id = tu.path_count() - 1;
-    std::string name;
-    SymbolKind kind;
-    if(tu.shard_of(main_id).find_symbol(hash, name, kind)) {
-        return index::SymbolRef{.name = std::move(name), .kind = kind};
+    if(auto identity = tu.shard_of(main_id).find_symbol(hash)) {
+        return index::SymbolRef{.name = std::string(identity->name), .kind = identity->kind};
     }
     return std::nullopt;
 }
