@@ -65,6 +65,10 @@ struct StderrTail {
 
     llvm::SmallVector<std::string, capacity> lines;
 
+    /// The pipe reached EOF. The exit is observed independently of the
+    /// pipe, so the crash report waits for this before reading the lines.
+    bool drained = false;
+
     void add(std::string line) {
         if(lines.size() == capacity) {
             lines.erase(lines.begin());

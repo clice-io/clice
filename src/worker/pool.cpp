@@ -52,6 +52,7 @@ kota::task<> drain_stderr(kota::pipe stderr_pipe,
         LOG_WARN("{} {}", prefix, buffer);
         tail->add(std::move(buffer));
     }
+    tail->drained = true;
 }
 
 /// IO pump wrapper owning a peer reference, so the peer object outlives its
@@ -450,6 +451,15 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
 
     if(stop_scope.cancelled())
         co_return;
+
+    // The final diagnostic can still sit in the stderr pipe when the exit
+    // is observed; give the drain a bounded moment to reach EOF — a
+    // grandchild holding the pipe open must not stall the respawn.
+    if(auto tail = workers[index].stderr_tail) {
+        for(int attempt = 0; attempt < 20 && !tail->drained; attempt += 1) {
+            co_await kota::sleep(std::chrono::milliseconds(50), loop);
+        }
+    }
 
     // Intentional retirement (scale-down): the slot becomes permanently
     // vacant without crash processing.

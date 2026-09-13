@@ -267,7 +267,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     result.completed = true;
     result.indexed_tus = stack.pump.indexed_files();
     for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
-        if(workspace.build.entries(tu).empty()) {
+        if(!workspace.build.unit(tu)) {
             result.standalone_headers += 1;
         }
     }

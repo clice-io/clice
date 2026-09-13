@@ -4,7 +4,6 @@
 #include <ctime>
 #include <format>
 #include <map>
-#include <optional>
 #include <print>
 #include <ranges>
 #include <thread>
@@ -65,8 +64,8 @@ struct IndexOptions {
 
     DecoFlag(names = {"--variants"},
              help =
-                 "With --stats: list every file shard with its variant count, one "
-                 "tab-separated line each",
+                 "Print the statistics and then every file shard with its variant "
+                 "count, one tab-separated line each",
              required = false)
     variants;
 
@@ -139,15 +138,11 @@ int run_indexing(std::string root,
                  const char* self_path) {
     // Progress goes to stderr whatever the log level: a run spends most of
     // its time with nothing else to say, and the per-unit log lines exist
-    // only at info level. The batch paces the reports; only a repeat of the
-    // last snapshot (a round end followed by the tick) is dropped.
+    // only at info level. The batch paces the reports, and a tick with the
+    // counts unchanged is the heartbeat of a unit that takes longer than
+    // the pace.
     auto started = std::chrono::steady_clock::now();
-    std::optional<BatchProgress> last_printed;
     auto report_progress = [&](const BatchProgress& progress) {
-        if(last_printed == progress) {
-            return;
-        }
-        last_printed = progress;
         std::println(
             stderr,
             "progress {}/{} units, {} failed, {:.0f}s elapsed",
@@ -192,12 +187,8 @@ int run_indexing(std::string root,
         std::println("{} translation unit{} failed to index (see the log); the index is partial:",
                      result.failed.size(),
                      plural_s(result.failed.size()));
-        constexpr std::size_t listed = 50;
-        for(auto& path: result.failed | std::views::take(listed)) {
+        for(auto& path: result.failed) {
             std::println("  {}", path);
-        }
-        if(result.failed.size() > listed) {
-            std::println("  ... and {} more", result.failed.size() - listed);
         }
     }
     if(result.unsaved) {
@@ -909,7 +900,7 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
                });
                return;
            }
-           if(opts.stats) {
+           if(opts.stats || opts.variants) {
                exit_code = with_index(ws, configuration, [&](IndexView& view) {
                    return run_stats(view, opts.top.value_or(20), static_cast<bool>(opts.variants));
                });

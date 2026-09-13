@@ -20,8 +20,6 @@ struct BatchProgress {
     std::size_t completed = 0;
     std::size_t total = 0;
     std::size_t failed = 0;
-
-    friend bool operator==(const BatchProgress&, const BatchProgress&) = default;
 };
 
 struct BatchOptions {
