@@ -109,12 +109,22 @@ ContentHash compile_context(CompilationUnitRef unit) {
     hasher.add(options.CodeModel);
     hasher.add(target.getDataLayoutString());
 
-    auto& diagnostics = unit.context().getDiagnostics().getDiagnosticOptions();
+    auto& engine = unit.context().getDiagnostics();
+    auto& diagnostics = engine.getDiagnosticOptions();
     add_list(hasher, diagnostics.Warnings);
     add_list(hasher, diagnostics.Remarks);
-    hasher.add(static_cast<std::uint64_t>(diagnostics.Pedantic));
-    hasher.add(static_cast<std::uint64_t>(diagnostics.PedanticErrors));
-    hasher.add(static_cast<std::uint64_t>(diagnostics.IgnoreWarnings));
+#define DIAGOPT(Name, Bits, Default) hasher.add(static_cast<std::uint64_t>(diagnostics.Name));
+#define ENUM_DIAGOPT(Name, Type, Bits, Default)                                                    \
+    hasher.add(static_cast<std::uint64_t>(diagnostics.get##Name()));
+#include "clang/Basic/DiagnosticOptions.def"
+    // The state the flags produced: `-Wsystem-headers`, `-w`, `-Weverything`
+    // and `-Werror` live on the engine, not in the options.
+    hasher.add(static_cast<std::uint64_t>(engine.getSuppressSystemWarnings()));
+    hasher.add(static_cast<std::uint64_t>(engine.getIgnoreAllWarnings()));
+    hasher.add(static_cast<std::uint64_t>(engine.getEnableAllWarnings()));
+    hasher.add(static_cast<std::uint64_t>(engine.getWarningsAsErrors()));
+    hasher.add(static_cast<std::uint64_t>(engine.getErrorsAsFatal()));
+    hasher.add(static_cast<std::uint64_t>(engine.getExtensionHandlingBehavior()));
     return hasher.finish();
 }
 

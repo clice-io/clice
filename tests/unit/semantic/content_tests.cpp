@@ -1238,8 +1238,11 @@ TEST_CASE(SystemHeaders) {
     ASSERT_TRUE(a.compile({h}, main, {"-I", dir}));
     Compiled b;
     ASSERT_TRUE(b.compile({h}, main, {"-isystem", dir}));
+    Compiled c;
+    ASSERT_TRUE(c.compile({h}, main, {"-isystem", dir, "-Wsystem-headers"}));
 
     EXPECT_NE(a.own("sys/h.h", "f"), b.own("sys/h.h", "f"));
+    EXPECT_NE(b.own("sys/h.h", "f"), c.own("sys/h.h", "f"));
 }
 
 TEST_CASE(MainFileUnits) {
