@@ -100,6 +100,27 @@ kota::task<> checkpoint_task(BatchStack& stack) {
     }
 }
 
+/// The current round's progress to the driver's callback; nothing before
+/// the first round has a total.
+void report_progress(BatchStack& stack, const BatchOptions& options) {
+    auto& round = stack.pump.progress();
+    if(!options.on_progress || round.total == 0) {
+        return;
+    }
+    options.on_progress(
+        {.completed = round.completed, .total = round.total, .failed = stack.pump.failed().size()});
+}
+
+/// A paced report on top of the round boundaries: one unit can take
+/// longer than the pace, and a run must not fall silent while it runs.
+kota::task<> progress_ticker(BatchStack& stack, const BatchOptions& options) {
+    constexpr auto pace = std::chrono::seconds(10);
+    while(true) {
+        co_await kota::sleep(pace);
+        report_progress(stack, options);
+    }
+}
+
 /// Quiesce the pump, then the shared contract-11 tail.
 kota::task<> shutdown(BatchStack& stack) {
     co_await stack.pump.stop();
@@ -230,15 +251,12 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
 
     auto progress = stack.pump.on_progress_changed.connect([&] {
-        if(!options.on_progress) {
-            return;
+        if(stack.pump.progress().stage != IndexPump::Progress::Stage::Report) {
+            report_progress(stack, options);
         }
-        auto& round = stack.pump.progress();
-        options.on_progress({.completed = round.completed,
-                             .total = round.total,
-                             .failed = stack.pump.failed().size()});
     });
     BatchLifetime lifetime(stack);
+    lifetime.aux.spawn(progress_ticker(stack, options));
     co_await kota::with_token(wait_until_indexed(stack.pump), lifetime.token());
     if(co_await lifetime.finish()) {
         result.interrupted = true;

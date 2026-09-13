@@ -137,31 +137,24 @@ int run_indexing(std::string root,
                  std::string configuration,
                  std::uint32_t workers,
                  const char* self_path) {
-    // Progress goes to stderr at a fixed pace whatever the log level: a
-    // run spends most of its time with nothing else to say, and the per-unit
-    // log lines exist only at info level.
-    using Clock = std::chrono::steady_clock;
-    constexpr auto pace = std::chrono::seconds(10);
-    auto started = Clock::now();
-    auto last_report = started - pace;
+    // Progress goes to stderr whatever the log level: a run spends most of
+    // its time with nothing else to say, and the per-unit log lines exist
+    // only at info level. The batch paces the reports; only a repeat of the
+    // last snapshot (a round end followed by the tick) is dropped.
+    auto started = std::chrono::steady_clock::now();
     std::optional<BatchProgress> last_printed;
     auto report_progress = [&](const BatchProgress& progress) {
-        auto now = Clock::now();
-        bool round_done = progress.completed == progress.total;
-        bool unchanged = last_printed && last_printed->completed == progress.completed &&
-                         last_printed->total == progress.total &&
-                         last_printed->failed == progress.failed;
-        if(unchanged || (!round_done && now - last_report < pace)) {
+        if(last_printed == progress) {
             return;
         }
-        last_report = now;
         last_printed = progress;
-        std::println(stderr,
-                     "progress {}/{} units, {} failed, {:.0f}s elapsed",
-                     progress.completed,
-                     progress.total,
-                     progress.failed,
-                     std::chrono::duration<double>(now - started).count());
+        std::println(
+            stderr,
+            "progress {}/{} units, {} failed, {:.0f}s elapsed",
+            progress.completed,
+            progress.total,
+            progress.failed,
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
     };
 
     auto result = run_batch_index({
@@ -680,10 +673,12 @@ int run_show_symbol(IndexView& view, llvm::StringRef wanted) {
             std::string_view(wanted));
         return 1;
     }
+    int rc = 0;
     for(auto hash: matches) {
         auto info = query.symbol_info(hash);
         if(!info) {
             std::println("{}: no table knows this hash", format_hash(hash));
+            rc = 1;
             continue;
         }
         std::println("symbol {}  kind={}  name={}  args={}  qualified={}  flags={}  form={}",
@@ -749,7 +744,7 @@ int run_show_symbol(IndexView& view, llvm::StringRef wanted) {
                          counts.references);
         }
     }
-    return 0;
+    return rc;
 }
 
 int run_show_file(IndexView& view, llvm::StringRef argument) {
@@ -848,7 +843,8 @@ int run_show_tu(IndexView& view, llvm::StringRef argument) {
         std::println("    {}  {}", format_hash(hash), version_path(fv));
     }
 
-    // The include tree, children under their parent in node order.
+    // The include tree, children under their parent in node order; a
+    // node's line is the directive's line in the file that includes it.
     std::println("  include tree ({} node{}):",
                  manifest.nodes.size(),
                  plural_s(manifest.nodes.size()));
@@ -859,10 +855,14 @@ int run_show_tu(IndexView& view, llvm::StringRef argument) {
     }
     auto print = [&](auto& self, std::uint32_t node, std::size_t depth) -> void {
         auto& entry = manifest.nodes[node];
-        std::println("    {:{}}{}:{}",
+        auto includer = entry.parent == index::no_node
+                            ? llvm::StringRef(path)
+                            : version_path(VersionID{manifest.nodes[entry.parent].file});
+        std::println("    {:{}}{}  included at {}:{}",
                      "",
                      depth * 2,
                      version_path(VersionID{entry.file}),
+                     includer,
                      entry.line);
         for(auto child: children[node]) {
             self(self, child, depth + 1);

@@ -20,6 +20,8 @@ struct BatchProgress {
     std::size_t completed = 0;
     std::size_t total = 0;
     std::size_t failed = 0;
+
+    friend bool operator==(const BatchProgress&, const BatchProgress&) = default;
 };
 
 struct BatchOptions {
@@ -35,8 +37,8 @@ struct BatchOptions {
     /// Path of the clice binary, for spawning workers.
     std::string self_path;
 
-    /// Called on the event loop whenever a unit settles; null for no
-    /// progress reporting.
+    /// Called on the event loop when a round begins or ends and every ten
+    /// seconds in between; null for no progress reporting.
     llvm::function_ref<void(const BatchProgress&)> on_progress;
 };
 

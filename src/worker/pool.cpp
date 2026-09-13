@@ -511,6 +511,13 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     auto& w = workers[index];
     mark_worker_dead(index, stateful, false);
 
+    // Ahead of the anomaly report, which aborts Debug builds.
+    if(w.stderr_tail && !w.stderr_tail->lines.empty()) {
+        LOG_ERROR("Last stderr of crashed worker {}:\n{}",
+                  w.name,
+                  llvm::join(w.stderr_tail->lines, "\n"));
+    }
+
     // POSIX SIGHUP == 1 by value: Windows' <csignal> does not define the
     // macro, and a worker can only receive it on POSIX anyway.
     constexpr int sighup = 1;
@@ -534,12 +541,6 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
                     w.name,
                     exit_code,
                     w.crash_streak);
-    }
-
-    if(w.stderr_tail && !w.stderr_tail->lines.empty()) {
-        LOG_ERROR("Last stderr of crashed worker {}:\n{}",
-                  w.name,
-                  llvm::join(w.stderr_tail->lines, "\n"));
     }
 
     // Relay the tail of the dead worker's own log into the master log so CI,
