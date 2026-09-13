@@ -264,7 +264,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                            const SymbolSearchParams& params) -> RequestResult<SymbolSearchParams> {
         srv.pool.foreground_pulse();
         srv.on_agentic_query();
-        auto max = params.max_results.value_or(100);
+        auto max = static_cast<std::size_t>(std::max(params.max_results.value_or(100), 0));
         auto accept = [&](SymbolKind kind) {
             if(!params.kind_filter) {
                 return true;

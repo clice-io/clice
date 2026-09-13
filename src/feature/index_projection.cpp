@@ -295,7 +295,7 @@ auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls, IndexSymbolResol
             selection = row.extent;
         }
         entries.push_back({
-            {.name = std::move(info->name),
+            {.name = info->display_name(),
              .kind = info->kind,
              .range = row.extent,
              .selection_range = selection},

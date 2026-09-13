@@ -31,12 +31,20 @@ void extract_rows() {
 }
 
 std::optional<index::SymbolRef> resolve(index::SymbolHash hash) {
+    auto to_ref = [&](const index::SymbolIdentity& identity) {
+        return index::SymbolRef{.hash = hash,
+                                .name = std::string(identity.name),
+                                .args = std::string(identity.args),
+                                .parent = identity.parent,
+                                .kind = identity.kind,
+                                .flags = identity.flags};
+    };
     if(auto identity = tu.find_symbol(hash)) {
-        return index::SymbolRef{.name = std::string(identity->name), .kind = identity->kind};
+        return to_ref(*identity);
     }
     auto main_id = tu.path_count() - 1;
     if(auto identity = tu.shard_of(main_id).find_symbol(hash)) {
-        return index::SymbolRef{.name = std::string(identity->name), .kind = identity->kind};
+        return to_ref(*identity);
     }
     return std::nullopt;
 }
@@ -233,7 +241,10 @@ TEST_CASE(CollapsedRowsBecomeSiblings) {
     };
     auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
         switch(hash) {
-            case 1: return index::SymbolRef{.name = "outer", .kind = SymbolKind::Struct};
+            case 1:
+                return index::SymbolRef{.name = "outer",
+                                        .args = "<int>",
+                                        .kind = SymbolKind::Struct};
             case 2: return index::SymbolRef{.name = "first", .kind = SymbolKind::Field};
             case 3: return index::SymbolRef{.name = "second", .kind = SymbolKind::Field};
             default: return std::nullopt;
@@ -242,7 +253,7 @@ TEST_CASE(CollapsedRowsBecomeSiblings) {
 
     auto symbols = feature::index_document_symbols(rows, resolve_synthetic);
     ASSERT_EQ(symbols.size(), std::size_t(1));
-    ASSERT_EQ(symbols[0].name, "outer");
+    ASSERT_EQ(symbols[0].name, "outer<int>");
     ASSERT_EQ(symbols[0].children.size(), std::size_t(2));
     ASSERT_EQ(symbols[0].children[0].children.size(), std::size_t(0));
     ASSERT_EQ(symbols[0].children[1].children.size(), std::size_t(0));

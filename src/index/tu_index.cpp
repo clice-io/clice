@@ -945,10 +945,12 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     if(count == 0) {
         return {};
     }
+    // A parent names another node or the root (~0); consumers index their
+    // per-node tables with it unchecked.
     auto nodes = root[&EnvelopeBlob::nodes];
     for(std::size_t i = 0; i < nodes.size(); i += 1) {
         IncludeNode node = nodes.at(i);
-        if(node.file >= count) {
+        if(node.file >= count || (node.parent != ~0u && node.parent >= nodes.size())) {
             return {};
         }
     }

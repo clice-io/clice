@@ -1677,6 +1677,20 @@ TEST_CASE(FromRejectsReservedParents) {
     ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
 }
 
+TEST_CASE(FromRejectsOutOfRangeParents) {
+    // A node's parent indexes the node table in every consumer; only
+    // another node or the root sentinel is acceptable.
+    MirrorEnvelope honest;
+    honest.paths = {"/proj/main.cpp", "/proj/a.h"};
+    honest.nodes.push_back({.file = 1, .parent = ~0u, .line = 1});
+    honest.nodes.push_back({.file = 1, .parent = 0, .line = 2});
+    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+
+    MirrorEnvelope hostile = honest;
+    hostile.nodes.back().parent = 2;
+    ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+}
+
 TEST_CASE(FromRejectsOutOfRangePathIds) {
     // Structural verification does not constrain field values, and the
     // merge pipeline dereferences every decoded path id against the path

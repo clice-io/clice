@@ -482,6 +482,13 @@ bool validate(BlobView root) {
        to_array_ref(root[&ShardBlob::local_flags]).size() != local_kinds.size()) {
         return false;
     }
+    // A local symbol's parent becomes a DenseSet key in a query's container
+    // walk, where the sentinel values corrupt or assert.
+    for(auto parent: to_array_ref(root[&ShardBlob::local_parents])) {
+        if(reserved_key(parent)) {
+            return false;
+        }
+    }
 
     // Beyond the per-tier column shape, every mask must own at least one
     // stored variant and no bits past the variant table: an ownerless row

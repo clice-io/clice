@@ -597,6 +597,35 @@ TEST_CASE(CorruptBlobRejected) {
     ASSERT_FALSE(index::Shard::from_bytes(data).loaded());
 }
 
+TEST_CASE(ReservedLocalParentRejected) {
+    // A local symbol's parent becomes a DenseSet key in a query's
+    // container walk, so a sentinel value marks a corrupt blob.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, "aaåå");
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+    blob.local_syms = {0};
+    blob.local_names = {"helper"};
+    blob.local_kinds = {0};
+    blob.local_scopes = {1};
+    blob.local_args = {""};
+    blob.local_parents = {0};
+    blob.local_flags = {0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.local_parents = {~std::uint64_t(0)};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
 TEST_CASE(ContentHashMismatchRejected) {
     // Every freshness decision compares the advertised content hash, so
     // content bytes corrupted under an intact structure would keep loading
