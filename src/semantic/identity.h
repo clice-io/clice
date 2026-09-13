@@ -43,11 +43,11 @@ public:
     std::uint64_t module_entity(llvm::StringRef name);
 
     /// The entity of the symbol a declaration is named in — its enclosing
-    /// namespace, class, enum or function, normalized like an occurrence's
-    /// symbol — or 0 at the translation unit and for C-linkage
-    /// declarations, which every namespace shares. This is the chain a
-    /// qualified name is spelled with; unlike the context inside an entity
-    /// it knows no modules.
+    /// named namespace, class, enum or function, normalized like an
+    /// occurrence's symbol — or 0 at the translation unit and for
+    /// C-linkage declarations, which every namespace shares. This is the
+    /// chain a qualified name is spelled with; unlike the context inside
+    /// an entity it skips anonymous namespaces and knows no modules.
     std::uint64_t parent(const clang::NamedDecl* decl);
 
     /// The hash of a type, taken canonically.

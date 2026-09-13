@@ -375,12 +375,16 @@ std::uint64_t EntityTable::parent(const clang::NamedDecl* decl) {
         return 0;
     }
 
-    /// Linkage specifications, export blocks and the nameless contexts
-    /// (requires-expression bodies, blocks) are transparent to a qualified
-    /// name.
+    /// Linkage specifications, export blocks, anonymous namespaces and the
+    /// nameless contexts (requires-expression bodies, blocks) are
+    /// transparent to a qualified name.
     for(const clang::DeclContext* context = context_of(decl);
         context && !context->isTranslationUnit();
         context = context->getParent()) {
+        if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context);
+           ns && ns->isAnonymousNamespace()) {
+            continue;
+        }
         if(auto* named = llvm::dyn_cast<clang::NamedDecl>(context)) {
             return entity(decls::normalize(named));
         }

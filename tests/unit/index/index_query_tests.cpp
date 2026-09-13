@@ -170,6 +170,7 @@ TEST_CASE(QualifiedNames) {
             template <> struct Widget<int> { void paint() {} };
         }
         void versioned() {}
+        namespace { void §(hidden)⟦§(hidden)hidden⟧() {} }
         } }
         template <typename T> void outer::inner::Widget<T>::paint() {}
     )");
@@ -211,6 +212,13 @@ TEST_CASE(QualifiedNames) {
     ASSERT_EQ(versioned.size(), std::size_t(1));
     ASSERT_EQ(query.container_name(versioned.front().symbol.hash), "outer");
     ASSERT_EQ(query.qualified_name(versioned.front().symbol.hash), "outer::versioned");
+    index::SymbolHash hidden = 0;
+    workspace.shards[main_id].lookup(point("hidden"), [&](const index::Occurrence& o) {
+        hidden = o.target;
+        return false;
+    });
+    ASSERT_TRUE(hidden != 0);
+    ASSERT_EQ(query.qualified_name(hidden), "outer::hidden");
 
     // A scoped query keeps the results whose container lists the scope's
     // components in order; a leading `::` pins the container exactly.

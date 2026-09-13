@@ -868,15 +868,8 @@ std::vector<IndexQuery::Located>
             }
         };
 
-    // Only defined symbols are listed. The project table's flag is the
-    // union over every indexed unit, so it spares the shard read that
-    // would otherwise reject each declaration-only match; a session's
-    // own rows cover just its main file, and its headers' definitions are
-    // found through the preamble and PCH overlays by the site check.
     for(auto& [hash, symbol]: workspace.project_index.symbols) {
-        if(index::has_flag(symbol.flags, index::SymbolFlags::HasDefinition)) {
-            consider(hash, symbol.name, symbol.args, symbol.kind);
-        }
+        consider(hash, symbol.name, symbol.args, symbol.kind);
     }
     visit_sessions([&](Fid path_id, const Session&) -> bool {
         sources.projections->projection(path_id)->index->iterate_symbols(
@@ -971,8 +964,7 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
         std::vector<Located> exact_matches;
 
         for(auto& [hash, symbol]: workspace.project_index.symbols) {
-            if(symbol.name.empty() ||
-               !index::has_flag(symbol.flags, index::SymbolFlags::HasDefinition)) {
+            if(symbol.name.empty()) {
                 continue;
             }
             if(qualified ? llvm::StringRef(qualified_name(hash)).lower().find(query_lower) ==

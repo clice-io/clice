@@ -977,6 +977,7 @@ extern "C" { void §(c)c_linkage(); }
 template <typename T> struct §(box)Box { void §(method)method(); };
 template <> struct §(spec)Box<int> { void §(spec_method)method(); };
 void §(fn)fn() { struct §(local)Local {}; }
+namespace { void §(hidden)hidden(); }
 }
 void §(global)global();
 )cpp");
@@ -993,6 +994,7 @@ void §(global)global();
     EXPECT_EQ(parent("spec_method"), entity("spec"));
     EXPECT_NE(entity("spec"), entity("box"));
     EXPECT_EQ(parent("local"), entity("fn"));
+    EXPECT_EQ(parent("hidden"), entity("ns"));
 }
 
 TEST_CASE(ModuleEntity) {

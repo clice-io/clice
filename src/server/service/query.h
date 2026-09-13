@@ -148,9 +148,10 @@ public:
     std::optional<SymbolRef> symbol_info(index::SymbolHash hash) const;
 
     /// The qualified name of the symbol's container ("ns::Outer" for
-    /// `ns::Outer::name`), inline namespaces skipped: the parent chain up
-    /// to the translation unit or to a parent no table knows. Empty at
-    /// the translation unit and for an unknown hash.
+    /// `ns::Outer::name`), inline namespaces skipped (anonymous ones never
+    /// are parents): the parent chain up to the translation unit or to a
+    /// parent no table knows. Empty at the translation unit and for an
+    /// unknown hash.
     std::string container_name(index::SymbolHash hash) const;
 
     /// The symbol's name qualified by its container, a specialization's

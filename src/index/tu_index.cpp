@@ -734,6 +734,11 @@ public:
             }
         };
         for(auto& [fid, index]: file_indices) {
+            // Synthetic buffers have no path of their own and their rows
+            // are never encoded (see the encode loop below).
+            if(fid != unit.main_file() && tree.node_of(fid) == ~0u) {
+                continue;
+            }
             auto path_id = tree.path_id(fid);
             for(auto& [symbol_id, relations]: index.relations) {
                 auto& symbol = symbols[symbol_id];
