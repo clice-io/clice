@@ -452,15 +452,6 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     if(stop_scope.cancelled())
         co_return;
 
-    // The final diagnostic can still sit in the stderr pipe when the exit
-    // is observed; give the drain a bounded moment to reach EOF — a
-    // grandchild holding the pipe open must not stall the respawn.
-    if(auto tail = workers[index].stderr_tail) {
-        for(int attempt = 0; attempt < 20 && !tail->drained; attempt += 1) {
-            co_await kota::sleep(std::chrono::milliseconds(50), loop);
-        }
-    }
-
     // Intentional retirement (scale-down): the slot becomes permanently
     // vacant without crash processing.
     if(!stateful && workers[index].retiring) {
@@ -499,6 +490,16 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         workers[index].state = SlotState::Respawning;
         worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
         co_return;
+    }
+
+    // The final diagnostic can still sit in the stderr pipe when the exit
+    // is observed; give the drain a bounded moment to reach EOF — a
+    // grandchild holding the pipe open must not stall the respawn. The
+    // slot is already dying, so a shutdown meanwhile skips its reaped pid.
+    if(auto tail = workers[index].stderr_tail) {
+        for(int attempt = 0; attempt < 20 && !tail->drained; attempt += 1) {
+            co_await kota::sleep(std::chrono::milliseconds(50), loop);
+        }
     }
 
     if(process_crash(index, stateful, exit_code, exit_signal)) {

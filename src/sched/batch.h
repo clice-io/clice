@@ -55,8 +55,9 @@ struct BatchResult {
 
     std::size_t indexed_tus = 0;
 
-    /// Indexed units without a compile command of their own: headers
-    /// indexed standalone under a borrowed host command.
+    /// Units in the index without a compile command of their own: headers
+    /// indexed standalone under a borrowed host command, by this run or an
+    /// earlier one.
     std::size_t standalone_headers = 0;
     std::size_t shard_count = 0;
     std::uint64_t shard_bytes = 0;

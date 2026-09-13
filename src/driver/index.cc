@@ -179,9 +179,11 @@ int run_indexing(std::string root,
                  result.symbol_count,
                  plural_s(result.symbol_count));
     if(result.standalone_headers != 0) {
-        std::println("{} header{} indexed standalone under a borrowed compile command.",
-                     result.standalone_headers,
-                     plural_s(result.standalone_headers));
+        std::println(
+            "The index holds {} header{} indexed standalone under borrowed compile "
+            "commands.",
+            result.standalone_headers,
+            plural_s(result.standalone_headers));
     }
     if(!result.failed.empty()) {
         std::println("{} translation unit{} failed to index (see the log); the index is partial:",
@@ -844,7 +846,9 @@ int run_show_tu(IndexView& view, llvm::StringRef argument) {
         auto parent = manifest.nodes[i].parent;
         children[parent == index::no_node ? manifest.nodes.size() : parent].push_back(i);
     }
+    std::size_t printed = 0;
     auto print = [&](auto& self, std::uint32_t node, std::size_t depth) -> void {
+        printed += 1;
         auto& entry = manifest.nodes[node];
         auto includer = entry.parent == index::no_node
                             ? llvm::StringRef(path)
@@ -861,6 +865,14 @@ int run_show_tu(IndexView& view, llvm::StringRef argument) {
     };
     for(auto root: children.back()) {
         print(print, root, 0);
+    }
+    // A manifest is accepted with in-range parents only; a cycle hangs off
+    // no root and would otherwise vanish from the listing.
+    if(printed != manifest.nodes.size()) {
+        std::println("    {} node{} unreachable from the root (cyclic parents)",
+                     manifest.nodes.size() - printed,
+                     plural_s(manifest.nodes.size() - printed));
+        return 1;
     }
     return 0;
 }
