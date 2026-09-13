@@ -13,6 +13,6 @@ input_file: workspace_symbol/01_basic_search.cpp
   - { name: "MODE_DEFAULT", kind: Function, file: "${WS}/workspace_symbol/01_basic_search.cpp", range: "23:8-23:20" }
 
 "fast":
-  - { name: "Fast", kind: EnumMember, file: "${WS}/workspace_symbol/01_basic_search.cpp", range: "21:18-21:22" }
+  - { name: "Fast", kind: EnumMember, file: "${WS}/workspace_symbol/01_basic_search.cpp", range: "21:18-21:22", container: "Mode" }
 
 "no_such_symbol": none

@@ -91,7 +91,7 @@ spec:
     - { file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
     - { file: "${WS}/template_navigation.cpp", range: "26:11-26:19" }
   callHierarchy:
-    - { name: "identity", kind: Function, file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
+    - { name: "identity<int>", kind: Function, file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
   incomingCalls:
     - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["26:11-26:22"] }
 
@@ -117,6 +117,6 @@ use_spec:
     - { file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
     - { file: "${WS}/template_navigation.cpp", range: "26:11-26:19" }
   callHierarchy:
-    - { name: "identity", kind: Function, file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
+    - { name: "identity<int>", kind: Function, file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
   incomingCalls:
     - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["26:11-26:22"] }

@@ -32,8 +32,11 @@ std::vector<protocol::Location> locations(llvm::ArrayRef<Site> sites);
 /// table, with the kinds these surfaces display differently overridden.
 protocol::SymbolKind symbol_kind(SymbolKind kind);
 
+/// `container` is the qualified name of the symbol's parent, empty at the
+/// translation unit.
 std::optional<protocol::SymbolInformation> symbol_information(const index::SymbolRef& symbol,
-                                                              const Site& site);
+                                                              const Site& site,
+                                                              llvm::StringRef container);
 
 /// Hierarchy items carry their symbol handle in `data` as a decimal
 /// string: a raw 64-bit integer would be parsed into a double by a

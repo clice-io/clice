@@ -56,6 +56,16 @@ inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
     return buffer;
 }
 
+/// DenseMap reserves two sentinel key values per type, so the in-memory
+/// tables can never hold them and no writer can emit them; wire or disk
+/// bytes carrying one are corrupt, and inserting one would corrupt (or
+/// assert in) the very containers doing the loading.
+template <typename T>
+bool reserved_key(T value) {
+    return value == llvm::DenseMapInfo<T>::getEmptyKey() ||
+           value == llvm::DenseMapInfo<T>::getTombstoneKey();
+}
+
 }  // namespace clice::index
 
 namespace kota::meta {
@@ -108,8 +118,11 @@ namespace clice::index {
 /// file, not that file's includer; v11: file-version stamps are the file
 /// table's corroborated shared stamps, adopted verbatim at load, and the
 /// artifact metadata blobs joined the database; v12: symbol hashes are
-/// entities computed by semantic/identity, not hashes of USRs).
-constexpr inline std::uint32_t index_format_version = 12;
+/// entities computed by semantic/identity; v13: symbol rows carry the bare
+/// name, parent, specialization arguments, flags and canonical file, the
+/// include tree is one node type on the wire and in manifests, and module
+/// names are keyed by their entity).
+constexpr inline std::uint32_t index_format_version = 13;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
@@ -227,6 +240,9 @@ struct ShardBlob {
     std::vector<std::string> local_names;
     std::vector<std::uint8_t> local_kinds;
     std::vector<std::uint8_t> local_scopes;
+    std::vector<std::string> local_args;
+    std::vector<std::uint64_t> local_parents;
+    std::vector<std::uint16_t> local_flags;
 
     /// Occurrences sorted by (begin, end, symbol hash).
     RowRanges occs;

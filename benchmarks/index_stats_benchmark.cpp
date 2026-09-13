@@ -352,20 +352,20 @@ struct Stats {
         }
         auto root_path_id = tu.path_count() - 1;
 
-        // Outgoing edges keyed by parent location index (-1 = TU root).
+        // Outgoing edges keyed by parent node index (-1 = TU root).
         llvm::DenseMap<std::int64_t, std::vector<std::pair<std::uint32_t, std::uint32_t>>> outgoing;
-        for(std::uint32_t i = 0; i < tu.location_count(); i += 1) {
-            auto loc = tu.location(i);
-            std::int64_t parent = loc.include == static_cast<std::uint32_t>(-1)
+        for(std::uint32_t i = 0; i < tu.node_count(); i += 1) {
+            auto node = tu.node(i);
+            std::int64_t parent = node.parent == static_cast<std::uint32_t>(-1)
                                       ? -1
-                                      : static_cast<std::int64_t>(loc.include);
-            outgoing[parent].emplace_back(loc.line, loc.path_id);
+                                      : static_cast<std::int64_t>(node.parent);
+            outgoing[parent].emplace_back(node.line, node.file);
         }
 
         llvm::StringMap<llvm::DenseSet<std::uint64_t>> local;
         for(auto& [parent, list]: outgoing) {
             std::uint32_t parent_path_id =
-                parent < 0 ? root_path_id : tu.location(static_cast<std::uint32_t>(parent)).path_id;
+                parent < 0 ? root_path_id : tu.node(static_cast<std::uint32_t>(parent)).file;
             if(parent_path_id >= tu.path_count()) {
                 continue;
             }

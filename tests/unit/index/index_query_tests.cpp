@@ -87,9 +87,9 @@ void merge_into_workspace() {
 
     index::TUManifest manifest;
     manifest.tu_fv = fv_of[view.path_count() - 1];
-    for(std::uint32_t i = 0; i < view.location_count(); i += 1) {
-        auto location = view.location(i);
-        manifest.nodes.push_back({fv_of[location.path_id], location.include, location.line});
+    for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
+        auto node = view.node(i);
+        manifest.nodes.push_back({fv_of[node.file].raw, node.parent, node.line});
     }
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         manifest.contributions.emplace_back(fv_of[view.section_path(section)],
@@ -161,6 +161,77 @@ TEST_CASE(SearchSymbols) {
     auto results = query.search("Searchable", 10);
     ASSERT_FALSE(results.empty());
     ASSERT_EQ(results.front().symbol.name, "Searchable");
+}
+
+TEST_CASE(QualifiedNames) {
+    add_main("main.cpp", R"(
+        namespace outer { inline namespace v2 { namespace inner {
+            template <typename T> struct Widget { void §(method)⟦§(method)paint⟧(); };
+            template <> struct Widget<int> { void paint() {} };
+        }
+        void versioned() {}
+        namespace { void §(hidden)⟦§(hidden)hidden⟧() {} }
+        } }
+        template <typename T> void outer::inner::Widget<T>::paint() {}
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    index::SymbolHash method = 0;
+    workspace.shards[main_id].lookup(point("method"), [&](const index::Occurrence& o) {
+        method = o.target;
+        return false;
+    });
+    ASSERT_TRUE(method != 0);
+    ASSERT_EQ(query.qualified_name(method), "outer::inner::Widget::paint");
+
+    auto info = query.symbol_info(method);
+    ASSERT_TRUE(info.has_value());
+    ASSERT_EQ(info->name, "paint");
+    ASSERT_EQ(query.qualified_name(info->parent), "outer::inner::Widget");
+
+    // Locating by a qualified name matches the parent chain, a bare one
+    // the symbol's own name; both find the specialization by its
+    // arguments.
+    auto by_qualified = query.locate({.name = "inner::Widget<int>"});
+    ASSERT_EQ(by_qualified.size(), std::size_t(1));
+    ASSERT_EQ(by_qualified.front().symbol.args, "<int>");
+    ASSERT_EQ(query.qualified_name(by_qualified.front().symbol.hash), "outer::inner::Widget<int>");
+    auto by_bare = query.locate({.name = "Widget<int>"});
+    ASSERT_EQ(by_bare.size(), std::size_t(1));
+    ASSERT_EQ(by_bare.front().symbol.hash, by_qualified.front().symbol.hash);
+    ASSERT_TRUE(query.locate({.name = "v2::Widget"}).empty());
+
+    // Search matches the displayed name too, and a member of an inline
+    // namespace reports the enclosing named one as its container.
+    auto searched = query.search("Widget<int>", 10);
+    ASSERT_EQ(searched.size(), std::size_t(1));
+    ASSERT_EQ(searched.front().symbol.hash, by_qualified.front().symbol.hash);
+    ASSERT_EQ(query.container_name(searched.front().symbol.hash), "outer::inner");
+    auto versioned = query.search("versioned", 10);
+    ASSERT_EQ(versioned.size(), std::size_t(1));
+    ASSERT_EQ(query.container_name(versioned.front().symbol.hash), "outer");
+    ASSERT_EQ(query.qualified_name(versioned.front().symbol.hash), "outer::versioned");
+    index::SymbolHash hidden = 0;
+    workspace.shards[main_id].lookup(point("hidden"), [&](const index::Occurrence& o) {
+        hidden = o.target;
+        return false;
+    });
+    ASSERT_TRUE(hidden != 0);
+    ASSERT_EQ(query.qualified_name(hidden), "outer::hidden");
+
+    // A scoped query keeps the results whose container lists the scope's
+    // components in order; a leading `::` pins the container exactly.
+    ASSERT_EQ(query.search("inner::paint", 10).size(), std::size_t(2));
+    ASSERT_EQ(query.search("outer::inner::paint", 10).size(), std::size_t(2));
+    ASSERT_EQ(query.search("outer::paint", 10).size(), std::size_t(2));
+    ASSERT_TRUE(query.search("inner::outer::paint", 10).empty());
+    ASSERT_TRUE(query.search("::inner::paint", 10).empty());
+    ASSERT_EQ(query.search("::outer::versioned", 10).size(), std::size_t(1));
+    ASSERT_EQ(query.search("inner::", 10).size(), std::size_t(4));
+    ASSERT_TRUE(
+        query.search("paint", 10, [](SymbolKind kind) { return kind == SymbolKind::Struct; })
+            .empty());
 }
 
 TEST_CASE(LocalSymbolName) {

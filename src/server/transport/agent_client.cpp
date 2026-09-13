@@ -264,37 +264,32 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                            const SymbolSearchParams& params) -> RequestResult<SymbolSearchParams> {
         srv.pool.foreground_pulse();
         srv.on_agentic_query();
-        auto max = params.max_results.value_or(100);
-        std::string query_lower = llvm::StringRef(params.query).lower();
+        auto max = static_cast<std::size_t>(std::max(params.max_results.value_or(100), 0));
+        auto accept = [&](SymbolKind kind) {
+            if(!params.kind_filter) {
+                return true;
+            }
+            auto kind_name = std::string(symbol_kind_name(kind));
+            return std::ranges::find(*params.kind_filter, kind_name) != params.kind_filter->end();
+        };
 
         SymbolSearchResult result;
-        for(auto& [hash, symbol]: srv.workspace.project_index.symbols) {
-            if(static_cast<int>(result.symbols.size()) >= max)
-                break;
-            if(symbol.name.empty())
-                continue;
-            if(!query_lower.empty() &&
-               llvm::StringRef(symbol.name).lower().find(query_lower) == std::string::npos)
-                continue;
-            if(params.kind_filter.has_value()) {
-                auto kind_name = std::string(symbol_kind_name(symbol.kind));
-                auto& filter = *params.kind_filter;
-                if(std::ranges::find(filter, kind_name) == filter.end())
-                    continue;
-            }
-            auto site = srv.agent_query.first_site(hash, RelationKind::Definition);
-            if(!site)
-                continue;
-            auto lines = agent_lines(*site);
+        for(auto& located: srv.agent_query.search(params.query, max, accept)) {
+            auto lines = agent_lines(located.site);
             if(!lines)
                 continue;
-            result.symbols.push_back(SymbolEntry{
-                .name = symbol.name,
-                .kind = std::string(symbol_kind_name(symbol.kind)),
-                .file = std::string(site->path),
+            SymbolEntry entry{
+                .name = located.symbol.display_name(),
+                .kind = std::string(symbol_kind_name(located.symbol.kind)),
+                .file = std::string(located.site.path),
                 .line = lines->start,
-                .symbol_id = hash,
-            });
+                .symbol_id = located.symbol.hash,
+            };
+            if(auto container = srv.agent_query.container_name(located.symbol.hash);
+               !container.empty()) {
+                entry.container = std::move(container);
+            }
+            result.symbols.push_back(std::move(entry));
         }
 
         co_return result;
@@ -317,7 +312,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 co_return kota::outcome_error(kota::ipc::Error{"definition not found"});
 
             co_return ReadSymbolResult{
-                .name = rs.symbol.name,
+                .name = rs.symbol.display_name(),
                 .kind = std::string(symbol_kind_name(rs.symbol.kind)),
                 .file = std::string(definition->extent.path),
                 .start_line = lines->start,
@@ -359,7 +354,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 if(!lines)
                     continue;
                 result.symbols.push_back(DocumentSymbolEntry{
-                    .name = located.symbol.name,
+                    .name = located.symbol.display_name(),
                     .kind = std::string(symbol_kind_name(located.symbol.kind)),
                     .start_line = lines->start,
                     .end_line = lines->end,
@@ -383,7 +378,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto& rs = *resolved;
 
             DefinitionResult result;
-            result.name = rs.symbol.name;
+            result.name = rs.symbol.display_name();
             result.kind = std::string(symbol_kind_name(rs.symbol.kind));
             result.symbol_id = rs.symbol.hash;
 
@@ -414,7 +409,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto& rs = *resolved;
 
             ReferencesResult result;
-            result.name = rs.symbol.name;
+            result.name = rs.symbol.display_name();
             result.kind = std::string(symbol_kind_name(rs.symbol.kind));
             result.symbol_id = rs.symbol.hash;
 
@@ -456,7 +451,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto root_lines = agent_lines(rs.site);
             CallGraphResult result;
             result.root = CallGraphEntry{
-                .name = rs.symbol.name,
+                .name = rs.symbol.display_name(),
                 .kind = std::string(symbol_kind_name(rs.symbol.kind)),
                 .file = std::string(rs.site.path),
                 .line = root_lines ? root_lines->start : 0,
@@ -472,7 +467,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     if(!lines)
                         continue;
                     into.push_back(CallGraphEntry{
-                        .name = located->symbol.name,
+                        .name = located->symbol.display_name(),
                         .kind = std::string(symbol_kind_name(located->symbol.kind)),
                         .file = std::string(located->site.path),
                         .line = lines->start,
@@ -507,7 +502,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto root_lines = agent_lines(rs.site);
             TypeHierarchyResult result;
             result.root = TypeHierarchyEntry{
-                .name = rs.symbol.name,
+                .name = rs.symbol.display_name(),
                 .kind = std::string(symbol_kind_name(rs.symbol.kind)),
                 .file = std::string(rs.site.path),
                 .line = root_lines ? root_lines->start : 0,
@@ -523,7 +518,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     if(!lines)
                         continue;
                     into.push_back(TypeHierarchyEntry{
-                        .name = located->symbol.name,
+                        .name = located->symbol.display_name(),
                         .kind = std::string(symbol_kind_name(located->symbol.kind)),
                         .file = std::string(located->site.path),
                         .line = lines->start,

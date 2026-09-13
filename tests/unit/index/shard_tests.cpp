@@ -437,10 +437,11 @@ TEST_CASE(LocalSymbolNames) {
 
     auto local = hash_at(shard, point("use"));
     ASSERT_TRUE(local != 0);
-    std::string name;
-    SymbolKind kind;
-    ASSERT_TRUE(shard.find_symbol(local, name, kind));
-    ASSERT_EQ(name, "helper");
+    auto local_identity = shard.find_symbol(local);
+    ASSERT_TRUE(local_identity.has_value());
+    ASSERT_EQ(local_identity->name, "helper");
+    ASSERT_TRUE(index::has_flag(local_identity->flags, index::SymbolFlags::HasDefinition));
+    ASSERT_EQ(local_identity->parent, 0u);
 
     // External names live in the ProjectIndex, never in the blob.
     auto external = [&] {
@@ -456,7 +457,46 @@ TEST_CASE(LocalSymbolNames) {
         return result;
     }();
     ASSERT_TRUE(external != 0);
-    ASSERT_FALSE(shard.find_symbol(external, name, kind));
+    ASSERT_FALSE(shard.find_symbol(external).has_value());
+}
+
+TEST_CASE(MergedLocalFlagsUnion) {
+    // Variants of one file can see different facts of a local symbol (a
+    // definition behind `#ifdef`); the merged table keeps their union in
+    // either merge order.
+    llvm::StringRef content = "static int helper();\n";
+    auto variant = [&](index::SymbolFlags flags) {
+        auto rows = simple_rows({
+            {{11, 17}, 7}
+        });
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::write_shard(
+            rows,
+            [&](index::SymbolHash) -> std::optional<index::SymbolIdentity> {
+                return index::SymbolIdentity{.name = "helper",
+                                             .kind = SymbolKind::Function,
+                                             .scope = index::SymbolScope::TULocal,
+                                             .flags = flags};
+            },
+            content,
+            os);
+        return make_shard(bytes);
+    };
+    auto defining = variant(index::SymbolFlags::HasDefinition);
+    auto declaring = variant(index::SymbolFlags::None);
+
+    for(auto [first, second]: {
+            std::pair{&defining,  &declaring},
+            std::pair{&declaring, &defining }
+    }) {
+        std::vector<index::Shard> fresh;
+        fresh.push_back(make_shard(second->bytes()));
+        auto merged = merge(*first, first->variants(), std::move(fresh));
+        auto identity = merged.find_symbol(7);
+        ASSERT_TRUE(identity.has_value());
+        ASSERT_TRUE(index::has_flag(identity->flags, index::SymbolFlags::HasDefinition));
+    }
 }
 
 TEST_CASE(MergedLocalNames) {
@@ -476,10 +516,9 @@ TEST_CASE(MergedLocalNames) {
 
     auto local = hash_at(shard, point("local"));
     ASSERT_TRUE(local != 0);
-    std::string name;
-    SymbolKind kind;
-    ASSERT_TRUE(shard.find_symbol(local, name, kind));
-    ASSERT_EQ(name, "helper");
+    auto local_identity = shard.find_symbol(local);
+    ASSERT_TRUE(local_identity.has_value());
+    ASSERT_EQ(local_identity->name, "helper");
 }
 
 TEST_CASE(WideSymbolIds) {
@@ -504,9 +543,7 @@ TEST_CASE(UnloadedShardNoops) {
     index::Shard shard;
     shard.lookup(0, [&](const index::Occurrence&) { return true; });
     shard.lookup(1, RelationKind::Reference, [&](const index::Relation&) { return true; });
-    std::string name;
-    SymbolKind kind;
-    ASSERT_FALSE(shard.find_symbol(1, name, kind));
+    ASSERT_FALSE(shard.find_symbol(1).has_value());
     ASSERT_TRUE(shard.content().empty());
     ASSERT_TRUE(shard.line_starts().empty());
 }
@@ -558,6 +595,35 @@ TEST_CASE(CorruptBlobRejected) {
     ASSERT_TRUE(stale.has_value());
     auto data = llvm::StringRef(reinterpret_cast<const char*>(stale->data()), stale->size());
     ASSERT_FALSE(index::Shard::from_bytes(data).loaded());
+}
+
+TEST_CASE(ReservedLocalParentRejected) {
+    // A local symbol's parent becomes a DenseSet key in a query's
+    // container walk, so a sentinel value marks a corrupt blob.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, "aaåå");
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+    blob.local_syms = {0};
+    blob.local_names = {"helper"};
+    blob.local_kinds = {0};
+    blob.local_scopes = {1};
+    blob.local_args = {""};
+    blob.local_parents = {0};
+    blob.local_flags = {0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.local_parents = {~std::uint64_t(0)};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
 TEST_CASE(ContentHashMismatchRejected) {

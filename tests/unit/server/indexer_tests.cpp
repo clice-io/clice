@@ -219,8 +219,12 @@ IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string
 std::string strip_path_hashes(llvm::StringRef data) {
     struct SymbolMirror {
         std::string name;
+        std::string args;
+        std::uint64_t parent = 0;
         std::uint8_t kind = 0;
         std::uint8_t scope = 0;
+        std::uint16_t flags = 0;
+        std::uint32_t file = index::no_file;
         std::vector<std::byte> reference_files;
     };
 
@@ -235,7 +239,7 @@ std::string strip_path_hashes(llvm::StringRef data) {
         std::int64_t built_at = 0;
         std::vector<std::string> paths;
         std::vector<std::uint64_t> path_hashes;
-        std::vector<index::IncludeLocation> locations;
+        std::vector<index::IncludeNode> nodes;
         llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
         std::vector<SectionMirror> sections;
     };
@@ -246,15 +250,19 @@ std::string strip_path_hashes(llvm::StringRef data) {
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         mirror.paths.emplace_back(view.path(i));
     }
-    for(std::uint32_t i = 0; i < view.location_count(); i += 1) {
-        mirror.locations.push_back(view.location(i));
+    for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
+        mirror.nodes.push_back(view.node(i));
     }
     view.iterate_symbols(
         [&](index::SymbolHash hash, const index::SymbolIdentity& id, llvm::StringRef bitmap) {
             auto& symbol = mirror.symbols[hash];
             symbol.name = std::string(id.name);
+            symbol.args = std::string(id.args);
+            symbol.parent = id.parent;
             symbol.kind = id.kind.value();
             symbol.scope = static_cast<std::uint8_t>(id.scope);
+            symbol.flags = static_cast<std::uint16_t>(id.flags);
+            symbol.file = id.file;
             const auto* begin = reinterpret_cast<const std::byte*>(bitmap.data());
             symbol.reference_files.assign(begin, begin + bitmap.size());
             return true;
@@ -1630,7 +1638,7 @@ TEST_CASE(LoadRequeuesStaleManifest) {
         ASSERT_TRUE(header_fv.valid());
         index::TUManifest stale;
         stale.tu_fv = header_fv;
-        stale.nodes.push_back({.fv = VersionID{9999}});
+        stale.nodes.push_back({.file = 9999});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(stale, os);
@@ -1690,7 +1698,7 @@ TEST_CASE(DeferredSweepYieldsToFreshWrite) {
         // TU's shard turns orphan, deferred too.
         index::TUManifest stale;
         stale.tu_fv = VersionID{999999};
-        stale.nodes.push_back({.fv = VersionID{9999}});
+        stale.nodes.push_back({.file = 9999});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(stale, os);

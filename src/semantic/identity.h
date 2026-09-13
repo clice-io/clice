@@ -39,6 +39,17 @@ public:
     /// command-line macro has no file and is its name alone.
     std::uint64_t entity(llvm::StringRef name, clang::SourceLocation definition);
 
+    /// The entity of a named module, from its full name.
+    std::uint64_t module_entity(llvm::StringRef name);
+
+    /// The entity of the symbol a declaration is named in — its enclosing
+    /// named namespace, class, enum or function, normalized like an
+    /// occurrence's symbol — or 0 at the translation unit and for
+    /// C-linkage declarations, which every namespace shares. This is the
+    /// chain a qualified name is spelled with; unlike the context inside
+    /// an entity it skips anonymous namespaces and knows no modules.
+    std::uint64_t parent(const clang::NamedDecl* decl);
+
     /// The hash of a type, taken canonically.
     std::uint64_t type_hash(clang::QualType type);
 

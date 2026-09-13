@@ -147,6 +147,18 @@ public:
     /// (TU-local names live only there).
     std::optional<SymbolRef> symbol_info(index::SymbolHash hash) const;
 
+    /// The qualified name of the symbol's container ("ns::Outer" for
+    /// `ns::Outer::name`), inline namespaces skipped (anonymous ones never
+    /// are parents): the parent chain up to the translation unit or to a
+    /// parent no table knows. Empty at the translation unit and for an
+    /// unknown hash.
+    std::string container_name(index::SymbolHash hash) const;
+
+    /// The symbol's name qualified by its container, a specialization's
+    /// arguments included ("ns::Outer::name<int>"). Empty for an unknown
+    /// hash.
+    std::string qualified_name(index::SymbolHash hash) const;
+
     /// Every site carrying a relation of `kind` for the symbol, across all
     /// serving sources, deduplicated — a row present in both a disk shard
     /// and an overlay comes out identical.
@@ -226,11 +238,16 @@ public:
 
     std::optional<Located> resolve(index::SymbolHash hash) const;
 
-    /// Symbols whose name contains `query` (case-insensitive), best
-    /// matches first — exact name, then prefix, then substring, ties by
-    /// name — cut to `limit` after ranking. Only symbols with a definition
-    /// site are listed.
-    std::vector<Located> search(llvm::StringRef query, std::size_t limit) const;
+    /// Symbols whose displayed name contains `query` (case-insensitive),
+    /// best matches first — exact name, then prefix, then substring, ties
+    /// by name — cut to `limit` after ranking. A query `ns::name` keeps
+    /// the results whose container has `ns` among its components, in
+    /// order for a longer scope (`::ns::name` requires exactly `ns`);
+    /// `accept` narrows the kinds. Only symbols with a definition site are
+    /// listed.
+    std::vector<Located> search(llvm::StringRef query,
+                                std::size_t limit,
+                                llvm::function_ref<bool(SymbolKind)> accept = {}) const;
 
     /// The symbols a locator names; several when a name is ambiguous.
     std::vector<Located> locate(const SymbolLocator& locator) const;

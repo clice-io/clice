@@ -633,10 +633,10 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     }
 
     manifest.tu_fv = fv_of[main_local_id];
-    manifest.nodes.reserve(view.location_count());
-    for(std::uint32_t i = 0; i < view.location_count(); i += 1) {
-        auto location = view.location(i);
-        manifest.nodes.push_back({fv_of[location.path_id], location.include, location.line});
+    manifest.nodes.reserve(view.node_count());
+    for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
+        auto node = view.node(i);
+        manifest.nodes.push_back({fv_of[node.file].raw, node.parent, node.line});
     }
     for(auto [local_id, rows_hash]: section_contributions) {
         manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
@@ -1754,7 +1754,7 @@ bool IndexStore::need_update(llvm::StringRef file_path) {
         return true;
     }
     for(auto& node: manifest.nodes) {
-        if(file_version_stale(node.fv)) {
+        if(file_version_stale(VersionID{node.file})) {
             return true;
         }
     }

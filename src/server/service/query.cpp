@@ -126,6 +126,28 @@ void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
     }
 }
 
+SymbolRef to_ref(index::SymbolHash hash, const index::Symbol& symbol) {
+    return {
+        .hash = hash,
+        .name = symbol.name,
+        .args = symbol.args,
+        .parent = symbol.parent,
+        .kind = symbol.kind,
+        .flags = symbol.flags,
+    };
+}
+
+/// Name matching for searches: a symbol is looked up by its displayed
+/// name, so a specialization answers to `Box<int>` as well as `Box`.
+/// Most symbols carry no arguments and match on the stored name alone.
+bool name_contains(const index::Symbol& symbol, llvm::StringRef query_lower) {
+    if(symbol.args.empty()) {
+        return llvm::StringRef(symbol.name).lower().find(query_lower) != std::string::npos;
+    }
+    return llvm::StringRef(symbol.name + symbol.args).lower().find(query_lower) !=
+           std::string::npos;
+}
+
 bool is_indexable_kind(SymbolKind kind) {
     return kind == SymbolKind::Namespace || kind == SymbolKind::Class ||
            kind == SymbolKind::Struct || kind == SymbolKind::Union || kind == SymbolKind::Enum ||
@@ -469,14 +491,21 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
 
 std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
     std::optional<SymbolRef> found;
-    auto adopt = [&](llvm::StringRef name, SymbolKind kind) {
-        found = SymbolRef{.hash = hash, .name = std::string(name), .kind = kind};
+    auto adopt = [&](const index::SymbolIdentity& identity) {
+        found = SymbolRef{
+            .hash = hash,
+            .name = std::string(identity.name),
+            .args = std::string(identity.args),
+            .parent = identity.parent,
+            .kind = identity.kind,
+            .flags = identity.flags,
+        };
     };
 
     // Open sessions first: they hold every symbol of their unsaved buffers.
     visit_sessions([&](Fid path_id, const Session&) -> bool {
         if(auto identity = sources.projections->projection(path_id)->index->find_symbol(hash)) {
-            adopt(identity->name, identity->kind);
+            adopt(*identity);
             return false;
         }
         return true;
@@ -487,15 +516,14 @@ std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
 
     auto it = workspace.project_index.symbols.find(hash);
     if(it != workspace.project_index.symbols.end()) {
-        adopt(it->second.name, it->second.kind);
-        return found;
+        return to_ref(hash, it->second);
     }
 
     // A symbol that exists only under an open buffer's context (or in
     // headers no disk TU has been indexed with) is in no disk table.
     visit_overlays([&](const index::TUIndex& state) {
         if(auto identity = state.find_symbol(hash)) {
-            adopt(identity->name, identity->kind);
+            adopt(*identity);
         }
         return !found;
     });
@@ -505,15 +533,54 @@ std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
 
     // Each shard stores exactly the local symbols its occurrences
     // reference, so a TU-local name is in the shard that produced it.
-    std::string name;
-    SymbolKind kind;
     for(auto& [path_id, shard]: workspace.shards) {
-        if(shard.find_symbol(hash, name, kind)) {
-            adopt(name, kind);
+        if(auto identity = shard.find_symbol(hash)) {
+            adopt(*identity);
             return found;
         }
     }
     return std::nullopt;
+}
+
+std::string IndexQuery::container_name(index::SymbolHash hash) const {
+    auto symbol = symbol_info(hash);
+    if(!symbol) {
+        return {};
+    }
+    llvm::SmallVector<std::string, 4> scopes;
+    // A parent chain follows declaration contexts, so it is acyclic as
+    // built; the guard keeps a corrupted parent column from spinning.
+    llvm::DenseSet<index::SymbolHash> visited{hash};
+    for(auto parent = symbol->parent; parent != 0 && visited.insert(parent).second;) {
+        auto scope = symbol_info(parent);
+        if(!scope) {
+            break;
+        }
+        if(!index::has_flag(scope->flags, index::SymbolFlags::InlineNamespace)) {
+            scopes.push_back(scope->display_name());
+        }
+        parent = scope->parent;
+    }
+    std::string result;
+    for(auto& scope: llvm::reverse(scopes)) {
+        if(!result.empty()) {
+            result += "::";
+        }
+        result += scope;
+    }
+    return result;
+}
+
+std::string IndexQuery::qualified_name(index::SymbolHash hash) const {
+    auto symbol = symbol_info(hash);
+    if(!symbol) {
+        return {};
+    }
+    auto container = container_name(hash);
+    if(container.empty()) {
+        return symbol->display_name();
+    }
+    return container + "::" + symbol->display_name();
 }
 
 std::vector<Site> IndexQuery::sites(index::SymbolHash hash, RelationKind kind) const {
@@ -743,21 +810,35 @@ std::optional<IndexQuery::Located> IndexQuery::resolve(index::SymbolHash hash) c
     return Located{.symbol = std::move(*info), .site = *site};
 }
 
-std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
-                                                    std::size_t limit) const {
+std::vector<IndexQuery::Located>
+    IndexQuery::search(llvm::StringRef query,
+                       std::size_t limit,
+                       llvm::function_ref<bool(SymbolKind)> accept) const {
     ScopedTimer timer;
+
+    // `ns::name` names a scope and a name: the name part matches like a
+    // bare query and the scope part selects containers (`ns::` alone
+    // lists a scope); a leading `::` pins the container exactly.
+    llvm::StringRef pattern = query;
+    std::optional<llvm::StringRef> qualifier;
+    bool absolute = false;
+    if(auto colons = query.rfind("::"); colons != llvm::StringRef::npos) {
+        qualifier = query.take_front(colons);
+        pattern = query.drop_front(colons + 2);
+        absolute = qualifier->consume_front("::");
+    }
 
     // Exact name, prefix, substring — ranked before the cut, so a weak
     // match never displaces the exact one behind an arbitrary table order.
     auto score = [&](llvm::StringRef name) -> int {
-        if(query.empty()) {
+        if(pattern.empty()) {
             return 0;
         }
-        auto at = name.find_insensitive(query);
+        auto at = name.find_insensitive(pattern);
         if(at == llvm::StringRef::npos) {
             return -1;
         }
-        if(name.size() == query.size()) {
+        if(name.size() == pattern.size()) {
             return 0;
         }
         return at == 0 ? 1 : 2;
@@ -765,39 +846,71 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
 
     struct Candidate {
         int score;
-        llvm::StringRef name;
+        std::string name;
         index::SymbolHash hash;
-        SymbolKind kind;
     };
 
     std::vector<Candidate> candidates;
     llvm::DenseSet<index::SymbolHash> seen;
-    auto consider = [&](index::SymbolHash hash, llvm::StringRef name, SymbolKind kind) {
-        if(!is_indexable_kind(kind) || name.empty() || !seen.insert(hash).second) {
-            return;
-        }
-        auto rank = score(name);
-        if(rank >= 0) {
-            candidates.push_back({.score = rank, .name = name, .hash = hash, .kind = kind});
-        }
-    };
+    // Matched and ranked by the displayed name, so a specialization
+    // answers to `Box<int>` as well as `Box`.
+    auto consider =
+        [&](index::SymbolHash hash, llvm::StringRef name, llvm::StringRef args, SymbolKind kind) {
+            if(!is_indexable_kind(kind) || name.empty() || (accept && !accept(kind)) ||
+               !seen.insert(hash).second) {
+                return;
+            }
+            llvm::SmallString<64> display(name);
+            display += args;
+            auto rank = score(display);
+            if(rank >= 0) {
+                candidates.push_back({.score = rank, .name = std::string(display), .hash = hash});
+            }
+        };
 
     for(auto& [hash, symbol]: workspace.project_index.symbols) {
-        consider(hash, symbol.name, symbol.kind);
+        consider(hash, symbol.name, symbol.args, symbol.kind);
     }
     visit_sessions([&](Fid path_id, const Session&) -> bool {
         sources.projections->projection(path_id)->index->iterate_symbols(
             [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, llvm::StringRef) {
-                consider(hash, symbol.name, symbol.kind);
+                consider(hash, symbol.name, symbol.args, symbol.kind);
                 return true;
             });
         return true;
     });
 
+    // The scope's components must appear in the container's, in order —
+    // `inner::paint` finds `outer::inner::Widget::paint` — and match it
+    // exactly when the query was absolute.
+    auto in_scope = [&](index::SymbolHash hash) {
+        if(!qualifier) {
+            return true;
+        }
+        auto container = container_name(hash);
+        llvm::SmallVector<llvm::StringRef> wanted;
+        llvm::StringRef(*qualifier).split(wanted, "::", -1, false);
+        llvm::SmallVector<llvm::StringRef> have;
+        llvm::StringRef(container).split(have, "::", -1, false);
+        if(absolute && wanted.size() != have.size()) {
+            return false;
+        }
+        std::size_t next = 0;
+        for(auto component: have) {
+            if(next < wanted.size() && component.equals_insensitive(wanted[next])) {
+                next += 1;
+            } else if(absolute) {
+                return false;
+            }
+        }
+        return next == wanted.size();
+    };
+
     // Ranked lazily through a heap: a broad query matches most of the
     // table, and the cut should cost its `limit` results, not a sort of
-    // every match. A candidate without a definition site cedes its slot
-    // to the next one, which a top-k cut ahead of the site check could not.
+    // every match. A candidate outside the requested scope or without a
+    // definition site cedes its slot to the next one, which a top-k cut
+    // ahead of those checks could not.
     auto worse = [](const Candidate& lhs, const Candidate& rhs) {
         return std::tie(lhs.score, lhs.name, lhs.hash) > std::tie(rhs.score, rhs.name, rhs.hash);
     };
@@ -808,13 +921,11 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
         std::ranges::pop_heap(candidates, worse);
         auto candidate = candidates.back();
         candidates.pop_back();
+        if(!in_scope(candidate.hash)) {
+            continue;
+        }
         if(auto site = first_site(candidate.hash, RelationKind::Definition)) {
-            results.push_back({
-                .symbol = {.hash = candidate.hash,
-                           .name = std::string(candidate.name),
-                           .kind = candidate.kind},
-                .site = *site,
-            });
+            results.push_back({.symbol = *symbol_info(candidate.hash), .site = *site});
         }
     }
     // The query is arbitrary LSP input; its length is logged instead of its
@@ -846,14 +957,22 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
 
     if(!locator.name.empty()) {
         std::string query_lower = locator.name.lower();
+        // A qualified query ("ns::Foo") is matched against the qualified
+        // name, a bare one against the symbol's own name.
+        bool qualified = locator.name.contains("::");
         std::vector<Located> candidates;
         std::vector<Located> exact_matches;
 
         for(auto& [hash, symbol]: workspace.project_index.symbols) {
-            if(symbol.name.empty() ||
-               llvm::StringRef(symbol.name).lower().find(query_lower) == std::string::npos) {
+            if(symbol.name.empty()) {
                 continue;
             }
+            if(qualified ? llvm::StringRef(qualified_name(hash)).lower().find(query_lower) ==
+                               std::string::npos
+                         : !name_contains(symbol, query_lower)) {
+                continue;
+            }
+            auto name = qualified ? qualified_name(hash) : symbol.name + symbol.args;
             auto site = first_site(hash, RelationKind::Definition);
             if(!site) {
                 continue;
@@ -869,12 +988,9 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
                 }
             }
 
-            bool is_exact = llvm::StringRef(symbol.name).lower() == query_lower ||
-                            llvm::StringRef(symbol.name).ends_with(("::" + locator.name).str());
-            Located located{
-                .symbol = {.hash = hash, .name = symbol.name, .kind = symbol.kind},
-                .site = *site,
-            };
+            bool is_exact = llvm::StringRef(name).lower() == query_lower ||
+                            llvm::StringRef(name).ends_with(("::" + locator.name).str());
+            Located located{.symbol = to_ref(hash, symbol), .site = *site};
             if(is_exact)
                 exact_matches.push_back(std::move(located));
             else
@@ -907,11 +1023,11 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator
                 auto position = serving.coords.to_position(r.range.begin);
                 if(position && position->line == target_line) {
                     found = Located{
-                        .symbol = {.hash = hash, .name = symbol.name, .kind = symbol.kind},
+                        .symbol = to_ref(hash, symbol),
                         .site = {.file = *path_id,
-                                   .path = path,
-                                   .range = r.range,
-                                   .coords = serving.coords},
+                                 .path = path,
+                                 .range = r.range,
+                                 .coords = serving.coords},
                     };
                     return false;
                 }
@@ -939,7 +1055,7 @@ std::vector<IndexQuery::Located> IndexQuery::definitions_in(Fid file) const {
         }
         serving.rows->lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
             result.push_back({
-                .symbol = {.hash = hash, .name = symbol.name, .kind = symbol.kind},
+                .symbol = to_ref(hash, symbol),
                 .site = {.file = file, .path = path, .range = r.range, .coords = serving.coords},
             });
             return true;
@@ -979,13 +1095,13 @@ std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& 
         bool root_is_document = is_document(manifest.tu_fv);
         llvm::SmallVector<bool> document_nodes(manifest.nodes.size());
         for(auto [i, node]: llvm::enumerate(manifest.nodes)) {
-            document_nodes[i] = is_document(node.fv);
+            document_nodes[i] = is_document(VersionID{node.file});
         }
         for(const auto& node: manifest.nodes) {
             if(node.parent == ~0u ? !root_is_document : !document_nodes[node.parent]) {
                 continue;
             }
-            const auto* target = version_of(node.fv);
+            const auto* target = version_of(VersionID{node.file});
             if(!target) {
                 continue;
             }

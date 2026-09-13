@@ -75,14 +75,133 @@ TEST_CASE(MergeCollectsExternalSymbols) {
     ASSERT_EQ(find_symbol(project, "local_fn"), 0u);
 }
 
+TEST_CASE(MergeUnionsSymbolFacts) {
+    add_file("shared.h", R"(
+        namespace lib { int shared_fn(); }
+    )");
+    add_main("user.cpp", R"(
+        #include "shared.h"
+        int use() { return lib::shared_fn(); }
+    )");
+    ASSERT_TRUE(compile());
+
+    clice::FileTable pool;
+    index::ProjectIndex project;
+    auto view = build_view();
+    ASSERT_TRUE(view.loaded());
+    ASSERT_TRUE(project.merge(view, intern_paths(view, pool)));
+
+    // A declaration-only unit places the symbol at its declaring header.
+    auto hash = find_symbol(project, "shared_fn");
+    ASSERT_TRUE(hash != 0);
+    auto& declared = project.symbols[hash];
+    ASSERT_EQ(declared.parent, find_symbol(project, "lib"));
+    ASSERT_FALSE(index::has_flag(declared.flags, index::SymbolFlags::HasDefinition));
+    auto header = pool.find(view.path(0).ends_with("shared.h") ? view.path(0) : view.path(1));
+    ASSERT_TRUE(header.has_value());
+    ASSERT_EQ(declared.file, header->raw);
+
+    // The defining unit moves the canonical file to its definition and
+    // adds its bits to the union.
+    Tester definer;
+    definer.add_file("shared.h", R"(
+        namespace lib { int shared_fn(); }
+    )");
+    definer.add_main("lib.cpp", R"(
+        #include "shared.h"
+        [[deprecated]] int lib::shared_fn() { return 1; }
+    )");
+    ASSERT_TRUE(definer.compile());
+    std::string definer_wire = index::build_tu_index(*definer.unit);
+    auto definer_view = index::TUIndex::from_bytes(definer_wire);
+    ASSERT_TRUE(definer_view.loaded());
+    ASSERT_TRUE(project.merge(definer_view, intern_paths(definer_view, pool)));
+
+    auto& defined = project.symbols[hash];
+    ASSERT_TRUE(index::has_flag(defined.flags, index::SymbolFlags::HasDefinition));
+    ASSERT_TRUE(index::has_flag(defined.flags, index::SymbolFlags::Deprecated));
+    auto definition = pool.find(definer_view.path(definer_view.path_count() - 1));
+    ASSERT_TRUE(definition.has_value());
+    ASSERT_EQ(defined.file, definition->raw);
+    ASSERT_EQ(defined.reference_files.cardinality(), 3u);
+
+    // The table never retracts a unit's report, so a definition that
+    // moved to another unit must still win the file over the old bit.
+    Tester mover;
+    mover.add_file("shared.h", R"(
+        namespace lib { int shared_fn(); }
+    )");
+    mover.add_main("moved.cpp", R"(
+        #include "shared.h"
+        int lib::shared_fn() { return 2; }
+    )");
+    ASSERT_TRUE(mover.compile());
+    std::string mover_wire = index::build_tu_index(*mover.unit);
+    auto mover_view = index::TUIndex::from_bytes(mover_wire);
+    ASSERT_TRUE(mover_view.loaded());
+    ASSERT_TRUE(project.merge(mover_view, intern_paths(mover_view, pool)));
+    auto moved = pool.find(mover_view.path(mover_view.path_count() - 1));
+    ASSERT_TRUE(moved.has_value());
+    ASSERT_EQ(project.symbols[hash].file, moved->raw);
+}
+
+TEST_CASE(MergePicksOneSpelling) {
+    // Two units spelling one specialization differently must leave the
+    // same name in the table whichever merges first.
+    struct SymbolMirror {
+        std::string name;
+        std::string args;
+        std::uint64_t parent = 0;
+        std::uint8_t kind = 0;
+        std::uint8_t scope = 0;
+        std::uint16_t flags = 0;
+        std::uint32_t file = index::no_file;
+        std::vector<std::byte> reference_files;
+    };
+
+    struct EnvelopePrefixMirror {
+        std::uint32_t format_version = index::index_format_version;
+        std::int64_t built_at = 0;
+        std::vector<std::string> paths = {"/proj/main.cpp"};
+        std::vector<std::uint64_t> path_hashes;
+        std::vector<index::IncludeNode> nodes;
+        llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
+    };
+
+    EnvelopePrefixMirror spelled_int;
+    spelled_int.symbols[42] = {.name = "X", .args = "<int>"};
+    EnvelopePrefixMirror spelled_signed;
+    spelled_signed.symbols[42] = {.name = "X", .args = "<signed int>"};
+    auto int_bytes = kota::codec::fbs::to_bytes(spelled_int);
+    auto signed_bytes = kota::codec::fbs::to_bytes(spelled_signed);
+    ASSERT_TRUE(int_bytes.has_value() && signed_bytes.has_value());
+
+    clice::FileTable pool;
+    for(auto [first, second]: {
+            std::pair{&*int_bytes,    &*signed_bytes},
+            std::pair{&*signed_bytes, &*int_bytes   }
+    }) {
+        index::ProjectIndex project;
+        auto first_view = index::TUIndex::from_bytes(bytes_of(*first));
+        auto second_view = index::TUIndex::from_bytes(bytes_of(*second));
+        ASSERT_TRUE(project.merge(first_view, intern_paths(first_view, pool)));
+        ASSERT_TRUE(project.merge(second_view, intern_paths(second_view, pool)));
+        ASSERT_EQ(project.symbols[42].args, "<int>");
+    }
+}
+
 TEST_CASE(MergeRejectsBadBitmap) {
     // Field order MUST mirror the envelope layout (tu_index.cpp) up to
     // `symbols`: the builder always writes valid bitmap images, so a
     // malformed one has to be planted by hand.
     struct SymbolMirror {
         std::string name;
+        std::string args;
+        std::uint64_t parent = 0;
         std::uint8_t kind = 0;
         std::uint8_t scope = 0;
+        std::uint16_t flags = 0;
+        std::uint32_t file = index::no_file;
         std::vector<std::byte> reference_files;
     };
 
@@ -91,7 +210,7 @@ TEST_CASE(MergeRejectsBadBitmap) {
         std::int64_t built_at = 0;
         std::vector<std::string> paths;
         std::vector<std::uint64_t> path_hashes;
-        std::vector<index::IncludeLocation> locations;
+        std::vector<index::IncludeNode> nodes;
         llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
     };
 

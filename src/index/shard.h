@@ -120,8 +120,8 @@ public:
     /// order, rows in (kind, range, payload) order within each group.
     void for_each_relation(llvm::function_ref<bool(SymbolHash, const Relation&)> callback) const;
 
-    /// Look up a local symbol's name and kind.
-    bool find_symbol(SymbolHash hash, std::string& name, SymbolKind& kind) const;
+    /// Look up a local symbol's identity; the strings borrow the blob.
+    std::optional<SymbolIdentity> find_symbol(SymbolHash hash) const;
 
     /// Line start offsets for position mapping, materialized from the
     /// blob's line-length columns on first use.

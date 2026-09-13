@@ -363,6 +363,20 @@ std::uint64_t CompilationUnitRef::entity(const clang::MacroInfo* macro) {
     return self->entities->entity(token_spelling(location), location);
 }
 
+std::uint64_t CompilationUnitRef::module_entity(llvm::StringRef name) {
+    if(!self->entities) {
+        self->entities = std::make_unique<EntityTable>(*this);
+    }
+    return self->entities->module_entity(name);
+}
+
+std::uint64_t CompilationUnitRef::parent(const clang::NamedDecl* decl) {
+    if(!self->entities) {
+        self->entities = std::make_unique<EntityTable>(*this);
+    }
+    return self->entities->parent(decl);
+}
+
 clang::TranslationUnitDecl* CompilationUnitRef::tu() {
     return self->instance->getASTContext().getTranslationUnitDecl();
 }
