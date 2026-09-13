@@ -19,6 +19,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 
 #ifdef _WIN32
@@ -52,13 +53,25 @@ std::optional<int> acquire_writer_lock(llvm::StringRef library) {
         return std::nullopt;
     }
     if(llvm::sys::fs::tryLockFile(lock_fd)) {
+        // The holder stamped its pid below; a lock a Windows holder keeps
+        // exclusive, or one from an older build, reads as nobody.
+        std::string holder;
+        if(auto stamped = fs::read(lock_path); stamped && !stamped->empty()) {
+            holder = std::format(" (pid {})", llvm::StringRef(*stamped).trim());
+        }
         LOG_WARN(
-            "Another clice process is writing the index cache at {}; "
+            "Another clice process{} is writing the index cache at {}; "
             "index persistence is disabled for this process",
+            holder,
             library);
         llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
         return std::nullopt;
     }
+    llvm::sys::fs::resize_file(lock_fd, 0);
+    llvm::raw_fd_ostream stamp(lock_fd, /*shouldClose=*/false);
+    stamp.seek(0);
+    stamp << llvm::sys::Process::getProcessId() << '\n';
+    stamp.flush();
     return lock_fd;
 }
 

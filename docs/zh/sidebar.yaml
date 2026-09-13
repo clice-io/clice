@@ -26,6 +26,7 @@ cli:
   label: 命令行
   items:
     - overview
+    - index
     - lint
 
 design:

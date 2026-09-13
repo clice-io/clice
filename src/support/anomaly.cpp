@@ -50,6 +50,9 @@ void trap(AnomalyId id) {
     // integration tests that intentionally trigger anomalies and verify the
     // Release behavior (report and continue).
     if(!trap_disabled_by_env()) {
+        LOG_ERROR(
+            "Aborting on the anomaly above (Debug build); "
+            "set CLICE_ANOMALY_NO_TRAP=1 to report it and continue instead");
         spdlog::shutdown();
         std::abort();
     }

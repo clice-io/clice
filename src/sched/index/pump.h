@@ -173,8 +173,8 @@ public:
     /// dead IPC path — with no retry pending. Their rows are missing or
     /// stale; a later successful pass removes them again. The one-shot
     /// `clice index` reports a partial build from this.
-    std::size_t failed_files() const {
-        return failed_ids.size();
+    const llvm::DenseSet<Fid>& failed() const {
+        return failed_ids;
     }
 
     /// TUs actually indexed and merged this session — dispatched claims the

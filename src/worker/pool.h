@@ -57,6 +57,22 @@ struct WorkerCrashInfo {
     llvm::SmallVector<std::uint32_t> lost_documents;
 };
 
+/// The last lines a worker wrote to stderr, kept for its crash report:
+/// the fatal diagnosis (an LLVM ERROR, an assertion) lands there seconds
+/// before the exit is observed, far from the report in the log.
+struct StderrTail {
+    constexpr static std::size_t capacity = 8;
+
+    llvm::SmallVector<std::string, capacity> lines;
+
+    void add(std::string line) {
+        if(lines.size() == capacity) {
+            lines.erase(lines.begin());
+        }
+        lines.push_back(std::move(line));
+    }
+};
+
 struct WorkerPoolOptions {
     std::string self_path;
     std::uint32_t stateless_count = 2;
@@ -271,6 +287,9 @@ private:
         /// the IO pump), so a slot can drop its reference the moment the
         /// process dies without racing in-flight users.
         std::shared_ptr<kota::ipc::BincodePeer> peer;
+
+        /// Written by the stderr drain, read by the crash report.
+        std::shared_ptr<StderrTail> stderr_tail;
 
         /// Display name for logging, e.g. "SL-0" or "SF-1".
         std::string name;
@@ -618,6 +637,7 @@ private:
     struct SpawnedProcess {
         kota::process proc;
         std::shared_ptr<kota::ipc::BincodePeer> peer;
+        std::shared_ptr<StderrTail> stderr_tail;
     };
 
     /// Launch a worker process and start its IO pumps. Shared by initial
