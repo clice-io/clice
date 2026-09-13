@@ -1,0 +1,15 @@
+---
+created_at: 2026-09-13
+input_file: repeated_include/main.cpp
+---
+${WS}/repeated_include/main.cpp: { digest: d0 }
+- { unit: 1, lines: "1-12", kind: Function, name: "both", own: o0, content: c0, deps: [${WS}/repeated_include/twice.inc#1, ${WS}/repeated_include/twice.inc (2)#1] }
+- { unit: 2, lines: "13-13", kind: Var, name: "one", own: o1, content: c1 }
+- { unit: 3, lines: "13-13", kind: Var, name: "other", own: o2, content: c2 }
+- { unit: 4, lines: "14-14", kind: Function, name: "use_one", own: o3, content: c3, deps: [${WS}/repeated_include/main.cpp#3] }
+
+${WS}/repeated_include/twice.inc: { digest: d1 }
+- { unit: 1, lines: "1-1", kind: Var, name: "first", own: o4, content: c4 }
+
+${WS}/repeated_include/twice.inc (2): { digest: d2 }
+- { unit: 1, lines: "1-1", kind: Var, name: "second", own: o5, content: c5 }

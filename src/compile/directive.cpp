@@ -231,8 +231,8 @@ public:
     }
 
     void add_diagnostic_pragma(DiagnosticPragma pragma) {
-        pragma.loc = unit.expansion_location(pragma.loc);
-        unit->directives[unit.file_id(pragma.loc)].diagnostic_pragmas.push_back(std::move(pragma));
+        auto fid = unit.file_id(unit.expansion_location(pragma.loc));
+        unit->directives[fid].diagnostic_pragmas.push_back(std::move(pragma));
     }
 
     void If(clang::SourceLocation loc,

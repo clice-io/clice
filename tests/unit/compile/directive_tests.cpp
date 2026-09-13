@@ -263,7 +263,8 @@ TEST_CASE(DiagnosticPragma) {
 
     ASSERT_EQ(diagnostic_pragmas.size(), 4U);
     for(u32 index = 0; index < 4; index += 1) {
-        auto [_, offset] = unit->decompose_location(diagnostic_pragmas[index].loc);
+        auto [_, offset] =
+            unit->decompose_location(unit->expansion_location(diagnostic_pragmas[index].loc));
         EXPECT_EQ(offset, point(std::to_string(index)));
     }
     EXPECT_EQ(diagnostic_pragmas[0].kind, DiagnosticPragma::Push);

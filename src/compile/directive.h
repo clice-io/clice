@@ -139,8 +139,10 @@ struct DiagnosticPragma {
     /// The flag a Map names, e.g. `-Wunused-variable`.
     std::string flag;
 
-    /// Where the directive takes effect, as a file location: the expansion
-    /// point for the operator form.
+    /// Where the directive ran: the `diagnostic` token, which for the
+    /// operator form inside a macro is a macro location — kept as such,
+    /// since the order of a pragma among the tokens of the same expansion
+    /// decides what it silences.
     clang::SourceLocation loc;
 };
 

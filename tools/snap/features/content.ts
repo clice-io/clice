@@ -43,40 +43,52 @@ class Classes {
     }
 }
 
+/// A file entry's heading: the path, numbered when the same file was
+/// included more than once. Units are addressed as `heading#ordinal`, so
+/// two units starting on one line stay apart.
+function headings(files: RawContentFile[], root: string): string[] {
+    const seen = new Map<string, number>();
+    return files.map((file) => {
+        const path = normalizeFilePath(file.path, root);
+        const count = (seen.get(path) ?? 0) + 1;
+        seen.set(path, count);
+        return count === 1 ? path : `${path} (${count})`;
+    });
+}
+
 export const content: Feature = {
     shape: "document",
     fromInspect(entry, ctx) {
         const files = entry.result as RawContentFile[];
+        const labels = headings(files, ctx.root);
         const label = (dep: RawContentDep): string => {
-            const file = files[dep.file];
-            const unit = file?.units[dep.unit];
-            if (file === undefined || unit === undefined) {
+            const heading = labels[dep.file];
+            if (heading === undefined || files[dep.file]?.units[dep.unit] === undefined) {
                 throw new Error(`content dump references a missing unit ${dep.file}/${dep.unit}`);
             }
-            return `${normalizeFilePath(file.path, ctx.root)}:${unit.line}`;
+            return `${heading}#${dep.unit + 1}`;
         };
         const digests = new Classes("d");
         const owns = new Classes("o");
         const contents = new Classes("c");
         const out: string[] = [];
-        for (const file of files) {
+        files.forEach((file, index) => {
             if (out.length > 0) {
                 out.push("");
             }
-            out.push(
-                `${normalizeFilePath(file.path, ctx.root)}: { digest: ${digests.of(file.digest)} }`,
-            );
-            for (const unit of file.units) {
+            out.push(`${labels[index]}: { digest: ${digests.of(file.digest)} }`);
+            file.units.forEach((unit, ordinal) => {
                 let line =
-                    `- { lines: "${unit.line}-${unit.end_line}", kind: ${unit.kind}` +
+                    `- { unit: ${ordinal + 1}, lines: "${unit.line}-${unit.end_line}"` +
+                    `, kind: ${unit.kind}` +
                     (unit.name === "" ? "" : `, name: ${yamlStr(unit.name)}`) +
                     `, own: ${owns.of(unit.own)}, content: ${contents.of(unit.content)}`;
                 if (unit.deps.length > 0) {
                     line += `, deps: [${unit.deps.map(label).join(", ")}]`;
                 }
                 out.push(line + " }");
-            }
-        }
+            });
+        });
         return out;
     },
     fromServer() {

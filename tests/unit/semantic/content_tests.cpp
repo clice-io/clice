@@ -1200,6 +1200,24 @@ inline void §(f)f() {
     Compiled late;
     ASSERT_TRUE(late.compile({placement}, {"main.cpp", "#define EARLY 0\n#include \"p.h\"\n"}));
     EXPECT_NE(early.own("p.h", "f"), late.own("p.h", "f"));
+
+    // The pragma and the declaration come out of one macro expansion, so
+    // both sit at the invocation; their order inside it still counts.
+    File expanded = {"m.h", R"cpp(
+#define DECLARE(x) BEFORE inline void x() { int unused = 0; } AFTER
+§(g)DECLARE(g)
+)cpp"};
+    Compiled before;
+    ASSERT_TRUE(before.compile(
+        {expanded},
+        {"main.cpp",
+         "#define BEFORE _Pragma(\"clang diagnostic ignored \\\"-Wunused-variable\\\"\")\n#define AFTER\n#include \"m.h\"\n"}));
+    Compiled after;
+    ASSERT_TRUE(after.compile(
+        {expanded},
+        {"main.cpp",
+         "#define BEFORE\n#define AFTER _Pragma(\"clang diagnostic ignored \\\"-Wunused-variable\\\"\")\n#include \"m.h\"\n"}));
+    EXPECT_NE(before.own("m.h", "g"), after.own("m.h", "g"));
 }
 
 TEST_CASE(SystemHeaders) {

@@ -3,7 +3,7 @@ created_at: 2026-09-13
 input_file: fragment/main.cpp
 ---
 ${WS}/fragment/main.cpp: { digest: d0 }
-- { lines: "1-7", kind: Function, name: "call", own: o0, content: c0, deps: [${WS}/fragment/compute.h:1] }
+- { unit: 1, lines: "1-7", kind: Function, name: "call", own: o0, content: c0, deps: [${WS}/fragment/compute.h#1] }
 
 ${WS}/fragment/compute.h: { digest: d1 }
-- { lines: "1-5", kind: Function, name: "compute", own: o1, content: c1 }
+- { unit: 1, lines: "1-5", kind: Function, name: "compute", own: o1, content: c1 }

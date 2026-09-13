@@ -59,6 +59,14 @@ public:
     }
 };
 
+template <typename Range>
+void add_list(Hasher& hasher, const Range& values) {
+    hasher.add(static_cast<std::uint64_t>(std::ranges::distance(values)));
+    for(auto& value: values) {
+        hasher.add(llvm::StringRef(value));
+    }
+}
+
 /// Everything about the compile that changes diagnostics without changing
 /// any file: the language mode, the target and the warning flags. One
 /// value per TU, folded into every unit's own so equal content still
@@ -75,15 +83,9 @@ ContentHash compile_context(CompilationUnitRef unit) {
     hasher.add(static_cast<std::uint64_t>(lang.get##Name()));
 #include "clang/Basic/LangOptions.def"
     hasher.add(static_cast<std::uint64_t>(lang.LangStd));
-    for(auto& name: lang.NoBuiltinFuncs) {
-        hasher.add(name);
-    }
-    for(auto& feature: lang.ModuleFeatures) {
-        hasher.add(feature);
-    }
-    for(auto& name: lang.CommentOpts.BlockCommandNames) {
-        hasher.add(name);
-    }
+    add_list(hasher, lang.NoBuiltinFuncs);
+    add_list(hasher, lang.ModuleFeatures);
+    add_list(hasher, lang.CommentOpts.BlockCommandNames);
     hasher.add(static_cast<std::uint64_t>(lang.CommentOpts.ParseAllComments));
     hasher.add(lang.CXXABI ? static_cast<std::uint64_t>(*lang.CXXABI) + 1 : 0);
     hasher.add(static_cast<std::uint64_t>(lang.OverflowPatternExclusionMask));
@@ -102,19 +104,13 @@ ContentHash compile_context(CompilationUnitRef unit) {
     hasher.add(options.FPMath);
     hasher.add(options.ABI);
     hasher.add(static_cast<std::uint64_t>(options.EABIVersion));
-    for(auto& feature: options.Features) {
-        hasher.add(feature);
-    }
+    add_list(hasher, options.Features);
     hasher.add(options.CodeModel);
     hasher.add(target.getDataLayoutString());
 
     auto& diagnostics = unit.context().getDiagnostics().getDiagnosticOptions();
-    for(auto& warning: diagnostics.Warnings) {
-        hasher.add(warning);
-    }
-    for(auto& remark: diagnostics.Remarks) {
-        hasher.add(remark);
-    }
+    add_list(hasher, diagnostics.Warnings);
+    add_list(hasher, diagnostics.Remarks);
     hasher.add(static_cast<std::uint64_t>(diagnostics.Pedantic));
     hasher.add(static_cast<std::uint64_t>(diagnostics.PedanticErrors));
     hasher.add(static_cast<std::uint64_t>(diagnostics.IgnoreWarnings));
@@ -122,7 +118,8 @@ ContentHash compile_context(CompilationUnitRef unit) {
 }
 
 /// A NOLINTBEGIN or NOLINTEND marker of a file with the check list written
-/// after it.
+/// after it. Found by a raw text scan, like clang-tidy's own
+/// NoLintDirectiveHandler: a marker in a string literal counts there too.
 struct Suppression {
     std::uint32_t offset;
     llvm::StringRef text;
@@ -963,7 +960,7 @@ private:
                   (until.isInvalid() ||
                    SM.isBeforeInTranslationUnit(pragma_locations[next_pragma], until));
                 next_pragma += 1) {
-                auto [fid, offset] = SM.getDecomposedLoc(pragma_locations[next_pragma]);
+                auto [fid, offset] = SM.getDecomposedExpansionLoc(pragma_locations[next_pragma]);
                 if(auto owner = token_owner(fid, offset); owner != no_unit) {
                     append(owner,
                            [&](Hasher& hasher) { hasher.add(pragma_prefixes[next_pragma + 1]); });
