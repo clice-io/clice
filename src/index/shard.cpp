@@ -1280,13 +1280,18 @@ void collect_locals(BlobView root, llvm::DenseMap<std::uint64_t, LocalInfo>& loc
     auto flags = to_array_ref(root[&ShardBlob::local_flags]);
     for(std::uint32_t k = 0; k < local_syms.size(); k += 1) {
         auto hash = sym_hashes[local_syms[k]];
-        locals.try_emplace(hash,
-                           LocalInfo{std::string(names.at(k)),
-                                     kinds[k],
-                                     scopes[k],
-                                     std::string(args.at(k)),
-                                     parents[k],
-                                     flags[k]});
+        auto [it, inserted] = locals.try_emplace(hash,
+                                                 LocalInfo{std::string(names.at(k)),
+                                                           kinds[k],
+                                                           scopes[k],
+                                                           std::string(args.at(k)),
+                                                           parents[k],
+                                                           flags[k]});
+        // Variants may see different facts of one symbol (a definition
+        // behind `#ifdef`); like the project table, the union is kept.
+        if(!inserted) {
+            it->second.flags |= flags[k];
+        }
     }
 }
 

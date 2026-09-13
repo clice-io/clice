@@ -368,6 +368,13 @@ std::uint64_t EntityTable::parent(const clang::NamedDecl* decl) {
         decl = shadow->getTargetDecl();
     }
 
+    /// C linkage names one entity whichever namespaces declare it, so the
+    /// parent of any one declaration would vary with the unit that
+    /// reported it first.
+    if(has_c_linkage(decl)) {
+        return 0;
+    }
+
     /// Linkage specifications, export blocks and the nameless contexts
     /// (requires-expression bodies, blocks) are transparent to a qualified
     /// name.

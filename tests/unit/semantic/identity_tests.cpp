@@ -987,7 +987,7 @@ void §(global)global();
     };
     EXPECT_EQ(parent("global"), 0u);
     EXPECT_EQ(parent("ns"), 0u);
-    EXPECT_EQ(parent("c"), entity("ns"));
+    EXPECT_EQ(parent("c"), 0u);
     EXPECT_EQ(parent("box"), entity("ns"));
     EXPECT_EQ(parent("method"), entity("box"));
     EXPECT_EQ(parent("spec_method"), entity("spec"));

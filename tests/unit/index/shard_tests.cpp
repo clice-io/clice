@@ -460,6 +460,45 @@ TEST_CASE(LocalSymbolNames) {
     ASSERT_FALSE(shard.find_symbol(external).has_value());
 }
 
+TEST_CASE(MergedLocalFlagsUnion) {
+    // Variants of one file can see different facts of a local symbol (a
+    // definition behind `#ifdef`); the merged table keeps their union in
+    // either merge order.
+    llvm::StringRef content = "static int helper();\n";
+    auto variant = [&](index::SymbolFlags flags) {
+        auto rows = simple_rows({
+            {{11, 17}, 7}
+        });
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::write_shard(
+            rows,
+            [&](index::SymbolHash) -> std::optional<index::SymbolIdentity> {
+                return index::SymbolIdentity{.name = "helper",
+                                             .kind = SymbolKind::Function,
+                                             .scope = index::SymbolScope::TULocal,
+                                             .flags = flags};
+            },
+            content,
+            os);
+        return make_shard(bytes);
+    };
+    auto defining = variant(index::SymbolFlags::HasDefinition);
+    auto declaring = variant(index::SymbolFlags::None);
+
+    for(auto [first, second]: {
+            std::pair{&defining,  &declaring},
+            std::pair{&declaring, &defining }
+    }) {
+        std::vector<index::Shard> fresh;
+        fresh.push_back(make_shard(second->bytes()));
+        auto merged = merge(*first, first->variants(), std::move(fresh));
+        auto identity = merged.find_symbol(7);
+        ASSERT_TRUE(identity.has_value());
+        ASSERT_TRUE(index::has_flag(identity->flags, index::SymbolFlags::HasDefinition));
+    }
+}
+
 TEST_CASE(MergedLocalNames) {
     // Merged blobs carry local names forward from their inputs without any
     // external resolver — every input blob is self-contained.
