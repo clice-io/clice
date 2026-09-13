@@ -14,16 +14,6 @@ namespace clice::index {
 
 namespace {
 
-/// DenseMap reserves two sentinel key values per type, so the in-memory
-/// tables can never hold them and the writer can never emit them; wire or
-/// disk bytes carrying one are corrupt, and inserting one would corrupt
-/// (or assert in) the very containers doing the loading.
-template <typename T>
-bool reserved_key(T value) {
-    return value == llvm::DenseMapInfo<T>::getEmptyKey() ||
-           value == llvm::DenseMapInfo<T>::getTombstoneKey();
-}
-
 /// Adopting a blob's id space resizes the version table to its counter
 /// before any other rejection can run, so a structurally valid blob
 /// carrying a garbage high-water mark would OOM the load instead of
@@ -136,14 +126,27 @@ bool ProjectIndex::merge(this ProjectIndex& self,
         return false;
     }
 
+    // Units may spell one symbol differently (`X<int>` against
+    // `X<signed int>`, a conversion to a typedef): the shortest spelling
+    // wins, then the smaller one, so the table reads the same whatever the
+    // merge order.
+    auto prefer = [](std::string& current, llvm::StringRef incoming) {
+        if(incoming.empty()) {
+            return;
+        }
+        if(current.empty() || incoming.size() < current.size() ||
+           (incoming.size() == current.size() && incoming < current)) {
+            current = incoming.str();
+        }
+    };
     for(auto& [hash, identity, references]: staged) {
         auto& target = self.symbols[hash];
-        if(target.name.empty()) {
-            target.name = std::string(identity.name);
-            target.args = std::string(identity.args);
+        if(target.name.empty() && !identity.name.empty()) {
             target.parent = identity.parent;
             target.kind = identity.kind;
         }
+        prefer(target.name, identity.name);
+        prefer(target.args, identity.args);
         // A unit that defines the symbol always places it: the table never
         // retracts a unit's earlier report, so an old definition bit must
         // not pin the file after the definition moved. Declarations only

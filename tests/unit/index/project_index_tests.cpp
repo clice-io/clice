@@ -145,6 +145,51 @@ TEST_CASE(MergeUnionsSymbolFacts) {
     ASSERT_EQ(project.symbols[hash].file, moved->raw);
 }
 
+TEST_CASE(MergePicksOneSpelling) {
+    // Two units spelling one specialization differently must leave the
+    // same name in the table whichever merges first.
+    struct SymbolMirror {
+        std::string name;
+        std::string args;
+        std::uint64_t parent = 0;
+        std::uint8_t kind = 0;
+        std::uint8_t scope = 0;
+        std::uint16_t flags = 0;
+        std::uint32_t file = index::no_file;
+        std::vector<std::byte> reference_files;
+    };
+
+    struct EnvelopePrefixMirror {
+        std::uint32_t format_version = index::index_format_version;
+        std::int64_t built_at = 0;
+        std::vector<std::string> paths = {"/proj/main.cpp"};
+        std::vector<std::uint64_t> path_hashes;
+        std::vector<index::IncludeNode> nodes;
+        llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
+    };
+
+    EnvelopePrefixMirror spelled_int;
+    spelled_int.symbols[42] = {.name = "X", .args = "<int>"};
+    EnvelopePrefixMirror spelled_signed;
+    spelled_signed.symbols[42] = {.name = "X", .args = "<signed int>"};
+    auto int_bytes = kota::codec::fbs::to_bytes(spelled_int);
+    auto signed_bytes = kota::codec::fbs::to_bytes(spelled_signed);
+    ASSERT_TRUE(int_bytes.has_value() && signed_bytes.has_value());
+
+    clice::FileTable pool;
+    for(auto [first, second]: {
+            std::pair{&*int_bytes,    &*signed_bytes},
+            std::pair{&*signed_bytes, &*int_bytes   }
+    }) {
+        index::ProjectIndex project;
+        auto first_view = index::TUIndex::from_bytes(bytes_of(*first));
+        auto second_view = index::TUIndex::from_bytes(bytes_of(*second));
+        ASSERT_TRUE(project.merge(first_view, intern_paths(first_view, pool)));
+        ASSERT_TRUE(project.merge(second_view, intern_paths(second_view, pool)));
+        ASSERT_EQ(project.symbols[42].args, "<int>");
+    }
+}
+
 TEST_CASE(MergeRejectsBadBitmap) {
     // Field order MUST mirror the envelope layout (tu_index.cpp) up to
     // `symbols`: the builder always writes valid bitmap images, so a

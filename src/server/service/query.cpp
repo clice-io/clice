@@ -810,21 +810,35 @@ std::optional<IndexQuery::Located> IndexQuery::resolve(index::SymbolHash hash) c
     return Located{.symbol = std::move(*info), .site = *site};
 }
 
-std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
-                                                    std::size_t limit) const {
+std::vector<IndexQuery::Located>
+    IndexQuery::search(llvm::StringRef query,
+                       std::size_t limit,
+                       llvm::function_ref<bool(SymbolKind)> accept) const {
     ScopedTimer timer;
+
+    // `ns::name` names a scope and a name: the name part matches like a
+    // bare query and the scope part selects containers (`ns::` alone
+    // lists a scope); a leading `::` pins the container exactly.
+    llvm::StringRef pattern = query;
+    std::optional<llvm::StringRef> qualifier;
+    bool absolute = false;
+    if(auto colons = query.rfind("::"); colons != llvm::StringRef::npos) {
+        qualifier = query.take_front(colons);
+        pattern = query.drop_front(colons + 2);
+        absolute = qualifier->consume_front("::");
+    }
 
     // Exact name, prefix, substring — ranked before the cut, so a weak
     // match never displaces the exact one behind an arbitrary table order.
     auto score = [&](llvm::StringRef name) -> int {
-        if(query.empty()) {
+        if(pattern.empty()) {
             return 0;
         }
-        auto at = name.find_insensitive(query);
+        auto at = name.find_insensitive(pattern);
         if(at == llvm::StringRef::npos) {
             return -1;
         }
-        if(name.size() == query.size()) {
+        if(name.size() == pattern.size()) {
             return 0;
         }
         return at == 0 ? 1 : 2;
@@ -842,7 +856,8 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
     // answers to `Box<int>` as well as `Box`.
     auto consider =
         [&](index::SymbolHash hash, llvm::StringRef name, llvm::StringRef args, SymbolKind kind) {
-            if(!is_indexable_kind(kind) || name.empty() || !seen.insert(hash).second) {
+            if(!is_indexable_kind(kind) || name.empty() || (accept && !accept(kind)) ||
+               !seen.insert(hash).second) {
                 return;
             }
             llvm::SmallString<64> display(name);
@@ -872,10 +887,37 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
         return true;
     });
 
+    // The scope's components must appear in the container's, in order —
+    // `inner::paint` finds `outer::inner::Widget::paint` — and match it
+    // exactly when the query was absolute.
+    auto in_scope = [&](index::SymbolHash hash) {
+        if(!qualifier) {
+            return true;
+        }
+        auto container = container_name(hash);
+        llvm::SmallVector<llvm::StringRef> wanted;
+        llvm::StringRef(*qualifier).split(wanted, "::", -1, false);
+        llvm::SmallVector<llvm::StringRef> have;
+        llvm::StringRef(container).split(have, "::", -1, false);
+        if(absolute && wanted.size() != have.size()) {
+            return false;
+        }
+        std::size_t next = 0;
+        for(auto component: have) {
+            if(next < wanted.size() && component.equals_insensitive(wanted[next])) {
+                next += 1;
+            } else if(absolute) {
+                return false;
+            }
+        }
+        return next == wanted.size();
+    };
+
     // Ranked lazily through a heap: a broad query matches most of the
     // table, and the cut should cost its `limit` results, not a sort of
-    // every match. A candidate without a definition site cedes its slot
-    // to the next one, which a top-k cut ahead of the site check could not.
+    // every match. A candidate outside the requested scope or without a
+    // definition site cedes its slot to the next one, which a top-k cut
+    // ahead of those checks could not.
     auto worse = [](const Candidate& lhs, const Candidate& rhs) {
         return std::tie(lhs.score, lhs.name, lhs.hash) > std::tie(rhs.score, rhs.name, rhs.hash);
     };
@@ -886,6 +928,9 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
         std::ranges::pop_heap(candidates, worse);
         auto candidate = candidates.back();
         candidates.pop_back();
+        if(!in_scope(candidate.hash)) {
+            continue;
+        }
         if(auto site = first_site(candidate.hash, RelationKind::Definition)) {
             results.push_back({.symbol = *symbol_info(candidate.hash), .site = *site});
         }

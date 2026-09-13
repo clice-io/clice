@@ -211,6 +211,19 @@ TEST_CASE(QualifiedNames) {
     ASSERT_EQ(versioned.size(), std::size_t(1));
     ASSERT_EQ(query.container_name(versioned.front().symbol.hash), "outer");
     ASSERT_EQ(query.qualified_name(versioned.front().symbol.hash), "outer::versioned");
+
+    // A scoped query keeps the results whose container lists the scope's
+    // components in order; a leading `::` pins the container exactly.
+    ASSERT_EQ(query.search("inner::paint", 10).size(), std::size_t(2));
+    ASSERT_EQ(query.search("outer::inner::paint", 10).size(), std::size_t(2));
+    ASSERT_EQ(query.search("outer::paint", 10).size(), std::size_t(2));
+    ASSERT_TRUE(query.search("inner::outer::paint", 10).empty());
+    ASSERT_TRUE(query.search("::inner::paint", 10).empty());
+    ASSERT_EQ(query.search("::outer::versioned", 10).size(), std::size_t(1));
+    ASSERT_EQ(query.search("inner::", 10).size(), std::size_t(4));
+    ASSERT_TRUE(
+        query.search("paint", 10, [](SymbolKind kind) { return kind == SymbolKind::Struct; })
+            .empty());
 }
 
 TEST_CASE(LocalSymbolName) {

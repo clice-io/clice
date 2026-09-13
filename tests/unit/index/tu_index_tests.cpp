@@ -1661,6 +1661,22 @@ std::string mirror_bytes(const MirrorEnvelope& envelope) {
     return std::string(bytes->begin(), bytes->end());
 }
 
+TEST_CASE(FromRejectsReservedParents) {
+    // Symbol parents become DenseSet keys in a query's container walk; the
+    // sentinel values must fail the envelope as a whole.
+    MirrorEnvelope honest;
+    honest.paths = {"/proj/main.cpp"};
+    honest.symbols[42].name = "sym";
+    honest.symbols[42].parent = 7;
+    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+
+    MirrorEnvelope hostile = honest;
+    hostile.symbols[42].parent = ~std::uint64_t(0);
+    ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    hostile.symbols[42].parent = ~std::uint64_t(0) - 1;
+    ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+}
+
 TEST_CASE(FromRejectsOutOfRangePathIds) {
     // Structural verification does not constrain field values, and the
     // merge pipeline dereferences every decoded path id against the path

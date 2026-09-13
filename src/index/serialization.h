@@ -56,6 +56,16 @@ inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
     return buffer;
 }
 
+/// DenseMap reserves two sentinel key values per type, so the in-memory
+/// tables can never hold them and no writer can emit them; wire or disk
+/// bytes carrying one are corrupt, and inserting one would corrupt (or
+/// assert in) the very containers doing the loading.
+template <typename T>
+bool reserved_key(T value) {
+    return value == llvm::DenseMapInfo<T>::getEmptyKey() ||
+           value == llvm::DenseMapInfo<T>::getTombstoneKey();
+}
+
 }  // namespace clice::index
 
 namespace kota::meta {

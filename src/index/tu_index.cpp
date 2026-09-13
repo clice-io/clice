@@ -947,6 +947,17 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
             return {};
         }
     }
+    // Symbol hashes and parents become DenseMap and DenseSet keys in every
+    // consumer (the project table, a query's parent walk), and the two
+    // sentinel values corrupt or assert in those containers; the builder
+    // never emits them, so an envelope carrying one is corrupt.
+    auto symbols = root[&EnvelopeBlob::symbols];
+    for(std::size_t i = 0; i < symbols.size(); i += 1) {
+        auto entry = symbols.at(i);
+        if(reserved_key(entry.get<0>()) || reserved_key(entry.get<1>()[&Symbol::parent])) {
+            return {};
+        }
+    }
     // section_of binary-searches the section table by path id and shard_of
     // trusts the result, so the ids must ascend strictly — a repeated or
     // out-of-order id would attribute one file's rows to another.

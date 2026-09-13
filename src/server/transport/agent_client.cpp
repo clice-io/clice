@@ -265,39 +265,28 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         srv.pool.foreground_pulse();
         srv.on_agentic_query();
         auto max = params.max_results.value_or(100);
-        std::string query_lower = llvm::StringRef(params.query).lower();
+        auto accept = [&](SymbolKind kind) {
+            if(!params.kind_filter) {
+                return true;
+            }
+            auto kind_name = std::string(symbol_kind_name(kind));
+            return std::ranges::find(*params.kind_filter, kind_name) != params.kind_filter->end();
+        };
 
         SymbolSearchResult result;
-        for(auto& [hash, symbol]: srv.workspace.project_index.symbols) {
-            if(static_cast<int>(result.symbols.size()) >= max)
-                break;
-            if(symbol.name.empty() ||
-               !index::has_flag(symbol.flags, index::SymbolFlags::HasDefinition))
-                continue;
-            if(!query_lower.empty() &&
-               llvm::StringRef(symbol.name + symbol.args).lower().find(query_lower) ==
-                   std::string::npos)
-                continue;
-            if(params.kind_filter.has_value()) {
-                auto kind_name = std::string(symbol_kind_name(symbol.kind));
-                auto& filter = *params.kind_filter;
-                if(std::ranges::find(filter, kind_name) == filter.end())
-                    continue;
-            }
-            auto site = srv.agent_query.first_site(hash, RelationKind::Definition);
-            if(!site)
-                continue;
-            auto lines = agent_lines(*site);
+        for(auto& located: srv.agent_query.search(params.query, max, accept)) {
+            auto lines = agent_lines(located.site);
             if(!lines)
                 continue;
             SymbolEntry entry{
-                .name = symbol.name + symbol.args,
-                .kind = std::string(symbol_kind_name(symbol.kind)),
-                .file = std::string(site->path),
+                .name = located.symbol.display_name(),
+                .kind = std::string(symbol_kind_name(located.symbol.kind)),
+                .file = std::string(located.site.path),
                 .line = lines->start,
-                .symbol_id = hash,
+                .symbol_id = located.symbol.hash,
             };
-            if(auto container = srv.agent_query.container_name(hash); !container.empty()) {
+            if(auto container = srv.agent_query.container_name(located.symbol.hash);
+               !container.empty()) {
                 entry.container = std::move(container);
             }
             result.symbols.push_back(std::move(entry));

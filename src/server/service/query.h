@@ -237,11 +237,16 @@ public:
 
     std::optional<Located> resolve(index::SymbolHash hash) const;
 
-    /// Symbols whose name contains `query` (case-insensitive), best
-    /// matches first — exact name, then prefix, then substring, ties by
-    /// name — cut to `limit` after ranking. Only symbols with a definition
-    /// site are listed.
-    std::vector<Located> search(llvm::StringRef query, std::size_t limit) const;
+    /// Symbols whose displayed name contains `query` (case-insensitive),
+    /// best matches first — exact name, then prefix, then substring, ties
+    /// by name — cut to `limit` after ranking. A query `ns::name` keeps
+    /// the results whose container has `ns` among its components, in
+    /// order for a longer scope (`::ns::name` requires exactly `ns`);
+    /// `accept` narrows the kinds. Only symbols with a definition site are
+    /// listed.
+    std::vector<Located> search(llvm::StringRef query,
+                                std::size_t limit,
+                                llvm::function_ref<bool(SymbolKind)> accept = {}) const;
 
     /// The symbols a locator names; several when a name is ambiguous.
     std::vector<Located> locate(const SymbolLocator& locator) const;
