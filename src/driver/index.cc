@@ -222,13 +222,17 @@ struct IndexView {
     }
 };
 
-/// An inspected file: a relative argument names a file under the
-/// workspace, whatever the process working directory.
+/// An inspected file as the index keys it: a relative argument names a
+/// file under the workspace, whatever the process working directory, and
+/// dot segments are folded the way the compiler's paths were.
 std::string inspected_path(const IndexView& view, llvm::StringRef argument) {
-    if(path::is_absolute(argument)) {
-        return workspace_root(argument);
-    }
-    return workspace_root(path::join(view.workspace.config.workspace_root, argument));
+    llvm::SmallString<256> absolute(
+        path::is_absolute(argument) ? argument.str()
+                                    : path::join(view.workspace.config.workspace_root, argument));
+    path::remove_dots(absolute, /*remove_dot_dot=*/true);
+    std::string result(absolute.str());
+    path::canonicalize(result);
+    return result;
 }
 
 /// Sentinel of open_index: the load raced a live writer's batch; the caller
