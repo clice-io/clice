@@ -768,6 +768,43 @@ private:
         }
     }
 
+    /// The outcome of every conditional directive of a file, by offset:
+    /// which branches the preprocessor took decides what a `#warning` or
+    /// `#error` inside the unit's text did, and no token records it.
+    struct Branch {
+        std::uint32_t offset;
+        Condition::BranchKind kind;
+        Condition::ConditionValue value;
+    };
+
+    const std::vector<Branch>& branches(clang::FileID fid) {
+        auto [it, inserted] = branch_cache.try_emplace(fid);
+        if(inserted) {
+            if(auto found = unit.directives().find(fid); found != unit.directives().end()) {
+                for(auto& condition: found->second.conditions) {
+                    if(condition.loc.isValid()) {
+                        it->second.push_back({.offset = SM.getFileOffset(condition.loc),
+                                              .kind = condition.kind,
+                                              .value = condition.value});
+                    }
+                }
+                std::ranges::sort(it->second, {}, &Branch::offset);
+            }
+        }
+        return it->second;
+    }
+
+    void add_branches(Hasher& hasher, clang::FileID fid, LocalSourceRange range) {
+        auto& all = branches(fid);
+        auto first = std::ranges::lower_bound(all, range.begin, {}, &Branch::offset);
+        auto last = std::ranges::lower_bound(all, range.end, {}, &Branch::offset);
+        hasher.add(static_cast<std::uint64_t>(last - first));
+        for(auto it = first; it != last; it += 1) {
+            hasher.add(static_cast<std::uint64_t>(it->kind));
+            hasher.add(static_cast<std::uint64_t>(it->value));
+        }
+    }
+
     const std::vector<Suppression>& suppressions(clang::FileID fid) {
         auto [it, inserted] = suppression_cache.try_emplace(fid);
         if(inserted) {
@@ -923,6 +960,18 @@ private:
                 parts.push_back(
                     param->hasDefaultArg() && !param->hasUninstantiatedDefaultArg() ? '1' : '0');
             }
+            // A dependent exception specification is instantiated on its
+            // own, when something asks for the function's type.
+            auto* pattern = FD->getTemplateInstantiationPattern(false);
+            auto* dependent =
+                pattern ? pattern->getType()->getAs<clang::FunctionProtoType>() : nullptr;
+            auto* own = FD->getType()->getAs<clang::FunctionProtoType>();
+            parts.push_back(dependent && own &&
+                                    dependent->getExceptionSpecType() ==
+                                        clang::EST_DependentNoexcept &&
+                                    own->getExceptionSpecType() != clang::EST_Uninstantiated
+                                ? '1'
+                                : '0');
         } else if(auto* RD = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
             if(!RD->isCompleteDefinition()) {
                 return std::nullopt;
@@ -1003,6 +1052,12 @@ private:
             }
             add_suppression_context(hasher, current.fid, span.begin);
             hasher.add(pragma_state(begin));
+            add_branches(hasher, current.fid, current.range);
+            for(auto fragment: current.fragments) {
+                add_branches(hasher,
+                             fragment,
+                             {0, static_cast<std::uint32_t>(unit.file_content(fragment).size())});
+            }
         }
 
         // A transparent container's attributes (`namespace [[deprecated]] N`)
@@ -1237,6 +1292,7 @@ private:
     std::vector<std::vector<std::uint64_t>> referenced;
 
     llvm::DenseMap<clang::FileID, std::vector<Suppression>> suppression_cache;
+    llvm::DenseMap<clang::FileID, std::vector<Branch>> branch_cache;
     std::vector<clang::SourceLocation> pragma_locations;
     std::vector<ContentHash> pragma_prefixes;
 

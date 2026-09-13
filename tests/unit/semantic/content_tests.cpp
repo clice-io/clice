@@ -551,6 +551,25 @@ inline int §(plain)plain() { return 2; }
     EXPECT_NE(a.digest("v.h"), b.digest("v.h"));
 }
 
+TEST_CASE(ConditionalDirectives) {
+    File h = {"h.h", R"cpp(
+inline int §(f)f() {
+#if NOISY
+#warning "noisy"
+#endif
+    return 1;
+}
+inline int §(g)g() { return 2; }
+)cpp"};
+    Compiled quiet;
+    ASSERT_TRUE(quiet.compile({h}, {"main.cpp", "#define NOISY 0\n#include \"h.h\"\n"}));
+    Compiled noisy;
+    ASSERT_TRUE(noisy.compile({h}, {"main.cpp", "#define NOISY 1\n#include \"h.h\"\n"}));
+
+    EXPECT_NE(quiet.own("h.h", "f"), noisy.own("h.h", "f"));
+    EXPECT_EQ(quiet.own("h.h", "g"), noisy.own("h.h", "g"));
+}
+
 TEST_CASE(Cycles) {
     File mutual = {"c.h", R"cpp(
 struct B;
@@ -790,6 +809,20 @@ TEST_CASE(DeclaredDefaultArgument) {
     ASSERT_TRUE(a.compile({f}, {"a.cpp", "#include \"f.h\"\nint r = declared<double>();\n"}));
     Compiled b;
     ASSERT_TRUE(b.compile({f}, {"b.cpp", "#include \"f.h\"\nint r = declared<double>(1);\n"}));
+
+    EXPECT_NE(a.content("f.h", "f"), b.content("f.h", "f"));
+}
+
+TEST_CASE(ExceptionSpecification) {
+    File f = {"f.h", R"cpp(
+#pragma once
+struct Tr { static constexpr bool value = true; };
+template <typename T> void §(f)f() noexcept(T::value);
+)cpp"};
+    Compiled a;
+    ASSERT_TRUE(a.compile({f}, {"a.cpp", "#include \"f.h\"\nusing P = decltype(f<Tr>);\n"}));
+    Compiled b;
+    ASSERT_TRUE(b.compile({f}, {"b.cpp", "#include \"f.h\"\nint unrelated;\n"}));
 
     EXPECT_NE(a.content("f.h", "f"), b.content("f.h", "f"));
 }
