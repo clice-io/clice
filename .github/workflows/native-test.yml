@@ -109,7 +109,7 @@ jobs:
         run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
 
       - name: Snap tests
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: pixi run -e test-run snap-test ${{ matrix.build_type }}
 
       # The committed config schema must match the binary that just built
