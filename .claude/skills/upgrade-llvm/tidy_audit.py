@@ -31,6 +31,7 @@ signals = {
     "end_tu": r"onEndOfTranslationUnit|onStartOfTranslationUnit",
     "pp": r"registerPPCallbacks",
     "tu_anchor": r"addMatcher\(\s*(?:ast_matchers::)?translationUnitDecl\(\)",
+    "container_root": r"addMatcher\(\s*(?:ast_matchers::)?(?:namespaceDecl|linkageSpecDecl|exportDecl)\(",
 }
 rows = []
 for dirpath, _, files in os.walk(root):
@@ -75,6 +76,10 @@ print("with end_tu:", sum(1 for r in rows if r[2]["end_tu"]))
 print(
     "matching the TU itself (must be TU-level):",
     [r[0] for r in rows if r[2]["tu_anchor"]],
+)
+print(
+    "rooted at a container (must be TU-level):",
+    [r[0] for r in rows if r[2]["container_root"]],
 )
 print("with state members:", sum(1 for r in rows if r[3]))
 print("unmapped names:", sum(1 for r in rows if r[0] == "?"))
