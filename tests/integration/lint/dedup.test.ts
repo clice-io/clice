@@ -205,7 +205,12 @@ test("a body continued in another file reports there", ({ session }) => {
         '[project]\ncache_dir = "${workspace}/.clice"\n\n[[rules]]\npatterns = ["vendor/**"]\nlint = false\n',
     );
     ws.write(".clang-tidy", 'Checks: "-*,modernize-use-nullptr"\nHeaderFilterRegex: ".*"\n');
-    ws.write("vendor/wrapper.h", '#pragma once\nstruct Wrapped {\n#include "../members.h"\n};\n');
+    // The wrapper's own declaration is nobody's to check; the one whose
+    // body continues in members.h is.
+    ws.write(
+        "vendor/wrapper.h",
+        '#pragma once\nint* vendor_only() { return 0; }\nstruct Wrapped {\n#include "../members.h"\n};\n',
+    );
     ws.write("members.h", "int* member() { return 0; }\n");
     ws.write("main.cpp", '#include "vendor/wrapper.h"\nint main() { return 0; }\n');
     ws.writeCDB(["main.cpp"]);
@@ -215,4 +220,33 @@ test("a body continued in another file reports there", ({ session }) => {
     const lines = findings(run.stdout);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("members.h:1:");
+});
+
+test("compiler errors in excluded files still report", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write(
+        "clice.toml",
+        '[project]\ncache_dir = "${workspace}/.clice"\n\n[[rules]]\npatterns = ["vendor/**"]\nlint = false\n',
+    );
+    ws.write(".clang-tidy", 'Checks: "-*,modernize-use-nullptr"\n');
+    ws.write("vendor/broken.h", "#pragma once\nint broken( { return 0; }\n");
+    ws.write("main.cpp", '#include "vendor/broken.h"\nint main() { return 0; }\n');
+    ws.writeCDB(["main.cpp"]);
+
+    const run = runLint(ws);
+    expect(run.status, `stderr: ${run.stderr}`).toBe(1);
+    expect(
+        findings(run.stdout).some((line) => line.includes("broken.h:2:") && line.includes("error")),
+    ).toBe(true);
+});
+
+test("verify needs the deduplicated run", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write("main.cpp", "int main() { return 0; }\n");
+    ws.writeCDB(["main.cpp"]);
+
+    const run = runLint(ws, "--no-dedup", "--verify");
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("drop --no-dedup");
 });

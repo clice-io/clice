@@ -39,8 +39,8 @@ worker::ClaimResult ClaimRegistry::claim(std::uint64_t attempt,
                     .ordinal = seen[hash]};
             seen[hash] += 1;
             auto& entry = entries[key];
-            if(!entry.requester.valid()) {
-                entry.requester = requester;
+            if(entry.requesters.size() < 2 && !llvm::is_contained(entry.requesters, requester)) {
+                entry.requesters.push_back(requester);
             }
             Grant grant{.key = key, .unit = false};
             for(auto element: unit.elements) {
@@ -108,16 +108,15 @@ std::vector<ClaimRegistry::Unfinished> ClaimRegistry::unfinished() const {
     for(auto& [key, entry]: entries) {
         Unfinished owed{.key = key};
         if(entry.state != State::Done) {
-            owed.requesters.push_back(entry.requester);
-        } else {
-            for(auto element: entry.elements_seen) {
-                if(entry.elements_done.contains(element)) {
-                    continue;
-                }
-                auto asker = entry.element_requesters.lookup(element);
-                if(!llvm::is_contained(owed.requesters, asker)) {
-                    owed.requesters.push_back(asker);
-                }
+            owed.requesters = entry.requesters;
+        }
+        for(auto element: entry.elements_seen) {
+            if(entry.elements_done.contains(element)) {
+                continue;
+            }
+            auto asker = entry.element_requesters.lookup(element);
+            if(!llvm::is_contained(owed.requesters, asker)) {
+                owed.requesters.push_back(asker);
             }
         }
         if(!owed.requesters.empty()) {

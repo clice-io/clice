@@ -85,7 +85,7 @@ TEST_CASE(PendingElementsSkipped) {
     registry.release(1);
     auto owed = registry.unfinished();
     ASSERT_TRUE(owed.size() == 1);
-    EXPECT_TRUE(owed.front().requesters == (llvm::SmallVector<Fid, 2>{Fid{1}}));
+    EXPECT_TRUE(owed.front().requesters == (llvm::SmallVector<Fid, 2>{Fid{1}, Fid{2}}));
     auto third = registry.claim(3, Fid{1}, request(3, {unit(10, {1})}), {Fid{7}});
     EXPECT_TRUE(runs(third) == std::vector{ClaimRun::Full});
     registry.land(3);
@@ -125,6 +125,20 @@ TEST_CASE(OwedElementNamesItsAskers) {
     auto owed = registry.unfinished();
     ASSERT_TRUE(owed.size() == 1);
     EXPECT_TRUE(owed.front().requesters == (llvm::SmallVector<Fid, 2>{Fid{2}}));
+}
+
+TEST_CASE(OwedUnitNamesElementAskers) {
+    registry.claim(1, Fid{1}, request(1, {unit(10, {1})}), {Fid{7}});
+    registry.claim(2, Fid{2}, request(2, {unit(10)}), {Fid{7}});
+    registry.claim(3, Fid{3}, request(3, {unit(10, {3})}), {Fid{7}});
+    registry.release(1);
+    registry.release(3);
+
+    // The unit's re-run goes to the TUs that offered it, and the element
+    // only its own TU can materialize brings that TU along.
+    auto owed = registry.unfinished();
+    ASSERT_TRUE(owed.size() == 1);
+    EXPECT_TRUE(owed.front().requesters == (llvm::SmallVector<Fid, 2>{Fid{1}, Fid{2}, Fid{3}}));
 }
 
 TEST_CASE(Namespaces) {

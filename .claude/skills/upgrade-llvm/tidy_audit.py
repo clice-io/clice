@@ -1,6 +1,18 @@
-import re, os, sys, json, collections
+import re, os, sys, collections
 
-root = os.path.expanduser("~/workspace/llvm-project/clang-tools-extra/clang-tidy")
+# The llvm-project checkout: the argument, else ../llvm-project next to the
+# repository (the upgrade-llvm skill's convention).
+repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+checkout = (
+    sys.argv[1]
+    if len(sys.argv) > 1
+    else os.path.join(os.path.dirname(repo), "llvm-project")
+)
+root = os.path.join(checkout, "clang-tools-extra", "clang-tidy")
+if not os.path.isdir(root):
+    sys.exit(
+        f"no clang-tidy sources under {checkout}: pass the llvm-project checkout as the argument"
+    )
 # class -> check name from *Module.cpp registerCheck<Class>("name")
 names = {}
 for dirpath, _, files in os.walk(root):
@@ -52,7 +64,6 @@ for dirpath, _, files in os.walk(root):
             )
         rows.append((check, os.path.relpath(path, root), found, state))
 rows.sort()
-json.dump(rows, open("/tmp/tidy-audit/rows.json", "w"), indent=0)
 c = collections.Counter()
 for check, path, found, state in rows:
     kind = "spelled" if found["spelled"] else ("asis" if found["asis"] else "default")
@@ -70,9 +81,7 @@ print("unmapped names:", sum(1 for r in rows if r[0] == "?"))
 
 # The allowlist must name every registration of a listed check's class: an
 # alias (cert-*, hicpp-*) is the same check under another name.
-inc = os.path.join(
-    os.path.dirname(__file__), "..", "..", "..", "src", "compile", "tidy_tu_checks.inc"
-)
+inc = os.path.join(repo, "src", "compile", "tidy_tu_checks.inc")
 listed = re.findall(r'TU_LEVEL_CHECK\("([^"]+)"', open(inc).read())
 by_name = {n: cls for cls, ns in names.items() for n in ns}
 for n in listed:

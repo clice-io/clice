@@ -246,13 +246,17 @@ bool Build::indexed(llvm::StringRef path) const {
 }
 
 bool Build::lintable(llvm::StringRef path) const {
+    // The worker spells paths natively; the root and the patterns are
+    // canonical.
+    llvm::SmallString<256> storage;
+    auto file = path::canonical(path, storage);
     llvm::StringRef root = config.workspace_root;
-    if(root.empty() || !path.starts_with(root) ||
-       (path.size() > root.size() && !llvm::sys::path::is_separator(path[root.size()]) &&
+    if(root.empty() || !file.starts_with(root) ||
+       (file.size() > root.size() && !llvm::sys::path::is_separator(file[root.size()]) &&
         !llvm::sys::path::is_separator(root.back()))) {
         return false;
     }
-    return llvm::all_of(matching(path), [](const CompiledRule* rule) { return rule->lint; });
+    return llvm::all_of(matching(file), [](const CompiledRule* rule) { return rule->lint; });
 }
 
 llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {

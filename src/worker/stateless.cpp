@@ -426,8 +426,9 @@ struct ParsedRun {
     llvm::DenseSet<clang::FileID> unchecked;
     std::optional<ContentTable> table;
     worker::ClaimParams claim;
-    /// Parallel to claim.files.
-    std::vector<clang::FileID> claim_fids;
+    /// The table row of every claimed unit, in the order of claim.files'
+    /// units: the reply is read back through it.
+    std::vector<std::uint32_t> claim_rows;
     long long compile_ms = 0;
     long long content_ms = 0;
     ScopedTimer timer;
@@ -501,13 +502,13 @@ static void prepare_claim(const worker::TURunParams& params,
     };
     auto main_fid = parsed.unit.main_file();
     clang::FileID current;
-    for(auto& row: parsed.table->units) {
+    for(std::uint32_t r = 0; r < parsed.table->units.size(); r += 1) {
+        auto& row = parsed.table->units[r];
         if(row.fid == main_fid || !claimable_unit(row)) {
             continue;
         }
-        if(parsed.claim_fids.empty() || row.fid != current) {
+        if(parsed.claim.files.empty() || row.fid != current) {
             current = row.fid;
-            parsed.claim_fids.push_back(row.fid);
             parsed.claim.files.push_back({.path = std::string(parsed.unit.file_path(row.fid))});
         }
         worker::ClaimUnit claim_unit{.key = to_wire(row.content)};
@@ -515,6 +516,7 @@ static void prepare_claim(const worker::TURunParams& params,
             claim_unit.elements.push_back(to_wire(element));
         }
         parsed.claim.files.back().units.push_back(std::move(claim_unit));
+        parsed.claim_rows.push_back(r);
     }
     parsed.claim.attempt = params.attempt;
     parsed.claim.file = params.file;
@@ -573,20 +575,20 @@ static worker::TURunResult finish_turun(const worker::TURunParams& params,
         if(answered()) {
             scopes.emplace();
             auto main_fid = parsed.unit.main_file();
-            llvm::DenseMap<clang::FileID, std::size_t> file_index;
-            for(std::size_t i = 0; i < parsed.claim_fids.size(); i += 1) {
-                file_index[parsed.claim_fids[i]] = i;
-            }
-            llvm::DenseMap<clang::FileID, std::size_t> ordinal;
-            for(auto& row: parsed.table->units) {
-                // The main file is always the run's own; a unit of a file
-                // the claim left out is nobody's to check here.
-                auto run = row.fid == main_fid ? worker::ClaimRun::Full : worker::ClaimRun::Skip;
-                if(auto it = file_index.find(row.fid); it != file_index.end()) {
-                    auto& runs = reply->files[it->second].runs;
-                    run = runs[ordinal[row.fid]];
-                    ordinal[row.fid] += 1;
+            // The main file is always the run's own; a unit the claim left
+            // out is nobody's to check here.
+            std::vector<worker::ClaimRun> run_of(parsed.table->units.size(),
+                                                 worker::ClaimRun::Skip);
+            std::size_t next = 0;
+            for(auto& file: reply->files) {
+                for(auto run: file.runs) {
+                    run_of[parsed.claim_rows[next]] = run;
+                    next += 1;
                 }
+            }
+            for(std::uint32_t r = 0; r < parsed.table->units.size(); r += 1) {
+                auto& row = parsed.table->units[r];
+                auto run = row.fid == main_fid ? worker::ClaimRun::Full : run_of[r];
                 if(run == worker::ClaimRun::Skip) {
                     continue;
                 }

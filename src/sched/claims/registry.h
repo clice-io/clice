@@ -82,9 +82,10 @@ private:
         llvm::DenseSet<ContentHash> elements_done;
         llvm::DenseSet<ContentHash> elements_pending;
         llvm::DenseSet<ContentHash> elements_seen;
-        /// The first TU that offered the unit, and per element the first
-        /// that materialized it: one is enough to re-run.
-        Fid requester;
+        /// The first two TUs that offered the unit (a re-run has an
+        /// alternative when the first fails again) and, per element, the
+        /// first TU that materialized it.
+        llvm::SmallVector<Fid, 2> requesters;
         llvm::DenseMap<ContentHash, Fid> element_requesters;
     };
 

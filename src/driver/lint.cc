@@ -77,6 +77,11 @@ void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
 }
 
 int run_lint(const BatchLintOptions& options) {
+    if(options.verify && !options.dedup) {
+        std::println(stderr,
+                     "--verify compares the deduplicated run with whole runs; drop --no-dedup.");
+        return 2;
+    }
     auto result = run_batch_lint(options);
     print_findings(result.findings);
     if(result.interrupted) {

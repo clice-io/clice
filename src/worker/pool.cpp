@@ -1,6 +1,7 @@
 #include "worker/pool.h"
 
 #include <algorithm>
+#include <cassert>
 #include <csignal>
 #include <string>
 
@@ -145,15 +146,19 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
 
     auto stderr_tail = std::make_shared<StderrTail>();
     worker_tasks.spawn(drain_stderr(std::move(spawn.stderr_pipe), "[" + name + "]", stderr_tail));
-    // A stateless worker asks only under a plan that claims, and the one
-    // consumer of such plans installs both hooks before its first run.
     if(!stateful) {
         peer->on_request(
             [this](kota::ipc::BincodePeer::RequestContext&, const worker::ScopeParams& params)
-                -> kota::ipc::RequestResult<worker::ScopeParams> { co_return on_scope(params); });
+                -> kota::ipc::RequestResult<worker::ScopeParams> {
+                assert(on_scope && "a plan that claims needs the consumer's scope answer");
+                co_return on_scope(params);
+            });
         peer->on_request(
             [this](kota::ipc::BincodePeer::RequestContext&, const worker::ClaimParams& params)
-                -> kota::ipc::RequestResult<worker::ClaimParams> { co_return on_claim(params); });
+                -> kota::ipc::RequestResult<worker::ClaimParams> {
+                assert(on_claim && "a plan that claims needs the consumer's claim answer");
+                co_return on_claim(params);
+            });
     }
     worker_tasks.spawn(run_peer(peer));
 

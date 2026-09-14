@@ -296,13 +296,12 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
 /// frame.
 struct LintSweep {
     std::size_t inflight = 0;
-    std::size_t checked = 0;
-    std::size_t failed = 0;
+    /// Final verdict per TU: a re-run that completes clears the failure.
+    llvm::DenseSet<Fid> checked;
+    llvm::DenseSet<Fid> failed;
     std::vector<worker::TidyDiagnostic> findings;
     std::vector<worker::TidyDiagnostic> baseline;
     kota::event task_done{false};
-    /// The sweep is the re-run of TUs owed units: they were counted once.
-    bool rerun = false;
 };
 
 auto finding_key(const worker::TidyDiagnostic& d) {
@@ -350,14 +349,17 @@ kota::task<>
 
     switch(outcome.verdict) {
         case TURunFamily::Verdict::Completed: {
-            sweep.checked += !sweep.rerun;
+            sweep.checked.insert(path_id);
+            sweep.failed.erase(path_id);
             if(options.with_index) {
                 stack.pump.claim_report(outcome.report);
             }
             // A run that could not ask the master reports everything it
-            // saw; the lint set applies here in that case too.
+            // saw; the lint set applies here in that case too. A compiler
+            // error stays wherever it is: broken code is not a clean run.
             auto lintable = [&](const worker::TidyDiagnostic& d) {
-                return stack.workspace.build.lintable(d.file);
+                return d.check == "clang-diagnostic-error" ||
+                       stack.workspace.build.lintable(d.file);
             };
             std::ranges::copy_if(outcome.tidy_diagnostics,
                                  std::back_inserter(sweep.findings),
@@ -372,7 +374,7 @@ kota::task<>
             // Skipped means no real compile command (the index path keeps
             // last-known rows then; lint has nothing to keep) — either way
             // the TU went unchecked.
-            sweep.failed += 1;
+            sweep.failed.insert(path_id);
             LOG_WARN("Lint failed for {}: {}",
                      file,
                      outcome.error.empty() ? "no compile command found" : outcome.error);
@@ -380,7 +382,7 @@ kota::task<>
         }
         case TURunFamily::Verdict::Crashed:
         case TURunFamily::Verdict::Preempted: {
-            sweep.failed += 1;
+            sweep.failed.insert(path_id);
             LOG_WARN("Lint gave up on {} after a retry: {}", file, outcome.error);
             break;
         }
@@ -515,7 +517,6 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         if(!again.empty()) {
             LOG_INFO("Re-running {} translation unit(s) for units their failed runs left unchecked",
                      again.size());
-            sweep.rerun = true;
             co_await kota::with_token(run_lint_sweep(stack, options, again, sweep),
                                       lifetime.token());
         }
@@ -538,8 +539,8 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     }
 
     result.completed = true;
-    result.checked_tus = sweep.checked;
-    result.failed_tus = sweep.failed + stack.pump.failed().size();
+    result.checked_tus = sweep.checked.size();
+    result.failed_tus = sweep.failed.size() + stack.pump.failed().size();
     if(options.dedup) {
         result.unchecked_units = stack.claims.unfinished().size();
     }
