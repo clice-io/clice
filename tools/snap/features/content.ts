@@ -16,6 +16,7 @@ interface RawContentUnit {
     entity: string;
     own: string;
     content: string;
+    elements: string[];
     deps: RawContentDep[];
 }
 
@@ -71,6 +72,7 @@ export const content: Feature = {
         const digests = new Classes("d");
         const owns = new Classes("o");
         const contents = new Classes("c");
+        const elements = new Classes("e");
         const out: string[] = [];
         files.forEach((file, index) => {
             if (out.length > 0) {
@@ -83,6 +85,9 @@ export const content: Feature = {
                     `, kind: ${unit.kind}` +
                     (unit.name === "" ? "" : `, name: ${yamlStr(unit.name)}`) +
                     `, own: ${owns.of(unit.own)}, content: ${contents.of(unit.content)}`;
+                if (unit.elements.length > 0) {
+                    line += `, elements: [${unit.elements.map((e) => elements.of(e)).join(", ")}]`;
+                }
                 if (unit.deps.length > 0) {
                     line += `, deps: [${unit.deps.map(label).join(", ")}]`;
                 }

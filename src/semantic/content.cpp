@@ -240,6 +240,7 @@ public:
         collect_deps();
         hash_own();
         close();
+        hash_elements();
         digest();
     }
 
@@ -518,17 +519,19 @@ private:
         return unit_at(fid, offset);
     }
 
-    /// The unit a node's references and instantiations count for. Inside
-    /// an instantiation subtree that is the pattern's unit — the
-    /// diagnostics of an instantiated body land in the pattern's range,
-    /// whether the instantiation hangs under the template or under an
-    /// explicit instantiation directive elsewhere. An instantiation the
-    /// compiler only declared (`decltype(f<double>)`) counts for nothing:
-    /// it has no body to diagnose, and its signature would otherwise
-    /// change the pattern's content with every TU that merely names it.
+    /// The unit a node's references count for: the unit whose subtree
+    /// holds it, except inside an instantiation subtree, which counts for
+    /// no unit's content — it is written nowhere, and letting it in would
+    /// make the pattern's content vary with every TU's instantiations.
+    /// Instead each materialized instantiation becomes an element of its
+    /// pattern's unit (the unit holding the lambda for a generic lambda's
+    /// call operator, which has no pattern node); nodes inside it are
+    /// attributed to the innermost such element. An instantiation the
+    /// compiler only declared (`decltype(f<double>)`) is nothing at all.
     void attribute_nodes() {
         auto entries = semantics.node_entries();
         attribution = node_units;
+        element_of_node.assign(attribution.size(), no_unit);
         llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>, 8> stack;
         for(std::uint32_t i = 0; i < attribution.size(); i += 1) {
             while(!stack.empty() && stack.back().first <= i) {
@@ -537,20 +540,25 @@ private:
             auto* decl = entries[i].node.get<clang::Decl>();
             if(decl && llvm::isa<clang::FunctionDecl, clang::CXXRecordDecl, clang::VarDecl>(decl) &&
                decls::is_instantiation(decl)) {
-                auto owner = no_unit;
-                if(materialized(decl)) {
-                    // A generic lambda's call operator has no pattern node:
-                    // its instantiations count for the unit holding the
-                    // lambda.
-                    owner = lookup(decls::normalize(llvm::cast<clang::NamedDecl>(decl)));
+                auto element = no_unit;
+                if(auto mask = materialized(decl)) {
+                    auto owner = lookup(decls::normalize(llvm::cast<clang::NamedDecl>(decl)));
                     if(owner == no_unit) {
                         owner = node_units[i];
                     }
+                    if(owner != no_unit) {
+                        element = static_cast<std::uint32_t>(heads.size());
+                        heads.push_back({.owner = owner,
+                                         .entity = unit.entity(llvm::cast<clang::NamedDecl>(decl)),
+                                         .mask = *mask});
+                        argument_targets(decl, heads.back().targets);
+                    }
                 }
-                stack.emplace_back(entries[i].subtree_end, owner);
+                stack.emplace_back(entries[i].subtree_end, element);
             }
             if(!stack.empty()) {
-                attribution[i] = stack.back().second;
+                attribution[i] = no_unit;
+                element_of_node[i] = stack.back().second;
             }
         }
     }
@@ -726,34 +734,33 @@ private:
         std::vector<llvm::DenseSet<std::uint32_t>> deps(table.units.size());
         referenced.resize(table.units.size());
         llvm::SmallVector<std::uint32_t, 8> found;
-        auto entries = semantics.node_entries();
         for(std::uint32_t i = 0; i < attribution.size(); i += 1) {
             auto owner = attribution[i];
-            if(owner == no_unit) {
+            auto element = element_of_node[i];
+            if(owner == no_unit && element == no_unit) {
                 continue;
-            }
-            if(auto* decl = entries[i].node.get<clang::Decl>();
-               decl && decls::is_instantiation(decl)) {
-                found.clear();
-                argument_targets(decl, found);
-                for(auto target: found) {
-                    if(target != owner) {
-                        deps[owner].insert(target);
-                    }
-                }
             }
             for(auto& reference: resolve_references(semantics, i, &resolver)) {
                 // The unit's own text already tells which local a name binds
                 // to, so neither a positional entity nor a declaration of the
                 // unit's own goes into the selected set.
-                if(!reference.kind.isDeclOrDef() && !positional(reference.decl)) {
-                    referenced[owner].push_back(unit.entity(decls::normalize(reference.decl)));
-                }
+                bool selected = !reference.kind.isDeclOrDef() && !positional(reference.decl);
                 found.clear();
                 if(reference.kind.isDeclOrDef() && lookup(reference.decl) == owner) {
                     add_target(reference.decl, found);
                 } else {
                     targets(reference.decl, found);
+                }
+                if(element != no_unit) {
+                    auto& head = heads[element];
+                    if(selected) {
+                        head.entities.push_back(unit.entity(decls::normalize(reference.decl)));
+                    }
+                    head.targets.append(found);
+                    continue;
+                }
+                if(selected) {
+                    referenced[owner].push_back(unit.entity(decls::normalize(reference.decl)));
                 }
                 for(auto target: found) {
                     if(target != owner) {
@@ -792,6 +799,37 @@ private:
             }
         }
         return it->second;
+    }
+
+    /// What every `#include` inside the unit's text resolved to: whether
+    /// the preprocessor entered the file and the characteristic it got
+    /// (`-I` versus `-isystem` for the same spelling decides what
+    /// include-level checks report).
+    void add_includes(Hasher& hasher, clang::FileID fid, LocalSourceRange range) {
+        auto found = unit.directives().find(fid);
+        if(found == unit.directives().end()) {
+            hasher.add(static_cast<std::uint64_t>(0));
+            return;
+        }
+        std::uint64_t count = 0;
+        Hasher inner;
+        for(auto& include: found->second.includes) {
+            if(include.location.isInvalid()) {
+                continue;
+            }
+            auto offset = SM.getFileOffset(SM.getExpansionLoc(include.location));
+            if(offset < range.begin || offset >= range.end) {
+                continue;
+            }
+            count += 1;
+            inner.add(static_cast<std::uint64_t>(include.skipped));
+            inner.add(static_cast<std::uint64_t>(
+                include.fid.isValid()
+                    ? SM.getFileCharacteristic(SM.getLocForStartOfFile(include.fid)) + 1
+                    : 0));
+        }
+        hasher.add(count);
+        hasher.add(inner.finish());
     }
 
     void add_branches(Hasher& hasher, clang::FileID fid, LocalSourceRange range) {
@@ -913,6 +951,9 @@ private:
         Hasher hasher;
         hasher.add(content.slice(from, to));
         add_suppression_context(hasher, fid, offset);
+        // A macro defined in a system header has its expansions' diagnostics
+        // suppressed as system macros.
+        hasher.add(static_cast<std::uint64_t>(SM.getFileCharacteristic(begin)));
         return hasher.finish();
     }
 
@@ -1053,10 +1094,13 @@ private:
             add_suppression_context(hasher, current.fid, span.begin);
             hasher.add(pragma_state(begin));
             add_branches(hasher, current.fid, current.range);
+            add_includes(hasher, current.fid, current.range);
             for(auto fragment: current.fragments) {
-                add_branches(hasher,
-                             fragment,
-                             {0, static_cast<std::uint32_t>(unit.file_content(fragment).size())});
+                LocalSourceRange whole{
+                    0,
+                    static_cast<std::uint32_t>(unit.file_content(fragment).size())};
+                add_branches(hasher, fragment, whole);
+                add_includes(hasher, fragment, whole);
             }
         }
 
@@ -1132,20 +1176,6 @@ private:
         pass_pragmas(clang::SourceLocation());
         flush();
 
-        std::vector<std::vector<std::pair<std::uint64_t, std::uint64_t>>> instantiations(
-            table.units.size());
-        for(std::uint32_t i = 0; i < attribution.size(); i += 1) {
-            auto* decl = entries[i].node.get<clang::Decl>();
-            if(!decl || attribution[i] == no_unit || !decls::is_instantiation(decl)) {
-                continue;
-            }
-            if(auto mask = materialized(decl)) {
-                instantiations[attribution[i]].emplace_back(
-                    unit.entity(llvm::cast<clang::NamedDecl>(decl)),
-                    *mask);
-            }
-        }
-
         for(std::uint32_t u = 0; u < table.units.size(); u += 1) {
             auto& current = table.units[u];
             auto& hasher = hashers[u];
@@ -1172,14 +1202,6 @@ private:
                         add_attributes(hasher, decl);
                     }
                 }
-            }
-
-            auto& materializations = instantiations[u];
-            sort_unique(materializations);
-            hasher.add(static_cast<std::uint64_t>(materializations.size()));
-            for(auto [entity, mask]: materializations) {
-                hasher.add(entity);
-                hasher.add(mask);
             }
 
             auto& entities = referenced[u];
@@ -1253,6 +1275,38 @@ private:
         }
     }
 
+    /// Each materialized instantiation as one hash on its pattern's unit,
+    /// computed once every content is known: what the body refers to
+    /// enters as those units' content, one hop, never transitively.
+    void hash_elements() {
+        for(auto& head: heads) {
+            Hasher hasher;
+            hasher.add(head.entity);
+            hasher.add(head.mask);
+            llvm::SmallVector<ContentHash, 8> contents;
+            sort_unique(head.targets);
+            for(auto target: head.targets) {
+                if(target != head.owner) {
+                    contents.push_back(table.units[target].content);
+                }
+            }
+            sort_unique(contents);
+            hasher.add(static_cast<std::uint64_t>(contents.size()));
+            for(auto& content: contents) {
+                hasher.add(content);
+            }
+            std::ranges::sort(head.entities);
+            hasher.add(static_cast<std::uint64_t>(head.entities.size()));
+            for(auto entity: head.entities) {
+                hasher.add(entity);
+            }
+            table.units[head.owner].elements.push_back(hasher.finish());
+        }
+        for(auto& current: table.units) {
+            sort_unique(current.elements);
+        }
+    }
+
     void digest() {
         for(auto& [fid, range]: file_units) {
             Hasher hasher;
@@ -1282,11 +1336,24 @@ private:
     llvm::DenseMap<clang::FileID, UnitRange> file_units;
     llvm::DenseMap<clang::FileID, std::uint32_t> fragment_owner;
 
-    /// Per AST node: the unit whose subtree holds it, and the unit its
-    /// references count for.
+    /// Per AST node: the unit whose subtree holds it, the unit its
+    /// references count for, and the element (index into heads) they count
+    /// for instead inside an instantiation.
     std::vector<std::uint32_t> node_units;
     std::vector<std::uint32_t> attribution;
+    std::vector<std::uint32_t> element_of_node;
     llvm::DenseMap<const clang::Decl*, std::uint32_t> decl_units;
+
+    /// A materialized instantiation on its way to becoming an element.
+    struct Head {
+        std::uint32_t owner;
+        std::uint64_t entity;
+        std::uint64_t mask;
+        llvm::SmallVector<std::uint32_t, 8> targets;
+        std::vector<std::uint64_t> entities;
+    };
+
+    std::vector<Head> heads;
 
     /// Per unit: the entity every reference of its nodes selected.
     std::vector<std::vector<std::uint64_t>> referenced;

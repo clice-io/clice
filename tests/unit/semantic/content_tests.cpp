@@ -91,6 +91,15 @@ struct Compiled {
         return hex(table.digests.lookup(fid(file)));
     }
 
+    /// The unit's elements, joined for comparison.
+    std::string elements(llvm::StringRef file, llvm::StringRef marker) {
+        std::string joined;
+        for(auto& element: at(file, marker).elements) {
+            joined += hex(element) + ",";
+        }
+        return joined;
+    }
+
     /// Whether the unit at `marker` has a direct edge to the unit at
     /// `dep_marker`.
     bool depends(llvm::StringRef file,
@@ -766,6 +775,7 @@ TEST_CASE(InstantiationSet) {
 #pragma once
 template <typename T> int §(f)convert(T x) { int i = x; return i; }
 inline int §(indep)indep() { return 0; }
+inline int §(user)user() { return convert(1); }
 )cpp"};
     Compiled a;
     ASSERT_TRUE(a.compile({f}, {"a.cpp", "#include \"f.h\"\nint r = convert(1);\n"}));
@@ -778,9 +788,18 @@ inline int §(indep)indep() { return 0; }
         {"c.cpp",
          "#include \"f.h\"\nint r = convert(1);\nusing P = decltype(convert<double>)*;\n"}));
 
-    EXPECT_NE(a.content("f.h", "f"), b.content("f.h", "f"));
-    EXPECT_EQ(a.content("f.h", "f"), c.content("f.h", "f"));
-    EXPECT_EQ(a.content("f.h", "indep"), b.content("f.h", "indep"));
+    // Instantiations never enter content, only the template unit's elements;
+    // a specialization the compiler only declared is no element either.
+    for(auto marker: {"f", "indep", "user"}) {
+        EXPECT_EQ(a.content("f.h", marker), b.content("f.h", marker));
+        EXPECT_EQ(a.content("f.h", marker), c.content("f.h", marker));
+    }
+    EXPECT_EQ(a.at("f.h", "f").elements.size(), 1u);
+    EXPECT_EQ(b.at("f.h", "f").elements.size(), 2u);
+    EXPECT_EQ(a.elements("f.h", "f"), c.elements("f.h", "f"));
+    EXPECT_NE(a.elements("f.h", "f"), b.elements("f.h", "f"));
+    EXPECT_TRUE(a.at("f.h", "indep").elements.empty());
+    EXPECT_TRUE(a.at("f.h", "user").elements.empty());
 }
 
 TEST_CASE(LazyDefaultMaterialization) {
@@ -799,8 +818,10 @@ template <typename T> struct §(s)S { int x = T(1.5); };
         {"b.cpp",
          "#include \"f.h\"\nint r = defaulted<double>(1);\nint n = sizeof(S<double>);\n"}));
 
-    EXPECT_NE(a.content("f.h", "f"), b.content("f.h", "f"));
-    EXPECT_NE(a.content("f.h", "s"), b.content("f.h", "s"));
+    EXPECT_EQ(a.content("f.h", "f"), b.content("f.h", "f"));
+    EXPECT_NE(a.elements("f.h", "f"), b.elements("f.h", "f"));
+    EXPECT_EQ(a.content("f.h", "s"), b.content("f.h", "s"));
+    EXPECT_NE(a.elements("f.h", "s"), b.elements("f.h", "s"));
 }
 
 TEST_CASE(DeclaredDefaultArgument) {
@@ -810,7 +831,8 @@ TEST_CASE(DeclaredDefaultArgument) {
     Compiled b;
     ASSERT_TRUE(b.compile({f}, {"b.cpp", "#include \"f.h\"\nint r = declared<double>(1);\n"}));
 
-    EXPECT_NE(a.content("f.h", "f"), b.content("f.h", "f"));
+    EXPECT_EQ(a.content("f.h", "f"), b.content("f.h", "f"));
+    EXPECT_NE(a.elements("f.h", "f"), b.elements("f.h", "f"));
 }
 
 TEST_CASE(ExceptionSpecification) {
@@ -824,7 +846,9 @@ template <typename T> void §(f)f() noexcept(T::value);
     Compiled b;
     ASSERT_TRUE(b.compile({f}, {"b.cpp", "#include \"f.h\"\nint unrelated;\n"}));
 
-    EXPECT_NE(a.content("f.h", "f"), b.content("f.h", "f"));
+    EXPECT_EQ(a.content("f.h", "f"), b.content("f.h", "f"));
+    EXPECT_EQ(a.at("f.h", "f").elements.size(), 1u);
+    EXPECT_TRUE(b.at("f.h", "f").elements.empty());
 }
 
 TEST_CASE(ManyFieldsMaterialization) {
@@ -839,7 +863,8 @@ TEST_CASE(ManyFieldsMaterialization) {
     Compiled b;
     ASSERT_TRUE(b.compile({s}, {"b.cpp", "#include \"s.h\"\nint n = sizeof(S<double>);\n"}));
 
-    EXPECT_NE(a.content("s.h", "s"), b.content("s.h", "s"));
+    EXPECT_EQ(a.content("s.h", "s"), b.content("s.h", "s"));
+    EXPECT_NE(a.elements("s.h", "s"), b.elements("s.h", "s"));
 }
 
 TEST_CASE(GenericLambda) {
@@ -853,32 +878,48 @@ TEST_CASE(GenericLambda) {
     Compiled c;
     ASSERT_TRUE(c.compile({l}, {"c.cpp", "#include \"l.h\"\nint r = convert(1) + 1;\n"}));
 
-    EXPECT_NE(a.content("l.h", "convert"), b.content("l.h", "convert"));
-    EXPECT_EQ(a.content("l.h", "convert"), c.content("l.h", "convert"));
+    EXPECT_EQ(a.content("l.h", "convert"), b.content("l.h", "convert"));
+    EXPECT_NE(a.elements("l.h", "convert"), b.elements("l.h", "convert"));
+    EXPECT_EQ(a.elements("l.h", "convert"), c.elements("l.h", "convert"));
 }
 
 TEST_CASE(InstantiationDependencies) {
-    File s = {"s.h",
-              "#pragma once\nstruct §(s)S {};\ninline int §(inspect)inspect(S) { return 1; }\n"};
+    File s1 = {"s.h",
+               "#pragma once\nstruct §(s)S {};\ninline int §(inspect)inspect(S) { return 1; }\n"};
+    File s2 = {"s.h",
+               "#pragma once\nstruct §(s)S {};\ninline int §(inspect)inspect(S) { return 2; }\n"};
     File call = {
         "call.h",
         "#pragma once\ntemplate <typename T> int §(call)call(T x) { return inspect(x); }\n"};
+    // The header with `inspect` comes after the template: only ADL at the
+    // instantiation finds it.
+    File main = {"main.cpp", "#include \"call.h\"\n#include \"s.h\"\nint r = call(S{});\n"};
     Compiled a;
-    ASSERT_TRUE(
-        a.compile({s, call},
-                  {"main.cpp", "#include \"s.h\"\n#include \"call.h\"\nint r = call(S{});\n"}));
+    ASSERT_TRUE(a.compile({s1, call}, main));
+    Compiled b;
+    ASSERT_TRUE(b.compile({s2, call}, main));
 
-    EXPECT_TRUE(a.depends("call.h", "call", "s.h", "inspect"));
+    // What an instantiated body resolves to (ADL here) is the element's
+    // business, not the pattern's.
+    EXPECT_FALSE(a.depends("call.h", "call", "s.h", "inspect"));
+    EXPECT_EQ(a.content("call.h", "call"), b.content("call.h", "call"));
+    EXPECT_EQ(a.at("call.h", "call").elements.size(), 1u);
+    EXPECT_NE(a.elements("call.h", "call"), b.elements("call.h", "call"));
 }
 
 TEST_CASE(TemplateArguments) {
-    File s = {"s.h", "#pragma once\nstruct §(s)S { int a; };\n"};
+    File s1 = {"s.h", "#pragma once\nstruct §(s)S { int a; };\n"};
+    File s2 = {"s.h", "#pragma once\nstruct §(s)S { int a; int b; };\n"};
     File t = {"t.h", "#pragma once\ntemplate <typename T> int §(f)f() { return 1; }\n"};
+    File main = {"main.cpp", "#include \"s.h\"\n#include \"t.h\"\nint r = f<S*>();\n"};
     Compiled a;
-    ASSERT_TRUE(
-        a.compile({s, t}, {"main.cpp", "#include \"s.h\"\n#include \"t.h\"\nint r = f<S*>();\n"}));
+    ASSERT_TRUE(a.compile({s1, t}, main));
+    Compiled b;
+    ASSERT_TRUE(b.compile({s2, t}, main));
 
-    EXPECT_TRUE(a.depends("t.h", "f", "s.h", "s"));
+    EXPECT_FALSE(a.depends("t.h", "f", "s.h", "s"));
+    EXPECT_EQ(a.content("t.h", "f"), b.content("t.h", "f"));
+    EXPECT_NE(a.elements("t.h", "f"), b.elements("t.h", "f"));
 }
 
 TEST_CASE(ExplicitInstantiation) {
@@ -897,8 +938,11 @@ template <typename T> int §(f)f(T x) { int i = x; return i; }
         {"b.cpp",
          "#include \"v.h\"\nextern template int v<double>;\nextern template int f<double>(double);\n"}));
 
-    EXPECT_NE(a.content("v.h", "v"), b.content("v.h", "v"));
-    EXPECT_NE(a.content("v.h", "f"), b.content("v.h", "f"));
+    for(auto marker: {"v", "f"}) {
+        EXPECT_EQ(a.content("v.h", marker), b.content("v.h", marker));
+        EXPECT_EQ(a.at("v.h", marker).elements.size(), 1u);
+        EXPECT_TRUE(b.at("v.h", marker).elements.empty());
+    }
 }
 
 TEST_CASE(ExplicitInstantiationSpan) {
@@ -1276,6 +1320,21 @@ TEST_CASE(SystemHeaders) {
 
     EXPECT_NE(a.own("sys/h.h", "f"), b.own("sys/h.h", "f"));
     EXPECT_NE(b.own("sys/h.h", "f"), c.own("sys/h.h", "f"));
+}
+
+TEST_CASE(IncludeResolution) {
+    File h = {"sys/h.h", "#include <inner.h>\ninline int §(f)f() { return 1; }\n"};
+    File inner = {"sys/inner.h", "\n"};
+    File main = {"main.cpp", "#include <h.h>\n"};
+    auto dir = TestVFS::path("sys");
+    Compiled a;
+    ASSERT_TRUE(a.compile({h, inner}, main, {"-I", dir}));
+    Compiled b;
+    ASSERT_TRUE(b.compile({h, inner}, main, {"-I", dir, "-isystem", dir}));
+
+    // Same header, same text: the include it holds resolved to a user file
+    // in one TU and a system file in the other.
+    EXPECT_NE(a.own("sys/h.h", "f"), b.own("sys/h.h", "f"));
 }
 
 TEST_CASE(MainFileUnits) {

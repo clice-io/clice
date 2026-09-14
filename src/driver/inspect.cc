@@ -296,6 +296,7 @@ struct RawContentUnit {
     std::string entity;
     std::string own;
     std::string content;
+    std::vector<std::string> elements;
     std::vector<RawContentDep> deps;
 };
 
@@ -344,6 +345,9 @@ std::optional<kota::codec::RawValue> run_content(CompilationUnitRef unit,
             .own = std::format("{}", row.own),
             .content = std::format("{}", row.content),
         };
+        for(auto& element: row.elements) {
+            raw.elements.push_back(std::format("{}", element));
+        }
         if(auto* named = llvm::dyn_cast<clang::NamedDecl>(row.decl)) {
             raw.name = named->getNameAsString();
         }

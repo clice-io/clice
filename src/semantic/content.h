@@ -57,11 +57,20 @@ struct ContentUnit {
     /// one (`static_assert`, file-level `asm`, an empty namespace).
     std::uint64_t entity = 0;
 
-    /// What the unit itself contributes.
+    /// What the unit itself contributes. Template instantiations take no
+    /// part: neither their references nor what the compiler materialized
+    /// from them.
     ContentHash own;
 
     /// own combined with the content of every dependency, transitively.
     ContentHash content;
+
+    /// One per instantiation the compiler materialized from a template of
+    /// this unit: its entity, what of it was materialized, the content of
+    /// what its body refers to and the entities it selected. Checks that
+    /// look into instantiated bodies key on (content, element); nothing
+    /// here propagates to the unit's dependents. Sorted, unique.
+    llvm::SmallVector<ContentHash, 2> elements;
 };
 
 struct ContentTable {
