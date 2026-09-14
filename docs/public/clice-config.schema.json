@@ -318,6 +318,11 @@
                     "type": "boolean",
                     "description": "Whether matching translation units join the background index. `false` keeps them out; they still compile when opened and still host the headers they include. Any matching rule saying `false` wins.",
                     "default": true
+                },
+                "lint": {
+                    "type": "boolean",
+                    "description": "Whether `clice lint` checks matching files. `false` keeps them out: their findings are dropped and a translation unit they head is not parsed. Files outside the workspace are never checked. Any matching rule saying `false` wins.",
+                    "default": true
                 }
             },
             "additionalProperties": false

@@ -313,8 +313,9 @@ void apply_warning_options(llvm::ArrayRef<std::string> extra_args,
     }
 }
 
-ClangTidyChecker::ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider) :
-    context(std::move(provider)) {}
+ClangTidyChecker::ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider,
+                                   clang::ast_matchers::MatchFinder::MatchFinderOptions options) :
+    context(std::move(provider)), finder(options) {}
 
 clang::DiagnosticsEngine::Level
     ClangTidyChecker::adjust_level(clang::DiagnosticsEngine::Level level,
@@ -323,20 +324,22 @@ clang::DiagnosticsEngine::Level
         std::string tidy_diag = context.getCheckName(diag.getID());
         bool is_clang_tidy_diag = !tidy_diag.empty();
         if(is_clang_tidy_diag) {
-            // Check for suppression comment. Skip the check for diagnostics not
-            // in the main file, because we don't want that function to query the
-            // source buffer for preamble files. For the same reason, we ask
-            // shouldSuppressDiagnostic to avoid I/O.
+            // Check for suppression comment. The interactive shape skips
+            // diagnostics outside the main file and forbids I/O: that
+            // function would otherwise read the source buffers of preamble
+            // files. The batch shape (whole_tu) reads every file, as
+            // clang-tidy does.
             // We let suppression comments take precedence over warning-as-error
             // to match clang-tidy's behaviour.
             bool in_main_file = diag.hasSourceManager() &&
                                 is_inside_main_file(diag.getLocation(), diag.getSourceManager());
             llvm::SmallVector<clang::tooling::Diagnostic, 1> tidy_suppressed_errors;
-            if(in_main_file && context.shouldSuppressDiagnostic(level,
-                                                                diag,
-                                                                tidy_suppressed_errors,
-                                                                /*AllowIO=*/false,
-                                                                /*EnableNolintBlocks=*/true)) {
+            if((in_main_file || whole_tu) &&
+               context.shouldSuppressDiagnostic(level,
+                                                diag,
+                                                tidy_suppressed_errors,
+                                                /*AllowIO=*/whole_tu,
+                                                /*EnableNolintBlocks=*/true)) {
                 // FIXME: should we expose the suppression error (invalid use of
                 // NOLINT comments)?
                 return clang::DiagnosticsEngine::Ignored;
@@ -434,8 +437,14 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     }();
     tidy::ClangTidyCheckFactories factories =
         params.fast_only ? get_fast_checks(all_factories) : all_factories;
+    // Like clang-tidy: nodes in system headers are not even matched unless
+    // the configuration asks for their findings.
+    clang::ast_matchers::MatchFinder::MatchFinderOptions finder_options;
+    finder_options.IgnoreSystemHeaders = !opts.SystemHeaders.value_or(false);
     std::unique_ptr<ClangTidyChecker> checker = std::make_unique<ClangTidyChecker>(
-        std::make_unique<tidy::DefaultOptionsProvider>(tidy::ClangTidyGlobalOptions(), opts));
+        std::make_unique<tidy::DefaultOptionsProvider>(tidy::ClangTidyGlobalOptions(), opts),
+        finder_options);
+    checker->whole_tu = params.whole_tu;
 
     checker->context.setDiagnosticsEngine(
         std::make_unique<clang::DiagnosticOptions>(instance.getDiagnosticOpts()),

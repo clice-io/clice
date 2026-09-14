@@ -62,6 +62,12 @@ struct TidyParams {
     /// interactive command is never rewritten.
     std::vector<std::string> extra_args;
     std::vector<std::string> extra_args_before;
+
+    /// Traverse the whole TU and honor NOLINT comments in every file, as
+    /// clang-tidy does — the batch lint shape. Off is the interactive
+    /// shape: the main file's top-level declarations only, suppression
+    /// comments read only there.
+    bool whole_tu = false;
 };
 
 /// Resolve the effective clang-tidy configuration for `file` from its

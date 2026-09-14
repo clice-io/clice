@@ -285,6 +285,13 @@ struct ArtifactBuildResult {
 
 /// One clang-tidy finding, located for CLI presentation (1-based line and
 /// column; the column counts bytes, like the compiler's).
+struct TidyNote {
+    std::string file;
+    std::uint32_t line = 0;
+    std::uint32_t column = 0;
+    std::string message;
+};
+
 struct TidyDiagnostic {
     std::string file;
     std::uint32_t line = 0;
@@ -297,6 +304,9 @@ struct TidyDiagnostic {
 
     /// Check name, e.g. "bugprone-integer-division".
     std::string check;
+
+    /// The notes clang-tidy attached ("previous definition is here").
+    std::vector<TidyNote> notes;
 };
 
 struct TURunResult {

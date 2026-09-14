@@ -210,6 +210,7 @@ void Config::finalize(llvm::StringRef workspace_root) {
         compiled.append.assign(rule.append.begin(), rule.append.end());
         compiled.remove.assign(rule.remove.begin(), rule.remove.end());
         compiled.index = rule.index;
+        compiled.lint = rule.lint;
         return compiled;
     };
     for(auto& rule: rules) {

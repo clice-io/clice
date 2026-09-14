@@ -102,6 +102,29 @@ TEST_CASE(HeaderFilterTraversesHeaders) {
     ASSERT_TRUE(header_finding);
 }
 
+TEST_CASE(HeaderNolint) {
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    vfs->add("ratio.h", "inline double ratio(int a, int b) { return a / b; }  // NOLINT\n");
+    vfs->add("main.cpp", "#include \"ratio.h\"\n");
+
+    std::string main_path = TestVFS::path("main.cpp");
+    CompilationParams params;
+    params.kind = CompilationKind::Content;
+    params.tidy = tidy::TidyParams{.checks = "-*,bugprone-integer-division",
+                                   .fast_only = false,
+                                   .header_filter = ".*",
+                                   .whole_tu = true};
+    params.vfs = vfs;
+    params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.completed());
+    // A suppressed finding stays in the stream at the Ignored level.
+    for(auto& diag: unit.diagnostics()) {
+        EXPECT_TRUE(diag.id.source != DiagnosticSource::ClangTidy ||
+                    diag.id.level == DiagnosticLevel::Ignored);
+    }
+}
+
 TEST_CASE(ResolveConfigChain) {
     TempDir tmp;
     tmp.touch(".clang-tidy",
