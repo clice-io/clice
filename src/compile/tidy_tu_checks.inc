@@ -56,6 +56,9 @@ TU_LEVEL_CHECK("google-build-namespaces", "matches namespaces")
 TU_LEVEL_CHECK("cert-dcl59-cpp", "matches namespaces")
 TU_LEVEL_CHECK("bugprone-std-namespace-modification", "asks for namespace ancestors")
 TU_LEVEL_CHECK("cert-dcl58-cpp", "asks for namespace ancestors")
+// Checks whose matcher is rooted at a namespace: the pruned traversal
+// starts below the containers and never visits one.
+TU_LEVEL_CHECK("modernize-concat-nested-namespaces", "matches namespaces")
 // Checks that match the translation unit itself and walk it on their
 // own: a pruned traversal never visits that node.
 TU_LEVEL_CHECK("bugprone-assignment-in-if-condition", "matches the translation unit")
