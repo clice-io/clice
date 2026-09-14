@@ -91,10 +91,11 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         // run reports the debt instead of exiting clean.
         if(!workspace.project_index.manifests.contains(path_id)) {
             landed[path_id] = {.verdict = Verdict::Failed,
+                               .attempt = params.attempt,
                                .error = "no compile command found; the file stays uncovered"};
             co_return RoundOutcome::Failed;
         }
-        landed[path_id] = {.verdict = Verdict::Skipped};
+        landed[path_id] = {.verdict = Verdict::Skipped, .attempt = params.attempt};
         co_return RoundOutcome::Stale;
     }
 
@@ -161,7 +162,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             }
             for(auto dep: deps.resolved) {
                 if(co_await ctx.depend({Family::PCM, dep.raw}) == DependResult::Cancelled) {
-                    landed[path_id] = {.verdict = Verdict::Preempted};
+                    landed[path_id] = {.verdict = Verdict::Preempted, .attempt = params.attempt};
                     co_return RoundOutcome::Stale;
                 }
             }
@@ -177,6 +178,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         auto& value = result.value();
         if(plan.index && value.tu_index_data.empty()) {
             landed[path_id] = {.verdict = Verdict::Failed,
+                               .attempt = params.attempt,
                                .error = "the worker returned no TUIndex"};
             co_return RoundOutcome::Failed;
         }
@@ -195,7 +197,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             // follow-up slot redoes it.
             if(guards.superseded && guards.superseded()) {
                 LOG_INFO("Discarding superseded index result for {}", file_path);
-                landed[path_id] = {.verdict = Verdict::Skipped};
+                landed[path_id] = {.verdict = Verdict::Skipped, .attempt = params.attempt};
                 co_return RoundOutcome::Stale;
             }
             // Landing-time admission: the serving side re-arbitrates before
@@ -204,7 +206,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             auto landing = guards.landing ? guards.landing() : Admission::Admit;
             if(landing != Admission::Admit) {
                 LOG_INFO("Serving side vetoed the index result for {}", file_path);
-                landed[path_id] = {.verdict = Verdict::Skipped, .landing = landing};
+                landed[path_id] = {.verdict = Verdict::Skipped,
+                                   .landing = landing,
+                                   .attempt = params.attempt};
                 co_return RoundOutcome::Stale;
             }
             ScopedTimer merge_timer;
@@ -213,6 +217,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 // Rejected wholesale: the file's rows are missing or stale,
                 // which is a failure, not a completed index.
                 landed[path_id] = {.verdict = Verdict::Failed,
+                                   .attempt = params.attempt,
                                    .error = "the TUIndex result failed verification"};
                 co_return RoundOutcome::Failed;
             }

@@ -304,11 +304,11 @@ struct LintSweep {
 };
 
 auto finding_key(const worker::TidyDiagnostic& d) {
-    return std::tie(d.file, d.line, d.column, d.check, d.message);
+    return std::tie(d.file, d.line, d.column, d.check, d.error, d.message);
 }
 
-/// Sort and merge findings: one per (file, line, column, check, message),
-/// the first occurrence keeping its notes.
+/// Sort and merge findings: one per (file, line, column, check, severity,
+/// message), the first occurrence keeping its notes.
 void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
     std::ranges::stable_sort(findings,
                              [](auto& a, auto& b) { return finding_key(a) < finding_key(b); });
@@ -498,13 +498,16 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     LintSweep sweep;
     co_await kota::with_token(run_lint_sweep(stack, options, tus, sweep), lifetime.token());
     if(options.dedup && !lifetime.stop_requested) {
-        // A unit whose every grant ended in a failed run is still owed:
-        // re-run one TU that offered it, once. The registry grants it again
-        // there; what is still owed after that is reported as a failure.
+        // A key whose every grant ended in a failed run is still owed:
+        // re-run the TUs that offered it, once. The registry grants it
+        // again there; what is still owed after that is reported as a
+        // failure.
         llvm::SmallVector<Fid> again;
         for(auto& owed: stack.claims.unfinished()) {
-            if(!llvm::is_contained(again, owed.requesters.front())) {
-                again.push_back(owed.requesters.front());
+            for(auto requester: owed.requesters) {
+                if(!llvm::is_contained(again, requester)) {
+                    again.push_back(requester);
+                }
             }
         }
         if(!again.empty()) {

@@ -286,19 +286,33 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
 /// keeps them: a parse can complete with a usable AST despite errors, and
 /// a run that discarded them would pass broken code. Notes follow their
 /// finding in the stream and attach to it.
+/// The header filters of a configuration, read as clang-tidy reads them:
+/// a header finding needs HeaderFilterRegex to match (empty = none) and
+/// must not match ExcludeHeaderFilterRegex; the main file always reports.
+struct HeaderFilter {
+    std::optional<llvm::Regex> keep;
+    std::optional<llvm::Regex> drop;
+
+    explicit HeaderFilter(const worker::TURunParams& params) {
+        if(!params.tidy_header_filter.empty()) {
+            keep.emplace(params.tidy_header_filter);
+        }
+        if(!params.tidy_exclude_header_filter.empty()) {
+            drop.emplace(params.tidy_exclude_header_filter);
+        }
+    }
+
+    bool reports(llvm::StringRef file) const {
+        return keep && keep->match(file) && !(drop && drop->match(file));
+    }
+};
+
 static void collect_tidy_diagnostics(CompilationUnitRef unit,
                                      const worker::TURunParams& params,
                                      const llvm::DenseSet<clang::FileID>& unchecked,
                                      std::vector<worker::TidyDiagnostic>& out) {
     auto main_fid = unit.main_file();
-    std::optional<llvm::Regex> keep;
-    if(!params.tidy_header_filter.empty()) {
-        keep.emplace(params.tidy_header_filter);
-    }
-    std::optional<llvm::Regex> drop;
-    if(!params.tidy_exclude_header_filter.empty()) {
-        drop.emplace(params.tidy_exclude_header_filter);
-    }
+    HeaderFilter filter(params);
 
     bool last_kept = false;
     for(const auto& raw: unit.diagnostics()) {
@@ -333,10 +347,7 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             if(raw.in_system && !params.tidy_system_headers) {
                 continue;
             }
-            if(!keep || !keep->match(file)) {
-                continue;
-            }
-            if(drop && drop->match(file)) {
+            if(!filter.reports(file)) {
                 continue;
             }
         }
@@ -402,6 +413,10 @@ static worker::Hash128 to_wire(ContentHash hash) {
 /// which units to check.
 struct ParsedRun {
     CompilationUnit unit;
+    /// The parse had errors: the run claims nothing and checks everything.
+    /// clang drops diagnostics after a fatal error and several checks stay
+    /// silent after any error, so such findings vouch for no unit.
+    bool errors = false;
     /// Every file of the TU but the main file and the builtins, for the
     /// scope query; parallel to `files`.
     std::vector<std::string> files;
@@ -431,7 +446,10 @@ static std::optional<ParsedRun> parse_turun(const worker::TURunParams& params,
         return std::nullopt;
     }
     ParsedRun parsed{.unit = std::move(unit), .compile_ms = compile_ms, .timer = timer};
-    if(params.tidy && params.tidy_claim) {
+    parsed.errors = llvm::any_of(parsed.unit.diagnostics(), [](const Diagnostic& diagnostic) {
+        return diagnostic.id.level >= DiagnosticLevel::Error;
+    });
+    if(params.tidy && params.tidy_claim && !parsed.errors) {
         auto& SM = parsed.unit.context().getSourceManager();
         auto main_fid = parsed.unit.main_file();
         for(unsigned i = 0; i < SM.local_sloc_entry_size(); i += 1) {
@@ -464,12 +482,14 @@ static void prepare_claim(const worker::TURunParams& params,
             }
         }
     }
-    // What the finders would never match is not worth hashing either:
-    // nodes in system headers stay unmatched unless the configuration
-    // asks for their findings.
+    // What would never be reported is not worth hashing either: nodes in
+    // system headers stay unmatched unless the configuration asks for
+    // their findings, and a header the filters drop reports nothing.
+    HeaderFilter filter(params);
     auto claimable = [&](clang::FileID fid) {
         return !parsed.unchecked.contains(fid) &&
-               (params.tidy_system_headers || !SM.isInSystemHeader(SM.getLocForStartOfFile(fid)));
+               (params.tidy_system_headers || !SM.isInSystemHeader(SM.getLocForStartOfFile(fid))) &&
+               filter.reports(parsed.unit.file_path(fid));
     };
     ScopedTimer content_timer;
     parsed.table.emplace(ContentTable::compute(parsed.unit, claimable));
@@ -483,9 +503,7 @@ static void prepare_claim(const worker::TURunParams& params,
         if(parsed.claim_fids.empty() || row.fid != current) {
             current = row.fid;
             parsed.claim_fids.push_back(row.fid);
-            parsed.claim.files.push_back(
-                {.path = std::string(parsed.unit.file_path(row.fid)),
-                 .digest = to_wire(parsed.table->digests.lookup(row.fid))});
+            parsed.claim.files.push_back({.path = std::string(parsed.unit.file_path(row.fid))});
         }
         worker::ClaimUnit claim_unit{.key = to_wire(row.content)};
         for(auto element: row.elements) {
@@ -500,6 +518,9 @@ static void prepare_claim(const worker::TURunParams& params,
         parsed.claim.fingerprint += '\1' + key + '\2' + value;
     }
     parsed.claim.fingerprint += '\3' + params.tidy_warnings_as_errors;
+    parsed.claim.fingerprint += '\4' + params.tidy_header_filter;
+    parsed.claim.fingerprint += '\5' + params.tidy_exclude_header_filter;
+    parsed.claim.fingerprint += params.tidy_system_headers ? '\6' : '\7';
 }
 
 /// The check half: run the matchers over what the master granted (or
@@ -524,9 +545,20 @@ static worker::TURunResult finish_turun(const worker::TURunParams& params,
     ScopedTimer tidy_timer;
     if(params.tidy) {
         std::vector<clang::Decl*> scope;
-        bool pruned = reply.has_value() && reply->files.size() == parsed.claim.files.size();
+        // A reply that does not answer the claim unit by unit is no grant.
+        auto answered = [&] {
+            if(!reply || reply->files.size() != parsed.claim.files.size()) {
+                return false;
+            }
+            for(std::size_t i = 0; i < reply->files.size(); i += 1) {
+                if(reply->files[i].runs.size() != parsed.claim.files[i].units.size()) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        bool pruned = answered();
         if(pruned) {
-            result.claimed = true;
             auto main_fid = parsed.unit.main_file();
             llvm::DenseMap<clang::FileID, std::size_t> file_index;
             for(std::size_t i = 0; i < parsed.claim_fids.size(); i += 1) {
@@ -539,7 +571,7 @@ static worker::TURunResult finish_turun(const worker::TURunParams& params,
                     auto& runs = reply->files[it->second].runs;
                     auto u = ordinal[row.fid];
                     ordinal[row.fid] += 1;
-                    run = u < runs.size() && runs[u] != worker::ClaimRun::Skip;
+                    run = runs[u] != worker::ClaimRun::Skip;
                 }
                 if(run) {
                     for(auto* decl: row.decls) {
@@ -629,7 +661,7 @@ static void serve_turun(kota::ipc::BincodePeer& peer,
         }
 
         std::optional<worker::ClaimResult> reply;
-        if(params.tidy && params.tidy_claim) {
+        if(params.tidy && params.tidy_claim && !parsed.value()->errors) {
             std::optional<worker::ScopeResult> scope;
             auto answer = co_await peer.send_request(
                 worker::ScopeParams{.purpose = worker::ClaimPurpose::Tidy,

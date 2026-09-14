@@ -256,7 +256,6 @@ struct ClaimUnit {
 
 struct ClaimFile {
     std::string path;
-    Hash128 digest;
     std::vector<ClaimUnit> units;
 };
 
@@ -405,10 +404,6 @@ struct TURunResult {
 
     /// TURunParams::tidy_verify: the findings of the whole, unclaimed run.
     std::vector<TidyDiagnostic> baseline_diagnostics;
-
-    /// Whether the master answered the claim; false means the run checked
-    /// everything (the master was unreachable or claims were off).
-    bool claimed = false;
 };
 
 /// Request the document links of an open file's AST. Only the main-file

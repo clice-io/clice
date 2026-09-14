@@ -28,12 +28,16 @@ worker::ClaimResult ClaimRegistry::claim(std::uint64_t attempt,
         auto& file = params.files[f];
         auto& runs = result.files[f].runs;
         runs.assign(file.units.size(), worker::ClaimRun::Skip);
+        llvm::DenseMap<ContentHash, std::uint32_t> seen;
         for(std::size_t u = 0; u < file.units.size(); u += 1) {
             auto& unit = file.units[u];
+            auto hash = to_hash(unit.key);
             Key key{.purpose = params.purpose,
                     .fingerprint = fingerprint,
                     .file = files[f],
-                    .key = to_hash(unit.key)};
+                    .key = hash,
+                    .ordinal = seen[hash]};
+            seen[hash] += 1;
             auto& entry = entries[key];
             if(!llvm::is_contained(entry.requesters, requester)) {
                 entry.requesters.push_back(requester);
@@ -42,6 +46,10 @@ worker::ClaimResult ClaimRegistry::claim(std::uint64_t attempt,
             for(auto element: unit.elements) {
                 auto hash = to_hash(element);
                 entry.elements_seen.insert(hash);
+                auto& askers = entry.element_requesters[hash];
+                if(!llvm::is_contained(askers, requester)) {
+                    askers.push_back(requester);
+                }
                 if(!entry.elements_done.contains(hash) && !entry.elements_pending.contains(hash)) {
                     entry.elements_pending.insert(hash);
                     grant.elements.push_back(hash);
@@ -101,12 +109,23 @@ void ClaimRegistry::release(std::uint64_t attempt) {
 std::vector<ClaimRegistry::Unfinished> ClaimRegistry::unfinished() const {
     std::vector<Unfinished> result;
     for(auto& [key, entry]: entries) {
-        bool owed = entry.state != State::Done;
-        for(auto element: entry.elements_seen) {
-            owed = owed || !entry.elements_done.contains(element);
+        Unfinished owed{.key = key};
+        if(entry.state != State::Done) {
+            owed.requesters = entry.requesters;
+        } else {
+            for(auto element: entry.elements_seen) {
+                if(entry.elements_done.contains(element)) {
+                    continue;
+                }
+                for(auto asker: entry.element_requesters.lookup(element)) {
+                    if(!llvm::is_contained(owed.requesters, asker)) {
+                        owed.requesters.push_back(asker);
+                    }
+                }
+            }
         }
-        if(owed && !entry.requesters.empty()) {
-            result.push_back({.key = key, .requesters = entry.requesters});
+        if(!owed.requesters.empty()) {
+            result.push_back(std::move(owed));
         }
     }
     return result;

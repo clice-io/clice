@@ -143,3 +143,41 @@ test("lint rule keeps files out", ({ session }) => {
     expect(lines[0]).toContain("main.cpp:2:");
     expect(run.stdout).toContain("Linted 1 translation unit ");
 });
+
+test("header filters keep configurations apart", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write("common.h", "#pragma once\ninline int* shared() { return 0; }\n");
+    // The strict configuration never reports the header, so its TU must
+    // not claim the header's declarations away from the loose one.
+    ws.write("strict/.clang-tidy", 'Checks: "-*,modernize-use-nullptr"\n');
+    ws.write("strict/a.cpp", '#include "../common.h"\nint* a() { return shared(); }\n');
+    ws.write("loose/.clang-tidy", 'Checks: "-*,modernize-use-nullptr"\nHeaderFilterRegex: ".*"\n');
+    ws.write("loose/b.cpp", '#include "../common.h"\nint* b() { return shared(); }\n');
+    ws.writeCDB(["strict/a.cpp", "loose/b.cpp"]);
+
+    const run = runLint(ws, "--workers", "1");
+    expect(run.status, `stderr: ${run.stderr}`).toBe(1);
+    expect(findings(run.stdout).filter((line) => line.includes("common.h:2:"))).toHaveLength(1);
+    expect(run.stdout).toContain("Linted 2 translation units");
+});
+
+test("a parse with errors claims nothing", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write(".clang-tidy", 'Checks: "-*,modernize-use-nullptr"\nHeaderFilterRegex: ".*"\n');
+    ws.write("common.h", "#pragma once\ninline int* shared() { return 0; }\n");
+    // The broken TU sees the header first; its fatal error must not mark
+    // the header checked for the healthy TU that follows.
+    ws.write("broken.cpp", '#include "common.h"\n#include "missing.h"\n');
+    ws.write("good.cpp", '#include "common.h"\nint* g() { return shared(); }\n');
+    ws.writeCDB(["broken.cpp", "good.cpp"]);
+
+    const run = runLint(ws, "--workers", "1");
+    expect(run.status, `stderr: ${run.stderr}`).toBe(1);
+    const lines = findings(run.stdout);
+    expect(lines.filter((line) => line.includes("common.h:2:"))).toHaveLength(1);
+    expect(lines.some((line) => line.includes("broken.cpp:2:") && line.includes("error"))).toBe(
+        true,
+    );
+});

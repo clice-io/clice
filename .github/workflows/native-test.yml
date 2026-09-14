@@ -145,7 +145,7 @@ jobs:
           build/RelWithDebInfo/bin/clice lint --verify --workers 4 --workspace . > lint.txt || code=$?
           rm clice.toml
           tail -n 3 lint.txt
-          test "$code" -ne 2
+          test "$code" -eq 0 -o "$code" -eq 1
 
       # Package the exact binary the suites above just validated. These
       # artifacts are what releases promote — there is no separate release

@@ -62,3 +62,19 @@ print("with joint:", sum(1 for r in rows if r[2]["joint"]))
 print("with end_tu:", sum(1 for r in rows if r[2]["end_tu"]))
 print("with state members:", sum(1 for r in rows if r[3]))
 print("unmapped names:", sum(1 for r in rows if r[0] == "?"))
+
+# The allowlist must name every registration of a listed check's class: an
+# alias (cert-*, hicpp-*) is the same check under another name.
+inc = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "src", "compile", "tidy_tu_checks.inc"
+)
+listed = re.findall(r'TU_LEVEL_CHECK\("([^"]+)"', open(inc).read())
+by_name = {n: cls for cls, ns in names.items() for n in ns}
+for n in listed:
+    cls = by_name.get(n)
+    if cls is None:
+        print("allowlist names an unknown check:", n)
+        continue
+    for sibling in names[cls]:
+        if sibling not in listed:
+            print("allowlist misses alias", sibling, "of", n)

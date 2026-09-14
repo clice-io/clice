@@ -35,6 +35,9 @@ public:
         std::uint64_t fingerprint;
         Fid file;
         ContentHash key;
+        /// Which of the file's units with this hash: two declarations
+        /// written identically in one file are two keys.
+        std::uint32_t ordinal = 0;
 
         bool operator==(const Key&) const = default;
     };
@@ -54,7 +57,9 @@ public:
     void release(std::uint64_t attempt);
 
     /// Keys granted to no successful attempt although some run offered
-    /// them, with the TUs that did — what a sweep re-runs before it ends.
+    /// them, with the TUs that offered what is owed — what a sweep re-runs
+    /// before it ends. An owed element names only the TUs that
+    /// materialize it: the others cannot check it.
     struct Unfinished {
         Key key;
         llvm::SmallVector<Fid, 2> requesters;
@@ -79,6 +84,7 @@ private:
         llvm::DenseSet<ContentHash> elements_pending;
         llvm::DenseSet<ContentHash> elements_seen;
         llvm::SmallVector<Fid, 2> requesters;
+        llvm::DenseMap<ContentHash, llvm::SmallVector<Fid, 2>> element_requesters;
     };
 
     struct Grant {
@@ -132,7 +138,8 @@ struct llvm::DenseMapInfo<clice::ClaimRegistry::Key> {
 
     static unsigned getHashValue(const Key& key) {
         return static_cast<unsigned>(key.key.low ^ key.key.high ^ key.fingerprint ^
-                                     (static_cast<std::uint64_t>(key.file.raw) << 17));
+                                     (static_cast<std::uint64_t>(key.file.raw) << 17) ^
+                                     (static_cast<std::uint64_t>(key.ordinal) << 40));
     }
 
     static bool isEqual(const Key& a, const Key& b) {

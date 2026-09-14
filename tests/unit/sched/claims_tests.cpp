@@ -24,7 +24,7 @@ ClaimParams request(std::uint64_t attempt,
     return {.attempt = attempt,
             .file = "tu.cpp",
             .fingerprint = fingerprint.str(),
-            .files = {{.path = "h.h", .digest = hash(0), .units = std::move(units)}}};
+            .files = {{.path = "h.h", .units = std::move(units)}}};
 }
 
 /// The grant rules in isolation: a unit goes to one attempt, an element
@@ -101,6 +101,30 @@ TEST_CASE(SkippedUnitStaysOwed) {
     // The borrower completed without the unit; it is still nobody's.
     ASSERT_TRUE(registry.unfinished().size() == 1);
     EXPECT_TRUE(registry.unfinished().front().requesters.front() == Fid{1});
+}
+
+TEST_CASE(EqualUnitsInOneFile) {
+    // Two declarations written identically in one file are two keys.
+    auto first = registry.claim(1, Fid{1}, request(1, {unit(10), unit(10)}), {Fid{7}});
+    EXPECT_TRUE(runs(first) == std::vector{ClaimRun::Full, ClaimRun::Full});
+    registry.land(1);
+    auto second = registry.claim(2, Fid{2}, request(2, {unit(10), unit(10), unit(10)}), {Fid{7}});
+    EXPECT_TRUE(runs(second) == std::vector{ClaimRun::Skip, ClaimRun::Skip, ClaimRun::Full});
+}
+
+TEST_CASE(OwedElementNamesItsAskers) {
+    registry.claim(1, Fid{1}, request(1, {unit(10, {1})}), {Fid{7}});
+    registry.land(1);
+    registry.claim(2, Fid{2}, request(2, {unit(10, {1, 2})}), {Fid{7}});
+    auto third = registry.claim(3, Fid{3}, request(3, {unit(10, {2})}), {Fid{7}});
+    EXPECT_TRUE(runs(third) == std::vector{ClaimRun::Skip});
+    registry.land(3);
+    registry.release(2);
+
+    // Only the TUs that materialize element 2 can check it.
+    auto owed = registry.unfinished();
+    ASSERT_TRUE(owed.size() == 1);
+    EXPECT_TRUE(owed.front().requesters == (llvm::SmallVector<Fid, 2>{Fid{2}, Fid{3}}));
 }
 
 TEST_CASE(Namespaces) {
