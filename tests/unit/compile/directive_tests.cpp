@@ -13,6 +13,7 @@ std::vector<HasInclude> has_includes;
 std::vector<Condition> conditions;
 std::vector<MacroRef> macros;
 std::vector<Pragma> pragmas;
+std::vector<DiagnosticPragma> diagnostic_pragmas;
 std::vector<Embed> embeds;
 std::vector<HasEmbed> has_embeds;
 
@@ -27,6 +28,7 @@ void run(llvm::StringRef code) {
     conditions = unit->directives()[fid].conditions;
     macros = unit->directives()[fid].macros;
     pragmas = unit->directives()[fid].pragmas;
+    diagnostic_pragmas = unit->directives()[fid].diagnostic_pragmas;
     embeds = unit->directives()[fid].embeds;
     has_embeds = unit->directives()[fid].has_embeds;
 }
@@ -248,6 +250,31 @@ TEST_CASE(Pragma) {
     EXPECT_PRAGMA(0, Pragma::Kind::Other, "0", "#pragma GCC poison printf sprintf fprintf");
     EXPECT_PRAGMA(1, Pragma::Kind::Region, "1", "#pragma region");
     EXPECT_PRAGMA(2, Pragma::Kind::EndRegion, "2", "#pragma endregion");
+};
+
+TEST_CASE(DiagnosticPragma) {
+    run(R"cpp(
+#[main.cpp]
+#pragma clang §(0)diagnostic push
+#pragma GCC §(1)diagnostic ignored "-Wunused-variable"
+§(2)_Pragma("clang diagnostic warning \"-Wshadow\"")
+#pragma clang §(3)diagnostic pop
+)cpp");
+
+    ASSERT_EQ(diagnostic_pragmas.size(), 4U);
+    for(u32 index = 0; index < 4; index += 1) {
+        auto [_, offset] =
+            unit->decompose_location(unit->expansion_location(diagnostic_pragmas[index].loc));
+        EXPECT_EQ(offset, point(std::to_string(index)));
+    }
+    EXPECT_EQ(diagnostic_pragmas[0].kind, DiagnosticPragma::Push);
+    EXPECT_EQ(diagnostic_pragmas[1].kind, DiagnosticPragma::Map);
+    EXPECT_EQ(diagnostic_pragmas[1].severity, clang::diag::Severity::Ignored);
+    EXPECT_EQ(llvm::StringRef(diagnostic_pragmas[1].flag), "-Wunused-variable");
+    EXPECT_EQ(diagnostic_pragmas[2].kind, DiagnosticPragma::Map);
+    EXPECT_EQ(diagnostic_pragmas[2].severity, clang::diag::Severity::Warning);
+    EXPECT_EQ(llvm::StringRef(diagnostic_pragmas[2].flag), "-Wshadow");
+    EXPECT_EQ(diagnostic_pragmas[3].kind, DiagnosticPragma::Pop);
 };
 
 TEST_CASE(Embed) {

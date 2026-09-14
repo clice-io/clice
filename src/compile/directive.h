@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "syntax/token.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "clang/Basic/DiagnosticIDs.h"
 #include "clang/Lex/MacroInfo.h"
 
 namespace clice {
@@ -115,6 +117,35 @@ struct Pragma {
     clang::SourceLocation loc;
 };
 
+/// A `#pragma clang diagnostic` / `#pragma GCC diagnostic` in either the
+/// directive or the `_Pragma` operator form, as the preprocessor executed
+/// it: the state these build decides which `clang-diagnostic-*` warnings
+/// a declaration gets.
+struct DiagnosticPragma {
+    enum class Kind : std::uint8_t {
+        Push,
+        Pop,
+        /// `ignored`, `warning`, `error` or `fatal` for one warning flag.
+        Map,
+    };
+
+    using enum Kind;
+
+    Kind kind;
+
+    /// The severity a Map sets.
+    clang::diag::Severity severity = clang::diag::Severity::Ignored;
+
+    /// The flag a Map names, e.g. `-Wunused-variable`.
+    std::string flag;
+
+    /// Where the directive ran: the `diagnostic` token, which for the
+    /// operator form inside a macro is a macro location — kept as such,
+    /// since the order of a pragma among the tokens of the same expansion
+    /// decides what it silences.
+    clang::SourceLocation loc;
+};
+
 struct Import {
     /// The name of imported module.
     std::string name;
@@ -170,6 +201,7 @@ struct Directive {
     std::vector<Condition> conditions;
     std::vector<MacroRef> macros;
     std::vector<Pragma> pragmas;
+    std::vector<DiagnosticPragma> diagnostic_pragmas;
     std::vector<Import> imports;
     std::vector<Embed> embeds;
     std::vector<HasEmbed> has_embeds;

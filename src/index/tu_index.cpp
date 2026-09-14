@@ -698,7 +698,7 @@ public:
         // Both phases below share the one build.
         std::optional<Semantics> full;
         if(!main_file_only) {
-            full.emplace(Semantics::build(unit, false));
+            full.emplace(Semantics::build(unit, {.main_file_only = false}));
         }
         const Semantics& semantics = main_file_only ? unit.semantics() : *full;
         auto semantics_ms = semantics_timer.ms_f();

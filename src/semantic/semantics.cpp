@@ -24,6 +24,7 @@
 #include "clang/AST/ExprConcepts.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Stmt.h"
+#include "clang/AST/StmtCXX.h"
 #include "clang/Basic/Module.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/TokenKinds.h"
@@ -335,8 +336,8 @@ clang::SourceRange claimed_source_range(const SemanticNode& node) {
 // VarDecl in the selection tree.
 class SemanticsBuilder : public clang::RecursiveASTVisitor<SemanticsBuilder> {
 public:
-    static void build(Semantics& semantics, CompilationUnitRef unit, bool main_file_only) {
-        SemanticsBuilder builder(semantics, unit, main_file_only);
+    static void build(Semantics& semantics, CompilationUnitRef unit, SemanticsOptions options) {
+        SemanticsBuilder builder(semantics, unit, options);
         builder.TraverseAST(unit.context());
         assert(builder.stack.size() == 1 && "Unpaired push/pop?");
         builder.append_directives();
@@ -354,7 +355,7 @@ public:
     bool TraverseDecl(clang::Decl* X) {
         if(llvm::isa_and_nonnull<clang::TranslationUnitDecl>(X)) {
             /// The TU decl is not stored; its children become roots.
-            if(main_file_only) {
+            if(options.main_file_only) {
                 for(auto decl: unit.top_level_decls()) {
                     if(!TraverseDecl(decl)) {
                         return false;
@@ -410,6 +411,33 @@ public:
             instantiation_depth -= 1;
         }
         return ret;
+    }
+
+    bool shouldVisitTemplateInstantiations() const {
+        return options.instantiations;
+    }
+
+    // RAV visits a generic lambda's body once, as the pattern; the call
+    // operator template's instantiations hang nowhere else, so visit them
+    // here the way RAV visits class and function template instantiations
+    // under their template.
+    bool TraverseLambdaExpr(clang::LambdaExpr* S, DataRecursionQueue* queue = nullptr) {
+        if(!Base::TraverseLambdaExpr(S, queue)) {
+            return false;
+        }
+        if(!options.instantiations) {
+            return true;
+        }
+        auto* call_operator = S->getCallOperator()->getDescribedFunctionTemplate();
+        if(!call_operator) {
+            return true;
+        }
+        for(auto* specialization: call_operator->specializations()) {
+            if(!TraverseDecl(specialization)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     bool TraverseTypeLoc(clang::TypeLoc X, bool traverse_qualifier = true) {
@@ -549,9 +577,9 @@ public:
 private:
     using Base = RecursiveASTVisitor<SemanticsBuilder>;
 
-    SemanticsBuilder(Semantics& semantics, CompilationUnitRef unit, bool main_file_only) :
-        semantics(semantics), unit(unit), main_file_only(main_file_only),
-        SM(unit.context().getSourceManager()), unclaimed_expanded_tokens(unit.expanded_tokens()) {
+    SemanticsBuilder(Semantics& semantics, CompilationUnitRef unit, SemanticsOptions options) :
+        semantics(semantics), unit(unit), options(options), SM(unit.context().getSourceManager()),
+        unclaimed_expanded_tokens(unit.expanded_tokens()) {
         main_fid = unit.main_file();
         main_file_range =
             clang::SourceRange(SM.getLocForStartOfFile(main_fid), SM.getLocForEndOfFile(main_fid));
@@ -563,7 +591,7 @@ private:
         // Tokens preprocessed to nothing (e.g. a disabled region or an empty
         // macro invocation) never contribute to a selection. Only relevant
         // when token ownership is recorded at all.
-        if(main_file_only) {
+        if(options.main_file_only) {
             for(const clang::syntax::TokenBuffer::Expansion& expansion:
                 unit.expansions_overlapping(semantics.tokens)) {
                 if(expansion.Expanded.empty()) {
@@ -728,7 +756,7 @@ private:
     // preamble-state build runs a whole-TU pass over the preamble unit, and
     // claiming its entire expanded stream would be paid on every PCH build.
     void claim_range(clang::SourceRange S, std::uint32_t self) {
-        if(!main_file_only) {
+        if(!options.main_file_only) {
             return;
         }
 
@@ -1054,7 +1082,7 @@ private:
 
     Semantics& semantics;
     CompilationUnitRef unit;
-    bool main_file_only;
+    SemanticsOptions options;
     clang::SourceManager& SM;
     clang::FileID main_fid;
     clang::SourceRange main_file_range;
@@ -1069,41 +1097,76 @@ private:
     std::vector<std::pair<std::uint32_t, std::uint32_t>> entries;
 };
 
-Semantics Semantics::build(CompilationUnitRef unit, bool main_file_only) {
+Semantics Semantics::build(CompilationUnitRef unit, SemanticsOptions options) {
     Semantics semantics;
-    SemanticsBuilder::build(semantics, unit, main_file_only);
+    SemanticsBuilder::build(semantics, unit, options);
     return semantics;
 }
 
 namespace {
 
-using Occurrences = llvm::SmallVector<NameOccurrence, 2>;
+using References = llvm::SmallVector<Reference, 2>;
 
-void occur(Occurrences& out,
+void refer(References& out,
            const clang::NamedDecl* decl,
            RelationKind kind,
            clang::SourceLocation location) {
-    if(decl && location.isValid()) {
+    if(decl) {
         out.push_back({decl, kind, location});
     }
 }
 
+void stmt_references(const clang::Stmt* S,
+                     References& out,
+                     types::TemplateResolver* resolver,
+                     const clang::CallExpr* call = nullptr);
+
+/// The references of a compiler-generated statement tree the traversal
+/// never records as nodes (a range-for's `begin`/`end`/`!=`/`++` calls,
+/// a coroutine's promise protocol), through the same per-statement
+/// extraction as recorded nodes. Nothing in such a tree is written, so
+/// the references carry no location whatever the AST says.
+void refer_hidden(References& out, const clang::Stmt* S, types::TemplateResolver* resolver) {
+    if(!S) {
+        return;
+    }
+
+    References hidden;
+    stmt_references(S, hidden, resolver);
+    for(auto& reference: hidden) {
+        out.push_back({reference.decl, reference.kind, {}});
+    }
+    for(auto* child: S->children()) {
+        refer_hidden(out, child, resolver);
+    }
+}
+
+/// The destructor a variable or temporary of `type` runs, if a non-trivial
+/// one exists; nothing spells it.
+const clang::CXXDestructorDecl* destructor_of(clang::QualType type) {
+    auto* RD = type->getAsCXXRecordDecl();
+    if(!RD || !RD->hasDefinition() || RD->hasTrivialDestructor()) {
+        return nullptr;
+    }
+    return RD->getDestructor();
+}
+
 /// The per-decl-kind extraction below is ported verbatim from the former
 /// SemanticVisitor: the same decls, the same roles, the same name locations.
-void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateResolver* resolver) {
+void decl_references(const clang::Decl* D, References& out, types::TemplateResolver* resolver) {
     /// namespace Foo = Bar
     ///            ^     ^~~~ reference
     ///            ^~~~ definition
     if(auto* NAD = llvm::dyn_cast<clang::NamespaceAliasDecl>(D)) {
-        occur(out, NAD, RelationKind::Definition, NAD->getLocation());
-        occur(out, NAD->getNamespace(), RelationKind::Reference, NAD->getTargetNameLoc());
+        refer(out, NAD, RelationKind::Definition, NAD->getLocation());
+        refer(out, NAD->getNamespace(), RelationKind::Reference, NAD->getTargetNameLoc());
         return;
     }
 
     /// namespace Foo { }
     ///            ^~~~ definition
     if(auto* ND = llvm::dyn_cast<clang::NamespaceDecl>(D)) {
-        occur(out, ND, RelationKind::Definition, ND->getLocation());
+        refer(out, ND, RelationKind::Definition, ND->getLocation());
         return;
     }
 
@@ -1112,7 +1175,7 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
     if(auto* UDD = llvm::dyn_cast<clang::UsingDirectiveDecl>(D)) {
         /// As-written: `using namespace Alias` references the alias, not the
         /// underlying namespace.
-        occur(out,
+        refer(out,
               UDD->getNominatedNamespaceAsWritten(),
               RelationKind::Reference,
               UDD->getLocation());
@@ -1122,21 +1185,21 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
     /// label:
     ///   ^~~~ definition
     if(auto* LD = llvm::dyn_cast<clang::LabelDecl>(D)) {
-        occur(out, LD, RelationKind::Definition, LD->getLocation());
+        refer(out, LD, RelationKind::Definition, LD->getLocation());
         return;
     }
 
     /// struct X { int foo; };
     ///                 ^~~~ definition
     if(auto* FD = llvm::dyn_cast<clang::FieldDecl>(D)) {
-        occur(out, FD, RelationKind::Definition, FD->getLocation());
+        refer(out, FD, RelationKind::Definition, FD->getLocation());
         return;
     }
 
     /// enum Foo { bar };
     ///             ^~~~ definition
     if(auto* ECD = llvm::dyn_cast<clang::EnumConstantDecl>(D)) {
-        occur(out, ECD, RelationKind::Definition, ECD->getLocation());
+        refer(out, ECD, RelationKind::Definition, ECD->getLocation());
         return;
     }
 
@@ -1144,7 +1207,7 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
     if(auto* UUV = llvm::dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
         if(resolver) {
             for(auto* target: resolver->lookup(UUV)) {
-                occur(out, target, RelationKind::WeakReference, UUV->getLocation());
+                refer(out, target, RelationKind::WeakReference, UUV->getLocation());
             }
         }
         return;
@@ -1153,7 +1216,7 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
     if(auto* UUT = llvm::dyn_cast<clang::UnresolvedUsingTypenameDecl>(D)) {
         if(resolver) {
             for(auto* target: resolver->lookup(UUT)) {
-                occur(out, target, RelationKind::WeakReference, UUT->getLocation());
+                refer(out, target, RelationKind::WeakReference, UUT->getLocation());
             }
         }
         return;
@@ -1165,29 +1228,41 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
     /// and the index see the real declarations.
     if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(D)) {
         for(auto* shadow: UD->shadows()) {
-            occur(out, shadow->getTargetDecl(), RelationKind::WeakReference, UD->getLocation());
+            refer(out, shadow->getTargetDecl(), RelationKind::WeakReference, UD->getLocation());
         }
         return;
     }
 
     /// auto [a, b] = std::make_tuple(1, 2);
     ///       ^~~~ definition
-    ///
+    /// The tuple protocol behind a binding (`get<0>`, `tuple_element`) and
+    /// its holding variable are generated; the traversal records neither.
+    if(auto* BD = llvm::dyn_cast<clang::BindingDecl>(D)) {
+        refer(out, BD, RelationKind::Definition, BD->getLocation());
+        refer_hidden(out, BD->getBinding(), resolver);
+        if(auto* holder = BD->getHoldingVar()) {
+            refer_hidden(out, holder->getInit(), resolver);
+            if(auto* TT = holder->getType().getNonReferenceType()->getAs<clang::TypedefType>()) {
+                refer(out, TT->getDecl(), RelationKind::Reference, {});
+            }
+        }
+        return;
+    }
+
     /// template <typename T> / template <int N>
     ///                    ^~~~ definition
-    if(llvm::isa<clang::BindingDecl,
-                 clang::TemplateTypeParmDecl,
+    if(llvm::isa<clang::TemplateTypeParmDecl,
                  clang::TemplateTemplateParmDecl,
                  clang::NonTypeTemplateParmDecl>(D)) {
         auto* ND = llvm::cast<clang::NamedDecl>(D);
-        occur(out, ND, RelationKind::Definition, ND->getLocation());
+        refer(out, ND, RelationKind::Definition, ND->getLocation());
         return;
     }
 
     /// template <typename T> concept Foo = ...;
     ///                                ^~~~ definition
     if(auto* CD = llvm::dyn_cast<clang::ConceptDecl>(D)) {
-        occur(out, CD, RelationKind::Definition, CD->getLocation());
+        refer(out, CD, RelationKind::Definition, CD->getLocation());
         return;
     }
 
@@ -1217,7 +1292,7 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
 
                 case clang::TSK_ExplicitInstantiationDeclaration:
                 case clang::TSK_ExplicitInstantiationDefinition: {
-                    occur(out,
+                    refer(out,
                           decls::instantiated_from(CTSD),
                           RelationKind::Reference,
                           CTSD->getLocation());
@@ -1228,7 +1303,7 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
 
         RelationKind kind = TD->isThisDeclarationADefinition() ? RelationKind::Definition
                                                                : RelationKind::Declaration;
-        occur(out, TD, kind, TD->getLocation());
+        refer(out, TD, kind, TD->getLocation());
         return;
     }
 
@@ -1254,14 +1329,14 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
 
         RelationKind kind = FD->isThisDeclarationADefinition() ? RelationKind::Definition
                                                                : RelationKind::Declaration;
-        occur(out, FD, kind, FD->getLocation());
+        refer(out, FD, kind, FD->getLocation());
         return;
     }
 
     /// using Foo = int;
     ///        ^~~~ definition
     if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(D)) {
-        occur(out, TND, RelationKind::Definition, TND->getLocation());
+        refer(out, TND, RelationKind::Definition, TND->getLocation());
         return;
     }
 
@@ -1289,30 +1364,37 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
 
         RelationKind kind = VD->isThisDeclarationADefinition() ? RelationKind::Definition
                                                                : RelationKind::Declaration;
-        occur(out, VD, kind, VD->getLocation());
+        refer(out, VD, kind, VD->getLocation());
+
+        /// The variable's destructor runs at the end of its lifetime;
+        /// nothing spells it.
+        refer(out,
+              destructor_of(VD->getASTContext().getBaseElementType(VD->getType())),
+              RelationKind::Reference,
+              {});
         return;
     }
 }
 
-void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateResolver* resolver) {
+void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateResolver* resolver) {
     /// struct Foo foo;
     ///         ^~~~ reference
     if(auto TTL = TL.getAs<clang::TagTypeLoc>()) {
-        occur(out, TTL.getDecl(), RelationKind::Reference, TTL.getNameLoc());
+        refer(out, TTL.getDecl(), RelationKind::Reference, TTL.getNameLoc());
         return;
     }
 
     /// using Foo = int; Foo foo;
     ///                   ^~~~ reference
     if(auto TTL = TL.getAs<clang::TypedefTypeLoc>()) {
-        occur(out, TTL.getDecl(), RelationKind::Reference, TTL.getNameLoc());
+        refer(out, TTL.getDecl(), RelationKind::Reference, TTL.getNameLoc());
         return;
     }
 
     /// template <typename T> void foo(T t)
     ///                                ^~~~ reference
     if(auto TTPL = TL.getAs<clang::TemplateTypeParmTypeLoc>()) {
-        occur(out, TTPL.getDecl(), RelationKind::Reference, TTPL.getNameLoc());
+        refer(out, TTPL.getDecl(), RelationKind::Reference, TTPL.getNameLoc());
         return;
     }
 
@@ -1321,7 +1403,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
     /// X *next; inside the definition of template<class T> struct X — the
     /// written X is the injected class name.
     if(auto ICNTL = TL.getAs<clang::InjectedClassNameTypeLoc>()) {
-        occur(out, ICNTL.getDecl(), RelationKind::Reference, ICNTL.getNameLoc());
+        refer(out, ICNTL.getDecl(), RelationKind::Reference, ICNTL.getNameLoc());
         return;
     }
 
@@ -1329,7 +1411,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
     /// unresolved-using declaration itself, resolved further when possible.
     if(auto UUTL = TL.getAs<clang::UnresolvedUsingTypeLoc>()) {
         for(const auto* target: types::decls_of(UUTL.getType(), resolver)) {
-            occur(out, target, RelationKind::WeakReference, UUTL.getNameLoc());
+            refer(out, target, RelationKind::WeakReference, UUTL.getNameLoc());
         }
         return;
     }
@@ -1337,7 +1419,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
     /// using B::value_type; value_type x; — the written type resolves
     /// through the using shadow to the imported type.
     if(auto UTL = TL.getAs<clang::UsingTypeLoc>()) {
-        occur(out,
+        refer(out,
               UTL.getTypePtr()->getDecl()->getTargetDecl(),
               RelationKind::Reference,
               UTL.getNameLoc());
@@ -1350,7 +1432,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
         if(auto* TD = DTSTL.getTypePtr()->getTemplateName().getAsTemplateDecl()) {
             auto* target = TD->getTemplatedDecl() ? TD->getTemplatedDecl()
                                                   : static_cast<clang::NamedDecl*>(TD);
-            occur(out, target, RelationKind::Reference, DTSTL.getTemplateNameLoc());
+            refer(out, target, RelationKind::Reference, DTSTL.getTemplateNameLoc());
         }
         return;
     }
@@ -1363,7 +1445,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
             if(auto* TD = TST->getTemplateName().getAsTemplateDecl()) {
                 auto* target = TD->getTemplatedDecl() ? TD->getTemplatedDecl()
                                                       : static_cast<clang::NamedDecl*>(TD);
-                occur(out, target, RelationKind::Reference, TSTL.getTemplateNameLoc());
+                refer(out, target, RelationKind::Reference, TSTL.getTemplateNameLoc());
                 return;
             }
 
@@ -1371,7 +1453,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
             /// dependent name; weak reference, resolved on the primary
             /// template.
             for(const auto* target: types::decls_of(TSTL.getType(), resolver)) {
-                occur(out, target, RelationKind::WeakReference, TSTL.getTemplateNameLoc());
+                refer(out, target, RelationKind::WeakReference, TSTL.getTemplateNameLoc());
             }
             return;
         }
@@ -1388,7 +1470,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
             decl = types::decl_of(TSTL.getType());
         }
 
-        occur(out, decl, RelationKind::Reference, TSTL.getTemplateNameLoc());
+        refer(out, decl, RelationKind::Reference, TSTL.getTemplateNameLoc());
         return;
     }
 
@@ -1396,19 +1478,19 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
     ///                      ^~~~ weak reference, resolved on the primary template
     if(auto DNTL = TL.getAs<clang::DependentNameTypeLoc>()) {
         for(const auto* target: types::decls_of(DNTL.getType(), resolver)) {
-            occur(out, target, RelationKind::WeakReference, DNTL.getNameLoc());
+            refer(out, target, RelationKind::WeakReference, DNTL.getNameLoc());
         }
         return;
     }
 }
 
-void nns_occurrences(clang::NestedNameSpecifierLoc NNSL, Occurrences& out) {
+void nns_references(clang::NestedNameSpecifierLoc NNSL, References& out) {
     auto NNS = NNSL.getNestedNameSpecifier();
     switch(NNS.getKind()) {
         /// A namespace or namespace alias; the alias decl itself is
         /// referenced, not the namespace it names.
         case clang::NestedNameSpecifier::Kind::Namespace: {
-            occur(out,
+            refer(out,
                   NNS.getAsNamespaceAndPrefix().Namespace,
                   RelationKind::Reference,
                   NNSL.getLocalBeginLoc());
@@ -1418,7 +1500,7 @@ void nns_occurrences(clang::NestedNameSpecifierLoc NNSL, Occurrences& out) {
         case clang::NestedNameSpecifier::Kind::MicrosoftSuper: {
             /// __super::member (MS extension) — the qualifier names the base
             /// record.
-            occur(out, NNS.getAsMicrosoftSuper(), RelationKind::Reference, NNSL.getLocalBeginLoc());
+            refer(out, NNS.getAsMicrosoftSuper(), RelationKind::Reference, NNSL.getLocalBeginLoc());
             break;
         }
 
@@ -1446,21 +1528,21 @@ clang::SourceLocation keyword_after_scope(const clang::Decl* decl,
     return token ? token->getLocation() : begin;
 }
 
-void stmt_occurrences(const clang::Stmt* S,
-                      Occurrences& out,
-                      types::TemplateResolver* resolver,
-                      const clang::CallExpr* call = nullptr) {
+void stmt_references(const clang::Stmt* S,
+                     References& out,
+                     types::TemplateResolver* resolver,
+                     const clang::CallExpr* call) {
     /// foo = 1
     ///  ^~~~ reference
     if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(S)) {
-        occur(out, DRE->getDecl(), RelationKind::Reference, DRE->getLocation());
+        refer(out, DRE->getDecl(), RelationKind::Reference, DRE->getLocation());
         return;
     }
 
     /// sizeof...(Ts)
     ///           ^~~~ reference to the pack declaration
     if(auto* SOPE = llvm::dyn_cast<clang::SizeOfPackExpr>(S)) {
-        occur(out, SOPE->getPack(), RelationKind::Reference, SOPE->getPackLoc());
+        refer(out, SOPE->getPack(), RelationKind::Reference, SOPE->getPackLoc());
         return;
     }
 
@@ -1468,19 +1550,24 @@ void stmt_occurrences(const clang::Stmt* S,
     /// ^~~~ reference to operator new / operator delete
     if(auto* NE = llvm::dyn_cast<clang::CXXNewExpr>(S)) {
         if(auto* op = NE->getOperatorNew()) {
-            occur(out,
+            refer(out,
                   op,
                   RelationKind::Reference,
                   keyword_after_scope(op, NE->getBeginLoc(), NE->isGlobalNew()));
         }
+        /// The matching deallocation function runs if the initializer throws.
+        refer(out, NE->getOperatorDelete(), RelationKind::Reference, {});
         return;
     }
     if(auto* DE = llvm::dyn_cast<clang::CXXDeleteExpr>(S)) {
         if(auto* op = DE->getOperatorDelete()) {
-            occur(out,
+            refer(out,
                   op,
                   RelationKind::Reference,
                   keyword_after_scope(op, DE->getBeginLoc(), DE->isGlobalDelete()));
+        }
+        if(auto type = DE->getDestroyedType(); !type.isNull()) {
+            refer(out, destructor_of(type), RelationKind::Reference, {});
         }
         return;
     }
@@ -1488,9 +1575,9 @@ void stmt_occurrences(const clang::Stmt* S,
     /// Foo value(1); / Foo value{};
     ///          ^~~~ reference to the selected constructor
     if(auto* CE = llvm::dyn_cast<clang::CXXConstructExpr>(S)) {
-        /// Implicit constructions have no written parens; the invalid
-        /// location drops the occurrence.
-        occur(out,
+        /// Implicit constructions have no written parens: the reference
+        /// carries an invalid location.
+        refer(out,
               CE->getConstructor(),
               RelationKind::Reference,
               CE->getParenOrBraceRange().getBegin());
@@ -1500,15 +1587,15 @@ void stmt_occurrences(const clang::Stmt* S,
     /// goto done; / done: ... / &&done
     ///      ^~~~ reference / definition / reference
     if(auto* GS = llvm::dyn_cast<clang::GotoStmt>(S)) {
-        occur(out, GS->getLabel(), RelationKind::Reference, GS->getLabelLoc());
+        refer(out, GS->getLabel(), RelationKind::Reference, GS->getLabelLoc());
         return;
     }
     if(auto* LS = llvm::dyn_cast<clang::LabelStmt>(S)) {
-        occur(out, LS->getDecl(), RelationKind::Definition, LS->getIdentLoc());
+        refer(out, LS->getDecl(), RelationKind::Definition, LS->getIdentLoc());
         return;
     }
     if(auto* ALE = llvm::dyn_cast<clang::AddrLabelExpr>(S)) {
-        occur(out, ALE->getLabel(), RelationKind::Reference, ALE->getLabelLoc());
+        refer(out, ALE->getLabel(), RelationKind::Reference, ALE->getLabelLoc());
         return;
     }
 
@@ -1519,7 +1606,7 @@ void stmt_occurrences(const clang::Stmt* S,
         if(auto* call =
                llvm::dyn_cast_if_present<clang::CXXOperatorCallExpr>(decomposed.InnerBinOp)) {
             if(auto* callee = call->getDirectCallee()) {
-                occur(out, callee, RelationKind::Reference, RBO->getOperatorLoc());
+                refer(out, callee, RelationKind::Reference, RBO->getOperatorLoc());
             }
         }
         return;
@@ -1532,7 +1619,7 @@ void stmt_occurrences(const clang::Stmt* S,
     if(auto* DIE = llvm::dyn_cast<clang::DesignatedInitExpr>(S)) {
         for(const auto& designator: DIE->designators()) {
             if(designator.isFieldDesignator()) {
-                occur(out,
+                refer(out,
                       designator.getFieldDecl(),
                       RelationKind::Reference,
                       designator.getFieldLoc());
@@ -1543,15 +1630,10 @@ void stmt_occurrences(const clang::Stmt* S,
 
     /// foo.bar
     ///      ^~~~ reference
+    /// An invalid member location means an implicit member expr, e.g. the
+    /// implicit `operator bool` call in `if(x)`.
     if(auto* ME = llvm::dyn_cast<clang::MemberExpr>(S)) {
-        auto location = ME->getMemberLoc();
-        if(location.isInvalid()) {
-            /// An invalid member location means an implicit member expr, e.g.
-            /// the implicit `operator bool` call in `if(x)`.
-            return;
-        }
-
-        occur(out, ME->getMemberDecl(), RelationKind::Reference, location);
+        refer(out, ME->getMemberDecl(), RelationKind::Reference, ME->getMemberLoc());
         return;
     }
 
@@ -1561,11 +1643,11 @@ void stmt_occurrences(const clang::Stmt* S,
         if(resolver) {
             if(call) {
                 for(auto* target: resolver->lookup(call)) {
-                    occur(out, target, RelationKind::WeakReference, DSDRE->getNameInfo().getLoc());
+                    refer(out, target, RelationKind::WeakReference, DSDRE->getNameInfo().getLoc());
                 }
             } else {
                 for(auto* target: resolver->lookup(DSDRE)) {
-                    occur(out, target, RelationKind::WeakReference, DSDRE->getNameInfo().getLoc());
+                    refer(out, target, RelationKind::WeakReference, DSDRE->getNameInfo().getLoc());
                 }
             }
         }
@@ -1595,10 +1677,10 @@ void stmt_occurrences(const clang::Stmt* S,
                 }
                 target = shadow->getTargetDecl();
             }
-            occur(out, target, RelationKind::WeakReference, OE->getNameLoc());
+            refer(out, target, RelationKind::WeakReference, OE->getNameLoc());
         }
         for(const auto* UD: introducers) {
-            occur(out, UD, RelationKind::WeakReference, OE->getNameLoc());
+            refer(out, UD, RelationKind::WeakReference, OE->getNameLoc());
         }
         return;
     }
@@ -1611,11 +1693,11 @@ void stmt_occurrences(const clang::Stmt* S,
         if(op == clang::OO_Call || op == clang::OO_Subscript) {
             /// The callee reference sits on the opening token and
             /// getOperatorLoc on the closing one; anchor both.
-            occur(out,
+            refer(out,
                   OCE->getDirectCallee(),
                   RelationKind::Reference,
                   OCE->getCallee()->getExprLoc());
-            occur(out, OCE->getDirectCallee(), RelationKind::Reference, OCE->getOperatorLoc());
+            refer(out, OCE->getDirectCallee(), RelationKind::Reference, OCE->getOperatorLoc());
         }
         return;
     }
@@ -1626,23 +1708,97 @@ void stmt_occurrences(const clang::Stmt* S,
         if(resolver) {
             if(call) {
                 for(auto* target: resolver->lookup(call)) {
-                    occur(out, target, RelationKind::WeakReference, DSME->getMemberLoc());
+                    refer(out, target, RelationKind::WeakReference, DSME->getMemberLoc());
                 }
             } else {
                 for(auto* target: resolver->lookup(DSME)) {
-                    occur(out, target, RelationKind::WeakReference, DSME->getMemberLoc());
+                    refer(out, target, RelationKind::WeakReference, DSME->getMemberLoc());
                 }
             }
         }
         return;
     }
+
+    /// The rest spell no name at all.
+
+    /// f(S()) — the temporary's destructor.
+    if(auto* BTE = llvm::dyn_cast<clang::CXXBindTemporaryExpr>(S)) {
+        refer(out, BTE->getTemporary()->getDestructor(), RelationKind::Reference, {});
+        return;
+    }
+
+    /// int i = s; — the conversion function an implicit conversion calls.
+    if(auto* ICE = llvm::dyn_cast<clang::ImplicitCastExpr>(S)) {
+        if(ICE->getCastKind() == clang::CK_UserDefinedConversion) {
+            refer(out, ICE->getConversionFunction(), RelationKind::Reference, {});
+        }
+        return;
+    }
+
+    /// for(auto x: range) — the traversal records only the written parts;
+    /// the generated begin/end variables, the `!=` and `++` calls and the
+    /// loop variable's `*__begin` initializer have no nodes.
+    if(auto* FRS = llvm::dyn_cast<clang::CXXForRangeStmt>(S)) {
+        for(const clang::Stmt* generated:
+            {static_cast<const clang::Stmt*>(FRS->getBeginStmt()),
+             static_cast<const clang::Stmt*>(FRS->getEndStmt()),
+             static_cast<const clang::Stmt*>(FRS->getCond()),
+             static_cast<const clang::Stmt*>(FRS->getInc()),
+             static_cast<const clang::Stmt*>(FRS->getLoopVarStmt())}) {
+            refer_hidden(out, generated, resolver);
+        }
+        return;
+    }
+
+    /// 12_i — a leaf: the suffix cannot be split off its token, so the
+    /// operator is referenced without a location.
+    if(auto* UDL = llvm::dyn_cast<clang::UserDefinedLiteral>(S)) {
+        refer(out,
+              llvm::dyn_cast_if_present<clang::NamedDecl>(UDL->getCalleeDecl()),
+              RelationKind::Reference,
+              {});
+        return;
+    }
+
+    /// The coroutine protocol: everything but the body is generated.
+    if(auto* CBS = llvm::dyn_cast<clang::CoroutineBodyStmt>(S)) {
+        for(auto* child: CBS->children()) {
+            if(child != CBS->getBody()) {
+                refer_hidden(out, child, resolver);
+            }
+        }
+        return;
+    }
+    if(auto* CSE = llvm::dyn_cast<clang::CoroutineSuspendExpr>(S)) {
+        for(auto* child: CSE->children()) {
+            if(child != CSE->getOperand()) {
+                refer_hidden(out, child, resolver);
+            }
+        }
+        return;
+    }
+    if(auto* CRS = llvm::dyn_cast<clang::CoreturnStmt>(S)) {
+        refer_hidden(out, CRS->getPromiseCall(), resolver);
+        return;
+    }
+}
+
+/// The references a token spells, as name occurrences.
+llvm::SmallVector<NameOccurrence, 2> spelled(const References& references) {
+    llvm::SmallVector<NameOccurrence, 2> out;
+    for(auto& reference: references) {
+        if(reference.location.isValid()) {
+            out.push_back({reference.decl, reference.kind, reference.location});
+        }
+    }
+    return out;
 }
 
 }  // namespace
 
-llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semantics,
-                                                         std::uint32_t index,
-                                                         types::TemplateResolver* resolver) {
+llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
+                                                   std::uint32_t index,
+                                                   types::TemplateResolver* resolver) {
     auto& entry = semantics.node(index);
 
     /// A dependent name used as a callee resolves against the call, so the
@@ -1660,8 +1816,8 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semant
             }
             if(auto* CE = llvm::dyn_cast<clang::CallExpr>(PS)) {
                 if(CE->getCallee()->IgnoreParenImpCasts() == S) {
-                    llvm::SmallVector<NameOccurrence, 2> out;
-                    stmt_occurrences(S, out, resolver, CE);
+                    References out;
+                    stmt_references(S, out, resolver, CE);
                     return out;
                 }
                 break;
@@ -1672,31 +1828,37 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semant
         }
     }
 
-    return resolve_occurrences(entry.node, resolver);
+    return resolve_references(entry.node, resolver);
 }
 
-llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& node,
+llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semantics,
+                                                         std::uint32_t index,
                                                          types::TemplateResolver* resolver) {
-    llvm::SmallVector<NameOccurrence, 2> out;
+    return spelled(resolve_references(semantics, index, resolver));
+}
+
+llvm::SmallVector<Reference, 2> resolve_references(const SemanticNode& node,
+                                                   types::TemplateResolver* resolver) {
+    References out;
 
     switch(node.kind()) {
         case SemanticNode::Kind::Decl: {
-            decl_occurrences(node.get<clang::Decl>(), out, resolver);
+            decl_references(node.get<clang::Decl>(), out, resolver);
             break;
         }
 
         case SemanticNode::Kind::Stmt: {
-            stmt_occurrences(node.get<clang::Stmt>(), out, resolver);
+            stmt_references(node.get<clang::Stmt>(), out, resolver);
             break;
         }
 
         case SemanticNode::Kind::TypeLoc: {
-            type_loc_occurrences(*node.get<clang::TypeLoc>(), out, resolver);
+            type_loc_references(*node.get<clang::TypeLoc>(), out, resolver);
             break;
         }
 
         case SemanticNode::Kind::NestedNameSpecifierLoc: {
-            nns_occurrences(*node.get<clang::NestedNameSpecifierLoc>(), out);
+            nns_references(*node.get<clang::NestedNameSpecifierLoc>(), out);
             break;
         }
 
@@ -1705,7 +1867,7 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& nod
             ///          ^~~~ reference
             auto* init = node.get<clang::CXXCtorInitializer>();
             if(init->isAnyMemberInitializer()) {
-                occur(out,
+                refer(out,
                       init->getAnyMember(),
                       RelationKind::Reference,
                       init->getMemberLocation());
@@ -1722,7 +1884,7 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& nod
                kind == clang::TemplateArgument::TemplateExpansion) {
                 auto template_name = TAL.getArgument().getAsTemplateOrTemplatePattern();
                 if(auto* TD = template_name.getAsTemplateDecl()) {
-                    occur(out, TD, RelationKind::Reference, TAL.getTemplateNameLoc());
+                    refer(out, TD, RelationKind::Reference, TAL.getTemplateNameLoc());
                 }
             }
             break;
@@ -1732,10 +1894,19 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& nod
             /// requires Foo<T>;
             ///            ^~~~ reference
             auto* reference = node.get<clang::ConceptReference>();
-            occur(out,
+            refer(out,
                   reference->getNamedConcept(),
                   RelationKind::Reference,
                   reference->getConceptNameLoc());
+            break;
+        }
+
+        case SemanticNode::Kind::Attr: {
+            /// __attribute__((cleanup(fn))) — the attribute stores the
+            /// function itself, not an expression the traversal would record.
+            if(auto* CA = node.get<clang::CleanupAttr>()) {
+                refer(out, CA->getFunctionDecl(), RelationKind::Reference, {});
+            }
             break;
         }
 

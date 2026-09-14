@@ -15,6 +15,7 @@
 #include "sched/configuration.h"
 #include "sched/context.h"
 #include "sched/workspace.h"
+#include "semantic/content.h"
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
 #include "syntax/scan.h"
@@ -55,7 +56,7 @@ struct InspectOptions {
 
     DecoInput(meta_var = "<FEATURE> <PATH>",
               help =
-                  "Feature to run (code_completion, document_links, document_symbol, "
+                  "Feature to run (code_completion, content, document_links, document_symbol, "
                   "folding_range, hover, inlay_hint, semantic_tokens, signature_help, "
                   "tu_index) and a source file or directory",
               required = false)
@@ -281,6 +282,84 @@ std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
     return to_raw_json(out);
 }
 
+struct RawContentDep {
+    std::uint32_t file;
+    std::uint32_t unit;
+};
+
+struct RawContentUnit {
+    /// 1-based lines of the unit's range in its file.
+    std::uint32_t line;
+    std::uint32_t end_line;
+    std::string kind;
+    std::string name;
+    std::string entity;
+    std::string own;
+    std::string content;
+    std::vector<RawContentDep> deps;
+};
+
+struct RawContentFile {
+    std::string path;
+    std::string digest;
+    std::vector<RawContentUnit> units;
+};
+
+/// Content-hash dump of the whole TU the compiled file heads — the
+/// inspect-path pin of the content layer (semantic/content.h). No LSP
+/// request carries this shape, so content fixtures are `verify: inspect`.
+std::optional<kota::codec::RawValue> run_content(CompilationUnitRef unit,
+                                                 [[maybe_unused]] llvm::StringRef config) {
+    auto table = ContentTable::compute(unit);
+
+    // Units come sorted by (file, offset): one entry per file in that
+    // order, so a file included twice keeps two entries; deps point at
+    // (file entry, unit position).
+    std::vector<RawContentFile> files;
+    std::vector<RawContentDep> position;
+    std::vector<std::uint32_t> newlines;
+    clang::FileID current;
+    for(auto& row: table.units) {
+        if(files.empty() || row.fid != current) {
+            current = row.fid;
+            files.push_back({.path = unit.file_path(row.fid).str(),
+                             .digest = std::format("{}", table.digests.lookup(row.fid))});
+            newlines.clear();
+            llvm::StringRef content = unit.file_content(row.fid);
+            for(auto offset = content.find('\n'); offset != llvm::StringRef::npos;
+                offset = content.find('\n', offset + 1)) {
+                newlines.push_back(static_cast<std::uint32_t>(offset));
+            }
+        }
+        auto line_of = [&](std::uint32_t offset) {
+            return static_cast<std::uint32_t>(std::ranges::lower_bound(newlines, offset) -
+                                              newlines.begin()) +
+                   1;
+        };
+        RawContentUnit raw{
+            .line = line_of(row.range.begin),
+            .end_line = line_of(row.range.end - 1),
+            .kind = row.decl->getDeclKindName(),
+            .entity = std::format("{:016x}", row.entity),
+            .own = std::format("{}", row.own),
+            .content = std::format("{}", row.content),
+        };
+        if(auto* named = llvm::dyn_cast<clang::NamedDecl>(row.decl)) {
+            raw.name = named->getNameAsString();
+        }
+        position.push_back({.file = static_cast<std::uint32_t>(files.size() - 1),
+                            .unit = static_cast<std::uint32_t>(files.back().units.size())});
+        files.back().units.push_back(std::move(raw));
+    }
+    for(std::uint32_t u = 0; u < table.units.size(); u += 1) {
+        auto& raw = files[position[u].file].units[position[u].unit];
+        for(auto dep: table.units[u].deps) {
+            raw.deps.push_back(position[dep]);
+        }
+    }
+    return to_raw_json(files);
+}
+
 /// A feature runs in exactly one shape: whole-document (`run`), once per
 /// `§` point against a shared unit (`run_at`), once per `§⟦...⟧` range
 /// with a whole-document default (`run_over`), or once per `§` point with
@@ -310,6 +389,7 @@ constexpr std::array features = {
     FeatureSpec{.name = "code_completion",
                 .run_complete = run_code_completion,
                 .check_config = check_feature_config<feature::CodeCompletionOptions>},
+    FeatureSpec{.name = "content", .run = run_content},
     FeatureSpec{.name = "document_links", .run = run_document_links},
     FeatureSpec{.name = "document_symbol", .run = run_document_symbols},
     FeatureSpec{.name = "folding_range", .run = run_folding_ranges},

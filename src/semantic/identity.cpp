@@ -4,6 +4,7 @@
 
 #include "semantic/decls.h"
 #include "semantic/expr_hash.h"
+#include "semantic/hasher.h"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/SmallVector.h"
@@ -162,25 +163,16 @@ const clang::DeclContext* context_of(const clang::Decl* decl) {
 /// A byte stream with a fixed layout: every integer is eight little-endian
 /// bytes, every string is its length followed by its bytes, so equal
 /// sequences of additions produce equal hashes on every platform.
-class EntityTable::Hasher {
+class EntityTable::Hasher : public ByteHasher {
 public:
     Hasher() {
-        bytes.push_back(static_cast<char>(identity_scheme));
+        add_byte(identity_scheme);
     }
+
+    using ByteHasher::add;
 
     void add(Tag tag) {
-        bytes.push_back(static_cast<char>(tag));
-    }
-
-    void add(std::uint64_t value) {
-        for(unsigned i = 0; i < 8; i += 1) {
-            bytes.push_back(static_cast<char>(value >> (8 * i)));
-        }
-    }
-
-    void add(llvm::StringRef text) {
-        add(static_cast<std::uint64_t>(text.size()));
-        bytes.append(text.begin(), text.end());
+        add_byte(static_cast<std::uint8_t>(tag));
     }
 
     void add(const llvm::APInt& value) {
@@ -196,11 +188,8 @@ public:
     }
 
     std::uint64_t finish() const {
-        return llvm::xxh3_64bits(llvm::StringRef(bytes.data(), bytes.size()));
+        return llvm::xxh3_64bits(bytes());
     }
-
-private:
-    llvm::SmallVector<char, 256> bytes;
 };
 
 /// The stable leaves of an expression profile: what ExprHasher hands out

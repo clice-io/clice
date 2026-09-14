@@ -211,11 +211,25 @@ private:
 /// cvr-qualifiers (the AST does not model their locations).
 bool should_ignore_token(const clang::syntax::Token& token);
 
+/// A declaration a node refers to: the decl, its role, and the location of
+/// the token spelling its name — invalid for a use no token spells (an
+/// implicit constructor or destructor call, a range-for's generated
+/// `begin`, a user-defined literal's operator, whose suffix cannot be
+/// split off its token).
+struct Reference {
+    const clang::NamedDecl* decl;
+
+    RelationKind kind;
+
+    clang::SourceLocation location;
+};
+
 /// A name occurrence a node gives rise to: the decl the written name refers
-/// to, its role, and the name token's location. Multi-token names (`~Foo`,
-/// `operator int`) anchor at their first token: widening them to the full
-/// name overlaps the nested type reference, which the shard's
-/// disjoint-or-identical occurrence invariant cannot represent.
+/// to, its role, and the name token's location — the references whose
+/// location is valid. Multi-token names (`~Foo`, `operator int`) anchor at
+/// their first token: widening them to the full name overlaps the nested
+/// type reference, which the shard's disjoint-or-identical occurrence
+/// invariant cannot represent.
 struct NameOccurrence {
     const clang::NamedDecl* decl;
 
@@ -224,22 +238,39 @@ struct NameOccurrence {
     clang::SourceLocation location;
 };
 
-/// The name occurrences of `node` — the single implementation of "node →
-/// referenced decl" (the distilled content of the former SemanticVisitor
-/// visit methods), shared by semantic tokens, the index projection and
-/// hover.
+/// Every declaration `node` refers to — the single implementation of
+/// "node → referenced decl" (the distilled content of the former
+/// SemanticVisitor visit methods). Semantic tokens, the index projection
+/// and hover consume the spelled subset through resolve_occurrences; the
+/// content table consumes all of them as dependencies.
 ///
 /// Dependent names (typename T::type, unresolved lookups, dependent using
 /// declarations) resolve through the template resolver into WeakReference
-/// occurrences; without a resolver they produce nothing. Instantiation
-/// decl heads produce no declaration occurrence (their locations repeat
+/// references; without a resolver they produce nothing. Instantiation
+/// decl heads produce no declaration reference (their locations repeat
 /// the pattern), but nodes inside instantiated bodies deliberately do:
 /// each instantiation acts as an implementation of the duck-typed
 /// template, so a dependent name classifies as its actual resolutions —
 /// see the "Instantiations as Implementations" section of the template
 /// resolver design doc.
-llvm::SmallVector<NameOccurrence, 2>
-    resolve_occurrences(const SemanticNode& node, types::TemplateResolver* resolver = nullptr);
+llvm::SmallVector<Reference, 2> resolve_references(const SemanticNode& node,
+                                                   types::TemplateResolver* resolver = nullptr);
+
+struct SemanticsOptions {
+    /// Traverse only the main file's top-level decls — the shape features
+    /// consume, cached on the unit. Without it the whole TU is traversed,
+    /// the transient shape the full index projection and the content table
+    /// use; token ownership still only covers the main file's spelled
+    /// tokens.
+    bool main_file_only = true;
+
+    /// Also traverse template instantiations, flagged in_instantiation:
+    /// what the compiler materialized from the written templates in this
+    /// TU. Class, function and variable template instantiations hang
+    /// under the template's canonical declaration node, generic lambda
+    /// call operators under their lambda expression.
+    bool instantiations = false;
+};
 
 /// The semantic map of the main file, built once after a successful
 /// parse and serving every consumer that used to run its own traversal:
@@ -268,16 +299,13 @@ public:
     Semantics& operator=(Semantics&&) = default;
 
     struct NodeFlags {
-        /// The node is implicit (e.g. an implicit cast wrapper kept for
-        /// parent chains).
-        bool implicit : 1 = false;
-
         /// The node belongs to a template instantiation rather than the
         /// written template, so its locations point into the pattern.
-        /// Instantiations reach the table as top-level implicit
-        /// instantiations and as member subtrees of explicit instantiation
-        /// directives; the directive's own decl and its written
-        /// template-argument TypeLocs stay unflagged.
+        /// Instantiations reach the table as member subtrees of explicit
+        /// instantiation directives and, under SemanticsOptions::instantiations,
+        /// as subtrees under the template's canonical declaration node; the
+        /// directive's own decl and its written template-argument TypeLocs
+        /// stay unflagged.
         bool in_instantiation : 1 = false;
     };
 
@@ -301,13 +329,7 @@ public:
 
     /// Build the semantics of the unit: one full traversal claiming tokens
     /// innermost-first, plus one pass over the preprocessor directives.
-    ///
-    /// With main_file_only (the shape features consume, cached on the unit)
-    /// only the main file's top-level decls are traversed. Without it
-    /// the whole TU is traversed — the transient shape the full index
-    /// projection uses; token ownership still only covers the main
-    /// file's spelled tokens.
-    static Semantics build(CompilationUnitRef unit, bool main_file_only = true);
+    static Semantics build(CompilationUnitRef unit, SemanticsOptions options = {});
 
     /// All recorded nodes in one index space: first the AST segment in DFS
     /// pre-order (a parent always precedes its children), then preprocessor
@@ -383,9 +405,14 @@ private:
     LexicalInfo lexical;
 };
 
-/// resolve_occurrences with tree context: a dependent name that is the
+/// resolve_references with tree context: a dependent name that is the
 /// callee of a call (found through the node's parent chain) has its
 /// candidate set filtered by the call's arity.
+llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
+                                                   std::uint32_t index,
+                                                   types::TemplateResolver* resolver = nullptr);
+
+/// The references of node `index` that a token spells, as name occurrences.
 llvm::SmallVector<NameOccurrence, 2>
     resolve_occurrences(const Semantics& semantics,
                         std::uint32_t index,

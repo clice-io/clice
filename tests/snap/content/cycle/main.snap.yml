@@ -1,0 +1,14 @@
+---
+created_at: 2026-09-13
+input_file: cycle/main.cpp
+---
+${WS}/cycle/main.cpp: { digest: d0 }
+- { unit: 1, lines: "1-7", kind: Function, name: "start", own: o0, content: c0, deps: [${WS}/cycle/mutual.h#5] }
+
+${WS}/cycle/mutual.h: { digest: d1 }
+- { unit: 1, lines: "1-3", kind: CXXRecord, name: "Node", own: o1, content: c1, deps: [${WS}/cycle/mutual.h#3] }
+- { unit: 2, lines: "4-7", kind: CXXRecord, name: "List", own: o2, content: c2, deps: [${WS}/cycle/mutual.h#1, ${WS}/cycle/mutual.h#3] }
+- { unit: 3, lines: "8-12", kind: CXXRecord, name: "Node", own: o3, content: c3, deps: [${WS}/cycle/mutual.h#1, ${WS}/cycle/mutual.h#2] }
+- { unit: 4, lines: "13-14", kind: Function, name: "pong", own: o4, content: c4, deps: [${WS}/cycle/mutual.h#6] }
+- { unit: 5, lines: "15-16", kind: Function, name: "ping", own: o5, content: c5, deps: [${WS}/cycle/mutual.h#4, ${WS}/cycle/mutual.h#6] }
+- { unit: 6, lines: "17-18", kind: Function, name: "pong", own: o6, content: c6, deps: [${WS}/cycle/mutual.h#4, ${WS}/cycle/mutual.h#5] }

@@ -1,0 +1,9 @@
+---
+created_at: 2026-09-13
+input_file: equal_units/main.cpp
+---
+${WS}/equal_units/main.cpp: { digest: d0 }
+- { unit: 1, lines: "1-5", kind: StaticAssert, own: o0, content: c0 }
+- { unit: 2, lines: "6-6", kind: StaticAssert, own: o1, content: c1 }
+- { unit: 3, lines: "7-7", kind: StaticAssert, own: o1, content: c1 }
+- { unit: 4, lines: "8-8", kind: StaticAssert, own: o2, content: c2 }

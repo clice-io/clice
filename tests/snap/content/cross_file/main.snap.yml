@@ -1,0 +1,13 @@
+---
+created_at: 2026-09-13
+input_file: cross_file/main.cpp
+---
+${WS}/cross_file/main.cpp: { digest: d0 }
+- { unit: 1, lines: "1-13", kind: Function, name: "area", own: o0, content: c0, deps: [${WS}/cross_file/shapes.h#1, ${WS}/cross_file/shapes.h#3] }
+- { unit: 2, lines: "14-17", kind: Namespace, name: "unused", own: o1, content: c1 }
+
+${WS}/cross_file/shapes.h: { digest: d1 }
+- { unit: 1, lines: "1-8", kind: CXXRecord, name: "Rect", own: o2, content: c2, deps: [${WS}/cross_file/shapes.h#2] }
+- { unit: 2, lines: "9-10", kind: CXXDestructor, name: "~Rect", own: o3, content: c3, deps: [${WS}/cross_file/shapes.h#1] }
+- { unit: 3, lines: "11-12", kind: Function, name: "width", own: o4, content: c4, deps: [${WS}/cross_file/shapes.h#1] }
+- { unit: 4, lines: "13-19", kind: FunctionTemplate, name: "twice", own: o5, content: c5 }

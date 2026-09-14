@@ -214,6 +214,27 @@ public:
         });
     }
 
+    void PragmaDiagnosticPush(clang::SourceLocation loc, llvm::StringRef) override {
+        add_diagnostic_pragma({.kind = DiagnosticPragma::Push, .loc = loc});
+    }
+
+    void PragmaDiagnosticPop(clang::SourceLocation loc, llvm::StringRef) override {
+        add_diagnostic_pragma({.kind = DiagnosticPragma::Pop, .loc = loc});
+    }
+
+    void PragmaDiagnostic(clang::SourceLocation loc,
+                          llvm::StringRef,
+                          clang::diag::Severity severity,
+                          llvm::StringRef flag) override {
+        add_diagnostic_pragma(
+            {.kind = DiagnosticPragma::Map, .severity = severity, .flag = flag.str(), .loc = loc});
+    }
+
+    void add_diagnostic_pragma(DiagnosticPragma pragma) {
+        auto fid = unit.file_id(unit.expansion_location(pragma.loc));
+        unit->directives[fid].diagnostic_pragmas.push_back(std::move(pragma));
+    }
+
     void If(clang::SourceLocation loc,
             clang::SourceRange cond_range,
             clang::PPCallbacks::ConditionValueKind value) override {

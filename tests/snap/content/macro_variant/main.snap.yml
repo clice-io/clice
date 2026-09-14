@@ -1,0 +1,10 @@
+---
+created_at: 2026-09-13
+input_file: macro_variant/main.cpp
+---
+${WS}/macro_variant/main.cpp: { digest: d0 }
+- { unit: 1, lines: "1-9", kind: Function, name: "run", own: o0, content: c0, deps: [${WS}/macro_variant/config.h#1, ${WS}/macro_variant/config.h#2] }
+
+${WS}/macro_variant/config.h: { digest: d1 }
+- { unit: 1, lines: "1-11", kind: Function, name: "configured", own: o1, content: c1 }
+- { unit: 2, lines: "12-13", kind: Function, name: "plain", own: o2, content: c2 }
