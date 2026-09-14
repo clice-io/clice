@@ -122,6 +122,31 @@ jobs:
           build/RelWithDebInfo/bin/clice inspect --config-schema > docs/public/clice-config.schema.json
           git diff --exit-code -- docs/public/clice-config.schema.json
 
+      # The cross-TU deduplication of `clice lint` is validated on the
+      # repository itself: every translation unit is checked both ways and
+      # the merged findings must agree. The findings are not gating here
+      # (exit 1); a failed unit or a verification mismatch is (exit 2). The
+      # temporary config keeps the test-data workspaces and the build tree
+      # out of the run.
+      - name: Lint verification
+        if: ${{ matrix.os == 'ubuntu-24.04' && matrix.build_type == 'RelWithDebInfo' }}
+        timeout-minutes: 40
+        run: |
+          cat > clice.toml <<'EOF'
+          [[rules]]
+          compile_commands = ["build/RelWithDebInfo"]
+
+          [[rules]]
+          patterns = ["build/**", "tests/data/**"]
+          lint = false
+          index = false
+          EOF
+          code=0
+          build/RelWithDebInfo/bin/clice lint --verify --workers 4 --workspace . > lint.txt || code=$?
+          rm clice.toml
+          tail -n 3 lint.txt
+          test "$code" -ne 2
+
       # Package the exact binary the suites above just validated. These
       # artifacts are what releases promote — there is no separate release
       # build.

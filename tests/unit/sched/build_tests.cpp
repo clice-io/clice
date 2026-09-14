@@ -143,6 +143,18 @@ TEST_CASE(UnitPredicate) {
     EXPECT_FALSE(bound.build.unit(bound.fid("lib/y.hxx")));
 };
 
+TEST_CASE(LintSet) {
+    /// Files outside the workspace are never linted; inside it, every
+    /// matching rule must keep `lint` on.
+    Layout layout("lint_rules");
+    EXPECT_TRUE(layout.build.lintable(layout.path("src/main.cpp")));
+    EXPECT_TRUE(layout.build.lintable(layout.path("include/api.h")));
+    EXPECT_FALSE(layout.build.lintable(layout.path("vendor/lib.cpp")));
+    EXPECT_FALSE(layout.build.lintable(layout.path("vendor/deep/lib.h")));
+    EXPECT_FALSE(layout.build.lintable("/usr/include/stdio.h"));
+    EXPECT_FALSE(layout.build.lintable(layout.root + "-sibling/x.cpp"));
+};
+
 TEST_CASE(PatternRootsEnumerate) {
     /// Members are enumerated from where the patterns point, not from the
     /// configuration file's directory: a config under .clice/ claims

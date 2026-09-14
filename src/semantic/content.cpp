@@ -282,16 +282,16 @@ private:
         std::vector<std::uint32_t> unit_of_candidate(candidates.size(), no_unit);
         for(auto index: order) {
             auto& candidate = candidates[index];
+            auto* decl = semantics.node(candidate.node).node.get<clang::Decl>();
             if(!unit_spans.empty() && unit_spans.back().fid == candidate.fid &&
                candidate.begin < unit_spans.back().end) {
                 unit_spans.back().end = std::max(unit_spans.back().end, candidate.end);
                 table.units.back().nodes.push_back(candidate.node);
+                table.units.back().decls.push_back(decl);
             } else {
                 unit_spans.push_back(candidate);
                 table.units.push_back(
-                    {.nodes = {candidate.node},
-                     .decl = semantics.node(candidate.node).node.get<clang::Decl>(),
-                     .fid = candidate.fid});
+                    {.nodes = {candidate.node}, .decls = {decl}, .fid = candidate.fid});
             }
             unit_of_candidate[index] = static_cast<std::uint32_t>(table.units.size() - 1);
         }
@@ -823,10 +823,13 @@ private:
             }
             count += 1;
             inner.add(static_cast<std::uint64_t>(include.skipped));
-            inner.add(static_cast<std::uint64_t>(
-                include.fid.isValid()
-                    ? SM.getFileCharacteristic(SM.getLocForStartOfFile(include.fid)) + 1
-                    : 0));
+            if(include.fid.isValid() && !unit.is_builtin_file(include.fid)) {
+                inner.add(unit.file_path(include.fid));
+                inner.add(static_cast<std::uint64_t>(
+                    SM.getFileCharacteristic(SM.getLocForStartOfFile(include.fid)) + 1));
+            } else {
+                inner.add(static_cast<std::uint64_t>(0));
+            }
         }
         hasher.add(count);
         hasher.add(inner.finish());
@@ -1040,7 +1043,8 @@ private:
     std::uint64_t entity_of(const ContentUnit& current) {
         for(auto root: current.nodes) {
             auto* decl = semantics.node(root).node.get<clang::Decl>();
-            if(auto* TD = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
+            // A concept is a template with nothing templated.
+            if(auto* TD = llvm::dyn_cast<clang::TemplateDecl>(decl); TD && TD->getTemplatedDecl()) {
                 decl = TD->getTemplatedDecl();
             }
             auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
@@ -1370,9 +1374,12 @@ private:
 
 }  // namespace
 
-ContentTable ContentTable::compute(CompilationUnitRef unit) {
+ContentTable ContentTable::compute(CompilationUnitRef unit,
+                                   llvm::function_ref<bool(clang::FileID)> elements_in) {
     ContentTable table;
-    auto semantics = Semantics::build(unit, {.main_file_only = false, .instantiations = true});
+    auto semantics = Semantics::build(
+        unit,
+        {.main_file_only = false, .instantiations = true, .instantiations_in = elements_in});
     ContentBuilder(unit, semantics, table).build();
     return table;
 }

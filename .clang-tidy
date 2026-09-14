@@ -16,6 +16,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape,
   -bugprone-narrowing-conversions,
+  -bugprone-unchecked-optional-access,
   -modernize-use-nodiscard,
 
 WarningsAsErrors: ""

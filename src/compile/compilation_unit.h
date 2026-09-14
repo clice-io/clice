@@ -23,6 +23,12 @@ namespace clice {
 
 class Semantics;
 
+namespace tidy {
+
+struct Groups;
+
+}
+
 enum class CompilationKind : std::uint8_t {
     /// From preprocessing the source file. Therefore directives
     /// are available but AST nodes are not.
@@ -224,6 +230,14 @@ public:
 
     /// Return all diagnostics in the process of compilation.
     auto diagnostics() -> std::vector<Diagnostic>&;
+
+    /// Run the deferred clang-tidy matchers (CompilationParams::defer_tidy).
+    /// The spelled and nodes groups traverse only `scope` — top-level or
+    /// nested declarations, which clang treats as the translation unit's
+    /// direct children — so everything outside it is neither matched nor
+    /// costs anything; the whole group always traverses the whole TU. An
+    /// empty scope with a group selected traverses the whole TU for it.
+    void run_tidy(tidy::Groups groups, llvm::ArrayRef<clang::Decl*> scope = {});
 
     auto top_level_decls() -> llvm::ArrayRef<clang::Decl*>;
 

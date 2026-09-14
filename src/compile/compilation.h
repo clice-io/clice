@@ -62,6 +62,26 @@ struct TidyParams {
     /// interactive command is never rewritten.
     std::vector<std::string> extra_args;
     std::vector<std::string> extra_args_before;
+
+    /// Traverse the whole TU and honor NOLINT comments in every file, as
+    /// clang-tidy does — the batch lint shape. Off is the interactive
+    /// shape: the main file's top-level declarations only, suppression
+    /// comments read only there.
+    bool whole_tu = false;
+};
+
+/// The check groups of a run, by what a template instantiation can change
+/// about a check's findings (see tidy.cpp): each group has its own
+/// matcher and can run on its own.
+struct Groups {
+    /// Checks that match spelled nodes only (`TK_IgnoreUnlessSpelledInSource`).
+    bool spelled = true;
+
+    /// Checks that match every node, instantiated ones included.
+    bool nodes = true;
+
+    /// Checks whose findings depend on the whole TU (tidy_tu_checks.inc).
+    bool whole = true;
 };
 
 /// Resolve the effective clang-tidy configuration for `file` from its
@@ -139,6 +159,12 @@ struct CompilationParams {
 
     /// Run clang-tidy over the parse with this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
+
+    /// Configure the checks for the parse (their preprocessor callbacks
+    /// must see it) but leave the matcher run to the caller's
+    /// CompilationUnitRef::run_tidy, once it has decided what to mark
+    /// unchecked.
+    bool defer_tidy = false;
 
     /// Whether to collect the syntax::TokenBuffer during the run. Features
     /// need it; measurement paths turn it off to isolate its cost.

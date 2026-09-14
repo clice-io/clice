@@ -15,6 +15,7 @@
 #include "syntax/token.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "clang/Basic/SourceLocation.h"
 
@@ -38,8 +39,9 @@ struct ContentUnit {
     /// declarators share tokens (`int a, b;`, `struct S {} s;`).
     llvm::SmallVector<std::uint32_t, 1> nodes;
 
-    /// The declaration of the first node, for naming the unit.
-    const clang::Decl* decl = nullptr;
+    /// The declarations of the top-level nodes, in node order: what a
+    /// traversal scope names to visit exactly this unit.
+    llvm::SmallVector<const clang::Decl*, 1> decls;
 
     clang::FileID fid;
 
@@ -83,7 +85,12 @@ struct ContentTable {
 
     /// Compute the table of a completed compilation: a whole-TU semantics
     /// build with instantiations, transient like the index projection's.
-    static ContentTable compute(CompilationUnitRef unit);
+    /// Elements are computed for the templates of the files `elements_in`
+    /// accepts (every file when null): hashing what the compiler
+    /// materialized is the bulk of the work, and a consumer that never
+    /// checks a file has no use for its instantiations.
+    static ContentTable compute(CompilationUnitRef unit,
+                                llvm::function_ref<bool(clang::FileID)> elements_in = {});
 
     /// The unit owning `offset` of `fid`, null when the file has none.
     const ContentUnit* find(clang::FileID fid, std::uint32_t offset) const;

@@ -227,6 +227,88 @@ struct TURunParams {
     bool tidy_system_headers = false;
     std::vector<std::string> tidy_extra_args;
     std::vector<std::string> tidy_extra_args_before;
+
+    /// Batch lint: traverse the whole TU, honor NOLINT everywhere, and ask
+    /// the master which units to check (ClaimParams) before running the
+    /// matchers; without it every unit of every checked file runs.
+    bool tidy_claim = false;
+
+    /// Also parse and check the TU whole, without claims, and return that
+    /// as the baseline (TURunResult::baseline_diagnostics).
+    bool tidy_verify = false;
+
+    /// The run's attempt number, echoed in ClaimParams.
+    std::uint64_t attempt = 0;
+};
+
+/// A 128-bit content or element hash on the wire (semantic/content.h).
+struct Hash128 {
+    std::uint64_t low = 0;
+    std::uint64_t high = 0;
+};
+
+/// One declaration unit of a file the worker offers to check: its content
+/// and the elements (materialized instantiations) it holds.
+struct ClaimUnit {
+    Hash128 key;
+    std::vector<Hash128> elements;
+};
+
+struct ClaimFile {
+    std::string path;
+    Hash128 digest;
+    std::vector<ClaimUnit> units;
+};
+
+/// What the master hands out for a consumer's keys. Opaque to the registry:
+/// the tidy consumer keys units by content, a later index consumer keys
+/// files by their shard digest.
+enum class ClaimPurpose : std::uint8_t {
+    Tidy,
+};
+
+/// Master request from a stateless worker after the parse, before it
+/// hashes anything: which of the TU's files does the consumer care about?
+/// A file outside the set is neither claimed nor checked, and the
+/// instantiations of its templates are not hashed.
+struct ScopeParams {
+    ClaimPurpose purpose = ClaimPurpose::Tidy;
+    std::vector<std::string> files;
+};
+
+struct ScopeResult {
+    /// Parallel to ScopeParams::files: 1 for a file in the consumer's set.
+    std::vector<std::uint8_t> checked;
+};
+
+/// Worker → master, once per TU run after the parse: which of these keys
+/// should this run check? The attempt number ties the grant to the run so
+/// an attempt that never lands releases what it was granted.
+struct ClaimParams {
+    std::uint64_t attempt = 0;
+    /// The translation unit the run checks.
+    std::string file;
+    ClaimPurpose purpose = ClaimPurpose::Tidy;
+    std::string fingerprint;
+    std::vector<ClaimFile> files;
+};
+
+enum class ClaimRun : std::uint8_t {
+    /// Another run covers this unit; do not check it.
+    Skip,
+    /// Check the unit as written and every instantiation it holds.
+    Full,
+    /// The unit itself is covered; check it again for its new instantiations.
+    Elements,
+};
+
+struct ClaimFileResult {
+    /// Per unit ordinal of the request.
+    std::vector<ClaimRun> runs;
+};
+
+struct ClaimResult {
+    std::vector<ClaimFileResult> files;
 };
 
 /// Code completion over unsaved buffer content.
@@ -285,6 +367,13 @@ struct ArtifactBuildResult {
 
 /// One clang-tidy finding, located for CLI presentation (1-based line and
 /// column; the column counts bytes, like the compiler's).
+struct TidyNote {
+    std::string file;
+    std::uint32_t line = 0;
+    std::uint32_t column = 0;
+    std::string message;
+};
+
 struct TidyDiagnostic {
     std::string file;
     std::uint32_t line = 0;
@@ -297,6 +386,9 @@ struct TidyDiagnostic {
 
     /// Check name, e.g. "bugprone-integer-division".
     std::string check;
+
+    /// The notes clang-tidy attached ("previous definition is here").
+    std::vector<TidyNote> notes;
 };
 
 struct TURunResult {
@@ -310,6 +402,13 @@ struct TURunResult {
 
     /// Findings of the tidy pass (plan product `tidy`).
     std::vector<TidyDiagnostic> tidy_diagnostics;
+
+    /// TURunParams::tidy_verify: the findings of the whole, unclaimed run.
+    std::vector<TidyDiagnostic> baseline_diagnostics;
+
+    /// Whether the master answered the claim; false means the run checked
+    /// everything (the master was unreachable or claims were off).
+    bool claimed = false;
 };
 
 /// Request the document links of an open file's AST. Only the main-file
@@ -401,6 +500,18 @@ template <>
 struct RequestTraits<clice::worker::SignatureHelpParams> {
     using Result = kota::codec::RawValue;
     constexpr inline static std::string_view method = "clice/worker/signatureHelp";
+};
+
+template <>
+struct RequestTraits<clice::worker::ScopeParams> {
+    using Result = clice::worker::ScopeResult;
+    constexpr inline static std::string_view method = "clice/master/scope";
+};
+
+template <>
+struct RequestTraits<clice::worker::ClaimParams> {
+    using Result = clice::worker::ClaimResult;
+    constexpr inline static std::string_view method = "clice/master/claim";
 };
 
 template <>

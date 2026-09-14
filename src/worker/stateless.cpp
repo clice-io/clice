@@ -9,6 +9,7 @@
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
+#include "semantic/content.h"
 #include "support/logging.h"
 #include "support/stderr_sink.h"
 #include "worker/common.h"
@@ -275,19 +276,19 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
                          /*internal_error=*/false);
 }
 
-/// Collect the tidy pass's findings with real per-file locations: unlike
-/// the LSP path, which folds header diagnostics onto their include line,
-/// the CLI reports them where they are. clang-tidy's header-filter
-/// contract is applied here — our diagnostic path has no
-/// ClangTidyDiagnosticConsumer to apply it: main-file findings always
-/// report; a header finding needs HeaderFilterRegex to match (empty =
-/// main file only) and must not match ExcludeHeaderFilterRegex; system
-/// headers report only under SystemHeaders. Compiler errors are kept
-/// regardless of location, as clang-tidy keeps them: a parse can complete
-/// with a usable AST despite errors, and a run that discarded them would
-/// pass broken code.
+/// Findings of the tidy pass with clang-tidy's header-filter contract
+/// applied — our diagnostic path has no ClangTidyDiagnosticConsumer to
+/// apply it: main-file findings always report; a header finding needs
+/// HeaderFilterRegex to match (empty = main file only) and must not match
+/// ExcludeHeaderFilterRegex; system headers report only under
+/// SystemHeaders; a file the master put outside the lint set reports
+/// nothing. Compiler errors are kept regardless of location, as clang-tidy
+/// keeps them: a parse can complete with a usable AST despite errors, and
+/// a run that discarded them would pass broken code. Notes follow their
+/// finding in the stream and attach to it.
 static void collect_tidy_diagnostics(CompilationUnitRef unit,
                                      const worker::TURunParams& params,
+                                     const llvm::DenseSet<clang::FileID>& unchecked,
                                      std::vector<worker::TidyDiagnostic>& out) {
     auto main_fid = unit.main_file();
     std::optional<llvm::Regex> keep;
@@ -299,7 +300,24 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
         drop.emplace(params.tidy_exclude_header_filter);
     }
 
+    bool last_kept = false;
     for(const auto& raw: unit.diagnostics()) {
+        if(raw.id.level == DiagnosticLevel::Note) {
+            if(!last_kept || raw.fid.isInvalid() || !raw.range.valid()) {
+                continue;
+            }
+            feature::LineMap map(unit.file_content(raw.fid), feature::PositionEncoding::UTF8);
+            if(auto range = feature::to_range(map, raw.range)) {
+                out.back().notes.push_back({
+                    .file = std::string(unit.file_path(raw.fid)),
+                    .line = range->start.line + 1,
+                    .column = range->start.character + 1,
+                    .message = raw.message,
+                });
+            }
+            continue;
+        }
+        last_kept = false;
         bool clang_error =
             raw.id.source == DiagnosticSource::Clang &&
             (raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal);
@@ -307,7 +325,7 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
                             raw.id.level == DiagnosticLevel::Ignored)) {
             continue;
         }
-        if(raw.fid.isInvalid() || !raw.range.valid()) {
+        if(raw.fid.isInvalid() || !raw.range.valid() || unchecked.contains(raw.fid)) {
             continue;
         }
         auto file = unit.file_path(raw.fid);
@@ -338,13 +356,28 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             // warning-option name of their own.
             .check = clang_error ? "clang-diagnostic-error" : std::string(raw.id.name),
         });
+        last_kept = true;
     }
 }
 
-static worker::TURunResult handle_turun(const worker::TURunParams& params,
-                                        const std::shared_ptr<std::atomic_bool>& stop) {
-    ScopedTimer timer;
+static tidy::TidyParams tidy_params_of(const worker::TURunParams& params) {
+    // The command-affecting extra args are already in params.arguments
+    // (applied at driver resolution); the copies here feed the engine's
+    // warning-options path only.
+    return tidy::TidyParams{.checks = params.tidy_checks,
+                            .fast_only = false,
+                            .options = params.tidy_options,
+                            .warnings_as_errors = params.tidy_warnings_as_errors,
+                            .header_filter = params.tidy_header_filter,
+                            .exclude_header_filter = params.tidy_exclude_header_filter,
+                            .system_headers = params.tidy_system_headers,
+                            .extra_args = params.tidy_extra_args,
+                            .extra_args_before = params.tidy_extra_args_before,
+                            .whole_tu = true};
+}
 
+static CompilationParams compile_params_of(const worker::TURunParams& params,
+                                           const std::shared_ptr<std::atomic_bool>& stop) {
     CompilationParams cp;
     // One parse serves every product of the plan. Tidy's matcher walks the
     // collected top-level declarations, which only a Content build
@@ -355,29 +388,126 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
         cp.pcms.try_emplace(name, path);
     }
     if(params.tidy) {
-        // The command-affecting extra args are already in params.arguments
-        // (applied at driver resolution); the copies here feed the
-        // engine's warning-options path only.
-        cp.tidy = tidy::TidyParams{.checks = params.tidy_checks,
-                                   .fast_only = false,
-                                   .options = params.tidy_options,
-                                   .warnings_as_errors = params.tidy_warnings_as_errors,
-                                   .header_filter = params.tidy_header_filter,
-                                   .exclude_header_filter = params.tidy_exclude_header_filter,
-                                   .system_headers = params.tidy_system_headers,
-                                   .extra_args = params.tidy_extra_args,
-                                   .extra_args_before = params.tidy_extra_args_before};
+        cp.tidy = tidy_params_of(params);
     }
     cp.stop = stop;
+    return cp;
+}
 
+static worker::Hash128 to_wire(ContentHash hash) {
+    return {.low = hash.low, .high = hash.high};
+}
+
+/// The parse half of a TU run — everything before the master is asked
+/// which units to check.
+struct ParsedRun {
+    CompilationUnit unit;
+    /// Every file of the TU but the main file and the builtins, for the
+    /// scope query; parallel to `files`.
+    std::vector<std::string> files;
+    std::vector<clang::FileID> file_ids;
+    /// Files the master keeps out of the lint set: nothing in them is
+    /// checked or reported.
+    llvm::DenseSet<clang::FileID> unchecked;
+    std::optional<ContentTable> table;
+    worker::ClaimParams claim;
+    /// Parallel to claim.files.
+    std::vector<clang::FileID> claim_fids;
+    long long compile_ms = 0;
+    long long content_ms = 0;
+    ScopedTimer timer;
+};
+
+static std::optional<ParsedRun> parse_turun(const worker::TURunParams& params,
+                                            const std::shared_ptr<std::atomic_bool>& stop) {
+    ScopedTimer timer;
+    auto cp = compile_params_of(params, stop);
+    cp.defer_tidy = params.tidy;
     ScopedTimer compile_timer;
     auto unit = compile(cp);
     auto compile_ms = compile_timer.ms();
     if(!unit.completed()) {
         LOG_WARN("TU run failed: file={}, {}ms", params.file, timer.ms());
-        return {false, "TU run compilation failed"};
+        return std::nullopt;
     }
+    ParsedRun parsed{.unit = std::move(unit), .compile_ms = compile_ms, .timer = timer};
+    if(params.tidy && params.tidy_claim) {
+        auto& SM = parsed.unit.context().getSourceManager();
+        auto main_fid = parsed.unit.main_file();
+        for(unsigned i = 0; i < SM.local_sloc_entry_size(); i += 1) {
+            auto& entry = SM.getLocalSLocEntry(i);
+            if(!entry.isFile() || !entry.getFile().getContentCache().OrigEntry) {
+                continue;
+            }
+            auto fid = SM.getFileID(clang::SourceLocation::getFromRawEncoding(entry.getOffset()));
+            if(fid == main_fid || parsed.unit.is_builtin_file(fid)) {
+                continue;
+            }
+            parsed.files.push_back(std::string(parsed.unit.file_path(fid)));
+            parsed.file_ids.push_back(fid);
+        }
+    }
+    return parsed;
+}
 
+/// The claim half, on the master's scope answer: hash the TU with
+/// elements for the files the run may check, and list their units. A
+/// scope the master could not answer keeps every file.
+static void prepare_claim(const worker::TURunParams& params,
+                          ParsedRun& parsed,
+                          const std::optional<worker::ScopeResult>& scope) {
+    auto& SM = parsed.unit.context().getSourceManager();
+    if(scope && scope->checked.size() == parsed.files.size()) {
+        for(std::size_t i = 0; i < parsed.files.size(); i += 1) {
+            if(!scope->checked[i]) {
+                parsed.unchecked.insert(parsed.file_ids[i]);
+            }
+        }
+    }
+    // What the finders would never match is not worth hashing either:
+    // nodes in system headers stay unmatched unless the configuration
+    // asks for their findings.
+    auto claimable = [&](clang::FileID fid) {
+        return !parsed.unchecked.contains(fid) &&
+               (params.tidy_system_headers || !SM.isInSystemHeader(SM.getLocForStartOfFile(fid)));
+    };
+    ScopedTimer content_timer;
+    parsed.table.emplace(ContentTable::compute(parsed.unit, claimable));
+    parsed.content_ms = content_timer.ms();
+    auto main_fid = parsed.unit.main_file();
+    clang::FileID current;
+    for(auto& row: parsed.table->units) {
+        if(row.fid == main_fid || !claimable(row.fid)) {
+            continue;
+        }
+        if(parsed.claim_fids.empty() || row.fid != current) {
+            current = row.fid;
+            parsed.claim_fids.push_back(row.fid);
+            parsed.claim.files.push_back(
+                {.path = std::string(parsed.unit.file_path(row.fid)),
+                 .digest = to_wire(parsed.table->digests.lookup(row.fid))});
+        }
+        worker::ClaimUnit claim_unit{.key = to_wire(row.content)};
+        for(auto element: row.elements) {
+            claim_unit.elements.push_back(to_wire(element));
+        }
+        parsed.claim.files.back().units.push_back(std::move(claim_unit));
+    }
+    parsed.claim.attempt = params.attempt;
+    parsed.claim.file = params.file;
+    parsed.claim.fingerprint = params.tidy_checks;
+    for(auto& [key, value]: params.tidy_options) {
+        parsed.claim.fingerprint += '\1' + key + '\2' + value;
+    }
+    parsed.claim.fingerprint += '\3' + params.tidy_warnings_as_errors;
+}
+
+/// The check half: run the matchers over what the master granted (or
+/// everything, without a grant), collect the findings and the index.
+static worker::TURunResult finish_turun(const worker::TURunParams& params,
+                                        ParsedRun& parsed,
+                                        const std::optional<worker::ClaimResult>& reply,
+                                        const std::shared_ptr<std::atomic_bool>& stop) {
     // Building and serializing the index costs a large share of the pass;
     // skip it when the cancellation landed after the parse finished.
     if(stop->load(std::memory_order_relaxed)) {
@@ -387,31 +517,168 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     result.success = true;
     ScopedTimer index_timer;
     if(params.index) {
-        result.tu_index_data = index::build_tu_index(unit);
+        result.tu_index_data = index::build_tu_index(parsed.unit);
     }
     auto index_ms = index_timer.ms();
+
+    ScopedTimer tidy_timer;
     if(params.tidy) {
-        collect_tidy_diagnostics(unit, params, result.tidy_diagnostics);
+        std::vector<clang::Decl*> scope;
+        bool pruned = reply.has_value() && reply->files.size() == parsed.claim.files.size();
+        if(pruned) {
+            result.claimed = true;
+            auto main_fid = parsed.unit.main_file();
+            llvm::DenseMap<clang::FileID, std::size_t> file_index;
+            for(std::size_t i = 0; i < parsed.claim_fids.size(); i += 1) {
+                file_index[parsed.claim_fids[i]] = i;
+            }
+            llvm::DenseMap<clang::FileID, std::size_t> ordinal;
+            for(auto& row: parsed.table->units) {
+                bool run = row.fid == main_fid;
+                if(auto it = file_index.find(row.fid); !run && it != file_index.end()) {
+                    auto& runs = reply->files[it->second].runs;
+                    auto u = ordinal[row.fid];
+                    ordinal[row.fid] += 1;
+                    run = u < runs.size() && runs[u] != worker::ClaimRun::Skip;
+                }
+                if(run) {
+                    for(auto* decl: row.decls) {
+                        scope.push_back(const_cast<clang::Decl*>(decl));
+                    }
+                }
+            }
+        }
+        // An empty scope means "nothing granted", not "everything".
+        tidy::Groups groups;
+        if(pruned && scope.empty()) {
+            groups.spelled = false;
+            groups.nodes = false;
+        }
+        parsed.unit.run_tidy(groups, scope);
+        collect_tidy_diagnostics(parsed.unit, params, parsed.unchecked, result.tidy_diagnostics);
     }
+    auto tidy_ms = tidy_timer.ms();
 
     // AST teardown for a large TU is material work that belongs to this
     // task: sample the total only after the unit is gone, so the logged
     // span covers everything that blocks the worker.
     ScopedTimer teardown_timer;
-    unit = CompilationUnit(nullptr);
+    parsed.table.reset();
+    parsed.unit = CompilationUnit(nullptr);
     auto teardown_ms = teardown_timer.ms();
 
-    LOG_PERF(
-        "build",
-        "kind=turun file={} bytes={} findings={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
-        params.file,
-        result.tu_index_data.size(),
-        result.tidy_diagnostics.size(),
-        compile_ms,
-        index_ms,
-        teardown_ms,
-        timer.ms());
+    ScopedTimer verify_timer;
+    if(params.tidy && params.tidy_verify) {
+        // An independent parse: checks keep preprocessor state a second
+        // matcher run over the same parse would not see again.
+        auto cp = compile_params_of(params, stop);
+        auto baseline = compile(cp);
+        if(baseline.completed()) {
+            collect_tidy_diagnostics(baseline, params, {}, result.baseline_diagnostics);
+        } else {
+            result.success = false;
+            result.error = "the verification parse failed";
+        }
+    }
+    auto verify_ms = verify_timer.ms();
+
+    LOG_PERF("build",
+             "kind=turun file={} bytes={} findings={} compile_ms={} content_ms={} index_ms={} "
+             "tidy_ms={} verify_ms={} teardown_ms={} total_ms={}",
+             params.file,
+             result.tu_index_data.size(),
+             result.tidy_diagnostics.size(),
+             parsed.compile_ms,
+             parsed.content_ms,
+             index_ms,
+             tidy_ms,
+             verify_ms,
+             teardown_ms,
+             parsed.timer.ms());
     return result;
+}
+
+/// The TU run: parse on the pool thread, ask the master for the scope and
+/// the grants on the loop thread, hash and check on the pool thread. A
+/// question the master cannot answer (gone, timed out) degrades to
+/// checking everything.
+static void serve_turun(kota::ipc::BincodePeer& peer,
+                        std::shared_ptr<std::atomic_bool>& build_stop) {
+    peer.on_request([&peer, &build_stop](RequestContext&, const worker::TURunParams& params)
+                        -> RequestResult<worker::TURunParams> {
+        auto stop = std::make_shared<std::atomic_bool>(false);
+        build_stop = stop;
+        auto cancel = [stop] {
+            stop->store(true, std::memory_order_relaxed);
+        };
+        const worker::TURunResult cancelled{.success = false, .error = "Build cancelled"};
+
+        auto parsed = co_await kota::queue(
+            [&]() -> std::optional<ParsedRun> {
+                if(stop->load(std::memory_order_relaxed)) {
+                    return std::nullopt;
+                }
+                ScopedNice guard;
+                return parse_turun(params, stop);
+            },
+            cancel);
+        if(!parsed.value()) {
+            co_return stop->load(std::memory_order_relaxed)
+                ? cancelled
+                : worker::TURunResult{false, "TU run compilation failed"};
+        }
+
+        std::optional<worker::ClaimResult> reply;
+        if(params.tidy && params.tidy_claim) {
+            std::optional<worker::ScopeResult> scope;
+            auto answer = co_await peer.send_request(
+                worker::ScopeParams{.purpose = worker::ClaimPurpose::Tidy,
+                                    .files = parsed.value()->files});
+            if(answer.has_value()) {
+                scope = std::move(answer.value());
+            } else {
+                LOG_WARN("Scope unanswered for {}: {}; keeping every file",
+                         params.file,
+                         answer.error().message);
+            }
+            auto prepared = co_await kota::queue(
+                [&]() -> bool {
+                    if(stop->load(std::memory_order_relaxed)) {
+                        return false;
+                    }
+                    ScopedNice guard;
+                    prepare_claim(params, *parsed.value(), scope);
+                    return true;
+                },
+                cancel);
+            if(!prepared.value()) {
+                co_return cancelled;
+            }
+            if(parsed.value()->claim.files.empty()) {
+                reply.emplace();
+            } else {
+                auto granted = co_await peer.send_request(parsed.value()->claim);
+                if(granted.has_value()) {
+                    reply = std::move(granted.value());
+                } else {
+                    LOG_WARN("Claim unanswered for {}: {}; checking everything",
+                             params.file,
+                             granted.error().message);
+                }
+            }
+        }
+
+        auto result = co_await kota::queue(
+            [&]() -> worker::TURunResult {
+                if(stop->load(std::memory_order_relaxed)) {
+                    return cancelled;
+                }
+                ScopedNice guard;
+                return finish_turun(params, *parsed.value(), reply, stop);
+            },
+            cancel);
+        co_return result.value();
+    });
 }
 
 static kota::codec::RawValue handle_completion(const worker::CompletionParams& params,
@@ -558,14 +825,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     const worker::ArtifactBuildResult cancelled_build{.success = false, .error = "Build cancelled"};
     serve<worker::BuildPCHParams>(peer, build_stop, cancelled_build, &handle_build_pch);
     serve<worker::BuildPCMParams>(peer, build_stop, cancelled_build, &handle_build_pcm);
-    serve<worker::TURunParams>(
-        peer,
-        build_stop,
-        worker::TURunResult{.success = false, .error = "Build cancelled"},
-        [](const worker::TURunParams& params, const std::shared_ptr<std::atomic_bool>& stop) {
-            ScopedNice guard;
-            return handle_turun(params, stop);
-        });
+    serve_turun(peer, build_stop);
     const kota::codec::RawValue cancelled_query{"null"};
     serve<worker::CompletionParams>(peer, build_stop, cancelled_query, &handle_completion);
     serve<worker::SignatureHelpParams>(peer, build_stop, cancelled_query, &handle_signature_help);

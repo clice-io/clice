@@ -129,27 +129,54 @@ std::unique_ptr<clang::CompilerInvocation>
 
 void CompilationUnitRef::Self::configure_tidy(tidy::TidyParams tidy_params) {
     checker = tidy::configure(*instance, tidy_params);
-    tidy_traverse_headers = !tidy_params.header_filter.empty() || tidy_params.system_headers;
+    tidy_traverse_headers =
+        tidy_params.whole_tu || !tidy_params.header_filter.empty() || tidy_params.system_headers;
 }
 
-void CompilationUnitRef::Self::run_tidy() {
-    if(checker) {
-        // AST traversals should exclude the preamble, to avoid performance cliffs.
-        // TODO: is it okay to affect the unit-level traversal scope here?
-        // A configuration that reports on headers keeps the default
-        // whole-TU scope instead: the header filters are applied to the
-        // produced diagnostics at collection time.
-        auto& Ctx = instance->getASTContext();
-        if(!tidy_traverse_headers) {
-            Ctx.setTraversalScope(top_level_decls);
-        }
-        checker->finder.matchAST(Ctx);
-
-        /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
-        /// However Action->EndSourceFile() would destroy the ASTContext!
-        /// So just inform the preprocessor of EOF, while keeping everything alive.
-        instance->getPreprocessor().EndSourceFile();
+void CompilationUnitRef::Self::run_tidy(tidy::Groups groups, llvm::ArrayRef<clang::Decl*> scope) {
+    if(!checker) {
+        return;
     }
+    // AST traversals should exclude the preamble, to avoid performance cliffs.
+    // TODO: is it okay to affect the unit-level traversal scope here?
+    // A configuration that reports on headers keeps the default
+    // whole-TU scope instead: the header filters are applied to the
+    // produced diagnostics at collection time.
+    auto& Ctx = instance->getASTContext();
+    std::vector<clang::Decl*> whole{Ctx.getTranslationUnitDecl()};
+    std::vector<clang::Decl*> pruned(scope.begin(), scope.end());
+    if(pruned.empty()) {
+        pruned = tidy_traverse_headers ? whole : top_level_decls;
+    }
+    // Changing the scope drops the parent map, so the two pruned groups run
+    // back to back and the whole group last.
+    bool selected[] = {groups.spelled && checker->routed[0] != 0,
+                       groups.nodes && checker->routed[1] != 0};
+    bool narrowed = false;
+    for(std::size_t i = 0; i < 2; i += 1) {
+        if(selected[i]) {
+            if(!narrowed) {
+                Ctx.setTraversalScope(pruned);
+                narrowed = pruned != whole;
+            }
+            checker->finders[i].matchAST(Ctx);
+        }
+    }
+    if(groups.whole && checker->routed[2] != 0) {
+        if(narrowed) {
+            Ctx.setTraversalScope(whole);
+        }
+        checker->finders[2].matchAST(Ctx);
+    }
+
+    /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
+    /// However Action->EndSourceFile() would destroy the ASTContext!
+    /// So just inform the preprocessor of EOF, while keeping everything alive.
+    instance->getPreprocessor().EndSourceFile();
+}
+
+void CompilationUnitRef::run_tidy(tidy::Groups groups, llvm::ArrayRef<clang::Decl*> scope) {
+    self->run_tidy(groups, scope);
 }
 
 namespace {
@@ -298,7 +325,9 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
         self.buffer = std::move(*token_collector).consume();
     }
 
-    self.run_tidy();
+    if(!params.defer_tidy) {
+        self.run_tidy({}, {});
+    }
 
     if(instance.hasASTContext()) {
         self.resolver.emplace(instance.getASTContext());

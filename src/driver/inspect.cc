@@ -340,7 +340,7 @@ std::optional<kota::codec::RawValue> run_content(CompilationUnitRef unit,
         RawContentUnit raw{
             .line = line_of(row.range.begin),
             .end_line = line_of(row.range.end - 1),
-            .kind = row.decl->getDeclKindName(),
+            .kind = row.decls.front()->getDeclKindName(),
             .entity = std::format("{:016x}", row.entity),
             .own = std::format("{}", row.own),
             .content = std::format("{}", row.content),
@@ -348,7 +348,7 @@ std::optional<kota::codec::RawValue> run_content(CompilationUnitRef unit,
         for(auto& element: row.elements) {
             raw.elements.push_back(std::format("{}", element));
         }
-        if(auto* named = llvm::dyn_cast<clang::NamedDecl>(row.decl)) {
+        if(auto* named = llvm::dyn_cast<clang::NamedDecl>(row.decls.front())) {
             raw.name = named->getNameAsString();
         }
         position.push_back({.file = static_cast<std::uint32_t>(files.size() - 1),

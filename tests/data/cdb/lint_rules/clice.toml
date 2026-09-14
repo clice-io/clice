@@ -1,0 +1,6 @@
+[[rules]]
+patterns = ["vendor/**"]
+lint = false
+
+[[rules]]
+compile_commands = ["cmake"]

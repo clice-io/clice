@@ -313,8 +313,41 @@ void apply_warning_options(llvm::ArrayRef<std::string> extra_args,
     }
 }
 
-ClangTidyChecker::ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider) :
-    context(std::move(provider)) {}
+ClangTidyChecker::ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider,
+                                   clang::ast_matchers::MatchFinder::MatchFinderOptions options) :
+    context(std::move(provider)), finders{clang::ast_matchers::MatchFinder(options),
+                                          clang::ast_matchers::MatchFinder(options),
+                                          clang::ast_matchers::MatchFinder(options)} {}
+
+namespace {
+
+/// Checks a unit-local content hash cannot key (tidy_tu_checks.inc).
+bool is_tu_level_check(llvm::StringRef name) {
+    const static llvm::StringSet<> names = [] {
+        llvm::StringSet<> set;
+#define TU_LEVEL_CHECK(NAME, WHY) set.insert(NAME);
+#include "compile/tidy_tu_checks.inc"
+        return set;
+    }();
+    return names.contains(name);
+}
+
+/// The finder a check registers with: whole-TU checks by the allowlist,
+/// spelled-only checks by their declared traversal kind, the rest by
+/// node. getID is public on MatchCallback, protected on ClangTidyCheck.
+clang::ast_matchers::MatchFinder& finder_of(ClangTidyChecker& checker, ClangTidyCheck& check) {
+    auto& callback = static_cast<clang::ast_matchers::MatchFinder::MatchCallback&>(check);
+    std::size_t index = 1;
+    if(is_tu_level_check(callback.getID())) {
+        index = 2;
+    } else if(callback.getCheckTraversalKind() == clang::TK_IgnoreUnlessSpelledInSource) {
+        index = 0;
+    }
+    checker.routed[index] += 1;
+    return checker.finders[index];
+}
+
+}  // namespace
 
 clang::DiagnosticsEngine::Level
     ClangTidyChecker::adjust_level(clang::DiagnosticsEngine::Level level,
@@ -332,11 +365,12 @@ clang::DiagnosticsEngine::Level
             bool in_main_file = diag.hasSourceManager() &&
                                 is_inside_main_file(diag.getLocation(), diag.getSourceManager());
             llvm::SmallVector<clang::tooling::Diagnostic, 1> tidy_suppressed_errors;
-            if(in_main_file && context.shouldSuppressDiagnostic(level,
-                                                                diag,
-                                                                tidy_suppressed_errors,
-                                                                /*AllowIO=*/false,
-                                                                /*EnableNolintBlocks=*/true)) {
+            if((in_main_file || whole_tu) &&
+               context.shouldSuppressDiagnostic(level,
+                                                diag,
+                                                tidy_suppressed_errors,
+                                                /*AllowIO=*/whole_tu,
+                                                /*EnableNolintBlocks=*/true)) {
                 // FIXME: should we expose the suppression error (invalid use of
                 // NOLINT comments)?
                 return clang::DiagnosticsEngine::Ignored;
@@ -434,8 +468,14 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     }();
     tidy::ClangTidyCheckFactories factories =
         params.fast_only ? get_fast_checks(all_factories) : all_factories;
+    // Like clang-tidy: nodes in system headers are not even matched unless
+    // the configuration asks for their findings.
+    clang::ast_matchers::MatchFinder::MatchFinderOptions finder_options;
+    finder_options.IgnoreSystemHeaders = !opts.SystemHeaders.value_or(false);
     std::unique_ptr<ClangTidyChecker> checker = std::make_unique<ClangTidyChecker>(
-        std::make_unique<tidy::DefaultOptionsProvider>(tidy::ClangTidyGlobalOptions(), opts));
+        std::make_unique<tidy::DefaultOptionsProvider>(tidy::ClangTidyGlobalOptions(), opts),
+        finder_options);
+    checker->whole_tu = params.whole_tu;
 
     checker->context.setDiagnosticsEngine(
         std::make_unique<clang::DiagnosticOptions>(instance.getDiagnosticOpts()),
@@ -449,7 +489,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     clang::Preprocessor* pp = &instance.getPreprocessor();
     for(const auto& check: checker->checks) {
         check->registerPPCallbacks(instance.getSourceManager(), pp, pp);
-        check->registerMatchers(&checker->finder);
+        check->registerMatchers(&finder_of(*checker, *check));
     }
     return checker;
 }

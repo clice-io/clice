@@ -245,6 +245,16 @@ bool Build::indexed(llvm::StringRef path) const {
     return llvm::all_of(matching(path), [](const CompiledRule* rule) { return rule->index; });
 }
 
+bool Build::lintable(llvm::StringRef path) const {
+    llvm::StringRef root = config.workspace_root;
+    if(root.empty() || !path.starts_with(root) ||
+       (path.size() > root.size() && !llvm::sys::path::is_separator(path[root.size()]) &&
+        !llvm::sys::path::is_separator(root.back()))) {
+        return false;
+    }
+    return llvm::all_of(matching(path), [](const CompiledRule* rule) { return rule->lint; });
+}
+
 llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {
     llvm::SmallVector<CommandRef> result;
     for(auto member: members) {

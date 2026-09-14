@@ -10,6 +10,7 @@
 #include "syntax/token.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/TypeLoc.h"
@@ -270,6 +271,11 @@ struct SemanticsOptions {
     /// under the template's canonical declaration node, generic lambda
     /// call operators under their lambda expression.
     bool instantiations = false;
+
+    /// With `instantiations`: traverse only the instantiation subtrees
+    /// whose head sits in a file the predicate accepts (an instantiation
+    /// keeps its pattern's locations); null accepts every file.
+    llvm::function_ref<bool(clang::FileID)> instantiations_in;
 };
 
 /// The semantic map of the main file, built once after a successful

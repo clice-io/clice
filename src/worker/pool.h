@@ -265,6 +265,12 @@ public:
     /// unseat the current owner.
     std::function<void(const std::string& path, std::size_t worker_index)> on_evicted;
 
+    /// Answers a stateless worker's claim (worker::ClaimParams) on the
+    /// event loop; unset, every key is granted in full. Installed on each
+    /// worker peer at spawn; the consumer owning the registry sets it.
+    std::function<worker::ScopeResult(const worker::ScopeParams&)> on_scope;
+    std::function<worker::ClaimResult(const worker::ClaimParams&)> on_claim;
+
 private:
     /// Lifecycle of a worker slot. The generation counter is bumped on every
     /// transition out of Alive, so stale references (an in-flight request's

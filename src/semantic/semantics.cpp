@@ -403,6 +403,9 @@ public:
                             !decls::is_implicit_instantiation(llvm::cast<clang::NamedDecl>(X)) &&
                             !decls::is_member_specialization(X);
         if(head && !written_head) {
+            if(!materialized_in(X->getLocation())) {
+                return true;
+            }
             instantiation_depth += 1;
         }
         bool ret = traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)),
@@ -417,6 +420,12 @@ public:
         return options.instantiations;
     }
 
+    /// Whether the instantiation subtree headed at `location` is wanted.
+    bool materialized_in(clang::SourceLocation location) const {
+        return !options.instantiations_in ||
+               options.instantiations_in(SM.getFileID(SM.getExpansionLoc(location)));
+    }
+
     // RAV visits a generic lambda's body once, as the pattern; the call
     // operator template's instantiations hang nowhere else, so visit them
     // here the way RAV visits class and function template instantiations
@@ -429,7 +438,7 @@ public:
             return true;
         }
         auto* call_operator = S->getCallOperator()->getDescribedFunctionTemplate();
-        if(!call_operator) {
+        if(!call_operator || !materialized_in(S->getBeginLoc())) {
             return true;
         }
         for(auto* specialization: call_operator->specializations()) {

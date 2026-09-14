@@ -145,6 +145,31 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
 
     auto stderr_tail = std::make_shared<StderrTail>();
     worker_tasks.spawn(drain_stderr(std::move(spawn.stderr_pipe), "[" + name + "]", stderr_tail));
+    if(!stateful) {
+        peer->on_request(
+            [this](kota::ipc::BincodePeer::RequestContext&, const worker::ScopeParams& params)
+                -> kota::ipc::RequestResult<worker::ScopeParams> {
+                if(on_scope) {
+                    co_return on_scope(params);
+                }
+                worker::ScopeResult result;
+                result.checked.assign(params.files.size(), 1);
+                co_return result;
+            });
+        peer->on_request([this](kota::ipc::BincodePeer::RequestContext&,
+                                const worker::ClaimParams& params)
+                             -> kota::ipc::RequestResult<worker::ClaimParams> {
+            if(on_claim) {
+                co_return on_claim(params);
+            }
+            worker::ClaimResult result;
+            result.files.resize(params.files.size());
+            for(std::size_t i = 0; i < params.files.size(); i += 1) {
+                result.files[i].runs.assign(params.files[i].units.size(), worker::ClaimRun::Full);
+            }
+            co_return result;
+        });
+    }
     worker_tasks.spawn(run_peer(peer));
 
     return SpawnedProcess{std::move(spawn.proc), std::move(peer), std::move(stderr_tail)};

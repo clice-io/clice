@@ -148,6 +148,10 @@ public:
     /// last resort after host inference, never its own command.
     bool unit(Fid file);
 
+    /// Whether `clice lint` checks a file: it sits inside the workspace and
+    /// no matching active rule says `lint = false`.
+    bool lintable(llvm::StringRef path) const;
+
     /// Whether a file joins the background index: no matching active rule
     /// says `index = false`.
     bool indexed(llvm::StringRef path) const;

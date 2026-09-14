@@ -65,6 +65,10 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     params.tidy_system_headers = plan.tidy_params.system_headers;
     params.tidy_extra_args = std::move(plan.tidy_params.extra_args);
     params.tidy_extra_args_before = std::move(plan.tidy_params.extra_args_before);
+    params.tidy_claim = plan.tidy_claim;
+    params.tidy_verify = plan.tidy_verify;
+    attempts += 1;
+    params.attempt = attempts;
     // Whole-TU runs stick to real commands; borrowed and synthesized ones
     // would fill the index (and the lint report) with guesses. A lint
     // plan's extra args join the driver command here, before toolchain
@@ -178,7 +182,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         }
         Outcome outcome;
         outcome.verdict = Verdict::Completed;
+        outcome.attempt = params.attempt;
         outcome.tidy_diagnostics = std::move(value.tidy_diagnostics);
+        outcome.baseline_diagnostics = std::move(value.baseline_diagnostics);
         outcome.perf = {.bytes = value.tu_index_data.size(), .index_ms = run_ms, .merge_ms = 0};
         if(plan.index) {
             // Merge guard: a newer content-level invalidation during this
@@ -226,25 +232,35 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     }
 
     if(result.has_value()) {
-        landed[path_id] = {.verdict = Verdict::Failed, .error = result.value().error};
+        landed[path_id] = {.verdict = Verdict::Failed,
+                           .error = result.value().error,
+                           .attempt = params.attempt};
         co_return RoundOutcome::Failed;
     }
     if(result.error().code == worker::dispatch_errc::cancelled) {
-        landed[path_id] = {.verdict = Verdict::Preempted, .error = result.error().message};
+        landed[path_id] = {.verdict = Verdict::Preempted,
+                           .error = result.error().message,
+                           .attempt = params.attempt};
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_crashed) {
-        landed[path_id] = {.verdict = Verdict::Crashed, .error = result.error().message};
+        landed[path_id] = {.verdict = Verdict::Crashed,
+                           .error = result.error().message,
+                           .attempt = params.attempt};
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_unavailable && pool.revives_slots()) {
         // The outage is a window, not a verdict: the pool revives dead
         // slots, so the requeued attempt can succeed once one returns to
         // service. Without revival the failure below is terminal.
-        landed[path_id] = {.verdict = Verdict::Preempted, .error = result.error().message};
+        landed[path_id] = {.verdict = Verdict::Preempted,
+                           .error = result.error().message,
+                           .attempt = params.attempt};
         co_return RoundOutcome::Stale;
     }
-    landed[path_id] = {.verdict = Verdict::Failed, .error = result.error().message};
+    landed[path_id] = {.verdict = Verdict::Failed,
+                       .error = result.error().message,
+                       .attempt = params.attempt};
     co_return RoundOutcome::Failed;
 }
 

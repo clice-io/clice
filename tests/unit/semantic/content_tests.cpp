@@ -171,7 +171,7 @@ int §(x)x = 2;
     }
     EXPECT_EQ(&a.at("lib.h", "m"), &a.at("lib.h", "s"));
     EXPECT_EQ(a.digest("lib.h"), b.digest("lib.h"));
-    EXPECT_EQ(a.at("a.cpp", "ma").decl->getDeclKindName(), llvm::StringRef("Function"));
+    EXPECT_EQ(a.at("a.cpp", "ma").decls.front()->getDeclKindName(), llvm::StringRef("Function"));
     EXPECT_TRUE(a.partitioned());
     EXPECT_TRUE(b.partitioned());
 }
@@ -1082,7 +1082,8 @@ TEST_CASE(WrappedInclude) {
     Compiled b;
     ASSERT_TRUE(b.compile({c2, wrapper, user}, main));
 
-    EXPECT_EQ(a.at("wrapper.h", "ext").decl->getDeclKindName(), llvm::StringRef("LinkageSpec"));
+    EXPECT_EQ(a.at("wrapper.h", "ext").decls.front()->getDeclKindName(),
+              llvm::StringRef("LinkageSpec"));
     EXPECT_EQ(a.at("wrapper.h", "ext").fragments.size(), 0u);
     EXPECT_EQ(a.digests_of("cdecls.h"), 1u);
     EXPECT_TRUE(a.depends("user.h", "user", "cdecls.h", "cf"));
@@ -1174,8 +1175,8 @@ inline int §(user)use() { return N::f(); }
     Compiled b;
     ASSERT_TRUE(b.compile({deprecated}, main));
 
-    EXPECT_EQ(a.at("n.h", "empty").decl->getDeclKindName(), llvm::StringRef("Namespace"));
-    EXPECT_EQ(a.at("n.h", "sa").decl->getDeclKindName(), llvm::StringRef("StaticAssert"));
+    EXPECT_EQ(a.at("n.h", "empty").decls.front()->getDeclKindName(), llvm::StringRef("Namespace"));
+    EXPECT_EQ(a.at("n.h", "sa").decls.front()->getDeclKindName(), llvm::StringRef("StaticAssert"));
     EXPECT_NE(&a.at("n.h", "ca"), &a.at("n.h", "cb"));
     EXPECT_TRUE(a.depends("n.h", "user", "n.h", "nf"));
     EXPECT_EQ(a.own("n.h", "user"), b.own("n.h", "user"));
@@ -1202,7 +1203,8 @@ TEST_CASE(ContainerAcrossFiles) {
     File wrapper = {"wrapper.h", "namespace §(ns)Bad_Name {\n#include \"members.h\"\n}\n"};
     Compiled wrapped;
     ASSERT_TRUE(wrapped.compile({members, wrapper}, {"main.cpp", "#include \"wrapper.h\"\n"}));
-    EXPECT_EQ(wrapped.at("wrapper.h", "ns").decl->getDeclKindName(), llvm::StringRef("Namespace"));
+    EXPECT_EQ(wrapped.at("wrapper.h", "ns").decls.front()->getDeclKindName(),
+              llvm::StringRef("Namespace"));
     EXPECT_NE(wrapped.digest("wrapper.h"), hex(ContentHash{}));
     EXPECT_TRUE(wrapped.partitioned());
 }
@@ -1335,6 +1337,22 @@ TEST_CASE(IncludeResolution) {
     // Same header, same text: the include it holds resolved to a user file
     // in one TU and a system file in the other.
     EXPECT_NE(a.own("sys/h.h", "f"), b.own("sys/h.h", "f"));
+}
+
+TEST_CASE(Concepts) {
+    File c = {"c.h", R"cpp(
+#pragma once
+template <typename T> concept §(small)Small = sizeof(T) <= 4;
+template <typename T> concept §(big)Big = sizeof(T) > 4;
+template <Small T> T §(f)f(T t) { return t; }
+)cpp"};
+    Compiled a;
+    ASSERT_TRUE(a.compile({c}, {"main.cpp", "#include \"c.h\"\nint x = f(1);\n"}));
+
+    EXPECT_NE(a.at("c.h", "small").entity, 0);
+    EXPECT_NE(a.at("c.h", "small").entity, a.at("c.h", "big").entity);
+    EXPECT_TRUE(a.depends("c.h", "f", "c.h", "small"));
+    EXPECT_FALSE(a.depends("c.h", "f", "c.h", "big"));
 }
 
 TEST_CASE(MainFileUnits) {

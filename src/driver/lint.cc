@@ -36,6 +36,20 @@ struct LintOptions {
              required = false)
     index;
 
+    DecoFlag(names = {"--no-dedup"},
+             help =
+                 "Check every translation unit whole instead of checking each shared "
+                 "declaration once across the run",
+             required = false)
+    no_dedup;
+
+    DecoFlag(names = {"--verify"},
+             help =
+                 "Also check every translation unit whole and fail when the "
+                 "deduplicated findings differ from that baseline",
+             required = false)
+    verify;
+
     DecoKV(style = KVStyle::JoinedOrSeparate,
            names = {"--log-level", "--log-level="},
            help = "Log level: trace, debug, info, warn, error, off",
@@ -47,30 +61,24 @@ auto make_command() {
     return kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
 }
 
-int run_lint(std::string root,
-             std::string configuration,
-             std::uint32_t workers,
-             bool with_index,
-             const char* self_path) {
-    auto result = run_batch_lint(
-        {
-            .root = std::move(root),
-            .configuration = std::move(configuration),
-            .workers = workers,
-            .self_path = self_path,
-            .with_index = with_index,
-        },
-        [](llvm::StringRef, llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
-            for(auto& d: diagnostics) {
-                std::println("{}:{}:{}: {}: {} [{}]",
-                             d.file,
-                             d.line,
-                             d.column,
-                             d.error ? "error" : "warning",
-                             d.message,
-                             d.check);
-            }
-        });
+void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
+    for(auto& d: diagnostics) {
+        std::println("{}:{}:{}: {}: {} [{}]",
+                     d.file,
+                     d.line,
+                     d.column,
+                     d.error ? "error" : "warning",
+                     d.message,
+                     d.check);
+        for(auto& note: d.notes) {
+            std::println("{}:{}:{}: note: {}", note.file, note.line, note.column, note.message);
+        }
+    }
+}
+
+int run_lint(const BatchLintOptions& options) {
+    auto result = run_batch_lint(options);
+    print_findings(result.findings);
     if(result.interrupted) {
         std::println("Lint interrupted. Rerun `clice lint` for a full report.");
         return result.exit_code;
@@ -82,8 +90,20 @@ int run_lint(std::string root,
                  result.checked_tus,
                  plural_s(result.checked_tus),
                  result.seconds,
-                 result.findings,
-                 plural_s(result.findings));
+                 result.findings.size(),
+                 plural_s(result.findings.size()));
+    if(options.verify) {
+        if(result.verify_missing.empty() && result.verify_extra.empty()) {
+            std::println("Verification passed: the deduplicated findings match the whole runs.");
+        } else {
+            std::println(
+                "Verification failed: {} finding{} lost, {} invented by deduplication "
+                "(see the log).",
+                result.verify_missing.size(),
+                plural_s(result.verify_missing.size()),
+                result.verify_extra.size());
+        }
+    }
     if(result.failed_tus != 0) {
         std::println("{} translation unit{} failed to run (see the log); the report is partial.",
                      result.failed_tus,
@@ -110,11 +130,15 @@ void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* s
                return;
            logging::stderr_logger("lint", logging::options);
 
-           exit_code = run_lint(workspace_root(opts.workspace.value_or("")),
-                                opts.configuration.value_or(""),
-                                opts.workers.value_or(0),
-                                static_cast<bool>(opts.index),
-                                self_path);
+           exit_code = run_lint({
+               .root = workspace_root(opts.workspace.value_or("")),
+               .configuration = opts.configuration.value_or(""),
+               .workers = opts.workers.value_or(0),
+               .self_path = self_path,
+               .with_index = static_cast<bool>(opts.index),
+               .dedup = !static_cast<bool>(opts.no_dedup),
+               .verify = static_cast<bool>(opts.verify),
+           });
        })
         .on_error([](auto err) { LOG_ERROR("{}", err.message); });
 

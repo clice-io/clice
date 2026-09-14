@@ -53,6 +53,12 @@ public:
 
         /// Frozen tidy configuration; meaningful only with `tidy` set.
         tidy::TidyParams tidy_params;
+
+        /// Batch lint: claim units through the master before checking
+        /// (worker::TURunParams::tidy_claim) and, for verification, also
+        /// check the TU whole.
+        bool tidy_claim = false;
+        bool tidy_verify = false;
     };
 
     enum class Verdict : std::uint8_t {
@@ -91,6 +97,13 @@ public:
 
         /// Findings of the tidy pass (plan product `tidy`).
         std::vector<worker::TidyDiagnostic> tidy_diagnostics;
+
+        /// Plan::tidy_verify: the whole, unclaimed run's findings.
+        std::vector<worker::TidyDiagnostic> baseline_diagnostics;
+
+        /// The attempt number the run carried, for the consumer's claim
+        /// registry: landed (Completed) or to release (anything else).
+        std::uint64_t attempt = 0;
 
         /// Failure detail for the requester's logs.
         std::string error;
@@ -144,6 +157,9 @@ private:
     /// entry per TU.
     llvm::DenseMap<Fid, Inputs> inputs;
     llvm::DenseMap<Fid, Outcome> landed;
+
+    /// Attempt numbers, one per dispatched run, never reused in a process.
+    std::uint64_t attempts = 0;
 };
 
 }  // namespace clice

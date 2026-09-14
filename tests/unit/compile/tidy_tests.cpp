@@ -2,7 +2,9 @@
 #include "test/test.h"
 #include "compile/compilation.h"
 #include "compile/diagnostic.h"
+#include "semantic/content.h"
 
+#include "llvm/Support/Path.h"
 #include "clang-tidy/ClangTidyModuleRegistry.h"
 
 namespace clice::testing {
@@ -100,6 +102,110 @@ TEST_CASE(HeaderFilterTraversesHeaders) {
         }
     }
     ASSERT_TRUE(header_finding);
+}
+
+/// Two headers with one finding each, parsed with the tidy pass deferred
+/// so the test picks the traversal scope itself, as the lint worker does.
+struct DeferredTidy {
+    llvm::IntrusiveRefCntPtr<TestVFS> vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    std::string main_path = TestVFS::path("main.cpp");
+    CompilationUnit unit{nullptr};
+
+    bool compile(llvm::StringRef checks, llvm::StringRef main = "") {
+        vfs->add("ratio.h", "inline double ratio(int a, int b) { return a / b; }\n");
+        vfs->add("other.h", "inline double other(int a, int b) { return a / b; }\n");
+        vfs->add("main.cpp",
+                 main.empty() ? "#include \"ratio.h\"\n#include \"other.h\"\n" : main.str());
+        CompilationParams params;
+        params.kind = CompilationKind::Content;
+        params.tidy = tidy::TidyParams{.checks = checks.str(),
+                                       .fast_only = false,
+                                       .header_filter = ".*",
+                                       .whole_tu = true};
+        params.defer_tidy = true;
+        params.vfs = vfs;
+        params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
+        unit = clice::compile(params);
+        return unit.completed();
+    }
+
+    /// The declarations of every content unit in `file`.
+    std::vector<clang::Decl*> scope_of(llvm::StringRef file) {
+        auto table = ContentTable::compute(unit);
+        auto fid = unit.file_id(TestVFS::path(file));
+        std::vector<clang::Decl*> scope;
+        for(auto& row: table.units) {
+            if(row.fid == fid) {
+                for(auto* decl: row.decls) {
+                    scope.push_back(const_cast<clang::Decl*>(decl));
+                }
+            }
+        }
+        return scope;
+    }
+
+    /// The files of the check's findings; a suppressed finding stays in
+    /// the stream at the Ignored level, a note follows its finding.
+    std::vector<std::string> findings(llvm::StringRef check) {
+        std::vector<std::string> result;
+        for(auto& diag: unit.diagnostics()) {
+            if(diag.id.source == DiagnosticSource::ClangTidy && diag.id.name == check &&
+               diag.id.level != DiagnosticLevel::Ignored &&
+               diag.id.level != DiagnosticLevel::Note) {
+                result.push_back(std::string(llvm::sys::path::filename(unit.file_path(diag.fid))));
+            }
+        }
+        return result;
+    }
+};
+
+TEST_CASE(ScopeSelectsUnits) {
+    DeferredTidy tidy;
+    ASSERT_TRUE(tidy.compile("-*,bugprone-integer-division"));
+    tidy.unit.run_tidy({}, tidy.scope_of("ratio.h"));
+    EXPECT_TRUE(tidy.findings("bugprone-integer-division") == std::vector<std::string>{"ratio.h"});
+}
+
+TEST_CASE(GroupsOffCheckNothing) {
+    DeferredTidy tidy;
+    ASSERT_TRUE(tidy.compile("-*,bugprone-integer-division"));
+    // No scope means the default traversal, but with both pruned groups
+    // off a node-level check never runs.
+    tidy.unit.run_tidy({.spelled = false, .nodes = false}, {});
+    EXPECT_TRUE(tidy.findings("bugprone-integer-division").empty());
+}
+
+TEST_CASE(WholeGroupIgnoresScope) {
+    DeferredTidy tidy;
+    ASSERT_TRUE(tidy.compile("-*,bugprone-integer-division,misc-unused-using-decls",
+                             "#include \"ratio.h\"\nnamespace n { int x; }\nusing n::x;\n"));
+    // A TU-level check sees the whole TU whatever the pruned scope is.
+    tidy.unit.run_tidy({}, tidy.scope_of("ratio.h"));
+    EXPECT_TRUE(tidy.findings("bugprone-integer-division") == std::vector<std::string>{"ratio.h"});
+    EXPECT_TRUE(tidy.findings("misc-unused-using-decls") == std::vector<std::string>{"main.cpp"});
+}
+
+TEST_CASE(HeaderNolint) {
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    vfs->add("ratio.h", "inline double ratio(int a, int b) { return a / b; }  // NOLINT\n");
+    vfs->add("main.cpp", "#include \"ratio.h\"\n");
+
+    std::string main_path = TestVFS::path("main.cpp");
+    CompilationParams params;
+    params.kind = CompilationKind::Content;
+    params.tidy = tidy::TidyParams{.checks = "-*,bugprone-integer-division",
+                                   .fast_only = false,
+                                   .header_filter = ".*",
+                                   .whole_tu = true};
+    params.vfs = vfs;
+    params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.completed());
+    // A suppressed finding stays in the stream at the Ignored level.
+    for(auto& diag: unit.diagnostics()) {
+        EXPECT_TRUE(diag.id.source != DiagnosticSource::ClangTidy ||
+                    diag.id.level == DiagnosticLevel::Ignored);
+    }
 }
 
 TEST_CASE(ResolveConfigChain) {
