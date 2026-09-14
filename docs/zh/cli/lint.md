@@ -2,43 +2,36 @@
 
 ## 概述
 
-clice 将 clang-tidy 集成为内置 Lint 引擎。独立运行的 clang-tidy 会分别处理每个 TU，而 clice 的架构支持跨 TU 协调，从而消除重复工作。
+clice 将 clang-tidy 集成为内置 Lint 引擎。独立运行的 clang-tidy 会单独检查每个翻译单元，因此被多个源文件包含的头文件会随每个源文件各检查一遍。`clice lint` 对整个编译数据库运行同样的检查，每个声明只检查一次。
 
-**用法**：`clice lint [--workspace <dir>] [--configuration <tag>] [--workers <n>] [--index]`
+**用法**：`clice lint [--workspace <dir>] [--configuration <tag>] [--workers <n>] [--index] [--no-dedup] [--verify]`
 
-对编译数据库中的每个翻译单元运行 clang-tidy，并使用 worker 池处理，
-输出诊断；发现问题时以非零状态退出。
-`--index` 还会利用同一批解析结果构建并持久化项目索引，
-因此后续运行 `clice index` 时无需再执行任何操作。
+用 worker 池对编译数据库中的每个翻译单元运行 clang-tidy，输出合并后的检查结果，发现问题时以非零状态退出。`--index` 还会利用同一批解析结果构建并持久化项目索引，因此后续运行 `clice index` 时无需再执行任何操作。
 
-## 当前状态
+退出码：没有任何检查结果时为 `0`，存在检查结果时为 `1`，有翻译单元运行失败或下文的验证失败时为 `2`。
 
-- [x] 通过 CLI 进行项目级 Lint（`clice lint`）
-- [ ] 基础 clang-tidy 集成（单 TU、编辑器内诊断）
-- [ ] 跨 TU 头文件去重
-- [ ] 增量重新执行 Lint（仅检查已变更的文件）
-- [ ] Lint 结果缓存
+## 检查范围
 
-## 跨 TU 优化
+- 编译数据库列出的、位于工作区内的每个翻译单元。
+- 被检查的翻译单元所包含的、位于工作区内的每个头文件，受 `.clang-tidy` 中的头文件过滤选项（`HeaderFilterRegex`、`ExcludeHeaderFilterRegex`、`SystemHeaders`）约束，这些选项的读取方式与 clang-tidy 完全一致。
+- 工作区之外的文件从不检查，无论构建是否将其标记为系统头文件。`clice.toml` 中带 `lint = false` 的规则还能把工作区内匹配到的文件也排除在外，例如随仓库一同提交的第三方库：
 
-### 问题
+```toml
+[[rules]]
+patterns = ["third_party/**"]
+lint = false
+```
 
-clang-tidy 会单独处理每个翻译单元。一个被 N 个源文件包含的头文件会被检查 N 次——这种成倍增加的开销会拖慢大型代码库的项目级 Lint。
+每个文件的配置来自最近的 `.clang-tidy`，并沿用 clang-tidy 的继承规则。`NOLINT`、`NOLINTNEXTLINE` 和 `NOLINTBEGIN`/`NOLINTEND` 注释在每个文件中都生效。每条检查结果只输出一次，按文件和位置排序，并附带 clang-tidy 为其附加的备注。
 
-### clice 的方案
+## 跨 TU 去重
 
-作为掌握完整编译图的常驻服务器，clice 可以：
+clice 会为解析到的每个顶层声明计算内容哈希：声明自身的文本、它所依赖的编译状态（生效的宏、诊断 pragma、文件是否为系统头文件、编译标志），以及它引用的声明。两个翻译单元在相同标志下看到同一个头文件时，会为其中的声明算出相同的哈希，一个翻译单元已经检查过的声明在下一个翻译单元中会被跳过。实例化与其模板分开跟踪：翻译单元用新的实参实例化某个模板时，只会针对这些实例化重新检查该模板。
 
-- [x] 跟踪哪些头文件在多个 TU 间共享
-- [ ] 计算声明内容的哈希值，跳过对先前 TU 中已出现的相同声明的重复检查
-- [ ] 根据依赖关系调度 Lint 作业（对共享头文件只执行一次 Lint，并传播结果）
-- [ ] 以内容哈希值和检查配置为键，缓存各头文件的 Lint 结果
-- [ ] 单文件诊断去重（基础：移除单个 TU 内的重复项）
-- [ ] 项目级诊断去重（高级：同一头文件中跨 TU 出现的相同警告 → 只显示一次）
+少数检查会同时查看多个声明（未使用的 using 声明、include 整洁性、文件范围内的命名冲突等）；这些检查会对每个翻译单元整体运行，其检查结果与其他结果一样合并。
 
-### 预期加速效果
-
-对于有 H 个共享头文件和 N 个 TU 的项目，独立运行的 clang-tidy 的工作量为 O(N × H)。借助跨 TU 去重，clice 专为增量检查而设计——目标是无论被多少个 TU 包含，每个头文件都只检查一次。
+- `--no-dedup` 像 clang-tidy 那样对每个翻译单元整体检查。
+- `--verify` 两种方式都会运行，并在去重后的检查结果与整体运行的结果不一致时使本次运行失败。它会让每个翻译单元多解析一次，用途是在某个代码库上验证去重是否正确，不适合日常使用。
 
 ## clang-tidy 集成质量
 
@@ -51,13 +44,8 @@ clang-tidy 会单独处理每个翻译单元。一个被 N 个源文件包含的
 - [ ] 支持 Clang 静态分析器（[clangd#905](https://github.com/clangd/clangd/issues/905)）
 - [ ] 应用 clang-tidy 修复时清理替换项（[clangd#429](https://github.com/clangd/clangd/issues/429)）
 - [ ] 按版本控制差异过滤诊断（[clangd#822](https://github.com/clangd/clangd/issues/822)）
-- [ ] 通过 NOLINT / NOLINTNEXTLINE / NOLINTBEGIN-END 注释抑制诊断
+- [x] 通过 NOLINT / NOLINTNEXTLINE / NOLINTBEGIN-END 注释抑制诊断
 - [ ] `.clangd` 配置中的 `Diagnostics.ClangTidy` 配置项
 - [ ] 用于提升 clang-tidy 性能的快速检查过滤
 - [ ] 将 clang-tidy 的 fix-it 建议作为代码操作
 - [ ] 诊断元数据：检查名称、文档 URL、来源标签
-
-## 配置
-
-检查项选择目前使用内置的快速检查集，以及配置规则中针对各文件的
-编译标志。标准 `.clang-tidy` 配置文件的自动发现机制尚未接入。
