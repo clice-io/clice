@@ -115,8 +115,9 @@ struct BatchLintResult {
     std::size_t checked_tus = 0;
     std::size_t failed_tus = 0;
 
-    /// The findings of the run, merged: a finding several TUs produced (a
-    /// header's) appears once, sorted by file, line, column, check.
+    /// The findings of the run, merged: a finding several TUs produced
+    /// identically, notes included (a header's), appears once; sorted by
+    /// file, line, column, check.
     std::vector<worker::TidyDiagnostic> findings;
 
     /// --index only: index state remained that the final save could not

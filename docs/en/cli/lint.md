@@ -38,9 +38,10 @@ lint = false
 Each translation unit takes its configuration from the nearest `.clang-tidy`,
 with the inheritance clang-tidy applies. `NOLINT`, `NOLINTNEXTLINE` and
 `NOLINTBEGIN`/`NOLINTEND` comments are honored in every file. A header is
-checked in every translation unit that includes it, as clang-tidy would; the
-report shows each finding once, sorted by file and position, with the notes
-clang-tidy attaches to it.
+checked in every translation unit that includes it, as clang-tidy would; a
+finding several units report identically, notes included, appears once in
+the report, which is sorted by file and position and keeps the notes
+clang-tidy attaches.
 
 ## clang-tidy Integration Quality
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <compare>
 #include <cstdint>
 #include <format>
 #include <string>
@@ -290,6 +291,8 @@ struct TidyNote {
     std::uint32_t line = 0;
     std::uint32_t column = 0;
     std::string message;
+
+    auto operator<=>(const TidyNote&) const = default;
 };
 
 struct TidyDiagnostic {

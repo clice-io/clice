@@ -59,6 +59,7 @@ inline std::string workspace_root(llvm::StringRef argument) {
         llvm::sys::fs::current_path(workspace);
     } else {
         llvm::sys::fs::make_absolute(workspace);
+        path::remove_dots(workspace, /*remove_dot_dot=*/true);
     }
     std::string root(workspace.str());
     path::canonicalize(root);

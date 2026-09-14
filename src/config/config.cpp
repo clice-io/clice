@@ -131,6 +131,12 @@ void Config::finalize(llvm::StringRef workspace_root) {
     this->workspace_root = workspace_root.str();
     path::canonicalize(this->workspace_root);
     llvm::StringRef root = this->workspace_root;
+    llvm::SmallString<256> real;
+    if(llvm::sys::fs::real_path(root, real)) {
+        real = root;
+    }
+    this->workspace_real_root = std::string(real);
+    path::canonicalize(this->workspace_real_root);
 
     if(p.cache_dir.empty() && !root.empty()) {
         p.cache_dir = path::join(root, ".clice");

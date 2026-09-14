@@ -362,6 +362,11 @@ struct Config {
     KOTATSU_ANNOTATE(skip = true)
     <std::string> workspace_root;
 
+    /// workspace_root with symlinks resolved (itself when the resolution
+    /// fails): the spelling workers report file paths in.
+    KOTATSU_ANNOTATE(skip = true)
+    <std::string> workspace_real_root;
+
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path
     /// canonicalization and anchoring, and rule compilation. Run once per

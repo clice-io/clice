@@ -301,11 +301,13 @@ struct LintSweep {
 };
 
 auto finding_key(const worker::TidyDiagnostic& d) {
-    return std::tie(d.file, d.line, d.column, d.check, d.error, d.message);
+    return std::tie(d.file, d.line, d.column, d.check, d.error, d.message, d.notes);
 }
 
 /// Sort and merge findings: one per (file, line, column, check, severity,
-/// message), the first occurrence keeping its notes.
+/// message, notes). The notes stay in the key: a redeclaration check
+/// reports the same line from two units with notes pointing at different
+/// declarations, and each is a mismatch of its own.
 void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
     std::ranges::stable_sort(findings,
                              [](auto& a, auto& b) { return finding_key(a) < finding_key(b); });
@@ -320,7 +322,7 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
     // A TU outside the lint set is here for the index only.
     TURunFamily::Plan plan;
     plan.tidy = stack.workspace.build.lintable(file);
-    plan.index = with_index;
+    plan.index = with_index && stack.workspace.build.indexed(file);
     if(plan.tidy) {
         plan.tidy_params = tidy::resolve_tidy_params(file);
     }
@@ -459,7 +461,9 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     // index wants it.
     llvm::SmallVector<Fid> tus;
     for(auto member: members) {
-        if(options.with_index || workspace.build.lintable(workspace.file_table.resolve(member))) {
+        auto file = workspace.file_table.resolve(member);
+        if(workspace.build.lintable(file) ||
+           (options.with_index && workspace.build.indexed(file))) {
             tus.push_back(member);
         }
     }

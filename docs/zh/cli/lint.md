@@ -28,7 +28,7 @@ patterns = ["third_party/**"]
 lint = false
 ```
 
-每个翻译单元从最近的 `.clang-tidy` 读取配置，继承方式与 clang-tidy 一致。所有文件中的 `NOLINT`、`NOLINTNEXTLINE` 以及 `NOLINTBEGIN`/`NOLINTEND` 注释都会生效。头文件会在每个包含它的翻译单元中被检查，这与 clang-tidy 的行为一致；报告中每条结果只出现一次，按文件和位置排序，并带上 clang-tidy 为它附加的 note。
+每个翻译单元从最近的 `.clang-tidy` 读取配置，继承方式与 clang-tidy 一致。所有文件中的 `NOLINT`、`NOLINTNEXTLINE` 以及 `NOLINTBEGIN`/`NOLINTEND` 注释都会生效。头文件会在每个包含它的翻译单元中被检查，这与 clang-tidy 的行为一致；若多个翻译单元报出完全相同的结果，连 note 也一样，该结果在报告中只出现一次；报告按文件和位置排序，并保留 clang-tidy 附加的 note。
 
 ## clang-tidy 集成质量
 

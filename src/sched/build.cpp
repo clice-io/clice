@@ -246,14 +246,12 @@ bool Build::indexed(llvm::StringRef path) const {
 }
 
 bool Build::lintable(llvm::StringRef path) const {
-    // The worker spells paths natively; the root and the patterns are
-    // canonical.
+    // The worker spells paths natively and with symlinks resolved; the
+    // root and the patterns are canonical, spelled as configured.
     llvm::SmallString<256> storage;
     auto file = path::canonical(path, storage);
-    llvm::StringRef root = config.workspace_root;
-    if(root.empty() || !file.starts_with(root) ||
-       (file.size() > root.size() && !llvm::sys::path::is_separator(file[root.size()]) &&
-        !llvm::sys::path::is_separator(root.back()))) {
+    if(!path::under(file, config.workspace_root) &&
+       !path::under(file, config.workspace_real_root)) {
         return false;
     }
     return llvm::all_of(matching(file), [](const CompiledRule* rule) { return rule->lint; });
