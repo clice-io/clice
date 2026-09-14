@@ -56,6 +56,11 @@ TU_LEVEL_CHECK("google-build-namespaces", "matches namespaces")
 TU_LEVEL_CHECK("cert-dcl59-cpp", "matches namespaces")
 TU_LEVEL_CHECK("bugprone-std-namespace-modification", "asks for namespace ancestors")
 TU_LEVEL_CHECK("cert-dcl58-cpp", "asks for namespace ancestors")
+// Checks that match the translation unit itself and walk it on their
+// own: a pruned traversal never visits that node.
+TU_LEVEL_CHECK("bugprone-assignment-in-if-condition", "matches the translation unit")
+TU_LEVEL_CHECK("modernize-deprecated-headers", "matches the translation unit")
+TU_LEVEL_CHECK("readability-simplify-boolean-expr", "matches the translation unit")
 // Aliases: another name for a check above is the same check.
 TU_LEVEL_CHECK("cert-dcl54-cpp", "alias of misc-new-delete-overloads")
 TU_LEVEL_CHECK("hicpp-use-equals-delete", "alias of modernize-use-equals-delete")

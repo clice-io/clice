@@ -70,18 +70,14 @@ struct TidyParams {
     bool whole_tu = false;
 };
 
-/// The check groups of a run, by what a template instantiation can change
-/// about a check's findings (see tidy.cpp): each group has its own
-/// matcher and can run on its own.
-struct Groups {
-    /// Checks that match spelled nodes only (`TK_IgnoreUnlessSpelledInSource`).
-    bool spelled = true;
-
-    /// Checks that match every node, instantiated ones included.
-    bool nodes = true;
-
-    /// Checks whose findings depend on the whole TU (tidy_tu_checks.inc).
-    bool whole = true;
+/// The declarations the pruned finders traverse, by what a template
+/// instantiation can change about a check's findings (see tidy.cpp):
+/// checks that match spelled nodes only run over `spelled`, checks that
+/// match instantiated nodes too over `nodes`. Checks whose findings depend
+/// on the whole TU (tidy_tu_checks.inc) always traverse the whole TU.
+struct Scopes {
+    std::vector<clang::Decl*> spelled;
+    std::vector<clang::Decl*> nodes;
 };
 
 /// Resolve the effective clang-tidy configuration for `file` from its
@@ -110,6 +106,12 @@ CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
                                     llvm::ArrayRef<std::string> extra_args_before);
 
 }  // namespace clice::tidy
+
+namespace clang {
+
+class Decl;
+
+}
 
 namespace clice {
 

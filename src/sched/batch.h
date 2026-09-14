@@ -123,6 +123,10 @@ struct BatchLintResult {
     std::size_t checked_tus = 0;
     std::size_t failed_tus = 0;
 
+    /// Declaration units every run that was granted them failed to check,
+    /// even after the re-run; non-zero fails the run.
+    std::size_t unchecked_units = 0;
+
     /// The merged findings of the run: identical findings from several
     /// TUs (a header's, a re-checked template's) appear once, sorted by
     /// file, line, column, check.

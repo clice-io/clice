@@ -85,7 +85,7 @@ TEST_CASE(PendingElementsSkipped) {
     registry.release(1);
     auto owed = registry.unfinished();
     ASSERT_TRUE(owed.size() == 1);
-    EXPECT_TRUE(owed.front().requesters == (llvm::SmallVector<Fid, 2>{Fid{1}, Fid{2}}));
+    EXPECT_TRUE(owed.front().requesters == (llvm::SmallVector<Fid, 2>{Fid{1}}));
     auto third = registry.claim(3, Fid{1}, request(3, {unit(10, {1})}), {Fid{7}});
     EXPECT_TRUE(runs(third) == std::vector{ClaimRun::Full});
     registry.land(3);
@@ -121,10 +121,10 @@ TEST_CASE(OwedElementNamesItsAskers) {
     registry.land(3);
     registry.release(2);
 
-    // Only the TUs that materialize element 2 can check it.
+    // Only a TU that materializes element 2 can check it.
     auto owed = registry.unfinished();
     ASSERT_TRUE(owed.size() == 1);
-    EXPECT_TRUE(owed.front().requesters == (llvm::SmallVector<Fid, 2>{Fid{2}, Fid{3}}));
+    EXPECT_TRUE(owed.front().requesters == (llvm::SmallVector<Fid, 2>{Fid{2}}));
 }
 
 TEST_CASE(Namespaces) {

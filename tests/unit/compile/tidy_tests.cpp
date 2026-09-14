@@ -114,8 +114,11 @@ struct DeferredTidy {
     bool compile(llvm::StringRef checks, llvm::StringRef main = "") {
         vfs->add("ratio.h", "inline double ratio(int a, int b) { return a / b; }\n");
         vfs->add("other.h", "inline double other(int a, int b) { return a / b; }\n");
+        vfs->add("braces.h", "inline int braces(int a) { if(a) return 1; return 0; }\n");
         vfs->add("main.cpp",
-                 main.empty() ? "#include \"ratio.h\"\n#include \"other.h\"\n" : main.str());
+                 main.empty()
+                     ? "#include \"ratio.h\"\n#include \"other.h\"\n#include \"braces.h\"\n"
+                     : main.str());
         CompilationParams params;
         params.kind = CompilationKind::Content;
         params.tidy = tidy::TidyParams{.checks = checks.str(),
@@ -162,17 +165,39 @@ struct DeferredTidy {
 TEST_CASE(ScopeSelectsUnits) {
     DeferredTidy tidy;
     ASSERT_TRUE(tidy.compile("-*,bugprone-integer-division"));
-    tidy.unit.run_tidy({}, tidy.scope_of("ratio.h"));
+    tidy::Scopes scopes{.spelled = tidy.scope_of("ratio.h"), .nodes = tidy.scope_of("ratio.h")};
+    tidy.unit.run_tidy(&scopes);
     EXPECT_TRUE(tidy.findings("bugprone-integer-division") == std::vector<std::string>{"ratio.h"});
 }
 
-TEST_CASE(GroupsOffCheckNothing) {
+TEST_CASE(EmptyScopesCheckNothing) {
     DeferredTidy tidy;
     ASSERT_TRUE(tidy.compile("-*,bugprone-integer-division"));
-    // No scope means the default traversal, but with both pruned groups
-    // off a node-level check never runs.
-    tidy.unit.run_tidy({.spelled = false, .nodes = false}, {});
+    tidy::Scopes empty;
+    tidy.unit.run_tidy(&empty);
     EXPECT_TRUE(tidy.findings("bugprone-integer-division").empty());
+}
+
+TEST_CASE(NodesScopeSkipsSpelledChecks) {
+    // A unit re-run for its instantiations only is traversed by the checks
+    // that see instantiated nodes; the spelled-only ones saw it already.
+    llvm::StringRef checks = "-*,bugprone-integer-division,readability-braces-around-statements";
+    DeferredTidy nodes_only;
+    ASSERT_TRUE(nodes_only.compile(checks));
+    tidy::Scopes scopes{.nodes = nodes_only.scope_of("braces.h")};
+    llvm::append_range(scopes.nodes, nodes_only.scope_of("ratio.h"));
+    nodes_only.unit.run_tidy(&scopes);
+    EXPECT_TRUE(nodes_only.findings("bugprone-integer-division") ==
+                std::vector<std::string>{"ratio.h"});
+    EXPECT_TRUE(nodes_only.findings("readability-braces-around-statements").empty());
+
+    DeferredTidy spelled;
+    ASSERT_TRUE(spelled.compile(checks));
+    tidy::Scopes both{.spelled = spelled.scope_of("braces.h"),
+                      .nodes = spelled.scope_of("braces.h")};
+    spelled.unit.run_tidy(&both);
+    EXPECT_TRUE(spelled.findings("readability-braces-around-statements") ==
+                std::vector<std::string>{"braces.h"});
 }
 
 TEST_CASE(WholeGroupIgnoresScope) {
@@ -180,7 +205,8 @@ TEST_CASE(WholeGroupIgnoresScope) {
     ASSERT_TRUE(tidy.compile("-*,bugprone-integer-division,misc-unused-using-decls",
                              "#include \"ratio.h\"\nnamespace n { int x; }\nusing n::x;\n"));
     // A TU-level check sees the whole TU whatever the pruned scope is.
-    tidy.unit.run_tidy({}, tidy.scope_of("ratio.h"));
+    tidy::Scopes scopes{.spelled = tidy.scope_of("ratio.h"), .nodes = tidy.scope_of("ratio.h")};
+    tidy.unit.run_tidy(&scopes);
     EXPECT_TRUE(tidy.findings("bugprone-integer-division") == std::vector<std::string>{"ratio.h"});
     EXPECT_TRUE(tidy.findings("misc-unused-using-decls") == std::vector<std::string>{"main.cpp"});
 }

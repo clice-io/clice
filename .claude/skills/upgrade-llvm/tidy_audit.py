@@ -18,6 +18,7 @@ signals = {
     "joint": r"getTemplateInstantiationPattern|getInstantiatedFrom\w*|specializations\(\)|getSpecializedTemplate|getDescribedTemplate|getDescribedClassTemplate|getDescribedFunctionTemplate|getMemberSpecializationInfo|getPrimaryTemplate|getTemplateSpecializationArgs|getTemplateArgs\(\)|forallBases",
     "end_tu": r"onEndOfTranslationUnit|onStartOfTranslationUnit",
     "pp": r"registerPPCallbacks",
+    "tu_anchor": r"addMatcher\(\s*(?:ast_matchers::)?translationUnitDecl\(\)",
 }
 rows = []
 for dirpath, _, files in os.walk(root):
@@ -60,6 +61,10 @@ print("total", len(rows), dict(c))
 print("with filter:", sum(1 for r in rows if r[2]["filter"]))
 print("with joint:", sum(1 for r in rows if r[2]["joint"]))
 print("with end_tu:", sum(1 for r in rows if r[2]["end_tu"]))
+print(
+    "matching the TU itself (must be TU-level):",
+    [r[0] for r in rows if r[2]["tu_anchor"]],
+)
 print("with state members:", sum(1 for r in rows if r[3]))
 print("unmapped names:", sum(1 for r in rows if r[0] == "?"))
 

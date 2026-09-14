@@ -268,6 +268,9 @@ public:
     /// Answers a stateless worker's claim (worker::ClaimParams) on the
     /// event loop; unset, every key is granted in full. Installed on each
     /// worker peer at spawn; the consumer owning the registry sets it.
+    /// The master's answers to a stateless worker's scope and claim
+    /// requests (worker::ScopeParams, worker::ClaimParams); installed by
+    /// the consumer whose plans claim, before its first run.
     std::function<worker::ScopeResult(const worker::ScopeParams&)> on_scope;
     std::function<worker::ClaimResult(const worker::ClaimParams&)> on_claim;
 

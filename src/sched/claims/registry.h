@@ -43,8 +43,7 @@ public:
     };
 
     /// Answer a run's claim: grant what nobody covers yet, record the rest.
-    /// `requester` is the TU the attempt runs, for re-runs. The result's
-    /// `checked` bits are the caller's business and come back untouched.
+    /// `requester` is the TU the attempt runs, for re-runs.
     worker::ClaimResult claim(std::uint64_t attempt,
                               Fid requester,
                               const worker::ClaimParams& params,
@@ -67,10 +66,10 @@ public:
 
     std::vector<Unfinished> unfinished() const;
 
+private:
     /// The (purpose, fingerprint) namespace of a consumer configuration.
     static std::uint64_t fingerprint_of(llvm::StringRef text);
 
-private:
     enum class State : std::uint8_t {
         Unclaimed,
         Claimed,
@@ -83,8 +82,10 @@ private:
         llvm::DenseSet<ContentHash> elements_done;
         llvm::DenseSet<ContentHash> elements_pending;
         llvm::DenseSet<ContentHash> elements_seen;
-        llvm::SmallVector<Fid, 2> requesters;
-        llvm::DenseMap<ContentHash, llvm::SmallVector<Fid, 2>> element_requesters;
+        /// The first TU that offered the unit, and per element the first
+        /// that materialized it: one is enough to re-run.
+        Fid requester;
+        llvm::DenseMap<ContentHash, Fid> element_requesters;
     };
 
     struct Grant {

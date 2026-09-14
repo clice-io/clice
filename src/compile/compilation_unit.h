@@ -25,7 +25,7 @@ class Semantics;
 
 namespace tidy {
 
-struct Groups;
+struct Scopes;
 
 }
 
@@ -231,13 +231,15 @@ public:
     /// Return all diagnostics in the process of compilation.
     auto diagnostics() -> std::vector<Diagnostic>&;
 
-    /// Run the deferred clang-tidy matchers (CompilationParams::defer_tidy).
-    /// The spelled and nodes groups traverse only `scope` — top-level or
-    /// nested declarations, which clang treats as the translation unit's
-    /// direct children — so everything outside it is neither matched nor
-    /// costs anything; the whole group always traverses the whole TU. An
-    /// empty scope with a group selected traverses the whole TU for it.
-    void run_tidy(tidy::Groups groups, llvm::ArrayRef<clang::Decl*> scope = {});
+    /// Run the deferred clang-tidy matchers (CompilationParams::defer_tidy)
+    /// over `scopes`, or without them over the default scope: the whole TU
+    /// when the configuration reports on headers, the main file's top-level
+    /// declarations otherwise. A scope's declarations, top-level or nested,
+    /// are what clang then treats as the translation unit's direct
+    /// children; everything outside is neither matched nor costs anything,
+    /// and an empty scope matches nothing but still runs the checks'
+    /// translation-unit callbacks.
+    void run_tidy(const tidy::Scopes* scopes = nullptr);
 
     auto top_level_decls() -> llvm::ArrayRef<clang::Decl*>;
 

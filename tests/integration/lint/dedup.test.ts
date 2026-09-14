@@ -181,3 +181,38 @@ test("a parse with errors claims nothing", ({ session }) => {
         true,
     );
 });
+
+test("checks anchored on the translation unit run whole", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write(".clang-tidy", 'Checks: "-*,modernize-deprecated-headers"\n');
+    ws.write("common.h", "#pragma once\ninline int one() { return 1; }\n");
+    ws.write("other.cpp", '#include "common.h"\nint two() { return one(); }\n');
+    // Nothing of its own to check and the header already claimed: the
+    // check that matches the translation unit itself must still report.
+    ws.write("stub.cpp", '#include <stdlib.h>\n#include "common.h"\n');
+    ws.writeCDB(["other.cpp", "stub.cpp"]);
+
+    const run = runLint(ws, "--workers", "1");
+    expect(run.status, `stderr: ${run.stderr}`).toBe(1);
+    expect(findings(run.stdout).filter((line) => line.includes("stub.cpp:1:"))).toHaveLength(1);
+});
+
+test("a body continued in another file reports there", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write(
+        "clice.toml",
+        '[project]\ncache_dir = "${workspace}/.clice"\n\n[[rules]]\npatterns = ["vendor/**"]\nlint = false\n',
+    );
+    ws.write(".clang-tidy", 'Checks: "-*,modernize-use-nullptr"\nHeaderFilterRegex: ".*"\n');
+    ws.write("vendor/wrapper.h", '#pragma once\nstruct Wrapped {\n#include "../members.h"\n};\n');
+    ws.write("members.h", "int* member() { return 0; }\n");
+    ws.write("main.cpp", '#include "vendor/wrapper.h"\nint main() { return 0; }\n');
+    ws.writeCDB(["main.cpp"]);
+
+    const run = runLint(ws);
+    expect(run.status, `stderr: ${run.stderr}`).toBe(1);
+    const lines = findings(run.stdout);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("members.h:1:");
+});

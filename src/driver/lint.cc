@@ -109,6 +109,13 @@ int run_lint(const BatchLintOptions& options) {
                      result.failed_tus,
                      plural_s(result.failed_tus));
     }
+    if(result.unchecked_units != 0) {
+        std::println(
+            "{} declaration unit{} stayed unchecked after the runs granted them failed; "
+            "the report is partial.",
+            result.unchecked_units,
+            plural_s(result.unchecked_units));
+    }
     if(result.unsaved) {
         std::println("Part of the index could not be persisted (see the log).");
     }

@@ -136,7 +136,7 @@ public:
     void configure_tidy(tidy::TidyParams tidy_params);
 
     // Must be called before EndSourceFile because the ast context can be destroyed later.
-    void run_tidy(tidy::Groups groups, llvm::ArrayRef<clang::Decl*> scope);
+    void run_tidy(const tidy::Scopes* scopes);
 
     CompilationStatus run_clang(this Self& self,
                                 CompilationParams& params,

@@ -494,10 +494,15 @@ static void prepare_claim(const worker::TURunParams& params,
     ScopedTimer content_timer;
     parsed.table.emplace(ContentTable::compute(parsed.unit, claimable));
     parsed.content_ms = content_timer.ms();
+    // A unit whose body continues in another file (a class body made of an
+    // `#include`) reports there too: it is claimed when any of its files is.
+    auto claimable_unit = [&](const ContentUnit& row) {
+        return claimable(row.fid) || llvm::any_of(row.fragments, claimable);
+    };
     auto main_fid = parsed.unit.main_file();
     clang::FileID current;
     for(auto& row: parsed.table->units) {
-        if(row.fid == main_fid || !claimable(row.fid)) {
+        if(row.fid == main_fid || !claimable_unit(row)) {
             continue;
         }
         if(parsed.claim_fids.empty() || row.fid != current) {
@@ -523,6 +528,13 @@ static void prepare_claim(const worker::TURunParams& params,
     parsed.claim.fingerprint += params.tidy_system_headers ? '\6' : '\7';
 }
 
+/// AST teardown for a large TU is material work: it happens on the pool
+/// thread, never with the coroutine frame on the loop thread.
+static void discard(ParsedRun& parsed) {
+    parsed.table.reset();
+    parsed.unit = CompilationUnit(nullptr);
+}
+
 /// The check half: run the matchers over what the master granted (or
 /// everything, without a grant), collect the findings and the index.
 static worker::TURunResult finish_turun(const worker::TURunParams& params,
@@ -532,6 +544,7 @@ static worker::TURunResult finish_turun(const worker::TURunParams& params,
     // Building and serializing the index costs a large share of the pass;
     // skip it when the cancellation landed after the parse finished.
     if(stop->load(std::memory_order_relaxed)) {
+        discard(parsed);
         return {false, "TU run cancelled"};
     }
     worker::TURunResult result;
@@ -544,7 +557,6 @@ static worker::TURunResult finish_turun(const worker::TURunParams& params,
 
     ScopedTimer tidy_timer;
     if(params.tidy) {
-        std::vector<clang::Decl*> scope;
         // A reply that does not answer the claim unit by unit is no grant.
         auto answered = [&] {
             if(!reply || reply->files.size() != parsed.claim.files.size()) {
@@ -557,8 +569,9 @@ static worker::TURunResult finish_turun(const worker::TURunParams& params,
             }
             return true;
         };
-        bool pruned = answered();
-        if(pruned) {
+        std::optional<tidy::Scopes> scopes;
+        if(answered()) {
+            scopes.emplace();
             auto main_fid = parsed.unit.main_file();
             llvm::DenseMap<clang::FileID, std::size_t> file_index;
             for(std::size_t i = 0; i < parsed.claim_fids.size(); i += 1) {
@@ -566,37 +579,36 @@ static worker::TURunResult finish_turun(const worker::TURunParams& params,
             }
             llvm::DenseMap<clang::FileID, std::size_t> ordinal;
             for(auto& row: parsed.table->units) {
-                bool run = row.fid == main_fid;
-                if(auto it = file_index.find(row.fid); !run && it != file_index.end()) {
+                // The main file is always the run's own; a unit of a file
+                // the claim left out is nobody's to check here.
+                auto run = row.fid == main_fid ? worker::ClaimRun::Full : worker::ClaimRun::Skip;
+                if(auto it = file_index.find(row.fid); it != file_index.end()) {
                     auto& runs = reply->files[it->second].runs;
-                    auto u = ordinal[row.fid];
+                    run = runs[ordinal[row.fid]];
                     ordinal[row.fid] += 1;
-                    run = runs[u] != worker::ClaimRun::Skip;
                 }
-                if(run) {
-                    for(auto* decl: row.decls) {
-                        scope.push_back(const_cast<clang::Decl*>(decl));
+                if(run == worker::ClaimRun::Skip) {
+                    continue;
+                }
+                // A unit checked elsewhere as written re-runs only for the
+                // nodes its new instantiations add.
+                for(auto* decl: row.decls) {
+                    scopes->nodes.push_back(const_cast<clang::Decl*>(decl));
+                    if(run == worker::ClaimRun::Full) {
+                        scopes->spelled.push_back(const_cast<clang::Decl*>(decl));
                     }
                 }
             }
         }
-        // An empty scope means "nothing granted", not "everything".
-        tidy::Groups groups;
-        if(pruned && scope.empty()) {
-            groups.spelled = false;
-            groups.nodes = false;
-        }
-        parsed.unit.run_tidy(groups, scope);
+        parsed.unit.run_tidy(scopes ? &*scopes : nullptr);
         collect_tidy_diagnostics(parsed.unit, params, parsed.unchecked, result.tidy_diagnostics);
     }
     auto tidy_ms = tidy_timer.ms();
 
-    // AST teardown for a large TU is material work that belongs to this
-    // task: sample the total only after the unit is gone, so the logged
-    // span covers everything that blocks the worker.
+    // Sample the total only after the unit is gone, so the logged span
+    // covers everything that blocks the worker.
     ScopedTimer teardown_timer;
-    parsed.table.reset();
-    parsed.unit = CompilationUnit(nullptr);
+    discard(parsed);
     auto teardown_ms = teardown_timer.ms();
 
     ScopedTimer verify_timer;
@@ -676,6 +688,7 @@ static void serve_turun(kota::ipc::BincodePeer& peer,
             auto prepared = co_await kota::queue(
                 [&]() -> bool {
                     if(stop->load(std::memory_order_relaxed)) {
+                        discard(*parsed.value());
                         return false;
                     }
                     ScopedNice guard;

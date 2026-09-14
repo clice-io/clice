@@ -39,17 +39,14 @@ worker::ClaimResult ClaimRegistry::claim(std::uint64_t attempt,
                     .ordinal = seen[hash]};
             seen[hash] += 1;
             auto& entry = entries[key];
-            if(!llvm::is_contained(entry.requesters, requester)) {
-                entry.requesters.push_back(requester);
+            if(!entry.requester.valid()) {
+                entry.requester = requester;
             }
             Grant grant{.key = key, .unit = false};
             for(auto element: unit.elements) {
                 auto hash = to_hash(element);
                 entry.elements_seen.insert(hash);
-                auto& askers = entry.element_requesters[hash];
-                if(!llvm::is_contained(askers, requester)) {
-                    askers.push_back(requester);
-                }
+                entry.element_requesters.try_emplace(hash, requester);
                 if(!entry.elements_done.contains(hash) && !entry.elements_pending.contains(hash)) {
                     entry.elements_pending.insert(hash);
                     grant.elements.push_back(hash);
@@ -111,16 +108,15 @@ std::vector<ClaimRegistry::Unfinished> ClaimRegistry::unfinished() const {
     for(auto& [key, entry]: entries) {
         Unfinished owed{.key = key};
         if(entry.state != State::Done) {
-            owed.requesters = entry.requesters;
+            owed.requesters.push_back(entry.requester);
         } else {
             for(auto element: entry.elements_seen) {
                 if(entry.elements_done.contains(element)) {
                     continue;
                 }
-                for(auto asker: entry.element_requesters.lookup(element)) {
-                    if(!llvm::is_contained(owed.requesters, asker)) {
-                        owed.requesters.push_back(asker);
-                    }
+                auto asker = entry.element_requesters.lookup(element);
+                if(!llvm::is_contained(owed.requesters, asker)) {
+                    owed.requesters.push_back(asker);
                 }
             }
         }

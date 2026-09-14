@@ -301,6 +301,8 @@ struct LintSweep {
     std::vector<worker::TidyDiagnostic> findings;
     std::vector<worker::TidyDiagnostic> baseline;
     kota::event task_done{false};
+    /// The sweep is the re-run of TUs owed units: they were counted once.
+    bool rerun = false;
 };
 
 auto finding_key(const worker::TidyDiagnostic& d) {
@@ -348,7 +350,7 @@ kota::task<>
 
     switch(outcome.verdict) {
         case TURunFamily::Verdict::Completed: {
-            sweep.checked += 1;
+            sweep.checked += !sweep.rerun;
             if(options.with_index) {
                 stack.pump.claim_report(outcome.report);
             }
@@ -513,6 +515,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         if(!again.empty()) {
             LOG_INFO("Re-running {} translation unit(s) for units their failed runs left unchecked",
                      again.size());
+            sweep.rerun = true;
             co_await kota::with_token(run_lint_sweep(stack, options, again, sweep),
                                       lifetime.token());
         }
@@ -537,10 +540,8 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     result.completed = true;
     result.checked_tus = sweep.checked;
     result.failed_tus = sweep.failed + stack.pump.failed().size();
-    if(options.dedup && !stack.claims.unfinished().empty()) {
-        LOG_ERROR("{} declaration unit(s) stayed unchecked after their runs failed",
-                  stack.claims.unfinished().size());
-        result.failed_tus += 1;
+    if(options.dedup) {
+        result.unchecked_units = stack.claims.unfinished().size();
     }
     merge_findings(sweep.findings);
     result.findings = std::move(sweep.findings);
@@ -581,8 +582,8 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     if(!result.findings.empty()) {
         result.exit_code = 1;
     }
-    if(result.failed_tus != 0 || result.unsaved || !result.verify_missing.empty() ||
-       !result.verify_extra.empty()) {
+    if(result.failed_tus != 0 || result.unchecked_units != 0 || result.unsaved ||
+       !result.verify_missing.empty() || !result.verify_extra.empty()) {
         result.exit_code = 2;
     }
     result.seconds = timer.ms() / 1000.0;
