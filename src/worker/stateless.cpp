@@ -429,6 +429,10 @@ struct ParsedRun {
     /// The table row of every claimed unit, in the order of claim.files'
     /// units: the reply is read back through it.
     std::vector<std::uint32_t> claim_rows;
+    /// Rows checked in every TU without a claim: a unit of an unchecked
+    /// file whose body continues in a checked one reports there, but its
+    /// instantiations were not hashed, so no grant could stand for it.
+    std::vector<std::uint32_t> forced_rows;
     long long compile_ms = 0;
     long long content_ms = 0;
     ScopedTimer timer;
@@ -495,16 +499,17 @@ static void prepare_claim(const worker::TURunParams& params,
     ScopedTimer content_timer;
     parsed.table.emplace(ContentTable::compute(parsed.unit, claimable));
     parsed.content_ms = content_timer.ms();
-    // A unit whose body continues in another file (a class body made of an
-    // `#include`) reports there too: it is claimed when any of its files is.
-    auto claimable_unit = [&](const ContentUnit& row) {
-        return claimable(row.fid) || llvm::any_of(row.fragments, claimable);
-    };
     auto main_fid = parsed.unit.main_file();
     clang::FileID current;
     for(std::uint32_t r = 0; r < parsed.table->units.size(); r += 1) {
         auto& row = parsed.table->units[r];
-        if(row.fid == main_fid || !claimable_unit(row)) {
+        if(row.fid == main_fid) {
+            continue;
+        }
+        if(!claimable(row.fid)) {
+            if(llvm::any_of(row.fragments, claimable)) {
+                parsed.forced_rows.push_back(r);
+            }
             continue;
         }
         if(parsed.claim.files.empty() || row.fid != current) {
@@ -585,6 +590,9 @@ static worker::TURunResult finish_turun(const worker::TURunParams& params,
                     run_of[parsed.claim_rows[next]] = run;
                     next += 1;
                 }
+            }
+            for(auto r: parsed.forced_rows) {
+                run_of[r] = worker::ClaimRun::Full;
             }
             for(std::uint32_t r = 0; r < parsed.table->units.size(); r += 1) {
                 auto& row = parsed.table->units[r];
@@ -718,6 +726,7 @@ static void serve_turun(kota::ipc::BincodePeer& peer,
         auto result = co_await kota::queue(
             [&]() -> worker::TURunResult {
                 if(stop->load(std::memory_order_relaxed)) {
+                    discard(*parsed.value());
                     return cancelled;
                 }
                 ScopedNice guard;

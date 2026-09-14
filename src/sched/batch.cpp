@@ -322,12 +322,15 @@ void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
 kota::task<>
     lint_one(BatchStack& stack, const BatchLintOptions& options, Fid path_id, LintSweep& sweep) {
     auto file = stack.workspace.file_table.resolve(path_id);
+    // A TU outside the lint set is here for the index only.
     TURunFamily::Plan plan;
-    plan.tidy = true;
+    plan.tidy = stack.workspace.build.lintable(file);
     plan.index = options.with_index;
-    plan.tidy_params = tidy::resolve_tidy_params(file);
-    plan.tidy_claim = options.dedup;
-    plan.tidy_verify = options.verify;
+    if(plan.tidy) {
+        plan.tidy_params = tidy::resolve_tidy_params(file);
+        plan.tidy_claim = options.dedup;
+        plan.tidy_verify = options.verify;
+    }
 
     // One budget-free retry: a worker crash or preemption says nothing
     // about the TU, and a one-shot sweep has no later round to requeue
@@ -349,7 +352,9 @@ kota::task<>
 
     switch(outcome.verdict) {
         case TURunFamily::Verdict::Completed: {
-            sweep.checked.insert(path_id);
+            if(plan.tidy) {
+                sweep.checked.insert(path_id);
+            }
             sweep.failed.erase(path_id);
             if(options.with_index) {
                 stack.pump.claim_report(outcome.report);
@@ -471,10 +476,11 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
 
     // One run per file: a file with several CDB entries lints once, under
     // the command resolve_command picks — same as the indexing sweep. A TU
-    // the rules keep out of the lint set is not even parsed.
+    // the rules keep out of the lint set is not even parsed, unless the
+    // index wants it.
     llvm::SmallVector<Fid> tus;
     for(auto member: members) {
-        if(workspace.build.lintable(workspace.file_table.resolve(member))) {
+        if(options.with_index || workspace.build.lintable(workspace.file_table.resolve(member))) {
             tus.push_back(member);
         }
     }
