@@ -127,6 +127,57 @@ struct BatchLintResult {
     double seconds = 0;
 };
 
+struct BatchFormatOptions {
+    std::string root;
+
+    /// The build configuration to activate (`--configuration`); empty
+    /// takes the persisted selection, else the default.
+    std::string configuration;
+
+    /// What to format instead of the build's own files, canonical and
+    /// absolute: a directory narrows the set to the files under it, a
+    /// file is formatted whether or not the build knows it.
+    std::vector<std::string> paths;
+
+    /// The clang-format executable: a name looked up in PATH, or a path.
+    std::string clang_format = "clang-format";
+
+    /// Concurrent clang-format processes; 0 takes the hardware concurrency.
+    std::uint32_t jobs = 0;
+
+    /// Report the files clang-format would change instead of rewriting
+    /// them.
+    bool check = false;
+};
+
+struct BatchFormatResult {
+    /// 0 = every file formatted (or, with --check, nothing to change),
+    /// 1 = --check found files to format, 2 = the run could not complete:
+    /// the configuration is invalid, clang-format was not found or failed.
+    int exit_code = 0;
+
+    /// Files handed to clang-format.
+    std::size_t files = 0;
+
+    /// --check: the files clang-format would change, sorted.
+    std::vector<std::string> unformatted;
+
+    /// What clang-format wrote to stderr, for the user.
+    std::string output;
+
+    /// Why the run could not complete, for the user; empty otherwise.
+    std::string error;
+
+    double seconds = 0;
+};
+
+/// Format the workspace with clang-format: load the build, take its own
+/// files (the translation units and the workspace files they include,
+/// outside the build trees and the commands' system include directories,
+/// no rule saying `format = false`), and run one clang-format process per
+/// chunk of them, `jobs` at a time.
+BatchFormatResult run_batch_format(const BatchFormatOptions& options);
+
 /// Lint the workspace through TURun {tidy} (or {index, tidy}): bootstrap,
 /// run every lintable CDB entry through the family under its .clang-tidy
 /// configuration, and return the merged findings. The background pump

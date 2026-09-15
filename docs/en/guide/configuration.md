@@ -432,6 +432,16 @@ Whether `clice lint` checks matching files. `false` keeps them out: their findin
 
 </div>
 
+<div class="config-option">
+
+| Option   | Type   | Default |
+| -------- | ------ | ------- |
+| `format` | `bool` | `true`  |
+
+Whether `clice format` formats matching files. `false` keeps them out. Files outside the workspace are never formatted. Any matching rule saying `false` wins.
+
+</div>
+
 <!-- END GENERATED CONFIG -->
 
 ## Example

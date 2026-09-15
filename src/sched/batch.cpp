@@ -4,7 +4,10 @@
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
+#include <format>
+#include <thread>
 
+#include "command/command.h"
 #include "config/config.h"
 #include "sched/bootstrap.h"
 #include "sched/configuration.h"
@@ -24,7 +27,9 @@
 
 #include "kota/async/async.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/Program.h"
 
 namespace clice {
 
@@ -507,7 +512,363 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     result.seconds = timer.ms() / 1000.0;
 }
 
+/// What clang-format can format: the C family clang derives types from,
+/// and `.cuh`, which clang does not list but CUDA code uses.
+bool formats(llvm::StringRef path) {
+    return clang::driver::types::isDerivedFromC(suffix_type(path)) ||
+           path::extension(path) == ".cuh";
+}
+
+/// The files `clice format` formats without arguments: the build's
+/// translation units and every file they include that is the workspace's
+/// own — inside it, outside the cache directory, the build trees (the
+/// directories below the root holding one of `databases`: what a build
+/// generates or fetches lives there) and the commands' system include
+/// directories, of a type clang-format formats, no matching rule saying
+/// `format = false`.
+std::vector<std::string> project_files(Workspace& workspace,
+                                       llvm::ArrayRef<Fid> members,
+                                       llvm::ArrayRef<std::string> databases) {
+    auto& build = workspace.build;
+    auto& files = workspace.file_table;
+
+    llvm::StringRef root = workspace.config.workspace_root;
+    llvm::StringSet<> skipped_dirs;
+    skipped_dirs.insert(build.as_configured(workspace.config.project.cache_dir));
+    // A database at the workspace root, or above it, is a copy of the
+    // build's or the build of a larger tree, not a build tree of its own.
+    for(auto& database: databases) {
+        auto directory = build.as_configured(path::parent_path(database));
+        if(directory != root && path::under(directory, root)) {
+            skipped_dirs.insert(directory);
+        }
+    }
+    for(auto member: members) {
+        auto path = files.resolve(member);
+        for(auto& command: build.commands(member)) {
+            auto ref =
+                build.resolve(member, command.config, command.source, llvm::StringRef(path), path);
+            auto search = workspace.cdb.search_config(ref);
+            for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
+                skipped_dirs.insert(build.as_configured(dir.path));
+            }
+        }
+    }
+
+    // The build's own units are its own wherever they sit; the
+    // directories keep out only what they include.
+    std::vector<std::string> result;
+    llvm::DenseSet<Fid> unit(members.begin(), members.end());
+    for(auto fid: workspace.dep_graph.all_files()) {
+        auto path = build.as_configured(files.resolve(fid));
+        if(!formats(path) || !build.formattable(path) ||
+           (!unit.contains(fid) && llvm::any_of(skipped_dirs, [&](auto& dir) {
+               return path::under(path, dir.getKey());
+           }))) {
+            continue;
+        }
+        result.push_back(std::move(path));
+    }
+    return result;
+}
+
+/// Where a file's bytes are: clang-format's in-place mode replaces a
+/// symlink with a regular file, so the target is what it must be given.
+std::string physical(llvm::StringRef path) {
+    llvm::SmallString<256> real;
+    if(llvm::sys::fs::real_path(path, real)) {
+        return path.str();
+    }
+    std::string result(real);
+    path::canonicalize(result);
+    return result;
+}
+
+/// The stderr of one clang-format run; `status` is negative when the
+/// process could not be run or waited for, `error` saying why.
+struct ToolRun {
+    std::int64_t status = -1;
+    std::string output;
+    std::string error;
+};
+
+kota::task<std::string> drain_pipe(kota::pipe pipe) {
+    std::string buffer;
+    while(true) {
+        auto chunk = co_await pipe.read();
+        if(!chunk.has_value() || chunk.value().empty()) {
+            break;
+        }
+        buffer += chunk.value();
+    }
+    co_return buffer;
+}
+
+kota::task<ToolRun> run_clang_format(kota::event_loop& loop,
+                                     const std::string& executable,
+                                     bool check,
+                                     llvm::ArrayRef<std::string> chunk) {
+    kota::process::options opts;
+    opts.file = executable;
+    opts.args = {executable};
+    if(check) {
+        opts.args.push_back("--dry-run");
+        opts.args.push_back("--Werror");
+    } else {
+        opts.args.push_back("-i");
+    }
+    opts.args.insert(opts.args.end(), chunk.begin(), chunk.end());
+    opts.streams = {
+        kota::process::stdio::ignore(),
+        kota::process::stdio::ignore(),
+        kota::process::stdio::pipe(false, true),
+    };
+    auto spawn = kota::process::spawn(opts, loop);
+    if(!spawn.has_value()) {
+        co_return ToolRun{
+            .error = std::format("cannot run {}: {}", executable, spawn.error().message())};
+    }
+    auto& child = *spawn;
+    auto output = co_await drain_pipe(std::move(child.stderr_pipe));
+    auto exit = co_await child.proc.wait();
+    if(!exit.has_value()) {
+        co_return ToolRun{
+            .output = std::move(output),
+            .error =
+                std::format("{} did not exit cleanly: {}", executable, exit.error().message())};
+    }
+    if(exit->term_signal != 0) {
+        co_return ToolRun{
+            .output = std::move(output),
+            .error = std::format("{} was killed by signal {}", executable, exit->term_signal)};
+    }
+    co_return ToolRun{.status = exit->status, .output = std::move(output)};
+}
+
+/// One of the `jobs` workers: runs the next unclaimed chunk until none is
+/// left.
+kota::task<> format_chunks(kota::event_loop& loop,
+                           const std::string& executable,
+                           bool check,
+                           llvm::ArrayRef<std::vector<std::string>> chunks,
+                           std::size_t& next,
+                           std::vector<ToolRun>& runs) {
+    while(next < chunks.size()) {
+        auto index = next;
+        next += 1;
+        runs[index] = co_await run_clang_format(loop, executable, check, chunks[index]);
+    }
+}
+
+kota::task<> run_format_sweep(kota::event_loop& loop,
+                              const std::string& executable,
+                              bool check,
+                              std::uint32_t jobs,
+                              llvm::ArrayRef<std::vector<std::string>> chunks,
+                              std::vector<ToolRun>& runs) {
+    std::size_t next = 0;
+    kota::task_group<> workers(loop);
+    for(std::uint32_t i = 0; i < jobs && i < chunks.size(); i += 1) {
+        workers.spawn(format_chunks(loop, executable, check, chunks, next, runs));
+    }
+    co_await workers.join();
+}
+
+/// The file a `--dry-run --Werror` violation names:
+/// `<file>:<line>:<col>: error: code should be clang-formatted [...]`.
+std::optional<llvm::StringRef> violation_file(llvm::StringRef line) {
+    if(!line.contains("[-Wclang-format-violations]")) {
+        return std::nullopt;
+    }
+    auto location = line.split(": error:").first;
+    return location.rsplit(':').first.rsplit(':').first;
+}
+
 }  // namespace
+
+BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
+    ScopedTimer timer;
+    BatchFormatResult result;
+
+    // A name is looked up in PATH; a path is taken as given, and either
+    // way the file must exist to be run.
+    auto executable = llvm::sys::findProgramByName(options.clang_format);
+    if(!executable || !llvm::sys::fs::can_execute(*executable)) {
+        result.exit_code = 2;
+        result.error = std::format("clang-format not found ({}): install it or pass --clang-format",
+                                   options.clang_format);
+        return result;
+    }
+
+    if(!llvm::sys::fs::is_directory(options.root)) {
+        result.exit_code = 2;
+        result.error = std::format("{}: not a directory", options.root);
+        return result;
+    }
+    // A rewriting command does not run on defaults a broken configuration
+    // fell back to: the exclusions would be gone with it.
+    Workspace workspace;
+    std::vector<ConfigIssue> issues;
+    workspace.config = Config::load_from_workspace(options.root, &issues);
+    for(auto& issue: issues) {
+        if(issue.severity == ConfigIssue::Severity::Error) {
+            result.exit_code = 2;
+            result.error = std::format("{}: {}", issue.file, issue.message);
+            return result;
+        }
+    }
+    if(!check_requested_configuration(workspace.config, options.configuration)) {
+        result.exit_code = 2;
+        result.error = "the requested configuration does not exist";
+        return result;
+    }
+    auto configuration = resolve_configuration(workspace.config, options.configuration);
+    workspace.build.reset_active(configuration);
+
+    // Explicit files are taken as given; explicit directories narrow the
+    // build's own files to those under them, and only they need the build.
+    std::vector<std::string> files;
+    llvm::SmallVector<llvm::StringRef> directories;
+    for(auto& path: options.paths) {
+        if(llvm::sys::fs::is_directory(path)) {
+            directories.push_back(path);
+        } else if(!llvm::sys::fs::exists(path)) {
+            result.exit_code = 2;
+            result.error = std::format("{}: no such file", path);
+            return result;
+        } else if(!formats(path)) {
+            result.exit_code = 2;
+            result.error = std::format("{}: not a C-family source file", path);
+            return result;
+        } else if(workspace.build.formattable(path)) {
+            // Rewritten where its bytes are, which has to be the
+            // workspace's too.
+            auto target = physical(path);
+            if(!path::under(target, workspace.config.workspace_root) &&
+               !path::under(target, workspace.config.workspace_real_root)) {
+                result.exit_code = 2;
+                result.error = std::format("{}: links outside the workspace", path);
+                return result;
+            }
+            files.push_back(std::move(target));
+        }
+    }
+    if(options.paths.empty() || !directories.empty()) {
+        // Like the other batch commands, which open no file: every
+        // database under the workspace applies when no rule names one,
+        // and one that cannot be loaded makes the file set incomplete.
+        llvm::SmallVector<std::string> databases;
+        for(auto declared: workspace.build.declared_sources()) {
+            databases.push_back(declared.str());
+        }
+        if(databases.empty()) {
+            databases = compile_commands_below(options.root, workspace.config.project.cache_dir);
+        }
+        auto load = load_build(workspace, options.root, configuration, databases);
+        for(auto& database: databases) {
+            auto id = workspace.cdb.find_source(database);
+            if(!id || !workspace.cdb.loaded(*id)) {
+                result.exit_code = 2;
+                result.error =
+                    std::format("{}: the compilation database could not be loaded", database);
+                return result;
+            }
+        }
+        llvm::StringRef root = workspace.config.workspace_root;
+        llvm::StringRef real_root = workspace.config.workspace_real_root;
+        for(auto& path: project_files(workspace, load.members, databases)) {
+            if(!directories.empty() && llvm::none_of(directories, [&](llvm::StringRef directory) {
+                   return path::under(path, directory);
+               })) {
+                continue;
+            }
+            // A symlink into the workspace is the workspace's; one pointing
+            // out of it is not.
+            auto target = physical(path);
+            if(path::under(target, root) || path::under(target, real_root)) {
+                files.push_back(std::move(target));
+            }
+        }
+    }
+    std::ranges::sort(files);
+    auto duplicates = std::ranges::unique(files);
+    files.erase(duplicates.begin(), duplicates.end());
+    result.files = files.size();
+    if(files.empty()) {
+        result.seconds = timer.ms() / 1000.0;
+        return result;
+    }
+
+    // One process per chunk: clang-format takes many files at once, and
+    // the command line stays under the limit Windows imposes.
+    constexpr std::size_t chunk_bytes = 24 * 1024;
+    constexpr std::size_t chunk_files = 64;
+    std::vector<std::vector<std::string>> chunks;
+    std::size_t bytes = 0;
+    for(auto& file: files) {
+        if(chunks.empty() || chunks.back().size() == chunk_files ||
+           bytes + file.size() > chunk_bytes) {
+            chunks.emplace_back();
+            bytes = 0;
+        }
+        bytes += file.size() + 1;
+        chunks.back().push_back(file);
+    }
+
+    std::uint32_t jobs =
+        options.jobs != 0 ? options.jobs : std::max(1u, std::thread::hardware_concurrency());
+    std::vector<ToolRun> runs(chunks.size());
+    kota::event_loop loop;
+    loop.schedule(run_format_sweep(loop, *executable, options.check, jobs, chunks, runs));
+    loop.run();
+
+    llvm::StringSet<> unformatted;
+    bool failed = false;
+    for(auto& run: runs) {
+        result.output += run.output;
+        if(!run.error.empty()) {
+            result.error = run.error;
+            failed = true;
+            continue;
+        }
+        if(options.check) {
+            llvm::SmallVector<llvm::StringRef> lines;
+            llvm::StringRef(run.output).split(lines, '\n', -1, /*KeepEmpty=*/false);
+            std::size_t violations = 0;
+            bool errors = false;
+            for(auto line: lines) {
+                if(auto file = violation_file(line)) {
+                    unformatted.insert(*file);
+                    violations += 1;
+                } else {
+                    errors |= line.contains(": error:") || line.starts_with("error:") ||
+                              line.starts_with("Error");
+                }
+            }
+            // --Werror exits 1 for violations too: a non-zero status is a
+            // real failure when none is reported, or when an error of
+            // clang-format's own (a file it cannot read, a configuration it
+            // cannot parse) sits next to them.
+            failed |= run.status != 0 && (violations == 0 || errors);
+        } else {
+            failed |= run.status != 0;
+        }
+    }
+    for(auto& file: unformatted) {
+        result.unformatted.emplace_back(file.getKey());
+    }
+    std::ranges::sort(result.unformatted);
+    if(failed) {
+        result.exit_code = 2;
+        if(result.error.empty()) {
+            result.error = std::format("{} failed; see its output above", *executable);
+        }
+    } else if(!result.unformatted.empty()) {
+        result.exit_code = 1;
+    }
+    result.seconds = timer.ms() / 1000.0;
+    return result;
+}
 
 BatchResult run_batch_index(const BatchOptions& options) {
     kota::event_loop loop;

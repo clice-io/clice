@@ -3,4 +3,8 @@ patterns = ["vendor/**"]
 lint = false
 
 [[rules]]
+patterns = ["gen/**"]
+format = false
+
+[[rules]]
 compile_commands = ["cmake"]

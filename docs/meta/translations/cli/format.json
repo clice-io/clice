@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "pairs": [
+    { "kind": "heading", "en": "c18abc675c62fa20", "zh": "5a441e57b19f1a53" },
+    { "kind": "heading", "en": "7337f3d0aa29e9a8", "zh": "a166cd4942b3a912" },
+    { "kind": "paragraph", "en": "02ce9fec7a94624b", "zh": "b97d5d3e73ea5bef" },
+    { "kind": "paragraph", "en": "6e4f52f2355bbd03", "zh": "d0072d47fd41f226" },
+    { "kind": "paragraph", "en": "52bc7ded7be0c278", "zh": "94a233b9003b1ee2" },
+    { "kind": "paragraph", "en": "113769ce5c0b4852", "zh": "5fa5e3b0c975b0df" },
+    { "kind": "paragraph", "en": "29dafde0000be4f0", "zh": "ea67320cba9808ad" }
+  ]
+}

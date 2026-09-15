@@ -28,6 +28,7 @@ cli:
     - overview
     - index
     - lint
+    - format
 
 design:
   label: Design

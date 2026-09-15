@@ -87,6 +87,9 @@ scripts = ["scripts/activate_cross_windows.bat"]
 [feature.test.dependencies]
 python = ">=3.13"
 nodejs = ">=24"
+# `clice format` runs the clang-format found in PATH; the integration
+# tests drive it on real files.
+clang-format = "==22.1.8"
 
 # ToolchainTests.GCC queries the g++ found in PATH and compiles C++23
 # (<print>), so the test env must provide the same pinned gcc the build

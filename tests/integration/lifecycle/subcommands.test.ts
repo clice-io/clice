@@ -3,7 +3,7 @@ import { waitUntil, type CliceClient } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 const SUBCOMMANDS = ["serve", "query", "worker", "index", "doc", "lint", "format"];
-const STUBS = ["doc", "format"];
+const STUBS = ["doc"];
 
 function runClice(...args: string[]) {
     return spawnSync(cliceExecutable(), args, { encoding: "utf8", timeout: 30_000 });

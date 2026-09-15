@@ -110,8 +110,10 @@ void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* s
                exit_code = 0;
                return;
            }
-           if(!apply_log_level(opts.log_level.value_or("info")))
+           if(!apply_log_level(opts.log_level.value_or("info"))) {
+               exit_code = 2;
                return;
+           }
            logging::stderr_logger("lint", logging::options);
 
            exit_code = run_lint(workspace_root(opts.workspace.value_or("")),
@@ -120,7 +122,10 @@ void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* s
                                 static_cast<bool>(opts.index),
                                 self_path);
        })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+        .on_error([&exit_code](auto err) {
+            LOG_ERROR("{}", err.message);
+            exit_code = 2;
+        });
 
     root.add({.name = "lint", .description = "Lint C++ source files"}, std::move(cmd));
 }

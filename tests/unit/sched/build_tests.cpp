@@ -183,6 +183,17 @@ TEST_CASE(LintSetSymlinkedRoot) {
 };
 #endif
 
+TEST_CASE(FormatSet) {
+    /// The format set reads its own rule field: a `lint = false` directory
+    /// still formats, a `format = false` one does not.
+    Layout layout("lint_rules");
+    EXPECT_TRUE(layout.build.formattable(layout.path("src/main.cpp")));
+    EXPECT_TRUE(layout.build.formattable(layout.path("vendor/lib.cpp")));
+    EXPECT_FALSE(layout.build.formattable(layout.path("gen/out.h")));
+    EXPECT_TRUE(layout.build.lintable(layout.path("gen/out.h")));
+    EXPECT_FALSE(layout.build.formattable("/usr/include/stdio.h"));
+};
+
 TEST_CASE(PatternRootsEnumerate) {
     /// Members are enumerated from where the patterns point, not from the
     /// configuration file's directory: a config under .clice/ claims
