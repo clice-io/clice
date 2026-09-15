@@ -46,16 +46,20 @@ compiler-rt = "==22.1.8"
 xz = ">=5.8.1,<6"
 
 [feature.build.target.win-64.dependencies]
-ccache = "*"
+# Pinned on every platform: ccache 4.14 disables its direct mode for any
+# translation unit whose headers contain the text "#embed", and the comment
+# "// C23 & C++26 #embed" in clang/Basic/TokenKinds.def matches, so every
+# clang-dependent object would fall back to the slower preprocessor mode.
+ccache = "4.13.*"
 
 [feature.build.target.linux-64.dependencies]
 sysroot_linux-64 = "==2.17"
 gcc = "==15.2.0"
 gxx = "==15.2.0"
-ccache = "*"
+ccache = "4.13.*"
 
 [feature.build.target.osx-arm64.dependencies]
-ccache = "*"
+ccache = "4.13.*"
 
 [feature.build.target.linux-64.activation]
 scripts = ["scripts/activate_linux.sh"]
