@@ -125,6 +125,14 @@ struct ConfigRule {
                          "saying `false` wins.")
     <bool> lint = true;
 
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Whether `clice format` formats matching files. "
+                         "`false` keeps them out. Files outside the workspace "
+                         "are never formatted. Any matching rule saying "
+                         "`false` wins.")
+    <bool> format = true;
+
     /// Where the rule's relative paths and patterns anchor and its default
     /// command runs: the directory of the configuration file it was read
     /// from; empty for a rule from initializationOptions, which anchors at
@@ -272,6 +280,7 @@ struct CompiledRule {
     std::vector<std::string> remove;
     bool index = true;
     bool lint = true;
+    bool format = true;
 
     /// Every pattern failed to compile: the rule matches no file, but the
     /// sources it declares still load.

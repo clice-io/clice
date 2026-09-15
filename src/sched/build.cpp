@@ -245,7 +245,7 @@ bool Build::indexed(llvm::StringRef path) const {
     return llvm::all_of(matching(path), [](const CompiledRule* rule) { return rule->index; });
 }
 
-bool Build::lintable(llvm::StringRef path) const {
+bool Build::inside(llvm::StringRef path, bool CompiledRule::* field) const {
     // The worker spells paths natively and with symlinks resolved; the
     // root and the patterns are canonical, spelled as configured. A path
     // under the resolved root is respelled under the configured one so
@@ -262,7 +262,15 @@ bool Build::lintable(llvm::StringRef path) const {
     if(!path::under(file, root)) {
         return false;
     }
-    return llvm::all_of(matching(file), [](const CompiledRule* rule) { return rule->lint; });
+    return llvm::all_of(matching(file), [&](const CompiledRule* rule) { return rule->*field; });
+}
+
+bool Build::lintable(llvm::StringRef path) const {
+    return inside(path, &CompiledRule::lint);
+}
+
+bool Build::formattable(llvm::StringRef path) const {
+    return inside(path, &CompiledRule::format);
 }
 
 llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {

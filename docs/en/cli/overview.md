@@ -7,11 +7,11 @@ clice is one binary. Editors launch `clice serve` and talk to it over LSP; the o
 | `serve`   | Start the language server. Editors do this for you, see the editor setup. | [editors](../guide/editors.md) |
 | `lint`    | Run clang-tidy over every translation unit with a worker pool.            | [lint](./lint.md)              |
 | `index`   | Index a workspace ahead of time so the server starts warm.                | [index](./index.md)            |
-| `format`  | Format C++ source files. Not implemented yet.                             |                                |
+| `format`  | Format the workspace's files with clang-format.                           | [format](./format.md)          |
 | `inspect` | Run one feature on source files and print the raw result as JSON.         |                                |
 | `query`   | Query symbol information from a running server.                           |                                |
 | `doc`     | Extract documentation data from a project. Not implemented yet.           |                                |
 
 `inspect` and `query` work today but have no page yet; their options are documented by `clice <command> --help`.
 
-`serve`, `index`, `lint` and `inspect` take `--configuration <tag>` to pin the build configuration for the run, over the selection persisted from the editor; see [switching configurations](../guide/configuration.md#switching-configurations).
+`serve`, `index`, `lint`, `format` and `inspect` take `--configuration <tag>` to pin the build configuration for the run, over the selection persisted from the editor; see [switching configurations](../guide/configuration.md#switching-configurations).

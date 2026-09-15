@@ -156,8 +156,16 @@ public:
     /// no matching active rule says `lint = false`.
     bool lintable(llvm::StringRef path) const;
 
+    /// Whether `clice format` formats a file: it sits inside the workspace
+    /// and no matching active rule says `format = false`.
+    bool formattable(llvm::StringRef path) const;
+
 private:
     llvm::SmallVector<const CompiledRule*> matching(llvm::StringRef path) const;
+
+    /// Whether a file sits inside the workspace and every matching active
+    /// rule keeps `field` on: the lint and format sets.
+    bool inside(llvm::StringRef path, bool CompiledRule::* field) const;
 
     /// The sources rules declare: the active rules' — and, while the active
     /// configuration declares any, the inactive rules' too, which hide a

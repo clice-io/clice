@@ -432,6 +432,16 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 </div>
 
+<div class="config-option">
+
+| 选项     | 类型   | 默认值 |
+| -------- | ------ | ------ |
+| `format` | `bool` | `true` |
+
+`clice format` 是否格式化匹配到的文件。`false` 会将它们排除在外。工作区之外的文件从不格式化。只要有一条匹配的规则写了 `false`，就以它为准。
+
+</div>
+
 <!-- END GENERATED CONFIG -->
 
 ## 示例
