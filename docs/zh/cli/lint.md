@@ -2,11 +2,11 @@
 
 ## 概述
 
-clice 将 clang-tidy 集成为内置 Lint 引擎。`clice lint` 借助常驻 worker 池，对整个编译数据库运行 `.clang-tidy` 中配置的检查，并输出一份合并后的报告。
+clice 将 clang-tidy 集成为内置 Lint 引擎。`clice lint` 借助常驻 worker 池，对工作区内的翻译单元运行 `.clang-tidy` 中配置的检查，并输出一份合并后的报告。
 
 **用法**：`clice lint [--workspace <dir>] [--configuration <tag>] [--workers <n>] [--index]`
 
-对编译数据库中的每个翻译单元运行 clang-tidy，并使用 worker 池处理，
+对编译数据库中属于下文检查范围的每个翻译单元运行 clang-tidy，
 输出合并后的检查结果；发现问题时以非零状态退出。
 `--index` 还会利用同一批解析结果构建并持久化项目索引，
 因此后续运行 `clice index` 时无需再执行任何操作。

@@ -119,10 +119,15 @@ TEST_CASE(HeaderNolint) {
     auto unit = compile(params);
     ASSERT_TRUE(unit.completed());
     // A suppressed finding stays in the stream at the Ignored level.
+    bool suppressed = false;
     for(auto& diag: unit.diagnostics()) {
         EXPECT_TRUE(diag.id.source != DiagnosticSource::ClangTidy ||
                     diag.id.level == DiagnosticLevel::Ignored);
+        suppressed |= diag.id.source == DiagnosticSource::ClangTidy &&
+                      diag.id.name == "bugprone-integer-division" &&
+                      diag.id.level == DiagnosticLevel::Ignored;
     }
+    ASSERT_TRUE(suppressed);
 }
 
 TEST_CASE(ResolveConfigChain) {

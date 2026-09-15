@@ -119,9 +119,10 @@ struct ConfigRule {
                      description =
                          "Whether `clice lint` checks matching files. `false` "
                          "keeps them out: their findings are dropped and a "
-                         "translation unit they head is not parsed. Files "
-                         "outside the workspace are never checked. Any "
-                         "matching rule saying `false` wins.")
+                         "translation unit they head is not parsed, unless "
+                         "`--index` needs it for the index. Files outside the "
+                         "workspace are never checked. Any matching rule "
+                         "saying `false` wins.")
     <bool> lint = true;
 
     /// Where the rule's relative paths and patterns anchor and its default
