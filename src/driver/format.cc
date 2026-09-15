@@ -115,8 +115,10 @@ void add_format(kota::deco::cli::SubCommander& root, int& exit_code) {
                exit_code = 0;
                return;
            }
-           if(!apply_log_level(opts.log_level.value_or("info")))
+           if(!apply_log_level(opts.log_level.value_or("info"))) {
+               exit_code = 2;
                return;
+           }
            logging::stderr_logger("format", logging::options);
 
            BatchFormatOptions options{

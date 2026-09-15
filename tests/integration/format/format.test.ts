@@ -120,3 +120,23 @@ test("a missing file argument fails the run", ({ session }) => {
     expect(run.status).toBe(2);
     expect(run.stderr).toContain("missing.cpp: no such file");
 });
+
+test("a non-source file argument fails the run", ({ session }) => {
+    const ws = session.tmpdir();
+    writeProject(ws);
+    ws.write("README.md", "# notes\n");
+
+    const run = runFormat(ws, "README.md");
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("README.md: not a C-family source file");
+    expect(ws.read("README.md")).toBe("# notes\n");
+});
+
+test("an invalid log level is a usage error", ({ session }) => {
+    const ws = session.tmpdir();
+    writeProject(ws);
+
+    const run = runFormat(ws, "--log-level", "loud");
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("unknown log level");
+});

@@ -703,6 +703,10 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             result.exit_code = 2;
             result.error = std::format("{}: no such file", path);
             return result;
+        } else if(suffix_type(path) == clang::driver::types::TY_INVALID) {
+            result.exit_code = 2;
+            result.error = std::format("{}: not a C-family source file", path);
+            return result;
         } else if(workspace.build.formattable(path)) {
             files.push_back(path);
         }
