@@ -29,9 +29,11 @@ env:
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
   CCACHE_BASEDIR: ${{ github.workspace }}
   CCACHE_COMPILERCHECK: content
-  # One full build per leg is 130–560 MB; eight legs must share the
-  # repository's 10 GB cache pool with everything else.
-  CCACHE_MAXSIZE: 1G
+  # The precompiled headers plus one full build come to about 1 GB
+  # compressed per leg, and ccache's LRU cleanup starts evicting live
+  # objects once the cache nears its cap, so allow twice that. Eight legs
+  # at 2 GB per main commit fit the repository's 50 GB cache pool.
+  CCACHE_MAXSIZE: 2G
 
 jobs:
   build:
