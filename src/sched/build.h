@@ -152,6 +152,10 @@ public:
     /// says `index = false`.
     bool indexed(llvm::StringRef path) const;
 
+    /// Whether `clice lint` checks a file: it sits inside the workspace and
+    /// no matching active rule says `lint = false`.
+    bool lintable(llvm::StringRef path) const;
+
 private:
     llvm::SmallVector<const CompiledRule*> matching(llvm::StringRef path) const;
 

@@ -47,30 +47,34 @@ auto make_command() {
     return kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
 }
 
+void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
+    for(auto& d: diagnostics) {
+        std::println("{}:{}:{}: {}: {} [{}]",
+                     d.file,
+                     d.line,
+                     d.column,
+                     d.error ? "error" : "warning",
+                     d.message,
+                     d.check);
+        for(auto& note: d.notes) {
+            std::println("{}:{}:{}: note: {}", note.file, note.line, note.column, note.message);
+        }
+    }
+}
+
 int run_lint(std::string root,
              std::string configuration,
              std::uint32_t workers,
              bool with_index,
              const char* self_path) {
-    auto result = run_batch_lint(
-        {
-            .root = std::move(root),
-            .configuration = std::move(configuration),
-            .workers = workers,
-            .self_path = self_path,
-            .with_index = with_index,
-        },
-        [](llvm::StringRef, llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
-            for(auto& d: diagnostics) {
-                std::println("{}:{}:{}: {}: {} [{}]",
-                             d.file,
-                             d.line,
-                             d.column,
-                             d.error ? "error" : "warning",
-                             d.message,
-                             d.check);
-            }
-        });
+    auto result = run_batch_lint({
+        .root = std::move(root),
+        .configuration = std::move(configuration),
+        .workers = workers,
+        .self_path = self_path,
+        .with_index = with_index,
+    });
+    print_findings(result.findings);
     if(result.interrupted) {
         std::println("Lint interrupted. Rerun `clice lint` for a full report.");
         return result.exit_code;
@@ -82,8 +86,8 @@ int run_lint(std::string root,
                  result.checked_tus,
                  plural_s(result.checked_tus),
                  result.seconds,
-                 result.findings,
-                 plural_s(result.findings));
+                 result.findings.size(),
+                 plural_s(result.findings.size()));
     if(result.failed_tus != 0) {
         std::println("{} translation unit{} failed to run (see the log); the report is partial.",
                      result.failed_tus,

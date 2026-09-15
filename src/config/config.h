@@ -115,6 +115,16 @@ struct ConfigRule {
                          "include. Any matching rule saying `false` wins.")
     <bool> index = true;
 
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Whether `clice lint` checks matching files. `false` "
+                         "keeps them out: their findings are dropped and a "
+                         "translation unit they head is not parsed, unless "
+                         "`--index` needs it for the index. Files outside the "
+                         "workspace are never checked. Any matching rule "
+                         "saying `false` wins.")
+    <bool> lint = true;
+
     /// Where the rule's relative paths and patterns anchor and its default
     /// command runs: the directory of the configuration file it was read
     /// from; empty for a rule from initializationOptions, which anchors at
@@ -261,6 +271,7 @@ struct CompiledRule {
     std::vector<std::string> append;
     std::vector<std::string> remove;
     bool index = true;
+    bool lint = true;
 
     /// Every pattern failed to compile: the rule matches no file, but the
     /// sources it declares still load.
@@ -351,6 +362,11 @@ struct Config {
     /// supplied, and the enumeration root of `**`-led patterns.
     KOTATSU_ANNOTATE(skip = true)
     <std::string> workspace_root;
+
+    /// workspace_root with symlinks resolved (itself when the resolution
+    /// fails): the spelling workers report file paths in.
+    KOTATSU_ANNOTATE(skip = true)
+    <std::string> workspace_real_root;
 
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path

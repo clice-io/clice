@@ -245,6 +245,26 @@ bool Build::indexed(llvm::StringRef path) const {
     return llvm::all_of(matching(path), [](const CompiledRule* rule) { return rule->index; });
 }
 
+bool Build::lintable(llvm::StringRef path) const {
+    // The worker spells paths natively and with symlinks resolved; the
+    // root and the patterns are canonical, spelled as configured. A path
+    // under the resolved root is respelled under the configured one so
+    // the patterns anchored there match it.
+    llvm::SmallString<256> storage;
+    auto file = path::canonical(path, storage);
+    llvm::StringRef root = config.workspace_root;
+    llvm::StringRef real_root = config.workspace_real_root;
+    std::string respelled;
+    if(!path::under(file, root) && path::under(file, real_root)) {
+        respelled = root.str() + file.substr(real_root.size()).str();
+        file = respelled;
+    }
+    if(!path::under(file, root)) {
+        return false;
+    }
+    return llvm::all_of(matching(file), [](const CompiledRule* rule) { return rule->lint; });
+}
+
 llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {
     llvm::SmallVector<CommandRef> result;
     for(auto member: members) {

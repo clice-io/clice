@@ -290,28 +290,42 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     result.seconds = timer.ms() / 1000.0;
 }
 
-/// The lint sweep's shared counters, living on run_lint's frame.
+/// The lint sweep's shared counters and findings, living on run_lint's
+/// frame.
 struct LintSweep {
     std::size_t inflight = 0;
     std::size_t checked = 0;
     std::size_t failed = 0;
-    std::size_t findings = 0;
+    std::vector<worker::TidyDiagnostic> findings;
     kota::event task_done{false};
 };
 
-using FindingsSink =
-    llvm::function_ref<void(llvm::StringRef file, llvm::ArrayRef<worker::TidyDiagnostic>)>;
+auto finding_key(const worker::TidyDiagnostic& d) {
+    return std::tie(d.file, d.line, d.column, d.check, d.error, d.message, d.notes);
+}
 
-kota::task<> lint_one(BatchStack& stack,
-                      bool with_index,
-                      Fid path_id,
-                      LintSweep& sweep,
-                      FindingsSink on_findings) {
+/// Sort and merge findings: one per (file, line, column, check, severity,
+/// message, notes). The notes stay in the key: a redeclaration check
+/// reports the same line from two units with notes pointing at different
+/// declarations, and each is a mismatch of its own.
+void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
+    std::ranges::stable_sort(findings,
+                             [](auto& a, auto& b) { return finding_key(a) < finding_key(b); });
+    auto duplicates = std::ranges::unique(findings, [](auto& a, auto& b) {
+        return finding_key(a) == finding_key(b);
+    });
+    findings.erase(duplicates.begin(), duplicates.end());
+}
+
+kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep& sweep) {
     auto file = stack.workspace.file_table.resolve(path_id);
+    // A TU outside the lint set is here for the index only.
     TURunFamily::Plan plan;
-    plan.tidy = true;
-    plan.index = with_index;
-    plan.tidy_params = tidy::resolve_tidy_params(file);
+    plan.tidy = stack.workspace.build.lintable(file);
+    plan.index = with_index && stack.workspace.build.indexed(file);
+    if(plan.tidy) {
+        plan.tidy_params = tidy::resolve_tidy_params(file);
+    }
 
     // One budget-free retry: a worker crash or preemption says nothing
     // about the TU, and a one-shot sweep has no later round to requeue
@@ -324,17 +338,21 @@ kota::task<> lint_one(BatchStack& stack,
 
     switch(outcome.verdict) {
         case TURunFamily::Verdict::Completed: {
-            sweep.checked += 1;
+            if(plan.tidy) {
+                sweep.checked += 1;
+            }
             if(with_index) {
                 stack.pump.claim_report(outcome.report);
             }
-            if(!outcome.tidy_diagnostics.empty()) {
-                std::ranges::sort(outcome.tidy_diagnostics, [](auto& a, auto& b) {
-                    return std::tie(a.file, a.line, a.column) < std::tie(b.file, b.line, b.column);
-                });
-                sweep.findings += outcome.tidy_diagnostics.size();
-                on_findings(file, outcome.tidy_diagnostics);
-            }
+            // The lint set applies to the findings too: a header outside
+            // it reports nothing. A compiler error stays wherever it is:
+            // broken code is not a clean run.
+            std::ranges::copy_if(outcome.tidy_diagnostics,
+                                 std::back_inserter(sweep.findings),
+                                 [&](const worker::TidyDiagnostic& d) {
+                                     return d.check == "clang-diagnostic-error" ||
+                                            stack.workspace.build.lintable(d.file);
+                                 });
             break;
         }
         case TURunFamily::Verdict::Skipped:
@@ -365,8 +383,7 @@ kota::task<> lint_one(BatchStack& stack,
 kota::task<> run_lint_sweep(BatchStack& stack,
                             const BatchLintOptions& options,
                             llvm::ArrayRef<Fid> tus,
-                            LintSweep& sweep,
-                            FindingsSink on_findings) {
+                            LintSweep& sweep) {
     kota::task_group<> workers(stack.loop);
 
     // The dispatch loop runs as a child of `workers`, like the pump's
@@ -376,7 +393,6 @@ kota::task<> run_lint_sweep(BatchStack& stack,
                      const BatchLintOptions& options,
                      llvm::ArrayRef<Fid> tus,
                      LintSweep& sweep,
-                     FindingsSink on_findings,
                      kota::task_group<>& workers) -> kota::task<> {
         for(auto path_id: tus) {
             // The pump feeder's window: deep enough that workers never
@@ -387,17 +403,14 @@ kota::task<> run_lint_sweep(BatchStack& stack,
                 co_await sweep.task_done.wait();
             }
             sweep.inflight += 1;
-            workers.spawn(lint_one(stack, options.with_index, path_id, sweep, on_findings));
+            workers.spawn(lint_one(stack, options.with_index, path_id, sweep));
         }
     };
-    workers.spawn(feeder(stack, options, tus, sweep, on_findings, workers));
+    workers.spawn(feeder(stack, options, tus, sweep, workers));
     co_await workers.join();
 }
 
-kota::task<> run_lint(BatchStack& stack,
-                      const BatchLintOptions& options,
-                      BatchLintResult& result,
-                      FindingsSink on_findings) {
+kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchLintResult& result) {
     ScopedTimer timer;
     auto& workspace = stack.workspace;
 
@@ -443,16 +456,24 @@ kota::task<> run_lint(BatchStack& stack,
     }
 
     // One run per file: a file with several CDB entries lints once, under
-    // the command resolve_command picks — same as the indexing sweep.
+    // the command resolve_command picks — same as the indexing sweep. A TU
+    // the rules keep out of the lint set is not even parsed, unless the
+    // index wants it.
     llvm::SmallVector<Fid> tus;
     for(auto member: members) {
-        tus.push_back(member);
+        auto file = workspace.file_table.resolve(member);
+        if(workspace.build.lintable(file) ||
+           (options.with_index && workspace.build.indexed(file))) {
+            tus.push_back(member);
+        }
     }
 
     BatchLifetime lifetime(stack);
     LintSweep sweep;
-    co_await kota::with_token(run_lint_sweep(stack, options, tus, sweep, on_findings),
-                              lifetime.token());
+    co_await kota::with_token(run_lint_sweep(stack, options, tus, sweep), lifetime.token());
+    // What landed is the report, whole or cut short by an interruption.
+    merge_findings(sweep.findings);
+    result.findings = std::move(sweep.findings);
     if(options.with_index && !lifetime.stop_requested) {
         // The sweep's merges can owe other TUs a reindex (a rebuilt shared
         // shard dropped their variants), and bootstrap may have claimed
@@ -473,12 +494,11 @@ kota::task<> run_lint(BatchStack& stack,
     result.completed = true;
     result.checked_tus = sweep.checked;
     result.failed_tus = sweep.failed + stack.pump.failed().size();
-    result.findings = sweep.findings;
     // The shutdown save was the last retry: with --index the persisted
     // index is part of the product, so unsaved state must fail the run
     // like the index-only batch does.
     result.unsaved = options.with_index && stack.store.has_unsaved_state();
-    if(sweep.findings != 0) {
+    if(!result.findings.empty()) {
         result.exit_code = 1;
     }
     if(result.failed_tus != 0 || result.unsaved) {
@@ -498,11 +518,11 @@ BatchResult run_batch_index(const BatchOptions& options) {
     return result;
 }
 
-BatchLintResult run_batch_lint(const BatchLintOptions& options, FindingsSink on_findings) {
+BatchLintResult run_batch_lint(const BatchLintOptions& options) {
     kota::event_loop loop;
     BatchStack stack(loop);
     BatchLintResult result;
-    loop.schedule(run_lint(stack, options, result, on_findings));
+    loop.schedule(run_lint(stack, options, result));
     loop.run();
     return result;
 }

@@ -129,7 +129,8 @@ std::unique_ptr<clang::CompilerInvocation>
 
 void CompilationUnitRef::Self::configure_tidy(tidy::TidyParams tidy_params) {
     checker = tidy::configure(*instance, tidy_params);
-    tidy_traverse_headers = !tidy_params.header_filter.empty() || tidy_params.system_headers;
+    tidy_traverse_headers =
+        tidy_params.whole_tu || !tidy_params.header_filter.empty() || tidy_params.system_headers;
 }
 
 void CompilationUnitRef::Self::run_tidy() {

@@ -285,7 +285,8 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
 /// headers report only under SystemHeaders. Compiler errors are kept
 /// regardless of location, as clang-tidy keeps them: a parse can complete
 /// with a usable AST despite errors, and a run that discarded them would
-/// pass broken code.
+/// pass broken code. Notes follow their finding in the stream and attach
+/// to it.
 static void collect_tidy_diagnostics(CompilationUnitRef unit,
                                      const worker::TURunParams& params,
                                      std::vector<worker::TidyDiagnostic>& out) {
@@ -299,7 +300,24 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
         drop.emplace(params.tidy_exclude_header_filter);
     }
 
+    bool last_kept = false;
     for(const auto& raw: unit.diagnostics()) {
+        if(raw.id.level == DiagnosticLevel::Note) {
+            if(!last_kept || raw.fid.isInvalid() || !raw.range.valid()) {
+                continue;
+            }
+            feature::LineMap map(unit.file_content(raw.fid), feature::PositionEncoding::UTF8);
+            if(auto range = feature::to_range(map, raw.range)) {
+                out.back().notes.push_back({
+                    .file = std::string(unit.file_path(raw.fid)),
+                    .line = range->start.line + 1,
+                    .column = range->start.character + 1,
+                    .message = raw.message,
+                });
+            }
+            continue;
+        }
+        last_kept = false;
         bool clang_error =
             raw.id.source == DiagnosticSource::Clang &&
             (raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal);
@@ -338,6 +356,7 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             // warning-option name of their own.
             .check = clang_error ? "clang-diagnostic-error" : std::string(raw.id.name),
         });
+        last_kept = true;
     }
 }
 
@@ -346,9 +365,9 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     ScopedTimer timer;
 
     CompilationParams cp;
-    // One parse serves every product of the plan. Tidy's matcher walks the
-    // collected top-level declarations, which only a Content build
-    // gathers; a pure index run keeps the Indexing kind.
+    // One parse serves every product of the plan: the tidy pass runs on a
+    // Content build, the plain AST build; a pure index run keeps the
+    // Indexing kind.
     cp.kind = params.tidy ? CompilationKind::Content : CompilationKind::Indexing;
     fill_args(cp, params.directory, params.arguments);
     for(auto& [name, path]: params.pcms) {
@@ -366,7 +385,8 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
                                    .exclude_header_filter = params.tidy_exclude_header_filter,
                                    .system_headers = params.tidy_system_headers,
                                    .extra_args = params.tidy_extra_args,
-                                   .extra_args_before = params.tidy_extra_args_before};
+                                   .extra_args_before = params.tidy_extra_args_before,
+                                   .whole_tu = true};
     }
     cp.stop = stop;
 

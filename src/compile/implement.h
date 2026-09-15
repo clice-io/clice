@@ -37,7 +37,11 @@ public:
     /// The match finder to run clang-tidy on ASTs.
     clang::ast_matchers::MatchFinder finder;
 
-    ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider);
+    /// TidyParams::whole_tu: suppression comments count in every file.
+    bool whole_tu = false;
+
+    ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider,
+                     clang::ast_matchers::MatchFinder::MatchFinderOptions options);
 
     clang::DiagnosticsEngine::Level adjust_level(clang::DiagnosticsEngine::Level level,
                                                  const clang::Diagnostic& diag);
@@ -99,8 +103,9 @@ struct CompilationUnitRef::Self {
     std::unique_ptr<tidy::ClangTidyChecker> checker;
 
     /// The tidy configuration reports on headers (HeaderFilterRegex or
-    /// SystemHeaders), so the matcher traversal must see their
-    /// declarations — top_level_decls holds the main file only.
+    /// SystemHeaders) or asks for the whole TU, so the matcher traversal
+    /// must see their declarations — top_level_decls holds the main file
+    /// only.
     bool tidy_traverse_headers = false;
 
     std::chrono::milliseconds build_at;

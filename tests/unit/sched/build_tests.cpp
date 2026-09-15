@@ -1,3 +1,7 @@
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "test/cdb_helper.h"
 #include "test/platform.h"
 #include "test/temp_dir.h"
@@ -142,6 +146,42 @@ TEST_CASE(UnitPredicate) {
     EXPECT_TRUE(bound.build.unit(bound.fid("lib/x.cpp")));
     EXPECT_FALSE(bound.build.unit(bound.fid("lib/y.hxx")));
 };
+
+TEST_CASE(LintSet) {
+    /// Files outside the workspace are never linted; inside it, every
+    /// matching rule must keep `lint` on.
+    Layout layout("lint_rules");
+    EXPECT_TRUE(layout.build.lintable(layout.path("src/main.cpp")));
+    EXPECT_TRUE(layout.build.lintable(layout.path("include/api.h")));
+    EXPECT_FALSE(layout.build.lintable(layout.path("vendor/lib.cpp")));
+    EXPECT_FALSE(layout.build.lintable(layout.path("vendor/deep/lib.h")));
+    EXPECT_FALSE(layout.build.lintable("/usr/include/stdio.h"));
+    EXPECT_FALSE(layout.build.lintable(layout.root + "-sibling/x.cpp"));
+};
+
+#ifndef _WIN32
+TEST_CASE(LintSetSymlinkedRoot) {
+    /// The workspace is opened through a symlink while workers report real
+    /// paths: a rule anchored at the configured spelling still keeps its
+    /// files out, whichever spelling names them.
+    TempDir tmp;
+    tmp.touch("real/clice.toml", "[[rules]]\npatterns = [\"vendor/**\"]\nlint = false\n");
+    tmp.touch("real/src/main.cpp", "int main() { return 0; }\n");
+    tmp.touch("real/vendor/lib.cpp", "int lib() { return 0; }\n");
+    [[maybe_unused]] auto linked = ::symlink(tmp.path("real").c_str(), tmp.path("link").c_str());
+
+    Config config = Config::load_from_workspace(tmp.path("link"));
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active(fallback_configuration(config));
+    EXPECT_TRUE(build.lintable(tmp.path("link/src/main.cpp")));
+    EXPECT_TRUE(build.lintable(tmp.path("real/src/main.cpp")));
+    EXPECT_FALSE(build.lintable(tmp.path("link/vendor/lib.cpp")));
+    EXPECT_FALSE(build.lintable(tmp.path("real/vendor/lib.cpp")));
+    EXPECT_FALSE(build.lintable(tmp.path("elsewhere/x.cpp")));
+};
+#endif
 
 TEST_CASE(PatternRootsEnumerate) {
     /// Members are enumerated from where the patterns point, not from the
