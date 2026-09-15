@@ -471,6 +471,9 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     BatchLifetime lifetime(stack);
     LintSweep sweep;
     co_await kota::with_token(run_lint_sweep(stack, options, tus, sweep), lifetime.token());
+    // What landed is the report, whole or cut short by an interruption.
+    merge_findings(sweep.findings);
+    result.findings = std::move(sweep.findings);
     if(options.with_index && !lifetime.stop_requested) {
         // The sweep's merges can owe other TUs a reindex (a rebuilt shared
         // shard dropped their variants), and bootstrap may have claimed
@@ -491,8 +494,6 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     result.completed = true;
     result.checked_tus = sweep.checked;
     result.failed_tus = sweep.failed + stack.pump.failed().size();
-    merge_findings(sweep.findings);
-    result.findings = std::move(sweep.findings);
     // The shutdown save was the last retry: with --index the persisted
     // index is part of the product, so unsaved state must fail the run
     // like the index-only batch does.
