@@ -205,3 +205,23 @@ test.skipIf(process.platform === "win32")("a symlinked source keeps its link", (
     expect(fs.lstatSync(ws.path("link.cpp")).isSymbolicLink()).toBe(true);
     expect(ws.read("real/x.cpp")).toBe(FORMATTED);
 });
+
+test.skipIf(process.platform === "win32")(
+    "a link out of the workspace fails the run",
+    ({ session }) => {
+        const ws = session.tmpdir();
+        const outside = session.tmpdir();
+        ws.write(".clang-format", "BasedOnStyle: LLVM\n");
+        outside.write("x.cpp", UNFORMATTED);
+        fs.symlinkSync(outside.path("x.cpp"), ws.path("link.cpp"));
+        ws.writeCDB(["link.cpp"]);
+
+        const explicit = runFormat(ws, "link.cpp");
+        expect(explicit.status).toBe(2);
+        expect(explicit.stderr).toContain("links outside the workspace");
+        // The automatic set leaves it out without complaint.
+        const automatic = runFormat(ws);
+        expect(automatic.status, `stderr: ${automatic.stderr}`).toBe(0);
+        expect(outside.read("x.cpp")).toBe(UNFORMATTED);
+    },
+);

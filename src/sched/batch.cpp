@@ -736,7 +736,16 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             result.error = std::format("{}: not a C-family source file", path);
             return result;
         } else if(workspace.build.formattable(path)) {
-            files.push_back(physical(path));
+            // Rewritten where its bytes are, which has to be the
+            // workspace's too.
+            auto target = physical(path);
+            if(!path::under(target, workspace.config.workspace_root) &&
+               !path::under(target, workspace.config.workspace_real_root)) {
+                result.exit_code = 2;
+                result.error = std::format("{}: links outside the workspace", path);
+                return result;
+            }
+            files.push_back(std::move(target));
         }
     }
     if(options.paths.empty() || !directories.empty()) {
