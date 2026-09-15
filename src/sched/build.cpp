@@ -245,21 +245,20 @@ bool Build::indexed(llvm::StringRef path) const {
     return llvm::all_of(matching(path), [](const CompiledRule* rule) { return rule->index; });
 }
 
-bool Build::inside(llvm::StringRef path, bool CompiledRule::* field) const {
-    // The worker spells paths natively and with symlinks resolved; the
-    // root and the patterns are canonical, spelled as configured. A path
-    // under the resolved root is respelled under the configured one so
-    // the patterns anchored there match it.
+std::string Build::as_configured(llvm::StringRef path) const {
     llvm::SmallString<256> storage;
     auto file = path::canonical(path, storage);
     llvm::StringRef root = config.workspace_root;
     llvm::StringRef real_root = config.workspace_real_root;
-    std::string respelled;
     if(!path::under(file, root) && path::under(file, real_root)) {
-        respelled = root.str() + file.substr(real_root.size()).str();
-        file = respelled;
+        return root.str() + file.substr(real_root.size()).str();
     }
-    if(!path::under(file, root)) {
+    return file.str();
+}
+
+bool Build::inside(llvm::StringRef path, bool CompiledRule::* field) const {
+    auto file = as_configured(path);
+    if(!path::under(file, config.workspace_root)) {
         return false;
     }
     return llvm::all_of(matching(file), [&](const CompiledRule* rule) { return rule->*field; });

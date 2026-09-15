@@ -512,23 +512,33 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     result.seconds = timer.ms() / 1000.0;
 }
 
+/// What clang-format can format: the C family clang derives types from,
+/// and `.cuh`, which clang does not list but CUDA code uses.
+bool formats(llvm::StringRef path) {
+    return clang::driver::types::isDerivedFromC(suffix_type(path)) ||
+           path::extension(path) == ".cuh";
+}
+
 /// The files `clice format` formats without arguments: the build's
 /// translation units and every file they include that is the workspace's
 /// own — inside it, outside the cache directory, the build trees (the
-/// directories holding a compilation database: what a build generates or
-/// fetches lives there) and the commands' system include directories,
-/// with a C-family suffix, no matching rule saying `format = false`.
-std::vector<std::string> project_files(Workspace& workspace, llvm::ArrayRef<Fid> members) {
+/// directories below the root holding one of `databases`: what a build
+/// generates or fetches lives there) and the commands' system include
+/// directories, of a type clang-format formats, no matching rule saying
+/// `format = false`.
+std::vector<std::string> project_files(Workspace& workspace,
+                                       llvm::ArrayRef<Fid> members,
+                                       llvm::ArrayRef<std::string> databases) {
     auto& build = workspace.build;
     auto& files = workspace.file_table;
 
     llvm::StringRef root = workspace.config.workspace_root;
     llvm::StringSet<> skipped_dirs;
-    skipped_dirs.insert(workspace.config.project.cache_dir);
+    skipped_dirs.insert(build.as_configured(workspace.config.project.cache_dir));
     // A database at the workspace root, or above it, is a copy of the
     // build's or the build of a larger tree, not a build tree of its own.
-    for(auto& entry: workspace.cdb.entries()) {
-        auto directory = path::parent_path(workspace.cdb.source_path(entry.source));
+    for(auto& database: databases) {
+        auto directory = build.as_configured(path::parent_path(database));
         if(directory != root && path::under(directory, root)) {
             skipped_dirs.insert(directory);
         }
@@ -540,22 +550,32 @@ std::vector<std::string> project_files(Workspace& workspace, llvm::ArrayRef<Fid>
                 build.resolve(member, command.config, command.source, llvm::StringRef(path), path);
             auto search = workspace.cdb.search_config(ref);
             for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
-                std::string canonical = dir.path;
-                path::canonicalize(canonical);
-                skipped_dirs.insert(canonical);
+                skipped_dirs.insert(build.as_configured(dir.path));
             }
         }
     }
 
     std::vector<std::string> result;
     for(auto fid: workspace.dep_graph.all_files()) {
-        auto path = files.resolve(fid);
-        if(suffix_type(path) == clang::driver::types::TY_INVALID || !build.formattable(path) ||
+        auto path = build.as_configured(files.resolve(fid));
+        if(!formats(path) || !build.formattable(path) ||
            llvm::any_of(skipped_dirs, [&](auto& dir) { return path::under(path, dir.getKey()); })) {
             continue;
         }
-        result.emplace_back(path);
+        result.push_back(std::move(path));
     }
+    return result;
+}
+
+/// Where a file's bytes are: clang-format's in-place mode replaces a
+/// symlink with a regular file, so the target is what it must be given.
+std::string physical(llvm::StringRef path) {
+    llvm::SmallString<256> real;
+    if(llvm::sys::fs::real_path(path, real)) {
+        return path.str();
+    }
+    std::string result(real);
+    path::canonicalize(result);
     return result;
 }
 
@@ -675,25 +695,33 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         return result;
     }
 
+    if(!llvm::sys::fs::is_directory(options.root)) {
+        result.exit_code = 2;
+        result.error = std::format("{}: not a directory", options.root);
+        return result;
+    }
+    // A rewriting command does not run on defaults a broken configuration
+    // fell back to: the exclusions would be gone with it.
     Workspace workspace;
-    workspace.config = Config::load_from_workspace(options.root);
+    std::vector<ConfigIssue> issues;
+    workspace.config = Config::load_from_workspace(options.root, &issues);
+    for(auto& issue: issues) {
+        if(issue.severity == ConfigIssue::Severity::Error) {
+            result.exit_code = 2;
+            result.error = std::format("{}: {}", issue.file, issue.message);
+            return result;
+        }
+    }
     if(!check_requested_configuration(workspace.config, options.configuration)) {
         result.exit_code = 2;
         result.error = "the requested configuration does not exist";
         return result;
     }
-    // Like the other batch commands, which open no file: every database
-    // under the workspace applies when no rule names one.
     auto configuration = resolve_configuration(workspace.config, options.configuration);
     workspace.build.reset_active(configuration);
-    llvm::SmallVector<std::string> nearby;
-    if(!workspace.build.declares_sources()) {
-        nearby = compile_commands_below(options.root, workspace.config.project.cache_dir);
-    }
-    auto load = load_build(workspace, options.root, configuration, nearby);
 
     // Explicit files are taken as given; explicit directories narrow the
-    // build's own files to those under them.
+    // build's own files to those under them, and only they need the build.
     std::vector<std::string> files;
     llvm::SmallVector<llvm::StringRef> directories;
     for(auto& path: options.paths) {
@@ -703,20 +731,48 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             result.exit_code = 2;
             result.error = std::format("{}: no such file", path);
             return result;
-        } else if(suffix_type(path) == clang::driver::types::TY_INVALID) {
+        } else if(!formats(path)) {
             result.exit_code = 2;
             result.error = std::format("{}: not a C-family source file", path);
             return result;
         } else if(workspace.build.formattable(path)) {
-            files.push_back(path);
+            files.push_back(physical(path));
         }
     }
     if(options.paths.empty() || !directories.empty()) {
-        for(auto& path: project_files(workspace, load.members)) {
-            if(directories.empty() || llvm::any_of(directories, [&](llvm::StringRef directory) {
+        // Like the other batch commands, which open no file: every
+        // database under the workspace applies when no rule names one,
+        // and one that cannot be loaded makes the file set incomplete.
+        llvm::SmallVector<std::string> databases;
+        for(auto declared: workspace.build.declared_sources()) {
+            databases.push_back(declared.str());
+        }
+        if(databases.empty()) {
+            databases = compile_commands_below(options.root, workspace.config.project.cache_dir);
+        }
+        auto load = load_build(workspace, options.root, configuration, databases);
+        for(auto& database: databases) {
+            auto id = workspace.cdb.find_source(database);
+            if(!id || !workspace.cdb.loaded(*id)) {
+                result.exit_code = 2;
+                result.error =
+                    std::format("{}: the compilation database could not be loaded", database);
+                return result;
+            }
+        }
+        llvm::StringRef root = workspace.config.workspace_root;
+        llvm::StringRef real_root = workspace.config.workspace_real_root;
+        for(auto& path: project_files(workspace, load.members, databases)) {
+            if(!directories.empty() && llvm::none_of(directories, [&](llvm::StringRef directory) {
                    return path::under(path, directory);
                })) {
-                files.push_back(std::move(path));
+                continue;
+            }
+            // A symlink into the workspace is the workspace's; one pointing
+            // out of it is not.
+            auto target = physical(path);
+            if(path::under(target, root) || path::under(target, real_root)) {
+                files.push_back(std::move(target));
             }
         }
     }
@@ -765,15 +821,21 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             llvm::SmallVector<llvm::StringRef> lines;
             llvm::StringRef(run.output).split(lines, '\n', -1, /*KeepEmpty=*/false);
             std::size_t violations = 0;
+            bool errors = false;
             for(auto line: lines) {
                 if(auto file = violation_file(line)) {
                     unformatted.insert(*file);
                     violations += 1;
+                } else {
+                    errors |= line.contains(": error:") || line.starts_with("error:") ||
+                              line.starts_with("Error");
                 }
             }
-            // --Werror exits 1 for violations too: a non-zero status with
-            // none reported is a real failure.
-            failed |= run.status != 0 && violations == 0;
+            // --Werror exits 1 for violations too: a non-zero status is a
+            // real failure when none is reported, or when an error of
+            // clang-format's own (a file it cannot read, a configuration it
+            // cannot parse) sits next to them.
+            failed |= run.status != 0 && (violations == 0 || errors);
         } else {
             failed |= run.status != 0;
         }

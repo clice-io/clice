@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
 import type { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
@@ -139,4 +140,68 @@ test("an invalid log level is a usage error", ({ session }) => {
     const run = runFormat(ws, "--log-level", "loud");
     expect(run.status).toBe(2);
     expect(run.stderr).toContain("unknown log level");
+});
+
+test("a workspace that does not exist fails the run", ({ session }) => {
+    const ws = session.tmpdir();
+    const run = spawnSync(
+        cliceExecutable(),
+        ["format", "--check", "--workspace", ws.path("missing")],
+        { encoding: "utf8", timeout: 120_000 },
+    );
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("not a directory");
+});
+
+test("a broken configuration fails the run", ({ session }) => {
+    const ws = session.tmpdir();
+    writeProject(ws);
+    ws.write("clice.toml", "[[rules\npatterns = [\n");
+
+    const run = runFormat(ws);
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("clice.toml");
+    expect(ws.read("lib.h")).toBe("#pragma once\n" + UNFORMATTED);
+});
+
+test("a broken compilation database fails the run", ({ session }) => {
+    const ws = session.tmpdir();
+    writeProject(ws);
+    ws.write("compile_commands.json", "{");
+
+    const run = runFormat(ws, "--check");
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("compilation database could not be loaded");
+});
+
+test("only C-family units are formatted", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write(".clang-format", "BasedOnStyle: LLVM\n");
+    ws.write("a.cpp", UNFORMATTED);
+    ws.write("boot.s", "    mov r0, r1\n");
+    ws.writeEntries(
+        [
+            ["a.cpp", []],
+            ["boot.s", []],
+        ],
+        { std: "c++20" },
+    );
+
+    const run = runFormat(ws);
+    expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+    expect(run.stdout).toContain("Formatted 1 file ");
+    expect(ws.read("boot.s")).toBe("    mov r0, r1\n");
+});
+
+test.skipIf(process.platform === "win32")("a symlinked source keeps its link", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write(".clang-format", "BasedOnStyle: LLVM\n");
+    ws.write("real/x.cpp", UNFORMATTED);
+    fs.symlinkSync(ws.path("real/x.cpp"), ws.path("link.cpp"));
+    ws.writeCDB(["link.cpp"]);
+
+    const run = runFormat(ws);
+    expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+    expect(fs.lstatSync(ws.path("link.cpp")).isSymbolicLink()).toBe(true);
+    expect(ws.read("real/x.cpp")).toBe(FORMATTED);
 });

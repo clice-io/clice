@@ -160,6 +160,12 @@ public:
     /// and no matching active rule says `format = false`.
     bool formattable(llvm::StringRef path) const;
 
+    /// A path as the configuration spells it: canonical, and under the
+    /// configured workspace root when it lies under the root's resolved
+    /// spelling — workers and symlink-resolving builds report the latter,
+    /// the patterns and the rules' directories are anchored at the former.
+    std::string as_configured(llvm::StringRef path) const;
+
 private:
     llvm::SmallVector<const CompiledRule*> matching(llvm::StringRef path) const;
 
