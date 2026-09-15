@@ -133,7 +133,10 @@ void add_format(kota::deco::cli::SubCommander& root, int& exit_code) {
            }
            exit_code = run_format(std::move(options));
        })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+        .on_error([&exit_code](auto err) {
+            LOG_ERROR("{}", err.message);
+            exit_code = 2;
+        });
 
     root.add({.name = "format", .description = "Format C++ source files"}, std::move(cmd));
 }

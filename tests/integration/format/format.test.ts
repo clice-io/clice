@@ -225,3 +225,23 @@ test.skipIf(process.platform === "win32")(
         expect(outside.read("x.cpp")).toBe(UNFORMATTED);
     },
 );
+
+test("a unit inside a system include directory is still its own", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write(".clang-format", "BasedOnStyle: LLVM\n");
+    ws.write("src/a.cpp", UNFORMATTED);
+    ws.writeCDB(["src/a.cpp"], { extraArgs: ["-isystem", ws.path("src")] });
+
+    const run = runFormat(ws);
+    expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+    expect(run.stdout).toContain("Formatted 1 file ");
+    expect(ws.read("src/a.cpp")).toBe(FORMATTED);
+});
+
+test("an unknown option is a usage error", ({ session }) => {
+    const ws = session.tmpdir();
+    writeProject(ws);
+
+    const run = runFormat(ws, "--jobs", "many");
+    expect(run.status).toBe(2);
+});

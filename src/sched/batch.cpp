@@ -555,11 +555,16 @@ std::vector<std::string> project_files(Workspace& workspace,
         }
     }
 
+    // The build's own units are its own wherever they sit; the
+    // directories keep out only what they include.
     std::vector<std::string> result;
+    llvm::DenseSet<Fid> unit(members.begin(), members.end());
     for(auto fid: workspace.dep_graph.all_files()) {
         auto path = build.as_configured(files.resolve(fid));
         if(!formats(path) || !build.formattable(path) ||
-           llvm::any_of(skipped_dirs, [&](auto& dir) { return path::under(path, dir.getKey()); })) {
+           (!unit.contains(fid) && llvm::any_of(skipped_dirs, [&](auto& dir) {
+               return path::under(path, dir.getKey());
+           }))) {
             continue;
         }
         result.push_back(std::move(path));
