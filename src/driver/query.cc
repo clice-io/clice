@@ -346,7 +346,7 @@ void add_query(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
            logging::stderr_logger("query", logging::options);
            exit_code = run_query(opts, self_path);
        })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+        .on_error([](auto err) { print_json(Failure{.error = err.message}); });
 
     root.add({.name = "query", .description = "Ask the persisted index about the workspace"},
              std::move(cmd));
