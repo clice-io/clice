@@ -428,7 +428,7 @@ TEST_CASE(CloseStaleModuleCascades) {
 
 TEST_CASE(CloseRefreshesEdges) {
     // The shard can be current while the include edges are not (an
-    // agent-mode reindex read the rewritten disk while the file stayed
+    // open-file reindex read the rewritten disk while the file stayed
     // open): the close refreshes the edges without a cascade.
     TempDir tmp;
     tmp.touch("new.h", "#pragma once\n");
@@ -457,7 +457,7 @@ TEST_CASE(CloseRefreshesEdges) {
 
 TEST_CASE(DeferredDiskChangeCascades) {
     // A DiskChanged consumed while the header was open defers the
-    // dependent cascade to the close, and an agent-mode reindex can
+    // dependent cascade to the close, and an open-file reindex can
     // refresh the shard from the rewritten disk before then: a current
     // shard must not hide the recorded debt from the close.
     TempDir tmp;
@@ -489,7 +489,7 @@ TEST_CASE(DeferredDiskChangeCascades) {
 
 TEST_CASE(CloseFirstProviderCascades) {
     // An external rewrite can make an open file a module's first provider
-    // with the shard already current (an agent-mode reindex read the
+    // with the shard already current (an open-file reindex read the
     // rewritten disk): the close-time edge refresh must reach the name's
     // sentinel-edged consumers exactly as a save would.
     TempDir tmp;
@@ -514,7 +514,7 @@ TEST_CASE(CloseFirstProviderCascades) {
 
 TEST_CASE(CloseProviderRenameCascades) {
     // An external rewrite can rename an open provider's module while an
-    // agent-mode reindex keeps the shard current and an evicted PCM
+    // open-file reindex keeps the shard current and an evicted PCM
     // leaves no cache entry for the close path's staleness probe: the
     // rescan's map delta is the only remaining signal, and it must
     // cascade the old name's consumers through the provider's node.

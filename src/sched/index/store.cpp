@@ -636,7 +636,10 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     manifest.nodes.reserve(view.node_count());
     for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
         auto node = view.node(i);
-        manifest.nodes.push_back({fv_of[node.file].raw, node.parent, node.line});
+        manifest.nodes.push_back({.file = fv_of[node.file].raw,
+                                  .parent = node.parent,
+                                  .line = node.line,
+                                  .skipped = node.skipped});
     }
     for(auto [local_id, rows_hash]: section_contributions) {
         manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
@@ -1174,7 +1177,8 @@ void IndexStore::reopen_fresh_database() {
     workspace.contexts_committed.reset();
 }
 
-IndexStore::LoadResult IndexStore::load(bool read_only) {
+IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
+    bool read_only = options.read_only;
     LoadResult result;
     auto& report = result.report;
     if(!workspace.index_db)
@@ -1200,7 +1204,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     // page reclamation to session start. Every return path that leaves
     // the database open owes this.
     auto retire_snapshot = [&] {
-        if(read_only && workspace.index_db && db.advance_read_snapshot()) {
+        if(read_only && !options.borrow && workspace.index_db && db.advance_read_snapshot()) {
             db.retire_old_snapshot();
         }
     };
@@ -1341,7 +1345,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     for(auto& [path_id, entry]: project.contributions) {
         auto key = blob_key(workspace.file_table.resolve(path_id));
         auto blob = db.read(index::IndexBlobKind::Shard, key);
-        if(read_only && blob && blob.generation != 0) {
+        if(read_only && !options.borrow && blob && blob.generation != 0) {
             // A read-only session never advances snapshots, so borrowed
             // bytes would pin the opening snapshot for its whole lifetime
             // while a concurrent writer churns; copies let the snapshot

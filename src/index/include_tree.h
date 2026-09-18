@@ -21,12 +21,15 @@ namespace clice::index {
 /// not itself a node.
 constexpr inline std::uint32_t no_node = ~0u;
 
-/// One entered file of an include tree: which file was entered, through
-/// which include directive (the parent node's file at `line`), and where.
-/// Multiple entries of one file (headers without guards) are distinct
-/// nodes. The same nodes travel in the TU envelope and persist in the
-/// manifest; only `file` changes meaning at merge: a TU-local path id on
-/// the wire, a FileVersion id (VersionID::raw) in a manifest.
+/// One include directive of an include tree: which file it names, in
+/// which file it sits (the parent node's file at `line`), and whether the
+/// preprocessor entered the file there. Multiple entries of one file
+/// (headers without guards) are distinct nodes; so is a directive whose
+/// target was skipped (guarded or `#pragma once`, entered earlier) — an
+/// edge of the document with no file entry behind it. The same nodes
+/// travel in the TU envelope and persist in the manifest; only `file`
+/// changes meaning at merge: a TU-local path id on the wire, a
+/// FileVersion id (VersionID::raw) in a manifest.
 struct IncludeNode {
     std::uint32_t file = 0;
 
@@ -35,6 +38,10 @@ struct IncludeNode {
 
     /// 1-based line of the include directive in the parent.
     std::uint32_t line = 0;
+
+    /// The directive did not enter the file: nothing hangs off this node
+    /// and node_of never answers it.
+    bool skipped = false;
 
     friend bool operator==(const IncludeNode&, const IncludeNode&) = default;
 };

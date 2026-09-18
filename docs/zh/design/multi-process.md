@@ -21,7 +21,7 @@ clice 通过多进程架构解决上述问题：每个编译任务都在独立�
 ```text
 Master Process (MasterServer)
 ├── Event loop (kota)
-├── LSP / Agentic protocol handling
+├── LSP / control protocol handling
 ├── State management (workspace, sessions, invalidation)
 ├── Compile scheduling (task graph: PCH / PCM / AST / TU-run families)
 ├── Background indexing (index store + pump)
@@ -43,7 +43,7 @@ Master Process (MasterServer)
 
 主进程是整个系统的协调者，运行单线程事件循环。它不执行任何 CPU 密集型编译工作——所有编译都交由工作进程完成。主进程负责：
 
-- 接收和路由 LSP / Agentic 请求
+- 接收和路由 LSP / 控制请求
 - 管理全局状态（Workspace、Session 映射）
 - 调度编译任务和后台索引
 - 监控工作进程的运行状况

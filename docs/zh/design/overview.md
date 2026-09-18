@@ -111,7 +111,7 @@ LSP 功能的具体实现。每个功能接收 `CompilationUnitRef`，返回对�
 
 语言服务器的核心运行时，负责将上述各层组装成可运行的服务。
 
-**`protocol/`** — 协议定义。描述主进程与 worker 进程之间以及服务器与客户端之间通信所用的消息格式。包括 Worker 协议（编译/查询/构建请求）、LSP 扩展协议（编译上下文切换等），以及面向 AI agent 的 agentic 协议。
+**`protocol/`** — 协议定义。描述主进程与 worker 进程之间以及服务器与客户端之间通信所用的消息格式。包括 Worker 协议（编译/查询/构建请求）、LSP 扩展协议（编译上下文切换等），以及 `clice index` 和 `clice query --fresh` 用来请求运行中的服务器建立索引的控制协议。
 
 **`state/`** — 文档状态与失效机制。
 
@@ -132,7 +132,8 @@ LSP 功能的具体实现。每个功能接收 `CompilationUnitRef`，返回对�
 **`transport/`** — 驱动服务器的协议端点。
 
 - `MasterServer`：组合根。持有工作区、会话、工作线程池和上述所有服务，并通过自身唯一的分派入口执行 `Invalidator` 产生的操作
-- `LSPClient` / `AgentClient`：LSP 协议和智能体协议的请求处理器
+- `LSPClient`：LSP 协议的请求处理器
+- 控制通道：服务器在持有工作区索引写入锁期间开启的回环监听端口，地址记录在锁旁边，供命令行工具查找
 
 详见 [多进程架构](multi-process.md)。
 

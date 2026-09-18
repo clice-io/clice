@@ -157,7 +157,7 @@ std::optional<ObservedFile> read_file_observed(const char* path);
 ///
 /// FIXME: paths are assumed to be valid UTF-8. POSIX filenames
 /// are raw bytes; a non-UTF-8 path survives interning but breaks
-/// downstream where it is embedded into JSON (worker IPC, the agentic
+/// downstream where it is embedded into JSON (worker IPC, the query
 /// protocol) or percent-decoded by clients that interpret URIs as UTF-8.
 ///
 /// FIXME: @rsp and NVCC option files are read during CDB parsing but

@@ -111,7 +111,7 @@ The task-graph engine that decides what gets built, when, and shares the results
 
 The language server's core runtime, responsible for assembling all the layers above into a runnable service.
 
-**`protocol/`** — Protocol definitions. Describes the message formats for communication between the master process and worker processes, as well as between the server and clients. Includes Worker protocol (compilation/query/build requests), LSP extension protocol (compilation context switching, etc.), and the agentic protocol for AI agents.
+**`protocol/`** — Protocol definitions. Describes the message formats for communication between the master process and worker processes, as well as between the server and clients. Includes Worker protocol (compilation/query/build requests), LSP extension protocol (compilation context switching, etc.), and the control protocol through which `clice index` and `clice query --fresh` ask a running server to index.
 
 **`state/`** — Document state and the invalidation machinery.
 
@@ -132,7 +132,8 @@ The language server's core runtime, responsible for assembling all the layers ab
 **`transport/`** — Protocol endpoints driving the server.
 
 - `MasterServer`: The composition root. Owns the workspace, sessions, worker pool, and all services above, and executes the `Invalidator`'s effects through its single dispatch entry point
-- `LSPClient` / `AgentClient`: Request handlers for the LSP protocol and agentic protocol
+- `LSPClient`: Request handlers for the LSP protocol
+- The control channel: a loopback listener the server opens while it holds the workspace's index writer lock, recorded next to the lock for the command-line tools to find
 
 See [Multi-process Architecture](multi-process.md).
 

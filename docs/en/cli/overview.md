@@ -9,9 +9,9 @@ clice is one binary. Editors launch `clice serve` and talk to it over LSP; the o
 | `index`   | Index a workspace ahead of time so the server starts warm.                | [index](./index.md)            |
 | `format`  | Format the workspace's files with clang-format.                           | [format](./format.md)          |
 | `inspect` | Run one feature on source files and print the raw result as JSON.         |                                |
-| `query`   | Query symbol information from a running server.                           |                                |
+| `query`   | Ask the persisted index about symbols, references, call graphs and files. | [query](./query.md)            |
 | `doc`     | Extract documentation data from a project. Not implemented yet.           |                                |
 
-`inspect` and `query` work today but have no page yet; their options are documented by `clice <command> --help`.
+`inspect` works today but has no page yet; its options are documented by `clice inspect --help`.
 
-`serve`, `index`, `lint`, `format` and `inspect` take `--configuration <tag>` to pin the build configuration for the run, over the selection persisted from the editor; see [switching configurations](../guide/configuration.md#switching-configurations).
+`serve`, `index`, `lint`, `format`, `inspect` and `query` take `--configuration <tag>` to pin the build configuration for the run, over the selection persisted from the editor; see [switching configurations](../guide/configuration.md#switching-configurations).

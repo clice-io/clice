@@ -352,3 +352,24 @@ test("index answers while pull compile runs", async ({ session }) => {
     await arrived;
     second.assertNoErrors(uri);
 });
+
+test("index links guard-skipped includes", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("a.h", "#pragma once\nint alpha();\n");
+    ws.write("b.h", '#pragma once\n#include "a.h"\nint beta();\n');
+    ws.write(
+        "main.cpp",
+        '#include "b.h"\n#include "a.h"\nint main() { return alpha() + beta(); }\n',
+    );
+    ws.writeCDB(["main.cpp"]);
+    ws.pinCacheDir();
+    const client = session.spawn(ws);
+    await client.initialize(ws, { initializationOptions: AUTO });
+
+    const [uri] = client.open("main.cpp");
+    expect(await client.waitForIndex(uri, "main")).toBe(true);
+
+    const links = await client.documentLinks(uri);
+    const targets = (links ?? []).map((link) => link.target?.split("/").pop()).sort();
+    expect(targets).toEqual(["a.h", "b.h"]);
+});

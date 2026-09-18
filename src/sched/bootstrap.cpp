@@ -62,8 +62,14 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
             // owning it), while the persisted version stamps and artifact
             // metadata still seed this session's fast paths. Its own
             // metadata stays in memory and exits with it.
-            workspace.index_db =
-                index::open_database(*workspace.store, configuration, read_only_index);
+            if(read_only_index) {
+                workspace.index_db = index::open_database(*workspace.store, configuration, true);
+            } else if((workspace.writer_lock = index::WriterLock::acquire(cfg.cache_dir))) {
+                workspace.index_db = index::open_database(*workspace.store, configuration);
+                if(!workspace.index_db) {
+                    workspace.writer_lock.reset();
+                }
+            }
             LOG_INFO("Cache store: {}", workspace.store->base_dir());
             report.opened_store = true;
         }
@@ -83,7 +89,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     // Persisted index shards are CDB-independent; they load even with no
     // member yet, so a database generated later (picked up by the CDB
     // poll) starts from the previous session's index.
-    auto loaded = store.load(read_only_index);
+    auto loaded = store.load({.read_only = read_only_index});
     bool owed = !loaded.report.reindex().empty();
     pump.claim_report(loaded.report);
 

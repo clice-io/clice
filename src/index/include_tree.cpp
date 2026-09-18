@@ -74,6 +74,36 @@ IncludeTree IncludeTree::from(CompilationUnitRef unit, llvm::ArrayRef<clang::Fil
         }
     }
 
+    // Skipped directives after every entry, so entered nodes keep the ids
+    // the recursion above assigned. Their target was entered earlier — in
+    // this parse, or under a preamble PCH in the preamble's, which the
+    // callbacks above never saw — so its path may still be new here.
+    llvm::SmallVector<std::pair<clang::FileID, std::uint32_t>> skipped_targets;
+    for(auto fid: directive_fids) {
+        for(auto& include: directives.find(fid)->second.includes) {
+            // A target never entered in this parse (behind a preamble PCH)
+            // has no buffer to hash, and a version without a hash is never
+            // fresh: leave the directive out rather than pin the unit stale.
+            if(!include.skipped || !include.fid.isValid() ||
+               !unit.loaded_file_content(include.fid)) {
+                continue;
+            }
+            auto parent = add_include_chain(unit, fid, tree, path_table);
+            auto [iter, success] =
+                path_table.try_emplace(unit.file_path(include.fid), tree.paths.size());
+            if(success) {
+                tree.paths.emplace_back(iter->first());
+            }
+            skipped_targets.push_back({include.fid, iter->second});
+            tree.nodes.push_back({
+                .file = iter->second,
+                .parent = parent,
+                .line = unit.presumed_location(include.location).getLine(),
+                .skipped = true,
+            });
+        }
+    }
+
     llvm::SmallVector<clang::FileID> sorted_indexed(indexed_fids.begin(), indexed_fids.end());
     llvm::sort(sorted_indexed);
     for(auto fid: sorted_indexed) {
@@ -102,6 +132,9 @@ IncludeTree IncludeTree::from(CompilationUnitRef unit, llvm::ArrayRef<clang::Fil
         if(node != no_node) {
             hash_fid(fid, tree.nodes[node].file);
         }
+    }
+    for(auto [fid, path_id]: skipped_targets) {
+        hash_fid(fid, path_id);
     }
     hash_fid(main_fid, tree.paths.size() - 1);
     return tree;

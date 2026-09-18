@@ -190,6 +190,7 @@ struct CacheStore::State {
     std::mutex mutex;
 
     /// `{root}/cache/v{version}` — everything the store manages lives here.
+    std::string root;
     std::string base;
 
     /// `{base}/tmp/{pid}` — this instance's in-flight writes.
@@ -276,6 +277,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
 
     auto parent = path::join(root, "cache");
     auto version_dir = std::format("v{}", version);
+    state->root = std::string(root);
     state->base = path::join(parent, version_dir);
 
     if(read_only) {
@@ -801,6 +803,10 @@ std::size_t CacheStore::pending_tmp_files() const {
 
 llvm::StringRef CacheStore::base_dir() const {
     return state->base;
+}
+
+llvm::StringRef CacheStore::root_dir() const {
+    return state->root;
 }
 
 bool CacheStore::read_only() const {

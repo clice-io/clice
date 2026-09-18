@@ -27,6 +27,7 @@ cli:
   items:
     - overview
     - index
+    - query
     - lint
     - format
 

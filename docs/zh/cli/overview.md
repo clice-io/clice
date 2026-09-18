@@ -9,9 +9,9 @@ clice 只有一个二进制。编辑器启动 `clice serve` 并通过 LSP 与它
 | `index`   | 提前为工作区建立索引，让服务器热启动。           | [index](./index.md)            |
 | `format`  | 用 clang-format 格式化工作区中的文件。           | [format](./format.md)          |
 | `inspect` | 对源文件运行某一项功能，把原始结果打印成 JSON。  |                                |
-| `query`   | 向运行中的服务器查询符号信息。                   |                                |
+| `query`   | 向持久化索引查询符号、引用、调用图和文件。       | [query](./query.md)            |
 | `doc`     | 从项目中提取文档数据。尚未实现。                 |                                |
 
-`inspect` 和 `query` 现在已可使用但还没有页面，选项通过 `clice <command> --help` 查看。
+`inspect` 现在已可使用但还没有页面，选项通过 `clice inspect --help` 查看。
 
-`serve`、`index`、`lint`、`format` 和 `inspect` 都接受 `--configuration <tag>`，为本次运行固定构建配置，其优先级高于编辑器持久化的选择；参见[切换配置](../guide/configuration.md#switching-configurations)。
+`serve`、`index`、`lint`、`format`、`inspect` 和 `query` 都接受 `--configuration <tag>`，为本次运行固定构建配置，其优先级高于编辑器持久化的选择；参见[切换配置](../guide/configuration.md#switching-configurations)。

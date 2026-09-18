@@ -174,7 +174,28 @@ bool IndexQuery::is_open(Fid file) const {
     return sources.sessions && sources.sessions->find(file) != nullptr;
 }
 
+llvm::SmallVector<Fid> DiskGate::withheld() const {
+    llvm::SmallVector<Fid> files;
+    for(auto& [file, stale]: verdicts) {
+        if(stale) {
+            files.push_back(file);
+        }
+    }
+    return files;
+}
+
 bool IndexQuery::skip_stale_contribution(Fid file) const {
+    if(sources.disk) {
+        auto [it, inserted] = sources.disk->verdicts.try_emplace(file, false);
+        if(inserted) {
+            auto shard = workspace.shards.find(file);
+            if(shard != workspace.shards.end()) {
+                auto disk = workspace.file_table.current(file);
+                it->second = !disk || !shard->second.matches_content(disk->size, disk->hash);
+            }
+        }
+        return it->second;
+    }
     // With background indexing disabled nothing ever catches up: serving
     // the last-known rows beats a permanent hole.
     if(!workspace.config.project.enable_indexing.value) {

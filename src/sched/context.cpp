@@ -305,8 +305,11 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     // semantics, so it forces synthesis regardless of the verdict.
     const Selection* choice = selection(use, path_id);
     bool has_host_choice = choice && choice->host_path_id.valid();
-    bool synthesize = header_mode(path, path_id) == HeaderMode::NeedsContext ||
-                      (has_host_choice && choice->occurrence.has_value());
+    // A synthesized context is a store artifact; a read-only reader (the
+    // query command) compiles the header under its host's command instead.
+    bool can_synthesize = workspace.store && !workspace.store->read_only();
+    bool synthesize = can_synthesize && (header_mode(path, path_id) == HeaderMode::NeedsContext ||
+                                         (has_host_choice && choice->occurrence.has_value()));
 
     // Use cached context if it is still valid; otherwise resolve. The cache
     // is dropped when an active context override points to a different host

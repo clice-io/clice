@@ -193,9 +193,9 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
 
 ## Known pitfalls (each cost a real debugging session)
 
-- JS numbers mangle 64-bit values: cache.json dep hashes and agentic
-  symbolIds need `JSON.rawJSON`/BigInt-reviver round trips (see
-  persistent_cache.test.ts, agentic/rpc.ts).
+- JS numbers mangle 64-bit values: cache.json dep hashes need
+  `JSON.rawJSON`/BigInt-reviver round trips (see persistent_cache.test.ts);
+  `clice query` answers carry symbol ids as `#<hex>` strings for this reason.
 - Python-style truthiness does not port: `expect([]).toBeFalsy()` fails —
   assert `length` explicitly.
 - LSP positions are UTF-16 code units; ASCII fixtures keep them equal to

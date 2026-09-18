@@ -6,9 +6,10 @@
 #include <vector>
 
 #include "version.h"
+#include "index/writer_lock.h"
 #include "sched/bootstrap.h"
 #include "server/state/file_tracker.h"
-#include "server/transport/agent_client.h"
+#include "server/transport/control_server.h"
 #include "server/transport/lsp_client.h"
 #include "support/anomaly.h"
 #include "support/cache_store.h"
@@ -41,7 +42,6 @@ MasterServer::MasterServer(kota::event_loop& loop,
                            std::string requested_configuration) :
     loop(loop), pool(loop), contexts(workspace),
     index_query(workspace, {.sessions = &sessions, .projections = &ast.projections, .pump = &pump}),
-    agent_query(workspace, {.pump = &pump}),
     features(ast, dispatcher, index_query, workspace, contexts, pump, sessions),
     invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
     self_path(std::move(self_path)), requested_configuration(std::move(requested_configuration)) {
@@ -388,25 +388,26 @@ void MasterServer::close_session(Fid path_id) {
 }
 
 Admission MasterServer::index_admission(Fid server_path_id) {
-    // Open files whose session invests in an AST are skipped until an
-    // agent shows up: the LSP side never reads their shards (the session
-    // serves them), so indexing them is pure waste — but agents read disk
-    // truth and need the shards, snapshot taken from disk regardless of
-    // the live buffer. Skipping loses no debt: the veto settles the
-    // claim, and BufferClosed re-checks the shard against the disk on
-    // close. An index-only session is the opposite case — its shard IS
-    // what the LSP serves (freshness clause 4), so it indexes like a
-    // closed file, but only while its buffer matches the disk this index
-    // would read: rows from a diverged disk fail clause 4's content gate
-    // and would replace the one shard the session can serve from,
-    // blanking its features until an escalation. Keep the last matching
-    // rows instead — the close-time re-check covers the debt here too.
+    // An open file's session serves the LSP side; its disk snapshot is
+    // indexed for the command-line readers when the disk itself changed
+    // (a save), not for a dependency sweep — that would compile a file
+    // the user just opened twice over. Skipping loses no debt: the veto
+    // settles the claim, and BufferClosed re-checks the shard against the
+    // disk on close. An index-only session is the other case — its shard
+    // IS what the LSP serves (freshness clause 4), so it indexes only
+    // while its buffer matches the disk this index would read: rows from
+    // a diverged disk fail clause 4's content gate and would replace the
+    // one shard the session can serve from, blanking its features until
+    // an escalation. Keep the last matching rows instead — the close-time
+    // re-check covers the debt here too.
     auto session = sessions.find(server_path_id);
     if(!session) {
         return Admission::Admit;
     }
     if(session->serving != ServingMode::IndexOnly) {
-        return index_open_files ? Admission::Admit : Admission::SkipAndSettle;
+        return pump.pending_reason(server_path_id) == ReindexReason::ContentChanged
+                   ? Admission::Admit
+                   : Admission::SkipAndSettle;
     }
     auto disk = workspace.file_table.current(server_path_id);
     if(!disk || disk->size != session->text.size() ||
@@ -443,36 +444,6 @@ void MasterServer::index_rows_changed(llvm::ArrayRef<Fid> path_ids) {
     if(llvm::any_of(path_ids, [&](Fid id) { return serves_session_rows(id); })) {
         on_serving_rows_changed.emit();
     }
-}
-
-void MasterServer::on_agentic_query() {
-    if(index_open_files) {
-        return;
-    }
-    // First agentic index query: agents read disk truth, so open files'
-    // disk snapshots must be indexed too — background indexing skips
-    // them otherwise, since the LSP side is fully served by their
-    // sessions. Sticky for the server's lifetime.
-    index_open_files = true;
-    for(auto& [path_id, session]: sessions.sessions) {
-        if(!session) {
-            continue;
-        }
-        // Same disk-vs-shard arbitration as BufferClosed: a current shard
-        // keeps serving through the catch-up, while a stale or missing one
-        // (a save that landed while its reindex slot was still skipped)
-        // must not answer agents with the pre-save rows.
-        auto disk = workspace.file_table.current(path_id);
-        if(!disk) {
-            continue;
-        }
-        auto shard_it = workspace.shards.find(path_id);
-        bool shard_current = shard_it != workspace.shards.end() &&
-                             shard_it->second.matches_content(disk->size, disk->hash);
-        pump.enqueue(path_id,
-                     shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
-    }
-    pump.schedule();
 }
 
 void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
@@ -574,6 +545,10 @@ void MasterServer::schedule_shutdown() {
 }
 
 kota::task<> MasterServer::shutdown_and_cleanup() {
+    if(endpoint_recorded) {
+        index::remove_endpoint(workspace.config.project.cache_dir);
+        endpoint_recorded = false;
+    }
     bg_tasks.cancel();
     co_await bg_tasks.join();
     // Quiesce in-flight compilation and indexing first so the persisted
@@ -664,6 +639,9 @@ void MasterServer::load_workspace() {
     if(report.opened_store) {
         bg_tasks.spawn(cache_checkpoint_task());
     }
+    if(workspace.index_db && !workspace.index_db->read_only()) {
+        start_control_listener();
+    }
     if(!report.has_commands) {
         LOG_GUIDANCE(
             "No compile_commands.json found in workspace {}. Compile commands will be "
@@ -672,10 +650,36 @@ void MasterServer::load_workspace() {
     }
 }
 
+void MasterServer::start_control_listener() {
+    constexpr llvm::StringLiteral host = "127.0.0.1";
+    auto acceptor = kota::tcp::listen(host, 0, {}, loop);
+    std::optional<int> port;
+    if(acceptor) {
+        if(auto bound = kota::tcp::local_port(*acceptor)) {
+            port = *bound;
+        }
+    }
+    if(!port) {
+        LOG_WARN("Failed to start the control listener; `clice index` cannot ask this server");
+        return;
+    }
+    auto& cache_dir = workspace.config.project.cache_dir;
+    if(!index::write_endpoint(
+           cache_dir,
+           {.pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId()),
+            .version = std::string(clice::version),
+            .host = host.str(),
+            .port = *port})) {
+        return;
+    }
+    endpoint_recorded = true;
+    LOG_INFO("Control channel listening on {}:{}", host, *port);
+    bg_tasks.spawn(serve_control(*this, std::move(*acceptor)));
+}
+
 struct Connection {
     std::unique_ptr<kota::ipc::JsonPeer> peer;
     std::unique_ptr<LSPClient> lsp_client;
-    std::unique_ptr<AgentClient> agent_client;
 };
 
 static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
@@ -686,9 +690,10 @@ static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
     connections.erase(pos);
 }
 
+/// Socket-mode serving body: the first connection gets the LSP slot,
+/// later ones only a peer (the slot is never reclaimed).
 static kota::task<> accept_connections(MasterServer& server,
                                        kota::tcp::acceptor acceptor,
-                                       bool register_lsp,
                                        std::list<Connection>& connections) {
     auto& loop = kota::event_loop::current();
     kota::task_group<> group(loop);
@@ -696,7 +701,6 @@ static kota::task<> accept_connections(MasterServer& server,
 
     group.spawn([](MasterServer& server,
                    kota::tcp::acceptor& acceptor,
-                   bool register_lsp,
                    std::list<Connection>& connections,
                    kota::task_group<>& group,
                    bool& lsp_registered) -> kota::task<> {
@@ -713,31 +717,23 @@ static kota::task<> accept_connections(MasterServer& server,
             auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
 
             std::unique_ptr<LSPClient> lsp;
-            if(register_lsp && !lsp_registered) {
+            if(!lsp_registered) {
                 lsp = std::make_unique<LSPClient>(server, *peer);
                 lsp_registered = true;
             }
-            auto agent = std::make_unique<AgentClient>(server, *peer);
 
             auto* peer_ptr = peer.get();
             auto it = connections.emplace(connections.end(),
                                           Connection{
                                               .peer = std::move(peer),
                                               .lsp_client = std::move(lsp),
-                                              .agent_client = std::move(agent),
                                           });
 
             group.spawn(run_connection(peer_ptr, connections, it));
         }
-    }(server, acceptor, register_lsp, connections, group, lsp_registered));
+    }(server, acceptor, connections, group, lsp_registered));
 
     co_await group.join();
-}
-
-/// Pipe-mode serving body: the LSP peer plus the agentic acceptor as a
-/// single task, so the caller can bound both with the shutdown scope.
-static kota::task<> serve_peer(kota::ipc::JsonPeer& peer, kota::task<> acceptor) {
-    co_await kota::when_any(peer.run(), std::move(acceptor));
 }
 
 int run_serve_mode(const ServerOptions& opts, const char* self_path) {
@@ -763,7 +759,6 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
 
     kota::event_loop loop;
     MasterServer server(loop, self_path, opts.configuration.value_or(""));
-    std::list<Connection> connections;
 
     if(mode == ServerMode::Pipe) {
         auto transport = kota::ipc::StreamTransport::open_stdio(loop);
@@ -781,25 +776,8 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
         kota::ipc::JsonPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
 
-        kota::tcp::acceptor agent_acceptor;
-        bool has_agent_acceptor = false;
-
-        if(port > 0) {
-            auto acceptor = kota::tcp::listen(host, port, {}, loop);
-            if(acceptor) {
-                LOG_INFO("Agentic protocol listening on {}:{}", host, port);
-                agent_acceptor = std::move(*acceptor);
-                has_agent_acceptor = true;
-            } else {
-                LOG_WARN("Failed to start agentic listener on {}:{}", host, port);
-            }
-        }
-
         loop.schedule([](MasterServer& server,
                          kota::ipc::JsonPeer& peer,
-                         std::list<Connection>& connections,
-                         kota::tcp::acceptor acceptor,
-                         bool has_acceptor,
                          std::string workspace) -> kota::task<> {
             // Pre-initialize for standalone (no-editor) use; LSP initialize
             // will be rejected. Runs inside the loop — before the peer
@@ -808,16 +786,9 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             if(!workspace.empty()) {
                 server.initialize(workspace);
             }
-            if(has_acceptor) {
-                co_await kota::with_token(
-                    serve_peer(peer,
-                               accept_connections(server, std::move(acceptor), false, connections)),
-                    server.shutdown_token());
-            } else {
-                co_await kota::with_token(peer.run(), server.shutdown_token());
-            }
+            co_await kota::with_token(peer.run(), server.shutdown_token());
             co_await server.shutdown_and_cleanup();
-        }(server, lsp_peer, connections, std::move(agent_acceptor), has_agent_acceptor, ws));
+        }(server, lsp_peer, ws));
         loop.run();
         return 0;
     }
@@ -829,11 +800,10 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             return 1;
         }
 
-        bool register_lsp = ws.empty();
+        std::list<Connection> connections;
         LOG_INFO("Listening on {}:{} ...", host, port);
         loop.schedule([](MasterServer& server,
                          kota::tcp::acceptor acceptor,
-                         bool register_lsp,
                          std::list<Connection>& connections,
                          std::string workspace) -> kota::task<> {
             // See the pipe-mode comment: pre-initialization must run
@@ -841,11 +811,10 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             if(!workspace.empty()) {
                 server.initialize(workspace);
             }
-            co_await kota::with_token(
-                accept_connections(server, std::move(acceptor), register_lsp, connections),
-                server.shutdown_token());
+            co_await kota::with_token(accept_connections(server, std::move(acceptor), connections),
+                                      server.shutdown_token());
             co_await server.shutdown_and_cleanup();
-        }(server, std::move(*acceptor), register_lsp, connections, ws));
+        }(server, std::move(*acceptor), connections, ws));
         loop.run();
         return 0;
     }

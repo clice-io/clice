@@ -47,7 +47,7 @@ IndexQuery index_query{
     workspace,
     {.sessions = &session_store, .projections = &projections, .pump = &indexer}
 };
-IndexQuery agent_query{workspace, {.pump = &indexer}};
+IndexQuery disk_query{workspace, {.pump = &indexer}};
 
 TempDir dir;
 index::TUIndex full_index;
@@ -379,8 +379,8 @@ int main() { return 0; }
     merge_disk_index();
 
     // Macro Definition relations carry the full #define extent, so the
-    // agentic text path works for macros through the disk index.
-    auto text = agent_query.definition_text(hash_of("FOO"));
+    // disk text path works for macros.
+    auto text = disk_query.definition_text(hash_of("FOO"));
     ASSERT_TRUE(text.has_value());
     EXPECT_TRUE(llvm::StringRef(text->text).contains("FOO"));
 }
@@ -401,12 +401,12 @@ int main() { return 0; }
     merge_disk_index();
 
     auto foo = hash_of("FOO");
-    EXPECT_FALSE(agent_query.definition_text(foo).has_value());
+    EXPECT_FALSE(disk_query.definition_text(foo).has_value());
 
-    auto references = agent_query.sites(foo, RelationKind::Reference);
+    auto references = disk_query.sites(foo, RelationKind::Reference);
     ASSERT_FALSE(references.empty());
     for(auto& reference: references) {
-        EXPECT_TRUE(agent_query.context_line(reference).empty());
+        EXPECT_TRUE(disk_query.context_line(reference).empty());
     }
 }
 
@@ -447,19 +447,19 @@ TEST_CASE(AsciiPreviewFromDisk) {
     workspace.project_index.symbols[sym].name = "value";
     workspace.project_index.symbols[sym].reference_files.add(path_id.raw);
 
-    auto definition = agent_query.definition_text(sym);
+    auto definition = disk_query.definition_text(sym);
     ASSERT_TRUE(definition.has_value());
     EXPECT_EQ(definition->text, "int value = 1;");
 
-    auto references = agent_query.sites(sym, RelationKind::Reference);
+    auto references = disk_query.sites(sym, RelationKind::Reference);
     ASSERT_FALSE(references.empty());
-    EXPECT_EQ(agent_query.context_line(references.front()), "int other = value;");
+    EXPECT_EQ(disk_query.context_line(references.front()), "int other = value;");
 
     dir.touch("preview.cpp", "int moved = 0;\n");
-    EXPECT_FALSE(agent_query.definition_text(sym).has_value());
-    references = agent_query.sites(sym, RelationKind::Reference);
+    EXPECT_FALSE(disk_query.definition_text(sym).has_value());
+    references = disk_query.sites(sym, RelationKind::Reference);
     ASSERT_FALSE(references.empty());
-    EXPECT_TRUE(agent_query.context_line(references.front()).empty());
+    EXPECT_TRUE(disk_query.context_line(references.front()).empty());
 }
 
 TEST_CASE(SharedPreambleScoped) {

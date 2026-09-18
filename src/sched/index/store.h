@@ -24,6 +24,21 @@ struct IndexerFixture;
 
 }
 
+struct IndexLoadOptions {
+    /// Keep the sweeps in memory only: an out-of-process reader must not
+    /// delete blobs a concurrently running server may be about to
+    /// reference.
+    bool read_only = false;
+
+    /// Serve the shards straight from the opening read snapshot, pinned
+    /// for the store's lifetime, instead of copying them out and retiring
+    /// it. For a short-lived reader (`clice query`, `clice index --stats`)
+    /// the copy is the whole cost of the load; a long read-only session
+    /// (batch lint) copies so a concurrent writer can reclaim its pages
+    /// meanwhile.
+    bool borrow = false;
+};
+
 /// The project index's storage engine: merging TUIndex results into the
 /// in-memory ProjectIndex and Shard blobs, persisting them, and restoring
 /// them at startup. It knows nothing about sessions or the pump's debt
@@ -126,10 +141,7 @@ public:
 
     /// Load the global blob, adopt every resolvable manifest, fetch the
     /// shard blobs the contributions expect, and sweep the rest.
-    /// `read_only` keeps the sweeps in memory only: an out-of-process
-    /// reader (`clice index --stats`) must not delete blobs a concurrently
-    /// running server may be about to reference.
-    LoadResult load(bool read_only = false);
+    LoadResult load(IndexLoadOptions options = {});
 
     /// Record the host source whose command a standalone-indexed header's
     /// retained rows borrowed. Written when a merge lands, persisted in
@@ -294,8 +306,8 @@ private:
     /// Confirmed corruption heals through rebuildability: condemn the
     /// database (deleted on close) and continue on a freshly opened empty
     /// one, so the session's rebuild persists instead of waiting for the
-    /// next start. A failed reopen (another process grabbed the writer
-    /// lock meanwhile) leaves persistence disabled for the session.
+    /// next start. A failed reopen leaves persistence disabled for the
+    /// session.
     void reopen_fresh_database();
 
     /// Migrate resident shards onto a fresh database read snapshot after a

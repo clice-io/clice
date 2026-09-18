@@ -24,7 +24,7 @@ enum class ReadonlyMode : std::uint8_t {
     Off,
     /// Never build a PCH: reads serve from the index alone (a cold file
     /// jumps the indexing queue), while completion and signature help
-    /// still compile on demand — without a preamble. The agent /
+    /// still compile on demand — without a preamble. The
     /// low-resource profile.
     On,
     /// Files start as On and switch to Off at the first edit intent

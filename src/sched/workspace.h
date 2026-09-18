@@ -16,6 +16,7 @@
 #include "index/project_index.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
+#include "index/writer_lock.h"
 #include "sched/build.h"
 #include "sched/crash_budget.h"
 #include "sched/hosting.h"
@@ -37,7 +38,7 @@ class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 10;
+constexpr inline std::uint32_t cache_format_version = 11;
 
 /// One dependency of a compilation artifact.
 ///
@@ -223,6 +224,11 @@ struct Workspace {
     /// recovery); validity metadata (deps snapshots) lives in the index
     /// database, written by IndexStore::save.
     std::optional<CacheStore> store;
+
+    /// The cache directory's writer lock, taken by a session that persists
+    /// its index and held until the workspace dies — after `index_db`, so
+    /// a reopened database never races another writer for the directory.
+    std::optional<index::WriterLock> writer_lock;
 
     /// Index blob persistence, opened together with the cache store.
     /// Declared right after `store` (both backends borrow it) and before
