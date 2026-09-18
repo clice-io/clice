@@ -388,18 +388,26 @@ void MasterServer::close_session(Fid path_id) {
 }
 
 Admission MasterServer::index_admission(Fid server_path_id) {
-    // An open file's disk snapshot indexes like a closed file's: its
-    // session serves the LSP side, but the commands reading the persisted
-    // index need the shard. An index-only session is the exception — its
-    // shard IS what the LSP serves (freshness clause 4), so it indexes only
-    // while its buffer matches the disk this index would read: rows from a
-    // diverged disk fail clause 4's content gate and would replace the one
-    // shard the session can serve from, blanking its features until an
-    // escalation. Keep the last matching rows instead — the close-time
+    // An open file's session serves the LSP side; its disk snapshot is
+    // indexed for the command-line readers when the disk itself changed
+    // (a save), not for a dependency sweep — that would compile a file
+    // the user just opened twice over. Skipping loses no debt: the veto
+    // settles the claim, and BufferClosed re-checks the shard against the
+    // disk on close. An index-only session is the other case — its shard
+    // IS what the LSP serves (freshness clause 4), so it indexes only
+    // while its buffer matches the disk this index would read: rows from
+    // a diverged disk fail clause 4's content gate and would replace the
+    // one shard the session can serve from, blanking its features until
+    // an escalation. Keep the last matching rows instead — the close-time
     // re-check covers the debt here too.
     auto session = sessions.find(server_path_id);
-    if(!session || session->serving != ServingMode::IndexOnly) {
+    if(!session) {
         return Admission::Admit;
+    }
+    if(session->serving != ServingMode::IndexOnly) {
+        return pump.pending_reason(server_path_id) == ReindexReason::ContentChanged
+                   ? Admission::Admit
+                   : Admission::SkipAndSettle;
     }
     auto disk = workspace.file_table.current(server_path_id);
     if(!disk || disk->size != session->text.size() ||

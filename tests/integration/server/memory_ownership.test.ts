@@ -98,9 +98,16 @@ test("save writes only dirty shards", async ({ session }) => {
         `an incremental save must write only the touched shard: ${JSON.stringify(stats)}`,
     ).toBe(1);
 
-    // A round with nothing to write commits zero shards: saving the open
-    // file schedules a round, but its shard is served by the session and
-    // background indexing skips open files.
+    // Saving the open file indexes its disk snapshot: the first save lands
+    // the shard its session never contributed, a second save of the same
+    // bytes is a round with nothing to write.
+    const before = stats.indexShardContentBytes;
+    client.save(uri);
+    await waitStats(
+        client,
+        (s) => s.indexShardContentBytes > before && s.indexInmemoryShards === 0,
+        "the open file's shard did not land",
+    );
     client.save(uri);
     await waitStats(client, (s) => s.lastSaveShards === 0, "a no-op round must save zero shards");
     client.assertNoAnomaly();
