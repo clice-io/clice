@@ -369,8 +369,6 @@ test("index links guard-skipped includes", async ({ session }) => {
     const [uri] = client.open("main.cpp");
     expect(await client.waitForIndex(uri, "main")).toBe(true);
 
-    // The second directive re-includes a header its predecessor already
-    // entered; the index route must still link it.
     const links = await client.documentLinks(uri);
     const targets = (links ?? []).map((link) => link.target?.split("/").pop()).sort();
     expect(targets).toEqual(["a.h", "b.h"]);

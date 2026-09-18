@@ -139,11 +139,9 @@ public:
     /// sessions instead of being dropped as unlisted and rebuilt.
     llvm::SmallVector<std::string> remembered_sources();
 
-    using LoadOptions = IndexLoadOptions;
-
     /// Load the global blob, adopt every resolvable manifest, fetch the
     /// shard blobs the contributions expect, and sweep the rest.
-    LoadResult load(LoadOptions options = {});
+    LoadResult load(IndexLoadOptions options = {});
 
     /// Record the host source whose command a standalone-indexed header's
     /// retained rows borrowed. Written when a merge lands, persisted in

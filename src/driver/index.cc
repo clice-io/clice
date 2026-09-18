@@ -6,7 +6,6 @@
 #include <map>
 #include <print>
 #include <ranges>
-#include <thread>
 
 #include "driver/driver.h"
 #include "index/database.h"
@@ -14,13 +13,10 @@
 #include "index/writer_lock.h"
 #include "sched/batch.h"
 #include "sched/configuration.h"
-#include "sched/context.h"
-#include "sched/index/store.h"
 #include "sched/index_view.h"
 #include "sched/workspace.h"
 #include "server/service/query.h"
 #include "server/transport/control_client.h"
-#include "support/cache_store.h"
 #include "support/timer.h"
 
 #include "kota/meta/enum.h"
@@ -174,11 +170,7 @@ int run_indexing(std::string root,
             return run_indexing_via_server(writer.endpoint,
                                            resolve_configuration(config, configuration));
         case index::WriterProbe::State::Held: {
-            LOG_ERROR(
-                "Another clice process{} holds the index writer lock at {}; rerun when it "
-                "is done",
-                writer.holder.empty() ? "" : std::format(" ({})", writer.holder),
-                cache_dir);
+            LOG_ERROR("{}", index::held_writer_message(writer, cache_dir));
             return 1;
         }
     }

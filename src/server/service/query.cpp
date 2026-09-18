@@ -181,7 +181,6 @@ llvm::SmallVector<Fid> DiskGate::withheld() const {
             files.push_back(file);
         }
     }
-    llvm::sort(files, [](Fid lhs, Fid rhs) { return lhs.raw < rhs.raw; });
     return files;
 }
 

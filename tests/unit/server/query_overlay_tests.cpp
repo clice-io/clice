@@ -379,7 +379,7 @@ int main() { return 0; }
     merge_disk_index();
 
     // Macro Definition relations carry the full #define extent, so the
-    // the disk text path works for macros.
+    // disk text path works for macros.
     auto text = disk_query.definition_text(hash_of("FOO"));
     ASSERT_TRUE(text.has_value());
     EXPECT_TRUE(llvm::StringRef(text->text).contains("FOO"));

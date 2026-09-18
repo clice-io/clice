@@ -1,11 +1,8 @@
 #include "server/service/query_commands.h"
 
-#include <algorithm>
 #include <format>
-#include <ranges>
 
 #include "index/serialization.h"
-#include "support/filesystem.h"
 
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
@@ -39,13 +36,13 @@ bool is_header(llvm::StringRef path) {
     return ext == ".h" || ext == ".hpp" || ext == ".hxx" || ext == ".hh";
 }
 
-/// The 1-based lines a site spans, as the answers spell positions;
-/// nullopt when its bytes fall outside the source's text.
+/// The 1-based lines a site spans, as the answers spell positions.
 struct Lines {
     int start;
     int end;
 };
 
+/// nullopt when the site's bytes fall outside the source's text.
 std::optional<Lines> lines_of(const Site& site) {
     auto range = site.coords.to_range(site.range.begin, site.range.end);
     if(!range) {
@@ -171,10 +168,6 @@ void collect_targets(Context& ctx,
     }
 }
 
-bool one_of(llvm::StringRef value, std::initializer_list<llvm::StringRef> allowed) {
-    return std::ranges::find(allowed, value) != allowed.end();
-}
-
 }  // namespace
 
 Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path) {
@@ -195,7 +188,7 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path
 }
 
 Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) {
-    if(!one_of(filter, {"all", "source", "header", "module"})) {
+    if(!llvm::is_contained<llvm::StringRef>({"all", "source", "header", "module"}, filter)) {
         return std::unexpected(
             std::format("invalid filter '{}': expected all, source, header or module",
                         std::string_view(filter)));
@@ -236,7 +229,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
 
 Outcome<FileDepsResult>
     file_deps(Context& ctx, llvm::StringRef path, llvm::StringRef direction, int depth) {
-    if(!one_of(direction, {"includes", "includers", "both"})) {
+    if(!llvm::is_contained<llvm::StringRef>({"includes", "includers", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected includes, includers or both",
                         std::string_view(direction)));
@@ -435,7 +428,7 @@ Outcome<ReferencesResult> references(Context& ctx,
 Outcome<CallGraphResult> call_graph(Context& ctx,
                                     const SymbolLocatorParams& locator,
                                     llvm::StringRef direction) {
-    if(!one_of(direction, {"callers", "callees", "both"})) {
+    if(!llvm::is_contained<llvm::StringRef>({"callers", "callees", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected callers, callees or both",
                         std::string_view(direction)));
@@ -475,7 +468,7 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
                                             const SymbolLocatorParams& locator,
                                             llvm::StringRef direction) {
-    if(!one_of(direction, {"supertypes", "subtypes", "both"})) {
+    if(!llvm::is_contained<llvm::StringRef>({"supertypes", "subtypes", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected supertypes, subtypes or both",
                         std::string_view(direction)));

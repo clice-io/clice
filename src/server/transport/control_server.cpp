@@ -21,72 +21,63 @@ using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::JsonPeer::RequestContext;
 
 void register_control(MasterServer& srv, kota::ipc::JsonPeer& peer) {
-    peer.on_request(
-        [&srv](RequestContext&,
-               const control::IndexParams& params) -> RequestResult<control::IndexParams> {
-            auto active = srv.workspace.build.active_configuration();
-            if(params.configuration != active) {
-                co_return kota::outcome_error(kota::ipc::Error{
-                    std::format("the running clice server indexes configuration '{}', not '{}'",
-                                std::string_view(active),
-                                params.configuration)});
+    peer.on_request([&srv](RequestContext&, const control::IndexParams& params)
+                        -> RequestResult<control::IndexParams> {
+        auto active = srv.workspace.build.active_configuration();
+        if(params.configuration != active) {
+            co_return kota::outcome_error(kota::ipc::Error{
+                std::format("the running clice server indexes configuration '{}', not '{}'",
+                            std::string_view(active),
+                            params.configuration)});
+        }
+        if(!srv.workspace.config.project.enable_indexing.value) {
+            co_return kota::outcome_error(
+                kota::ipc::Error{"the running clice server has background indexing disabled"});
+        }
+        // Build changes land through the tracker's poll; a request right
+        // after a compile_commands.json edit must see the new units.
+        if(srv.tracker) {
+            auto events = srv.tracker->tick_cdb(/*force=*/true);
+            if(!events.empty()) {
+                srv.dispatch(events);
             }
-            if(!srv.workspace.config.project.enable_indexing.value) {
-                co_return kota::outcome_error(
-                    kota::ipc::Error{"the running clice server has background indexing disabled"});
+        }
+        control::IndexResult result;
+        llvm::SmallVector<Fid> files;
+        for(auto member: srv.workspace.build.members()) {
+            if(srv.pump.enqueue(member, ReindexReason::DepsOnly)) {
+                files.push_back(member);
             }
-            // Build changes land through the tracker's poll; a request right
-            // after a compile_commands.json edit must see the new units.
-            if(srv.tracker) {
-                auto events = srv.tracker->tick_cdb(/*force=*/true);
-                if(!events.empty()) {
-                    srv.dispatch(events);
-                }
-            }
-            control::IndexResult result;
-            llvm::SmallVector<Fid> files;
-            for(auto member: srv.workspace.build.members()) {
-                if(srv.pump.enqueue(member, ReindexReason::DepsOnly)) {
-                    files.push_back(member);
-                }
-            }
-            srv.pump.schedule(/*immediate=*/true);
-            for(auto file: files) {
+        }
+        srv.pump.schedule(/*immediate=*/true);
+        for(auto file: files) {
+            // One await covers one attempt; a crash or preemption
+            // requeues the file behind it.
+            while(srv.pump.pending_reason(file)) {
                 co_await srv.pump.await_attempt(file);
             }
-            // The round persists at its end; the asker reads the disk, so its
-            // rows must be there before the answer.
-            srv.pump.claim_report(co_await srv.index_store.save(srv.pump.save_debt()));
-            for(auto file: files) {
-                if(srv.pump.failed().contains(file)) {
-                    result.failed.emplace_back(srv.workspace.file_table.resolve(file));
-                }
+        }
+        // The round persists at its end; the asker reads the disk, so its
+        // rows must be there before the answer.
+        srv.pump.claim_report(co_await srv.index_store.save(srv.pump.save_debt()));
+        if(srv.index_store.has_unsaved_state()) {
+            co_return kota::outcome_error(
+                kota::ipc::Error{"part of the index could not be persisted; see the server log"});
+        }
+        for(auto file: files) {
+            if(srv.pump.failed().contains(file)) {
+                result.failed.emplace_back(srv.workspace.file_table.resolve(file));
             }
-            co_return result;
-        });
-
-    peer.on_request([&srv](RequestContext&,
-                           const control::StatusParams&) -> RequestResult<control::StatusParams> {
-        // The progress numbers describe the current round — or the last
-        // one, retained after it ends; the live queue is compacted
-        // between rounds and would read as "nothing was ever indexed".
-        auto& progress = srv.pump.progress();
-        co_return control::StatusResult{
-            .idle = srv.pump.is_idle(),
-            .pending = static_cast<int>(srv.pump.pending_files()),
-            .total = static_cast<int>(progress.total),
-            .indexed = static_cast<int>(progress.completed),
-        };
+        }
+        co_return result;
     });
 }
 
-struct Connection {
-    std::unique_ptr<kota::ipc::JsonPeer> peer;
-};
+using Connections = std::list<std::unique_ptr<kota::ipc::JsonPeer>>;
 
 kota::task<> run_connection(kota::ipc::JsonPeer* peer,
-                            std::list<Connection>& connections,
-                            std::list<Connection>::iterator pos) {
+                            Connections& connections,
+                            Connections::iterator pos) {
     co_await peer->run();
     LOG_DEBUG("Control client disconnected");
     connections.erase(pos);
@@ -97,10 +88,10 @@ kota::task<> run_connection(kota::ipc::JsonPeer* peer,
 kota::task<> serve_control(MasterServer& server, kota::tcp::acceptor acceptor) {
     auto& loop = kota::event_loop::current();
     kota::task_group<> group(loop);
-    std::list<Connection> connections;
+    Connections connections;
     group.spawn([](MasterServer& server,
                    kota::tcp::acceptor& acceptor,
-                   std::list<Connection>& connections,
+                   Connections& connections,
                    kota::task_group<>& group) -> kota::task<> {
         auto& loop = kota::event_loop::current();
         while(true) {
@@ -113,7 +104,7 @@ kota::task<> serve_control(MasterServer& server, kota::tcp::acceptor acceptor) {
             auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
             register_control(server, *peer);
             auto* peer_ptr = peer.get();
-            auto it = connections.emplace(connections.end(), Connection{.peer = std::move(peer)});
+            auto it = connections.emplace(connections.end(), std::move(peer));
             group.spawn(run_connection(peer_ptr, connections, it));
         }
     }(server, acceptor, connections, group));

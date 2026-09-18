@@ -75,9 +75,9 @@ IncludeTree IncludeTree::from(CompilationUnitRef unit, llvm::ArrayRef<clang::Fil
     }
 
     // Skipped directives after every entry, so entered nodes keep the ids
-    // the recursion above assigned. Their target was entered elsewhere in
-    // this parse (that is what skipping means), so its path and hash are
-    // already in the table.
+    // the recursion above assigned. Their target was entered earlier — in
+    // this parse, or under a preamble PCH in the preamble's, which the
+    // callbacks above never saw — so its path may still be new here.
     llvm::SmallVector<std::pair<clang::FileID, std::uint32_t>> skipped_targets;
     for(auto fid: directive_fids) {
         for(auto& include: directives.find(fid)->second.includes) {

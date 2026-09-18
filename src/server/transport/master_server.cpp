@@ -643,12 +643,14 @@ void MasterServer::load_workspace() {
 }
 
 void MasterServer::start_control_listener() {
-    auto acceptor = kota::tcp::listen("127.0.0.1", 0, {}, loop);
-    if(!acceptor) {
-        LOG_WARN("Failed to start the control listener; `clice index` cannot ask this server");
-        return;
+    constexpr llvm::StringLiteral host = "127.0.0.1";
+    auto acceptor = kota::tcp::listen(host, 0, {}, loop);
+    std::optional<int> port;
+    if(acceptor) {
+        if(auto bound = kota::tcp::local_port(*acceptor)) {
+            port = *bound;
+        }
     }
-    auto port = kota::tcp::local_port(*acceptor);
     if(!port) {
         LOG_WARN("Failed to start the control listener; `clice index` cannot ask this server");
         return;
@@ -657,10 +659,10 @@ void MasterServer::start_control_listener() {
     index::write_endpoint(cache_dir,
                           {.pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId()),
                            .version = std::string(clice::version),
-                           .host = "127.0.0.1",
+                           .host = host.str(),
                            .port = *port});
     endpoint_recorded = true;
-    LOG_INFO("Control channel listening on 127.0.0.1:{}", *port);
+    LOG_INFO("Control channel listening on {}:{}", host, *port);
     bg_tasks.spawn(serve_control(*this, std::move(*acceptor)));
 }
 
@@ -678,8 +680,7 @@ static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
 }
 
 /// Socket-mode serving body: the first connection gets the LSP slot,
-/// later ones only a peer (see issue 09-12#15: the slot is never
-/// reclaimed).
+/// later ones only a peer (the slot is never reclaimed).
 static kota::task<> accept_connections(MasterServer& server,
                                        kota::tcp::acceptor acceptor,
                                        std::list<Connection>& connections) {
@@ -747,7 +748,6 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
 
     kota::event_loop loop;
     MasterServer server(loop, self_path, opts.configuration.value_or(""));
-    std::list<Connection> connections;
 
     if(mode == ServerMode::Pipe) {
         auto transport = kota::ipc::StreamTransport::open_stdio(loop);
@@ -789,6 +789,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             return 1;
         }
 
+        std::list<Connection> connections;
         LOG_INFO("Listening on {}:{} ...", host, port);
         loop.schedule([](MasterServer& server,
                          kota::tcp::acceptor acceptor,

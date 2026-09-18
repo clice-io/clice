@@ -55,7 +55,7 @@ struct ServingSource {
 struct DiskGate {
     mutable llvm::DenseMap<Fid, bool> verdicts;
 
-    /// The files whose rows were withheld, in first-asked order.
+    /// The files whose rows were withheld, in no particular order.
     llvm::SmallVector<Fid> withheld() const;
 };
 
@@ -70,7 +70,7 @@ struct QuerySources {
     const DiskGate* disk = nullptr;
 };
 
-/// How an agent names a symbol, tried in this order: by handle; by name,
+/// How a query names a symbol, tried in this order: by handle; by name,
 /// case-insensitively, optionally narrowed to a path — a bare file name
 /// matches the site's file name, anything longer the tail of its path;
 /// by path and 1-based line.

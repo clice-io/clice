@@ -2,7 +2,6 @@
 
 #include <expected>
 #include <string>
-#include <vector>
 
 #include "index/writer_lock.h"
 #include "server/protocol/control.h"
@@ -17,7 +16,5 @@ namespace clice::control {
 /// the error.
 std::expected<IndexResult, std::string> request_index(const index::ServerEndpoint& endpoint,
                                                       llvm::StringRef configuration);
-
-std::expected<StatusResult, std::string> request_status(const index::ServerEndpoint& endpoint);
 
 }  // namespace clice::control

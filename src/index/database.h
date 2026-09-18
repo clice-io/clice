@@ -170,8 +170,8 @@ std::string library_directory(const CacheStore& store, llvm::StringRef configura
 /// The configuration's library: a single `index.mdb` (plus its `-lock`
 /// file) in its library directory, created on demand. On a writable
 /// store this first takes the cache directory's cross-process writer lock
-/// (held until destruction) and returns nullptr when another
-/// clice process already holds it — the global/manifest blobs form one
+/// (held until destruction) and returns nullptr when another clice
+/// process already holds it — the global/manifest blobs form one
 /// mutable lineage that tolerates no second writer. Also nullptr when
 /// the environment cannot be opened safely — only confirmed corruption
 /// (or a meta mismatch) is repaired by deleting and rebuilding the

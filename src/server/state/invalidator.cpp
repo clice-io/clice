@@ -203,12 +203,10 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 cascade_disk_content_change(path_id, dirty);
                 disk_changed_while_open.erase(path_id);
 
-                // The file's own shard describes the pre-save disk. With
-                // open-file indexing off the queued slot is skipped and
-                // BufferClosed repairs on close; with it on (an agent is
-                // around), the reindex lands promptly. Saves only come from
-                // open buffers — the session check just drops synthetic
-                // events for files nobody has open.
+                // The file's own shard describes the pre-save disk; the
+                // queued reindex refreshes it from the saved bytes. Saves
+                // only come from open buffers — the session check just
+                // drops synthetic events for files nobody has open.
                 if(store.find(path_id)) {
                     dirty.add_reindex_content_changed(path_id);
                 }
@@ -262,9 +260,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 bool has_shard = shard_it != workspace.shards.end();
                 bool shard_current =
                     has_shard && shard_it->second.matches_content(disk->size, disk->hash);
-                // A module unit's PCM can be staler than the shard: an
-                // agent-mode reindex reads the rewritten disk while the
-                // artifact keeps the pre-change bytes. Its own deps
+                // A module unit's PCM can be staler than the shard: the open
+                // file's background reindex reads the rewritten disk while
+                // the artifact keeps the pre-change bytes. Its own deps
                 // snapshot is the judge; checked before the cascade below
                 // erases the entry.
                 bool pcm_stale = false;
@@ -281,8 +279,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the event's mtime, so no later sweep will refire it.
                 // Divergence — rows or artifact built from bytes the disk
                 // no longer holds, or a disk change recorded while the
-                // buffer was open (an agent-mode reindex can refresh the
-                // shard from the rewritten disk before the close, blinding
+                // buffer was open (the open file's background reindex can
+                // refresh the shard from the rewritten disk before the close, blinding
                 // the content probe while dependents still embed the old
                 // bytes) — gets the full disk-content cascade a save would
                 // have delivered. A file with no shard and no recorded
@@ -292,8 +290,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     cascade_disk_content_change(event.path_id, dirty);
                 } else if(has_shard) {
                     // The shard can be current while the edges are not:
-                    // an agent-mode reindex refreshed the rows from the
-                    // rewritten disk while the include graph kept the
+                    // the open file's background reindex refreshed the rows
+                    // from the rewritten disk while the include graph kept the
                     // pre-change edges (open files skip the rescan).
                     // Refresh the edges alone — the rows are proven
                     // current, so no content cascade; a module name the
@@ -317,10 +315,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // the next compile's deps validation. Recompile so that
                     // validation actually runs. The shard describes the old
                     // disk regardless of the buffer; queue its reindex like
-                    // a save (skipped-and-repaired-on-close without agents).
-                    // The dependent cascade is deferred to the close, and
-                    // the tracker has consumed the event — record the debt,
-                    // or an agent-mode reindex that freshens the shard
+                    // a save. The dependent cascade is deferred to the
+                    // close, and the tracker has consumed the event — record
+                    // the debt, or the reindex that freshens the shard
                     // before the close would hide it from the close-time
                     // divergence probe.
                     dirty.mark_ast_dirty.push_back(path_id);

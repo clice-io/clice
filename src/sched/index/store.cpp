@@ -1177,7 +1177,7 @@ void IndexStore::reopen_fresh_database() {
     workspace.contexts_committed.reset();
 }
 
-IndexStore::LoadResult IndexStore::load(LoadOptions options) {
+IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     bool read_only = options.read_only;
     LoadResult result;
     auto& report = result.report;

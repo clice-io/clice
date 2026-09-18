@@ -36,7 +36,11 @@ function writeProject(session: { tmpdir(): Workspace }): Workspace {
 }
 
 function runClice(...args: string[]) {
-    return spawnSync(cliceExecutable(), args, { encoding: "utf8", timeout: 120_000 });
+    return spawnSync(cliceExecutable(), args, {
+        encoding: "utf8",
+        timeout: 120_000,
+        maxBuffer: 64 * 1024 * 1024,
+    });
 }
 
 function runIndex(ws: Workspace) {
@@ -195,7 +199,7 @@ test("rejects bad questions", ({ session }) => {
 
     const noIndex = query(writeProject(session), "symbolSearch", "--query", "add");
     expect(noIndex.status).toBe(1);
-    expect(noIndex.error).toContain("no index");
+    expect(noIndex.error).toContain("could not be opened");
 });
 
 test("withholds rows the disk moved on from", ({ session }) => {
@@ -213,7 +217,6 @@ test("withholds rows the disk moved on from", ({ session }) => {
     expect(outline.result?.symbols).toEqual([]);
     expect(outline.stale).toEqual([ws.path("main.cpp")]);
 
-    // The header did not change: its rows still serve.
     const header = query<{ symbols: { name: string }[] }>(ws, "documentSymbols", "--path", "a.h");
     expect(header.result?.symbols.map((s) => s.name)).toContain("Animal");
     expect(header.stale).toEqual([]);
@@ -268,7 +271,6 @@ test("asks the running server to index", async ({ session }) => {
     expect(fresh.status).toBe(0);
     expect(fresh.result?.symbols.map((s) => s.name)).toEqual(["extra"]);
 
-    // The rows the server persisted serve the plain read too.
     const persisted = query<{ symbols: { name: string }[] }>(
         ws,
         "symbolSearch",

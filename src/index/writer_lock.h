@@ -60,4 +60,8 @@ struct WriterProbe {
 /// caller's own acquisition is the real gate.
 WriterProbe probe_writer(llvm::StringRef cache_dir);
 
+/// What a command tells the user when the probe found a writer it cannot
+/// ask.
+std::string held_writer_message(const WriterProbe& probe, llvm::StringRef cache_dir);
+
 }  // namespace clice::index

@@ -75,8 +75,6 @@ void write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint) {
     if(!json) {
         return;
     }
-    // Written whole, then renamed into place: a reader never sees a
-    // partial record.
     auto final_path = path::join(cache_dir, endpoint_name);
     auto tmp_path = final_path + ".tmp";
     if(auto written = fs::write(tmp_path, *json); !written) {
@@ -95,6 +93,14 @@ void write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint) {
 
 void remove_endpoint(llvm::StringRef cache_dir) {
     llvm::sys::fs::remove(path::join(cache_dir, endpoint_name));
+}
+
+std::string held_writer_message(const WriterProbe& probe, llvm::StringRef cache_dir) {
+    return std::format(
+        "another clice process{} holds the index writer lock at {}; retry when it "
+        "is done",
+        probe.holder.empty() ? "" : std::format(" ({})", probe.holder),
+        std::string_view(cache_dir));
 }
 
 WriterProbe probe_writer(llvm::StringRef cache_dir) {
@@ -134,7 +140,6 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
     }
     probe.state = WriterProbe::State::Server;
     probe.endpoint = std::move(endpoint);
-    probe.holder = std::format("pid {}", probe.endpoint.pid);
     return probe;
 }
 

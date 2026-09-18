@@ -24,15 +24,6 @@ struct IndexResult {
     std::vector<std::string> failed;
 };
 
-struct StatusParams {};
-
-struct StatusResult {
-    bool idle = true;
-    int pending = 0;
-    int total = 0;
-    int indexed = 0;
-};
-
 }  // namespace clice::control
 
 namespace kota::ipc::protocol {
@@ -41,12 +32,6 @@ template <>
 struct RequestTraits<clice::control::IndexParams> {
     using Result = clice::control::IndexResult;
     constexpr inline static std::string_view method = "clice/index";
-};
-
-template <>
-struct RequestTraits<clice::control::StatusParams> {
-    using Result = clice::control::StatusResult;
-    constexpr inline static std::string_view method = "clice/status";
 };
 
 }  // namespace kota::ipc::protocol

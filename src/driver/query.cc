@@ -158,8 +158,7 @@ void print_json(const T& value) {
     std::println("{}", render_json(value));
 }
 
-/// The printed answer (or the error) and the command's exit code.
-struct Pass {
+struct Reply {
     std::string json;
     int exit_code = 0;
 };
@@ -167,7 +166,7 @@ struct Pass {
 /// Answer the question against the opened index; the argument checks are
 /// the commands' own. `failed` are the units a --fresh refresh could not
 /// index: their rows are as absent as a withheld file's.
-Pass answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::string> failed) {
+Reply answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::string> failed) {
     DiskGate gate;
     IndexQuery index_query(view.workspace, {.disk = &gate});
     query::Context ctx{.workspace = view.workspace,
@@ -183,18 +182,14 @@ Pass answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::strin
         .line = opts.line.as_optional(),
         .symbol = opts.symbol.as_optional(),
     };
-    auto direction = [&](llvm::StringRef fallback) {
-        return opts.direction.value_or(fallback.str());
-    };
+    auto direction = opts.direction.value_or("both");
     auto kind_list = opts.kind.value_or("");
     llvm::SmallVector<llvm::StringRef> kind_refs;
     llvm::StringRef(kind_list).split(kind_refs, ',', -1, /*KeepEmpty=*/false);
-    std::vector<std::string> kinds;
-    for(auto kind: kind_refs) {
-        kinds.push_back(kind.trim().str());
-    }
+    auto kinds = llvm::to_vector(
+        llvm::map_range(kind_refs, [](llvm::StringRef kind) { return kind.trim().str(); }));
 
-    Pass pass;
+    Reply reply;
     auto emit = [&](auto outcome) {
         std::vector<std::string> stale;
         for(auto file: gate.withheld()) {
@@ -206,11 +201,11 @@ Pass answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::strin
         auto duplicates = std::ranges::unique(stale);
         stale.erase(duplicates.begin(), duplicates.end());
         if(outcome) {
-            pass.json =
+            reply.json =
                 render_json(Answer{.result = std::move(*outcome), .stale = std::move(stale)});
         } else {
-            pass.exit_code = 1;
-            pass.json = render_json(
+            reply.exit_code = 1;
+            reply.json = render_json(
                 Failure{.error = std::move(outcome.error()), .stale = std::move(stale)});
         }
     };
@@ -220,7 +215,7 @@ Pass answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::strin
     } else if(method == "projectFiles") {
         emit(query::project_files(ctx, opts.filter.value_or("all")));
     } else if(method == "fileDeps") {
-        emit(query::file_deps(ctx, absolute, direction("both"), opts.depth.value_or(1)));
+        emit(query::file_deps(ctx, absolute, direction, opts.depth.value_or(1)));
     } else if(method == "impactAnalysis") {
         emit(query::impact_analysis(ctx, absolute));
     } else if(method == "symbolSearch") {
@@ -238,11 +233,11 @@ Pass answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::strin
     } else if(method == "references") {
         emit(query::references(ctx, locator, static_cast<bool>(opts.include_declaration)));
     } else if(method == "callGraph") {
-        emit(query::call_graph(ctx, locator, direction("both")));
+        emit(query::call_graph(ctx, locator, direction));
     } else if(method == "typeHierarchy") {
-        emit(query::type_hierarchy(ctx, locator, direction("both")));
+        emit(query::type_hierarchy(ctx, locator, direction));
     }
-    return pass;
+    return reply;
 }
 
 /// Bring the index up to date with the disk before a --fresh answer:
@@ -255,6 +250,10 @@ std::expected<std::vector<std::string>, std::string> refresh(llvm::StringRef roo
                                                              llvm::StringRef configuration,
                                                              const char* self_path) {
     auto config = Config::load_from_workspace(root);
+    if(!check_requested_configuration(config, configuration)) {
+        return std::unexpected(
+            std::format("unknown configuration '{}'", std::string_view(configuration)));
+    }
     auto& cache_dir = config.project.cache_dir;
     auto writer = index::probe_writer(cache_dir);
     switch(writer.state) {
@@ -267,11 +266,7 @@ std::expected<std::vector<std::string>, std::string> refresh(llvm::StringRef roo
             return std::move(result->failed);
         }
         case index::WriterProbe::State::Held: {
-            return std::unexpected(
-                std::format("another clice process{} holds the index writer lock at {}; "
-                            "retry when it is done",
-                            writer.holder.empty() ? "" : std::format(" ({})", writer.holder),
-                            cache_dir));
+            return std::unexpected(index::held_writer_message(writer, cache_dir));
         }
         case index::WriterProbe::State::Free: break;
     }
@@ -303,8 +298,7 @@ int run_query(const QueryOptions& opts, const char* self_path) {
     bool with_build = llvm::is_contained(build_methods, method);
     if(!with_build && !llvm::is_contained(index_methods, method)) {
         print_json(Failure{.error = method.empty() ? "--method is required"
-                                                   : std::format("unknown method '{}'", method),
-                           .stale = {}});
+                                                   : std::format("unknown method '{}'", method)});
         return 1;
     }
     auto root = workspace_root(opts.workspace.value_or(""));
@@ -318,17 +312,19 @@ int run_query(const QueryOptions& opts, const char* self_path) {
         }
         failed = std::move(*refreshed);
     }
-    Pass pass;
-    int rc = with_index(root, configuration, {.with_build = with_build}, [&](IndexView& view) {
-        pass = answer(view, opts, failed);
-        return pass.exit_code;
+    Reply reply;
+    with_index(root, configuration, {.with_build = with_build}, [&](IndexView& view) {
+        reply = answer(view, opts, failed);
+        return reply.exit_code;
     });
-    if(pass.json.empty()) {
-        print_json(Failure{.error = "no index; run `clice index` or pass --fresh"});
+    if(reply.json.empty()) {
+        print_json(Failure{
+            .error =
+                "the index could not be opened (the log above says why); run `clice index` or pass --fresh"});
         return 1;
     }
-    std::println("{}", pass.json);
-    return rc;
+    std::println("{}", reply.json);
+    return reply.exit_code;
 }
 
 }  // namespace

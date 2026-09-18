@@ -187,6 +187,9 @@ public:
         // map only grows until it is cleared.
         int dead = 0;
         mdb_reader_check(env, &dead);
+        if(dead != 0) {
+            LOG_INFO("Cleared {} stale index database readers", dead);
+        }
         MDB_txn* wtxn = nullptr;
         if(int rc = mdb_txn_begin(env, nullptr, 0, &wtxn)) {
             return fail_all(rc, "begin");

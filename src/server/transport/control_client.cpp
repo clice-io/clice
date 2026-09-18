@@ -65,8 +65,4 @@ std::expected<IndexResult, std::string> request_index(const index::ServerEndpoin
     return request(endpoint, IndexParams{.configuration = configuration.str()});
 }
 
-std::expected<StatusResult, std::string> request_status(const index::ServerEndpoint& endpoint) {
-    return request(endpoint, StatusParams{});
-}
-
 }  // namespace clice::control
