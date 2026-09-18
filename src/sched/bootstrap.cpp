@@ -66,6 +66,9 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                 workspace.index_db = index::open_database(*workspace.store, configuration, true);
             } else if((workspace.writer_lock = index::WriterLock::acquire(cfg.cache_dir))) {
                 workspace.index_db = index::open_database(*workspace.store, configuration);
+                if(!workspace.index_db) {
+                    workspace.writer_lock.reset();
+                }
             }
             LOG_INFO("Cache store: {}", workspace.store->base_dir());
             report.opened_store = true;

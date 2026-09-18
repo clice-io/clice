@@ -81,6 +81,9 @@ Outcome<IndexQuery::Located> resolve_unique(Context& ctx, const SymbolLocatorPar
     if(params.name) {
         locator.name = *params.name;
     }
+    if(params.line && *params.line <= 0) {
+        return std::unexpected("line must be positive");
+    }
     if(params.path) {
         locator.path = *params.path;
         if(params.line) {
@@ -174,6 +177,15 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path
     if(!llvm::sys::fs::is_regular_file(path)) {
         return std::unexpected(std::format("no such file: {}", std::string_view(path)));
     }
+    // The editor compiles such a header under a synthesized preamble, a
+    // cache artifact a read-only reader cannot produce; the host's bare
+    // command would be a different compile.
+    if(auto file = ctx.workspace.file_table.find(path);
+       file && ctx.contexts.header_mode(path, *file) == HeaderMode::NeedsContext) {
+        return std::unexpected(std::format(
+            "{} compiles only under a synthesized header context, which needs an editor session",
+            std::string_view(path)));
+    }
     CompileCommandResult result{.file = std::string(path)};
     auto source =
         ctx.contexts.resolve_command(path, result.directory, result.arguments, ContextUse::Editor);
@@ -237,6 +249,9 @@ Outcome<FileDepsResult>
     if(depth < 0) {
         return std::unexpected("depth must not be negative");
     }
+    if(!llvm::sys::fs::is_regular_file(path)) {
+        return std::unexpected(std::format("no such file: {}", std::string_view(path)));
+    }
     auto& ws = ctx.workspace;
     FileDepsResult result{.file = std::string(path)};
     auto file = ws.file_table.find(path);
@@ -257,6 +272,9 @@ Outcome<FileDepsResult>
 }
 
 Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, llvm::StringRef path) {
+    if(!llvm::sys::fs::is_regular_file(path)) {
+        return std::unexpected(std::format("no such file: {}", std::string_view(path)));
+    }
     auto& ws = ctx.workspace;
     ImpactAnalysisResult result;
     auto file = ws.file_table.find(path);
@@ -403,23 +421,17 @@ Outcome<ReferencesResult> references(Context& ctx,
         .kind = kind_name(resolved->symbol.kind),
         .symbol_id = symbol_id(resolved->symbol.hash),
     };
-    auto collect = [&](RelationKind kind) {
-        for(auto& site: ctx.query.sites(resolved->symbol.hash, kind)) {
-            auto lines = lines_of(site);
-            if(!lines) {
-                continue;
-            }
-            result.references.push_back({
-                .file = std::string(site.path),
-                .line = lines->start,
-                .context = ctx.query.context_line(site),
-            });
+    IndexQuery::Cursor cursor{.symbol = resolved->symbol.hash, .site = resolved->site};
+    for(auto& site: ctx.query.references(cursor, include_declaration)) {
+        auto lines = lines_of(site);
+        if(!lines) {
+            continue;
         }
-    };
-    collect(RelationKind::Reference);
-    if(include_declaration) {
-        collect(RelationKind::Declaration);
-        collect(RelationKind::Definition);
+        result.references.push_back({
+            .file = std::string(site.path),
+            .line = lines->start,
+            .context = ctx.query.context_line(site),
+        });
     }
     result.total = static_cast<int>(result.references.size());
     return result;

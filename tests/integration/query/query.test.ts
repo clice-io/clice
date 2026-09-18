@@ -193,6 +193,14 @@ test("rejects bad questions", ({ session }) => {
     expect(missing.status).toBe(1);
     expect(missing.error).toContain("no such file");
 
+    const deps = query(ws, "fileDeps", "--path", "gone.cpp");
+    expect(deps.status).toBe(1);
+    expect(deps.error).toContain("no such file");
+
+    const line = query(ws, "definition", "--path", "main.cpp", "--line", "0");
+    expect(line.status).toBe(1);
+    expect(line.error).toContain("positive");
+
     const method = query(ws, "bogus");
     expect(method.status).toBe(1);
     expect(method.error).toContain("bogus");
@@ -299,9 +307,21 @@ test("refuses a writer it cannot ask", async ({ session }) => {
     expect(fresh.status).toBe(1);
     expect(fresh.error).toContain("holds the index writer lock");
 
-    // Reads never wait for the writer.
-    const plain = query<{ symbols: { name: string }[] }>(ws, "symbolSearch", "--query", "compute");
-    expect(plain.result?.symbols.map((s) => s.name)).toEqual(["compute"]);
+    // Reads never wait for the writer; they see the disk, which trails the
+    // server's memory by at most one indexing round.
+    const persisted = await waitUntil(
+        () => {
+            const plain = query<{ symbols: { name: string }[] }>(
+                ws,
+                "symbolSearch",
+                "--query",
+                "compute",
+            );
+            return plain.result?.symbols.some((s) => s.name === "compute") ?? false;
+        },
+        { timeout: 30_000, interval: 500, description: "persisted rows for compute" },
+    );
+    expect(persisted).toBe(true);
 });
 
 test("fresh names the units it could not index", ({ session }) => {

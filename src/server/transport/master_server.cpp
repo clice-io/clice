@@ -656,11 +656,14 @@ void MasterServer::start_control_listener() {
         return;
     }
     auto& cache_dir = workspace.config.project.cache_dir;
-    index::write_endpoint(cache_dir,
-                          {.pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId()),
-                           .version = std::string(clice::version),
-                           .host = host.str(),
-                           .port = *port});
+    if(!index::write_endpoint(
+           cache_dir,
+           {.pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId()),
+            .version = std::string(clice::version),
+            .host = host.str(),
+            .port = *port})) {
+        return;
+    }
     endpoint_recorded = true;
     LOG_INFO("Control channel listening on {}:{}", host, *port);
     bg_tasks.spawn(serve_control(*this, std::move(*acceptor)));

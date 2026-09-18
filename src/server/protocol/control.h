@@ -20,7 +20,8 @@ struct IndexParams {
 };
 
 struct IndexResult {
-    /// Units whose index attempt failed for good.
+    /// Units whose rows are not current after the sweep: the attempt
+    /// failed for good, or the serving side kept them out.
     std::vector<std::string> failed;
 };
 

@@ -57,7 +57,8 @@ struct ServerEndpoint {
     int port = 0;
 };
 
-void write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint);
+/// False when the record could not be written (logged).
+bool write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint);
 
 void remove_endpoint(llvm::StringRef cache_dir);
 

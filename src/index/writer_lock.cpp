@@ -55,6 +55,9 @@ std::optional<WriterLock> WriterLock::acquire(llvm::StringRef cache_dir) {
         llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
         return std::nullopt;
     }
+    // A server that died holding the lock left its record behind; the
+    // holder is now this process, which publishes its own if it serves.
+    remove_endpoint(cache_dir);
     llvm::sys::fs::resize_file(lock_fd, 0);
     llvm::raw_fd_ostream stamp(lock_fd, /*shouldClose=*/false);
     stamp.seek(0);
@@ -76,10 +79,11 @@ void WriterLock::release() {
     }
 }
 
-void write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint) {
+bool write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint) {
     auto json = kota::codec::json::to_string(endpoint);
     if(!json) {
-        return;
+        LOG_WARN("Failed to serialize the server endpoint record: {}", json.error().to_string());
+        return false;
     }
     auto final_path = path::join(cache_dir, endpoint_name);
     auto tmp_path = final_path + ".tmp";
@@ -87,14 +91,16 @@ void write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint) {
         LOG_WARN("Failed to record the server endpoint at {}: {}",
                  final_path,
                  written.error().message());
-        return;
+        return false;
     }
     if(auto renamed = fs::rename(tmp_path, final_path); !renamed) {
         LOG_WARN("Failed to record the server endpoint at {}: {}",
                  final_path,
                  renamed.error().message());
         llvm::sys::fs::remove(tmp_path);
+        return false;
     }
+    return true;
 }
 
 void remove_endpoint(llvm::StringRef cache_dir) {

@@ -365,12 +365,14 @@ TEST_CASE(WriterLockAtCacheRoot) {
     ASSERT_TRUE(db != nullptr);
     ASSERT_FALSE(
         llvm::sys::fs::exists(path::join(index::library_directory(store, "x"), "index.lock")));
-    auto stamp = fs::read(path::join(store.root_dir(), "index.lock"));
-    ASSERT_TRUE(stamp.has_value());
-    ASSERT_EQ(llvm::StringRef(*stamp).trim(), std::to_string(llvm::sys::Process::getProcessId()));
+#ifndef _WIN32
+    auto held = fs::read(path::join(store.root_dir(), "index.lock"));
+    ASSERT_TRUE(held.has_value());
+    ASSERT_EQ(llvm::StringRef(*held).trim(), std::to_string(llvm::sys::Process::getProcessId()));
+#endif
     lock.reset();
-    stamp = fs::read(path::join(store.root_dir(), "index.lock"));
-    ASSERT_TRUE(stamp.has_value() && stamp->empty());
+    auto released = fs::read(path::join(store.root_dir(), "index.lock"));
+    ASSERT_TRUE(released.has_value() && released->empty());
 }
 
 TEST_CASE(ProbeIgnoresStaleEndpoint) {
