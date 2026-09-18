@@ -85,16 +85,14 @@ Outcome<IndexQuery::Located> resolve_unique(Context& ctx, const SymbolLocatorPar
         return std::unexpected("line must be positive");
     }
     if(params.path) {
-        locator.path = *params.path;
-        if(params.line) {
-            auto file = indexed_file(ctx, *params.path);
-            if(!file) {
-                return std::unexpected(file.error());
-            }
-            if(!*file) {
-                return std::unexpected("symbol not found");
-            }
+        auto file = indexed_file(ctx, *params.path);
+        if(!file) {
+            return std::unexpected(file.error());
         }
+        if(!*file) {
+            return std::unexpected("symbol not found");
+        }
+        locator.path = *params.path;
     }
     locator.line = params.line;
     if(!locator.symbol && locator.name.empty() && !(locator.line && !locator.path.empty())) {
@@ -180,8 +178,12 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path
     // The editor compiles such a header under a synthesized preamble, a
     // cache artifact a read-only reader cannot produce; the host's bare
     // command would be a different compile.
-    if(auto file = ctx.workspace.file_table.find(path);
-       file && ctx.contexts.header_mode(path, *file) == HeaderMode::NeedsContext) {
+    auto needs_context = [&](Fid file) {
+        auto* choice = ctx.contexts.selection(ContextUse::Editor, file);
+        return ctx.contexts.header_mode(path, file) == HeaderMode::NeedsContext ||
+               (choice && choice->host_path_id.valid() && choice->occurrence.has_value());
+    };
+    if(auto file = ctx.workspace.file_table.find(path); file && needs_context(*file)) {
         return std::unexpected(std::format(
             "{} compiles only under a synthesized header context, which needs an editor session",
             std::string_view(path)));
@@ -310,6 +312,12 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
                                           llvm::StringRef text,
                                           std::size_t limit,
                                           llvm::ArrayRef<std::string> kinds) {
+    constexpr auto names = kota::meta::reflection<SymbolKind::Kind>::member_names;
+    for(auto& kind: kinds) {
+        if(!llvm::is_contained(names, kind)) {
+            return std::unexpected(std::format("unknown symbol kind '{}'", kind));
+        }
+    }
     auto accept = [&](SymbolKind kind) {
         return kinds.empty() || llvm::is_contained(kinds, kind_name(kind));
     };

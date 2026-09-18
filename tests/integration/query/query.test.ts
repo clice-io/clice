@@ -6,7 +6,8 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { waitUntil, type CliceClient } from "@clice/tools/client";
-import type { Workspace } from "@clice/tools/workspace";
+import { canonicalUri, type Workspace } from "@clice/tools/workspace";
+import { URI } from "vscode-uri";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 const HEADER =
@@ -33,6 +34,12 @@ function writeProject(session: { tmpdir(): Workspace }): Workspace {
     ws.writeCDB(["main.cpp"]);
     ws.pinCacheDir();
     return ws;
+}
+
+/// Answers spell paths the way the index does (canonical, forward slashes,
+/// a lowercase Windows drive); the harness's URI form compares them.
+function asUri(path: string): string {
+    return canonicalUri(URI.file(path).toString());
 }
 
 function runClice(...args: string[]) {
@@ -138,7 +145,7 @@ test("answers from the persisted index", ({ session }) => {
         "--path",
         "main.cpp",
     );
-    expect(command.result?.file).toBe(ws.path("main.cpp"));
+    expect(asUri(command.result!.file)).toBe(ws.uri("main.cpp"));
     expect(command.result?.source).toBe("database");
     expect(command.result?.arguments.length).toBeGreaterThan(0);
 
@@ -174,7 +181,7 @@ test("answers from the persisted index", ({ session }) => {
         "--direction",
         "includes",
     );
-    expect(deps.result?.includes.map((d) => d.path)).toEqual([ws.path("a.h")]);
+    expect(deps.result?.includes.map((d) => asUri(d.path))).toEqual([ws.uri("a.h")]);
 });
 
 test("rejects bad questions", ({ session }) => {
@@ -201,6 +208,14 @@ test("rejects bad questions", ({ session }) => {
     expect(line.status).toBe(1);
     expect(line.error).toContain("positive");
 
+    const typo = query(ws, "definition", "--name", "add", "--path", "gone.cpp");
+    expect(typo.status).toBe(1);
+    expect(typo.error).toContain("no such file");
+
+    const kind = query(ws, "symbolSearch", "--query", "add", "--kind", "Fnction");
+    expect(kind.status).toBe(1);
+    expect(kind.error).toContain("Fnction");
+
     const method = query(ws, "bogus");
     expect(method.status).toBe(1);
     expect(method.error).toContain("bogus");
@@ -219,11 +234,11 @@ test("withholds rows the disk moved on from", ({ session }) => {
     // text that moved, so the symbol is unfindable and the file named.
     const stale = query(ws, "definition", "--name", "compute");
     expect(stale.status).toBe(1);
-    expect(stale.stale).toEqual([ws.path("main.cpp")]);
+    expect(stale.stale.map(asUri)).toEqual([ws.uri("main.cpp")]);
 
     const outline = query<{ symbols: unknown[] }>(ws, "documentSymbols", "--path", "main.cpp");
     expect(outline.result?.symbols).toEqual([]);
-    expect(outline.stale).toEqual([ws.path("main.cpp")]);
+    expect(outline.stale.map(asUri)).toEqual([ws.uri("main.cpp")]);
 
     const header = query<{ symbols: { name: string }[] }>(ws, "documentSymbols", "--path", "a.h");
     expect(header.result?.symbols.map((s) => s.name)).toContain("Animal");
@@ -340,7 +355,7 @@ test("fresh names the units it could not index", ({ session }) => {
     );
     expect(fresh.status).toBe(0);
     expect(fresh.result?.symbols).toEqual([]);
-    expect(fresh.stale).toEqual([ws.path("ghost.cpp")]);
+    expect(fresh.stale.map(asUri)).toEqual([ws.uri("ghost.cpp")]);
 });
 
 test("delegation keeps the configuration", async ({ session }) => {
