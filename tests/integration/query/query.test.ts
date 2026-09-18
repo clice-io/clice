@@ -138,6 +138,22 @@ test("answers from the persisted index", ({ session }) => {
     expect(command.result?.source).toBe("database");
     expect(command.result?.arguments.length).toBeGreaterThan(0);
 
+    const kinds = query<{ symbols: { name: string; kind: string }[] }>(
+        ws,
+        "symbolSearch",
+        "--kind",
+        "Struct,Function",
+        "--limit",
+        "10",
+    );
+    expect(kinds.result?.symbols.map((s) => s.kind).sort()).toEqual([
+        "Function",
+        "Function",
+        "Function",
+        "Struct",
+        "Struct",
+    ]);
+
     const files = query<{ files: { path: string; kind: string }[] }>(
         ws,
         "projectFiles",
@@ -284,4 +300,59 @@ test("refuses a writer it cannot ask", async ({ session }) => {
     // Reads never wait for the writer.
     const plain = query<{ symbols: { name: string }[] }>(ws, "symbolSearch", "--query", "compute");
     expect(plain.result?.symbols.map((s) => s.name)).toEqual(["compute"]);
+});
+
+test("fresh names the units it could not index", ({ session }) => {
+    const ws = writeProject(session);
+    // A database entry whose file does not exist never indexes.
+    ws.writeCDB(["main.cpp", "ghost.cpp"]);
+
+    // A unit that fails to index has no rows: the answer lists it next to
+    // the withheld files rather than passing silence off as completeness.
+    const fresh = query<{ symbols: { name: string }[] }>(
+        ws,
+        "symbolSearch",
+        "--query",
+        "ghost",
+        "--fresh",
+    );
+    expect(fresh.status).toBe(0);
+    expect(fresh.result?.symbols).toEqual([]);
+    expect(fresh.stale).toEqual([ws.path("ghost.cpp")]);
+});
+
+test("delegation keeps the configuration", async ({ session }) => {
+    const ws = writeProject(session);
+    ws.write(
+        "clice.toml",
+        [
+            "[project]",
+            'cache_dir = "${workspace}/.clice"',
+            "",
+            "[[rules]]",
+            'configuration = "debug"',
+            'patterns = ["**/*.cpp"]',
+            'append = ["-DDEBUG"]',
+            "",
+            "[[rules]]",
+            'configuration = "release"',
+            'patterns = ["**/*.cpp"]',
+            'append = ["-DRELEASE"]',
+            "",
+        ].join("\n"),
+    );
+    const client = await session
+        .spawn(ws, { args: ["serve", "--configuration", "debug"] })
+        .initialize(ws);
+    expect(await waitSymbol(client, "compute"), "server never indexed").toBe(true);
+
+    // The server indexes one configuration; asking it for another is
+    // refused rather than answered with the wrong build.
+    const other = runClice("index", "--workspace", ws.root, "--configuration", "release");
+    expect(other.status).toBe(1);
+    expect(other.stderr).toContain("configuration 'debug'");
+
+    const same = runClice("index", "--workspace", ws.root, "--configuration", "debug");
+    expect(same.status, `stderr: ${same.stderr}`).toBe(0);
+    expect(same.stdout).toContain("through the running clice server");
 });

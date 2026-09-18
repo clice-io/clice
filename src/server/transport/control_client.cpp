@@ -60,8 +60,9 @@ std::expected<Result<Params>, std::string> request(const index::ServerEndpoint& 
 
 }  // namespace
 
-std::expected<IndexResult, std::string> request_index(const index::ServerEndpoint& endpoint) {
-    return request(endpoint, IndexParams{});
+std::expected<IndexResult, std::string> request_index(const index::ServerEndpoint& endpoint,
+                                                      llvm::StringRef configuration) {
+    return request(endpoint, IndexParams{.configuration = configuration.str()});
 }
 
 std::expected<StatusResult, std::string> request_status(const index::ServerEndpoint& endpoint) {

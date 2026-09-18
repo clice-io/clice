@@ -109,9 +109,11 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
         return probe;
     }
     if(!llvm::sys::fs::tryLockFile(lock_fd)) {
+        // Swept under the lock: a server acquiring it right after the
+        // release publishes a record this sweep must not take.
+        remove_endpoint(cache_dir);
         llvm::sys::fs::unlockFile(lock_fd);
         llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
-        remove_endpoint(cache_dir);
         return probe;
     }
     llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);

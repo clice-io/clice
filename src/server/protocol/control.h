@@ -13,8 +13,11 @@ namespace clice::control {
 
 /// Sweep the build — every unit re-validated against the disk, the ones
 /// the hash gate finds current skipped — and answer once the rows are
-/// persisted.
-struct IndexParams {};
+/// persisted. Refused when `configuration` is not the one the server
+/// indexes, or when its configuration keeps background indexing off.
+struct IndexParams {
+    std::string configuration;
+};
 
 struct IndexResult {
     /// Units whose index attempt failed for good.

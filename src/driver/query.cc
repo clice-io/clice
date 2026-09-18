@@ -1,18 +1,18 @@
+#include <algorithm>
 #include <print>
-#include <ranges>
 #include <string>
 #include <vector>
 
 #include "driver/driver.h"
 #include "index/writer_lock.h"
 #include "sched/batch.h"
+#include "sched/configuration.h"
 #include "sched/index_view.h"
 #include "server/service/query_commands.h"
 #include "server/transport/control_client.h"
 
 #include "kota/ipc/codec/json.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
 
 namespace clice::driver {
 
@@ -158,17 +158,16 @@ void print_json(const T& value) {
     std::println("{}", render_json(value));
 }
 
-/// What one pass over the index produced: the printed answer (or the
-/// error), and the files a --fresh pass would reindex first.
+/// The printed answer (or the error) and the command's exit code.
 struct Pass {
     std::string json;
     int exit_code = 0;
-    std::vector<std::string> stale;
 };
 
 /// Answer the question against the opened index; the argument checks are
-/// the commands' own.
-Pass answer(IndexView& view, const QueryOptions& opts) {
+/// the commands' own. `failed` are the units a --fresh refresh could not
+/// index: their rows are as absent as a withheld file's.
+Pass answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::string> failed) {
     DiskGate gate;
     IndexQuery index_query(view.workspace, {.disk = &gate});
     query::Context ctx{.workspace = view.workspace,
@@ -187,8 +186,9 @@ Pass answer(IndexView& view, const QueryOptions& opts) {
     auto direction = [&](llvm::StringRef fallback) {
         return opts.direction.value_or(fallback.str());
     };
+    auto kind_list = opts.kind.value_or("");
     llvm::SmallVector<llvm::StringRef> kind_refs;
-    llvm::StringRef(opts.kind.value_or("")).split(kind_refs, ',', -1, /*KeepEmpty=*/false);
+    llvm::StringRef(kind_list).split(kind_refs, ',', -1, /*KeepEmpty=*/false);
     std::vector<std::string> kinds;
     for(auto kind: kind_refs) {
         kinds.push_back(kind.trim().str());
@@ -196,19 +196,22 @@ Pass answer(IndexView& view, const QueryOptions& opts) {
 
     Pass pass;
     auto emit = [&](auto outcome) {
+        std::vector<std::string> stale;
         for(auto file: gate.withheld()) {
-            pass.stale.emplace_back(view.path_of(file));
+            stale.emplace_back(view.path_of(file));
         }
-        pass.stale.insert(pass.stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
-        std::ranges::sort(pass.stale);
-        auto duplicates = std::ranges::unique(pass.stale);
-        pass.stale.erase(duplicates.begin(), duplicates.end());
+        stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
+        stale.insert(stale.end(), failed.begin(), failed.end());
+        std::ranges::sort(stale);
+        auto duplicates = std::ranges::unique(stale);
+        stale.erase(duplicates.begin(), duplicates.end());
         if(outcome) {
-            pass.json = render_json(Answer{.result = std::move(*outcome), .stale = pass.stale});
+            pass.json =
+                render_json(Answer{.result = std::move(*outcome), .stale = std::move(stale)});
         } else {
             pass.exit_code = 1;
-            pass.json =
-                render_json(Failure{.error = std::move(outcome.error()), .stale = pass.stale});
+            pass.json = render_json(
+                Failure{.error = std::move(outcome.error()), .stale = std::move(stale)});
         }
     };
 
@@ -246,19 +249,22 @@ Pass answer(IndexView& view, const QueryOptions& opts) {
 /// through the serving writer when a server holds the lock, else by a
 /// batch run of this process. Either sweeps the build under the hash
 /// gate, so only units whose inputs changed are recompiled — and an
-/// absent index gets built from nothing.
-std::expected<void, std::string> refresh(llvm::StringRef root,
-                                         llvm::StringRef configuration,
-                                         const char* self_path) {
-    auto cache_dir = Config::load_from_workspace(root).project.cache_dir;
+/// absent index gets built from nothing. Returns the units that failed
+/// to index.
+std::expected<std::vector<std::string>, std::string> refresh(llvm::StringRef root,
+                                                             llvm::StringRef configuration,
+                                                             const char* self_path) {
+    auto config = Config::load_from_workspace(root);
+    auto& cache_dir = config.project.cache_dir;
     auto writer = index::probe_writer(cache_dir);
     switch(writer.state) {
         case index::WriterProbe::State::Server: {
-            auto result = control::request_index(writer.endpoint);
+            auto result = control::request_index(writer.endpoint,
+                                                 resolve_configuration(config, configuration));
             if(!result) {
                 return std::unexpected(result.error());
             }
-            return {};
+            return std::move(result->failed);
         }
         case index::WriterProbe::State::Held: {
             return std::unexpected(
@@ -286,7 +292,10 @@ std::expected<void, std::string> refresh(llvm::StringRef root,
         return std::unexpected(result.interrupted ? "indexing interrupted"
                                                   : "indexing failed; see the log");
     }
-    return {};
+    if(result.unsaved) {
+        return std::unexpected("part of the index could not be persisted; see the log");
+    }
+    return std::move(result.failed);
 }
 
 int run_query(const QueryOptions& opts, const char* self_path) {
@@ -300,15 +309,18 @@ int run_query(const QueryOptions& opts, const char* self_path) {
     }
     auto root = workspace_root(opts.workspace.value_or(""));
     auto configuration = opts.configuration.value_or("");
+    std::vector<std::string> failed;
     if(opts.fresh) {
-        if(auto refreshed = refresh(root, configuration, self_path); !refreshed) {
+        auto refreshed = refresh(root, configuration, self_path);
+        if(!refreshed) {
             print_json(Failure{.error = refreshed.error()});
             return 1;
         }
+        failed = std::move(*refreshed);
     }
     Pass pass;
     int rc = with_index(root, configuration, {.with_build = with_build}, [&](IndexView& view) {
-        pass = answer(view, opts);
+        pass = answer(view, opts, failed);
         return pass.exit_code;
     });
     if(pass.json.empty()) {

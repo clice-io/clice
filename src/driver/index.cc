@@ -138,8 +138,8 @@ std::string format_time(std::uint64_t epoch_ms) {
 /// Index through the serving writer: the editor's server holds the cache
 /// directory's writer lock, so it runs the sweep and the command waits
 /// for the rows to land.
-int run_indexing_via_server(const index::ServerEndpoint& endpoint) {
-    auto result = control::request_index(endpoint);
+int run_indexing_via_server(const index::ServerEndpoint& endpoint, llvm::StringRef configuration) {
+    auto result = control::request_index(endpoint, configuration);
     if(!result) {
         LOG_ERROR("{}", result.error());
         return 1;
@@ -162,11 +162,17 @@ int run_indexing(std::string root,
                  std::string configuration,
                  std::uint32_t workers,
                  const char* self_path) {
-    auto cache_dir = Config::load_from_workspace(root).project.cache_dir;
+    auto config = Config::load_from_workspace(root);
+    if(!check_requested_configuration(config, configuration)) {
+        return 1;
+    }
+    auto& cache_dir = config.project.cache_dir;
     auto writer = index::probe_writer(cache_dir);
     switch(writer.state) {
         case index::WriterProbe::State::Free: break;
-        case index::WriterProbe::State::Server: return run_indexing_via_server(writer.endpoint);
+        case index::WriterProbe::State::Server:
+            return run_indexing_via_server(writer.endpoint,
+                                           resolve_configuration(config, configuration));
         case index::WriterProbe::State::Held: {
             LOG_ERROR(
                 "Another clice process{} holds the index writer lock at {}; rerun when it "
