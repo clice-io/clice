@@ -22,7 +22,7 @@ namespace clice::driver {
 /// clice.cc owns the commander and the final process exit.
 
 void add_serve(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path);
-void add_query(kota::deco::cli::SubCommander& root, int& exit_code);
+void add_query(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path);
 void add_worker(kota::deco::cli::SubCommander& root, int& exit_code);
 void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path);
 void add_doc(kota::deco::cli::SubCommander& root, int& exit_code);

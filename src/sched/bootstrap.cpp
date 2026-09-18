@@ -83,7 +83,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     // Persisted index shards are CDB-independent; they load even with no
     // member yet, so a database generated later (picked up by the CDB
     // poll) starts from the previous session's index.
-    auto loaded = store.load(read_only_index);
+    auto loaded = store.load({.read_only = read_only_index});
     bool owed = !loaded.report.reindex().empty();
     pump.claim_report(loaded.report);
 

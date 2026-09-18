@@ -11,12 +11,15 @@
 #include "driver/driver.h"
 #include "index/database.h"
 #include "index/serialization.h"
+#include "index/writer_lock.h"
 #include "sched/batch.h"
 #include "sched/configuration.h"
 #include "sched/context.h"
 #include "sched/index/store.h"
+#include "sched/index_view.h"
 #include "sched/workspace.h"
 #include "server/service/query.h"
+#include "server/transport/control_client.h"
 #include "support/cache_store.h"
 #include "support/timer.h"
 
@@ -132,10 +135,47 @@ std::string format_time(std::uint64_t epoch_ms) {
     return stamp;
 }
 
+/// Index through the serving writer: the editor's server holds the cache
+/// directory's writer lock, so it runs the sweep and the command waits
+/// for the rows to land.
+int run_indexing_via_server(const index::ServerEndpoint& endpoint) {
+    auto result = control::request_index(endpoint);
+    if(!result) {
+        LOG_ERROR("{}", result.error());
+        return 1;
+    }
+    std::println("Indexed through the running clice server (pid {}).", endpoint.pid);
+    if(!result->failed.empty()) {
+        std::println(
+            "{} translation unit{} failed to index (see the server log); the index is partial:",
+            result->failed.size(),
+            plural_s(result->failed.size()));
+        for(auto& path: result->failed) {
+            std::println("  {}", path);
+        }
+        return 1;
+    }
+    return 0;
+}
+
 int run_indexing(std::string root,
                  std::string configuration,
                  std::uint32_t workers,
                  const char* self_path) {
+    auto cache_dir = Config::load_from_workspace(root).project.cache_dir;
+    auto writer = index::probe_writer(cache_dir);
+    switch(writer.state) {
+        case index::WriterProbe::State::Free: break;
+        case index::WriterProbe::State::Server: return run_indexing_via_server(writer.endpoint);
+        case index::WriterProbe::State::Held: {
+            LOG_ERROR(
+                "Another clice process{} holds the index writer lock at {}; rerun when it "
+                "is done",
+                writer.holder.empty() ? "" : std::format(" ({})", writer.holder),
+                cache_dir);
+            return 1;
+        }
+    }
     // Progress goes to stderr whatever the log level: a run spends most of
     // its time with nothing else to say, and the per-unit log lines exist
     // only at info level. The batch paces the reports, and a tick with the
@@ -200,144 +240,6 @@ int run_indexing(std::string root,
         std::println("Session log: {}", result.log_dir);
     }
     return result.exit_code;
-}
-
-/// The persisted index of a workspace, opened read-only for one report.
-struct IndexView {
-    kota::event_loop loop;
-    Workspace workspace;
-    ContextResolver contexts{workspace};
-    IndexStore store{loop, workspace, contexts};
-    std::string configuration;
-
-    /// Translation units the load dropped as stale or partially written.
-    std::size_t pending = 0;
-
-    const index::ProjectIndex& project() const {
-        return workspace.project_index;
-    }
-
-    llvm::StringRef path_of(Fid file) const {
-        return workspace.file_table.resolve(file);
-    }
-};
-
-/// An inspected file as the index keys it: a relative argument names a
-/// file under the workspace, whatever the process working directory, and
-/// dot segments are folded the way the compiler's paths were.
-std::string inspected_path(const IndexView& view, llvm::StringRef argument) {
-    llvm::SmallString<256> absolute(
-        path::is_absolute(argument) ? argument.str()
-                                    : path::join(view.workspace.config.workspace_root, argument));
-    path::remove_dots(absolute, /*remove_dot_dot=*/true);
-    std::string result(absolute.str());
-    path::canonicalize(result);
-    return result;
-}
-
-/// Sentinel of open_index: the load raced a live writer's batch; the caller
-/// retries instead of reporting over the mid-write state.
-constexpr int open_retry = -1;
-
-/// Open the persisted index read-only into `view`. A non-zero return is
-/// the command's exit code, the cause already logged; open_retry asks for
-/// another attempt.
-int open_index(IndexView& view,
-               llvm::StringRef root,
-               llvm::StringRef requested_configuration,
-               bool allow_retry) {
-    auto config = Config::load_from_workspace(root);
-    if(!check_requested_configuration(config, requested_configuration)) {
-        return 1;
-    }
-    auto configuration = resolve_configuration(config, requested_configuration);
-    // Read-only: the default cache directory exists as soon as the config
-    // resolves it, so only the versioned store inside it proves an index
-    // was ever built — and a live server (even one on an older layout)
-    // must not lose blobs to a stats reader.
-    auto store =
-        CacheStore::open(config.project.cache_dir, cache_format_version, /*read_only=*/true);
-    if(!store) {
-        if(store.error() == std::errc::no_such_file_or_directory) {
-            LOG_ERROR("No index cache at {}; run `clice index` first",
-                      std::string_view(config.project.cache_dir));
-        } else {
-            LOG_ERROR("Failed to open cache store at {}: {}",
-                      std::string_view(config.project.cache_dir),
-                      store.error().message());
-        }
-        return 1;
-    }
-
-    auto& workspace = view.workspace;
-    workspace.config = std::move(config);
-    workspace.store.emplace(std::move(*store));
-    workspace.build.reset_active(configuration);
-    workspace.index_db = index::open_database(*workspace.store, configuration);
-    if(!workspace.index_db) {
-        LOG_ERROR("No index cache at {}; run `clice index` first",
-                  index::library_directory(*workspace.store, configuration));
-        return 1;
-    }
-    view.configuration = configuration;
-    auto loaded = view.store.load(/*read_only=*/true);
-    if(!loaded.decoded) {
-        LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
-                  std::string_view(workspace.config.project.cache_dir));
-        return 1;
-    }
-    // load() detaches the storage when the global blob exists but cannot
-    // be read — a transient IO error, not an empty index.
-    if(workspace.index_db == nullptr) {
-        LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
-                  std::string_view(workspace.config.project.cache_dir));
-        return 1;
-    }
-    // A live writer's save publishes shards and manifests before the
-    // replacement global blob, so a read racing the batch can capture the
-    // old global next to newer blobs; the load drops those as stale and
-    // the verdicts below misread the mid-write state as damage. The writer
-    // may already have finished and unlocked by the time any post-load
-    // probe runs, so retry on the drops themselves; genuine damage merely
-    // spends the bounded retries before the final no-retry pass reports it.
-    view.pending = loaded.report.reindex().size();
-    if(allow_retry && view.pending != 0) {
-        return open_retry;
-    }
-    // With no pump attached the load report's debt can only be the
-    // recovery drops: every TU's blobs were missing, stale, or corrupt — a
-    // damaged cache, not a legitimately empty one.
-    if(view.project().manifests.empty() && workspace.shards.empty() && view.pending != 0) {
-        LOG_ERROR(
-            "Index cache at {} has no servable data ({} translation units need "
-            "reindexing); run `clice index` to rebuild",
-            std::string_view(workspace.config.project.cache_dir),
-            view.pending);
-        return 1;
-    }
-    return 0;
-}
-
-/// Run `report` over the workspace's persisted index, opened read-only
-/// with the mid-save retry.
-int with_index(llvm::StringRef root,
-               llvm::StringRef configuration,
-               llvm::function_ref<int(IndexView&)> report) {
-    constexpr std::uint32_t attempts = 5;
-    for(std::uint32_t attempt = 1; attempt <= attempts; attempt += 1) {
-        IndexView view;
-        int rc = open_index(view, root, configuration, /*allow_retry=*/attempt < attempts);
-        if(rc == open_retry) {
-            LOG_DEBUG("Index cache is mid-save; retrying the read");
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            continue;
-        }
-        if(rc != 0) {
-            return rc;
-        }
-        return report(view);
-    }
-    std::unreachable();
 }
 
 /// Counts bucketed by powers of two: 0, 1, 2-3, 4-7, ... — the shape of
@@ -865,10 +767,11 @@ int run_show_tu(IndexView& view, llvm::StringRef argument) {
         auto includer = entry.parent == index::no_node
                             ? llvm::StringRef(path)
                             : version_path(VersionID{manifest.nodes[entry.parent].file});
-        std::println("    {:{}}{}  included at {}:{}",
+        std::println("    {:{}}{}  {} at {}:{}",
                      "",
                      depth * 2,
                      version_path(VersionID{entry.file}),
+                     entry.skipped ? "skipped" : "included",
                      includer,
                      entry.line);
         for(auto child: children[node]) {
@@ -915,25 +818,25 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
                return;
            }
            if(opts.show_symbol) {
-               exit_code = with_index(ws, configuration, [&](IndexView& view) {
+               exit_code = with_index(ws, configuration, {}, [&](IndexView& view) {
                    return run_show_symbol(view, *opts.show_symbol);
                });
                return;
            }
            if(opts.show_file) {
-               exit_code = with_index(ws, configuration, [&](IndexView& view) {
+               exit_code = with_index(ws, configuration, {}, [&](IndexView& view) {
                    return run_show_file(view, *opts.show_file);
                });
                return;
            }
            if(opts.show_tu) {
-               exit_code = with_index(ws, configuration, [&](IndexView& view) {
+               exit_code = with_index(ws, configuration, {}, [&](IndexView& view) {
                    return run_show_tu(view, *opts.show_tu);
                });
                return;
            }
            if(opts.stats || opts.variants) {
-               exit_code = with_index(ws, configuration, [&](IndexView& view) {
+               exit_code = with_index(ws, configuration, {}, [&](IndexView& view) {
                    return run_stats(view, opts.top.value_or(20), static_cast<bool>(opts.variants));
                });
                return;

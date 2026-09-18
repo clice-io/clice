@@ -48,7 +48,7 @@ namespace protocol = kota::ipc::protocol;
 /// completion, which deliberately serves the drained buffer (see there).
 ///
 /// Discipline: any feature whose answer is assembled from more than one
-/// source belongs here. Transports (LSP/agentic handlers) only translate
+/// source belongs here. Transports (LSP handlers) only translate
 /// between the wire protocol and these methods — they never merge, retry,
 /// or gate results themselves.
 class Features {

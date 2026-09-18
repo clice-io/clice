@@ -1,37 +1,343 @@
+#include <print>
+#include <ranges>
+#include <string>
+#include <vector>
+
 #include "driver/driver.h"
-#include "server/transport/agentic.h"
+#include "index/writer_lock.h"
+#include "sched/batch.h"
+#include "sched/index_view.h"
+#include "server/service/query_commands.h"
+#include "server/transport/control_client.h"
+
+#include "kota/ipc/codec/json.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 
 namespace clice::driver {
 
+using kota::deco::decl::KVStyle;
+
 namespace {
+
+struct QueryOptions {
+    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
+    help;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Workspace root directory (default: current directory)",
+           required = false)
+    <std::string> workspace;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help =
+               "Build configuration to read, one of the tags declared on rules "
+               "(default: the selected one, else default_configuration)",
+           required = false)
+    <std::string> configuration;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help =
+               "Question to ask: compileCommand, projectFiles, fileDeps, impactAnalysis, "
+               "symbolSearch, readSymbol, documentSymbols, definition, references, "
+               "callGraph, typeHierarchy",
+           required = false)
+    <std::string> method;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "File the question is about (relative to the workspace)",
+           required = false)
+    <std::string> path;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate, help = "Symbol name", required = false)
+    <std::string> name;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Symbol id (the #<hex> of an earlier answer)",
+           required = false)
+    <std::string> symbol;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "1-based line, with --path, naming the symbol defined there",
+           required = false)
+    <int> line;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "symbolSearch: text to search",
+           required = false)
+    <std::string> query;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "symbolSearch: at most this many symbols (default 100)",
+           required = false)
+    <int> limit;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "symbolSearch: comma-separated symbol kinds to keep (Function, Struct, ...)",
+           required = false)
+    <std::string> kind;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "projectFiles: all (default), source, header or module",
+           required = false)
+    <std::string> filter;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help =
+               "fileDeps: includes, includers or both (default); callGraph: callers, "
+               "callees or both; typeHierarchy: supertypes, subtypes or both",
+           required = false)
+    <std::string> direction;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "fileDeps: levels to follow (default 1, 0 for all)",
+           required = false)
+    <int> depth;
+
+    DecoFlag(names = {"--include-declaration"},
+             help = "references: list the declarations and definition too",
+             required = false)
+    include_declaration;
+
+    DecoFlag(names = {"--fresh"},
+             help =
+                 "Reindex the files whose content changed since they were indexed before "
+                 "answering, through the running server or a batch run of this command",
+             required = false)
+    fresh;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--log-level", "--log-level="},
+           help = "Log level: trace, debug, info, warn, error, off (default: warn)",
+           required = false)
+    <std::string> log_level;
+};
 
 auto make_command() {
     return kota::deco::cli::command<QueryOptions>("clice query [OPTIONS]");
 }
 
+constexpr llvm::StringLiteral build_methods[] = {"compileCommand",
+                                                 "projectFiles",
+                                                 "fileDeps",
+                                                 "impactAnalysis"};
+constexpr llvm::StringLiteral index_methods[] = {"symbolSearch",
+                                                 "readSymbol",
+                                                 "documentSymbols",
+                                                 "definition",
+                                                 "references",
+                                                 "callGraph",
+                                                 "typeHierarchy"};
+
+/// One answer on stdout: `{"result": ..., "stale": [...]}`, the files
+/// whose rows were withheld because their content moved on from the
+/// index (or that the index never held) listed so the reader knows what
+/// the answer lacks.
+template <typename T>
+struct Answer {
+    T result;
+    std::vector<std::string> stale;
+};
+
+/// `{"error": "...", "stale": [...]}` on stdout, exit code 1: what kept
+/// the question from being answered, and the files withheld on the way —
+/// a symbol not found may sit in one of them.
+struct Failure {
+    std::string error;
+    std::vector<std::string> stale;
+};
+
+template <typename T>
+std::string render_json(const T& value) {
+    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(value);
+    return json ? *json : "null";
+}
+
+template <typename T>
+void print_json(const T& value) {
+    std::println("{}", render_json(value));
+}
+
+/// What one pass over the index produced: the printed answer (or the
+/// error), and the files a --fresh pass would reindex first.
+struct Pass {
+    std::string json;
+    int exit_code = 0;
+    std::vector<std::string> stale;
+};
+
+/// Answer the question against the opened index; the argument checks are
+/// the commands' own.
+Pass answer(IndexView& view, const QueryOptions& opts) {
+    DiskGate gate;
+    IndexQuery index_query(view.workspace, {.disk = &gate});
+    query::Context ctx{.workspace = view.workspace,
+                       .contexts = view.contexts,
+                       .query = index_query};
+
+    auto method = opts.method.value_or("");
+    auto path = opts.path.value_or("");
+    auto absolute = path.empty() ? std::string() : inspected_path(view, path);
+    query::SymbolLocatorParams locator{
+        .name = opts.name.as_optional(),
+        .path = absolute.empty() ? std::nullopt : std::optional(absolute),
+        .line = opts.line.as_optional(),
+        .symbol = opts.symbol.as_optional(),
+    };
+    auto direction = [&](llvm::StringRef fallback) {
+        return opts.direction.value_or(fallback.str());
+    };
+    llvm::SmallVector<llvm::StringRef> kind_refs;
+    llvm::StringRef(opts.kind.value_or("")).split(kind_refs, ',', -1, /*KeepEmpty=*/false);
+    std::vector<std::string> kinds;
+    for(auto kind: kind_refs) {
+        kinds.push_back(kind.trim().str());
+    }
+
+    Pass pass;
+    auto emit = [&](auto outcome) {
+        for(auto file: gate.withheld()) {
+            pass.stale.emplace_back(view.path_of(file));
+        }
+        pass.stale.insert(pass.stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
+        std::ranges::sort(pass.stale);
+        auto duplicates = std::ranges::unique(pass.stale);
+        pass.stale.erase(duplicates.begin(), duplicates.end());
+        if(outcome) {
+            pass.json = render_json(Answer{.result = std::move(*outcome), .stale = pass.stale});
+        } else {
+            pass.exit_code = 1;
+            pass.json =
+                render_json(Failure{.error = std::move(outcome.error()), .stale = pass.stale});
+        }
+    };
+
+    if(method == "compileCommand") {
+        emit(query::compile_command(ctx, absolute));
+    } else if(method == "projectFiles") {
+        emit(query::project_files(ctx, opts.filter.value_or("all")));
+    } else if(method == "fileDeps") {
+        emit(query::file_deps(ctx, absolute, direction("both"), opts.depth.value_or(1)));
+    } else if(method == "impactAnalysis") {
+        emit(query::impact_analysis(ctx, absolute));
+    } else if(method == "symbolSearch") {
+        auto limit = opts.limit.value_or(100);
+        emit(query::symbol_search(ctx,
+                                  opts.query.value_or(""),
+                                  static_cast<std::size_t>(std::max(limit, 0)),
+                                  kinds));
+    } else if(method == "readSymbol") {
+        emit(query::read_symbol(ctx, locator));
+    } else if(method == "documentSymbols") {
+        emit(query::document_symbols(ctx, absolute));
+    } else if(method == "definition") {
+        emit(query::definition(ctx, locator));
+    } else if(method == "references") {
+        emit(query::references(ctx, locator, static_cast<bool>(opts.include_declaration)));
+    } else if(method == "callGraph") {
+        emit(query::call_graph(ctx, locator, direction("both")));
+    } else if(method == "typeHierarchy") {
+        emit(query::type_hierarchy(ctx, locator, direction("both")));
+    }
+    return pass;
+}
+
+/// Bring the index up to date with the disk before a --fresh answer:
+/// through the serving writer when a server holds the lock, else by a
+/// batch run of this process. Either sweeps the build under the hash
+/// gate, so only units whose inputs changed are recompiled — and an
+/// absent index gets built from nothing.
+std::expected<void, std::string> refresh(llvm::StringRef root,
+                                         llvm::StringRef configuration,
+                                         const char* self_path) {
+    auto cache_dir = Config::load_from_workspace(root).project.cache_dir;
+    auto writer = index::probe_writer(cache_dir);
+    switch(writer.state) {
+        case index::WriterProbe::State::Server: {
+            auto result = control::request_index(writer.endpoint);
+            if(!result) {
+                return std::unexpected(result.error());
+            }
+            return {};
+        }
+        case index::WriterProbe::State::Held: {
+            return std::unexpected(
+                std::format("another clice process{} holds the index writer lock at {}; "
+                            "retry when it is done",
+                            writer.holder.empty() ? "" : std::format(" ({})", writer.holder),
+                            cache_dir));
+        }
+        case index::WriterProbe::State::Free: break;
+    }
+    auto report_progress = [](const BatchProgress& progress) {
+        std::println(stderr,
+                     "indexing {}/{} units, {} failed",
+                     progress.completed,
+                     progress.total,
+                     progress.failed);
+    };
+    auto result = run_batch_index({
+        .root = root.str(),
+        .configuration = configuration.str(),
+        .self_path = self_path,
+        .on_progress = report_progress,
+    });
+    if(!result.completed) {
+        return std::unexpected(result.interrupted ? "indexing interrupted"
+                                                  : "indexing failed; see the log");
+    }
+    return {};
+}
+
+int run_query(const QueryOptions& opts, const char* self_path) {
+    auto method = opts.method.value_or("");
+    bool with_build = llvm::is_contained(build_methods, method);
+    if(!with_build && !llvm::is_contained(index_methods, method)) {
+        print_json(Failure{.error = method.empty() ? "--method is required"
+                                                   : std::format("unknown method '{}'", method),
+                           .stale = {}});
+        return 1;
+    }
+    auto root = workspace_root(opts.workspace.value_or(""));
+    auto configuration = opts.configuration.value_or("");
+    if(opts.fresh) {
+        if(auto refreshed = refresh(root, configuration, self_path); !refreshed) {
+            print_json(Failure{.error = refreshed.error()});
+            return 1;
+        }
+    }
+    Pass pass;
+    int rc = with_index(root, configuration, {.with_build = with_build}, [&](IndexView& view) {
+        pass = answer(view, opts);
+        return pass.exit_code;
+    });
+    if(pass.json.empty()) {
+        print_json(Failure{.error = "no index; run `clice index` or pass --fresh"});
+        return 1;
+    }
+    std::println("{}", pass.json);
+    return rc;
+}
+
 }  // namespace
 
-void add_query(kota::deco::cli::SubCommander& root, int& exit_code) {
+void add_query(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path) {
     auto cmd = make_command();
-    cmd.matchAll([&exit_code](QueryOptions opts) {
+    cmd.matchAll([&exit_code, self_path](QueryOptions opts) {
            if(opts.help) {
                auto help = make_command();
                print_usage(help);
                exit_code = 0;
                return;
            }
-           auto port = opts.port.value_or(0);
-           if(port <= 0 || port > 65535) {
-               LOG_ERROR("--port must be between 1 and 65535");
+           if(!apply_log_level(opts.log_level.value_or("warn")))
                return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("info")))
-               return;
-           exit_code = run_agentic_mode(opts);
+           logging::stderr_logger("query", logging::options);
+           exit_code = run_query(opts, self_path);
        })
         .on_error([](auto err) { LOG_ERROR("{}", err.message); });
 
-    root.add({.name = "query", .description = "Query symbol information from a running server"},
+    root.add({.name = "query", .description = "Ask the persisted index about the workspace"},
              std::move(cmd));
 }
 

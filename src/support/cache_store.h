@@ -242,6 +242,10 @@ public:
     /// manages namespace subdirectories); they die with the version.
     llvm::StringRef base_dir() const;
 
+    /// The directory the store was opened under (`cache_dir`), which
+    /// outlives any layout version.
+    llvm::StringRef root_dir() const;
+
     /// Whether the store was opened in read-only inspection mode.
     bool read_only() const;
 

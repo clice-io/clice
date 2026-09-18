@@ -11,6 +11,7 @@
 #include "semantic/symbol.h"
 #include "server/protocol/position.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -47,14 +48,26 @@ struct ServingSource {
     }
 };
 
+/// Freshness clause 2 for a reader without a pump: whether a file's own
+/// content moved on from the rows its shard holds is judged by hashing
+/// the disk against the shard's content generation, once per file. The
+/// verdicts double as the reader's report of what it withheld.
+struct DiskGate {
+    mutable llvm::DenseMap<Fid, bool> verdicts;
+
+    /// The files whose rows were withheld, in first-asked order.
+    llvm::SmallVector<Fid> withheld() const;
+};
+
 /// The buffer-side sources a query reads besides disk truth. All null is
-/// the disk-only view of the agent transport and headless tools: open
-/// buffers never participate, every file answers as if closed, and no
-/// "awaiting reindex" state exists.
+/// the disk-only view of headless tools: open buffers never participate,
+/// every file answers as if closed, and no "awaiting reindex" state
+/// exists unless a DiskGate supplies one.
 struct QuerySources {
     const SessionStore* sessions = nullptr;
     const ASTProjectionTable* projections = nullptr;
     const IndexPump* pump = nullptr;
+    const DiskGate* disk = nullptr;
 };
 
 /// How an agent names a symbol, tried in this order: by handle; by name,

@@ -55,7 +55,7 @@ struct ServerOptions {
     <std::string> host = "127.0.0.1";
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "TCP port (pipe mode: agentic only; socket mode: LSP + agentic)",
+           help = "Socket mode TCP port",
            required = false)
     <int> port = 0;
 
@@ -103,8 +103,9 @@ struct NotifyMessage {
 /// the worker pool, compilation engine, index query, and background indexer.
 ///
 /// Does NOT own any transport or peer.  Protocol-specific handler registration
-/// is done by LSPClient and AgentClient, which drive the server through its
-/// public members; the composition itself lives entirely here.
+/// is done by LSPClient and the control channel (serve_control), which drive
+/// the server through its public members; the composition itself lives
+/// entirely here.
 class MasterServer {
 public:
     MasterServer(kota::event_loop& loop,
@@ -141,12 +142,6 @@ public:
     /// Invalidator, then execute the resulting effects against the mutable
     /// services (sessions, context resolver, background indexer).
     void dispatch(llvm::ArrayRef<FileEvent> events);
-
-    /// Called by the agentic index-query handlers before answering. The
-    /// first call turns on open-file indexing (sticky) and enqueues the
-    /// currently open files, so agents get shards for files whose
-    /// sessions otherwise satisfied every consumer.
-    void on_agentic_query();
 
     void schedule_shutdown();
 
@@ -189,15 +184,6 @@ public:
     TURunFamily turun{graph, workspace, contexts, pcm, index_store, pool};
     IndexPump pump{loop, workspace, turun, index_store, pool};
 
-    /// Whether open files' disk snapshots are indexed like closed ones.
-    /// Off by default: the LSP side never reads an open file's shard (its
-    /// session serves it), so the work would be pure waste — until an
-    /// agent shows up, whose disk-truth queries need those shards. Turned
-    /// on (sticky) by the first agentic index query; files closed before
-    /// that are already covered, because BufferClosed re-enqueues a file
-    /// whose shard does not match the disk.
-    bool index_open_files = false;
-
     /// Emitted when rows an open index-served session is serving changed:
     /// results the client already pulled describe the old rows, and only a
     /// refresh request makes it re-pull them — index-only sessions never
@@ -206,11 +192,6 @@ public:
     Signal<> on_serving_rows_changed;
 
     IndexQuery index_query;
-
-    /// The agentic transport's view of the index: disk truth only.
-    /// Agents read files from disk, so buffer state must not leak into
-    /// their answers — see QuerySources.
-    IndexQuery agent_query;
 
     Features features;
     Invalidator invalidator;
@@ -285,6 +266,13 @@ private:
     Signal<llvm::ArrayRef<Fid>>::Connection index_rows_conn;
 
     void load_workspace();
+
+    /// When this server holds the cache directory's writer lock, the
+    /// commands that find it taken ask this server to index for them:
+    /// listen on a loopback port and record it next to the lock (see
+    /// index/writer_lock.h). The record is removed at shutdown.
+    void start_control_listener();
+    bool endpoint_recorded = false;
 
     /// Periodically checkpoint the cache store manifest so last-accessed
     /// times survive crashes (the store itself is passive by design).

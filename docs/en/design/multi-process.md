@@ -21,7 +21,7 @@ clice solves the above problems through a multi-process architecture: each compi
 ```text
 Master Process (MasterServer)
 ├── Event loop (kota)
-├── LSP / Agentic protocol handling
+├── LSP / control protocol handling
 ├── State management (workspace, sessions, invalidation)
 ├── Compile scheduling (task graph: PCH / PCM / AST / TU-run families)
 ├── Background indexing (index store + pump)
@@ -43,7 +43,7 @@ All worker processes communicate with the master process via stdin/stdout pipes,
 
 The master process is the system's coordinator, running a single-threaded event loop. It performs no CPU-intensive compilation work — all compilation is delegated to worker processes. The master process is responsible for:
 
-- Receiving and routing LSP / Agentic requests
+- Receiving and routing LSP / control requests
 - Managing global state (Workspace, Session mappings)
 - Scheduling compilation tasks and background indexing
 - Monitoring worker process health

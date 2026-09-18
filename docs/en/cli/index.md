@@ -6,6 +6,8 @@
 
 **Usage**: `clice index [--workspace <dir>] [--configuration <tag>] [--workers <n>]`
 
+One process writes the index of a workspace at a time. While an editor session has the workspace open, its server holds that role, so `clice index` asks the server to run the sweep and waits for the result instead of starting a worker pool of its own; the summary says so. A lock held by a process that cannot be asked (another `clice index`, a server of a different clice build) makes the command fail with the holder named — rerun it when that process is done.
+
 The run is resumable: interrupting it with Ctrl-C saves the progress made so far, and the next invocation continues where it left off. Progress is also saved every five minutes, so a crash loses at most that much work. While it runs, a progress line goes to stderr every ten seconds whatever the log level; the final summary on stdout counts the indexed units, the file shards and symbols produced, lists every unit that failed to index, and names the session log directory. The exit code is 0 for a complete index, 1 when some units failed or part of the index could not be persisted, and 130 when interrupted.
 
 ## Inspecting the index

@@ -42,7 +42,7 @@ IndexQuery index_query{
     workspace,
     {.sessions = &store, .projections = &projections, .pump = &indexer}
 };
-IndexQuery agent_query{workspace, {.pump = &indexer}};
+IndexQuery disk_query{workspace, {.pump = &indexer}};
 
 Fid main_id;
 Fid header_id;
@@ -84,7 +84,7 @@ index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
 /// Files contributing reference rows for a symbol, by basename.
 std::vector<std::string> reference_files(index::SymbolHash hash) {
     std::vector<std::string> files;
-    for(auto& site: agent_query.sites(hash, RelationKind::Reference)) {
+    for(auto& site: disk_query.sites(hash, RelationKind::Reference)) {
         files.push_back(llvm::sys::path::filename(site.path).str());
     }
     return files;
@@ -139,7 +139,7 @@ TEST_CASE(PendingGateSplitsRows) {
     SymbolLocator by_line;
     by_line.path = workspace.file_table.resolve(main_id);
     by_line.line = 3;
-    ASSERT_FALSE(agent_query.locate(by_line).empty());
+    ASSERT_FALSE(disk_query.locate(by_line).empty());
 
     // The file's own content changed: its contribution is skipped until the
     // reindex lands; other files' rows are unaffected.
@@ -149,7 +149,7 @@ TEST_CASE(PendingGateSplitsRows) {
 
     // Cursor-style resolution against the stale rows is unresolvable: the
     // line numbers describe text that no longer exists.
-    ASSERT_TRUE(agent_query.locate(by_line).empty());
+    ASSERT_TRUE(disk_query.locate(by_line).empty());
 
     // A content-changed definition file drops out of definition lookups.
     indexer.enqueue(header_id, ReindexReason::ContentChanged);

@@ -74,6 +74,32 @@ IncludeTree IncludeTree::from(CompilationUnitRef unit, llvm::ArrayRef<clang::Fil
         }
     }
 
+    // Skipped directives after every entry, so entered nodes keep the ids
+    // the recursion above assigned. Their target was entered elsewhere in
+    // this parse (that is what skipping means), so its path and hash are
+    // already in the table.
+    llvm::SmallVector<std::pair<clang::FileID, std::uint32_t>> skipped_targets;
+    for(auto fid: directive_fids) {
+        for(auto& include: directives.find(fid)->second.includes) {
+            if(!include.skipped || !include.fid.isValid()) {
+                continue;
+            }
+            auto parent = add_include_chain(unit, fid, tree, path_table);
+            auto [iter, success] =
+                path_table.try_emplace(unit.file_path(include.fid), tree.paths.size());
+            if(success) {
+                tree.paths.emplace_back(iter->first());
+            }
+            skipped_targets.push_back({include.fid, iter->second});
+            tree.nodes.push_back({
+                .file = iter->second,
+                .parent = parent,
+                .line = unit.presumed_location(include.location).getLine(),
+                .skipped = true,
+            });
+        }
+    }
+
     llvm::SmallVector<clang::FileID> sorted_indexed(indexed_fids.begin(), indexed_fids.end());
     llvm::sort(sorted_indexed);
     for(auto fid: sorted_indexed) {
@@ -102,6 +128,9 @@ IncludeTree IncludeTree::from(CompilationUnitRef unit, llvm::ArrayRef<clang::Fil
         if(node != no_node) {
             hash_fid(fid, tree.nodes[node].file);
         }
+    }
+    for(auto [fid, path_id]: skipped_targets) {
+        hash_fid(fid, path_id);
     }
     hash_fid(main_fid, tree.paths.size() - 1);
     return tree;

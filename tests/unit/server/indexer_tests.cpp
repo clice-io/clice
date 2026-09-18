@@ -72,7 +72,7 @@ struct IndexerFixture {
     /// Load and claim the report, as the workspace load does. Returns the
     /// decode verdict (false = old-format or corrupt global).
     bool load(bool read_only = false) {
-        auto result = index_store.load(read_only);
+        auto result = index_store.load({.read_only = read_only});
         pump.claim_report(result.report);
         return result.decoded;
     }

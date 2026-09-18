@@ -74,11 +74,12 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
     blob.tu_fv = manifest.tu_fv.raw;
 
     blob.node_count = static_cast<std::uint32_t>(manifest.nodes.size());
-    blob.nodes.reserve(manifest.nodes.size() * 6);
+    blob.nodes.reserve(manifest.nodes.size() * 7);
     for(auto& node: manifest.nodes) {
         write_varint(blob.nodes, node.file);
         write_varint(blob.nodes, node.parent + 1);
         write_varint(blob.nodes, node.line);
+        write_varint(blob.nodes, node.skipped ? 1 : 0);
     }
 
     blob.contribution_count = static_cast<std::uint32_t>(manifest.contributions.size());
@@ -100,10 +101,10 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     }
 
     // The counts size reserves below and are untrusted; a node occupies at
-    // least 3 payload bytes (three varints) and a contribution at least 9
+    // least 4 payload bytes (four varints) and a contribution at least 9
     // (varint + 8-byte hash), so a count beyond these bounds cannot be
     // honest and must not reach an allocator.
-    if(blob.node_count > blob.nodes.size() / 3 ||
+    if(blob.node_count > blob.nodes.size() / 4 ||
        blob.contribution_count > blob.contributions.size() / 9) {
         return std::nullopt;
     }
@@ -121,11 +122,12 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         std::uint64_t fv = 0;
         std::uint64_t parent = 0;
         std::uint64_t line = 0;
+        std::uint64_t skipped = 0;
         if(!read_varint(nodes, pos, fv) || !read_varint(nodes, pos, parent) ||
-           !read_varint(nodes, pos, line)) {
+           !read_varint(nodes, pos, line) || !read_varint(nodes, pos, skipped)) {
             return std::nullopt;
         }
-        if(fv > id_max || line > id_max) {
+        if(fv > id_max || line > id_max || skipped > 1) {
             return std::nullopt;
         }
         // Parents may follow their children (the include tree resolves
@@ -135,9 +137,10 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         if(parent > blob.node_count) {
             return std::nullopt;
         }
-        manifest.nodes.push_back({static_cast<std::uint32_t>(fv),
-                                  static_cast<std::uint32_t>(parent) - 1,
-                                  static_cast<std::uint32_t>(line)});
+        manifest.nodes.push_back({.file = static_cast<std::uint32_t>(fv),
+                                  .parent = static_cast<std::uint32_t>(parent) - 1,
+                                  .line = static_cast<std::uint32_t>(line),
+                                  .skipped = skipped != 0});
     }
     if(pos != nodes.size()) {
         return std::nullopt;

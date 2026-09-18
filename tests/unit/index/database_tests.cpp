@@ -4,6 +4,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "index/database.h"
+#include "index/writer_lock.h"
 #include "support/cache_store.h"
 #include "support/filesystem.h"
 
@@ -347,6 +348,39 @@ TEST_CASE(LibraryBlockedByFile) {
     ASSERT_TRUE(!ec);
     ASSERT_TRUE(fs::write(library, "x").has_value());
     ASSERT_TRUE(index::open_database(store, "x") == nullptr);
+}
+
+TEST_CASE(WriterLockAtCacheRoot) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto db = index::open_database(store, "x");
+    ASSERT_TRUE(db != nullptr);
+    // The lock guards the cache directory, not the configuration's
+    // library, and a read-only open never takes it. (Contention itself is
+    // between processes: POSIX record locks are per process, so a second
+    // acquisition in this one would succeed.)
+    ASSERT_TRUE(llvm::sys::fs::exists(path::join(store.root_dir(), "index.lock")));
+    ASSERT_FALSE(
+        llvm::sys::fs::exists(path::join(index::library_directory(store, "x"), "index.lock")));
+    ASSERT_TRUE(index::open_database(store, "y", /*read_only=*/true) == nullptr);
+}
+
+TEST_CASE(ProbeIgnoresStaleEndpoint) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto cache_dir = store.root_dir();
+    index::write_endpoint(cache_dir, {.pid = 1, .version = "x", .host = "127.0.0.1", .port = 1});
+    ASSERT_TRUE(llvm::sys::fs::exists(path::join(cache_dir, "server.json")));
+
+    // Nobody holds the lock: the record is a crash's residue, swept by
+    // the probe.
+    auto probe = index::probe_writer(cache_dir);
+    ASSERT_EQ(probe.state, index::WriterProbe::State::Free);
+    ASSERT_FALSE(llvm::sys::fs::exists(path::join(cache_dir, "server.json")));
+
+    index::write_endpoint(cache_dir, {.pid = 1, .version = "x", .host = "127.0.0.1", .port = 1});
+    index::remove_endpoint(cache_dir);
+    ASSERT_FALSE(llvm::sys::fs::exists(path::join(cache_dir, "server.json")));
 }
 
 TEST_CASE(OutstandingSnapshotsStack) {

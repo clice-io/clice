@@ -89,7 +89,10 @@ void merge_into_workspace() {
     manifest.tu_fv = fv_of[view.path_count() - 1];
     for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
         auto node = view.node(i);
-        manifest.nodes.push_back({fv_of[node.file].raw, node.parent, node.line});
+        manifest.nodes.push_back({.file = fv_of[node.file].raw,
+                                  .parent = node.parent,
+                                  .line = node.line,
+                                  .skipped = node.skipped});
     }
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         manifest.contributions.emplace_back(fv_of[view.section_path(section)],

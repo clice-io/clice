@@ -11,6 +11,7 @@
 #endif
 
 #include "lmdb.h"
+#include "index/writer_lock.h"
 #include "support/cache_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -19,7 +20,6 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Process.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 
 #ifdef _WIN32
@@ -30,62 +30,6 @@
 namespace clice::index {
 
 namespace {
-
-constexpr llvm::StringLiteral index_lock_name = "index.lock";
-
-/// Cross-process writer lock for the index lineage, shared by both
-/// backends and always taken before the backend touches any of its files.
-/// Atomic per-blob replacement (or a database file) cannot serialize the
-/// mutable global/manifest lineage: two writers (an LSP server plus a
-/// batch `clice index`) derive the same next generation from the same
-/// loaded state, so a manifest written by one passes the other's
-/// generation pin with FileVersion ids allocated against a different
-/// table, loading rows under the wrong files. An OS advisory lock dies
-/// with its process, so a crash leaves nothing stale behind.
-std::optional<int> acquire_writer_lock(llvm::StringRef library) {
-    auto lock_path = path::join(library, index_lock_name);
-    int lock_fd = -1;
-    if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
-                                                     lock_fd,
-                                                     llvm::sys::fs::CD_OpenAlways,
-                                                     llvm::sys::fs::OF_None)) {
-        LOG_WARN("Failed to open the index writer lock {}: {}", lock_path, ec.message());
-        return std::nullopt;
-    }
-    if(llvm::sys::fs::tryLockFile(lock_fd)) {
-        // The holder stamped its pid below; a lock a Windows holder keeps
-        // exclusive, or one from an older build, reads as nobody.
-        std::string holder;
-        if(auto stamped = fs::read(lock_path); stamped && !stamped->empty()) {
-            holder = std::format(" (pid {})", llvm::StringRef(*stamped).trim());
-        }
-        LOG_WARN(
-            "Another clice process{} is writing the index cache at {}; "
-            "index persistence is disabled for this process",
-            holder,
-            library);
-        llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
-        return std::nullopt;
-    }
-    llvm::sys::fs::resize_file(lock_fd, 0);
-    llvm::raw_fd_ostream stamp(lock_fd, /*shouldClose=*/false);
-    stamp.seek(0);
-    stamp << llvm::sys::Process::getProcessId() << '\n';
-    stamp.flush();
-    // Best effort: a lock left unstamped only costs the next process the
-    // pid in its message, while an errored stream aborts in its destructor.
-    stamp.clear_error();
-    return lock_fd;
-}
-
-void release_writer_lock(int lock_fd) {
-    if(lock_fd != -1) {
-        // The stamp names the holder; an unheld lock reads as nobody.
-        llvm::sys::fs::resize_file(lock_fd, 0);
-        llvm::sys::fs::unlockFile(lock_fd);
-        llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
-    }
-}
 
 constexpr llvm::StringLiteral lmdb_file_name = "index.mdb";
 
@@ -238,6 +182,11 @@ public:
             }
             return failed;
         };
+        // Readers are short-lived commands that may have been killed
+        // since the last batch; a dead one's slot pins its snapshot and the
+        // map only grows until it is cleared.
+        int dead = 0;
+        mdb_reader_check(env, &dead);
         MDB_txn* wtxn = nullptr;
         if(int rc = mdb_txn_begin(env, nullptr, 0, &wtxn)) {
             return fail_all(rc, "begin");
@@ -651,7 +600,7 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
     }
     int lock_fd = -1;
     if(!read_only) {
-        auto locked = acquire_writer_lock(library);
+        auto locked = acquire_writer_lock(store.root_dir());
         if(!locked) {
             return nullptr;
         }
