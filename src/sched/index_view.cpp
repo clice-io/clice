@@ -90,19 +90,19 @@ int open_index(IndexView& view,
     // may already have finished and unlocked by the time any post-load
     // probe runs, so retry on the drops themselves; genuine damage merely
     // spends the bounded retries before the final no-retry pass reports it.
-    view.pending = loaded.report.reindex().size();
-    if(allow_retry && view.pending != 0) {
+    view.dropped.assign(loaded.report.reindex().begin(), loaded.report.reindex().end());
+    if(allow_retry && !view.dropped.empty()) {
         return open_retry;
     }
     // With no pump attached the load report's debt can only be the
     // recovery drops: every TU's blobs were missing, stale, or corrupt — a
     // damaged cache, not a legitimately empty one.
-    if(view.project().manifests.empty() && workspace.shards.empty() && view.pending != 0) {
+    if(view.project().manifests.empty() && workspace.shards.empty() && !view.dropped.empty()) {
         LOG_ERROR(
             "Index cache at {} has no servable data ({} translation units need "
             "reindexing); run `clice index` to rebuild",
             std::string_view(workspace.config.project.cache_dir),
-            view.pending);
+            view.dropped.size());
         return 1;
     }
     return 0;

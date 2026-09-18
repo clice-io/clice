@@ -18,19 +18,24 @@ namespace {
 constexpr llvm::StringLiteral lock_name = "index.lock";
 constexpr llvm::StringLiteral endpoint_name = "server.json";
 
-/// The holder's pid as stamped into the lock file; empty when the stamp
+/// The holder's pid as stamped into the lock file; nullopt when the stamp
 /// is unreadable (a Windows holder keeps the file exclusive) or absent.
-std::string stamped_holder(llvm::StringRef lock_path) {
+std::optional<std::uint32_t> stamped_pid(llvm::StringRef lock_path) {
     auto stamped = fs::read(lock_path);
-    if(!stamped || stamped->empty()) {
-        return {};
+    std::uint32_t pid = 0;
+    if(!stamped || llvm::StringRef(*stamped).trim().getAsInteger(10, pid)) {
+        return std::nullopt;
     }
-    return std::format("pid {}", llvm::StringRef(*stamped).trim());
+    return pid;
+}
+
+std::string holder_name(std::optional<std::uint32_t> pid) {
+    return pid ? std::format("pid {}", *pid) : std::string();
 }
 
 }  // namespace
 
-std::optional<int> acquire_writer_lock(llvm::StringRef cache_dir) {
+std::optional<WriterLock> WriterLock::acquire(llvm::StringRef cache_dir) {
     auto lock_path = path::join(cache_dir, lock_name);
     int lock_fd = -1;
     if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
@@ -41,7 +46,7 @@ std::optional<int> acquire_writer_lock(llvm::StringRef cache_dir) {
         return std::nullopt;
     }
     if(llvm::sys::fs::tryLockFile(lock_fd)) {
-        auto holder = stamped_holder(lock_path);
+        auto holder = holder_name(stamped_pid(lock_path));
         LOG_WARN(
             "Another clice process{} is writing the index cache at {}; "
             "index persistence is disabled for this process",
@@ -58,15 +63,16 @@ std::optional<int> acquire_writer_lock(llvm::StringRef cache_dir) {
     // Best effort: a lock left unstamped only costs the next process the
     // pid in its message, while an errored stream aborts in its destructor.
     stamp.clear_error();
-    return lock_fd;
+    return WriterLock(lock_fd);
 }
 
-void release_writer_lock(int lock_fd) {
-    if(lock_fd != -1) {
+void WriterLock::release() {
+    if(fd != -1) {
         // The stamp names the holder; an unheld lock reads as nobody.
-        llvm::sys::fs::resize_file(lock_fd, 0);
-        llvm::sys::fs::unlockFile(lock_fd);
-        llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
+        llvm::sys::fs::resize_file(fd, 0);
+        llvm::sys::fs::unlockFile(fd);
+        llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+        fd = -1;
     }
 }
 
@@ -124,7 +130,8 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
     }
     llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
     probe.state = WriterProbe::State::Held;
-    probe.holder = stamped_holder(lock_path);
+    auto holder = stamped_pid(lock_path);
+    probe.holder = holder_name(holder);
 
     auto record = fs::read(path::join(cache_dir, endpoint_name));
     if(!record) {
@@ -132,6 +139,12 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
     }
     ServerEndpoint endpoint;
     if(auto parsed = kota::codec::json::from_string(*record, endpoint); !parsed) {
+        return probe;
+    }
+    // A record from a server that died holding the lock survives until the
+    // next holder records its own; the stamp tells them apart where it can
+    // be read.
+    if(holder && *holder != endpoint.pid) {
         return probe;
     }
     if(endpoint.version != clice::version) {

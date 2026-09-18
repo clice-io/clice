@@ -42,9 +42,14 @@ void register_control(MasterServer& srv, kota::ipc::JsonPeer& peer) {
                 srv.dispatch(events);
             }
         }
+        auto members = srv.workspace.build.members();
+        if(members.empty()) {
+            co_return kota::outcome_error(kota::ipc::Error{
+                "nothing to index: the running clice server's build has no translation units"});
+        }
         control::IndexResult result;
         llvm::SmallVector<Fid> files;
-        for(auto member: srv.workspace.build.members()) {
+        for(auto member: members) {
             if(srv.pump.enqueue(member, ReindexReason::DepsOnly)) {
                 files.push_back(member);
             }

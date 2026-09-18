@@ -306,8 +306,8 @@ private:
     /// Confirmed corruption heals through rebuildability: condemn the
     /// database (deleted on close) and continue on a freshly opened empty
     /// one, so the session's rebuild persists instead of waiting for the
-    /// next start. A failed reopen (another process grabbed the writer
-    /// lock meanwhile) leaves persistence disabled for the session.
+    /// next start. A failed reopen leaves persistence disabled for the
+    /// session.
     void reopen_fresh_database();
 
     /// Migrate resident shards onto a fresh database read snapshot after a

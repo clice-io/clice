@@ -438,11 +438,11 @@ void print_stats(const IndexView& view, const IndexStats& stats, std::uint32_t t
     std::println("Global symbols: {}, file versions: {}",
                  project.symbols.size(),
                  workspace.file_table.versions.size());
-    if(view.pending != 0) {
+    if(!view.dropped.empty()) {
         std::println(
             "Translation units pending reindex (stale or partially written): {}; "
             "run `clice index` to repair",
-            view.pending);
+            view.dropped.size());
     }
 
     auto payload = stats.columns.total();
@@ -516,7 +516,7 @@ int run_stats(IndexView& view, std::uint32_t top, bool variants) {
     }
     // Partial damage is still damage: automation must not read exit 0 as
     // "the cache is healthy" just because some TUs remained servable.
-    return view.pending == 0 ? 0 : 1;
+    return view.dropped.empty() ? 0 : 1;
 }
 
 std::string flag_names(index::SymbolFlags flags) {

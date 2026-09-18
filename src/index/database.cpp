@@ -11,7 +11,6 @@
 #endif
 
 #include "lmdb.h"
-#include "index/writer_lock.h"
 #include "support/cache_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -101,14 +100,8 @@ void remove_database_files(llvm::StringRef path) {
 
 class LmdbDatabase final : public BlobDatabase {
 public:
-    LmdbDatabase(MDB_env* env,
-                 MDB_dbi dbi,
-                 MDB_txn* txn,
-                 std::string path,
-                 int lock_fd,
-                 bool read_only) :
-        env(env), dbi(dbi), txn(txn), path(std::move(path)), lock_fd(lock_fd),
-        read_only_(read_only) {}
+    LmdbDatabase(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, std::string path, bool read_only) :
+        env(env), dbi(dbi), txn(txn), path(std::move(path)), read_only_(read_only) {}
 
     bool read_only() const override {
         return read_only_;
@@ -125,7 +118,6 @@ public:
         if(condemned) {
             remove_database_files(path);
         }
-        release_writer_lock(lock_fd);
     }
 
     ReadBlob read(IndexBlobKind kind, llvm::StringRef key) override {
@@ -335,7 +327,6 @@ private:
     /// See note_error()/corrupted(); written on both loop and pool threads.
     std::atomic<bool> poisoned = false;
     bool condemned = false;
-    int lock_fd;
     bool read_only_ = false;
 };
 
@@ -410,7 +401,6 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
 }
 
 std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
-                                            int lock_fd,
                                             std::size_t initial_mapsize,
                                             bool read_only) {
     auto path = path::join(library, lmdb_file_name);
@@ -524,7 +514,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
                 return nullptr;
             }
         }
-        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), lock_fd, read_only);
+        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), read_only);
     }
     return nullptr;
 }
@@ -601,17 +591,8 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
         LOG_WARN("Cannot create the index library {}: {}", library, ec.message());
         return nullptr;
     }
-    int lock_fd = -1;
-    if(!read_only) {
-        auto locked = acquire_writer_lock(store.root_dir());
-        if(!locked) {
-            return nullptr;
-        }
-        lock_fd = *locked;
-    }
-    auto db = open_lmdb_env(library, lock_fd, initial_mapsize, read_only);
+    auto db = open_lmdb_env(library, initial_mapsize, read_only);
     if(!db) {
-        release_writer_lock(lock_fd);
         return nullptr;
     }
     LOG_INFO("Index library: {}", library);

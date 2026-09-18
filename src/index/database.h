@@ -168,12 +168,11 @@ public:
 std::string library_directory(const CacheStore& store, llvm::StringRef configuration);
 
 /// The configuration's library: a single `index.mdb` (plus its `-lock`
-/// file) in its library directory, created on demand. On a writable
-/// store this first takes the cache directory's cross-process writer lock
-/// (held until destruction) and returns nullptr when another clice
-/// process already holds it — the global/manifest blobs form one
-/// mutable lineage that tolerates no second writer. Also nullptr when
-/// the environment cannot be opened safely — only confirmed corruption
+/// file) in its library directory, created on demand. A writable open
+/// presumes the caller holds the cache directory's writer lock
+/// (index/writer_lock.h) — the global/manifest blobs form one mutable
+/// lineage that tolerates no second writer. Nullptr when the
+/// environment cannot be opened safely — only confirmed corruption
 /// (or a meta mismatch) is repaired by deleting and rebuilding the
 /// database; transient errors disable index persistence for the session
 /// and touch nothing. A read-only open of a library without an

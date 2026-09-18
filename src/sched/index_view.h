@@ -9,6 +9,7 @@
 
 #include "kota/async/async.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -23,8 +24,9 @@ struct IndexView {
     IndexStore store{loop, workspace, contexts};
     std::string configuration;
 
-    /// Translation units the load dropped as stale or partially written.
-    std::size_t pending = 0;
+    /// Translation units the load dropped as stale or partially written:
+    /// their rows are absent until a reindex lands.
+    llvm::SmallVector<Fid> dropped;
 
     const index::ProjectIndex& project() const {
         return workspace.project_index;

@@ -81,7 +81,11 @@ IncludeTree IncludeTree::from(CompilationUnitRef unit, llvm::ArrayRef<clang::Fil
     llvm::SmallVector<std::pair<clang::FileID, std::uint32_t>> skipped_targets;
     for(auto fid: directive_fids) {
         for(auto& include: directives.find(fid)->second.includes) {
-            if(!include.skipped || !include.fid.isValid()) {
+            // A target never entered in this parse (behind a preamble PCH)
+            // has no buffer to hash, and a version without a hash is never
+            // fresh: leave the directive out rather than pin the unit stale.
+            if(!include.skipped || !include.fid.isValid() ||
+               !unit.loaded_file_content(include.fid)) {
                 continue;
             }
             auto parent = add_include_chain(unit, fid, tree, path_table);

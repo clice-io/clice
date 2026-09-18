@@ -197,6 +197,9 @@ Reply answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::stri
         }
         stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
         stale.insert(stale.end(), failed.begin(), failed.end());
+        for(auto unit: view.dropped) {
+            stale.emplace_back(view.path_of(unit));
+        }
         std::ranges::sort(stale);
         auto duplicates = std::ranges::unique(stale);
         stale.erase(duplicates.begin(), duplicates.end());

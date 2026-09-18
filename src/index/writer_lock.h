@@ -14,12 +14,37 @@ namespace clice::index {
 /// the LSP server of the workspace holds it for its lifetime, else a
 /// batch command (`clice index`, `clice lint --index`) for the run. An OS
 /// advisory lock dies with its process, so a crash leaves nothing stale
-/// behind. Returns the lock's descriptor, or nullopt when another process
-/// holds it (logged with the holder's pid where the platform lets it be
-/// read).
-std::optional<int> acquire_writer_lock(llvm::StringRef cache_dir);
+/// behind. Held by the workspace that opened the store, not by the
+/// database handle: a database condemned and reopened mid-session keeps
+/// the directory.
+class WriterLock {
+public:
+    /// nullopt when another process holds the lock (logged with the
+    /// holder's pid where the platform lets it be read).
+    static std::optional<WriterLock> acquire(llvm::StringRef cache_dir);
 
-void release_writer_lock(int lock_fd);
+    WriterLock(WriterLock&& other) noexcept : fd(other.fd) {
+        other.fd = -1;
+    }
+
+    WriterLock& operator=(WriterLock&& other) noexcept {
+        release();
+        fd = other.fd;
+        other.fd = -1;
+        return *this;
+    }
+
+    ~WriterLock() {
+        release();
+    }
+
+private:
+    explicit WriterLock(int fd) : fd(fd) {}
+
+    void release();
+
+    int fd;
+};
 
 /// What a serving writer records next to the lock, for the commands that
 /// find the lock taken: where its control channel listens. Written only
@@ -57,7 +82,9 @@ struct WriterProbe {
 };
 
 /// Probe the lock without keeping it: a momentary observation — the
-/// caller's own acquisition is the real gate.
+/// caller's own acquisition is the real gate. Never from a process that
+/// holds the lock: POSIX record locks are per process, and closing the
+/// probe's descriptor would release it.
 WriterProbe probe_writer(llvm::StringRef cache_dir);
 
 /// What a command tells the user when the probe found a writer it cannot
