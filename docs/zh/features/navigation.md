@@ -1096,13 +1096,13 @@ tests/snap/workspace_symbol/workspace_symbol/03_overload_params.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#914 -->
+<!-- BEGIN CAPABILITY: supported clangd#914 -->
 
 **模糊匹配**
 
-工作区符号搜索尚不支持基于单词边界的模糊匹配
+查询以子序列的形式匹配名称，并对齐到名称中的各个单词
 
-匹配采用不区分大小写的子串检查：`LinLis` 无法找到 `LinkedList`，`pcfg` 也无法找到 `parse_config`。包括宏在内，所有类型的符号都不支持按单词边界处的首字母匹配。
+`LinLis` 能找到 `LinkedList`，`pconf` 能找到 `parse_config`：除首字母外，查询中的每个字母要么接着前一个字母连成一段，要么落在名称中某个单词的词首，所以 `pcfg` 什么也找不到——它的 `f` 落在了 `config` 中间。名称完全一致的排在最前，其次是以查询开头的名称，最后才是匹配位置更深入名称内部的。
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/04_fuzzy_matching.cpp
@@ -1110,11 +1110,13 @@ tests/snap/workspace_symbol/workspace_symbol/04_fuzzy_matching.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#550 -->
+<!-- BEGIN CAPABILITY: supported clangd#550 -->
 
-**部分限定名称搜索**
+**限定名称搜索**
 
-符号仅按名称本身匹配：即使存在 `deep::net::Socket`，搜索 `net::Socket` 也找不到结果，其他带有限定符前缀的形式同样如此
+带限定的查询指明符号必须位于哪些容器之内
+
+`net::Socket` 能找到 `deep::net::Socket`：这些限定符必须按同样的顺序出现在符号的容器链中，其间和两端允许有别的容器；而以 `::` 开头则要求容器链与之完全一致。对限定查询的回复会写出限定名称，这样那些按查询文本过滤结果的编辑器就不会把它们滤掉。
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/05_qualified_search.cpp
@@ -1122,11 +1124,11 @@ tests/snap/workspace_symbol/workspace_symbol/05_qualified_search.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#931 -->
+<!-- BEGIN CAPABILITY: supported clangd#931 -->
 
 **有作用域枚举的枚举项查找**
 
-使用限定名称查询枚举项尚无结果
+枚举和其他容器一样，为自己的枚举项提供限定
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/06_enum_scope.cpp
@@ -1134,13 +1136,13 @@ tests/snap/workspace_symbol/workspace_symbol/06_enum_scope.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2253 -->
+<!-- BEGIN CAPABILITY: supported clangd#2253 -->
 
 **别名排序**
 
-尚未对匹配的别名及其所指向的声明进行排序
+名称完全一致的结果排在仅以该名称开头的结果之前
 
-目前尚未对结果进行排序。
+`Connection` 会先列出别名，随后才是 `ConnectionImpl`。
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/07_alias_priority.cpp
@@ -1156,6 +1158,20 @@ tests/snap/workspace_symbol/workspace_symbol/07_alias_priority.cpp
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/08_mangled_name.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**查询语法**
+
+引号、通配符、作用域和过滤条件都能收窄一次搜索
+
+`"process"` 只匹配完整的名称，`proc*` 则匹配它通配到的一切；`io::*` 列出一个命名空间的成员，`io::**` 列出它的整棵子树；`kind:function` 只保留一种种类。各词项之间以空格分隔，可以组合使用。
+
+```snap
+tests/snap/workspace_symbol/workspace_symbol/09_query_syntax.cpp
 ```
 
 <!-- END CAPABILITY -->

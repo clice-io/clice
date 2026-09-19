@@ -103,6 +103,11 @@ TEST_CASE(Scopes) {
     EXPECT_EQ(wholly_quoted.mode, Mode::Exact);
     EXPECT_EQ(scope_names(wholly_quoted), (std::vector<std::string>{"ns"}));
     EXPECT_EQ(wholly_quoted.pattern, "foo");
+    auto quoted_args = parsed(R"("ns::Box<std::string>")");
+    EXPECT_EQ(quoted_args.mode, Mode::Exact);
+    EXPECT_EQ(scope_names(quoted_args), (std::vector<std::string>{"ns"}));
+    EXPECT_EQ(quoted_args.pattern, "Box");
+    EXPECT_EQ(quoted_args.args, "<std::string>");
 }
 
 TEST_CASE(Arguments) {

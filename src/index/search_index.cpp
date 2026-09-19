@@ -436,13 +436,18 @@ bool ranks_after(const NameRank& lhs,
 
 NameRanker::NameRanker(const SymbolQuery& query) :
     query(query), lower_pattern(lowercase(query.pattern)),
-    exact(query.mode == Mode::Fuzzy ? llvm::StringRef(query.pattern) : llvm::StringRef()) {
+    exact(query.mode == Mode::Fuzzy ? llvm::StringRef(query.pattern) : llvm::StringRef(),
+          MatchOptions{.inside_word = true}) {
     llvm::SmallVector<TypoAlternative> alternatives;
     if(query.mode == Mode::Fuzzy) {
         typo_tokens(query.pattern, alternatives);
+        query_tokens(query.pattern, short_tokens);
+        if(!short_tokens.empty() && short_tokens.front() >= first_trigram) {
+            short_tokens.clear();
+        }
     }
     if(!alternatives.empty()) {
-        typo.emplace(query.pattern, MatchOptions{.typo = true});
+        typo.emplace(query.pattern, MatchOptions{.typo = true, .inside_word = true});
     }
 }
 
@@ -472,6 +477,17 @@ std::optional<NameRank>
     if(name.size() == lower_pattern.size() && lowercase(name) == lower_pattern) {
         return NameRank{.tier = static_cast<std::uint8_t>(name == query.pattern ? 0 : 1),
                         .score = quality};
+    }
+    // A query too short for trigrams is keyed by a name's first two words
+    // in the index; judging rows the same way keeps the two answers alike.
+    if(!short_tokens.empty()) {
+        llvm::SmallVector<NameToken, 64> tokens;
+        name_tokens(name, tokens);
+        if(!llvm::all_of(short_tokens, [&](NameToken token) {
+               return std::ranges::binary_search(tokens, token);
+           })) {
+            return std::nullopt;
+        }
     }
     if(auto score = exact.match(name)) {
         return NameRank{.tier = 2, .score = *score * quality};
@@ -521,6 +537,10 @@ struct SearchIndex::View {
     mutable llvm::DenseMap<std::uint32_t, Bitmap> file_cache;
     mutable std::optional<Bitmap> top_level_cache;
 
+    /// Whether a posting image failed to decode: the answers since are
+    /// incomplete, and the owner rebuilds the index.
+    mutable bool damaged = false;
+
     /// Bind the columns of a verified blob, checking they line up.
     std::expected<void, llvm::StringRef> bind(BlobView root);
 
@@ -543,23 +563,27 @@ struct SearchIndex::View {
         return slice(args, args_ends, doc);
     }
 
-    /// A posting image decoded; a malformed one reads as empty.
-    static Bitmap decode(llvm::ArrayRef<std::uint8_t> arena,
-                         llvm::ArrayRef<std::uint32_t> ends,
-                         std::uint32_t i) {
+    /// A posting image decoded; a malformed one reads as empty and marks
+    /// the index damaged.
+    Bitmap decode(llvm::ArrayRef<std::uint8_t> arena,
+                  llvm::ArrayRef<std::uint32_t> ends,
+                  std::uint32_t i) const {
         auto begin = i == 0 ? 0 : ends[i - 1];
         auto decoded = read_bitmap(arena.data() + begin, ends[i] - begin);
         if(!decoded) {
-            LOG_WARN("A search index posting list does not decode; treating it as empty");
+            if(!damaged) {
+                LOG_WARN("A search index posting list does not decode; the index is rebuilt");
+            }
+            damaged = true;
             return {};
         }
         return std::move(*decoded);
     }
 
-    const static Bitmap& cached(llvm::DenseMap<std::uint32_t, Bitmap>& cache,
-                                llvm::ArrayRef<std::uint8_t> arena,
-                                llvm::ArrayRef<std::uint32_t> ends,
-                                std::uint32_t i) {
+    const Bitmap& cached(llvm::DenseMap<std::uint32_t, Bitmap>& cache,
+                         llvm::ArrayRef<std::uint8_t> arena,
+                         llvm::ArrayRef<std::uint32_t> ends,
+                         std::uint32_t i) const {
         auto [it, inserted] = cache.try_emplace(i);
         if(inserted) {
             it->second = decode(arena, ends, i);
@@ -746,6 +770,13 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
             return std::unexpected("hash order is not ascending");
         }
     }
+    // Hashes become table keys downstream (symbol_info), which reserve
+    // two sentinel values.
+    for(auto hash: view.hashes) {
+        if(reserved_key(hash)) {
+            return std::unexpected("reserved symbol hash");
+        }
+    }
     if(view.token_keys.size() != view.token_ends.size() ||
        !monotone(view.token_ends, view.token_postings.size()) ||
        !std::ranges::is_sorted(view.token_keys, std::less<>{}) ||
@@ -807,6 +838,10 @@ bool SearchIndex::loaded() const {
 
 std::size_t SearchIndex::size() const {
     return view ? view->count() : 0;
+}
+
+bool SearchIndex::damaged() const {
+    return view && view->damaged;
 }
 
 bool SearchIndex::contains(SymbolHash hash) const {
@@ -892,11 +927,13 @@ std::vector<SearchHit> SearchIndex::search(const SymbolQuery& query, std::size_t
         return index.hashes[doc];
     };
     TopHits top{.limit = limit, .name_of = name_of, .hash_of = hash_of};
-    Bitmap visited;
+    // The docs already ranked; a doc the clean pass rejected is judged
+    // again by the typo pass, which may accept it.
+    Bitmap ranked;
     auto consider = [&](std::uint32_t doc, bool lenient) {
-        visited.add(doc);
         if(auto rank =
                ranker.rank(index.name(doc), index.arguments(doc), index.qualities[doc], lenient)) {
+            ranked.add(doc);
             top.push({.rank = *rank, .doc = doc});
         }
     };
@@ -908,7 +945,7 @@ std::vector<SearchHit> SearchIndex::search(const SymbolQuery& query, std::size_t
             if(doc >= index.count()) {
                 break;
             }
-            if(!allowed(doc) || visited.contains(doc)) {
+            if(!allowed(doc) || ranked.contains(doc)) {
                 continue;
             }
             if(!top.admits({.tier = static_cast<std::uint8_t>(lenient ? 3 : 2),

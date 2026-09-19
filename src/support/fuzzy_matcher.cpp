@@ -119,7 +119,8 @@ void segment(llvm::StringRef text, llvm::MutableArrayRef<CharRole> roles) {
     }
 }
 
-FuzzyMatcher::FuzzyMatcher(llvm::StringRef pattern, MatchOptions options) : options(options) {
+FuzzyMatcher::FuzzyMatcher(llvm::StringRef pattern, MatchOptions options) :
+    options(options), whole_pattern(pattern.size() <= max_pattern) {
     pattern = pattern.take_front(max_pattern);
     pat.assign(pattern.begin(), pattern.end());
     for(char c: pat) {
@@ -134,6 +135,7 @@ FuzzyMatcher::Cell& FuzzyMatcher::cell(std::size_t p, std::size_t n, Run run, bo
 }
 
 bool FuzzyMatcher::prepare(llvm::StringRef text) {
+    whole_name = text.size() <= max_name;
     text = text.take_front(max_name);
     if(pat.size() > text.size() + (options.typo ? 1 : 0)) {
         return false;
@@ -242,7 +244,7 @@ void FuzzyMatcher::fill() {
                             points -= start_inside_word;
                         }
                         auto& target = cell(p + 1, n + 1, continued(p, n, run), spent);
-                        if(p == 0 || contiguous || anchor[n]) {
+                        if((p == 0 && options.inside_word) || contiguous || anchor[n]) {
                             if(!contiguous && p > 0) {
                                 points -= gap;
                             }
@@ -313,7 +315,9 @@ std::optional<float> FuzzyMatcher::match(llvm::StringRef text) {
     if(spent) {
         return score / 2;
     }
-    if(pat.size() == name.size()) {
+    // Only the whole pattern spelling the whole name is exact: a match
+    // within the truncation bounds is not.
+    if(whole_pattern && whole_name && pat.size() == name.size()) {
         return score * 2;
     }
     return score;
@@ -378,7 +382,6 @@ std::string FuzzyMatcher::annotate(llvm::StringRef text) {
 
 void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
     out.clear();
-    name = name.take_front(max_name);
     if(name.empty()) {
         return;
     }
@@ -387,20 +390,20 @@ void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
     bool has_lower = has_lowercase_letter(name);
 
     // The positions a match may jump to from anywhere before them.
-    llvm::SmallVector<std::uint8_t, 32> anchors;
+    llvm::SmallVector<std::uint32_t, 32> anchors;
     for(std::size_t i = 0; i < name.size(); i += 1) {
         if(roles[i] != CharRole::Separator && is_anchor(name[i], roles[i], has_lower)) {
-            anchors.push_back(static_cast<std::uint8_t>(i));
+            anchors.push_back(static_cast<std::uint32_t>(i));
         }
     }
     // Where the matcher may go from position `i`: on to the next
     // character of the same word, or to any later anchor.
     auto successors = [&](std::size_t i) {
-        llvm::SmallVector<std::uint8_t, 16> next;
+        llvm::SmallVector<std::uint32_t, 16> next;
         if(i + 1 < name.size() && roles[i + 1] == CharRole::Tail) {
-            next.push_back(static_cast<std::uint8_t>(i + 1));
+            next.push_back(static_cast<std::uint32_t>(i + 1));
         }
-        auto later = std::ranges::upper_bound(anchors, static_cast<std::uint8_t>(i));
+        auto later = std::ranges::upper_bound(anchors, static_cast<std::uint32_t>(i));
         for(auto it = later; it != anchors.end(); it += 1) {
             if(next.empty() || next.front() != *it) {
                 next.push_back(*it);

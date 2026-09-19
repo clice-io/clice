@@ -800,11 +800,17 @@ std::vector<IndexQuery::Ranked> IndexQuery::ranked_search(const index::SymbolQue
                                                           std::size_t limit) const {
     std::vector<Ranked> hits;
     llvm::DenseSet<index::SymbolHash> seen;
-    for(auto& hit: workspace.search_index.search(query, limit)) {
-        auto info = symbol_info(hit.hash);
-        if(info && seen.insert(hit.hash).second) {
-            auto display_name = info->display_name();
-            hits.push_back({hit.rank, std::move(*info), std::move(display_name)});
+    auto indexed = workspace.search_index.search(query, limit);
+    // A damaged index answers incompletely: until its rebuild the whole
+    // table is judged row by row instead.
+    bool scan_table = workspace.search_index.damaged();
+    if(!scan_table) {
+        for(auto& hit: indexed) {
+            auto info = symbol_info(hit.hash);
+            if(info && seen.insert(hit.hash).second) {
+                auto display_name = info->display_name();
+                hits.push_back({hit.rank, std::move(*info), std::move(display_name)});
+            }
         }
     }
 
@@ -816,13 +822,20 @@ std::vector<IndexQuery::Ranked> IndexQuery::ranked_search(const index::SymbolQue
                         const index::SymbolIdentity& identity,
                         llvm::StringRef path,
                         std::uint32_t reference_files) {
-        // A file's own locals (parameters, local variables and classes)
-        // are no one's search target.
         if(!index::is_searchable_kind(identity.kind) || identity.name.empty() ||
-           identity.scope == index::SymbolScope::FileLocal || seen.contains(hash)) {
+           seen.contains(hash)) {
             return;
         }
         if(!query.kinds.empty() && !llvm::is_contained(query.kinds, identity.kind)) {
+            return;
+        }
+        // A function's locals (parameters, local variables and classes)
+        // are no one's search target.
+        auto containers = container_chain(hash);
+        if(llvm::any_of(containers, [](const SymbolRef& container) {
+               return container.kind == SymbolKind::Function ||
+                      container.kind == SymbolKind::Method;
+           })) {
             return;
         }
         if(!query.paths.empty() && llvm::none_of(query.paths, [&](const std::string& wanted) {
@@ -833,7 +846,6 @@ std::vector<IndexQuery::Ranked> IndexQuery::ranked_search(const index::SymbolQue
         if(query.absolute || !query.scope.empty() ||
            query.mode == index::SymbolQuery::Mode::Members) {
             llvm::SmallVector<index::ScopeEntry, 4> chain;
-            auto containers = container_chain(hash);
             for(auto& container: containers) {
                 chain.push_back({.name = container.name, .args = container.args});
             }
@@ -857,17 +869,24 @@ std::vector<IndexQuery::Ranked> IndexQuery::ranked_search(const index::SymbolQue
         }
         return static_cast<std::uint32_t>(it->second.reference_files.cardinality());
     };
-    for(auto hash: workspace.search_pending) {
-        auto it = workspace.project_index.symbols.find(hash);
-        if(it == workspace.project_index.symbols.end()) {
-            continue;
-        }
-        auto& symbol = it->second;
+    auto consider_row = [&](index::SymbolHash hash, const index::Symbol& symbol) {
         llvm::StringRef path;
         if(symbol.file != index::no_file) {
             path = workspace.file_table.resolve(Fid{symbol.file});
         }
         consider(hash, symbol.identity(), path, references_of(hash));
+    };
+    if(scan_table) {
+        for(auto& [hash, symbol]: workspace.project_index.symbols) {
+            consider_row(hash, symbol);
+        }
+    } else {
+        for(auto hash: workspace.search_pending) {
+            auto it = workspace.project_index.symbols.find(hash);
+            if(it != workspace.project_index.symbols.end()) {
+                consider_row(hash, it->second);
+            }
+        }
     }
     visit_sessions([&](Fid path_id, const Session&) -> bool {
         auto& state = *sources.projections->projection(path_id)->index;
@@ -903,15 +922,22 @@ std::vector<IndexQuery::Located> IndexQuery::search(const index::SymbolQuery& qu
     if(limit == 0 || !query.by_pattern()) {
         return {};
     }
-    // Ranked past the cut: a symbol no source places cedes its slot to
-    // the next one.
+    // A symbol no source places cedes its slot to the next one: the
+    // ranking is fetched wider until the cut is filled or exhausted.
     std::vector<Located> results;
-    for(auto& hit: ranked_search(query, limit * 2)) {
-        if(results.size() == limit) {
-            break;
+    for(std::size_t fetch = limit * 2;; fetch *= 4) {
+        auto ranked = ranked_search(query, fetch);
+        results.clear();
+        for(auto& hit: ranked) {
+            if(results.size() == limit) {
+                break;
+            }
+            if(auto site = canonical_site(hit.symbol.hash)) {
+                results.push_back({.symbol = std::move(hit.symbol), .site = *site});
+            }
         }
-        if(auto site = canonical_site(hit.symbol.hash)) {
-            results.push_back({.symbol = std::move(hit.symbol), .site = *site});
+        if(results.size() == limit || ranked.size() < fetch) {
+            break;
         }
     }
     LOG_PERF("index_query",

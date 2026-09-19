@@ -26,9 +26,10 @@ float score(llvm::StringRef pattern, llvm::StringRef name) {
     return matcher.match(name).value_or(-1);
 }
 
-/// Whether every name matches and their scores never rise along the list.
+/// Whether every name matches — a run allowed to start inside a word,
+/// as a search ranks — and their scores never rise along the list.
 bool ranks(llvm::StringRef pattern, std::initializer_list<llvm::StringRef> names) {
-    FuzzyMatcher matcher(pattern);
+    FuzzyMatcher matcher(pattern, {.inside_word = true});
     float last = 3;
     for(auto name: names) {
         auto current = matcher.match(name);
@@ -164,7 +165,7 @@ TEST_CASE(Accepts) {
     EXPECT_EQ(annotated("LLL", "SVisualLoggerLogsList"), "SVisual[L]ogger[L]ogs[L]ist");
     EXPECT_EQ(annotated("TEdit", "TextEdit"), "[T]ext[Edit]");
     EXPECT_EQ(annotated("TEdit", "TextEditor"), "[T]ext[Edit]or");
-    EXPECT_EQ(annotated("TEdit", "Textedit"), "Tex[tedit]");
+    EXPECT_FALSE(matches("TEdit", "Textedit"));
     EXPECT_EQ(annotated("TEdit", "text_edit"), "[t]ext_[edit]");
     EXPECT_EQ(annotated("TEditDt", "TextEditorDecorationType"), "[T]ext[Edit]or[D]ecoration[T]ype");
     EXPECT_EQ(annotated("Tedit", "TextEdit"), "[T]ext[Edit]");
@@ -215,18 +216,27 @@ TEST_CASE(Accepts) {
 }
 
 TEST_CASE(StartsInsideWord) {
-    // A run may begin anywhere in a name, the price being a low score:
-    // the C library's unsegmented names stay reachable.
-    EXPECT_EQ(annotated("printf", "sprintf"), "s[printf]");
-    EXPECT_EQ(annotated("str", "ostream"), "o[str]eam");
-    EXPECT_EQ(annotated("fo", "barfoo"), "bar[fo]o");
-    EXPECT_EQ(annotated("b", "NDEBUG"), "NDE[B]UG");
-    EXPECT_EQ(annotated("baba", "ababababab"), "a[baba]babab");
-    EXPECT_EQ(annotated("log", "SVGFEMorphologyElement"), "SVGFEMorpho[log]yElement");
-    // Only the first character may: after a gap the run must land on a
-    // head or continue an initialism.
-    EXPECT_FALSE(matches("getfoo", "get_my_xfoo"));
-    EXPECT_EQ(annotated("getfoo", "get_my_foo"), "[get]_my_[foo]");
+    // With the option, a run may begin anywhere in a name at a low
+    // score, which keeps the C library's unsegmented names reachable.
+    MatchOptions inside{.inside_word = true};
+    EXPECT_EQ(annotated("printf", "sprintf", inside), "s[printf]");
+    EXPECT_EQ(annotated("str", "ostream", inside), "o[str]eam");
+    EXPECT_EQ(annotated("fo", "barfoo", inside), "bar[fo]o");
+    EXPECT_EQ(annotated("b", "NDEBUG", inside), "NDE[B]UG");
+    EXPECT_EQ(annotated("baba", "ababababab", inside), "a[baba]babab");
+    EXPECT_EQ(annotated("log", "SVGFEMorphologyElement", inside), "SVGFEMorpho[log]yElement");
+    EXPECT_EQ(annotated("TEdit", "Textedit", inside), "Tex[tedit]");
+    EXPECT_EQ(annotated("tru", "struct", inside), "s[tru]ct");
+    // Only the first character may: after a gap the run lands on a head
+    // or continues an initialism, and the run must finish its word.
+    EXPECT_FALSE(matches("getfoo", "get_my_xfoo", inside));
+    EXPECT_FALSE(matches("qp", "unique_ptr", inside));
+    EXPECT_EQ(annotated("getfoo", "get_my_foo", inside), "[get]_my_[foo]");
+    // Without it, the first character starts a word too.
+    EXPECT_FALSE(matches("printf", "sprintf"));
+    EXPECT_FALSE(matches("tru", "struct"));
+    EXPECT_FALSE(matches("no", "alignof"));
+    EXPECT_FALSE(matches("fo", "barfoo"));
 }
 
 TEST_CASE(Ranks) {
@@ -255,6 +265,7 @@ TEST_CASE(Ranks) {
     EXPECT_TRUE(ranks("print", {"printf", "vprintf"}));
     EXPECT_TRUE(ranks("up", {"upper_bound", "unique_ptr"}));
     EXPECT_TRUE(ranks("log", {"log", "Logger", "ScrollLogicalPosition", "SVGFEMorphologyElement"}));
+    EXPECT_TRUE(ranks("s", {"s", "size", "Size", "as", "less"}));
 }
 
 TEST_CASE(Scores) {
@@ -269,8 +280,23 @@ TEST_CASE(Scores) {
     EXPECT_LT(score("up", "unique_ptr"), 1.0f);
 }
 
+TEST_CASE(Bounds) {
+    // Past the bounds a match stays partial: neither a pattern nor a
+    // name longer than the bound is ever "the whole name".
+    std::string sixty_three(63, 'a');
+    std::string sixty_four(64, 'a');
+    std::string long_name(200, 'a');
+    EXPECT_EQ(score(sixty_three, sixty_three), 2.0f);
+    EXPECT_LE(score(sixty_four, sixty_three), 1.0f);
+    EXPECT_LE(score(std::string(127, 'a'), long_name), 1.0f);
+    EXPECT_TRUE(matches(sixty_four, long_name));
+    // Tokens cover a long name to its end, as a glob reaches it.
+    auto tail = tokens_of(long_name + "xyz");
+    EXPECT_TRUE(llvm::is_contained(tail, token("xyz")));
+}
+
 TEST_CASE(Typos) {
-    MatchOptions typo{.typo = true};
+    MatchOptions typo{.typo = true, .inside_word = true};
     EXPECT_FALSE(matches("strcpy", "strncpy"));
     EXPECT_EQ(annotated("strcpy", "strncpy", typo), "[str]n[cpy]");
     EXPECT_EQ(annotated("strdpy", "strcpy", typo), "[str]c[py]");
@@ -353,7 +379,7 @@ TEST_CASE(TokensCoverMatches) {
         auto pool = letters(name);
         for(std::size_t length = 3; length <= 5 && length <= pool.size(); length += 1) {
             subsequences(pool, length, [&](llvm::StringRef pattern) {
-                if(!matches(pattern, name)) {
+                if(!matches(pattern, name, {.inside_word = true})) {
                     return;
                 }
                 accepted += 1;
@@ -376,7 +402,7 @@ TEST_CASE(TokensCoverMatches) {
                 std::string inserted = base.str();
                 inserted.insert(at, 1, 'z');
                 for(auto& pattern: {replaced, dropped, inserted}) {
-                    if(!matches(pattern, name, {.typo = true})) {
+                    if(!matches(pattern, name, {.typo = true, .inside_word = true})) {
                         continue;
                     }
                     typo_accepted += 1;

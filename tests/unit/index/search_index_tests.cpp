@@ -111,6 +111,8 @@ Corpus sample() {
     corpus.add("strncpy", SymbolKind::Function);
     corpus.add("strcpy_s", SymbolKind::Function);
     corpus.add("MAX_SIZE", SymbolKind::Macro);
+    corpus.add("aaaxaaa", SymbolKind::Function);
+    corpus.add("zap_bar_quux", SymbolKind::Function);
     return corpus;
 }
 
@@ -156,6 +158,11 @@ TEST_CASE(FuzzyRanking) {
     EXPECT_EQ(names(corpus, built, "pconf"), (Names{"parse_config"}));
     EXPECT_TRUE(names(corpus, built, "pcfg").empty());
     EXPECT_EQ(names(corpus, built, "up"), (Names{"upper_bound", "unique_ptr"}));
+    // A short query keys the first two words in the index and in a row.
+    EXPECT_TRUE(names(corpus, built, "qu").empty());
+    index::NameRanker short_ranker(*SymbolQuery::parse("qu"));
+    EXPECT_FALSE(short_ranker.rank("zap_bar_quux", "", 1).has_value());
+    EXPECT_TRUE(short_ranker.rank("zap_quux", "", 1).has_value());
     EXPECT_EQ(names(corpus, built, "u_p"), (Names{"unique_ptr"}));
     EXPECT_TRUE(names(corpus, built, "zzz").empty());
     EXPECT_EQ(names(corpus, built, "foo", 2), (Names{"foo", "Foo"}));
@@ -170,11 +177,20 @@ TEST_CASE(ExactAndGlob) {
     EXPECT_EQ(names(corpus, built, "foo*"), (Names{"Foo", "foo", "foobar"}));
     EXPECT_EQ(names(corpus, built, "*foo"), (Names{"Foo", "bar_foo", "foo", "xfoo"}));
     EXPECT_EQ(names(corpus, built, "str*"), (Names{"strcpy_s", "strncpy"}));
-    EXPECT_EQ(
-        names(corpus, built, "*_*"),
-        (Names{"unique_ptr", "upper_bound", "bar_foo", "parse_config", "strcpy_s", "MAX_SIZE"}));
+    EXPECT_EQ(names(corpus, built, "*_*"),
+              (Names{"unique_ptr",
+                     "upper_bound",
+                     "bar_foo",
+                     "parse_config",
+                     "strcpy_s",
+                     "zap_bar_quux",
+                     "MAX_SIZE"}));
     EXPECT_EQ(names(corpus, built, "MAX_*"), (Names{"MAX_SIZE"}));
     EXPECT_EQ(names(corpus, built, "??o"), (Names{"Foo", "foo"}));
+    Corpus wide;
+    wide.add((std::string(150, 'a') + "xyz").c_str(), SymbolKind::Function);
+    auto wide_index = wide.build();
+    EXPECT_EQ(names(wide, wide_index, "*xyz*").size(), std::size_t(1));
 }
 
 TEST_CASE(Scopes) {
@@ -226,6 +242,8 @@ TEST_CASE(Typos) {
     EXPECT_EQ(names(corpus, built, "strcpy"), (Names{"strcpy_s", "strncpy"}));
     EXPECT_EQ(names(corpus, built, "strcpy", 1), (Names{"strcpy_s"}));
     EXPECT_EQ(names(corpus, built, "strncpx"), (Names{"strncpy"}));
+    // A row the clean pass rejected is judged again as a typo.
+    EXPECT_EQ(names(corpus, built, "aaaaaa"), (Names{"aaaxaaa"}));
     EXPECT_TRUE(names(corpus, built, "strcp").empty() ||
                 names(corpus, built, "strcp") == Names{"strcpy_s"});
 }

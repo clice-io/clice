@@ -109,6 +109,8 @@ private:
     std::string lower_pattern;
     FuzzyMatcher exact;
     std::optional<FuzzyMatcher> typo;
+    /// The query's tokens when it is too short for trigrams, else empty.
+    llvm::SmallVector<NameToken, 2> short_tokens;
 };
 
 struct SearchHit {
@@ -135,6 +137,11 @@ public:
     std::size_t size() const;
 
     bool contains(SymbolHash hash) const;
+
+    /// Whether a posting list failed to decode since the load: the
+    /// answers are incomplete until the owner rebuilds the index, and a
+    /// reader scans the table instead.
+    bool damaged() const;
 
     /// At most `limit` hits, best first. Empty for a query by id or
     /// place.

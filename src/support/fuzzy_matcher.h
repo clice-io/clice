@@ -39,18 +39,24 @@ void segment(llvm::StringRef text, llvm::MutableArrayRef<CharRole> roles);
 /// Matches one pattern against many names, scoring each.
 ///
 /// Every pattern character matches a name character in order, letters
-/// case-insensitively. A character may land anywhere as the first, and
-/// after that only right after the previous match, on a word head, on a
-/// separator, or on an uppercase letter of an initialism (`HTML` in
-/// `HTMLElement`): `up` finds `unique_ptr` and `print` finds `vsprintf`,
-/// while `ob` never finds `foo_bar`. The score rewards heads, contiguous
-/// runs and matching case, and penalizes skipped words and a start inside
-/// a word, so `foo` ranks `foo` above `foobar` above `bar_foo` above
-/// `xfoo`.
+/// case-insensitively. A character lands right after the previous match,
+/// on a word head, on a separator, or on an uppercase letter of an
+/// initialism (`HTML` in `HTMLElement`); the first may also land inside a
+/// word when the options allow it. So `up` finds `unique_ptr`, `print`
+/// finds `vsprintf` for a search, and `ob` never finds `foo_bar`. The
+/// score rewards heads, contiguous runs and matching case, and penalizes
+/// skipped words and a start inside a word, so `foo` ranks `foo` above
+/// `foobar` above `bar_foo` above `xfoo`.
 struct MatchOptions {
     /// Also accept a name one edit away from the pattern — a substituted,
     /// missing or extra character — at half the score.
     bool typo = false;
+
+    /// Let the first character land inside a word, the run then staying
+    /// contiguous to that word's end: `printf` finds `vsprintf`. Off, a
+    /// match starts on a word head like it continues after a gap — the
+    /// completion filter's choice, where `tru` must not offer `struct`.
+    bool inside_word = false;
 };
 
 class FuzzyMatcher {
@@ -118,6 +124,10 @@ private:
     llvm::SmallVector<char, 32> pat;
     llvm::SmallVector<char, 32> low_pat;
     bool pat_has_upper = false;
+    /// Whether the pattern and the name fit the bounds; past them a
+    /// match is partial, never exact.
+    bool whole_pattern = true;
+    bool whole_name = true;
 
     llvm::SmallVector<char, 64> name;
     llvm::SmallVector<char, 64> low_name;

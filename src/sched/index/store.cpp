@@ -1050,14 +1050,19 @@ bool IndexStore::search_rebuild_due(bool settle) const {
     if(workspace.search_pending.size() > std::max<std::size_t>(10000, base / 20)) {
         return true;
     }
+    if(index.damaged()) {
+        return true;
+    }
     if(!settle) {
         return false;
     }
     if(!index.loaded()) {
         return !workspace.project_index.symbols.empty();
     }
+    // A twentieth of the units, so a small project refreshes on any
+    // merge and a large one every twenty at most.
     return merges_since_search_build >
-           std::max<std::size_t>(20, workspace.project_index.manifests.size() / 20);
+           std::min<std::size_t>(20, workspace.project_index.manifests.size() / 20);
 }
 
 kota::task<> IndexStore::rebuild_search_index() {
@@ -1091,7 +1096,7 @@ kota::task<> IndexStore::rebuild_search_index() {
             .reference_files = static_cast<std::uint32_t>(symbol.reference_files.cardinality()),
         });
     }
-    merges_since_search_build = 0;
+    auto merges_in_snapshot = merges_since_search_build;
 
     std::string bytes;
     co_await kota::queue([&] { bytes = index::build_search_blob(snapshot); });
@@ -1101,6 +1106,7 @@ kota::task<> IndexStore::rebuild_search_index() {
         co_return;
     }
     workspace.search_index = std::move(built);
+    merges_since_search_build -= merges_in_snapshot;
     // Merges that landed across the build appended to the pending list
     // and are not in the snapshot; everything the new index files leaves it.
     llvm::erase_if(workspace.search_pending,

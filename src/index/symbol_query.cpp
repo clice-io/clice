@@ -140,8 +140,20 @@ std::expected<void, std::string> parse_name(SymbolQuery& query, llvm::StringRef 
     // Quotes around a qualified name quote its last segment.
     if(quoted(term) && term.contains("::")) {
         auto inner = term.drop_front().drop_back();
-        auto [scope, name] = inner.rsplit("::");
-        return parse_name(query, (scope + "::\"" + name + "\"").str());
+        auto pieces = split(inner, [](llvm::StringRef rest) -> std::size_t {
+            return rest.starts_with("::") ? 2 : 0;
+        });
+        if(!pieces) {
+            return std::unexpected(pieces.error());
+        }
+        if(pieces->size() > 1) {
+            std::string requoted;
+            for(auto& piece: llvm::ArrayRef(*pieces).drop_back()) {
+                requoted += piece + "::";
+            }
+            requoted += "\"" + pieces->back() + "\"";
+            return parse_name(query, requoted);
+        }
     }
     auto segments = split(term, [](llvm::StringRef rest) -> std::size_t {
         return rest.starts_with("::") ? 2 : 0;
