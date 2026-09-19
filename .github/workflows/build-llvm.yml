@@ -114,6 +114,15 @@ jobs:
           free -h
           df -h
 
+      - name: Runner info
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux)   nproc; grep -m1 'model name' /proc/cpuinfo; free -g | sed -n 2p ;;
+            macOS)   sysctl -n hw.ncpu machdep.cpu.brand_string hw.memsize ;;
+            Windows) echo "cores: $NUMBER_OF_PROCESSORS"; powershell -NoProfile -Command "(Get-CimInstance Win32_Processor).Name; [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB)" ;;
+          esac
+
       - uses: ./.github/actions/setup-pixi
         with:
           environments: ${{ matrix.pixi_env || 'package' }}
