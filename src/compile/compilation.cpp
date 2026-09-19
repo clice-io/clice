@@ -124,6 +124,15 @@ std::unique_ptr<clang::CompilerInvocation>
     lang_opts.CommentOpts.ParseAllComments = true;
     lang_opts.RetainCommentsFromSystemHeaders = true;
 
+    // MSVC targets defer template bodies by default so SDK headers written
+    // for MSVC's lookup rules still parse, but a deferred body has no AST and
+    // every feature inside it goes blind. Only artifact builds keep the
+    // default: an error there discards the PCH/PCM, so those headers must
+    // keep parsing the way clang meant them to.
+    if(params.output_file.empty()) {
+        lang_opts.DelayedTemplateParsing = false;
+    }
+
     return invocation;
 }
 
