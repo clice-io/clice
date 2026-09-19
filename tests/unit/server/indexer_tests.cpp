@@ -1348,6 +1348,7 @@ TEST_CASE(SettledRebuildPinsSearch) {
         // the search index with no other change to write.
         f.save();
         ASSERT_FALSE(f.global_dirty());
+        ASSERT_FALSE(f.workspace.project_index.search_index.loaded());
         f.save(/*settle=*/true);
         ASSERT_TRUE(f.workspace.project_index.search_index.loaded());
     }
