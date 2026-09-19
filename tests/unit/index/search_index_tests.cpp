@@ -126,7 +126,7 @@ std::vector<std::string> names(const Corpus& corpus,
         out.push_back("error: " + query.error());
         return out;
     }
-    for(auto& hit: built.search(*query, limit)) {
+    for(auto& hit: built.search(*query, limit).hits) {
         out.push_back(corpus.name_of(hit.hash));
     }
     return out;
@@ -146,7 +146,9 @@ TEST_CASE(Loads) {
     SearchIndex empty;
     EXPECT_FALSE(empty.load(llvm::MemoryBuffer::getMemBufferCopy("junk")));
     EXPECT_FALSE(empty.loaded());
-    EXPECT_TRUE(empty.search(*SymbolQuery::parse("foo"), 10).empty());
+    EXPECT_TRUE(empty.search(*SymbolQuery::parse("foo"), 10).hits.empty());
+    EXPECT_TRUE(built.search(*SymbolQuery::parse("foo"), 100).exhausted);
+    EXPECT_FALSE(built.search(*SymbolQuery::parse("foo"), 2).exhausted);
 }
 
 TEST_CASE(FuzzyRanking) {
@@ -321,7 +323,14 @@ TEST_CASE(MatchesFullScan) {
             }
         }
         std::ranges::sort(all, [](const Scored& lhs, const Scored& rhs) {
-            return index::ranks_after(rhs.rank, rhs.name, rhs.hash, lhs.rank, lhs.name, lhs.hash);
+            return index::ranks_after(rhs.rank,
+                                      rhs.name,
+                                      "",
+                                      rhs.hash,
+                                      lhs.rank,
+                                      lhs.name,
+                                      "",
+                                      lhs.hash);
         });
         std::vector<std::string> expected;
         for(auto& scored: all) {

@@ -259,7 +259,8 @@ std::expected<SymbolQuery, std::string> SymbolQuery::parse(llvm::StringRef text)
             continue;
         }
         if(key == "path" && !value.empty() && !value.starts_with(":")) {
-            query.paths.push_back(value.str());
+            // Quotes hold a path with spaces together as one term.
+            query.paths.push_back((quoted(value) ? value.drop_front().drop_back() : value).str());
             continue;
         }
         if(named) {
@@ -276,7 +277,7 @@ std::expected<SymbolQuery, std::string> SymbolQuery::parse(llvm::StringRef text)
             query.handle = handle;
             continue;
         }
-        if(auto position = parse_position(term)) {
+        if(auto position = parse_position(quoted(term) ? term.drop_front().drop_back() : term)) {
             if(position->line < 1 || position->column.value_or(1) < 1) {
                 return std::unexpected("lines and columns count from 1");
             }

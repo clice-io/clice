@@ -271,6 +271,11 @@ TEST_CASE(LocalsAndCursors) {
     ASSERT_EQ(located.size(), std::size_t(1));
     ASSERT_EQ(located.front().symbol.name, "helper");
     ASSERT_TRUE(located.front().site.path.ends_with("main.cpp"));
+    // The line alone lists it too.
+    at.position->column.reset();
+    auto on_line = query.locate(at);
+    ASSERT_EQ(on_line.size(), std::size_t(1));
+    ASSERT_EQ(on_line.front().symbol.name, "helper");
 }
 
 TEST_CASE(LocalSymbolName) {

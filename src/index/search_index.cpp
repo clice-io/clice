@@ -135,18 +135,31 @@ struct TopHits {
 
     std::size_t limit;
     llvm::function_ref<llvm::StringRef(std::uint32_t)> name_of;
+    llvm::function_ref<llvm::StringRef(std::uint32_t)> args_of;
     llvm::function_ref<SymbolHash(std::uint32_t)> hash_of;
     std::vector<Ranked> hits;
 
+    /// Whether a hit was turned away or evicted: the ranking runs past
+    /// the limit.
+    bool overflowed = false;
+
     bool before(const NameRank& lhs,
                 llvm::StringRef lhs_name,
+                llvm::StringRef lhs_args,
                 SymbolHash lhs_hash,
                 const Ranked& rhs) const {
-        return ranks_after(rhs.rank, name_of(rhs.doc), hash_of(rhs.doc), lhs, lhs_name, lhs_hash);
+        return ranks_after(rhs.rank,
+                           name_of(rhs.doc),
+                           args_of(rhs.doc),
+                           hash_of(rhs.doc),
+                           lhs,
+                           lhs_name,
+                           lhs_args,
+                           lhs_hash);
     }
 
     bool before(const Ranked& lhs, const Ranked& rhs) const {
-        return before(lhs.rank, name_of(lhs.doc), hash_of(lhs.doc), rhs);
+        return before(lhs.rank, name_of(lhs.doc), args_of(lhs.doc), hash_of(lhs.doc), rhs);
     }
 
     bool full() const {
@@ -155,7 +168,7 @@ struct TopHits {
 
     /// Whether a hit of `rank` could still enter, whatever its name.
     bool admits(const NameRank& rank) const {
-        return !full() || before(rank, "", 0, hits.front());
+        return !full() || before(rank, "", "", 0, hits.front());
     }
 
     void push(Ranked hit) {
@@ -167,6 +180,7 @@ struct TopHits {
             std::ranges::push_heap(hits, compare);
             return;
         }
+        overflowed = true;
         if(!before(hit, hits.front())) {
             return;
         }
@@ -433,9 +447,11 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
 
 bool ranks_after(const NameRank& lhs,
                  llvm::StringRef lhs_name,
+                 llvm::StringRef lhs_args,
                  SymbolHash lhs_hash,
                  const NameRank& rhs,
                  llvm::StringRef rhs_name,
+                 llvm::StringRef rhs_args,
                  SymbolHash rhs_hash) {
     if(lhs.tier != rhs.tier) {
         return lhs.tier > rhs.tier;
@@ -445,6 +461,9 @@ bool ranks_after(const NameRank& lhs,
     }
     if(lhs_name != rhs_name) {
         return lhs_name > rhs_name;
+    }
+    if(lhs_args != rhs_args) {
+        return lhs_args > rhs_args;
     }
     return lhs_hash > rhs_hash;
 }
@@ -880,7 +899,7 @@ bool SearchIndex::contains(SymbolHash hash) const {
     });
 }
 
-std::vector<SearchHit> SearchIndex::search(const SymbolQuery& query, std::size_t limit) const {
+SearchOutcome SearchIndex::search(const SymbolQuery& query, std::size_t limit) const {
     if(!view || limit == 0 || !query.by_pattern()) {
         return {};
     }
@@ -950,10 +969,13 @@ std::vector<SearchHit> SearchIndex::search(const SymbolQuery& query, std::size_t
     auto name_of = [&](std::uint32_t doc) {
         return index.name(doc);
     };
+    auto args_of = [&](std::uint32_t doc) {
+        return index.arguments(doc);
+    };
     auto hash_of = [&](std::uint32_t doc) {
         return index.hashes[doc];
     };
-    TopHits top{.limit = limit, .name_of = name_of, .hash_of = hash_of};
+    TopHits top{.limit = limit, .name_of = name_of, .args_of = args_of, .hash_of = hash_of};
     // The docs already ranked; a doc the clean pass rejected is judged
     // again by the typo pass, which may accept it.
     Bitmap ranked;
@@ -977,6 +999,7 @@ std::vector<SearchHit> SearchIndex::search(const SymbolQuery& query, std::size_t
             }
             if(!top.admits({.tier = static_cast<std::uint8_t>(lenient ? 3 : 2),
                             .score = index.qualities[doc]})) {
+                top.overflowed = true;
                 break;
             }
             consider(doc, lenient);
@@ -1054,11 +1077,11 @@ std::vector<SearchHit> SearchIndex::search(const SymbolQuery& query, std::size_t
         }
     }
 
-    std::vector<SearchHit> hits;
+    SearchOutcome outcome{.exhausted = !top.overflowed};
     for(auto& ranked: std::move(top).sorted()) {
-        hits.push_back({.hash = index.hashes[ranked.doc], .rank = ranked.rank});
+        outcome.hits.push_back({.hash = index.hashes[ranked.doc], .rank = ranked.rank});
     }
-    return hits;
+    return outcome;
 }
 
 }  // namespace clice::index

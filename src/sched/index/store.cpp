@@ -1101,16 +1101,21 @@ kota::task<> IndexStore::rebuild_search_index() {
     // snapshot saw are settled by the index built from it.
     auto pending_in_snapshot = std::move(workspace.search_pending);
     workspace.search_pending.clear();
+    // Until the rebuilt index is adopted the old one still needs them:
+    // a cancelled or failed build gives them back.
+    auto restore = llvm::make_scope_exit([&] {
+        workspace.search_pending.insert(pending_in_snapshot.begin(), pending_in_snapshot.end());
+    });
 
     std::string bytes;
     co_await kota::queue([&] { bytes = index::build_search_blob(snapshot); });
     index::SearchIndex built;
     if(!built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes))) {
         LOG_ERROR("The rebuilt search index does not load; keeping the previous one");
-        workspace.search_pending.insert(pending_in_snapshot.begin(), pending_in_snapshot.end());
         co_return;
     }
     workspace.search_index = std::move(built);
+    restore.release();
     merges_since_search_build -= merges_in_snapshot;
     for(auto hash: pending_in_snapshot) {
         if(!workspace.search_index.contains(hash)) {

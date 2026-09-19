@@ -165,6 +165,11 @@ TEST_CASE(Filters) {
     EXPECT_TRUE(filtered.kinds[0] == SymbolKind::Function);
     EXPECT_TRUE(filtered.kinds[1] == SymbolKind::Method);
     EXPECT_EQ(filtered.paths, (std::vector<std::string>{"src/index/"}));
+    auto spaced_path = parsed(R"(foo path:"src/my file.cpp")");
+    EXPECT_EQ(spaced_path.paths, (std::vector<std::string>{"src/my file.cpp"}));
+    auto spaced_place = parsed(R"("src/my file.cpp:12")");
+    EXPECT_TRUE(spaced_place.position.has_value());
+    EXPECT_EQ(spaced_place.position->path, "src/my file.cpp");
     auto repeated = parsed("kind:struct kind:class Foo");
     EXPECT_EQ(repeated.kinds.size(), std::size_t(2));
     EXPECT_EQ(repeated.pattern, "Foo");

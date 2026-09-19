@@ -79,12 +79,14 @@ struct NameRank {
 };
 
 /// Whether `lhs` comes after `rhs` among results: tier, then score, then
-/// the name, then the hash.
+/// the name and a specialization's arguments, then the hash.
 bool ranks_after(const NameRank& lhs,
                  llvm::StringRef lhs_name,
+                 llvm::StringRef lhs_args,
                  SymbolHash lhs_hash,
                  const NameRank& rhs,
                  llvm::StringRef rhs_name,
+                 llvm::StringRef rhs_args,
                  SymbolHash rhs_hash);
 
 /// Ranks names against one query; built once per query, since the
@@ -118,6 +120,14 @@ struct SearchHit {
     NameRank rank;
 };
 
+/// A search's answer: its best hits, and whether they are all of them —
+/// false when the limit cut the ranking, so a caller wanting more asks
+/// again with a wider one.
+struct SearchOutcome {
+    std::vector<SearchHit> hits;
+    bool exhausted = true;
+};
+
 class SearchIndex {
 public:
     SearchIndex();
@@ -145,7 +155,7 @@ public:
 
     /// At most `limit` hits, best first. Empty for a query by id or
     /// place.
-    std::vector<SearchHit> search(const SymbolQuery& query, std::size_t limit) const;
+    SearchOutcome search(const SymbolQuery& query, std::size_t limit) const;
 
 private:
     struct View;

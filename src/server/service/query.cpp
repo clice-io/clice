@@ -602,6 +602,12 @@ std::optional<Site> IndexQuery::canonical_site(index::SymbolHash hash) const {
     if(auto site = first_site(hash, RelationKind::Definition)) {
         return site;
     }
+    // A declaration stands in only for a symbol nothing defines: a
+    // definition withheld as stale stays unavailable, as documented.
+    auto info = symbol_info(hash);
+    if(!info || index::has_flag(info->flags, index::SymbolFlags::HasDefinition)) {
+        return std::nullopt;
+    }
     return first_site(hash, RelationKind::Declaration);
 }
 
@@ -796,16 +802,17 @@ std::optional<IndexQuery::Located> IndexQuery::resolve(index::SymbolHash hash) c
     return Located{.symbol = std::move(*info), .site = *site};
 }
 
-std::vector<IndexQuery::Ranked> IndexQuery::ranked_search(const index::SymbolQuery& query,
-                                                          std::size_t limit) const {
+IndexQuery::RankedHits IndexQuery::ranked_search(const index::SymbolQuery& query,
+                                                 std::size_t limit) const {
     std::vector<Ranked> hits;
     llvm::DenseSet<index::SymbolHash> seen;
     auto indexed = workspace.search_index.search(query, limit);
     // A damaged index answers incompletely: until its rebuild the whole
     // table is judged row by row instead.
     bool scan_table = workspace.search_index.damaged();
+    bool exhausted = scan_table || indexed.exhausted;
     if(!scan_table) {
-        for(auto& hit: indexed) {
+        for(auto& hit: indexed.hits) {
             // A row the table changed since the index was built is read
             // from the table below, not from the index's stale copy.
             if(workspace.search_pending.contains(hit.hash)) {
@@ -813,8 +820,7 @@ std::vector<IndexQuery::Ranked> IndexQuery::ranked_search(const index::SymbolQue
             }
             auto info = symbol_info(hit.hash);
             if(info && seen.insert(hit.hash).second) {
-                auto display_name = info->display_name();
-                hits.push_back({hit.rank, std::move(*info), std::move(display_name)});
+                hits.push_back({hit.rank, std::move(*info)});
             }
         }
     }
@@ -863,9 +869,7 @@ std::vector<IndexQuery::Ranked> IndexQuery::ranked_search(const index::SymbolQue
             index::symbol_quality(identity.name, identity.kind, identity.flags, reference_files);
         if(auto rank = ranker.rank(identity.name, identity.args, quality, /*lenient=*/true)) {
             seen.insert(hash);
-            auto symbol = SymbolRef::from(hash, identity);
-            auto display_name = symbol.display_name();
-            hits.push_back({*rank, std::move(symbol), std::move(display_name)});
+            hits.push_back({*rank, SymbolRef::from(hash, identity)});
         }
     };
     auto references_of = [&](index::SymbolHash hash) -> std::uint32_t {
@@ -910,16 +914,19 @@ std::vector<IndexQuery::Ranked> IndexQuery::ranked_search(const index::SymbolQue
 
     std::ranges::sort(hits, [](const Ranked& lhs, const Ranked& rhs) {
         return index::ranks_after(rhs.rank,
-                                  rhs.display_name,
+                                  rhs.symbol.name,
+                                  rhs.symbol.args,
                                   rhs.symbol.hash,
                                   lhs.rank,
-                                  lhs.display_name,
+                                  lhs.symbol.name,
+                                  lhs.symbol.args,
                                   lhs.symbol.hash);
     });
     if(hits.size() > limit) {
         hits.resize(limit);
+        exhausted = false;
     }
-    return hits;
+    return {.hits = std::move(hits), .exhausted = exhausted};
 }
 
 std::vector<IndexQuery::Located> IndexQuery::search(const index::SymbolQuery& query,
@@ -934,7 +941,7 @@ std::vector<IndexQuery::Located> IndexQuery::search(const index::SymbolQuery& qu
     for(std::size_t fetch = limit * 2;; fetch *= 4) {
         auto ranked = ranked_search(query, fetch);
         results.clear();
-        for(auto& hit: ranked) {
+        for(auto& hit: ranked.hits) {
             if(results.size() == limit) {
                 break;
             }
@@ -942,7 +949,7 @@ std::vector<IndexQuery::Located> IndexQuery::search(const index::SymbolQuery& qu
                 results.push_back({.symbol = std::move(hit.symbol), .site = *site});
             }
         }
-        if(results.size() == limit || ranked.size() < fetch) {
+        if(results.size() == limit || ranked.exhausted) {
             break;
         }
     }
@@ -1023,25 +1030,27 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const index::SymbolQuery& qu
             }
             return {};
         }
+        // The definitions on the line, the file's own symbols included:
+        // the serving source holds every row, whichever table names it.
         std::vector<Located> defined;
-        for(auto& [hash, symbol]: workspace.project_index.symbols) {
-            if(!symbol.reference_files.contains(path_id->raw)) {
-                continue;
-            }
-            serving.rows->lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
-                auto position = serving.coords.to_position(r.range.begin);
-                if(position && position->line == line) {
-                    defined.push_back(
-                        {.symbol = SymbolRef::from(hash, symbol.identity()), .site = site_of(r)});
-                    return false;
-                }
+        llvm::DenseSet<index::SymbolHash> seen;
+        serving.rows->for_each_relation([&](index::SymbolHash hash, const index::Relation& r) {
+            if(r.kind != RelationKind::Definition) {
                 return true;
-            });
-        }
+            }
+            auto position = serving.coords.to_position(r.range.begin);
+            if(!position || position->line != line || !seen.insert(hash).second) {
+                return true;
+            }
+            if(auto info = symbol_info(hash)) {
+                defined.push_back({.symbol = std::move(*info), .site = site_of(r)});
+            }
+            return true;
+        });
         return defined;
     }
 
-    auto ranked = ranked_search(query, 50);
+    auto ranked = ranked_search(query, 50).hits;
     // Spelling the name exactly settles it; otherwise every match stands.
     bool any_exact = llvm::any_of(ranked, [](const Ranked& hit) { return hit.rank.tier <= 1; });
     std::vector<Located> results;

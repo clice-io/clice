@@ -287,14 +287,19 @@ private:
 
     using RelationVisitor = llvm::function_ref<bool(const RowSource&, const index::Relation&)>;
 
-    /// A search's ranked symbols before their sites are resolved.
+    /// A search's ranked symbols before their sites are resolved, and
+    /// whether the limit cut the ranking short.
     struct Ranked {
         index::NameRank rank;
         SymbolRef symbol;
-        std::string display_name;
     };
 
-    std::vector<Ranked> ranked_search(const index::SymbolQuery& query, std::size_t limit) const;
+    struct RankedHits {
+        std::vector<Ranked> hits;
+        bool exhausted = true;
+    };
+
+    RankedHits ranked_search(const index::SymbolQuery& query, std::size_t limit) const;
 
     /// The one federation walk every relation query is a fold over. The
     /// visitor returns false to stop.
