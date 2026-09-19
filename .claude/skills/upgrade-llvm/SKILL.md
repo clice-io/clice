@@ -7,6 +7,8 @@ Upgrade LLVM to a new version. Accepts the target version as argument (e.g., `22
 
 This is the complete workflow for upgrading the LLVM prebuilt packages that clice depends on. Follow each step in order. Steps that involve CI should use polling (check every ~5 minutes) to wait for completion.
 
+**Read `toolchain-changelog.md` in this directory before touching `scripts/build-llvm.py`, the runtimes build, the clice-llvm patches or `cmake/llvm.cmake`**: it records every platform pitfall met so far (symptom, cause, fix, how to check). Every new one is appended there in the same shape; a toolchain change without an entry is not finished.
+
 ## Step 1: Validate the Package Definition Locally, Then Trigger the Build
 
 The package is built from an explicit component list (`COMPONENTS` in `scripts/build-llvm.py`), and that list drifts between LLVM versions: libraries appear, split or disappear. Validate it against the new version before spending CI time:
@@ -125,7 +127,9 @@ git push
 
 Poll CI until all platforms pass. CMake downloads the correct artifact automatically based on the version and platform — no manifest file needed. Local build directories keep building against the old package: `setup_llvm` skips the download while the cached `LLVM_INSTALL_PATH` still points at an existing install, and `find_package` keeps the cached `LLVM_DIR`/`Clang_DIR`. Reconfigure with `-ULLVM_INSTALL_PATH -ULLVM_DIR -UClang_DIR`, or use a fresh build directory.
 
-## Step 7: Write LLVM Changelog (REQUIRED)
+## Step 7: Write the Changelogs (REQUIRED)
+
+Toolchain-level findings (package definition, runtimes, platform link quirks, CI mechanics) go to `toolchain-changelog.md` in this directory, in its symptom / cause / fix / check table shape. API changes go to `llvm-changelog.md` as described below.
 
 **Every LLVM upgrade MUST append to `llvm-changelog.md` in this skill's directory** (`.claude/skills/upgrade-llvm/llvm-changelog.md`). It is maintainer reference material, deliberately not a docs page.
 
