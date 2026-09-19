@@ -238,11 +238,6 @@ private:
     /// A rebuilt search blob no batch has committed yet.
     std::string search_bytes;
 
-    /// The persisted search index was built for another global
-    /// generation than the one loaded: rows may have changed under it
-    /// without entering the pending set, so the next save rebuilds.
-    bool search_stale = false;
-
     /// Blobs mutated since the last save, plus whether the global blob
     /// (symbols, FileVersion table) changed.
     llvm::DenseSet<Fid> dirty_shards;

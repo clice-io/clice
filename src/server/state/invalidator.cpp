@@ -256,8 +256,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     dirty.add_clear_reindex(event.path_id);
                     break;
                 }
-                auto shard_it = workspace.shards.find(event.path_id);
-                bool has_shard = shard_it != workspace.shards.end();
+                auto shard_it = workspace.project_index.shards.find(event.path_id);
+                bool has_shard = shard_it != workspace.project_index.shards.end();
                 bool shard_current =
                     has_shard && shard_it->second.matches_content(disk->size, disk->hash);
                 // A module unit's PCM can be staler than the shard: the open

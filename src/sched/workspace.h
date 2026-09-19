@@ -14,7 +14,6 @@
 #include "config/config.h"
 #include "index/database.h"
 #include "index/project_index.h"
-#include "index/search_index.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "index/writer_lock.h"
@@ -266,21 +265,9 @@ struct Workspace {
     /// PCM cache, keyed by module source path_id.
     llvm::DenseMap<Fid, PCMState> pcm_cache;
 
-    /// The index's global layer: symbols, FileVersions, per-TU manifests
-    /// and the derived contribution map.
+    /// The persisted index as loaded: the global symbol table, the per-TU
+    /// manifests, the per-file row blobs and the name search index.
     index::ProjectIndex project_index;
-
-    /// Per-file row blobs from background indexing, keyed by project-level
-    /// path_id: symbol occurrences, relations and stored content for
-    /// position mapping, served zero-copy.
-    llvm::DenseMap<Fid, index::Shard> shards;
-
-    /// The name search index over `project_index.symbols` as last built,
-    /// and the symbols it does not describe — merged or changed since —
-    /// which a search reads from the table instead until the store folds
-    /// them into a rebuilt index.
-    index::SearchIndex search_index;
-    llvm::DenseSet<index::SymbolHash> search_pending;
 
     /// Monotonic generation of context-affecting workspace state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext

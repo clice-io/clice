@@ -41,7 +41,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
                            std::string self_path,
                            std::string requested_configuration) :
     loop(loop), pool(loop), contexts(workspace),
-    index_query(workspace, {.sessions = &sessions, .projections = &ast.projections, .pump = &pump}),
+    index_query(workspace.project_index, workspace.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, workspace, contexts, pump, sessions),
     invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
     self_path(std::move(self_path)), requested_configuration(std::move(requested_configuration)) {
@@ -333,8 +333,8 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
     if(session->serving == ServingMode::Escalated) {
         return;
     }
-    auto it = workspace.shards.find(session->path_id);
-    if(it != workspace.shards.end()) {
+    auto it = workspace.project_index.shards.find(session->path_id);
+    if(it != workspace.project_index.shards.end()) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: escalate
         // now instead of answering empty until the first edit.
@@ -426,8 +426,8 @@ void MasterServer::index_attempt_settled(Fid server_path_id) {
     if(!session || session->serving != ServingMode::IndexOnly) {
         return;
     }
-    auto it = workspace.shards.find(server_path_id);
-    if(it == workspace.shards.end() || !it->second.matches_content(session->text)) {
+    auto it = workspace.project_index.shards.find(server_path_id);
+    if(it == workspace.project_index.shards.end() || !it->second.matches_content(session->text)) {
         ast.escalate(*session);
     }
 }

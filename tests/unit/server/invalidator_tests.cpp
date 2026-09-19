@@ -359,7 +359,7 @@ TEST_CASE(CloseCurrentShardDepsOnly) {
     Workspace workspace;
     SessionStore store;
     auto closed = workspace.file_table.intern(tmp.path("a.cpp"));
-    workspace.shards[closed] = shard_of("int x;");
+    workspace.project_index.shards[closed] = shard_of("int x;");
 
     ContextResolver resolver(workspace);
     // Disk matches the content the shard was built from: a browse-and-close
@@ -379,7 +379,7 @@ TEST_CASE(CloseDivergentShardContentChanged) {
     Workspace workspace;
     SessionStore store;
     auto closed = workspace.file_table.intern(tmp.path("a.cpp"));
-    workspace.shards[closed] = shard_of("int x;");
+    workspace.project_index.shards[closed] = shard_of("int x;");
 
     ContextResolver resolver(workspace);
     // Disk holds edits the shard never saw (saved while open): the shard's
@@ -403,7 +403,7 @@ TEST_CASE(CloseStaleModuleCascades) {
     SessionStore store;
     auto mod = workspace.file_table.intern(tmp.path("m.cppm"));
     auto user = workspace.file_table.intern("/proj/user.cpp");
-    workspace.shards[mod] = shard_of("export module m;\nexport int v1();\n");
+    workspace.project_index.shards[mod] = shard_of("export module m;\nexport int v1();\n");
     workspace.pcm_cache[mod] = {
         .path = "/cache/m.pcm",
         .key = "k",
@@ -443,7 +443,7 @@ TEST_CASE(CloseRefreshesEdges) {
     workspace.dep_graph.build_reverse_map();
 
     auto disk = llvm::MemoryBuffer::getFile(tmp.path("a.cpp"));
-    workspace.shards[file] = shard_of((*disk)->getBuffer());
+    workspace.project_index.shards[file] = shard_of((*disk)->getBuffer());
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -469,7 +469,7 @@ TEST_CASE(DeferredDiskChangeCascades) {
     auto tu = workspace.file_table.intern("/proj/a.cpp");
     workspace.dep_graph.set_includes(tu, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
-    workspace.shards[header] = shard_of("int rewritten;");
+    workspace.project_index.shards[header] = shard_of("int rewritten;");
     store.open(header);
 
     ContextResolver resolver(workspace);
@@ -501,7 +501,7 @@ TEST_CASE(CloseFirstProviderCascades) {
     auto importer = workspace.file_table.intern("/proj/use.cpp");
 
     auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cppm"));
-    workspace.shards[iface] = shard_of((*disk)->getBuffer());
+    workspace.project_index.shards[iface] = shard_of((*disk)->getBuffer());
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -528,7 +528,7 @@ TEST_CASE(CloseProviderRenameCascades) {
     workspace.dep_graph.update_module_decl(iface, "a");
 
     auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cppm"));
-    workspace.shards[iface] = shard_of((*disk)->getBuffer());
+    workspace.project_index.shards[iface] = shard_of((*disk)->getBuffer());
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -558,7 +558,7 @@ TEST_CASE(CloseKeepsGuardedProvider) {
     workspace.dep_graph.update_module_decl(iface, "m");
 
     auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cpp"));
-    workspace.shards[iface] = shard_of((*disk)->getBuffer());
+    workspace.project_index.shards[iface] = shard_of((*disk)->getBuffer());
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -582,7 +582,7 @@ TEST_CASE(CloseStalePCMCascades) {
     SessionStore store;
     auto mod = workspace.file_table.intern(tmp.path("m.cppm"));
     auto user = workspace.file_table.intern("/proj/user.cpp");
-    workspace.shards[mod] = shard_of("export module m;\nexport int v2();\n");
+    workspace.project_index.shards[mod] = shard_of("export module m;\nexport int v2();\n");
     workspace.pcm_cache[mod] = {
         .path = "/cache/m.pcm",
         .key = "k",
@@ -907,8 +907,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     auto open_id = workspace.file_table.intern(tmp.path("a.cpp"));
     auto closed_id = workspace.file_table.intern(tmp.path("b.cpp"));
     store.open(open_id);
-    workspace.shards[open_id];
-    workspace.shards[closed_id];
+    workspace.project_index.shards[open_id];
+    workspace.project_index.shards[closed_id];
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -935,8 +935,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     auto dropped = dirty.drop_index;
     llvm::sort(dropped);
     ASSERT_EQ(dropped, reindexed);
-    ASSERT_EQ(workspace.shards.count(closed_id), 1u);
-    ASSERT_EQ(workspace.shards.count(open_id), 1u);
+    ASSERT_EQ(workspace.project_index.shards.count(closed_id), 1u);
+    ASSERT_EQ(workspace.project_index.shards.count(open_id), 1u);
 }
 
 TEST_CASE(CDBAddedOpenMarksDirty) {
@@ -969,7 +969,7 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     auto closed_header = workspace.file_table.intern("/proj/closed.h");
     auto other_header = workspace.file_table.intern("/proj/other.h");
     store.open(open_header);
-    workspace.shards[closed_header];
+    workspace.project_index.shards[closed_header];
 
     ContextResolver resolver(workspace);
     resolver.header_contexts[open_header].host_path_id = host;
@@ -995,7 +995,7 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     ASSERT_EQ(drop, evicted);
     ASSERT_TRUE(llvm::is_contained(dirty.mark_ast_dirty, open_header));
     ASSERT_TRUE(llvm::is_contained(dirty.reindex_content_changed, closed_header));
-    ASSERT_EQ(workspace.shards.count(closed_header), 1u);
+    ASSERT_EQ(workspace.project_index.shards.count(closed_header), 1u);
 }
 
 TEST_CASE(CDBChangedCascadesModule) {

@@ -19,7 +19,7 @@
 #include "server/service/context_service.h"
 #include "server/service/dispatcher.h"
 #include "server/service/features.h"
-#include "server/service/query.h"
+#include "server/service/live_sources.h"
 #include "server/state/invalidator.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
@@ -191,7 +191,9 @@ public:
     /// cannot cover them.
     Signal<> on_serving_rows_changed;
 
-    IndexQuery index_query;
+    ServerLiveSources live_sources{workspace, sessions, ast.projections};
+    PumpGate freshness{pump, workspace.config};
+    index::IndexQuery index_query;
 
     Features features;
     Invalidator invalidator;

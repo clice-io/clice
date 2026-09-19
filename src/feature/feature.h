@@ -7,6 +7,7 @@
 
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
+#include "index/manifest.h"
 #include "index/types.h"
 #include "semantic/display.h"
 #include "semantic/symbol.h"
@@ -489,12 +490,7 @@ struct IndexRows {
 
 auto extract_index_rows(const index::Shard& shard) -> IndexRows;
 
-/// An include edge of the document, from the TU manifest: the 1-based
-/// directive line and the resolved target's absolute path.
-struct IndexIncludeEdge {
-    std::uint32_t line = 0;
-    std::string target;
-};
+using IndexIncludeEdge = index::IncludeEdge;
 
 using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolRef>(index::SymbolHash)>;
 

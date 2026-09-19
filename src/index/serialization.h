@@ -129,8 +129,10 @@ namespace clice::index {
 /// entities computed by semantic/identity; v13: symbol rows carry the bare
 /// name, parent, specialization arguments, flags and canonical file, the
 /// include tree is one node type on the wire and in manifests, and module
-/// names are keyed by their entity).
-constexpr inline std::uint32_t index_format_version = 14;
+/// names are keyed by their entity; v15: the global blob is columnar in
+/// hash order with a stable path table and pins its search blob, so it
+/// is read in place).
+constexpr inline std::uint32_t index_format_version = 15;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
@@ -296,6 +298,19 @@ llvm::ArrayRef<T> to_array_ref(kota::codec::fbs::array_view<T> view) {
         return {};
     }
     return {view.raw()->data(), view.raw()->size()};
+}
+
+/// Whether an end-offset column stays within its arena and never moves
+/// back: the shape of every "entries back to back" column pair.
+inline bool monotone_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_size) {
+    std::uint32_t last = 0;
+    for(auto end: ends) {
+        if(end < last || end > arena_size) {
+            return false;
+        }
+        last = end;
+    }
+    return true;
 }
 
 }  // namespace clice::index

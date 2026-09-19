@@ -725,7 +725,7 @@ void LSPClient::register_extensions() {
 
             stats.index_inmemory_shards =
                 static_cast<std::uint32_t>(srv.index_store.pending_shard_writes());
-            for(auto& [path_id, shard]: srv.workspace.shards) {
+            for(auto& [path_id, shard]: srv.workspace.project_index.shards) {
                 stats.index_shard_content_bytes += shard.bytes().size();
             }
             stats.last_save_shards = static_cast<std::uint32_t>(srv.index_store.last_save_shards());

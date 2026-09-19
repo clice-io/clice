@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -12,6 +13,13 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice::index {
+
+/// An include edge of a document, from a TU manifest: the 1-based
+/// directive line and the resolved target's absolute path.
+struct IncludeEdge {
+    std::uint32_t line = 0;
+    std::string target;
+};
 
 /// What one TU's indexing produced, replaced wholesale by its next reindex:
 /// the include tree over file versions (the envelope's nodes with their

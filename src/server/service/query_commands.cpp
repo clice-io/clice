@@ -43,14 +43,9 @@ struct Lines {
     int end;
 };
 
-/// nullopt when the site's bytes fall outside the source's text.
-std::optional<Lines> lines_of(const Site& site) {
-    auto range = site.coords.to_range(site.range.begin, site.range.end);
-    if(!range) {
-        return std::nullopt;
-    }
-    return Lines{.start = static_cast<int>(range->start.line) + 1,
-                 .end = static_cast<int>(range->end.line) + 1};
+Lines lines_of(const index::Site& site) {
+    return {.start = static_cast<int>(site.begin.line) + 1,
+            .end = static_cast<int>(site.end.line) + 1};
 }
 
 /// The file a path names in the index. An error for a path that is not a
@@ -59,8 +54,10 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, llvm::StringRef path) {
     if(!llvm::sys::fs::is_regular_file(path)) {
         return std::unexpected(std::format("no such file: {}", std::string_view(path)));
     }
-    auto file = ctx.workspace.file_table.find(path);
-    if(!file || !ctx.workspace.shards.contains(*file)) {
+    // Interning only names the file; whether the index holds rows for
+    // it is the shard fetch's answer.
+    auto file = ctx.workspace.file_table.intern(path);
+    if(!ctx.workspace.project_index.shard(file)) {
         ctx.unindexed.emplace_back(path);
         return std::nullopt;
     }
@@ -93,41 +90,7 @@ Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
 /// Resolve a locator to exactly one symbol: no candidate is an unknown
 /// symbol, several ask the caller to disambiguate by id. A locator naming
 /// a path the index has no rows for answers as unknown and notes the path.
-Outcome<IndexQuery::Located> resolve_unique(Context& ctx, const SymbolLocatorParams& params) {
-    index::SymbolQuery query;
-    if(params.symbol) {
-        auto parsed = index::SymbolQuery::parse(*params.symbol);
-        if(!parsed || !parsed->handle) {
-            return std::unexpected(std::format("invalid symbol id: {}", *params.symbol));
-        }
-        query = std::move(*parsed);
-    } else if(params.name) {
-        auto parsed = index::SymbolQuery::parse(*params.name);
-        if(!parsed) {
-            return std::unexpected(parsed.error());
-        }
-        query = std::move(*parsed);
-    }
-    if(params.line && *params.line <= 0) {
-        return std::unexpected("line must be positive");
-    }
-    if(params.path) {
-        auto file = indexed_file(ctx, *params.path);
-        if(!file) {
-            return std::unexpected(file.error());
-        }
-        if(!*file) {
-            return std::unexpected("symbol not found");
-        }
-        if(params.name) {
-            query.paths.push_back(*params.path);
-        } else if(params.line && !params.symbol) {
-            query.position = {.path = *params.path, .line = *params.line};
-        }
-    }
-    if(!params.symbol && !params.name && !query.position) {
-        return std::unexpected("name a symbol with --name, --symbol, or --path and --line");
-    }
+Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQuery query) {
     auto anchored = anchor_place(ctx, query);
     if(!anchored) {
         return std::unexpected(anchored.error());
@@ -183,35 +146,32 @@ std::vector<DepEntry> collect_deps(Workspace& ws,
 }
 
 template <typename Entry>
-std::optional<Entry> graph_entry(const IndexQuery::Located& located) {
-    auto lines = lines_of(located.site);
-    if(!lines) {
-        return std::nullopt;
-    }
-    return Entry{
+Entry graph_entry(const index::IndexQuery::Located& located) {
+    return {
         .name = located.symbol.display_name(),
         .kind = kind_name(located.symbol.kind),
         .file = std::string(located.site.path),
-        .line = lines->start,
+        .line = lines_of(located.site).start,
         .symbol_id = symbol_id(located.symbol.hash),
     };
 }
 
-/// The relation targets of `root` of `kind` as graph entries, each
-/// resolved to its canonical site.
-void collect_targets(Context& ctx,
-                     index::SymbolHash root,
-                     RelationKind kind,
-                     std::vector<GraphEntry>& into) {
-    for(auto target: ctx.query.targets(root, kind)) {
-        auto located = ctx.query.resolve(target);
-        if(!located) {
-            continue;
-        }
-        if(auto entry = graph_entry<GraphEntry>(*located)) {
-            into.push_back(std::move(*entry));
-        }
+std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Located> symbols) {
+    std::vector<GraphEntry> entries;
+    entries.reserve(symbols.size());
+    for(auto& located: symbols) {
+        entries.push_back(graph_entry<GraphEntry>(located));
     }
+    return entries;
+}
+
+std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Edge> edges) {
+    std::vector<GraphEntry> entries;
+    entries.reserve(edges.size());
+    for(auto& edge: edges) {
+        entries.push_back(graph_entry<GraphEntry>(edge.symbol));
+    }
+    return entries;
 }
 
 }  // namespace
@@ -274,7 +234,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
         result.files.push_back(std::move(info));
     }
     if(filter == "all" || filter == "header") {
-        for(auto path_id: llvm::make_first_range(ws.shards)) {
+        for(auto path_id: llvm::make_first_range(ws.project_index.shards)) {
             auto path = ws.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header(path)) {
                 seen.insert(path_id);
@@ -379,7 +339,7 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
     auto located = query->by_pattern() ? ctx.query.search(*query, limit) : ctx.query.locate(*query);
     // A locator names its symbols outright; the filters still apply.
     if(!query->by_pattern()) {
-        llvm::erase_if(located, [&](const IndexQuery::Located& hit) {
+        llvm::erase_if(located, [&](const index::IndexQuery::Located& hit) {
             if(!query->kinds.empty() && !llvm::is_contained(query->kinds, hit.symbol.kind)) {
                 return true;
             }
@@ -394,33 +354,30 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
     }
     for(auto& hit: located) {
         auto entry = graph_entry<SymbolEntry>(hit);
-        if(!entry) {
-            continue;
-        }
         if(auto container = ctx.query.container_name(hit.symbol.hash); !container.empty()) {
-            entry->container = std::move(container);
+            entry.container = std::move(container);
         }
-        result.symbols.push_back(std::move(*entry));
+        result.symbols.push_back(std::move(entry));
     }
     return result;
 }
 
-Outcome<ReadSymbolResult> read_symbol(Context& ctx, const SymbolLocatorParams& locator) {
-    auto resolved = resolve_unique(ctx, locator);
+Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) {
+    auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
     auto definition = ctx.query.definition_text(resolved->symbol.hash);
-    auto lines = definition ? lines_of(definition->extent) : std::nullopt;
-    if(!lines) {
+    if(!definition) {
         return std::unexpected("definition not found");
     }
+    auto lines = lines_of(definition->extent);
     return ReadSymbolResult{
         .name = resolved->symbol.display_name(),
         .kind = kind_name(resolved->symbol.kind),
         .file = std::string(definition->extent.path),
-        .start_line = lines->start,
-        .end_line = lines->end,
+        .start_line = lines.start,
+        .end_line = lines.end,
         .text = std::move(definition->text),
         .symbol_id = symbol_id(resolved->symbol.hash),
     };
@@ -450,22 +407,19 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, llvm::StringRef pa
             continue;
         }
         auto lines = lines_of(located.site);
-        if(!lines) {
-            continue;
-        }
         result.symbols.push_back({
             .name = located.symbol.display_name(),
             .kind = kind_name(located.symbol.kind),
-            .start_line = lines->start,
-            .end_line = lines->end,
+            .start_line = lines.start,
+            .end_line = lines.end,
             .symbol_id = symbol_id(located.symbol.hash),
         });
     }
     return result;
 }
 
-Outcome<DefinitionResult> definition(Context& ctx, const SymbolLocatorParams& locator) {
-    auto resolved = resolve_unique(ctx, locator);
+Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
+    auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
@@ -475,22 +429,21 @@ Outcome<DefinitionResult> definition(Context& ctx, const SymbolLocatorParams& lo
         .symbol_id = symbol_id(resolved->symbol.hash),
     };
     if(auto definition = ctx.query.definition_text(resolved->symbol.hash)) {
-        if(auto lines = lines_of(definition->extent)) {
-            result.definition = LocationEntry{
-                .file = std::string(definition->extent.path),
-                .start_line = lines->start,
-                .end_line = lines->end,
-                .text = std::move(definition->text),
-            };
-        }
+        auto lines = lines_of(definition->extent);
+        result.definition = LocationEntry{
+            .file = std::string(definition->extent.path),
+            .start_line = lines.start,
+            .end_line = lines.end,
+            .text = std::move(definition->text),
+        };
     }
     return result;
 }
 
 Outcome<ReferencesResult> references(Context& ctx,
-                                     const SymbolLocatorParams& locator,
+                                     index::SymbolQuery locator,
                                      bool include_declaration) {
-    auto resolved = resolve_unique(ctx, locator);
+    auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
@@ -499,15 +452,11 @@ Outcome<ReferencesResult> references(Context& ctx,
         .kind = kind_name(resolved->symbol.kind),
         .symbol_id = symbol_id(resolved->symbol.hash),
     };
-    IndexQuery::Cursor cursor{.symbol = resolved->symbol.hash, .site = resolved->site};
+    index::IndexQuery::Cursor cursor{.symbol = resolved->symbol.hash, .site = resolved->site};
     for(auto& site: ctx.query.references(cursor, include_declaration)) {
-        auto lines = lines_of(site);
-        if(!lines) {
-            continue;
-        }
         result.references.push_back({
             .file = std::string(site.path),
-            .line = lines->start,
+            .line = lines_of(site).start,
             .context = ctx.query.context_line(site),
         });
     }
@@ -516,72 +465,47 @@ Outcome<ReferencesResult> references(Context& ctx,
 }
 
 Outcome<CallGraphResult> call_graph(Context& ctx,
-                                    const SymbolLocatorParams& locator,
+                                    index::SymbolQuery locator,
                                     llvm::StringRef direction) {
     if(!llvm::is_contained<llvm::StringRef>({"callers", "callees", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected callers, callees or both",
                         std::string_view(direction)));
     }
-    auto resolved = resolve_unique(ctx, locator);
+    auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto root_lines = lines_of(resolved->site);
-    CallGraphResult result{
-        .root = {.name = resolved->symbol.display_name(),
-                 .kind = kind_name(resolved->symbol.kind),
-                 .file = std::string(resolved->site.path),
-                 .line = root_lines ? root_lines->start : 0,
-                 .symbol_id = symbol_id(resolved->symbol.hash)},
+    auto graph = ctx.query.call_graph(
+        resolved->symbol.hash,
+        {.callers = direction != "callees", .callees = direction != "callers"});
+    return CallGraphResult{
+        .root = graph_entry<GraphEntry>(*resolved),
+        .callers = graph_entries(graph.callers),
+        .callees = graph_entries(graph.callees),
     };
-    auto collect = [&](RelationKind kind, std::vector<GraphEntry>& into) {
-        for(auto& group: ctx.query.grouped(resolved->symbol.hash, kind)) {
-            auto located = ctx.query.resolve(group.symbol);
-            if(!located) {
-                continue;
-            }
-            if(auto entry = graph_entry<GraphEntry>(*located)) {
-                into.push_back(std::move(*entry));
-            }
-        }
-    };
-    if(direction != "callees") {
-        collect(RelationKind::Caller, result.callers);
-    }
-    if(direction != "callers") {
-        collect(RelationKind::Callee, result.callees);
-    }
-    return result;
 }
 
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
-                                            const SymbolLocatorParams& locator,
+                                            index::SymbolQuery locator,
                                             llvm::StringRef direction) {
     if(!llvm::is_contained<llvm::StringRef>({"supertypes", "subtypes", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected supertypes, subtypes or both",
                         std::string_view(direction)));
     }
-    auto resolved = resolve_unique(ctx, locator);
+    auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto root_lines = lines_of(resolved->site);
-    TypeHierarchyResult result{
-        .root = {.name = resolved->symbol.display_name(),
-                 .kind = kind_name(resolved->symbol.kind),
-                 .file = std::string(resolved->site.path),
-                 .line = root_lines ? root_lines->start : 0,
-                 .symbol_id = symbol_id(resolved->symbol.hash)},
+    auto hierarchy = ctx.query.type_hierarchy(
+        resolved->symbol.hash,
+        {.supertypes = direction != "subtypes", .subtypes = direction != "supertypes"});
+    return TypeHierarchyResult{
+        .root = graph_entry<GraphEntry>(*resolved),
+        .supertypes = graph_entries(hierarchy.supertypes),
+        .subtypes = graph_entries(hierarchy.subtypes),
     };
-    if(direction != "subtypes") {
-        collect_targets(ctx, resolved->symbol.hash, RelationKind::Base, result.supertypes);
-    }
-    if(direction != "supertypes") {
-        collect_targets(ctx, resolved->symbol.hash, RelationKind::Derived, result.subtypes);
-    }
-    return result;
 }
 
 }  // namespace clice::query

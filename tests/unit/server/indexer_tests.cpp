@@ -65,8 +65,8 @@ struct IndexerFixture {
 
     /// Persist with the pump's debt snapshot and claim the report back, as
     /// the round tail does.
-    kota::task<> async_save() {
-        pump.claim_report(co_await index_store.save(pump.save_debt()));
+    kota::task<> async_save(bool settle = false) {
+        pump.claim_report(co_await index_store.save(pump.save_debt(), settle));
     }
 
     /// Load and claim the report, as the workspace load does. Returns the
@@ -158,8 +158,8 @@ struct IndexerFixture {
     }
 
     /// Run one save() to completion on the fixture's loop.
-    void save() {
-        auto task = async_save();
+    void save(bool settle = false) {
+        auto task = async_save(settle);
         loop.schedule(task);
         loop.run();
     }
@@ -352,14 +352,14 @@ void drop_index(Fid id) {
 TEST_CASE(MergeRejectsGarbage) {
     // A worker shipping corrupted bytes (torn write, stale format) must not
     // crash the master or leave partial state behind.
-    ASSERT_TRUE(workspace.shards.empty());
-    ASSERT_TRUE(workspace.project_index.symbols.empty());
+    ASSERT_TRUE(workspace.project_index.shards.empty());
+    ASSERT_EQ(workspace.project_index.symbol_count(), 0u);
 
     std::string garbage = "definitely not a flatbuffer, but long enough to try";
     ASSERT_FALSE(merge(garbage.data(), garbage.size()));
 
-    ASSERT_TRUE(workspace.shards.empty());
-    ASSERT_TRUE(workspace.project_index.symbols.empty());
+    ASSERT_TRUE(workspace.project_index.shards.empty());
+    ASSERT_EQ(workspace.project_index.symbol_count(), 0u);
 }
 
 TEST_CASE(MergeIgnoresDiskDrift) {
@@ -372,8 +372,8 @@ TEST_CASE(MergeIgnoresDiskDrift) {
 
     merge(indexed.data.data(), indexed.data.size());
     auto path_id = workspace.file_table.intern(indexed.tu_path);
-    auto it = workspace.shards.find(path_id);
-    ASSERT_TRUE(it != workspace.shards.end());
+    auto it = workspace.project_index.shards.find(path_id);
+    ASSERT_TRUE(it != workspace.project_index.shards.end());
     ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int value() { return 1; }\n"));
 
     // The disk moved on since the rows were indexed. The blob is
@@ -417,8 +417,8 @@ TEST_CASE(SaveCommitsDirtyShard) {
 
     // Committed: the dirty state is drained and the shard still answers
     // identically.
-    auto it = workspace.shards.find(path_id);
-    ASSERT_TRUE(it != workspace.shards.end());
+    auto it = workspace.project_index.shards.find(path_id);
+    ASSERT_TRUE(it != workspace.project_index.shards.end());
     ASSERT_EQ(index_store.pending_shard_writes(), 0u);
     ASSERT_EQ(index_store.last_save_shards(), 1u);
     ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int flip_value() { return 1; }\n"));
@@ -484,8 +484,8 @@ TEST_CASE(SaveMigratesShardViews) {
     ASSERT_FALSE(indexed.data.empty());
     merge(indexed.data.data(), indexed.data.size());
     auto path_id = workspace.file_table.intern(indexed.tu_path);
-    auto before = workspace.shards.find(path_id);
-    ASSERT_TRUE(before != workspace.shards.end());
+    auto before = workspace.project_index.shards.find(path_id);
+    ASSERT_TRUE(before != workspace.project_index.shards.end());
     auto variants_before = before->second.variants();
     const char* bytes_before = before->second.bytes().data();
 
@@ -501,8 +501,8 @@ TEST_CASE(SaveMigratesShardViews) {
     // variant set carried over.
     ASSERT_EQ(probe->advances, 1);
     ASSERT_EQ(probe->retires, 1);
-    auto it = workspace.shards.find(path_id);
-    ASSERT_TRUE(it != workspace.shards.end());
+    auto it = workspace.project_index.shards.find(path_id);
+    ASSERT_TRUE(it != workspace.project_index.shards.end());
     ASSERT_TRUE(it->second.loaded());
     ASSERT_TRUE(it->second.bytes().data() != bytes_before);
     ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int migrate_value() { return 1; }\n"));
@@ -588,8 +588,8 @@ TEST_CASE(GrowFailureShedsCleanShards) {
     loop.schedule(task);
     loop.run();
 
-    ASSERT_FALSE(workspace.shards.contains(clean_id));
-    ASSERT_TRUE(workspace.shards.contains(dirty_id));
+    ASSERT_FALSE(workspace.project_index.shards.contains(clean_id));
+    ASSERT_TRUE(workspace.project_index.shards.contains(dirty_id));
     ASSERT_TRUE(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
 }
 
@@ -635,8 +635,8 @@ TEST_CASE(MidSaveMergeKept) {
 
     // The save committed the pre-merge snapshot: the shard keeps the new
     // content and stays dirty so the next save commits it.
-    auto it = workspace.shards.find(path_id);
-    ASSERT_TRUE(it != workspace.shards.end());
+    auto it = workspace.project_index.shards.find(path_id);
+    ASSERT_TRUE(it != workspace.project_index.shards.end());
     ASSERT_EQ(index_store.pending_shard_writes(), 1u);
     ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int second_value() { return 2; }\n"));
 
@@ -647,7 +647,7 @@ TEST_CASE(MidSaveMergeKept) {
     loop.schedule(task);
     loop.run();
 
-    it = workspace.shards.find(path_id);
+    it = workspace.project_index.shards.find(path_id);
     ASSERT_EQ(index_store.pending_shard_writes(), 0u);
     ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int second_value() { return 2; }\n"));
 }
@@ -694,7 +694,7 @@ TEST_CASE(SharedHeaderVariants) {
     merge(a.data.data(), a.data.size());
     merge(b.data.data(), b.data.size());
     auto header_id = workspace.file_table.intern(tmp.path("shared.h"));
-    auto& shard = workspace.shards[header_id];
+    auto& shard = workspace.project_index.shards[header_id];
     ASSERT_EQ(shard.variants().size(), std::size_t(2));
     ASSERT_EQ(workspace.project_index.contributions.lookup(header_id).size(), std::size_t(2));
 
@@ -744,10 +744,10 @@ TEST_CASE(HeaderRegenerationReplaces) {
     auto new_hash = workspace.project_index.contributions.lookup(header_id).lookup(tu_id);
     ASSERT_TRUE(new_hash != 0);
     ASSERT_TRUE(new_hash != old_hash);
-    ASSERT_TRUE(workspace.shards[header_id].has_variant(new_hash));
+    ASSERT_TRUE(workspace.project_index.shards[header_id].has_variant(new_hash));
     // A new content generation never shares row storage with the old one.
-    ASSERT_FALSE(workspace.shards[header_id].has_variant(old_hash));
-    ASSERT_EQ(workspace.shards[header_id].content_hash(),
+    ASSERT_FALSE(workspace.project_index.shards[header_id].has_variant(old_hash));
+    ASSERT_EQ(workspace.project_index.shards[header_id].content_hash(),
               llvm::xxh3_64bits("#pragma once\ninline int dep() { return 2; }\n"));
 }
 
@@ -767,7 +767,7 @@ TEST_CASE(SaveCompactsAndRetires) {
     merge(a.data.data(), a.data.size());
     merge(b.data.data(), b.data.size());
     auto header_id = workspace.file_table.intern(tmp.path("shared.h"));
-    ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(2));
+    ASSERT_EQ(workspace.project_index.shards[header_id].variants().size(), std::size_t(2));
 
     auto save = [&] {
         auto body = [&]() -> kota::task<> {
@@ -785,9 +785,9 @@ TEST_CASE(SaveCompactsAndRetires) {
     auto b2 = index_file(tmp, tmp.path("b.cpp"));
     ASSERT_FALSE(b2.data.empty());
     merge(b2.data.data(), b2.data.size());
-    ASSERT_TRUE(workspace.shards[header_id].has_dead_variants());
+    ASSERT_TRUE(workspace.project_index.shards[header_id].has_dead_variants());
     save();
-    ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(1));
+    ASSERT_EQ(workspace.project_index.shards[header_id].variants().size(), std::size_t(1));
 
     // a drops it too: no contribution is left, so the shard retires from
     // memory and from storage — with no owner left to re-enqueue.
@@ -796,7 +796,7 @@ TEST_CASE(SaveCompactsAndRetires) {
     ASSERT_FALSE(a2.data.empty());
     merge(a2.data.data(), a2.data.size());
     save();
-    ASSERT_FALSE(workspace.shards.contains(header_id));
+    ASSERT_FALSE(workspace.project_index.shards.contains(header_id));
     ASSERT_FALSE(pump.pending_reason(workspace.file_table.intern(a2.tu_path)).has_value());
     bool on_disk = false;
     auto key = blob_key(workspace.file_table.resolve(header_id));
@@ -821,7 +821,7 @@ TEST_CASE(SaveRetiresPinnedShard) {
     merge(a.data.data(), a.data.size());
     merge(b.data.data(), b.data.size());
     auto header_id = workspace.file_table.intern(tmp.path("pinned.h"));
-    ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(2));
+    ASSERT_EQ(workspace.project_index.shards[header_id].variants().size(), std::size_t(2));
 
     // The header moves to a new content generation and only pa catches up:
     // the blob starts over with pa's variant, while pb's manifest still
@@ -832,7 +832,7 @@ TEST_CASE(SaveRetiresPinnedShard) {
     auto a2 = index_file(tmp, tmp.path("pa.cpp"));
     ASSERT_FALSE(a2.data.empty());
     merge(a2.data.data(), a2.data.size());
-    ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(1));
+    ASSERT_EQ(workspace.project_index.shards[header_id].variants().size(), std::size_t(1));
 
     // The rebuild re-enqueued pb; its pass then runs and fails, consuming
     // the slot — the state the retirement below must repair on its own.
@@ -849,7 +849,7 @@ TEST_CASE(SaveRetiresPinnedShard) {
     loop.schedule(task);
     loop.run();
 
-    ASSERT_FALSE(workspace.shards.contains(header_id));
+    ASSERT_FALSE(workspace.project_index.shards.contains(header_id));
     bool on_disk = false;
     auto key = blob_key(workspace.file_table.resolve(header_id));
     workspace.index_db->for_each_key(index::IndexBlobKind::Shard,
@@ -893,7 +893,7 @@ TEST_CASE(RebuildRequeuesPinnedOwner) {
     ASSERT_FALSE(a2.data.empty());
     merge(a2.data.data(), a2.data.size());
     auto header_id = workspace.file_table.intern(tmp.path("gen.h"));
-    ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(1));
+    ASSERT_EQ(workspace.project_index.shards[header_id].variants().size(), std::size_t(1));
 
     ASSERT_TRUE(pump.pending_reason(b_tu) == ReindexReason::ContentChanged);
     // ga's own fresh pin is stored: the rebuild must not re-enqueue it.
@@ -931,18 +931,18 @@ TEST_CASE(RejectsCorruptSection) {
     auto tu_id = workspace.file_table.intern(indexed.tu_path);
     auto header_id = workspace.file_table.intern(tmp.path("cor.h"));
     ASSERT_FALSE(workspace.project_index.manifests.contains(tu_id));
-    ASSERT_FALSE(workspace.shards.contains(header_id));
+    ASSERT_FALSE(workspace.project_index.shards.contains(header_id));
     // No global trace either: symbol identities from an untrusted result
     // would stay canonical for their hashes forever (later merges only
     // fill empty names), and stray FileVersions would persist with the
     // next save.
-    ASSERT_TRUE(workspace.project_index.symbols.empty());
+    ASSERT_EQ(workspace.project_index.symbol_count(), 0u);
     ASSERT_TRUE(workspace.file_table.versions.empty());
 
     // The intact result still lands afterwards.
     merge(indexed.data.data(), indexed.data.size());
     ASSERT_TRUE(workspace.project_index.manifests.contains(tu_id));
-    ASSERT_TRUE(workspace.shards.contains(header_id));
+    ASSERT_TRUE(workspace.project_index.shards.contains(header_id));
 }
 
 TEST_CASE(HashlessRemergeHits) {
@@ -960,12 +960,12 @@ TEST_CASE(HashlessRemergeHits) {
 
     merge(wire.data(), wire.size());
     auto path_id = workspace.file_table.intern(src);
-    ASSERT_EQ(workspace.shards[path_id].variants().size(), std::size_t(1));
+    ASSERT_EQ(workspace.project_index.shards[path_id].variants().size(), std::size_t(1));
 
     // Re-merging the same rows must register as a hit, not append the
     // stored variant to the blob a second time.
     merge(wire.data(), wire.size());
-    ASSERT_EQ(workspace.shards[path_id].variants().size(), std::size_t(1));
+    ASSERT_EQ(workspace.project_index.shards[path_id].variants().size(), std::size_t(1));
 }
 
 TEST_CASE(FailedWriteNotCounted) {
@@ -1125,8 +1125,8 @@ TEST_CASE(WriteCorruptionRebuildsDatabase) {
     ASSERT_TRUE(workspace.index_db != nullptr);
     auto clean_id = workspace.file_table.intern(indexed_clean.tu_path);
     auto dirty_id = workspace.file_table.intern(indexed_dirty.tu_path);
-    ASSERT_FALSE(workspace.shards.contains(clean_id));
-    ASSERT_TRUE(workspace.shards.contains(dirty_id));
+    ASSERT_FALSE(workspace.project_index.shards.contains(clean_id));
+    ASSERT_TRUE(workspace.project_index.shards.contains(dirty_id));
     ASSERT_TRUE(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
     ASSERT_EQ(index_store.last_save_shards(), 0u);
 
@@ -1208,7 +1208,7 @@ TEST_CASE(MigrationCorruptionRebuildsDatabase) {
     auto path_id = workspace.file_table.intern(indexed.tu_path);
     ASSERT_TRUE(condemned);
     ASSERT_TRUE(workspace.index_db != nullptr);
-    ASSERT_FALSE(workspace.shards.contains(path_id));
+    ASSERT_FALSE(workspace.project_index.shards.contains(path_id));
     ASSERT_TRUE(pump.pending_reason(path_id) == ReindexReason::ContentChanged);
     ASSERT_EQ(index_store.last_save_shards(), 0u);
 
@@ -1325,12 +1325,38 @@ TEST_CASE(LoadRestoresIndex) {
 
     auto tu_id = f.workspace.file_table.intern(src);
     auto header_id = f.workspace.file_table.intern(tmp.path("dep.h"));
-    ASSERT_TRUE(f.workspace.shards.contains(tu_id));
-    ASSERT_TRUE(f.workspace.shards.contains(header_id));
+    ASSERT_TRUE(f.workspace.project_index.shards.contains(tu_id));
+    ASSERT_TRUE(f.workspace.project_index.shards.contains(header_id));
     ASSERT_TRUE(f.workspace.project_index.contributions.lookup(header_id).contains(tu_id));
     // The persisted FileVersion stamps make the untouched TU judge fresh
     // without any reindex.
     ASSERT_FALSE(f.need_update(src));
+}
+
+TEST_CASE(SettledRebuildPinsSearch) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int use() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.merge(indexed.data.data(), indexed.data.size());
+        // The plain save persists the table; the settled one then rebuilds
+        // the search index with no other change to write.
+        f.save();
+        ASSERT_FALSE(f.global_dirty());
+        ASSERT_FALSE(f.workspace.project_index.search_index.loaded());
+        f.save(/*settle=*/true);
+        ASSERT_TRUE(f.workspace.project_index.search_index.loaded());
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.load();
+    ASSERT_TRUE(f.workspace.project_index.search_index.loaded());
 }
 
 TEST_CASE(LoadHealsBrokenShard) {
@@ -1373,8 +1399,8 @@ TEST_CASE(LoadHealsBrokenShard) {
     // OTHER header: its loaded shard's live mask must follow, or it keeps
     // serving a variant nothing contributes any more.
     auto extra_id = f.workspace.file_table.intern(tmp.path("extra.h"));
-    auto extra_it = f.workspace.shards.find(extra_id);
-    ASSERT_TRUE(extra_it != f.workspace.shards.end());
+    auto extra_it = f.workspace.project_index.shards.find(extra_id);
+    ASSERT_TRUE(extra_it != f.workspace.project_index.shards.end());
     ASSERT_TRUE(extra_it->second.has_dead_variants());
 
     // Load defers blob cleanup into the first save (no synchronous
@@ -1759,7 +1785,7 @@ TEST_CASE(LmdbLoadServesAcrossSaves) {
     open_lmdb(f.workspace);
     ASSERT_TRUE(f.load());
     auto path_id = f.workspace.file_table.intern(src);
-    ASSERT_TRUE(f.workspace.shards.contains(path_id));
+    ASSERT_TRUE(f.workspace.project_index.shards.contains(path_id));
 
     // The loaded shard borrows the open-time snapshot. A save that commits
     // anything advances and retires it — the shard must come out rebound
@@ -1770,8 +1796,8 @@ TEST_CASE(LmdbLoadServesAcrossSaves) {
     f.merge(other.data.data(), other.data.size());
     f.save();
 
-    auto it = f.workspace.shards.find(path_id);
-    ASSERT_TRUE(it != f.workspace.shards.end());
+    auto it = f.workspace.project_index.shards.find(path_id);
+    ASSERT_TRUE(it != f.workspace.project_index.shards.end());
     ASSERT_TRUE(it->second.loaded());
     ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int lmdb_value() { return 1; }\n"));
     ASSERT_FALSE(it->second.bytes().empty());
@@ -1909,8 +1935,8 @@ TEST_CASE(CorruptShardCondemnsDatabase) {
 
     ASSERT_TRUE(f.load());
     ASSERT_TRUE(condemned);
-    ASSERT_TRUE(f.workspace.shards.empty());
-    ASSERT_TRUE(f.workspace.project_index.symbols.empty());
+    ASSERT_TRUE(f.workspace.project_index.shards.empty());
+    ASSERT_EQ(f.workspace.project_index.symbol_count(), 0u);
 
     // The TU has no CDB entry, so nothing else records the debt: it is
     // re-enqueued before the adopted state unwinds, and the fresh
@@ -1990,7 +2016,7 @@ TEST_CASE(UnreadableGlobalPreserved) {
     open_store(tmp, f.workspace);
     f.load();
     ASSERT_FALSE(f.workspace.project_index.manifests.empty());
-    ASSERT_FALSE(f.workspace.shards.empty());
+    ASSERT_FALSE(f.workspace.project_index.shards.empty());
 }
 
 TEST_CASE(DropIndexEvictsPersisted) {
@@ -2021,7 +2047,7 @@ TEST_CASE(DropIndexEvictsPersisted) {
     open_store(tmp, f.workspace);
     f.load();
     ASSERT_TRUE(f.workspace.project_index.manifests.empty());
-    ASSERT_TRUE(f.workspace.shards.empty());
+    ASSERT_TRUE(f.workspace.project_index.shards.empty());
     ASSERT_TRUE(f.need_update(src));
 }
 
@@ -3263,14 +3289,14 @@ TEST_CASE(RetireReportsRowsChanged) {
     ASSERT_TRUE(f.merge(second.data.data(), second.data.size()));
 
     auto header_id = f.workspace.file_table.intern(tmp.path("dep.h"));
-    ASSERT_TRUE(f.workspace.shards.contains(header_id));
+    ASSERT_TRUE(f.workspace.project_index.shards.contains(header_id));
 
     llvm::SmallVector<Fid> notified;
     auto conn = f.pump.on_rows_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     f.save();
 
-    ASSERT_FALSE(f.workspace.shards.contains(header_id));
+    ASSERT_FALSE(f.workspace.project_index.shards.contains(header_id));
     ASSERT_TRUE(llvm::is_contained(notified, header_id));
 }
 
@@ -3441,7 +3467,7 @@ TEST_CASE(LandingVetoDropsResult) {
     f.loop.run();
 
     ASSERT_EQ(asks, 2);
-    ASSERT_FALSE(f.workspace.shards.contains(id));
+    ASSERT_FALSE(f.workspace.project_index.shards.contains(id));
     ASSERT_FALSE(f.pump.pending_reason(id).has_value());
     ASSERT_EQ(f.pump.failed().size(), 0u);
 }

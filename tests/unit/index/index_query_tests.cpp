@@ -4,6 +4,7 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
+#include "index/query.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/context.h"
@@ -12,7 +13,7 @@
 #include "sched/graph.h"
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
-#include "server/service/query.h"
+#include "server/service/live_sources.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
 #include "worker/pool.h"
@@ -38,19 +39,18 @@ ASTProjectionTable projections;
 IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
-clice::IndexQuery query{
-    workspace,
-    {.sessions = &store, .projections = &projections, .pump = &indexer}
-};
+ServerLiveSources live{workspace, store, projections};
+PumpGate gate{indexer, workspace.config};
+index::IndexQuery query{workspace.project_index, workspace.file_table, &gate, &live};
 
 Fid main_id;
 Fid header_id;
 
-std::vector<clice::IndexQuery::Located> search(llvm::StringRef text, std::size_t limit = 10) {
+std::vector<index::IndexQuery::Located> search(llvm::StringRef text, std::size_t limit = 10) {
     return query.search(*index::SymbolQuery::parse(text), limit);
 }
 
-std::vector<clice::IndexQuery::Located> locate(llvm::StringRef text) {
+std::vector<index::IndexQuery::Located> locate(llvm::StringRef text) {
     return query.locate(*index::SymbolQuery::parse(text));
 }
 
@@ -69,7 +69,7 @@ void merge_into_workspace() {
     }
     llvm::SmallVector<index::SymbolHash> added;
     ASSERT_TRUE(project.merge(view, file_ids_map, &added));
-    workspace.search_pending.insert(added.begin(), added.end());
+    workspace.project_index.search_pending.insert(added.begin(), added.end());
     main_id = file_ids_map[view.path_count() - 1];
 
     // The consumed-content hash per TU-local path: the section's own
@@ -81,9 +81,9 @@ void merge_into_workspace() {
         auto global_id = file_ids_map[local_id];
         // A section blob is already the final shard encoding: install the
         // bytes verbatim, as the indexer's first-variant path does.
-        workspace.shards[global_id] = index::Shard::from_buffer(
+        workspace.project_index.shards[global_id] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
-        consumed[local_id] = workspace.shards[global_id].content_hash();
+        consumed[local_id] = workspace.project_index.shards[global_id].content_hash();
         if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
             header_id = global_id;
         }
@@ -110,8 +110,8 @@ void merge_into_workspace() {
     }
 
     for(auto path_id: project.apply_manifest(workspace.file_table, main_id, std::move(manifest))) {
-        auto it = workspace.shards.find(path_id);
-        if(it != workspace.shards.end()) {
+        auto it = workspace.project_index.shards.find(path_id);
+        if(it != workspace.project_index.shards.end()) {
             it->second.set_live(project.live_variants(path_id));
         }
     }
@@ -130,7 +130,7 @@ TEST_CASE(DefinitionAcrossFiles) {
 
     auto hit_offset = point("use");
     index::SymbolHash symbol = 0;
-    workspace.shards[main_id].lookup(hit_offset, [&](const index::Occurrence& o) {
+    workspace.project_index.shards[main_id].lookup(hit_offset, [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -153,7 +153,7 @@ TEST_CASE(ReferencesAcrossFiles) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    workspace.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -191,10 +191,11 @@ TEST_CASE(QualifiedNames) {
     merge_into_workspace();
 
     index::SymbolHash method = 0;
-    workspace.shards[main_id].lookup(point("method"), [&](const index::Occurrence& o) {
-        method = o.target;
-        return false;
-    });
+    workspace.project_index.shards[main_id].lookup(point("method"),
+                                                   [&](const index::Occurrence& o) {
+                                                       method = o.target;
+                                                       return false;
+                                                   });
     ASSERT_TRUE(method != 0);
     ASSERT_EQ(query.qualified_name(method), "outer::inner::Widget::paint");
 
@@ -226,10 +227,11 @@ TEST_CASE(QualifiedNames) {
     ASSERT_EQ(query.container_name(versioned.front().symbol.hash), "outer");
     ASSERT_EQ(query.qualified_name(versioned.front().symbol.hash), "outer::versioned");
     index::SymbolHash hidden = 0;
-    workspace.shards[main_id].lookup(point("hidden"), [&](const index::Occurrence& o) {
-        hidden = o.target;
-        return false;
-    });
+    workspace.project_index.shards[main_id].lookup(point("hidden"),
+                                                   [&](const index::Occurrence& o) {
+                                                       hidden = o.target;
+                                                       return false;
+                                                   });
     ASSERT_TRUE(hidden != 0);
     ASSERT_EQ(query.qualified_name(hidden), "outer::hidden");
 
@@ -287,7 +289,7 @@ TEST_CASE(LocalSymbolName) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.shards[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
+    workspace.project_index.shards[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -338,7 +340,7 @@ TEST_CASE(DivergedBufferWithdrawsShard) {
 
     // The buffer no longer matches the rows' content: the shard withdraws
     // and the un-compiled session resolves nothing.
-    ASSERT_EQ(query.serving_source(main_id).by, ServingSource::By::None);
+    ASSERT_FALSE(query.serving(main_id).has_value());
     ASSERT_FALSE(query.symbol_at(main_id, point("use")).has_value());
 }
 
@@ -361,14 +363,14 @@ TEST_CASE(HeaderEdgesFromHostManifest) {
     // the host TU's manifest hanging off the header's node.
     auto session = store.open(header_id);
     store.apply_open(*session, sources.all_files.lookup("header.h").content, 1);
-    auto edges = query.include_edges(*session);
+    auto edges = query.include_edges(session->path_id);
     ASSERT_EQ(edges.size(), std::size_t(1));
     ASSERT_TRUE(llvm::StringRef(edges[0].target).ends_with("inner.h"));
 
     // The TU's own manifest still answers for the TU itself.
     auto main_session = store.open(main_id);
     store.apply_open(*main_session, unit->main_content().str(), 1);
-    auto main_edges = query.include_edges(*main_session);
+    auto main_edges = query.include_edges(main_session->path_id);
     ASSERT_EQ(main_edges.size(), std::size_t(1));
     ASSERT_TRUE(llvm::StringRef(main_edges[0].target).ends_with("header.h"));
 }
@@ -382,7 +384,7 @@ TEST_CASE(StaleContributionSuppressed) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    workspace.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
