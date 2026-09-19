@@ -171,7 +171,6 @@ std::expected<index::SymbolQuery, std::string> locator_of(const QueryOptions& op
     if(opts.path && !llvm::sys::fs::is_regular_file(absolute)) {
         return std::unexpected(std::format("no such file: {}", std::string_view(absolute)));
     }
-    std::string text;
     if(opts.symbol) {
         auto parsed = index::SymbolQuery::parse(*opts.symbol);
         if(!parsed || !parsed->handle) {
@@ -179,21 +178,24 @@ std::expected<index::SymbolQuery, std::string> locator_of(const QueryOptions& op
         }
         return std::move(*parsed);
     }
+    // The path is a literal, never query text: it joins the parsed query
+    // as the filter or the place it stands for.
     if(opts.name) {
-        text = *opts.name;
-        if(opts.path) {
-            text += std::format(" path:\"{}\"", std::string_view(absolute));
+        auto parsed = index::SymbolQuery::parse(*opts.name);
+        if(!parsed) {
+            return std::unexpected(parsed.error());
         }
-    } else if(opts.path && opts.line) {
-        text = std::format("\"{}:{}\"", std::string_view(absolute), *opts.line);
-    } else {
-        return std::unexpected("name a symbol with --name, --symbol, or --path and --line");
+        if(opts.path) {
+            parsed->paths.emplace_back(absolute);
+        }
+        return std::move(*parsed);
     }
-    auto parsed = index::SymbolQuery::parse(text);
-    if(!parsed) {
-        return std::unexpected(parsed.error());
+    if(opts.path && opts.line) {
+        index::SymbolQuery query;
+        query.position = {.path = std::string(absolute), .line = *opts.line};
+        return query;
     }
-    return std::move(*parsed);
+    return std::unexpected("name a symbol with --name, --symbol, or --path and --line");
 }
 
 struct Reply {
