@@ -138,8 +138,10 @@ TEST_SUITE(SearchIndex) {
 
 TEST_CASE(Loads) {
     auto corpus = sample();
+    corpus.snapshot.generation = 7;
     auto built = corpus.build();
     EXPECT_TRUE(built.loaded());
+    EXPECT_EQ(built.generation(), std::uint64_t(7));
     EXPECT_EQ(built.size(), corpus.snapshot.entries.size());
     EXPECT_TRUE(built.contains(1));
     EXPECT_FALSE(built.contains(999));

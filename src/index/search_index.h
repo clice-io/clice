@@ -61,6 +61,10 @@ struct SearchEntry {
 struct SearchSnapshot {
     std::vector<SearchEntry> entries;
     std::vector<std::string> paths;
+    /// The generation of the global blob these rows will be persisted
+    /// next to; a loader finding another generation knows rows may have
+    /// changed under the index.
+    std::uint64_t generation = 0;
 };
 
 /// Encode the search blob for a snapshot; symbols of other kinds or
@@ -147,6 +151,9 @@ public:
     std::size_t size() const;
 
     bool contains(SymbolHash hash) const;
+
+    /// The global generation the rows were snapshotted for; 0 unloaded.
+    std::uint64_t generation() const;
 
     /// Whether a posting list failed to decode since the load: the
     /// answers are incomplete until the owner rebuilds the index, and a

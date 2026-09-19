@@ -1059,6 +1059,9 @@ bool IndexStore::search_rebuild_due(bool settle) const {
     if(!index.loaded()) {
         return !workspace.project_index.symbols.empty();
     }
+    if(search_stale) {
+        return true;
+    }
     // A twentieth of the units, so a small project refreshes on any
     // merge and a large one every twenty at most.
     return merges_since_search_build >
@@ -1070,6 +1073,8 @@ kota::task<> IndexStore::rebuild_search_index() {
     ScopedTimer timer;
     index::SearchSnapshot snapshot;
     snapshot.entries.reserve(project.symbols.size());
+    // The generation this save's batch writes the global blob under.
+    snapshot.generation = project.global_generation + (global_dirty ? 1 : 0);
     llvm::DenseMap<std::uint32_t, std::uint32_t> path_index;
     for(auto& [hash, symbol]: project.symbols) {
         if(!index::is_searchable_kind(symbol.kind) || symbol.name.empty()) {
@@ -1116,6 +1121,7 @@ kota::task<> IndexStore::rebuild_search_index() {
     }
     workspace.search_index = std::move(built);
     restore.release();
+    search_stale = false;
     merges_since_search_build -= merges_in_snapshot;
     for(auto hash: pending_in_snapshot) {
         if(!workspace.search_index.contains(hash)) {
@@ -1400,6 +1406,8 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
             workspace.search_pending.insert(hash);
         }
     }
+    search_stale = workspace.search_index.loaded() &&
+                   workspace.search_index.generation() != project.global_generation;
 
     // Adopt exactly the manifests the global blob pins, at exactly the
     // pinned generation stamp and with every FileVersion resolvable. The

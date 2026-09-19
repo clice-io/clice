@@ -38,6 +38,8 @@ using Mode = SymbolQuery::Mode;
 struct SearchBlob {
     std::uint32_t format_version = 0;
     std::uint32_t search_version = 0;
+    /// See SearchSnapshot::generation.
+    std::uint64_t generation = 0;
 
     std::vector<std::uint64_t> hashes;
     std::string names;
@@ -307,6 +309,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     SearchBlob blob;
     blob.format_version = index_format_version;
     blob.search_version = search_format_version;
+    blob.generation = snapshot.generation;
     blob.hashes.reserve(count);
     blob.name_ends.reserve(count);
     blob.args_ends.reserve(count);
@@ -538,6 +541,7 @@ std::optional<NameRank>
 /// demand, each once.
 struct SearchIndex::View {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
+    std::uint64_t generation = 0;
 
     llvm::ArrayRef<std::uint64_t> hashes;
     llvm::StringRef names;
@@ -764,6 +768,7 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
        root[&SearchBlob::search_version] != search_format_version) {
         return std::unexpected("written by another format version");
     }
+    view.generation = root[&SearchBlob::generation];
     view.hashes = to_array_ref(root[&SearchBlob::hashes]);
     view.names = to_ref(root[&SearchBlob::names]);
     view.name_ends = to_array_ref(root[&SearchBlob::name_ends]);
@@ -884,6 +889,10 @@ bool SearchIndex::loaded() const {
 
 std::size_t SearchIndex::size() const {
     return view ? view->count() : 0;
+}
+
+std::uint64_t SearchIndex::generation() const {
+    return view ? view->generation : 0;
 }
 
 bool SearchIndex::damaged() const {

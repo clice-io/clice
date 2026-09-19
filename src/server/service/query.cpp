@@ -603,9 +603,19 @@ std::optional<Site> IndexQuery::canonical_site(index::SymbolHash hash) const {
         return site;
     }
     // A declaration stands in only for a symbol nothing defines: a
-    // definition withheld as stale stays unavailable, as documented.
+    // definition withheld as stale stays unavailable, as documented. An
+    // open session's identity may know only the declaration; the project
+    // row remembers the definition.
     auto info = symbol_info(hash);
-    if(!info || index::has_flag(info->flags, index::SymbolFlags::HasDefinition)) {
+    if(!info) {
+        return std::nullopt;
+    }
+    bool defined = index::has_flag(info->flags, index::SymbolFlags::HasDefinition);
+    if(auto row = workspace.project_index.symbols.find(hash);
+       row != workspace.project_index.symbols.end()) {
+        defined = defined || index::has_flag(row->second.flags, index::SymbolFlags::HasDefinition);
+    }
+    if(defined) {
         return std::nullopt;
     }
     return first_site(hash, RelationKind::Declaration);
