@@ -12,11 +12,6 @@ on:
         required: false
         default: "main"
         type: string
-      os_filter:
-        description: "Only run legs whose runner OS contains this string (e.g. windows); empty runs all"
-        required: false
-        default: ""
-        type: string
       defender_off:
         description: "Windows legs: disable Defender real-time monitoring before building (timing experiment)"
         required: false
@@ -24,7 +19,7 @@ on:
         type: boolean
 
 concurrency:
-  group: build-llvm-${{ github.ref }}-${{ inputs.os_filter }}-${{ inputs.defender_off }}
+  group: build-llvm-${{ github.ref }}-${{ inputs.defender_off }}
   cancel-in-progress: true
 
 jobs:
@@ -33,56 +28,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Native builds
+          # Timing experiment: Windows legs only.
           - os: windows-2022
             llvm_mode: RelWithDebInfo
             lto: OFF
           - os: windows-2022
             llvm_mode: RelWithDebInfo
             lto: ON
-          - os: ubuntu-24.04
-            llvm_mode: Debug
-            lto: OFF
-          - os: ubuntu-24.04
-            llvm_mode: RelWithDebInfo
-            lto: OFF
-          - os: ubuntu-24.04
-            llvm_mode: RelWithDebInfo
-            lto: ON
-          - os: macos-15
-            llvm_mode: Debug
-            lto: OFF
-          - os: macos-15
-            llvm_mode: RelWithDebInfo
-            lto: OFF
-          - os: macos-15
-            llvm_mode: RelWithDebInfo
-            lto: ON
-
-          # Cross-compilation builds
-          # macOS x64 (from arm64 macos-15)
-          - os: macos-15
-            llvm_mode: RelWithDebInfo
-            lto: OFF
-            target_triple: x86_64-apple-darwin
-          - os: macos-15
-            llvm_mode: RelWithDebInfo
-            lto: ON
-            target_triple: x86_64-apple-darwin
-
-          # Linux aarch64 (from x64 ubuntu-24.04)
-          - os: ubuntu-24.04
-            llvm_mode: RelWithDebInfo
-            lto: OFF
-            target_triple: aarch64-unknown-linux-gnu
-            pixi_env: cross-linux-arm64
-          - os: ubuntu-24.04
-            llvm_mode: RelWithDebInfo
-            lto: ON
-            target_triple: aarch64-unknown-linux-gnu
-            pixi_env: cross-linux-arm64
-
-          # Windows arm64 (from x64 windows-2022)
           - os: windows-2022
             llvm_mode: RelWithDebInfo
             lto: OFF
@@ -95,7 +47,6 @@ jobs:
             pixi_env: cross-windows-arm64
 
     runs-on: ${{ matrix.os }}
-    if: ${{ inputs.os_filter == '' || contains(matrix.os, inputs.os_filter) }}
     steps:
       - name: Disable Defender real-time monitoring
         if: ${{ runner.os == 'Windows' && inputs.defender_off }}
