@@ -5,6 +5,7 @@
 
 #include "test/test.h"
 #include "test/tester.h"
+#include "index/query.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/context.h"
@@ -13,7 +14,7 @@
 #include "sched/graph.h"
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
-#include "server/service/query.h"
+#include "server/service/live_sources.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
 #include "worker/pool.h"
@@ -38,11 +39,10 @@ ASTProjectionTable projections;
 IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
-IndexQuery index_query{
-    workspace,
-    {.sessions = &store, .projections = &projections, .pump = &indexer}
-};
-IndexQuery disk_query{workspace, {.pump = &indexer}};
+ServerLiveSources live{workspace, store, projections};
+PumpGate gate{indexer, workspace.config};
+index::IndexQuery index_query{workspace.project_index, workspace.file_table, &gate, &live};
+index::IndexQuery disk_query{workspace.project_index, workspace.file_table, &gate, nullptr};
 
 Fid main_id;
 Fid header_id;
@@ -63,7 +63,7 @@ void merge_into_workspace() {
 
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         auto local_id = view.section_path(section);
-        workspace.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+        workspace.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
         if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
             header_id = file_ids_map[local_id];
@@ -74,7 +74,7 @@ void merge_into_workspace() {
 /// The symbol hash at an offset in a file's merged shard.
 index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
     index::SymbolHash result = 0;
-    workspace.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
+    workspace.project_index.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
         result = o.target;
         return false;
     });

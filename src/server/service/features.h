@@ -5,9 +5,9 @@
 #include <vector>
 
 #include "feature/feature.h"
+#include "index/query.h"
 #include "sched/workspace.h"
 #include "server/service/dispatcher.h"
-#include "server/service/query.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
 
@@ -32,13 +32,13 @@ namespace protocol = kota::ipc::protocol;
 ///     (e.g. the preamble's document links), cached master-side because the
 ///     worker's AST is built on top of the PCH and cannot see the preamble
 ///     region;
-///   - the index: every index source, read through IndexQuery.
+///   - the index: every index source, read through index::IndexQuery.
 ///
 /// Routing is derived per request from readiness, never from a mode
 /// flag: a current AST answers as today; otherwise an index source that
 /// is byte-identical to the buffer answers immediately (whole-document
 /// features through the feature::index_* projections, cursor queries
-/// through IndexQuery's freshness clauses); otherwise the request awaits
+/// through index::IndexQuery's freshness clauses); otherwise the request awaits
 /// the compile the policy owes, or answers honestly empty when it owes
 /// none (ServingMode::IndexOnly).
 ///
@@ -55,7 +55,7 @@ class Features {
 public:
     Features(ASTFamily& ast,
              Dispatcher& dispatcher,
-             IndexQuery& query,
+             index::IndexQuery& query,
              Workspace& workspace,
              ContextResolver& contexts,
              IndexPump& pump,
@@ -205,7 +205,7 @@ private:
     /// or the state could shift between the decision and the read.
     kota::task<Route> pick_route(const Ticket& ticket,
                                  RouteOptions options,
-                                 ServingSource* source = nullptr);
+                                 std::optional<index::RowSource>* source = nullptr);
 
     /// What a gate decided instead of the feature's own answer: null (no
     /// source can answer — a failed compile) or ContentModified.
@@ -224,8 +224,8 @@ private:
     kota::task<std::optional<Stop>> nav_gate(const Ticket& ticket);
 
     /// The symbol under a position of the file's serving source, if any.
-    std::optional<IndexQuery::Cursor> cursor_at(Fid path_id,
-                                                const protocol::Position& position) const;
+    std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
+                                                       const protocol::Position& position) const;
 
     /// The lexing dialect of a session's index projections. An explicit -x
     /// in the file's own CDB entry decides outright; a header follows its
@@ -258,7 +258,7 @@ private:
 
     ASTFamily& ast;
     Dispatcher& dispatcher;
-    IndexQuery& query;
+    index::IndexQuery& query;
     Workspace& workspace;
     ContextResolver& contexts;
     IndexPump& pump;

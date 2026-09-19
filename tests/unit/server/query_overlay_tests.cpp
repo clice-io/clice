@@ -5,6 +5,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
+#include "index/query.h"
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
@@ -14,7 +15,7 @@
 #include "sched/graph.h"
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
-#include "server/service/query.h"
+#include "server/service/live_sources.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
 #include "support/cache_store.h"
@@ -43,11 +44,10 @@ ASTProjectionTable projections;
 IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
-IndexQuery index_query{
-    workspace,
-    {.sessions = &session_store, .projections = &projections, .pump = &indexer}
-};
-IndexQuery disk_query{workspace, {.pump = &indexer}};
+ServerLiveSources live{workspace, session_store, projections};
+PumpGate gate{indexer, workspace.config};
+index::IndexQuery index_query{workspace.project_index, workspace.file_table, &gate, &live};
+index::IndexQuery disk_query{workspace.project_index, workspace.file_table, &gate, nullptr};
 
 TempDir dir;
 index::TUIndex full_index;
@@ -126,7 +126,7 @@ void merge_disk_index() {
 
     for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
         auto local_id = full_index.section_path(section);
-        workspace.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+        workspace.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(full_index.section_blob(section)));
     }
 }
@@ -163,22 +163,22 @@ void install_empty_index(std::source_location location = std::source_location::c
 
 /// The symbol under a marker in the open session, through the query's
 /// serving source (buffer coordinates).
-IndexQuery::Cursor cursor_of(llvm::StringRef name,
-                             std::source_location location = std::source_location::current()) {
+index::IndexQuery::Cursor
+    cursor_of(llvm::StringRef name,
+              std::source_location location = std::source_location::current()) {
     auto cursor = index_query.symbol_at(session->path_id, point(name));
     EXPECT_TRUE(cursor.has_value());
-    return cursor.value_or(IndexQuery::Cursor{});
+    return cursor.value_or(index::IndexQuery::Cursor{});
 }
 
 /// The sites carrying `kind` for the symbol under a marker.
-std::vector<Site> relations(llvm::StringRef name, RelationKind kind) {
+std::vector<index::Site> relations(llvm::StringRef name, RelationKind kind) {
     return index_query.sites(cursor_of(name).symbol, kind);
 }
 
 /// The 0-based line a site starts on.
-std::uint32_t line_of(const Site& site) {
-    auto position = site.coords.to_position(site.range.begin);
-    return position ? position->line : ~0u;
+std::uint32_t line_of(const index::Site& site) {
+    return site.begin.line;
 }
 
 TEST_CASE(DefinitionFromOverlayOnly) {
@@ -310,10 +310,10 @@ int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
     // overlay; each caller must report it exactly once.
     merge_disk_index();
 
-    auto groups = index_query.grouped(hash_of("callee"), RelationKind::Caller);
-    ASSERT_EQ(groups.size(), 2);
-    for(auto& group: groups) {
-        EXPECT_EQ(group.sites.size(), 1);
+    auto callers = index_query.call_graph(hash_of("callee"), {.callees = false}).callers;
+    ASSERT_EQ(callers.size(), 2);
+    for(auto& edge: callers) {
+        EXPECT_EQ(edge.sites.size(), 1);
     }
 }
 
@@ -332,16 +332,14 @@ Derived instance;
     open_with_overlay();
 
     auto derived = hash_of("Derived");
-    auto supertypes = index_query.targets(derived, RelationKind::Base);
+    auto supertypes = index_query.type_hierarchy(derived, {.subtypes = false}).supertypes;
     ASSERT_EQ(supertypes.size(), 1);
-    auto base = index_query.symbol_info(supertypes[0]);
-    ASSERT_TRUE(base.has_value());
-    EXPECT_EQ(base->name, "Base");
+    EXPECT_EQ(supertypes[0].symbol.name, "Base");
 
     // Once derived.h is open, its session owns the type relations spelled
     // there; the overlay's disk-snapshot rows must stop contributing.
     session_store.open(workspace.file_table.intern(header_path("derived.h")));
-    supertypes = index_query.targets(derived, RelationKind::Base);
+    supertypes = index_query.type_hierarchy(derived, {.subtypes = false}).supertypes;
     EXPECT_EQ(supertypes.size(), 0);
 }
 
@@ -441,11 +439,12 @@ TEST_CASE(AsciiPreviewFromDisk) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(rows, {}, text, os);
-    workspace.shards[path_id] =
+    workspace.project_index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    ASSERT_TRUE(workspace.shards[path_id].content().empty());
-    workspace.project_index.symbols[sym].name = "value";
-    workspace.project_index.symbols[sym].reference_files.add(path_id.raw);
+    ASSERT_TRUE(workspace.project_index.shards[path_id].content().empty());
+    auto& row = workspace.project_index.touch(sym);
+    row.name = "value";
+    row.reference_files.add(path_id.raw);
 
     auto definition = disk_query.definition_text(sym);
     ASSERT_TRUE(definition.has_value());
@@ -545,9 +544,9 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(fake, {}, "xxx\n", os);
-    workspace.shards[header_id] =
+    workspace.project_index.shards[header_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    workspace.project_index.symbols[foo].reference_files.add(header_id.raw);
+    workspace.project_index.touch(foo).reference_files.add(header_id.raw);
 
     auto def = index_query.first_site(foo, RelationKind::Definition);
     ASSERT_TRUE(def.has_value());

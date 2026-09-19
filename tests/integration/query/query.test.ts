@@ -184,6 +184,26 @@ test("answers from the persisted index", ({ session }) => {
     expect(deps.result?.includes.map((d) => asUri(d.path))).toEqual([ws.uri("a.h")]);
 });
 
+test("answers for a file only its own symbols name", ({ session }) => {
+    // Nothing in the global table references the file, so only the
+    // fetch of its own shard can answer for it.
+    const ws = session.tmpdir();
+    ws.write("local.cpp", "static int helper() { return 7; }\nint main() { return helper(); }\n");
+    ws.writeCDB(["local.cpp"]);
+    ws.pinCacheDir();
+    expect(runIndex(ws).status).toBe(0);
+
+    const onLine = query<{ symbols: { name: string }[] }>(
+        ws,
+        "symbolSearch",
+        "--query",
+        "local.cpp:1",
+    );
+    expect(onLine.status).toBe(0);
+    expect(onLine.result?.symbols.map((s) => s.name)).toEqual(["helper"]);
+    expect(onLine.stale).toEqual([]);
+});
+
 test("rejects bad questions", ({ session }) => {
     const ws = writeProject(session);
     expect(runIndex(ws).status).toBe(0);

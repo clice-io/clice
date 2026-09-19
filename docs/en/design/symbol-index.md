@@ -105,7 +105,7 @@ Which variants are **live** is controlled by variant masks derived from the cont
 
 All index blobs — shards, manifests, the serialized `ProjectIndex` — live in a single embedded LMDB database. Blob encodings are canonical and self-describing; on load a blob is validated once and then used directly as a memory-mapped, zero-copy view. There is no deserialize-into-structs step on the read path.
 
-At startup, only the `ProjectIndex` and the per-TU manifests (compact) are loaded. Shards are opened on demand, and most are never accessed in a single session.
+A reader such as `clice query` opens the index by binding the global table and the search index in place from the database's read snapshot and fetches a shard the first time a query reaches it; nothing is decoded and no row is copied. The writer keeps its changes as an in-memory delta over the same view — only the rows a merge touches are copied — and folds them into the next blob it writes; it also loads every manifest and verifies every shard at startup, since it reconciles them.
 
 ### Per-TU Context
 

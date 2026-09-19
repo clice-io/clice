@@ -106,18 +106,6 @@ bool reserved_name(llvm::StringRef name) {
     return name.size() > 1 && name[0] == '_' && (name[1] == '_' || llvm::isUpper(name[1]));
 }
 
-/// Whether every end offset stays within the arena and never moves back.
-bool monotone(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_size) {
-    std::uint32_t last = 0;
-    for(auto end: ends) {
-        if(end < last || end > arena_size) {
-            return false;
-        }
-        last = end;
-    }
-    return true;
-}
-
 bool strictly_ascending_docs(llvm::ArrayRef<std::uint32_t> docs, std::size_t count) {
     for(std::size_t i = 0; i < docs.size(); i += 1) {
         if(docs[i] >= count || (i > 0 && docs[i] <= docs[i - 1])) {
@@ -801,8 +789,8 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
        view.by_lower_name.size() != count || view.by_hash.size() != count) {
         return std::unexpected("row columns do not line up");
     }
-    if(!monotone(view.name_ends, view.names.size()) ||
-       !monotone(view.args_ends, view.args.size())) {
+    if(!monotone_ends(view.name_ends, view.names.size()) ||
+       !monotone_ends(view.args_ends, view.args.size())) {
         return std::unexpected("name arenas do not line up");
     }
     for(auto parent: view.parents) {
@@ -829,26 +817,26 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
         }
     }
     if(view.token_keys.size() != view.token_ends.size() ||
-       !monotone(view.token_ends, view.token_postings.size()) ||
+       !monotone_ends(view.token_ends, view.token_postings.size()) ||
        !std::ranges::is_sorted(view.token_keys, std::less<>{}) ||
        std::ranges::adjacent_find(view.token_keys) != view.token_keys.end()) {
         return std::unexpected("token columns do not line up");
     }
     if(view.container_docs.size() != view.children_ends.size() ||
        !strictly_ascending_docs(view.container_docs, count) ||
-       !monotone(view.children_ends, view.children_postings.size())) {
+       !monotone_ends(view.children_ends, view.children_postings.size())) {
         return std::unexpected("container columns do not line up");
     }
     if(view.subtree_docs.size() != view.subtree_ends.size() ||
        !strictly_ascending_docs(view.subtree_docs, count) ||
-       !monotone(view.subtree_ends, view.subtree_postings.size())) {
+       !monotone_ends(view.subtree_ends, view.subtree_postings.size())) {
         return std::unexpected("subtree columns do not line up");
     }
-    if(!monotone(view.kind_ends, view.kind_postings.size())) {
+    if(!monotone_ends(view.kind_ends, view.kind_postings.size())) {
         return std::unexpected("kind columns do not line up");
     }
     if(view.paths.size() != view.file_ends.size() ||
-       !monotone(view.file_ends, view.file_postings.size())) {
+       !monotone_ends(view.file_ends, view.file_postings.size())) {
         return std::unexpected("file columns do not line up");
     }
     return {};

@@ -3,6 +3,8 @@
 #include "index/project_index.h"
 #include "index/serialization.h"
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice::testing {
@@ -105,10 +107,18 @@ index::ProjectIndex build_project(clice::FileTable& pool,
     };
     project.apply_manifest(pool, pool.intern(tu), std::move(manifest));
 
-    auto& symbol = project.symbols[42];
+    auto& symbol = project.touch(42);
     symbol.name = "sym";
     symbol.reference_files.add(path_id.raw);
     return project;
+}
+
+/// The files a symbol's bitmap names, as the pool's ids.
+std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
+                                           index::SymbolHash hash) {
+    std::vector<std::uint32_t> files;
+    project.each_reference_file(hash, [&](Fid file) { files.push_back(file.raw); });
+    return files;
 }
 
 TEST_CASE(GlobalRoundTripRemap) {
@@ -133,7 +143,8 @@ TEST_CASE(GlobalRoundTripRemap) {
 
     auto id = fresh.find("/proj/used.h");
     ASSERT_TRUE(id.has_value());
-    ASSERT_TRUE(loaded.symbols[42].reference_files.contains(id->raw));
+    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42), id->raw));
+    ASSERT_EQ(loaded.reference_count(42), 1u);
     ASSERT_EQ(fresh.versions.size(), pool.versions.size());
     ASSERT_EQ(loaded.global_generation, 9u);
 
@@ -146,6 +157,45 @@ TEST_CASE(GlobalRoundTripRemap) {
     auto& record = fresh.version(fv_it->second);
     ASSERT_EQ(record.size, 100u);
     ASSERT_EQ(record.mtime_ns, 5555);
+}
+
+TEST_CASE(GlobalRebaseKeepsChanges) {
+    // The rows a write serialized read from the landed blob afterwards,
+    // while rows changed across the write stay changed — and a write that
+    // never landed gives its rows back.
+    clice::FileTable pool;
+    auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
+    auto other = pool.intern("/proj/other.h");
+
+    std::string first;
+    llvm::raw_string_ostream first_os(first);
+    project.serialize_global(first_os, pool);
+    project.touch(43).name = "late";
+    project.touch(42).reference_files.add(other.raw);
+    project.rebase(llvm::MemoryBuffer::getMemBufferCopy(first), pool);
+    ASSERT_EQ(project.symbol_count(), 2u);
+    ASSERT_EQ(project.identity_of(43)->name, "late");
+    ASSERT_EQ(project.reference_count(42), 2u);
+
+    std::string second;
+    llvm::raw_string_ostream second_os(second);
+    project.serialize_global(second_os, pool);
+    project.restore_unwritten();
+    ASSERT_EQ(project.identity_of(43)->name, "late");
+    ASSERT_EQ(project.reference_count(42), 2u);
+
+    // The base blob's path table is kept as it is, so a base row's bitmap
+    // survives the next write byte for byte.
+    std::string third;
+    llvm::raw_string_ostream third_os(third);
+    project.serialize_global(third_os, pool);
+    clice::FileTable fresh;
+    index::ProjectIndex loaded;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
+    ASSERT_TRUE(loaded.load_global(third, fresh, pins));
+    ASSERT_EQ(loaded.symbol_count(), 2u);
+    ASSERT_EQ(loaded.reference_count(42), 2u);
+    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42), fresh.find("/proj/other.h")->raw));
 }
 
 TEST_CASE(GlobalCollectsGarbage) {
@@ -187,7 +237,7 @@ TEST_CASE(GlobalVersionGate) {
     auto current = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
     ASSERT_TRUE(current.has_value());
     ASSERT_TRUE(loaded.load_global(bytes_of(*current), pool, pins));
-    ASSERT_TRUE(loaded.symbols.empty());
+    ASSERT_EQ(loaded.symbol_count(), 0u);
     ASSERT_TRUE(pins.empty());
 
     ASSERT_FALSE(loaded.load_global("not a flatbuffer", pool, pins).has_value());
@@ -195,7 +245,7 @@ TEST_CASE(GlobalVersionGate) {
 
 /// Field order MUST mirror GlobalBlob (project_index.cpp).
 struct GlobalBlobMirror {
-    std::uint32_t format_version = 0;
+    std::uint32_t format_version = index::index_format_version;
     std::uint64_t generation = 0;
     std::uint64_t revocation_generation = 0;
     std::uint32_t next_fv_id = 0;
@@ -204,47 +254,64 @@ struct GlobalBlobMirror {
     std::vector<std::uint64_t> fv_hashes;
     std::vector<std::uint64_t> fv_sizes;
     std::vector<std::int64_t> fv_mtimes;
+    std::vector<std::string> paths;
     std::vector<std::uint64_t> sym_hashes;
-    std::vector<std::string> sym_names;
-    std::vector<std::string> sym_args;
+    std::string sym_names;
+    std::vector<std::uint32_t> sym_name_ends;
+    std::string sym_args;
+    std::vector<std::uint32_t> sym_args_ends;
     std::vector<std::uint64_t> sym_parents;
     std::vector<std::uint8_t> sym_kinds;
     std::vector<std::uint16_t> sym_flags;
     std::vector<std::uint32_t> sym_files;
-    std::vector<std::vector<std::byte>> sym_bitmaps;
+    std::vector<std::uint32_t> sym_reference_counts;
+    std::vector<std::uint32_t> sym_bitmap_ends;
+    std::vector<std::uint8_t> sym_bitmaps;
     std::vector<std::uint32_t> manifest_fvs;
     std::vector<std::uint64_t> manifest_gens;
-    std::vector<std::pair<std::uint32_t, std::string>> sym_paths;
+    std::uint64_t search_generation = 0;
+    std::vector<std::uint64_t> search_pending;
+
+    /// Append a row; hashes must arrive ascending.
+    void add_symbol(std::uint64_t hash,
+                    llvm::StringRef name,
+                    const std::vector<std::byte>& image,
+                    std::uint64_t parent = 0,
+                    std::uint32_t file = index::no_file) {
+        sym_hashes.push_back(hash);
+        sym_names += name;
+        sym_name_ends.push_back(static_cast<std::uint32_t>(sym_names.size()));
+        sym_args_ends.push_back(static_cast<std::uint32_t>(sym_args.size()));
+        sym_parents.push_back(parent);
+        sym_kinds.push_back(0);
+        sym_flags.push_back(0);
+        sym_files.push_back(file);
+        sym_reference_counts.push_back(0);
+        for(auto byte: image) {
+            sym_bitmaps.push_back(static_cast<std::uint8_t>(byte));
+        }
+        sym_bitmap_ends.push_back(static_cast<std::uint32_t>(sym_bitmaps.size()));
+    }
 };
 
-/// Encode a mirror whose symbol fact columns the test left at their
-/// defaults: sized to the hash column, no arguments, no parent, no flags,
-/// no file.
-auto encode(GlobalBlobMirror& mirror) {
-    auto count = mirror.sym_hashes.size();
-    mirror.sym_args.resize(count);
-    mirror.sym_parents.resize(count, 0);
-    mirror.sym_flags.resize(count, 0);
-    mirror.sym_files.resize(count, index::no_file);
+auto encode(const GlobalBlobMirror& mirror) {
     return kota::codec::fbs::to_bytes(mirror);
+}
+
+/// A path table covering ids 0..3, with the reference under test at 3.
+std::vector<std::string> four_paths() {
+    return {"/proj/0.h", "/proj/1.h", "/proj/2.h", "/proj/ref.h"};
 }
 
 TEST_CASE(GlobalBitmapPayloadGate) {
     // A malformed reference bitmap must fail the whole load: normalized to
     // empty it would silently lose the symbol's reference files, with
     // nothing ever rebuilding them.
-    GlobalBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
-    mirror.sym_hashes = {42};
-    mirror.sym_names = {"sym"};
-    mirror.sym_kinds = {0};
-
     clice::Bitmap bits;
     bits.add(3);
-    mirror.sym_bitmaps = {index::write_bitmap(bits)};
-    mirror.sym_paths = {
-        {3, "/proj/ref.h"}
-    };
+    GlobalBlobMirror mirror;
+    mirror.paths = four_paths();
+    mirror.add_symbol(42, "sym", index::write_bitmap(bits));
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -252,7 +319,8 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     ASSERT_TRUE(valid.has_value());
     index::ProjectIndex loaded;
     ASSERT_TRUE(loaded.load_global(bytes_of(*valid), pool, pins));
-    ASSERT_TRUE(loaded.symbols.contains(42));
+    ASSERT_TRUE(loaded.identity_of(42).has_value());
+    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42), pool.find("/proj/ref.h")->raw));
 
     // A malformed image after columns that decoded fine: the reject must
     // leave no partial state — file versions or symbols — that later
@@ -263,19 +331,13 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     mirror.fv_hashes = {0x1};
     mirror.fv_sizes = {10};
     mirror.fv_mtimes = {10};
-    mirror.sym_hashes = {42, 43};
-    mirror.sym_names = {"sym", "other"};
-    mirror.sym_kinds = {0, 0};
-    mirror.sym_bitmaps = {
-        index::write_bitmap(bits),
-        {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}}
-    };
+    mirror.add_symbol(43, "other", {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}});
     auto corrupt = encode(mirror);
     ASSERT_TRUE(corrupt.has_value());
     index::ProjectIndex rejecting;
     clice::FileTable untouched;
     ASSERT_FALSE(rejecting.load_global(bytes_of(*corrupt), untouched, pins).has_value());
-    ASSERT_TRUE(rejecting.symbols.empty());
+    ASSERT_EQ(rejecting.symbol_count(), 0u);
     ASSERT_TRUE(untouched.versions.empty());
     ASSERT_FALSE(untouched.find("/proj/partial.h").has_value());
 }
@@ -284,14 +346,11 @@ TEST_CASE(UncoveredBitmapIdRejected) {
     // The writer emits a path-table entry for every id its bitmaps
     // reference; dropping an uncovered id would silently lose the symbol's
     // reference files while every manifest stays fresh.
-    GlobalBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
-    mirror.sym_hashes = {42};
-    mirror.sym_names = {"sym"};
-    mirror.sym_kinds = {0};
     clice::Bitmap bits;
     bits.add(3);
-    mirror.sym_bitmaps = {index::write_bitmap(bits)};
+    GlobalBlobMirror mirror;
+    mirror.paths = {"/proj/0.h"};
+    mirror.add_symbol(42, "sym", index::write_bitmap(bits));
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -299,15 +358,13 @@ TEST_CASE(UncoveredBitmapIdRejected) {
     ASSERT_TRUE(uncovered.has_value());
     index::ProjectIndex loaded;
     ASSERT_FALSE(loaded.load_global(bytes_of(*uncovered), pool, pins).has_value());
-    ASSERT_TRUE(loaded.symbols.empty());
+    ASSERT_EQ(loaded.symbol_count(), 0u);
 
-    mirror.sym_paths = {
-        {3, "/proj/ref.h"}
-    };
+    mirror.paths = four_paths();
     auto covered = encode(mirror);
     ASSERT_TRUE(covered.has_value());
     ASSERT_TRUE(loaded.load_global(bytes_of(*covered), pool, pins));
-    ASSERT_TRUE(loaded.symbols.contains(42));
+    ASSERT_TRUE(loaded.identity_of(42).has_value());
 }
 
 TEST_CASE(GlobalDuplicateVersionsRejected) {
@@ -316,7 +373,6 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     // an id whose record names the later path, attributing contributions
     // to the wrong file.
     GlobalBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
     mirror.next_fv_id = 9;
     mirror.fv_ids = {7, 7};
     mirror.fv_paths = {"/proj/a.h", "/proj/b.h"};
@@ -358,7 +414,6 @@ TEST_CASE(GlobalBadCounterRejected) {
     // below it; a lagging counter would alias stored ids on the next
     // intern, and a sentinel one would insert a DenseMap reserved key.
     GlobalBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
     mirror.next_fv_id = 8;
     mirror.fv_ids = {7};
     mirror.fv_paths = {"/proj/a.h"};
@@ -400,10 +455,10 @@ TEST_CASE(GlobalRoundTripSymbolFacts) {
     clice::FileTable pool;
     index::ProjectIndex project;
     auto file = pool.intern("/proj/facts.h");
-    auto& parent = project.symbols[7];
+    auto& parent = project.touch(7);
     parent.name = "ns";
     parent.kind = SymbolKind::Namespace;
-    auto& symbol = project.symbols[42];
+    auto& symbol = project.touch(42);
     symbol.name = "Box";
     symbol.args = "<int>";
     symbol.parent = 7;
@@ -421,15 +476,17 @@ TEST_CASE(GlobalRoundTripSymbolFacts) {
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
-    auto& restored = loaded.symbols[42];
-    ASSERT_EQ(restored.name, "Box");
-    ASSERT_EQ(restored.args, "<int>");
-    ASSERT_EQ(restored.parent, 7u);
-    ASSERT_EQ(static_cast<std::uint16_t>(restored.flags), static_cast<std::uint16_t>(symbol.flags));
+    auto restored = loaded.identity_of(42);
+    ASSERT_TRUE(restored.has_value());
+    ASSERT_EQ(restored->name, "Box");
+    ASSERT_EQ(restored->args, "<int>");
+    ASSERT_EQ(restored->parent, 7u);
+    ASSERT_EQ(static_cast<std::uint16_t>(restored->flags),
+              static_cast<std::uint16_t>(symbol.flags));
     auto moved = fresh.find("/proj/facts.h");
     ASSERT_TRUE(moved.has_value());
-    ASSERT_EQ(restored.file, moved->raw);
-    ASSERT_EQ(loaded.symbols[7].file, index::no_file);
+    ASSERT_EQ(restored->file, moved->raw);
+    ASSERT_EQ(loaded.identity_of(7)->file, index::no_file);
 }
 
 TEST_CASE(UncoveredFileIdRejected) {
@@ -437,11 +494,7 @@ TEST_CASE(UncoveredFileIdRejected) {
     // this session interned at that id: reject it like an uncovered
     // bitmap id.
     GlobalBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
-    mirror.sym_hashes = {42};
-    mirror.sym_names = {"sym"};
-    mirror.sym_kinds = {0};
-    mirror.sym_bitmaps = {index::write_bitmap(clice::Bitmap{})};
+    mirror.add_symbol(42, "sym", index::write_bitmap(clice::Bitmap{}));
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -455,24 +508,20 @@ TEST_CASE(UncoveredFileIdRejected) {
     ASSERT_TRUE(uncovered.has_value());
     index::ProjectIndex rejecting;
     ASSERT_FALSE(rejecting.load_global(bytes_of(*uncovered), pool, pins).has_value());
-    ASSERT_TRUE(rejecting.symbols.empty());
+    ASSERT_EQ(rejecting.symbol_count(), 0u);
 }
 
 TEST_CASE(GlobalDuplicateSymbolRejected) {
-    // Symbol hashes are map keys in the writer; a structurally valid blob
-    // repeating one would silently replace the earlier entry's identity
-    // and reference bitmap while every manifest still loads as fresh.
-    GlobalBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
-    mirror.sym_hashes = {42, 42};
-    mirror.sym_names = {"sym", "impostor"};
-    mirror.sym_kinds = {0, 0};
+    // Rows are looked up by binary search over the hash column, so it
+    // must ascend strictly; a repeated hash would let one row shadow the
+    // other's identity and reference bitmap while every manifest still
+    // loads as fresh.
     clice::Bitmap bits;
     bits.add(3);
-    mirror.sym_bitmaps = {index::write_bitmap(bits), index::write_bitmap(bits)};
-    mirror.sym_paths = {
-        {3, "/proj/ref.h"}
-    };
+    GlobalBlobMirror mirror;
+    mirror.paths = four_paths();
+    mirror.add_symbol(42, "sym", index::write_bitmap(bits));
+    mirror.add_symbol(42, "impostor", index::write_bitmap(bits));
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -480,13 +529,18 @@ TEST_CASE(GlobalDuplicateSymbolRejected) {
     ASSERT_TRUE(dup.has_value());
     index::ProjectIndex loaded;
     ASSERT_FALSE(loaded.load_global(bytes_of(*dup), pool, pins).has_value());
-    ASSERT_TRUE(loaded.symbols.empty());
+    ASSERT_EQ(loaded.symbol_count(), 0u);
 
     mirror.sym_hashes = {42, 43};
     auto distinct = encode(mirror);
     ASSERT_TRUE(distinct.has_value());
     ASSERT_TRUE(loaded.load_global(bytes_of(*distinct), pool, pins));
-    ASSERT_EQ(loaded.symbols.size(), std::size_t(2));
+    ASSERT_EQ(loaded.symbol_count(), std::size_t(2));
+
+    mirror.sym_hashes = {43, 42};
+    auto descending = encode(mirror);
+    ASSERT_TRUE(descending.has_value());
+    ASSERT_FALSE(loaded.load_global(bytes_of(*descending), pool, pins).has_value());
 }
 
 TEST_CASE(GlobalReservedKeysRejected) {
@@ -500,7 +554,6 @@ TEST_CASE(GlobalReservedKeysRejected) {
 
     {
         GlobalBlobMirror mirror;
-        mirror.format_version = index::index_format_version;
         mirror.fv_ids = {0xffffffffu};
         mirror.fv_paths = {"/proj/a.h"};
         mirror.fv_hashes = {0x1};
@@ -511,45 +564,31 @@ TEST_CASE(GlobalReservedKeysRejected) {
         ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     {
-        GlobalBlobMirror mirror;
-        mirror.format_version = index::index_format_version;
-        mirror.sym_hashes = {~std::uint64_t(0)};
-        mirror.sym_names = {"sym"};
-        mirror.sym_kinds = {0};
         clice::Bitmap bits;
         bits.add(3);
-        mirror.sym_bitmaps = {index::write_bitmap(bits)};
-        mirror.sym_paths = {
-            {3, "/proj/ref.h"}
-        };
+        GlobalBlobMirror mirror;
+        mirror.paths = four_paths();
+        mirror.add_symbol(~std::uint64_t(0), "sym", index::write_bitmap(bits));
         auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
         ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     {
         GlobalBlobMirror mirror;
-        mirror.format_version = index::index_format_version;
-        mirror.sym_hashes = {42};
-        mirror.sym_names = {"sym"};
-        mirror.sym_parents = {~std::uint64_t(0)};
-        mirror.sym_kinds = {0};
-        mirror.sym_bitmaps = {index::write_bitmap(clice::Bitmap{})};
+        mirror.add_symbol(42, "sym", index::write_bitmap(clice::Bitmap{}), ~std::uint64_t(0));
         auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
         ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     {
         GlobalBlobMirror mirror;
-        mirror.format_version = index::index_format_version;
-        mirror.sym_paths = {
-            {0xfffffffeu, "/proj/ref.h"}
-        };
+        mirror.paths = {""};
         auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
         ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     ASSERT_TRUE(pool.versions.empty());
-    ASSERT_TRUE(loaded.symbols.empty());
+    ASSERT_EQ(loaded.symbol_count(), 0u);
 }
 
 TEST_CASE(UnknownFileVersionsDetected) {
