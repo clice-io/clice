@@ -537,8 +537,8 @@ std::optional<NameRank>
     return std::nullopt;
 }
 
-/// The mapped blob with its columns bound and its bitmaps decoded on
-/// demand, each once.
+/// The mapped blob with its columns bound and its bitmaps viewed in
+/// place on first use.
 struct SearchIndex::View {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
     std::uint64_t generation = 0;
@@ -603,13 +603,13 @@ struct SearchIndex::View {
         return slice(args, args_ends, doc);
     }
 
-    /// A posting image decoded; a malformed one reads as empty and marks
-    /// the index damaged.
+    /// A posting image viewed in place; a malformed one reads as empty
+    /// and marks the index damaged.
     Bitmap decode(llvm::ArrayRef<std::uint8_t> arena,
                   llvm::ArrayRef<std::uint32_t> ends,
                   std::uint32_t i) const {
         auto begin = i == 0 ? 0 : ends[i - 1];
-        auto decoded = read_bitmap(arena.data() + begin, ends[i] - begin);
+        auto decoded = view_bitmap(arena.data() + begin, ends[i] - begin);
         if(!decoded || (!decoded->isEmpty() && decoded->maximum() >= count())) {
             if(!damaged) {
                 LOG_WARN("A search index posting list does not decode; the index is rebuilt");
