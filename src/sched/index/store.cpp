@@ -1050,7 +1050,9 @@ bool IndexStore::search_rebuild_due(bool settle) const {
     if(workspace.search_pending.size() > std::max<std::size_t>(10000, base / 20)) {
         return true;
     }
-    if(index.damaged()) {
+    // A damaged or stale index is replaced at the first save, settled or
+    // not: its rows may misdescribe the table until then.
+    if(index.damaged() || search_stale) {
         return true;
     }
     if(!settle) {
@@ -1058,9 +1060,6 @@ bool IndexStore::search_rebuild_due(bool settle) const {
     }
     if(!index.loaded()) {
         return !workspace.project_index.symbols.empty();
-    }
-    if(search_stale) {
-        return true;
     }
     // A twentieth of the units, so a small project refreshes on any
     // merge and a large one every twenty at most.

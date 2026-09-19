@@ -240,7 +240,7 @@ private:
 
     /// The persisted search index was built for another global
     /// generation than the one loaded: rows may have changed under it
-    /// without entering the pending set, so the next settle rebuilds.
+    /// without entering the pending set, so the next save rebuilds.
     bool search_stale = false;
 
     /// Blobs mutated since the last save, plus whether the global blob
