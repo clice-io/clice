@@ -157,8 +157,8 @@ bool IndexQuery::skip_stale_contribution(Fid file) const {
     if(sources.disk) {
         auto [it, inserted] = sources.disk->verdicts.try_emplace(file, false);
         if(inserted) {
-            auto shard = workspace.shards.find(file);
-            if(shard != workspace.shards.end()) {
+            auto shard = workspace.project_index.shards.find(file);
+            if(shard != workspace.project_index.shards.end()) {
                 auto disk = workspace.file_table.current(file);
                 it->second = !disk || !shard->second.matches_content(disk->size, disk->hash);
             }
@@ -193,8 +193,8 @@ ServingSource IndexQuery::serving_source(Fid file) const {
     if(skip_stale_contribution(file)) {
         return {};
     }
-    auto it = workspace.shards.find(file);
-    if(it == workspace.shards.end()) {
+    auto it = workspace.project_index.shards.find(file);
+    if(it == workspace.project_index.shards.end()) {
         return {};
     }
     return {.by = ServingSource::By::ShardAsClosed,
@@ -203,8 +203,8 @@ ServingSource IndexQuery::serving_source(Fid file) const {
 }
 
 const index::Shard* IndexQuery::matching_shard(const Session& session) const {
-    auto it = workspace.shards.find(session.path_id);
-    if(it == workspace.shards.end() || !it->second.matches_content(session.text)) {
+    auto it = workspace.project_index.shards.find(session.path_id);
+    if(it == workspace.project_index.shards.end() || !it->second.matches_content(session.text)) {
         return nullptr;
     }
     return &it->second;
@@ -532,7 +532,7 @@ std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
 
     // Each shard stores exactly the local symbols its occurrences
     // reference, so a TU-local name is in the shard that produced it.
-    for(auto& [path_id, shard]: workspace.shards) {
+    for(auto& [path_id, shard]: workspace.project_index.shards) {
         if(auto identity = shard.find_symbol(hash)) {
             adopt(*identity);
             return found;
@@ -817,8 +817,8 @@ std::string IndexQuery::context_line(const Site& site) const {
     if(auto serving = serving_source(site.file); serving && !serving.coords.text().empty()) {
         return extract_line(serving.coords.text(), site.range.begin);
     }
-    auto it = workspace.shards.find(site.file);
-    if(it == workspace.shards.end()) {
+    auto it = workspace.project_index.shards.find(site.file);
+    if(it == workspace.project_index.shards.end()) {
         return {};
     }
     std::unique_ptr<llvm::MemoryBuffer> storage;
@@ -842,16 +842,16 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const index::SymbolQuery& query
                                                  std::size_t limit) const {
     std::vector<Ranked> hits;
     llvm::DenseSet<index::SymbolHash> seen;
-    auto indexed = workspace.search_index.search(query, limit);
+    auto indexed = workspace.project_index.search_index.search(query, limit);
     // A damaged index answers incompletely: until its rebuild the whole
     // table is judged row by row instead.
-    bool scan_table = workspace.search_index.damaged();
+    bool scan_table = workspace.project_index.search_index.damaged();
     bool exhausted = scan_table || indexed.exhausted;
     if(!scan_table) {
         for(auto& hit: indexed.hits) {
             // A row the table changed since the index was built is read
             // from the table below, not from the index's stale copy.
-            if(workspace.search_pending.contains(hit.hash)) {
+            if(workspace.project_index.search_pending.contains(hit.hash)) {
                 continue;
             }
             auto info = symbol_info(hit.hash);
@@ -927,7 +927,7 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const index::SymbolQuery& query
             consider_row(hash, symbol);
         }
     } else {
-        for(auto hash: workspace.search_pending) {
+        for(auto hash: workspace.project_index.search_pending) {
             auto it = workspace.project_index.symbols.find(hash);
             if(it != workspace.project_index.symbols.end()) {
                 consider_row(hash, it->second);
@@ -1129,8 +1129,8 @@ std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& 
     // matches, so a manifest contributes only where the version it entered
     // for this document carries that same content generation — a TU that
     // indexed an older revision would place its lines in text that moved.
-    auto shard_it = workspace.shards.find(session.path_id);
-    if(shard_it == workspace.shards.end()) {
+    auto shard_it = workspace.project_index.shards.find(session.path_id);
+    if(shard_it == workspace.project_index.shards.end()) {
         return {};
     }
     auto generation = shard_it->second.content_hash();

@@ -69,7 +69,7 @@ void merge_into_workspace() {
     }
     llvm::SmallVector<index::SymbolHash> added;
     ASSERT_TRUE(project.merge(view, file_ids_map, &added));
-    workspace.search_pending.insert(added.begin(), added.end());
+    workspace.project_index.search_pending.insert(added.begin(), added.end());
     main_id = file_ids_map[view.path_count() - 1];
 
     // The consumed-content hash per TU-local path: the section's own
@@ -81,9 +81,9 @@ void merge_into_workspace() {
         auto global_id = file_ids_map[local_id];
         // A section blob is already the final shard encoding: install the
         // bytes verbatim, as the indexer's first-variant path does.
-        workspace.shards[global_id] = index::Shard::from_buffer(
+        workspace.project_index.shards[global_id] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
-        consumed[local_id] = workspace.shards[global_id].content_hash();
+        consumed[local_id] = workspace.project_index.shards[global_id].content_hash();
         if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
             header_id = global_id;
         }
@@ -110,8 +110,8 @@ void merge_into_workspace() {
     }
 
     for(auto path_id: project.apply_manifest(workspace.file_table, main_id, std::move(manifest))) {
-        auto it = workspace.shards.find(path_id);
-        if(it != workspace.shards.end()) {
+        auto it = workspace.project_index.shards.find(path_id);
+        if(it != workspace.project_index.shards.end()) {
             it->second.set_live(project.live_variants(path_id));
         }
     }
@@ -130,7 +130,7 @@ TEST_CASE(DefinitionAcrossFiles) {
 
     auto hit_offset = point("use");
     index::SymbolHash symbol = 0;
-    workspace.shards[main_id].lookup(hit_offset, [&](const index::Occurrence& o) {
+    workspace.project_index.shards[main_id].lookup(hit_offset, [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -153,7 +153,7 @@ TEST_CASE(ReferencesAcrossFiles) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    workspace.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -191,10 +191,11 @@ TEST_CASE(QualifiedNames) {
     merge_into_workspace();
 
     index::SymbolHash method = 0;
-    workspace.shards[main_id].lookup(point("method"), [&](const index::Occurrence& o) {
-        method = o.target;
-        return false;
-    });
+    workspace.project_index.shards[main_id].lookup(point("method"),
+                                                   [&](const index::Occurrence& o) {
+                                                       method = o.target;
+                                                       return false;
+                                                   });
     ASSERT_TRUE(method != 0);
     ASSERT_EQ(query.qualified_name(method), "outer::inner::Widget::paint");
 
@@ -226,10 +227,11 @@ TEST_CASE(QualifiedNames) {
     ASSERT_EQ(query.container_name(versioned.front().symbol.hash), "outer");
     ASSERT_EQ(query.qualified_name(versioned.front().symbol.hash), "outer::versioned");
     index::SymbolHash hidden = 0;
-    workspace.shards[main_id].lookup(point("hidden"), [&](const index::Occurrence& o) {
-        hidden = o.target;
-        return false;
-    });
+    workspace.project_index.shards[main_id].lookup(point("hidden"),
+                                                   [&](const index::Occurrence& o) {
+                                                       hidden = o.target;
+                                                       return false;
+                                                   });
     ASSERT_TRUE(hidden != 0);
     ASSERT_EQ(query.qualified_name(hidden), "outer::hidden");
 
@@ -287,7 +289,7 @@ TEST_CASE(LocalSymbolName) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.shards[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
+    workspace.project_index.shards[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -382,7 +384,7 @@ TEST_CASE(StaleContributionSuppressed) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    workspace.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });

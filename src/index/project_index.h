@@ -5,6 +5,8 @@
 #include <utility>
 
 #include "index/manifest.h"
+#include "index/search_index.h"
+#include "index/shard.h"
 #include "index/tu_index.h"
 #include "vfs/file_table.h"
 
@@ -15,8 +17,7 @@
 
 namespace clice::index {
 
-/// The index's global layer: everything mutable, everything shared across
-/// files.
+/// The persisted index as loaded, in every part:
 ///
 /// - the project-wide external symbol table with per-symbol reference-file
 ///   bitmaps (the cross-file query fan-out),
@@ -24,7 +25,8 @@ namespace clice::index {
 /// - `contributions`, derived from the manifests at load: per file, which
 ///   TU contributed which rows variant. Its distinct hashes per file are
 ///   the file's live variants — the mask Shard queries filter by — and its
-///   emptiness is what retires a shard blob.
+///   emptiness is what retires a shard blob,
+/// - the per-file row blobs (`shards`) and the name search index.
 ///
 /// The FileVersion table manifests reference lives in clice::FileTable,
 /// shared with every other freshness consumer; the global blob persists
@@ -49,6 +51,18 @@ struct ProjectIndex {
 
     /// Derived from `manifests`: file fid -> (TU fid -> rows hash).
     llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>> contributions;
+
+    /// Per-file row blobs from background indexing, keyed by project-level
+    /// path_id: symbol occurrences, relations and stored content for
+    /// position mapping, served zero-copy.
+    llvm::DenseMap<Fid, Shard> shards;
+
+    /// The name search index over `symbols` as last built, and the symbols
+    /// it does not describe — merged or changed since — which a search
+    /// reads from the table instead until the store folds them into a
+    /// rebuilt index.
+    SearchIndex search_index;
+    llvm::DenseSet<SymbolHash> search_pending;
 
     /// Merge a TU's external symbols straight off the wire; `file_ids_map`
     /// maps the TU-local ids of `index`'s path table to pool ids. Symbol

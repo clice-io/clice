@@ -372,8 +372,8 @@ IndexStats collect_stats(IndexView& view) {
     auto& workspace = view.workspace;
     auto& project = workspace.project_index;
 
-    stats.shards.reserve(workspace.shards.size());
-    for(auto& [path_id, shard]: workspace.shards) {
+    stats.shards.reserve(workspace.project_index.shards.size());
+    for(auto& [path_id, shard]: workspace.project_index.shards) {
         ShardStat stat{.path = view.path_of(path_id),
                        .bytes = shard.bytes().size(),
                        .variants = shard.variants().size()};
@@ -443,9 +443,9 @@ void print_stats(const IndexView& view, const IndexStats& stats, std::uint32_t t
                  project.symbols.size(),
                  workspace.file_table.versions.size());
     std::println("Search index: {} symbols ({}), {} merged since its build",
-                 workspace.search_index.size(),
+                 workspace.project_index.search_index.size(),
                  format_size(stats.search_bytes),
-                 workspace.search_pending.size());
+                 workspace.project_index.search_pending.size());
     if(!view.dropped.empty()) {
         std::println(
             "Translation units pending reindex (stale or partially written): {}; "
@@ -513,7 +513,7 @@ void print_variants(const IndexStats& stats) {
 }
 
 int run_stats(IndexView& view, std::uint32_t top, bool variants) {
-    if(view.project().manifests.empty() && view.workspace.shards.empty()) {
+    if(view.project().manifests.empty() && view.workspace.project_index.shards.empty()) {
         std::println("Index is empty; run `clice index` to build it.");
         return 0;
     }
@@ -638,7 +638,7 @@ int run_show_symbol(IndexView& view, llvm::StringRef wanted) {
         // table's reference bitmaps, which a file-local symbol has no entry
         // in.
         std::map<std::string, Counts> per_file;
-        for(auto& [path_id, shard]: view.workspace.shards) {
+        for(auto& [path_id, shard]: view.workspace.project_index.shards) {
             auto count = [&](RelationKind kind, std::size_t Counts::* field) {
                 shard.lookup(hash, kind, [&](const index::Relation&) {
                     per_file[view.path_of(path_id).str()].*field += 1;
@@ -663,8 +663,9 @@ int run_show_symbol(IndexView& view, llvm::StringRef wanted) {
 int run_show_file(IndexView& view, llvm::StringRef argument) {
     auto path = inspected_path(view, argument);
     auto file = view.workspace.file_table.find(path);
-    auto shard_it = file ? view.workspace.shards.find(*file) : view.workspace.shards.end();
-    if(shard_it == view.workspace.shards.end()) {
+    auto shard_it = file ? view.workspace.project_index.shards.find(*file)
+                         : view.workspace.project_index.shards.end();
+    if(shard_it == view.workspace.project_index.shards.end()) {
         std::println("No rows for {} in the index.", path);
         return 1;
     }

@@ -55,7 +55,7 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, llvm::StringRef path) {
         return std::unexpected(std::format("no such file: {}", std::string_view(path)));
     }
     auto file = ctx.workspace.file_table.find(path);
-    if(!file || !ctx.workspace.shards.contains(*file)) {
+    if(!file || !ctx.workspace.project_index.shards.contains(*file)) {
         ctx.unindexed.emplace_back(path);
         return std::nullopt;
     }
@@ -261,7 +261,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
         result.files.push_back(std::move(info));
     }
     if(filter == "all" || filter == "header") {
-        for(auto path_id: llvm::make_first_range(ws.shards)) {
+        for(auto path_id: llvm::make_first_range(ws.project_index.shards)) {
             auto path = ws.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header(path)) {
                 seen.insert(path_id);

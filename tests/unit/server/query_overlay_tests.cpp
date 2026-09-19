@@ -126,7 +126,7 @@ void merge_disk_index() {
 
     for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
         auto local_id = full_index.section_path(section);
-        workspace.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+        workspace.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(full_index.section_blob(section)));
     }
 }
@@ -440,9 +440,9 @@ TEST_CASE(AsciiPreviewFromDisk) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(rows, {}, text, os);
-    workspace.shards[path_id] =
+    workspace.project_index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    ASSERT_TRUE(workspace.shards[path_id].content().empty());
+    ASSERT_TRUE(workspace.project_index.shards[path_id].content().empty());
     workspace.project_index.symbols[sym].name = "value";
     workspace.project_index.symbols[sym].reference_files.add(path_id.raw);
 
@@ -544,7 +544,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(fake, {}, "xxx\n", os);
-    workspace.shards[header_id] =
+    workspace.project_index.shards[header_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     workspace.project_index.symbols[foo].reference_files.add(header_id.raw);
 

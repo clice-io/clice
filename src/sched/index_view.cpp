@@ -97,7 +97,8 @@ int open_index(IndexView& view,
     // With no pump attached the load report's debt can only be the
     // recovery drops: every TU's blobs were missing, stale, or corrupt — a
     // damaged cache, not a legitimately empty one.
-    if(view.project().manifests.empty() && workspace.shards.empty() && !view.dropped.empty()) {
+    if(view.project().manifests.empty() && workspace.project_index.shards.empty() &&
+       !view.dropped.empty()) {
         LOG_ERROR(
             "Index cache at {} has no servable data ({} translation units need "
             "reindexing); run `clice index` to rebuild",

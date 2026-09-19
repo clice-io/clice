@@ -63,7 +63,7 @@ void merge_into_workspace() {
 
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         auto local_id = view.section_path(section);
-        workspace.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+        workspace.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
         if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
             header_id = file_ids_map[local_id];
@@ -74,7 +74,7 @@ void merge_into_workspace() {
 /// The symbol hash at an offset in a file's merged shard.
 index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
     index::SymbolHash result = 0;
-    workspace.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
+    workspace.project_index.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
         result = o.target;
         return false;
     });

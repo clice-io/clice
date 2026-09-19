@@ -277,8 +277,8 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
             result.standalone_headers += 1;
         }
     }
-    result.shard_count = workspace.shards.size();
-    for(auto& shard: llvm::make_second_range(workspace.shards)) {
+    result.shard_count = workspace.project_index.shards.size();
+    for(auto& shard: llvm::make_second_range(workspace.project_index.shards)) {
         result.shard_bytes += shard.bytes().size();
     }
     result.symbol_count = workspace.project_index.symbols.size();

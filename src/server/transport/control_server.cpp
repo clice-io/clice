@@ -73,9 +73,9 @@ void register_control(MasterServer& srv, kota::ipc::JsonPeer& peer) {
         // side vetoed it (an open buffer diverged from the disk) and the
         // shard still describes older bytes.
         for(auto file: files) {
-            auto shard = srv.workspace.shards.find(file);
+            auto shard = srv.workspace.project_index.shards.find(file);
             auto disk = srv.workspace.file_table.current(file);
-            bool current = shard != srv.workspace.shards.end() && disk &&
+            bool current = shard != srv.workspace.project_index.shards.end() && disk &&
                            shard->second.matches_content(disk->size, disk->hash);
             if(!current) {
                 result.failed.emplace_back(srv.workspace.file_table.resolve(file));
