@@ -208,15 +208,19 @@ endfunction()
 # library. -nostdinc++ removes the host's C++ headers on Linux and macOS; on
 # Windows the MSVC STL sits in the INCLUDE directories, which -isystem
 # precedes, and libc++'s headers auto-link libc++.lib through a #pragma.
+# On the vcruntime ABI libc++ leaves std::set_new_handler to the MSVC STL
+# (libcpmt), which nothing auto-links once its headers are shadowed; it
+# duplicates libc++'s exception_ptr definitions, so it has to be searched
+# after libc++.lib, hence both are named in that order.
 function(_llvm_libcxx_flags install_path cxx_flags_var link_flags_var)
     set(_include "${install_path}/include/c++/v1")
     set(_lib "${install_path}/lib")
     if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         set(${cxx_flags_var} "/clang:-isystem\"${_include}\"" PARENT_SCOPE)
-        set(${link_flags_var} "/LIBPATH:\"${_lib}\"" PARENT_SCOPE)
+        set(${link_flags_var} "/LIBPATH:\"${_lib}\" /DEFAULTLIB:libc++.lib /DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
     elseif(WIN32)
         set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
-        set(${link_flags_var} "-L\"${_lib}\"" PARENT_SCOPE)
+        set(${link_flags_var} "-L\"${_lib}\" -Wl,/DEFAULTLIB:libc++.lib -Wl,/DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
     else()
         set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
         set(${link_flags_var} "-stdlib=libc++ -L\"${_lib}\"" PARENT_SCOPE)

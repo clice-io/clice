@@ -3,7 +3,8 @@
 
 Two configure/build passes share one install prefix. The runtimes pass
 builds a static, hermetic libc++ (libc++abi merged in outside Windows) with
-the compiler of the pixi environment; the LLVM pass then builds clang and
+the compiler of the pixi environment, from the libc++ sources of that
+compiler's own release (--runtimes-src); the LLVM pass then builds clang and
 clang-tidy against that libc++ instead of the host's standard library. Only
 the libraries clice links (COMPONENTS) are built and installed, and no
 code-generation target is configured.
@@ -152,6 +153,11 @@ class Build:
         self, args: argparse.Namespace, project_root: Path, toolchain_file: Path
     ):
         self.root = project_root
+        self.runtimes_root = (
+            Path(args.runtimes_src).expanduser().resolve()
+            if args.runtimes_src
+            else project_root
+        )
         self.toolchain_file = toolchain_file
         self.mode = MODE_MAP[args.mode.strip().lower()]
         self.lto = args.lto == "ON"
@@ -175,7 +181,11 @@ class Build:
     # ------------------------------------------------------------------ flags
 
     def target_flags(self) -> str:
-        return f" --target={self.target_triple}" if self.target_triple and IS_WINDOWS else ""
+        return (
+            f" --target={self.target_triple}"
+            if self.target_triple and IS_WINDOWS
+            else ""
+        )
 
     # The -D flags below replace the toolchain file's *_INIT values, so the
     # linker choice and the conda config-file opt-out are repeated here.
@@ -198,7 +208,9 @@ class Build:
         if IS_DARWIN:
             # CMake 4 leaves CMAKE_OSX_SYSROOT unset; the runtimes' compiler-rt
             # lookup (LLVM_USE_SANITIZER on Apple) reads the SDK name from it.
-            sdk = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
+            sdk = subprocess.check_output(
+                ["xcrun", "--show-sdk-path"], text=True
+            ).strip()
             args.append(f"-DCMAKE_OSX_SYSROOT={sdk}")
         return args
 
@@ -275,7 +287,7 @@ class Build:
             args.append(f"-DLLVM_DEFAULT_TARGET_TRIPLE={self.target_triple}")
 
         print(f"\nConfiguring runtimes in {build_dir}...")
-        run(["cmake", "-S", self.root / "runtimes", "-B", build_dir] + args)
+        run(["cmake", "-S", self.runtimes_root / "runtimes", "-B", build_dir] + args)
         print("\nInstalling runtimes...")
         run(["cmake", "--build", build_dir, "--target", "install"])
         # The runtimes configure infers the host triple and normalizes it
@@ -292,8 +304,16 @@ class Build:
         if IS_WINDOWS:
             # libc++'s headers auto-link libc++.lib through a #pragma; the
             # MSVC toolchain adds its own C++ headers as plain system
-            # directories, so -isystem is enough to shadow them.
-            return f"-w /clang:-isystem{include}", f"/LIBPATH:{lib}"
+            # directories, so -isystem is enough to shadow them. On the
+            # vcruntime ABI libc++ leaves std::set_new_handler to the MSVC
+            # STL (libcpmt), which nothing auto-links once its headers are
+            # shadowed; it duplicates libc++'s exception_ptr definitions, so
+            # it has to be searched after libc++.lib, hence both are named
+            # here in that order.
+            return (
+                f"-w /clang:-isystem{include}",
+                f"/LIBPATH:{lib} /DEFAULTLIB:libc++.lib /DEFAULTLIB:libcpmt.lib",
+            )
         return f"-w -nostdinc++ -isystem {include}", f"-stdlib=libc++ -L{lib}"
 
     def llvm_args(self) -> list[str]:
@@ -435,6 +455,7 @@ class Build:
             "ASSERTIONS": "ON" if self.assertions else "OFF",
             "RTTI": "OFF",
             "STDLIB": "libc++",
+            "LIBCXX_VERSION": llvm_version_of(self.runtimes_root),
             "LIBCXX_ABI_VERSION": runtimes_cache.get("LIBCXX_ABI_VERSION", ""),
             "LIBCXX_HARDENING_MODE": self.hardening_mode(),
             "MSVC_RUNTIME_LIBRARY": llvm_cache.get("CMAKE_MSVC_RUNTIME_LIBRARY", ""),
@@ -464,6 +485,15 @@ class Build:
             print(
                 f"  {size / 1048576:>8.1f} MB  {path.relative_to(self.install_prefix)}"
             )
+
+
+def llvm_version_of(source_root: Path) -> str:
+    text = (source_root / "cmake/Modules/LLVMVersion.cmake").read_text()
+    parts = [
+        re.search(rf"set\(LLVM_VERSION_{k} (\d+)", text)
+        for k in ("MAJOR", "MINOR", "PATCH")
+    ]
+    return ".".join(m.group(1) for m in parts if m)
 
 
 def read_cmake_cache(path: Path) -> dict[str, str]:
@@ -499,6 +529,11 @@ def main() -> None:
     parser.add_argument(
         "--llvm-src",
         help="Path to llvm-project source root (defaults to current working directory)",
+    )
+    parser.add_argument(
+        "--runtimes-src",
+        help="llvm-project checkout whose libc++ is built; defaults to --llvm-src. It should be the "
+        "release of the compiler in use, which may be newer than the LLVM being packaged.",
     )
     parser.add_argument(
         "--mode", default="Release", help="Build mode (default: Release)"
@@ -539,6 +574,15 @@ def main() -> None:
     )
     if not (project_root / "llvm" / "CMakeLists.txt").exists():
         sys.exit(f"Error: {project_root} is not the root of an llvm-project checkout.")
+    if (
+        args.runtimes_src
+        and not (
+            Path(args.runtimes_src).expanduser() / "runtimes" / "CMakeLists.txt"
+        ).exists()
+    ):
+        sys.exit(
+            f"Error: {args.runtimes_src} is not the root of an llvm-project checkout."
+        )
     os.chdir(project_root)
 
     if args.target_triple:
@@ -552,6 +596,9 @@ def main() -> None:
     print(f"lto={args.lto}")
     print(f"target_triple={build.target_triple or '(native)'}")
     print(f"root={project_root}")
+    print(
+        f"runtimes_root={build.runtimes_root} (libc++ {llvm_version_of(build.runtimes_root)})"
+    )
     print(f"build_dir={build.build_dir}")
     print(f"install_prefix={build.install_prefix}")
     print(f"ccache={build.ccache or '(none)'}")

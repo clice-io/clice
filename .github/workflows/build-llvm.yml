@@ -153,20 +153,19 @@ jobs:
           echo "=== After cleanup ==="
           df -h /
 
+      # The libc++ that goes into the package is built from the sources of
+      # the compiler's own release, which may be newer than the LLVM being
+      # packaged; each checkout gets the patches of its own version.
       - name: Clone llvm-project
-        shell: bash
-        env:
-          VERSION: ${{ inputs.llvm_version || '22.1.8' }}
-        run: |
-          echo "Cloning LLVM ${VERSION}..."
-          git clone --branch "llvmorg-${VERSION}" --depth 1 https://github.com/llvm/llvm-project.git .llvm
-
-      - name: Apply patches
         shell: bash
         env:
           VERSION: ${{ inputs.llvm_version || '22.1.8' }}
           REF: ${{ inputs.patch_ref || 'main' }}
         run: |
+          ENV="${{ matrix.pixi_env || 'package' }}"
+          RUNTIMES_VERSION="$(pixi run -e "$ENV" clang --version | sed -nE '1s/.*clang version ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')"
+          echo "LLVM ${VERSION}, libc++ ${RUNTIMES_VERSION}"
+
           if git clone --branch "$REF" --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm 2>/dev/null; then
             echo "Using patches from clice-llvm@$REF"
           else
@@ -174,14 +173,26 @@ jobs:
             git clone --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm
           fi
 
-          PATCH_DIR=".clice-llvm/patches/${VERSION}"
-          if [ -d "$PATCH_DIR" ] && ls "$PATCH_DIR"/*.patch >/dev/null 2>&1; then
-            for patch in "$PATCH_DIR"/*.patch; do
-              echo "Applying $(basename "$patch")..."
-              git -C .llvm apply "$(pwd)/$patch"
-            done
+          clone_and_patch() {
+            local version="$1" dir="$2"
+            git clone --branch "llvmorg-${version}" --depth 1 https://github.com/llvm/llvm-project.git "$dir"
+            local patch_dir=".clice-llvm/patches/${version}"
+            if ls "$patch_dir"/*.patch >/dev/null 2>&1; then
+              for patch in "$patch_dir"/*.patch; do
+                echo "Applying $(basename "$patch") to ${dir}..."
+                git -C "$dir" apply "$(pwd)/$patch"
+              done
+            else
+              echo "No patches for LLVM ${version}"
+            fi
+          }
+
+          clone_and_patch "$VERSION" .llvm
+          if [[ "$RUNTIMES_VERSION" == "$VERSION" ]]; then
+            echo "RUNTIMES_SRC=.llvm" >> "$GITHUB_ENV"
           else
-            echo "No patches for LLVM ${VERSION}"
+            clone_and_patch "$RUNTIMES_VERSION" .runtimes
+            echo "RUNTIMES_SRC=.runtimes" >> "$GITHUB_ENV"
           fi
 
       - name: Build LLVM (install-distribution)
@@ -194,6 +205,7 @@ jobs:
           fi
           pixi run -e "$ENV" python3 scripts/build-llvm.py \
             --llvm-src=.llvm \
+            --runtimes-src="${RUNTIMES_SRC}" \
             --mode="${{ matrix.llvm_mode }}" \
             --lto="${{ matrix.lto }}" \
             --build-dir=build \

@@ -14,10 +14,15 @@ The package is built from an explicit component list (`COMPONENTS` in `scripts/b
 ```bash
 cd ../llvm-project && git checkout llvmorg-<VERSION>   # or a worktree at that tag
 pixi run -e package python3 scripts/build-llvm.py --llvm-src ../llvm-project \
+  --runtimes-src <checkout at the pixi clang's release> \
   --mode RelWithDebInfo --build-dir ../llvm-project/build-validate --configure-only
 ```
 
 This builds libc++ (minutes) and configures LLVM without building it. The configure fails on both kinds of drift: an entry whose library no longer exists ("doesn't have an install target") and a library the closure now needs but the list lacks ("requires target X that is not in any export set"). Fix `COMPONENTS` until it passes; a Debug run (`--mode Debug`) covers the ASan variant. Never do this by pushing attempts at CI.
+
+The libc++ in the package follows the compiler, not the LLVM being packaged: `--runtimes-src` is the llvm-project checkout of the pixi clang's release (the workflow derives it from `clang --version`; omit it locally when the two versions coincide). Patches in clice-llvm live under `patches/<version>/` and apply to the checkout of that version, so a libc++ patch belongs to the compiler's version directory. Windows and macOS runtimes quirks and their patches are recorded in the clice-llvm README.
+
+Configure-level validation cannot see link-time problems (the Windows CRT's `detect_mismatch` directives, symbols libc++ takes from the MSVC STL); the first CI round is the real test for those, and a failure there is reproduced locally with a small program linked against the freshly built `libc++.lib`, not by rebuilding LLVM.
 
 Trigger the `build-llvm` workflow on GitHub Actions:
 
