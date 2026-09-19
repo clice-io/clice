@@ -353,13 +353,13 @@ TEST_CASE(MergeRejectsGarbage) {
     // A worker shipping corrupted bytes (torn write, stale format) must not
     // crash the master or leave partial state behind.
     ASSERT_TRUE(workspace.project_index.shards.empty());
-    ASSERT_TRUE(workspace.project_index.symbols.empty());
+    ASSERT_EQ(workspace.project_index.symbol_count(), 0u);
 
     std::string garbage = "definitely not a flatbuffer, but long enough to try";
     ASSERT_FALSE(merge(garbage.data(), garbage.size()));
 
     ASSERT_TRUE(workspace.project_index.shards.empty());
-    ASSERT_TRUE(workspace.project_index.symbols.empty());
+    ASSERT_EQ(workspace.project_index.symbol_count(), 0u);
 }
 
 TEST_CASE(MergeIgnoresDiskDrift) {
@@ -936,7 +936,7 @@ TEST_CASE(RejectsCorruptSection) {
     // would stay canonical for their hashes forever (later merges only
     // fill empty names), and stray FileVersions would persist with the
     // next save.
-    ASSERT_TRUE(workspace.project_index.symbols.empty());
+    ASSERT_EQ(workspace.project_index.symbol_count(), 0u);
     ASSERT_TRUE(workspace.file_table.versions.empty());
 
     // The intact result still lands afterwards.
@@ -1910,7 +1910,7 @@ TEST_CASE(CorruptShardCondemnsDatabase) {
     ASSERT_TRUE(f.load());
     ASSERT_TRUE(condemned);
     ASSERT_TRUE(f.workspace.project_index.shards.empty());
-    ASSERT_TRUE(f.workspace.project_index.symbols.empty());
+    ASSERT_EQ(f.workspace.project_index.symbol_count(), 0u);
 
     // The TU has no CDB entry, so nothing else records the debt: it is
     // re-enqueued before the adopted state unwinds, and the fresh

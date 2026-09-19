@@ -402,14 +402,17 @@ IndexStats collect_stats(IndexView& view) {
     }
     std::ranges::sort(stats.shards, std::ranges::greater{}, &ShardStat::bytes);
 
-    for(auto& symbol: llvm::make_second_range(project.symbols)) {
-        stats.global.names += symbol.name.size();
-        stats.global.args += symbol.args.size();
-        stats.global.bitmaps += symbol.reference_files.getSizeInBytes(true);
-        stats.global.fixed += 8 + 8 + 1 + 2 + 4;
-        stats.references_per_symbol.add(symbol.reference_files.cardinality());
-        stats.name_lengths.add(symbol.name.size());
-    }
+    auto columns = project.global_columns();
+    stats.global.names = columns.names;
+    stats.global.args = columns.args;
+    stats.global.bitmaps = columns.bitmaps;
+    stats.global.fixed = columns.fixed;
+    project.for_each_symbol(
+        [&](index::SymbolHash, const index::SymbolIdentity& symbol, std::uint32_t references) {
+            stats.references_per_symbol.add(references);
+            stats.name_lengths.add(symbol.name.size());
+            return true;
+        });
     if(auto blob = workspace.index_db->read(index::IndexBlobKind::Global, "global")) {
         stats.global_bytes = blob.buffer->getBufferSize();
     }
@@ -440,7 +443,7 @@ void print_stats(const IndexView& view, const IndexStats& stats, std::uint32_t t
                  stats.occurrences,
                  stats.relations);
     std::println("Global symbols: {}, file versions: {}",
-                 project.symbols.size(),
+                 project.symbol_count(),
                  workspace.file_table.versions.size());
     std::println("Search index: {} symbols ({}), {} merged since its build",
                  workspace.project_index.search_index.size(),
@@ -566,12 +569,14 @@ std::vector<index::SymbolHash> matching_symbols(IndexView& view,
         return matches;
     }
     bool qualified = wanted.contains("::");
-    for(auto& [hash, symbol]: view.project().symbols) {
-        if(symbol.name + symbol.args == wanted ||
-           (qualified && query.qualified_name(hash) == wanted)) {
-            matches.push_back(hash);
-        }
-    }
+    view.project().for_each_symbol(
+        [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, std::uint32_t) {
+            if((symbol.name + symbol.args).str() == wanted ||
+               (qualified && query.qualified_name(hash) == wanted)) {
+                matches.push_back(hash);
+            }
+            return true;
+        });
     std::ranges::sort(matches);
     return matches;
 }
@@ -620,13 +625,11 @@ int run_show_symbol(IndexView& view, llvm::StringRef wanted) {
                          scope->display_name());
             parent = scope->parent;
         }
-        auto it = view.project().symbols.find(hash);
-        if(it != view.project().symbols.end()) {
-            auto& symbol = it->second;
+        if(auto symbol = view.project().identity_of(hash)) {
             std::println("  scope={}  file={}  reference files={}",
-                         kota::meta::enum_name(symbol.scope, "External"),
-                         symbol.file == index::no_file ? "-" : view.path_of(Fid{symbol.file}),
-                         symbol.reference_files.cardinality());
+                         kota::meta::enum_name(symbol->scope, "External"),
+                         symbol->file == index::no_file ? "-" : view.path_of(Fid{symbol->file}),
+                         view.project().reference_count(hash));
         } else {
             std::println("  scope=local (not in the global table)");
         }

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <memory>
 #include <string>
 
@@ -11,6 +12,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -19,6 +21,12 @@ class CacheStore;
 }
 
 namespace clice::index {
+
+/// Stable blob key for a file's shard or a TU's manifest: runtime pool ids
+/// are per-session, so blobs are named by a hash of the path instead.
+inline std::string blob_key(llvm::StringRef path) {
+    return std::format("{:016x}", llvm::xxh3_64bits(path));
+}
 
 /// The blob families the index persists.
 enum class IndexBlobKind : std::uint8_t {

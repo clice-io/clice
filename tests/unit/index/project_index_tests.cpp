@@ -10,6 +10,7 @@
 #include "index/serialization.h"
 #include "index/tu_index.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice::testing {
@@ -27,12 +28,23 @@ index::TUIndex build_view() {
 }
 
 index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRef name) {
-    for(auto& [hash, symbol]: project.symbols) {
-        if(symbol.name == name) {
-            return hash;
-        }
-    }
-    return 0;
+    index::SymbolHash found = 0;
+    project.for_each_symbol(
+        [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, std::uint32_t) {
+            if(symbol.name == name) {
+                found = hash;
+            }
+            return found == 0;
+        });
+    return found;
+}
+
+/// The files a symbol's bitmap names, as the pool's ids.
+std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
+                                           index::SymbolHash hash) {
+    std::vector<std::uint32_t> files;
+    project.each_reference_file(hash, [&](Fid file) { files.push_back(file.raw); });
+    return files;
 }
 
 /// The TU-local id -> pool id mapping merge() consumes, as Indexer::merge
@@ -69,7 +81,7 @@ TEST_CASE(MergeCollectsExternalSymbols) {
     auto external = find_symbol(project, "external_fn");
     ASSERT_TRUE(external != 0);
     // Referenced from both the header (declaration) and the main file.
-    ASSERT_TRUE(project.symbols[external].reference_files.cardinality() >= 2);
+    ASSERT_TRUE(project.reference_count(external) >= 2);
 
     // Non-External symbols never reach the project table.
     ASSERT_EQ(find_symbol(project, "local_fn"), 0u);
@@ -94,12 +106,13 @@ TEST_CASE(MergeUnionsSymbolFacts) {
     // A declaration-only unit places the symbol at its declaring header.
     auto hash = find_symbol(project, "shared_fn");
     ASSERT_TRUE(hash != 0);
-    auto& declared = project.symbols[hash];
-    ASSERT_EQ(declared.parent, find_symbol(project, "lib"));
-    ASSERT_FALSE(index::has_flag(declared.flags, index::SymbolFlags::HasDefinition));
+    auto declared = project.identity_of(hash);
+    ASSERT_TRUE(declared.has_value());
+    ASSERT_EQ(declared->parent, find_symbol(project, "lib"));
+    ASSERT_FALSE(index::has_flag(declared->flags, index::SymbolFlags::HasDefinition));
     auto header = pool.find(view.path(0).ends_with("shared.h") ? view.path(0) : view.path(1));
     ASSERT_TRUE(header.has_value());
-    ASSERT_EQ(declared.file, header->raw);
+    ASSERT_EQ(declared->file, header->raw);
 
     // The defining unit moves the canonical file to its definition and
     // adds its bits to the union.
@@ -117,13 +130,14 @@ TEST_CASE(MergeUnionsSymbolFacts) {
     ASSERT_TRUE(definer_view.loaded());
     ASSERT_TRUE(project.merge(definer_view, intern_paths(definer_view, pool)));
 
-    auto& defined = project.symbols[hash];
-    ASSERT_TRUE(index::has_flag(defined.flags, index::SymbolFlags::HasDefinition));
-    ASSERT_TRUE(index::has_flag(defined.flags, index::SymbolFlags::Deprecated));
+    auto defined = project.identity_of(hash);
+    ASSERT_TRUE(defined.has_value());
+    ASSERT_TRUE(index::has_flag(defined->flags, index::SymbolFlags::HasDefinition));
+    ASSERT_TRUE(index::has_flag(defined->flags, index::SymbolFlags::Deprecated));
     auto definition = pool.find(definer_view.path(definer_view.path_count() - 1));
     ASSERT_TRUE(definition.has_value());
-    ASSERT_EQ(defined.file, definition->raw);
-    ASSERT_EQ(defined.reference_files.cardinality(), 3u);
+    ASSERT_EQ(defined->file, definition->raw);
+    ASSERT_EQ(project.reference_count(hash), 3u);
 
     // The table never retracts a unit's report, so a definition that
     // moved to another unit must still win the file over the old bit.
@@ -142,7 +156,7 @@ TEST_CASE(MergeUnionsSymbolFacts) {
     ASSERT_TRUE(project.merge(mover_view, intern_paths(mover_view, pool)));
     auto moved = pool.find(mover_view.path(mover_view.path_count() - 1));
     ASSERT_TRUE(moved.has_value());
-    ASSERT_EQ(project.symbols[hash].file, moved->raw);
+    ASSERT_EQ(project.identity_of(hash)->file, moved->raw);
 }
 
 TEST_CASE(MergePicksOneSpelling) {
@@ -186,7 +200,7 @@ TEST_CASE(MergePicksOneSpelling) {
         auto second_view = index::TUIndex::from_bytes(bytes_of(*second));
         ASSERT_TRUE(project.merge(first_view, intern_paths(first_view, pool)));
         ASSERT_TRUE(project.merge(second_view, intern_paths(second_view, pool)));
-        ASSERT_EQ(project.symbols[42].args, "<int>");
+        ASSERT_EQ(project.identity_of(42)->args, "<int>");
     }
 }
 
@@ -245,7 +259,7 @@ TEST_CASE(MergeRejectsBadBitmap) {
     ASSERT_TRUE(corrupt_view.loaded());
     index::ProjectIndex rejecting;
     ASSERT_FALSE(rejecting.merge(corrupt_view, intern_paths(corrupt_view, pool)));
-    ASSERT_TRUE(rejecting.symbols.empty());
+    ASSERT_EQ(rejecting.symbol_count(), 0u);
 
     // An id past the path table is the same corruption in a decodable
     // coat: silently dropped, the symbol's relations would sit in a shard
@@ -260,7 +274,7 @@ TEST_CASE(MergeRejectsBadBitmap) {
     ASSERT_TRUE(stray_view.loaded());
     index::ProjectIndex bounding;
     ASSERT_FALSE(bounding.merge(stray_view, intern_paths(stray_view, pool)));
-    ASSERT_TRUE(bounding.symbols.empty());
+    ASSERT_EQ(bounding.symbol_count(), 0u);
 }
 
 TEST_CASE(FileVersionInterning) {
@@ -364,7 +378,7 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
     auto main_path = pool.resolve(file_ids_map[view.path_count() - 1]);
     auto fresh_id = fresh.find(main_path);
     ASSERT_TRUE(fresh_id.has_value());
-    ASSERT_TRUE(loaded.symbols[symbol].reference_files.contains(fresh_id->raw));
+    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, symbol), fresh_id->raw));
 }
 
 };  // TEST_SUITE(ProjectIndex)

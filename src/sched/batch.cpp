@@ -281,7 +281,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     for(auto& shard: llvm::make_second_range(workspace.project_index.shards)) {
         result.shard_bytes += shard.bytes().size();
     }
-    result.symbol_count = workspace.project_index.symbols.size();
+    result.symbol_count = workspace.project_index.symbol_count();
     for(auto file: stack.pump.failed()) {
         result.failed.emplace_back(workspace.file_table.resolve(file));
     }

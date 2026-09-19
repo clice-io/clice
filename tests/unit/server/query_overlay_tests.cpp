@@ -442,8 +442,9 @@ TEST_CASE(AsciiPreviewFromDisk) {
     workspace.project_index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     ASSERT_TRUE(workspace.project_index.shards[path_id].content().empty());
-    workspace.project_index.symbols[sym].name = "value";
-    workspace.project_index.symbols[sym].reference_files.add(path_id.raw);
+    auto& row = workspace.project_index.touch(sym);
+    row.name = "value";
+    row.reference_files.add(path_id.raw);
 
     auto definition = disk_query.definition_text(sym);
     ASSERT_TRUE(definition.has_value());
@@ -545,7 +546,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     index::write_shard(fake, {}, "xxx\n", os);
     workspace.project_index.shards[header_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    workspace.project_index.symbols[foo].reference_files.add(header_id.raw);
+    workspace.project_index.touch(foo).reference_files.add(header_id.raw);
 
     auto def = index_query.first_site(foo, RelationKind::Definition);
     ASSERT_TRUE(def.has_value());

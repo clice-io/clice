@@ -30,12 +30,6 @@ namespace clice {
 
 namespace {
 
-/// Stable blob key for a file's shard or a TU's manifest: runtime pool ids
-/// are per-session, so blobs are named by a hash of the path instead.
-std::string blob_key(llvm::StringRef path) {
-    return std::format("{:016x}", llvm::xxh3_64bits(path));
-}
-
 /// Entry hash of a file's default selection — the candidate-order winner,
 /// or the default command claiming a file without entries; empty when the
 /// build does not compile it.
@@ -795,14 +789,14 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     startup_removes.clear();
     for(auto path_id: retired) {
         removals.push_back(
-            {index::IndexBlobKind::Shard, blob_key(workspace.file_table.resolve(path_id))});
+            {index::IndexBlobKind::Shard, index::blob_key(workspace.file_table.resolve(path_id))});
     }
     for(auto path_id: dirty_shards) {
         auto it = workspace.project_index.shards.find(path_id);
         assert(it != workspace.project_index.shards.end() &&
                "dirty shards stay resident until retirement");
         batch.push_back({index::IndexBlobKind::Shard,
-                         blob_key(workspace.file_table.resolve(path_id)),
+                         index::blob_key(workspace.file_table.resolve(path_id)),
                          it->second.bytes().str()});
         shard_ids.push_back(path_id);
     }
@@ -820,7 +814,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     }
     for(auto tu_path_id: dirty_manifests) {
         auto it = project.manifests.find(tu_path_id);
-        auto key = blob_key(workspace.file_table.resolve(tu_path_id));
+        auto key = index::blob_key(workspace.file_table.resolve(tu_path_id));
         // Dirty with no in-memory manifest means dropped (drop_index): the
         // persisted blob must go too, or a restart resurrects the TU's
         // rows as fresh.
@@ -841,10 +835,12 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     // then strands only manifests, which load() drops by their generation
     // stamp — the reverse order would strand a global claiming symbols in
     // files whose rows never landed.
+    std::optional<std::size_t> global_slot;
     if(global_dirty) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         project.serialize_global(os, workspace.file_table);
+        global_slot = batch.size();
         batch.push_back({index::IndexBlobKind::Global, "global", std::move(bytes)});
     }
     // The search blob moves into the batch and back out if the write
@@ -963,6 +959,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         dirty_shards.insert(shard_ids.begin(), shard_ids.end());
         dirty_manifests.insert(manifest_ids.begin(), manifest_ids.end());
         global_dirty = global_dirty || had_global;
+        project.restore_unwritten();
         if(search_slot) {
             search_bytes = std::move(batch[*search_slot].bytes);
         }
@@ -1001,7 +998,16 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
             search_bytes = std::move(batch[i].bytes);
         } else {
             global_dirty = true;
+            global_slot.reset();
         }
+    }
+    // The rows the landed blob holds now read from it; a failed global
+    // write keeps them aside for the retry.
+    if(global_slot) {
+        project.rebase(llvm::MemoryBuffer::getMemBufferCopy(batch[*global_slot].bytes),
+                       workspace.file_table);
+    } else if(had_global) {
+        project.restore_unwritten();
     }
     if(cdb_index) {
         persisted_cdb_snapshot = std::move(cdb_bytes);
@@ -1052,16 +1058,19 @@ bool IndexStore::search_rebuild_due(bool settle) const {
     if(workspace.project_index.search_pending.size() > std::max<std::size_t>(10000, base / 20)) {
         return true;
     }
-    // A damaged or stale index is replaced at the first save, settled or
-    // not: its rows may misdescribe the table until then.
-    if(index.damaged() || search_stale) {
+    // A damaged index is replaced at the first save, settled or not: its
+    // rows may misdescribe the table until then.
+    if(index.damaged()) {
         return true;
     }
     if(!settle) {
         return false;
     }
+    // A missing one — never built, or persisted under another pin than
+    // the table's — leaves searches scanning the whole table until the
+    // first settled save.
     if(!index.loaded()) {
-        return !workspace.project_index.symbols.empty();
+        return workspace.project_index.symbol_count() > 0;
     }
     // A twentieth of the units, so a small project refreshes on any
     // merge and a large one every twenty at most.
@@ -1073,35 +1082,37 @@ kota::task<> IndexStore::rebuild_search_index() {
     auto& project = workspace.project_index;
     ScopedTimer timer;
     index::SearchSnapshot snapshot;
-    snapshot.entries.reserve(project.symbols.size());
+    snapshot.entries.reserve(project.symbol_count());
     // The generation this save's batch writes the global blob under.
     snapshot.generation = project.global_generation + (global_dirty ? 1 : 0);
     llvm::DenseMap<std::uint32_t, std::uint32_t> path_index;
-    for(auto& [hash, symbol]: project.symbols) {
-        if(!index::is_searchable_kind(symbol.kind) || symbol.name.empty()) {
-            continue;
-        }
-        auto file = index::no_file;
-        if(symbol.file != index::no_file) {
-            auto [it, inserted] =
-                path_index.try_emplace(symbol.file,
-                                       static_cast<std::uint32_t>(snapshot.paths.size()));
-            if(inserted) {
-                snapshot.paths.push_back(workspace.file_table.resolve(Fid{symbol.file}).str());
+    project.for_each_symbol(
+        [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, std::uint32_t references) {
+            if(!index::is_searchable_kind(symbol.kind) || symbol.name.empty()) {
+                return true;
             }
-            file = it->second;
-        }
-        snapshot.entries.push_back({
-            .hash = hash,
-            .name = symbol.name,
-            .args = symbol.args,
-            .parent = symbol.parent,
-            .kind = symbol.kind,
-            .flags = symbol.flags,
-            .file = file,
-            .reference_files = static_cast<std::uint32_t>(symbol.reference_files.cardinality()),
+            auto file = index::no_file;
+            if(symbol.file != index::no_file) {
+                auto [it, inserted] =
+                    path_index.try_emplace(symbol.file,
+                                           static_cast<std::uint32_t>(snapshot.paths.size()));
+                if(inserted) {
+                    snapshot.paths.push_back(workspace.file_table.resolve(Fid{symbol.file}).str());
+                }
+                file = it->second;
+            }
+            snapshot.entries.push_back({
+                .hash = hash,
+                .name = symbol.name.str(),
+                .args = symbol.args.str(),
+                .parent = symbol.parent,
+                .kind = symbol.kind,
+                .flags = symbol.flags,
+                .file = file,
+                .reference_files = references,
+            });
+            return true;
         });
-    }
     auto merges_in_snapshot = merges_since_search_build;
     // Rows that change across the build stay pending: only the ones the
     // snapshot saw are settled by the index built from it.
@@ -1122,8 +1133,10 @@ kota::task<> IndexStore::rebuild_search_index() {
         co_return;
     }
     workspace.project_index.search_index = std::move(built);
+    // The table pins the blob it was saved with: a reader adopts the
+    // persisted search index only under this generation.
+    workspace.project_index.search_generation = snapshot.generation;
     restore.release();
-    search_stale = false;
     merges_since_search_build -= merges_in_snapshot;
     for(auto hash: pending_in_snapshot) {
         if(!workspace.project_index.search_index.contains(hash)) {
@@ -1202,8 +1215,8 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
         if(it == workspace.project_index.shards.end() || dirty_shards.contains(path_id)) {
             continue;
         }
-        auto blob =
-            db.read(index::IndexBlobKind::Shard, blob_key(workspace.file_table.resolve(path_id)));
+        auto blob = db.read(index::IndexBlobKind::Shard,
+                            index::blob_key(workspace.file_table.resolve(path_id)));
         if(!blob || !it->second.rebind(std::move(blob.buffer))) {
             // Corruption can also surface first here (a damaged page only
             // this re-read reaches); the recovery below sheds the whole
@@ -1390,26 +1403,18 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     load_metadata();
 
     // The search index is derived from the table just loaded: adopt the
-    // persisted one when it reads, and note the symbols it does not file
-    // (all of them without one), which searches scan directly. A borrowed
-    // reader keeps the snapshot bytes; a writer copies, since its own
-    // saves retire snapshots.
+    // persisted one when the table pins it, else searches scan the table
+    // until the next save rebuilds it. A borrowed reader keeps the
+    // snapshot bytes; a writer copies, since its own saves retire
+    // snapshots.
     if(auto search = db.read(index::IndexBlobKind::Search, "search")) {
         if(!options.borrow && search.generation != 0) {
             search.buffer = llvm::MemoryBuffer::getMemBufferCopy(search.buffer->getBuffer());
         }
-        if(!workspace.project_index.search_index.load(std::move(search.buffer)) && !read_only) {
+        if(!project.bind_search(std::move(search.buffer)) && !read_only) {
             startup_removes.push_back({index::IndexBlobKind::Search, "search"});
         }
     }
-    workspace.project_index.search_pending.clear();
-    for(auto hash: llvm::make_first_range(project.symbols)) {
-        if(!workspace.project_index.search_index.contains(hash)) {
-            workspace.project_index.search_pending.insert(hash);
-        }
-    }
-    search_stale = workspace.project_index.search_index.loaded() &&
-                   workspace.project_index.search_index.generation() != project.global_generation;
 
     // Adopt exactly the manifests the global blob pins, at exactly the
     // pinned generation stamp and with every FileVersion resolvable. The
@@ -1483,7 +1488,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     llvm::StringSet<> expected_keys;
     llvm::SmallVector<Fid> unservable;
     for(auto& [path_id, entry]: project.contributions) {
-        auto key = blob_key(workspace.file_table.resolve(path_id));
+        auto key = index::blob_key(workspace.file_table.resolve(path_id));
         auto blob = db.read(index::IndexBlobKind::Shard, key);
         if(read_only && !options.borrow && blob && blob.generation != 0) {
             // A read-only session never advances snapshots, so borrowed
@@ -1534,8 +1539,8 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
             auto affected = project.remove_manifest(workspace.file_table, tu);
             mask_refresh.append(affected.begin(), affected.end());
             if(!read_only) {
-                startup_removes.push_back(
-                    {index::IndexBlobKind::Manifest, blob_key(workspace.file_table.resolve(tu))});
+                startup_removes.push_back({index::IndexBlobKind::Manifest,
+                                           index::blob_key(workspace.file_table.resolve(tu))});
             }
             report.add_reindex(tu);
         }
@@ -1592,11 +1597,11 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         LOG_INFO("Loaded {} index shards, {} manifests, {} symbols",
                  workspace.project_index.shards.size(),
                  project.manifests.size(),
-                 project.symbols.size());
+                 project.symbol_count());
     }
     LOG_PERF("startup",
              "phase=index_load symbols={} shards={} manifests={} elapsed_ms={}",
-             project.symbols.size(),
+             project.symbol_count(),
              workspace.project_index.shards.size(),
              project.manifests.size(),
              timer.ms());

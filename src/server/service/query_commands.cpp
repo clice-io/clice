@@ -55,7 +55,7 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, llvm::StringRef path) {
         return std::unexpected(std::format("no such file: {}", std::string_view(path)));
     }
     auto file = ctx.workspace.file_table.find(path);
-    if(!file || !ctx.workspace.project_index.shards.contains(*file)) {
+    if(!file || !ctx.workspace.project_index.shard(*file)) {
         ctx.unindexed.emplace_back(path);
         return std::nullopt;
     }

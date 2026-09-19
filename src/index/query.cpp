@@ -98,10 +98,9 @@ void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
 bool DiskGate::withhold(Fid file) const {
     auto [it, inserted] = verdicts.try_emplace(file, false);
     if(inserted) {
-        auto shard = index.shards.find(file);
-        if(shard != index.shards.end()) {
+        if(auto* shard = index.shard(file)) {
             auto disk = files.current(file);
-            it->second = !disk || !shard->second.matches_content(disk->size, disk->hash);
+            it->second = !disk || !shard->matches_content(disk->size, disk->hash);
         }
     }
     return it->second;
@@ -130,23 +129,20 @@ std::optional<RowSource> IndexQuery::serving(Fid file) const {
     if(gate && gate->withhold(file)) {
         return std::nullopt;
     }
-    auto it = index.shards.find(file);
-    if(it == index.shards.end()) {
+    auto* shard = index.shard(file);
+    if(!shard) {
         return std::nullopt;
     }
     return RowSource{.kind = RowSource::Kind::Shard,
                      .file = file,
                      .path = files.resolve(file),
-                     .rows = &it->second,
-                     .coords = shard_coordinates(it->second)};
+                     .rows = shard,
+                     .coords = shard_coordinates(*shard)};
 }
 
 const Shard* IndexQuery::shard_matching(Fid file, llvm::StringRef text) const {
-    auto it = index.shards.find(file);
-    if(it == index.shards.end() || !it->second.matches_content(text)) {
-        return nullptr;
-    }
-    return &it->second;
+    auto* shard = index.shard(file);
+    return shard && shard->matches_content(text) ? shard : nullptr;
 }
 
 std::shared_ptr<TUIndex> IndexQuery::preamble_blob(Fid file) const {
@@ -206,20 +202,18 @@ void IndexQuery::for_each_relation(SymbolHash hash,
         if(!mask.shard) {
             return true;
         }
-        auto it = index.symbols.find(hash);
-        if(it == index.symbols.end()) {
-            return true;
-        }
-        for(auto file_id: it->second.reference_files) {
-            auto source = serving(Fid{file_id});
+        bool completed = true;
+        index.each_reference_file(hash, [&](Fid file) {
+            if(!completed) {
+                return;
+            }
+            auto source = serving(file);
             if(!source || source->kind != RowSource::Kind::Shard) {
-                continue;
+                return;
             }
-            if(!emit(*source)) {
-                return false;
-            }
-        }
-        return true;
+            completed = emit(*source);
+        });
+        return completed;
     };
     auto sessions = [&] {
         if(!mask.session || !live) {
@@ -353,9 +347,8 @@ std::optional<SymbolRef> IndexQuery::symbol_info(SymbolHash hash) const {
         }
     }
 
-    auto it = index.symbols.find(hash);
-    if(it != index.symbols.end()) {
-        return SymbolRef::from(hash, it->second.identity());
+    if(auto identity = index.identity_of(hash)) {
+        return SymbolRef::from(hash, *identity);
     }
 
     // A symbol that exists only under an open buffer's context (or in
@@ -375,6 +368,9 @@ std::optional<SymbolRef> IndexQuery::symbol_info(SymbolHash hash) const {
     // Each shard stores exactly the local symbols its occurrences
     // reference, so a TU-local name is in the shard that produced it.
     for(auto& [path_id, shard]: index.shards) {
+        if(!shard.loaded()) {
+            continue;
+        }
         if(auto identity = shard.find_symbol(hash)) {
             adopt(*identity);
             return found;
@@ -473,8 +469,8 @@ std::optional<Site> IndexQuery::canonical_site(SymbolHash hash) const {
         return std::nullopt;
     }
     bool defined = has_flag(info->flags, SymbolFlags::HasDefinition);
-    if(auto row = index.symbols.find(hash); row != index.symbols.end()) {
-        defined = defined || has_flag(row->second.flags, SymbolFlags::HasDefinition);
+    if(auto row = index.identity_of(hash)) {
+        defined = defined || has_flag(row->flags, SymbolFlags::HasDefinition);
     }
     if(defined) {
         return std::nullopt;
@@ -692,12 +688,12 @@ std::string IndexQuery::context_line(const Site& site) const {
     if(auto source = serving(site.file); source && !source->coords.text().empty()) {
         return extract_line(source->coords.text(), site.range.begin);
     }
-    auto it = index.shards.find(site.file);
-    if(it == index.shards.end()) {
+    auto* shard = index.shard(site.file);
+    if(!shard) {
         return {};
     }
     std::unique_ptr<llvm::MemoryBuffer> storage;
-    auto text = disk_text(site.path, it->second, storage);
+    auto text = disk_text(site.path, *shard, storage);
     return text ? extract_line(*text, site.range.begin) : std::string{};
 }
 
@@ -718,9 +714,9 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
     std::vector<Ranked> hits;
     llvm::DenseSet<SymbolHash> seen;
     auto indexed = index.search_index.search(query, limit);
-    // A damaged index answers incompletely: until its rebuild the whole
-    // table is judged row by row instead.
-    bool scan_table = index.search_index.damaged();
+    // A damaged index answers incompletely, a missing one not at all:
+    // until the rebuild the whole table is judged row by row instead.
+    bool scan_table = index.search_index.damaged() || !index.search_index.loaded();
     bool exhausted = scan_table || indexed.exhausted;
     if(!scan_table) {
         for(auto& hit: indexed.hits) {
@@ -782,28 +778,26 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
         }
     };
     auto references_of = [&](SymbolHash hash) -> std::uint32_t {
-        auto it = index.symbols.find(hash);
-        if(it == index.symbols.end()) {
-            return 0;
-        }
-        return static_cast<std::uint32_t>(it->second.reference_files.cardinality());
+        return index.reference_count(hash);
     };
-    auto consider_row = [&](SymbolHash hash, const Symbol& symbol) {
-        llvm::StringRef path;
-        if(symbol.file != no_file) {
-            path = files.resolve(Fid{symbol.file});
-        }
-        consider(hash, symbol.identity(), path, references_of(hash));
-    };
+    auto consider_row =
+        [&](SymbolHash hash, const SymbolIdentity& symbol, std::uint32_t references) {
+            llvm::StringRef path;
+            if(symbol.file != no_file) {
+                path = files.resolve(Fid{symbol.file});
+            }
+            consider(hash, symbol, path, references);
+        };
     if(scan_table) {
-        for(auto& [hash, symbol]: index.symbols) {
-            consider_row(hash, symbol);
-        }
+        index.for_each_symbol(
+            [&](SymbolHash hash, const SymbolIdentity& symbol, std::uint32_t references) {
+                consider_row(hash, symbol, references);
+                return true;
+            });
     } else {
         for(auto hash: index.search_pending) {
-            auto it = index.symbols.find(hash);
-            if(it != index.symbols.end()) {
-                consider_row(hash, it->second);
+            if(auto symbol = index.identity_of(hash)) {
+                consider_row(hash, *symbol, index.reference_count(hash));
             }
         }
     }
@@ -972,19 +966,22 @@ std::vector<IndexQuery::Located> IndexQuery::definitions_in(Fid file) const {
     if(!source) {
         return {};
     }
+    // The rows themselves say what is defined in the file; only symbols
+    // of the project table count, in row order.
     std::vector<Located> result;
-    for(auto& [hash, symbol]: index.symbols) {
-        if(symbol.name.empty() || !symbol.reference_files.contains(file.raw)) {
-            continue;
-        }
-        source->rows->lookup(hash, RelationKind::Definition, [&](const Relation& r) {
-            if(auto site = source->site(r.range)) {
-                result.push_back(
-                    {.symbol = SymbolRef::from(hash, symbol.identity()), .site = *site});
-            }
+    source->rows->for_each_relation([&](SymbolHash hash, const Relation& r) {
+        if(r.kind != RelationKind::Definition) {
             return true;
-        });
-    }
+        }
+        auto identity = index.identity_of(hash);
+        if(!identity || identity->name.empty()) {
+            return true;
+        }
+        if(auto site = source->site(r.range)) {
+            result.push_back({.symbol = SymbolRef::from(hash, *identity), .site = *site});
+        }
+        return true;
+    });
     return result;
 }
 
@@ -993,11 +990,11 @@ std::vector<IncludeEdge> IndexQuery::include_edges(Fid file) const {
     // matches, so a manifest contributes only where the version it entered
     // for this document carries that same content generation — a TU that
     // indexed an older revision would place its lines in text that moved.
-    auto shard_it = index.shards.find(file);
-    if(shard_it == index.shards.end()) {
+    auto* shard = index.shard(file);
+    if(!shard) {
         return {};
     }
-    auto generation = shard_it->second.content_hash();
+    auto generation = shard->content_hash();
 
     auto version_of = [&](VersionID fv) -> const FileTable::FileVersion* {
         return files.knows_version(fv) ? &files.version(fv) : nullptr;
