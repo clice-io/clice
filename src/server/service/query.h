@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "feature/feature.h"
+#include "index/symbol_query.h"
 #include "sched/workspace.h"
 #include "semantic/symbol.h"
 #include "server/protocol/position.h"
@@ -68,17 +69,6 @@ struct QuerySources {
     const ASTProjectionTable* projections = nullptr;
     const IndexPump* pump = nullptr;
     const DiskGate* disk = nullptr;
-};
-
-/// How a query names a symbol, tried in this order: by handle; by name,
-/// case-insensitively, optionally narrowed to a path — a bare file name
-/// matches the site's file name, anything longer the tail of its path;
-/// by path and 1-based line.
-struct SymbolLocator {
-    std::optional<index::SymbolHash> symbol;
-    llvm::StringRef name;
-    llvm::StringRef path;
-    std::optional<int> line;
 };
 
 /// Read-only queries over every index source: disk shards, open sessions'
@@ -160,11 +150,14 @@ public:
     /// (TU-local names live only there).
     std::optional<SymbolRef> symbol_info(index::SymbolHash hash) const;
 
-    /// The qualified name of the symbol's container ("ns::Outer" for
-    /// `ns::Outer::name`), inline namespaces skipped (anonymous ones never
-    /// are parents): the parent chain up to the translation unit or to a
-    /// parent no table knows. Empty at the translation unit and for an
-    /// unknown hash.
+    /// The containers of a symbol, outermost first: the parent chain up
+    /// to the translation unit or to a parent no table knows, inline
+    /// namespaces skipped (anonymous ones never are parents). Empty at the
+    /// translation unit and for an unknown hash.
+    llvm::SmallVector<SymbolRef, 4> container_chain(index::SymbolHash hash) const;
+
+    /// The chain spelled as a qualified name ("ns::Outer" for
+    /// `ns::Outer::name`).
     std::string container_name(index::SymbolHash hash) const;
 
     /// The symbol's name qualified by its container, a specialization's
@@ -251,19 +244,20 @@ public:
 
     std::optional<Located> resolve(index::SymbolHash hash) const;
 
-    /// Symbols whose displayed name contains `query` (case-insensitive),
-    /// best matches first — exact name, then prefix, then substring, ties
-    /// by name — cut to `limit` after ranking. A query `ns::name` keeps
-    /// the results whose container has `ns` among its components, in
-    /// order for a longer scope (`::ns::name` requires exactly `ns`);
-    /// `accept` narrows the kinds. Only symbols with a definition site are
-    /// listed.
-    std::vector<Located> search(llvm::StringRef query,
-                                std::size_t limit,
-                                llvm::function_ref<bool(SymbolKind)> accept = {}) const;
+    /// The symbols a name query (index/symbol_query.h) matches, best
+    /// first, at most `limit`: the search index's hits, the symbols merged
+    /// since it was built and the open sessions' own symbols — scanned
+    /// directly — under one ranking, each with its canonical site. A
+    /// symbol no source places is left out. Empty for a query by id or
+    /// place.
+    std::vector<Located> search(const index::SymbolQuery& query, std::size_t limit) const;
 
-    /// The symbols a locator names; several when a name is ambiguous.
-    std::vector<Located> locate(const SymbolLocator& locator) const;
+    /// The symbols a locator query names: by id; by place — the symbol
+    /// under a cursor, or those defined on a line of the file's serving
+    /// source; or by pattern, where the symbols spelling the name exactly
+    /// (in any case) are the answer when there are any, and the ranked
+    /// matches stand as candidates otherwise.
+    std::vector<Located> locate(const index::SymbolQuery& query) const;
 
     /// Every project symbol with a definition site in the file's serving
     /// source, anchored at the definition's name token.
@@ -292,6 +286,15 @@ private:
     };
 
     using RelationVisitor = llvm::function_ref<bool(const RowSource&, const index::Relation&)>;
+
+    /// A search's ranked symbols before their sites are resolved.
+    struct Ranked {
+        index::NameRank rank;
+        SymbolRef symbol;
+        std::string display_name;
+    };
+
+    std::vector<Ranked> ranked_search(const index::SymbolQuery& query, std::size_t limit) const;
 
     /// The one federation walk every relation query is a fold over. The
     /// visitor returns false to stop.

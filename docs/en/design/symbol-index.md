@@ -127,6 +127,14 @@ For open files whose preamble is compiled into a PCH, the paired preamble-state 
 
 > Converting offsets to LSP positions requires line-start information for the file. Shards store the line table (and enough of the content) for this conversion, so it works even for files that are not open.
 
+### Name Search
+
+Searching symbols by name (`workspace/symbol`, the name queries of `clice query`) runs over a search index derived from the global symbol table and persisted next to it. Its rows are the searchable symbols in quality order — a score from how many files reference a symbol, its kind and its flags (deprecated, macro-spelled, system-header, declaration-only) — and every bitmap in it speaks that row order: one posting list per name token, the members of every container, the subtree below every namespace, the rows of each kind and of each file.
+
+A token is a trigram of a path a fuzzy match may take through a name, following the split of identifiers into words (`getSymbolHash` is `get`, `Symbol`, `Hash`): from a character a match continues to the next character of the same word or jumps to the head of a later word, so `gsh` and `symhash` both reach `getSymbolHash`. The trigrams of a query therefore select, by intersecting posting lists — together with the kind, file and scope bitmaps — every candidate the matcher could accept, and the matcher scores only those. Since rows come in quality order and no partial match outscores an exact one, the scan stops as soon as the remaining rows cannot enter the result set. Queries of one or two letters key the first two words of a name only.
+
+The index is rebuilt from the table, on the thread pool, when the symbols merged since its build outgrow it, when indexing settles after enough merges, and at shutdown; the symbols merged in between are scanned directly, as are the open documents' own symbols. A reader opening the persisted index (`clice query`) maps the blob and answers at once.
+
 ### Staleness Detection
 
 Staleness detection determines whether a file needs to be re-indexed. Each indexed artifact records the identity and observed content version of its inputs; validation is delegated to the master's shared file table, which performs the same two-layer check used everywhere else — a (size, mtime) stat fast path, then content-hash confirmation with stamp repair (see [Incremental Compilation](incremental-parse.md)). Re-indexing triggers only when input content actually changed; command changes are caught separately through the entry identity hashes recorded in the manifests.
@@ -174,12 +182,6 @@ Background indexing scheduling must balance index timeliness against interferenc
 ## Known Limitations
 
 - **Cross-TU queries for internal-linkage symbols.** File-local names are stored in shard local-name tables, but the cross-file relation query path currently reaches disk only through the external-symbol directory — so "find references" on a `static` function returns only what the live overlay can see. The storage layering is in place; the query path for local symbols is not yet.
-
-- **Fuzzy symbol search**. The current workspace symbol search (workspace/symbol) is a simple substring match that does a linear scan over all symbols in `ProjectIndex`. This is insufficient for large projects and does not support fuzzy matching.
-
-  C++ symbol names have structure: `getSymbolHash` is camelCase, `get_symbol_hash` is snake_case, `std::vector<int>::push_back` has namespace qualification. When searching, users typically type abbreviations or fragments (e.g., `symhash`, `gSH`, `vec_pb`), expecting them to match the full symbol name. Substring matching cannot handle these queries.
-
-  The improvement direction is to build a dedicated search index over symbol names. A tokenizer is needed to split symbol names by naming conventions (`getSymbolHash` → `[get, Symbol, Hash]`, `push_back` → `[push, back]`), then build an inverted index over the tokens. For example, trigrams (three-character groups) can be used as index keys, and at query time trigram intersections produce a candidate set that is then scored precisely. clangd's Dex index uses this trigram posting list approach and serves as a useful reference implementation. Another direction is to adopt a mature full-text search library, though the cost of introducing an external dependency needs to be evaluated.
 
 - ~~**PCH-induced index split**~~ (resolved). When using PCH optimization, a file's compilation is split into two phases: the preamble is compiled into the PCH, then the PCH compiles the rest of the file. The PCH swallows everything before the preamble bound — the main file's compilation cannot see the headers' contents or the preamble region's own directives, and an open buffer's preamble may describe a compilation context that no disk translation unit was ever indexed with.
 

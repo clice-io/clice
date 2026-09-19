@@ -76,7 +76,8 @@ struct GlobalBlob {
 
 bool ProjectIndex::merge(this ProjectIndex& self,
                          const TUIndex& index,
-                         llvm::ArrayRef<Fid> file_ids_map) {
+                         llvm::ArrayRef<Fid> file_ids_map,
+                         llvm::SmallVectorImpl<SymbolHash>* added) {
     // Decode and bound every reference bitmap before touching the table:
     // merged bits persist in the global blob while the result's recorded
     // versions all match the disk, so a malformed image normalized to
@@ -140,7 +141,11 @@ bool ProjectIndex::merge(this ProjectIndex& self,
         }
     };
     for(auto& [hash, identity, references]: staged) {
-        auto& target = self.symbols[hash];
+        auto [it, inserted] = self.symbols.try_emplace(hash);
+        auto& target = it->second;
+        if(inserted && added) {
+            added->push_back(hash);
+        }
         if(target.name.empty() && !identity.name.empty()) {
             target.parent = identity.parent;
             target.kind = identity.kind;

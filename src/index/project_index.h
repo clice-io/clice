@@ -52,14 +52,18 @@ struct ProjectIndex {
 
     /// Merge a TU's external symbols straight off the wire; `file_ids_map`
     /// maps the TU-local ids of `index`'s path table to pool ids. Symbol
-    /// names are copied only for symbols new to the table. Returns false —
+    /// names are copied only for symbols new to the table, whose hashes
+    /// `added` receives. Returns false —
     /// with the table untouched — when a reference bitmap fails to decode
     /// or carries an id past the path table (the bound TUIndex::from_bytes
     /// enforces; the zero-copy reader leaves it to this consumer): the
     /// caller rejects the whole result, because merged bits persist while
     /// the result's recorded versions match the disk, so lost bits would
     /// never be rebuilt.
-    bool merge(this ProjectIndex& self, const TUIndex& index, llvm::ArrayRef<Fid> file_ids_map);
+    bool merge(this ProjectIndex& self,
+               const TUIndex& index,
+               llvm::ArrayRef<Fid> file_ids_map,
+               llvm::SmallVectorImpl<SymbolHash>* added = nullptr);
 
     /// Whether every FileVersion id the manifest references is known —
     /// the loader's staleness gate for manifests read from disk.

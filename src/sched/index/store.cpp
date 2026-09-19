@@ -575,10 +575,13 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // reason a rows section that fails decode does above: everything the
     // merge would install reads as fresh forever, with the lost bits never
     // rebuilt.
-    if(!project.merge(view, file_ids_map)) {
+    llvm::SmallVector<index::SymbolHash> added;
+    if(!project.merge(view, file_ids_map, &added)) {
         LOG_WARN("Reject merge for {}: symbol reference bitmap failed verification", main_tu_path);
         return std::nullopt;
     }
+    workspace.search_pending.insert(workspace.search_pending.end(), added.begin(), added.end());
+    merges_since_search_build += 1;
 
     // Intern a FileVersion per file of the parse. The freshness baseline is
     // two-part and lives on the version, shared by every TU that consumed
@@ -720,7 +723,7 @@ void IndexStore::drop_index_into(Fid tu_path_id, Report& report) {
     global_dirty = true;
 }
 
-kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
+kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, bool settle) {
     Report report;
     // Reset up front: every early return below means this save committed
     // nothing, and the gauge must not keep exposing the previous round's
@@ -740,6 +743,10 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
     auto& db = *workspace.index_db;
     auto& project = workspace.project_index;
     ScopedTimer timer;
+
+    if(search_rebuild_due(settle)) {
+        co_await rebuild_search_index();
+    }
 
     // Compact shards whose variant set shrank: queries already mask the
     // dead rows, this erases them for real before the blob reaches disk.
@@ -837,6 +844,15 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
         llvm::raw_string_ostream os(bytes);
         project.serialize_global(os, workspace.file_table);
         batch.push_back({index::IndexBlobKind::Global, "global", std::move(bytes)});
+    }
+    // The search blob moves into the batch and back out if the write
+    // never lands: it is derived state, so nothing else would re-create
+    // it before the next rebuild.
+    std::optional<std::size_t> search_slot;
+    if(!search_bytes.empty()) {
+        search_slot = batch.size();
+        batch.push_back({index::IndexBlobKind::Search, "search", std::move(search_bytes)});
+        search_bytes.clear();
     }
 
     // The CDB snapshot goes last, after the whole index state it
@@ -945,6 +961,9 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
         dirty_shards.insert(shard_ids.begin(), shard_ids.end());
         dirty_manifests.insert(manifest_ids.begin(), manifest_ids.end());
         global_dirty = global_dirty || had_global;
+        if(search_slot) {
+            search_bytes = std::move(batch[*search_slot].bytes);
+        }
         cdb_dirty = cdb_dirty || cdb_index.has_value();
         workspace.artifacts_dirty = workspace.artifacts_dirty || artifacts_index.has_value();
         workspace.contexts_dirty = workspace.contexts_dirty || contexts_index.has_value();
@@ -976,6 +995,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
         } else if(contexts_index && i == *contexts_index) {
             workspace.contexts_dirty = true;
             contexts_ok = false;
+        } else if(search_slot && i == *search_slot) {
+            search_bytes = std::move(batch[i].bytes);
         } else {
             global_dirty = true;
         }
@@ -1021,6 +1042,75 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
              workspace.shards.size(),
              timer.ms());
     co_return report;
+}
+
+bool IndexStore::search_rebuild_due(bool settle) const {
+    auto& index = workspace.search_index;
+    auto base = index.size();
+    if(workspace.search_pending.size() > std::max<std::size_t>(10000, base / 20)) {
+        return true;
+    }
+    if(!settle) {
+        return false;
+    }
+    if(!index.loaded()) {
+        return !workspace.project_index.symbols.empty();
+    }
+    return merges_since_search_build >
+           std::max<std::size_t>(20, workspace.project_index.manifests.size() / 20);
+}
+
+kota::task<> IndexStore::rebuild_search_index() {
+    auto& project = workspace.project_index;
+    ScopedTimer timer;
+    index::SearchSnapshot snapshot;
+    snapshot.entries.reserve(project.symbols.size());
+    llvm::DenseMap<std::uint32_t, std::uint32_t> path_index;
+    for(auto& [hash, symbol]: project.symbols) {
+        if(!index::is_searchable_kind(symbol.kind) || symbol.name.empty()) {
+            continue;
+        }
+        auto file = index::no_file;
+        if(symbol.file != index::no_file) {
+            auto [it, inserted] =
+                path_index.try_emplace(symbol.file,
+                                       static_cast<std::uint32_t>(snapshot.paths.size()));
+            if(inserted) {
+                snapshot.paths.push_back(workspace.file_table.resolve(Fid{symbol.file}).str());
+            }
+            file = it->second;
+        }
+        snapshot.entries.push_back({
+            .hash = hash,
+            .name = symbol.name,
+            .args = symbol.args,
+            .parent = symbol.parent,
+            .kind = symbol.kind,
+            .flags = symbol.flags,
+            .file = file,
+            .reference_files = static_cast<std::uint32_t>(symbol.reference_files.cardinality()),
+        });
+    }
+    merges_since_search_build = 0;
+
+    std::string bytes;
+    co_await kota::queue([&] { bytes = index::build_search_blob(snapshot); });
+    index::SearchIndex built;
+    if(!built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes))) {
+        LOG_ERROR("The rebuilt search index does not load; keeping the previous one");
+        co_return;
+    }
+    workspace.search_index = std::move(built);
+    // Merges that landed across the build appended to the pending list
+    // and are not in the snapshot; everything the new index files leaves it.
+    llvm::erase_if(workspace.search_pending,
+                   [&](index::SymbolHash hash) { return workspace.search_index.contains(hash); });
+    search_bytes = std::move(bytes);
+    LOG_PERF("index",
+             "phase=search_build symbols={} bytes={} elapsed_ms={}",
+             workspace.search_index.size(),
+             search_bytes.size(),
+             timer.ms());
 }
 
 kota::task<> IndexStore::migrate_shard_views(Report& report) {
@@ -1191,7 +1281,9 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         if(read_only) {
             return;
         }
-        for(auto kind: {index::IndexBlobKind::Shard, index::IndexBlobKind::Manifest}) {
+        for(auto kind: {index::IndexBlobKind::Shard,
+                        index::IndexBlobKind::Manifest,
+                        index::IndexBlobKind::Search}) {
             db.for_each_key(kind, [&](llvm::StringRef key) {
                 startup_removes.push_back({kind, key.str()});
             });
@@ -1264,12 +1356,33 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         load_metadata();
         if(!read_only) {
             startup_removes.push_back({index::IndexBlobKind::Global, "global"});
+            startup_removes.push_back({index::IndexBlobKind::Search, "search"});
         }
         result.decoded = false;
         retire_snapshot();
         return result;
     }
     load_metadata();
+
+    // The search index is derived from the table just loaded: adopt the
+    // persisted one when it reads, and note the symbols it does not file
+    // (all of them without one), which searches scan directly. A borrowed
+    // reader keeps the snapshot bytes; a writer copies, since its own
+    // saves retire snapshots.
+    if(auto search = db.read(index::IndexBlobKind::Search, "search")) {
+        if(!options.borrow && search.generation != 0) {
+            search.buffer = llvm::MemoryBuffer::getMemBufferCopy(search.buffer->getBuffer());
+        }
+        if(!workspace.search_index.load(std::move(search.buffer)) && !read_only) {
+            startup_removes.push_back({index::IndexBlobKind::Search, "search"});
+        }
+    }
+    workspace.search_pending.clear();
+    for(auto hash: llvm::make_first_range(project.symbols)) {
+        if(!workspace.search_index.contains(hash)) {
+            workspace.search_pending.push_back(hash);
+        }
+    }
 
     // Adopt exactly the manifests the global blob pins, at exactly the
     // pinned generation stamp and with every FileVersion resolvable. The

@@ -1009,9 +1009,20 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
 
 Features::RawResult Features::workspace_symbol(llvm::StringRef text) {
     std::vector<protocol::SymbolInformation> results;
-    for(auto& located: query.search(text, 100)) {
+    auto parsed = index::SymbolQuery::parse(text);
+    if(!parsed) {
+        co_return to_raw(results);
+    }
+    // Some clients (VS Code) filter the replies against the query text
+    // again, where a bare name would fail a qualified query: those
+    // replies carry the qualified name.
+    bool qualified = parsed->absolute || !parsed->scope.empty();
+    for(auto& located: query.search(*parsed, 100)) {
         auto container = query.container_name(located.symbol.hash);
         if(auto info = to_lsp::symbol_information(located.symbol, located.site, container)) {
+            if(qualified && !container.empty()) {
+                info->name = container + "::" + info->name;
+            }
             results.push_back(std::move(*info));
         }
     }

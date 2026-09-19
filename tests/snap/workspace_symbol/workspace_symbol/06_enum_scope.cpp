@@ -1,9 +1,10 @@
 /// # Scoped enumerator lookup
 ///
-/// - status: unsupported
+/// - status: supported
 /// - issues: clangd#931
+/// - verify: server
 ///
-/// Qualified enumerator queries return no results yet
+/// An enum qualifies its enumerators like any other container
 
 // query: Color::Red
 

@@ -14,6 +14,7 @@
 #include "config/config.h"
 #include "index/database.h"
 #include "index/project_index.h"
+#include "index/search_index.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "index/writer_lock.h"
@@ -272,6 +273,12 @@ struct Workspace {
     /// path_id: symbol occurrences, relations and stored content for
     /// position mapping, served zero-copy.
     llvm::DenseMap<Fid, index::Shard> shards;
+
+    /// The name search index over `project_index.symbols` as last built,
+    /// and the symbols merged since, which a search scans directly until
+    /// the store folds them into a rebuilt index.
+    index::SearchIndex search_index;
+    std::vector<index::SymbolHash> search_pending;
 
     /// Monotonic generation of context-affecting workspace state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext

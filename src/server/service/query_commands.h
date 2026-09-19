@@ -35,8 +35,8 @@ template <typename T>
 using Outcome = std::expected<T, std::string>;
 
 /// How a symbol is named: by its id (the `#<hex>` the answers carry); by
-/// name, case-insensitively, optionally narrowed to a path; or by path and
-/// 1-based line.
+/// a name query (index/symbol_query.h), optionally narrowed to a path; or
+/// by path and 1-based line.
 struct SymbolLocatorParams {
     std::optional<std::string> name;
     std::optional<std::string> path;
@@ -185,8 +185,9 @@ Outcome<FileDepsResult>
 /// hosting it, and the modules among them. Needs the build.
 Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, llvm::StringRef path);
 
-/// Symbols whose name contains `text`, best matches first, at most `limit`
-/// of them, narrowed to `kinds` (SymbolKind names) when non-empty.
+/// The symbols a name query (index/symbol_query.h) matches, best first,
+/// at most `limit` of them, narrowed to `kinds` (SymbolKind names) when
+/// non-empty.
 Outcome<SymbolSearchResult> symbol_search(Context& ctx,
                                           llvm::StringRef text,
                                           std::size_t limit,

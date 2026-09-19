@@ -54,6 +54,7 @@ char kind_prefix(IndexBlobKind kind) {
         case IndexBlobKind::CDB: return 'C';
         case IndexBlobKind::Artifacts: return 'A';
         case IndexBlobKind::Contexts: return 'X';
+        case IndexBlobKind::Search: return 'N';
     }
     std::unreachable();
 }

@@ -1,119 +1,161 @@
 #pragma once
 
+/// Name matching for symbol search and completion: how identifiers split
+/// into words, the matcher that scores a typed pattern against a name,
+/// and the tokens a search index keys names by. The three are one
+/// design — a token is a path the matcher may take through a name — so a
+/// name the matcher accepts always carries every token of the pattern,
+/// which is what lets an index answer a fuzzy query by intersecting
+/// posting lists (fuzzy_matcher_tests pins this as a property).
+
+#include <cstdint>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
 
-// Utilities for word segmentation.
-// FuzzyMatcher already incorporates this logic, so most users don't need this.
-//
-// A name like "fooBar_baz" consists of several parts foo, bar, baz.
-// Aligning segmentation of word and pattern improves the fuzzy-match.
-// For example: [lol] matches "LaughingOutLoud" better than "LionPopulation"
-//
-// First we classify each character into types (uppercase, lowercase, etc).
-// Then we look at the sequence: e.g. [upper, lower] is the start of a segment.
-
-// We distinguish the types of characters that affect segmentation.
-// It's not obvious how to segment digits, we treat them as lowercase letters.
-// As we don't decode UTF-8, we treat bytes over 127 as lowercase too.
-// This means we require exact (case-sensitive) match for those characters.
-enum CharType : unsigned char {
-    Empty = 0,        // Before-the-start and after-the-end (and control chars).
-    Lower = 1,        // Lowercase letters, digits, and non-ASCII bytes.
-    Upper = 2,        // Uppercase letters.
-    Punctuation = 3,  // ASCII punctuation (including Space)
+/// A character's place in its identifier. `XMLHttpRequest_Async` reads
+/// `HTTHTTTHTTTTTTSHTTTT`: a head starts a word, a tail continues it, a
+/// separator (punctuation, space) lies between words.
+enum class CharRole : std::uint8_t {
+    Separator,
+    Head,
+    Tail,
 };
 
-// A CharTypeSet is a bitfield representing all the character types in a word.
-// Its bits are 1<<Empty, 1<<Lower, etc.
-using CharTypeSet = unsigned char;
+/// Split `text` into words. A word begins at the start, after a
+/// separator, at an uppercase letter following a lowercase one (`fooBar`)
+/// and at the last uppercase letter of a run that lowercase follows (the
+/// `R` of `XMLRequest`). Digits and non-ASCII bytes count as lowercase.
+/// `roles` has `text`'s size.
+void segment(llvm::StringRef text, llvm::MutableArrayRef<CharRole> roles);
 
-// Each character's Role is the Head or Tail of a segment, or a Separator.
-// e.g. XMLHttpRequest_Async
-//      +--+---+------ +----
-//      ^Head   ^Tail ^Separator
-enum CharRole : unsigned char {
-    Unknown = 0,    // Stray control characters or impossible states.
-    Tail = 1,       // Part of a word segment, but not the first character.
-    Head = 2,       // The first character of a word segment.
-    Separator = 3,  // Punctuation characters that separate word segments.
+/// Matches one pattern against many names, scoring each.
+///
+/// Every pattern character matches a name character in order, letters
+/// case-insensitively. A character may land anywhere as the first, and
+/// after that only right after the previous match, on a word head, on a
+/// separator, or on an uppercase letter of an initialism (`HTML` in
+/// `HTMLElement`): `up` finds `unique_ptr` and `print` finds `vsprintf`,
+/// while `ob` never finds `foo_bar`. The score rewards heads, contiguous
+/// runs and matching case, and penalizes skipped words and a start inside
+/// a word, so `foo` ranks `foo` above `foobar` above `bar_foo` above
+/// `xfoo`.
+struct MatchOptions {
+    /// Also accept a name one edit away from the pattern — a substituted,
+    /// missing or extra character — at half the score.
+    bool typo = false;
 };
 
-// Compute segmentation of Text.
-// Character roles are stored in Roles (Roles.size() must equal Text.size()).
-// The set of character types encountered is returned, this may inform
-// heuristics for dealing with poorly-segmented identifiers like "strndup".
-CharTypeSet calculate_roles(llvm::StringRef Text, llvm::MutableArrayRef<CharRole> Roles);
-
-// A matcher capable of matching and scoring strings against a single pattern.
-// It's optimized for matching against many strings - match() does not allocate.
 class FuzzyMatcher {
 public:
-    // Characters beyond MaxPat are ignored.
-    FuzzyMatcher(llvm::StringRef Pattern);
+    explicit FuzzyMatcher(llvm::StringRef pattern, MatchOptions options = {});
 
-    // If Word matches the pattern, return a score indicating the quality match.
-    // Scores usually fall in a [0,1] range, with 1 being a very good score.
-    // "Super" scores in (1,2] are possible if the pattern is the full word.
-    // Characters beyond MaxWord are ignored.
-    std::optional<float> match(llvm::StringRef Word);
+    /// The score of `name` against the pattern, none when it does not
+    /// match: in [0, 1] for a partial match — 1 for a prefix — and up to
+    /// 2 when the pattern spells the whole name. An empty pattern scores
+    /// every name 1.
+    std::optional<float> match(llvm::StringRef name);
+
+    /// `name` with the characters its best match uses bracketed
+    /// (`[u]nique[_p]tr`), or empty when it does not match. For tests
+    /// and debugging.
+    std::string annotate(llvm::StringRef name);
 
     llvm::StringRef pattern() const {
-        return llvm::StringRef(Pat, pat_n);
+        return {pat.data(), pat.size()};
     }
 
     bool empty() const {
-        return pat_n == 0;
+        return pat.empty();
     }
 
 private:
-    // We truncate the pattern and the word to bound the cost of matching.
-    constexpr inline static int MaxPat = 63, MaxWord = 127;
-    /// How a word character was matched to the pattern.
-    enum class Action : unsigned {
-        Miss,
+    /// How a state was reached, for reconstructing the match.
+    enum class Step : std::uint8_t {
+        None,
+        /// The name character before this state was skipped.
+        Skip,
+        /// The pattern and name characters before this state match.
         Match,
+        /// The pattern character before this state has no counterpart.
+        Drop,
+        /// The pattern and name characters before this state differ.
+        Replace,
     };
 
-    constexpr static unsigned action_index(Action action) {
-        return static_cast<unsigned>(action);
-    }
-
-    bool init(llvm::StringRef Word);
-    void build_graph();
-    bool allow_match(int P, int W, Action Last) const;
-    int skip_penalty(int W, Action Last) const;
-    int match_bonus(int P, int W, Action Last) const;
-
-    // Pattern data is initialized by the constructor, then constant.
-    char Pat[MaxPat];           // Pattern data
-    int pat_n;                  // Length
-    char low_pat[MaxPat];       // Pattern in lowercase
-    CharRole pat_role[MaxPat];  // Pattern segmentation info
-    CharTypeSet pat_type_set;   // Bitmask of 1<<CharType for all Pattern characters
-    float score_scale;          // Normalizes scores for the pattern length.
-
-    // Word data is initialized on each call to match(), mostly by init().
-    char word[MaxWord];           // Word data
-    int word_n;                   // Length
-    char low_word[MaxWord];       // Word in lowercase
-    CharRole word_role[MaxWord];  // Word segmentation info
-    CharTypeSet word_type_set;    // Bitmask of 1<<CharType for all Word characters
-    bool word_contains_pattern;   // Simple substring check
-
-    // Cumulative best-match score table.
-    // Boundary conditions are filled in by the constructor.
-    // The rest is repopulated for each match(), by buildGraph().
-    struct ScoreInfo {
-        signed int score : 15;
-        Action Prev : 1;
+    /// What the match is doing at a state: between runs, in a run that
+    /// may jump on to a head, or in a run begun inside a word, which must
+    /// stay contiguous until that word ends.
+    enum class Run : std::uint8_t {
+        Gap,
+        Free,
+        Inside,
     };
 
-    ScoreInfo scores[MaxPat + 1][MaxWord + 1][/* Last Action */ 2];
+    /// The best partial match consuming `p` pattern and `n` name
+    /// characters, per run state and whether the typo allowance is spent.
+    struct Cell {
+        std::int16_t score;
+        Step step;
+        Run prev_run;
+        bool prev_typo;
+    };
+
+    Cell& cell(std::size_t p, std::size_t n, Run run, bool typo);
+    bool prepare(llvm::StringRef name);
+    void fill();
+    std::optional<std::pair<int, Cell*>> best();
+    llvm::SmallVector<std::uint8_t, 32> matched_positions();
+
+    MatchOptions options;
+    llvm::SmallVector<char, 32> pat;
+    llvm::SmallVector<char, 32> low_pat;
+    bool pat_has_upper = false;
+
+    llvm::SmallVector<char, 64> name;
+    llvm::SmallVector<char, 64> low_name;
+    llvm::SmallVector<CharRole, 64> role;
+    /// Positions a match may land on after a gap.
+    llvm::SmallVector<bool, 64> anchor;
+
+    std::vector<Cell> cells;
 };
+
+/// A token of the search index: one to three lowercase bytes packed
+/// big-endian, so the byte count is the width of the value. Tokens below
+/// `first_trigram` are the short form of one or two letters.
+using NameToken = std::uint32_t;
+
+constexpr NameToken first_trigram = 1u << 16;
+
+/// The tokens under which a search index files a name: every trigram of a
+/// path the matcher may take through it, and — for queries too short to
+/// form a trigram — the unigrams and bigrams starting at its first two
+/// word heads. Sorted, unique.
+void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out);
+
+/// The tokens every name the matcher accepts for `pattern` carries: the
+/// trigrams of its letters in sequence, or for fewer than three letters
+/// the one unigram or bigram they form. Empty when the pattern has no
+/// letters. Sorted, unique.
+void query_tokens(llvm::StringRef pattern, llvm::SmallVectorImpl<NameToken>& out);
+
+/// The tokens a name carrying `pattern` with one character wrong still
+/// has: for each position, the trigrams entirely before it and entirely
+/// after it as one alternative. An index unions the alternatives'
+/// posting-list intersections. Empty for patterns under six letters,
+/// where an edit leaves too little to key on.
+struct TypoAlternative {
+    llvm::SmallVector<NameToken, 8> tokens;
+};
+
+void typo_tokens(llvm::StringRef pattern, llvm::SmallVectorImpl<TypoAlternative>& out);
 
 }  // namespace clice

@@ -131,7 +131,11 @@ public:
     /// discovers before serializing joins the same snapshot; debt surfaced
     /// after it (write-time corruption recovery) comes back in the report
     /// with snapshot_stale set.
-    kota::task<Report> save(llvm::SmallVector<Fid> debt);
+    ///
+    /// `settle` says no more indexing is queued: a search index that the
+    /// merges since its last build left well behind is rebuilt first, so
+    /// the persisted one is fresh for the next cold start.
+    kota::task<Report> save(llvm::SmallVector<Fid> debt, bool settle = false);
 
     /// The databases the persisted index was built from, as absolute
     /// paths: what discovery registers at startup before anything is
@@ -182,7 +186,8 @@ public:
     /// save this means write failures whose retry never came — the one-shot
     /// `clice index` must not report a durable index from this.
     bool has_unsaved_state() const {
-        return !dirty_shards.empty() || !dirty_manifests.empty() || global_dirty || cdb_dirty;
+        return !dirty_shards.empty() || !dirty_manifests.empty() || global_dirty || cdb_dirty ||
+               !search_bytes.empty();
     }
 
     /// The FileVersion table's persisted stamps moved outside the store's
@@ -216,6 +221,22 @@ private:
     /// Restore the blobs read at load; a null blob is a first run.
     void load_artifacts(llvm::StringRef data);
     void load_contexts(llvm::StringRef data);
+
+    /// Whether the search index is worth rebuilding now: the symbols
+    /// merged since its build outgrew what a direct scan should carry,
+    /// or indexing settled after enough merges (or with no index at all).
+    bool search_rebuild_due(bool settle) const;
+
+    /// Rebuild the search index from the symbol table — the build runs on
+    /// the thread pool over a snapshot — adopt it, and hold its blob for
+    /// the next batch.
+    kota::task<> rebuild_search_index();
+
+    /// Merges landed since the search index was built.
+    std::size_t merges_since_search_build = 0;
+
+    /// A rebuilt search blob no batch has committed yet.
+    std::string search_bytes;
 
     /// Blobs mutated since the last save, plus whether the global blob
     /// (symbols, FileVersion table) changed.

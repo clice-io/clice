@@ -360,6 +360,7 @@ struct IndexStats {
     std::uint64_t occurrences = 0;
     std::uint64_t relations = 0;
     std::uint64_t global_bytes = 0;
+    std::uint64_t search_bytes = 0;
     GlobalColumns global;
     Histogram references_per_symbol;
     Histogram name_lengths;
@@ -412,6 +413,9 @@ IndexStats collect_stats(IndexView& view) {
     if(auto blob = workspace.index_db->read(index::IndexBlobKind::Global, "global")) {
         stats.global_bytes = blob.buffer->getBufferSize();
     }
+    if(auto blob = workspace.index_db->read(index::IndexBlobKind::Search, "search")) {
+        stats.search_bytes = blob.buffer->getBufferSize();
+    }
     return stats;
 }
 
@@ -438,6 +442,10 @@ void print_stats(const IndexView& view, const IndexStats& stats, std::uint32_t t
     std::println("Global symbols: {}, file versions: {}",
                  project.symbols.size(),
                  workspace.file_table.versions.size());
+    std::println("Search index: {} symbols ({}), {} merged since its build",
+                 workspace.search_index.size(),
+                 format_size(stats.search_bytes),
+                 workspace.search_pending.size());
     if(!view.dropped.empty()) {
         std::println(
             "Translation units pending reindex (stale or partially written): {}; "

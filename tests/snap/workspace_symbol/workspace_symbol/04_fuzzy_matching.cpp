@@ -1,15 +1,19 @@
 /// # Fuzzy matching
 ///
-/// - status: unsupported
+/// - status: supported
 /// - issues: clangd#914
+/// - verify: server
 ///
-/// Workspace symbol search does not support word-boundary fuzzy matching yet
+/// A query matches a name as a subsequence aligned to its words
 ///
-/// Matching is a case-insensitive substring test: `LinLis` does not find
-/// `LinkedList`, and `pcfg` does not find `parse_config`. Word-boundary
-/// initials do not match for any symbol kind, including macros.
+/// `LinLis` finds `LinkedList` and `pconf` finds `parse_config`: after its
+/// first letter, every letter of the query either continues a run or starts
+/// a word of the name, so `pcfg` finds nothing — its `f` lands in the middle
+/// of `config`. The name spelled exactly ranks first, then the names
+/// starting with the query, then matches deeper inside a name.
 
 // query: LinLis
+// query: pconf
 // query: pcfg
 
 struct LinkedList {};

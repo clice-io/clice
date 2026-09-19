@@ -1,0 +1,6 @@
+---
+created_at: 2026-09-19
+input_file: workspace_symbol/06_enum_scope.cpp
+---
+"Color::Red":
+  - { name: "Color::Red", kind: EnumMember, file: "${WS}/workspace_symbol/06_enum_scope.cpp", range: "10:13-10:16", container: "Color" }
