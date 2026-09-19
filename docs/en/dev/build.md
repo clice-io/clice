@@ -1,6 +1,6 @@
 # Build from Source
 
-clice depends on C++23 features and requires a modern C++ toolchain. We also need to link against LLVM/Clang to parse ASTs. To speed up builds, the default configuration downloads our published [clice-llvm](https://github.com/clice-io/clice-llvm) prebuilt package. This assumes your local environment matches the prebuilt environment closely (especially when enabling Address Sanitizer or LTO).
+clice depends on C++23 features and requires a modern C++ toolchain. We also need to link against LLVM/Clang to parse ASTs. To speed up builds, the default configuration downloads our published [clice-llvm](https://github.com/clice-io/clice-llvm) prebuilt package. The package ships its own static libc++ and records the compiler it was built with; configuring checks that your clang matches it exactly, so use the toolchain pinned in `pixi.toml`.
 
 To simplify setup and keep builds reproducible, we **strongly recommend** [pixi](https://pixi.prefix.dev/latest) to manage the development environment. Dependency versions are pinned in `pixi.toml`.
 
@@ -55,15 +55,14 @@ cmake --build build/RelWithDebInfo
 
 ### CMake Options
 
-| Option                 | Default | Effect                                                             |
-| ---------------------- | ------- | ------------------------------------------------------------------ |
-| LLVM_INSTALL_PATH      | ""      | Build clice with LLVM from a custom path                           |
-| CLICE_ENABLE_TEST      | OFF     | Build unit tests and benchmarks infrastructure                     |
-| CLICE_ENABLE_BENCHMARK | OFF     | Build benchmarks                                                   |
-| CLICE_ENABLE_LTO       | OFF     | Enable ThinLTO for all targets                                     |
-| CLICE_USE_LIBCXX       | OFF     | Use libc++ (adds `-stdlib=libc++`); LLVM libs must also use libc++ |
-| CLICE_CI_ENVIRONMENT   | OFF     | Enable `CLICE_CI_ENVIRONMENT` macro; some tests only run in CI     |
-| CLICE_OFFLINE_BUILD    | OFF     | Disable network downloads during configuration                     |
+| Option                 | Default | Effect                                                         |
+| ---------------------- | ------- | -------------------------------------------------------------- |
+| LLVM_INSTALL_PATH      | ""      | Build clice with LLVM from a custom path                       |
+| CLICE_ENABLE_TEST      | OFF     | Build unit tests and benchmarks infrastructure                 |
+| CLICE_ENABLE_BENCHMARK | OFF     | Build benchmarks                                               |
+| CLICE_ENABLE_LTO       | OFF     | Enable ThinLTO for all targets                                 |
+| CLICE_CI_ENVIRONMENT   | OFF     | Enable `CLICE_CI_ENVIRONMENT` macro; some tests only run in CI |
+| CLICE_OFFLINE_BUILD    | OFF     | Disable network downloads during configuration                 |
 
 ## About LLVM
 

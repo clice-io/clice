@@ -25,8 +25,9 @@ import sys
 from pathlib import Path
 
 # Linux NEEDED whitelist, derived from the real packaged x86_64-unknown-linux-gnu binary.
-# clice statically links libstdc++/libgcc, so a portable build only pulls in the
-# glibc runtime pieces. Notably libstdc++.so.6 / libc++.so are absent: if either
+# clice links the LLVM package's libc++ and libgcc statically, so a portable
+# build only pulls in the glibc runtime pieces. Notably libstdc++.so.6 /
+# libc++.so are absent: if either
 # ever appears it would resolve from the conda RUNPATH (see check_elf), which is
 # exactly the shape of the macOS libc++ incident. Keeping them out of the
 # whitelist makes that regression a hard failure.

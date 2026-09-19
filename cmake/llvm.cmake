@@ -108,13 +108,13 @@ function(setup_llvm LLVM_VERSION)
     find_package(Clang REQUIRED CONFIG
         PATHS "${LLVM_INSTALL_PATH}/lib/cmake/clang" NO_DEFAULT_PATH)
 
+    _check_llvm_manifest("${LLVM_INSTALL_PATH}")
+
     llvm_map_components_to_libnames(LLVM_RESOLVED
         support frontendopenmp option targetparser)
 
-    # Every library clice uses directly must be listed here. A static link
-    # resolves symbols from any archive pulled in transitively, so a missing
-    # entry only surfaces on the shared-library Debug packages (Linux and
-    # macOS) as undefined symbols.
+    # The package ships the transitive closure of this list (COMPONENTS in
+    # scripts/build-llvm.py); a library added here goes there as well.
     add_library(llvm-libs INTERFACE IMPORTED)
     target_link_libraries(llvm-libs INTERFACE
         ${LLVM_RESOLVED}
@@ -127,7 +127,7 @@ function(setup_llvm LLVM_VERSION)
         clangTidyDarwinModule clangTidyFuchsiaModule
         clangTidyGoogleModule clangTidyHICPPModule clangTidyLinuxKernelModule
         clangTidyLLVMModule clangTidyLLVMLibcModule clangTidyMiscModule
-        clangTidyModernizeModule clangTidyMPIModule clangTidyObjCModule
+        clangTidyModernizeModule clangTidyObjCModule
         clangTidyOpenMPModule clangTidyPerformanceModule
         clangTidyPortabilityModule clangTidyReadabilityModule
         clangTidyZirconModule
@@ -137,10 +137,88 @@ function(setup_llvm LLVM_VERSION)
 
     target_include_directories(llvm-libs SYSTEM INTERFACE
         "${LLVM_INSTALL_PATH}/include")
+    target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)
 
-    if(NOT BUILD_SHARED_LIBS)
-        target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)
-    endif()
+    # The package's libc++ is the standard library of everything in this
+    # build, third-party dependencies included, so the flags are global.
+    _llvm_libcxx_flags("${LLVM_INSTALL_PATH}" _cxx_flags _link_flags)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_cxx_flags}" PARENT_SCOPE)
+    foreach(kind EXE SHARED MODULE)
+        set(CMAKE_${kind}_LINKER_FLAGS "${CMAKE_${kind}_LINKER_FLAGS} ${_link_flags}" PARENT_SCOPE)
+    endforeach()
 
     message(STATUS "LLVM ${LLVM_VERSION} at ${LLVM_INSTALL_PATH}")
+endfunction()
+
+# The archive records the toolchain it was built with. Every field checked
+# here is one where a mismatch still links and then fails at runtime.
+function(_check_llvm_manifest install_path)
+    set(_manifest "${install_path}/lib/cmake/clice-llvm/config.cmake")
+    if(NOT EXISTS "${_manifest}")
+        message(FATAL_ERROR
+            "No clice-llvm manifest at ${_manifest}: this LLVM install predates the "
+            "libc++ packages (22.1.8+r1). Point LLVM_INSTALL_PATH at a newer package, "
+            "or unset it (-ULLVM_INSTALL_PATH) to download one.")
+    endif()
+    include("${_manifest}")
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(_expected_debug ON)
+    else()
+        set(_expected_debug OFF)
+    endif()
+    if(CLICE_LLVM_BUILD_TYPE STREQUAL "Debug")
+        set(_package_debug ON)
+    else()
+        set(_package_debug OFF)
+    endif()
+    if(_expected_debug AND NOT WIN32)
+        set(_expected_asan ON)
+    else()
+        set(_expected_asan OFF)
+    endif()
+
+    set(_mismatch "")
+    if(NOT CLICE_LLVM_COMPILER_ID STREQUAL CMAKE_CXX_COMPILER_ID
+            OR NOT CLICE_LLVM_COMPILER_VERSION VERSION_EQUAL CMAKE_CXX_COMPILER_VERSION)
+        string(APPEND _mismatch "\n  compiler: package ${CLICE_LLVM_COMPILER_ID} "
+            "${CLICE_LLVM_COMPILER_VERSION}, this build ${CMAKE_CXX_COMPILER_ID} "
+            "${CMAKE_CXX_COMPILER_VERSION}")
+    endif()
+    if(NOT _package_debug STREQUAL _expected_debug)
+        string(APPEND _mismatch "\n  build type: package ${CLICE_LLVM_BUILD_TYPE}, "
+            "this build ${CMAKE_BUILD_TYPE}")
+    endif()
+    if(NOT CLICE_LLVM_LTO STREQUAL CLICE_ENABLE_LTO)
+        string(APPEND _mismatch "\n  LTO: package ${CLICE_LLVM_LTO}, CLICE_ENABLE_LTO ${CLICE_ENABLE_LTO}")
+    endif()
+    if(NOT CLICE_LLVM_ASAN STREQUAL _expected_asan)
+        string(APPEND _mismatch "\n  ASan: package ${CLICE_LLVM_ASAN}, this build ${_expected_asan}")
+    endif()
+    if(WIN32 AND NOT CLICE_LLVM_MSVC_RUNTIME_LIBRARY STREQUAL CMAKE_MSVC_RUNTIME_LIBRARY)
+        string(APPEND _mismatch "\n  MSVC runtime: package ${CLICE_LLVM_MSVC_RUNTIME_LIBRARY}, "
+            "this build '${CMAKE_MSVC_RUNTIME_LIBRARY}'")
+    endif()
+    if(_mismatch)
+        message(FATAL_ERROR "The LLVM package at ${install_path} does not match this build:${_mismatch}")
+    endif()
+endfunction()
+
+# Compile and link flags that make the package's static libc++ the standard
+# library. -nostdinc++ removes the host's C++ headers on Linux and macOS; on
+# Windows the MSVC STL sits in the INCLUDE directories, which -isystem
+# precedes, and libc++'s headers auto-link libc++.lib through a #pragma.
+function(_llvm_libcxx_flags install_path cxx_flags_var link_flags_var)
+    set(_include "${install_path}/include/c++/v1")
+    set(_lib "${install_path}/lib")
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        set(${cxx_flags_var} "/clang:-isystem\"${_include}\"" PARENT_SCOPE)
+        set(${link_flags_var} "/LIBPATH:\"${_lib}\"" PARENT_SCOPE)
+    elseif(WIN32)
+        set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
+        set(${link_flags_var} "-L\"${_lib}\"" PARENT_SCOPE)
+    else()
+        set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
+        set(${link_flags_var} "-stdlib=libc++ -L\"${_lib}\"" PARENT_SCOPE)
+    endif()
 endfunction()

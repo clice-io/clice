@@ -1,6 +1,6 @@
 # 从源码构建
 
-clice 依赖 C++23 特性，需要使用现代 C++ 工具链。同时还需要链接 LLVM/Clang 以解析 AST。为了加快构建速度，默认配置会下载我们发布的 [clice-llvm](https://github.com/clice-io/clice-llvm) 预编译包。这要求本地环境与预编译环境高度一致（尤其是在启用 Address Sanitizer 或 LTO 时）。
+clice 依赖 C++23 特性，需要使用现代 C++ 工具链。同时还需要链接 LLVM/Clang 以解析 AST。为了加快构建速度，默认配置会下载我们发布的 [clice-llvm](https://github.com/clice-io/clice-llvm) 预编译包。该预编译包自带静态链接的 libc++，并记录了构建它所用的编译器；配置期间会检查你的 clang 是否与之完全一致，因此请使用 `pixi.toml` 中固定的工具链。
 
 为了简化环境配置并确保构建可复现，我们**强烈推荐**使用 [pixi](https://pixi.prefix.dev/latest) 管理开发环境。依赖版本固定在 `pixi.toml` 中。
 
@@ -55,15 +55,14 @@ cmake --build build/RelWithDebInfo
 
 ### CMake 选项
 
-| 选项                   | 默认值 | 作用                                                           |
-| ---------------------- | ------ | -------------------------------------------------------------- |
-| LLVM_INSTALL_PATH      | ""     | 使用自定义路径中的 LLVM 构建 clice                             |
-| CLICE_ENABLE_TEST      | OFF    | 构建单元测试和基准测试基础设施                                 |
-| CLICE_ENABLE_BENCHMARK | OFF    | 构建基准测试                                                   |
-| CLICE_ENABLE_LTO       | OFF    | 为所有目标启用 ThinLTO                                         |
-| CLICE_USE_LIBCXX       | OFF    | 使用 libc++（添加 `-stdlib=libc++`）；LLVM 库也必须使用 libc++ |
-| CLICE_CI_ENVIRONMENT   | OFF    | 启用 `CLICE_CI_ENVIRONMENT` 宏；部分测试仅在 CI 中运行         |
-| CLICE_OFFLINE_BUILD    | OFF    | 禁止在配置期间从网络下载                                       |
+| 选项                   | 默认值 | 作用                                                   |
+| ---------------------- | ------ | ------------------------------------------------------ |
+| LLVM_INSTALL_PATH      | ""     | 使用自定义路径中的 LLVM 构建 clice                     |
+| CLICE_ENABLE_TEST      | OFF    | 构建单元测试和基准测试基础设施                         |
+| CLICE_ENABLE_BENCHMARK | OFF    | 构建基准测试                                           |
+| CLICE_ENABLE_LTO       | OFF    | 为所有目标启用 ThinLTO                                 |
+| CLICE_CI_ENVIRONMENT   | OFF    | 启用 `CLICE_CI_ENVIRONMENT` 宏；部分测试仅在 CI 中运行 |
+| CLICE_OFFLINE_BUILD    | OFF    | 禁止在配置期间从网络下载                               |
 
 ## 关于 LLVM
 

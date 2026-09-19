@@ -111,12 +111,11 @@ endif()
 if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "")
 
-    # conda-forge clang 22's bundled config files (<triple>-clang++.cfg)
+    # conda-forge clang's bundled config files (<triple>-clang++.cfg)
     # inject -L/-rpath pointing into the conda env at link time, binding
     # binaries to conda's @rpath libc++ — they then fail to load outside
-    # the build machine. Disable config files: libc++ headers are still
-    # found relative to the driver, and links fall back to the SDK's
-    # system libc++ (safe thanks to availability annotations).
+    # the build machine. Disable config files; the standard library comes
+    # from the LLVM package (cmake/llvm.cmake).
     string(APPEND CMAKE_C_FLAGS_INIT " --no-default-config")
     string(APPEND CMAKE_CXX_FLAGS_INIT " --no-default-config")
     string(APPEND CMAKE_EXE_LINKER_FLAGS_INIT " --no-default-config")

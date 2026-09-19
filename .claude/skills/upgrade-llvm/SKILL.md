@@ -1,6 +1,6 @@
 ---
 name: upgrade-llvm
-description: Complete workflow for upgrading the prebuilt LLVM packages clice depends on — build-llvm CI, API adaptation, release-llvm pruning, changelog. Arg = target version, e.g. 22.1.4.
+description: Complete workflow for upgrading the prebuilt LLVM packages clice depends on — build-llvm CI, API adaptation, release-llvm publishing, changelog. Arg = target version, e.g. 22.1.4.
 ---
 
 Upgrade LLVM to a new version. Accepts the target version as argument (e.g., `22.1.4`).
@@ -13,10 +13,13 @@ Trigger the `build-llvm` workflow on GitHub Actions:
 
 ```bash
 gh workflow run build-llvm.yml \
+  --ref <BRANCH> \
   --field llvm_version="<VERSION>"
 ```
 
-- Poll until all 14 matrix builds complete (~2-3 hours), note the workflow run ID
+`--ref` makes the run use the branch's `scripts/build-llvm.py` and workflow; without it the dispatch runs `main`'s.
+
+- Poll until all 14 matrix builds complete, note the workflow run ID
 
 ## Step 2: Download Local Platform Artifact
 
@@ -58,7 +61,7 @@ Strategy:
 4. Ensure `pixi run unit-test RelWithDebInfo` passes
 5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an agent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `unit_tests --test-filter=expr_hash` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
 6. Bump `index_format_version` in `src/index/serialization.h`: entity hashes (`src/semantic/identity.cpp`) follow clang's canonicalization rules, so they can change silently across versions and an old index would otherwise keep serving stale symbols
-7. Expect the Debug leg to catch link-list gaps: the Linux and macOS Debug packages are shared-library builds, so every library clice uses directly must be listed in `cmake/llvm.cmake` — a static link resolves symbols from any archive pulled in transitively and hides a missing entry. To check before Step 5, build `Debug` against the Step 1 `debug-asan` artifact for your platform the same way Step 2 uses `releasedbg`
+7. A library clice starts using directly is added to `cmake/llvm.cmake` and to `COMPONENTS` in `scripts/build-llvm.py` (the package ships exactly that closure); check the list with `--configure-only` before Step 1
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
@@ -76,7 +79,7 @@ CI will fail at this point (manifest hashes are stale) — this is expected.
 
 ## Step 5: Run Release LLVM Workflow
 
-Trigger `release-llvm` to build pruned packages:
+Trigger `release-llvm` to publish the artifacts of the Step 1 run:
 
 ```bash
 gh workflow run release-llvm.yml \
@@ -85,7 +88,9 @@ gh workflow run release-llvm.yml \
   --field llvm_version="<VERSION>"
 ```
 
-This will: discover unused libs → create clice-llvm release → repackage with pruning. Poll until complete.
+This creates (or reuses) the clice-llvm release and uploads the 14 archives as built. Poll until complete.
+
+The package already contains only the libraries clice links: `COMPONENTS` in `scripts/build-llvm.py` is the transitive closure of the libraries `cmake/llvm.cmake` names, and the LLVM configure fails when the list is not closed. A new library that clice starts using is added there and the package rebuilt; `pixi run -e package python3 scripts/build-llvm.py --llvm-src <llvm-project> --mode RelWithDebInfo --configure-only` validates the list (it builds libc++ and configures LLVM without building it).
 
 ## Step 6: Update Version
 
@@ -142,5 +147,5 @@ The user decides whether all changes are acceptable or if adjustments are needed
 ## Notes
 
 - **Artifact size limit**: GitHub Release max 2GB per file. macOS LTO artifacts are largest, currently ~1.7GB with xz -9e.
-- **Pruning safety**: discover phase validates by deleting .a files one by one and rebuilding clice. clang-tidy modules can't be deleted due to force-link.
+- **Package contents**: `LLVM_TARGETS_TO_BUILD` is empty (clice generates no code) and only `COMPONENTS` are built, so a configure that passes locally with `--configure-only` is what CI builds.
 - **Private headers**: clice depends on private Clang Sema headers (TreeTransform.h etc.), copied from source during `build-llvm.py`. Users must use our packaged LLVM.
