@@ -7,7 +7,17 @@ Upgrade LLVM to a new version. Accepts the target version as argument (e.g., `22
 
 This is the complete workflow for upgrading the LLVM prebuilt packages that clice depends on. Follow each step in order. Steps that involve CI should use polling (check every ~5 minutes) to wait for completion.
 
-## Step 1: Trigger LLVM Build
+## Step 1: Validate the Package Definition Locally, Then Trigger the Build
+
+The package is built from an explicit component list (`COMPONENTS` in `scripts/build-llvm.py`), and that list drifts between LLVM versions: libraries appear, split or disappear. Validate it against the new version before spending CI time:
+
+```bash
+cd ../llvm-project && git checkout llvmorg-<VERSION>   # or a worktree at that tag
+pixi run -e package python3 scripts/build-llvm.py --llvm-src ../llvm-project \
+  --mode RelWithDebInfo --build-dir ../llvm-project/build-validate --configure-only
+```
+
+This builds libc++ (minutes) and configures LLVM without building it. The configure fails on both kinds of drift: an entry whose library no longer exists ("doesn't have an install target") and a library the closure now needs but the list lacks ("requires target X that is not in any export set"). Fix `COMPONENTS` until it passes; a Debug run (`--mode Debug`) covers the ASan variant. Never do this by pushing attempts at CI.
 
 Trigger the `build-llvm` workflow on GitHub Actions:
 
@@ -61,7 +71,7 @@ Strategy:
 4. Ensure `pixi run unit-test RelWithDebInfo` passes
 5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an agent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `unit_tests --test-filter=expr_hash` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
 6. Bump `index_format_version` in `src/index/serialization.h`: entity hashes (`src/semantic/identity.cpp`) follow clang's canonicalization rules, so they can change silently across versions and an old index would otherwise keep serving stale symbols
-7. A library clice starts using directly is added to `cmake/llvm.cmake` and to `COMPONENTS` in `scripts/build-llvm.py` (the package ships exactly that closure); check the list with `--configure-only` before Step 1
+7. A library clice starts using directly is added to `cmake/llvm.cmake` and to `COMPONENTS` in `scripts/build-llvm.py` (the package ships exactly that closure); re-run the Step 1 validation
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
@@ -90,7 +100,7 @@ gh workflow run release-llvm.yml \
 
 This creates (or reuses) the clice-llvm release and uploads the 14 archives as built. Poll until complete.
 
-The package already contains only the libraries clice links: `COMPONENTS` in `scripts/build-llvm.py` is the transitive closure of the libraries `cmake/llvm.cmake` names, and the LLVM configure fails when the list is not closed. A new library that clice starts using is added there and the package rebuilt; `pixi run -e package python3 scripts/build-llvm.py --llvm-src <llvm-project> --mode RelWithDebInfo --configure-only` validates the list (it builds libc++ and configures LLVM without building it).
+The package contains only the libraries clice links: `COMPONENTS` is the transitive closure of the libraries `cmake/llvm.cmake` names (validated in Step 1).
 
 ## Step 6: Update Version
 

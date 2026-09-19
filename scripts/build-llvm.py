@@ -131,6 +131,7 @@ COMPONENTS = [
 SEMA_PRIVATE_HEADERS = ["CoroutineStmtBuilder.h", "TypeLocBuilder.h", "TreeTransform.h"]
 
 IS_WINDOWS = sys.platform == "win32"
+IS_DARWIN = sys.platform == "darwin"
 
 
 def run(args: list[str]) -> None:
@@ -174,11 +175,17 @@ class Build:
     # ------------------------------------------------------------------ flags
 
     def target_flags(self) -> str:
-        return (
-            f" --target={self.target_triple}"
-            if self.target_triple and IS_WINDOWS
-            else ""
-        )
+        return f" --target={self.target_triple}" if self.target_triple and IS_WINDOWS else ""
+
+    # The -D flags below replace the toolchain file's *_INIT values, so the
+    # linker choice and the conda config-file opt-out are repeated here.
+    def driver_flags(self) -> str:
+        return " --no-default-config" if IS_DARWIN else ""
+
+    def linker_flags(self) -> str:
+        if IS_WINDOWS:
+            return ""
+        return "-fuse-ld=lld" + self.driver_flags()
 
     def compiler_args(self) -> list[str]:
         if IS_WINDOWS:
@@ -187,7 +194,13 @@ class Build:
                 "-DCMAKE_CXX_COMPILER=clang-cl",
                 "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
             ]
-        return [f"-DCMAKE_TOOLCHAIN_FILE={self.toolchain_file.as_posix()}"]
+        args = [f"-DCMAKE_TOOLCHAIN_FILE={self.toolchain_file.as_posix()}"]
+        if IS_DARWIN:
+            # CMake 4 leaves CMAKE_OSX_SYSROOT unset; the runtimes' compiler-rt
+            # lookup (LLVM_USE_SANITIZER on Apple) reads the SDK name from it.
+            sdk = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
+            args.append(f"-DCMAKE_OSX_SYSROOT={sdk}")
+        return args
 
     def debug_info_args(self) -> list[str]:
         # Function names and line tables are all the symbolizers need; the
@@ -205,13 +218,14 @@ class Build:
         return args
 
     def common_args(self, c_flags: str, cxx_flags: str, linker_flags: str) -> list[str]:
+        linker_flags = f"{self.linker_flags()} {linker_flags}".strip()
         args = [
             "-G",
             "Ninja",
             f"-DCMAKE_BUILD_TYPE={self.mode}",
             f"-DCMAKE_INSTALL_PREFIX={self.install_prefix.as_posix()}",
-            f"-DCMAKE_C_FLAGS={c_flags}{self.target_flags()}",
-            f"-DCMAKE_CXX_FLAGS={cxx_flags}{self.target_flags()}",
+            f"-DCMAKE_C_FLAGS={c_flags}{self.driver_flags()}{self.target_flags()}",
+            f"-DCMAKE_CXX_FLAGS={cxx_flags}{self.driver_flags()}{self.target_flags()}",
             f"-DCMAKE_EXE_LINKER_FLAGS={linker_flags}",
             f"-DCMAKE_SHARED_LINKER_FLAGS={linker_flags}",
             f"-DCMAKE_MODULE_LINKER_FLAGS={linker_flags}",
