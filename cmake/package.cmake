@@ -63,7 +63,7 @@ set(ENABLE_ROARING_MICROBENCHMARKS OFF CACHE INTERNAL "" FORCE)
 CPMAddPackage(
     NAME croaring
     GIT_REPOSITORY https://github.com/RoaringBitmap/CRoaring.git
-    GIT_TAG v4.4.2
+    GIT_TAG v5.2.2
     GIT_SHALLOW TRUE
 )
 
