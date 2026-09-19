@@ -12,6 +12,7 @@
 #include "semantic/selection.h"
 #include "support/logging.h"
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/thread.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/Basic/Stack.h"

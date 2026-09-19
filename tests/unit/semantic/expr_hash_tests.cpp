@@ -165,15 +165,15 @@ struct ConstraintSweep : RecursiveASTVisitor<ConstraintSweep> {
     }
 
     bool VisitDeclaratorDecl(DeclaratorDecl* decl) {
-        for(unsigned i = 0; i < decl->getNumTemplateParameterLists(); i += 1) {
-            template_parameters(decl->getTemplateParameterList(i));
+        for(auto* list: decl->getTemplateParameterLists()) {
+            template_parameters(list);
         }
         return true;
     }
 
     bool VisitTagDecl(TagDecl* decl) {
-        for(unsigned i = 0; i < decl->getNumTemplateParameterLists(); i += 1) {
-            template_parameters(decl->getTemplateParameterList(i));
+        for(auto* list: decl->getTemplateParameterLists()) {
+            template_parameters(list);
         }
         return true;
     }

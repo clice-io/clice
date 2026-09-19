@@ -36,14 +36,6 @@ public:
     };
 
     struct IncludeKeyInfo {
-        static IncludeKey getEmptyKey() {
-            return {Fid{~0u}, ~0u};
-        }
-
-        static IncludeKey getTombstoneKey() {
-            return {Fid{~0u - 1}, ~0u - 1};
-        }
-
         static unsigned getHashValue(const IncludeKey& key) {
             return llvm::DenseMapInfo<std::uint64_t>::getHashValue(
                 (std::uint64_t(key.path_id.raw) << 32) | key.config_id);

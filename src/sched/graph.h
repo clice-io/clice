@@ -40,14 +40,6 @@ struct NodeId {
 
 template <>
 struct llvm::DenseMapInfo<clice::NodeId> {
-    static clice::NodeId getEmptyKey() {
-        return {clice::Family{0xFF}, 0};
-    }
-
-    static clice::NodeId getTombstoneKey() {
-        return {clice::Family{0xFF}, 1};
-    }
-
     static unsigned getHashValue(const clice::NodeId& id) {
         return llvm::detail::combineHashValue(
             std::to_underlying(id.family),

@@ -4,10 +4,12 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -64,14 +66,13 @@ inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
     return buffer;
 }
 
-/// DenseMap reserves two sentinel key values per type, so the in-memory
-/// tables can never hold them and no writer can emit them; wire or disk
-/// bytes carrying one are corrupt, and inserting one would corrupt (or
-/// assert in) the very containers doing the loading.
+/// The two highest values of an id type are reserved: they were DenseMap's
+/// sentinel keys when the format was defined, so no writer has ever emitted
+/// them, and wire or disk bytes carrying one are corrupt.
 template <typename T>
 bool reserved_key(T value) {
-    return value == llvm::DenseMapInfo<T>::getEmptyKey() ||
-           value == llvm::DenseMapInfo<T>::getTombstoneKey();
+    static_assert(std::is_unsigned_v<T>);
+    return value >= std::numeric_limits<T>::max() - 1;
 }
 
 }  // namespace clice::index

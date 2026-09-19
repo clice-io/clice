@@ -3,9 +3,11 @@
 #include "compile/compilation_unit.h"
 #include "support/logging.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/xxhash.h"
 
 namespace clice::index {

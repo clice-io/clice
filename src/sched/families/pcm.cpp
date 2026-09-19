@@ -11,6 +11,8 @@
 #include "syntax/scan.h"
 #include "worker/protocol.h"
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/xxhash.h"

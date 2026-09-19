@@ -3,7 +3,7 @@
 #include "compile/compilation.h"
 #include "compile/diagnostic.h"
 
-#include "clang-tidy/ClangTidyModuleRegistry.h"
+#include "clang-tidy/ClangTidyModule.h"
 
 namespace clice::testing {
 namespace {
@@ -12,26 +12,17 @@ TEST_SUITE(ClangTidy) {
 
 TEST_CASE(ModulesLinked) {
     llvm::StringSet<> expected = {
-        "abseil-module",      "altera-module",
-        "android-module",     "boost-module",
-        "bugprone-module",    "cert-module",
-        "concurrency-module", "cppcoreguidelines-module",
-        "darwin-module",      "fuchsia-module",
-        "google-module",      "hicpp-module",
-        "linux-module",       "llvm-module",
-        "llvmlibc-module",    "misc-module",
-        "modernize-module",   "mpi-module",
-        "objc-module",        "openmp-module",
-        "performance-module", "portability-module",
+        "abseil-module",      "altera-module",   "android-module",     "boost-module",
+        "bugprone-module",    "cert-module",     "concurrency-module", "cppcoreguidelines-module",
+        "darwin-module",      "fuchsia-module",  "google-module",      "linux-module",
+        "llvm-module",        "llvmlibc-module", "misc-module",        "modernize-module",
+        "objc-module",        "openmp-module",   "performance-module", "portability-module",
         "readability-module", "zircon-module",
     };
 
     for(auto& entry: clang::tidy::ClangTidyModuleRegistry::entries()) {
         expected.erase(entry.getName());
     }
-    // Debug links shared libs (all 24 modules); Release uses static libs
-    // where --gc-sections strips mpi-module (CLANG_TIDY_ENABLE_STATIC_ANALYZER=0).
-    expected.erase("mpi-module");
     ASSERT_TRUE(expected.empty());
 }
 

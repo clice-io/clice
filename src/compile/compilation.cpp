@@ -11,6 +11,7 @@
 #include "support/logging.h"
 
 #include "kota/ipc/lsp/position.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/Basic/Stack.h"

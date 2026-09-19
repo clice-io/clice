@@ -135,12 +135,12 @@ std::expected<void, std::string> query_driver(
     list.append(arguments.begin(), arguments.end());
     arguments = list;
 
-    /// Note that clang use the `ClangExecutable` to determine the driver mode when
+    /// Note that clang use the `DriverExecutable` to determine the driver mode when
     /// --driver-mode is not found in the arguments, and `TargetTriple` is used when
     /// non --target argument is found in the arguments list. See
     /// `clang::driver::BuildCompilation`. We use default arguments because we will
     /// inject related commands before querying.
-    clang::driver::Driver driver(/*ClangExecutable=*/arguments[0],
+    clang::driver::Driver driver(/*DriverExecutable=*/arguments[0],
                                  /*TargetTriple=*/llvm::sys::getDefaultTargetTriple(),
                                  /*Diags=*/engine);
     driver.setCheckInputsExist(false);

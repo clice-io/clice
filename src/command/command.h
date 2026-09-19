@@ -526,14 +526,6 @@ template <>
 struct DenseMapInfo<clice::CompileConfig> {
     using T = clice::CompileConfig;
 
-    inline static T getEmptyKey() {
-        return T{.directory = DenseMapInfo<const char*>::getEmptyKey()};
-    }
-
-    inline static T getTombstoneKey() {
-        return T{.directory = DenseMapInfo<const char*>::getTombstoneKey()};
-    }
-
     static unsigned getHashValue(const T& config) {
         llvm::hash_code hash = llvm::hash_combine(config.directory,
                                                   config.driver,
