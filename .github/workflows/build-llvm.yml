@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       llvm_version:
-        description: "LLVM version to build (e.g., 22.1.8)"
+        description: "LLVM version to build (e.g., 23.1.1)"
         required: true
         type: string
       patch_ref:
@@ -156,7 +156,7 @@ jobs:
       - name: Clone llvm-project
         shell: bash
         env:
-          VERSION: ${{ inputs.llvm_version || '22.1.8' }}
+          VERSION: ${{ inputs.llvm_version || '23.1.1' }}
         run: |
           echo "Cloning LLVM ${VERSION}..."
           git clone --branch "llvmorg-${VERSION}" --depth 1 https://github.com/llvm/llvm-project.git .llvm
@@ -164,7 +164,7 @@ jobs:
       - name: Apply patches
         shell: bash
         env:
-          VERSION: ${{ inputs.llvm_version || '22.1.8' }}
+          VERSION: ${{ inputs.llvm_version || '23.1.1' }}
           REF: ${{ inputs.patch_ref || 'main' }}
         run: |
           if git clone --branch "$REF" --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm 2>/dev/null; then
