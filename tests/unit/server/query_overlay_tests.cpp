@@ -177,8 +177,7 @@ std::vector<Site> relations(llvm::StringRef name, RelationKind kind) {
 
 /// The 0-based line a site starts on.
 std::uint32_t line_of(const Site& site) {
-    auto position = site.coords.to_position(site.range.begin);
-    return position ? position->line : ~0u;
+    return site.begin.line;
 }
 
 TEST_CASE(DefinitionFromOverlayOnly) {

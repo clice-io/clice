@@ -34,22 +34,26 @@ struct RowSource {
     Fid file;
     llvm::StringRef path;
     const index::Shard* rows;
-    Coordinates coords;
+    index::Coordinates coords;
 
-    Site site(LocalSourceRange range) const {
-        assert(range.begin <= range.end && range.end <= coords.size() &&
-               "served rows lie within their source's text");
-        return {.file = file, .path = path, .range = range, .coords = coords};
+    /// The site of a row's range; nullopt for a range outside the text.
+    std::optional<Site> site(LocalSourceRange range) const {
+        auto begin = coords.position(range.begin);
+        auto end = coords.position(range.end);
+        if(!begin || !end) {
+            return std::nullopt;
+        }
+        return Site{.file = file, .path = path, .range = range, .begin = *begin, .end = *end};
     }
 };
 
 namespace {
 
-Coordinates shard_coordinates(const index::Shard& shard) {
+index::Coordinates shard_coordinates(const index::Shard& shard) {
     return {shard.content(), shard.content_size(), shard.line_starts()};
 }
 
-Coordinates buffer_coordinates(const Session& session) {
+index::Coordinates buffer_coordinates(const Session& session) {
     return {session.text, static_cast<std::uint32_t>(session.text.size()), session.line_starts};
 }
 
@@ -447,13 +451,13 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
                 }
             }
         }
-        cursor = Cursor{
-            .symbol = chosen.target,
-            .site = {.file = file,
-                     .path = path,
-                     .range = to_local(chosen),
-                     .coords = serving.coords},
-        };
+        auto site =
+            RowSource{.file = file, .path = path, .rows = &rows, .coords = serving.coords}.site(
+                to_local(chosen));
+        if(!site) {
+            return false;
+        }
+        cursor = Cursor{.symbol = chosen.target, .site = *site};
         return true;
     };
     if(hit(*serving.rows)) {
@@ -475,6 +479,20 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
         return false;
     });
     return cursor;
+}
+
+std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file,
+                                                        std::uint32_t line,
+                                                        std::uint32_t utf16_column) const {
+    auto serving = serving_source(file);
+    if(!serving) {
+        return std::nullopt;
+    }
+    auto offset = serving.coords.offset(line, utf16_column);
+    if(!offset) {
+        return std::nullopt;
+    }
+    return symbol_at(file, *offset);
 }
 
 std::optional<SymbolRef> IndexQuery::symbol_info(index::SymbolHash hash) const {
@@ -576,7 +594,9 @@ std::vector<Site> IndexQuery::sites(index::SymbolHash hash, RelationKind kind) c
                       Order::DiskFirst,
                       {},
                       [&](const RowSource& source, const index::Relation& relation) {
-                          result.push_back(source.site(relation.range));
+                          if(auto site = source.site(relation.range)) {
+                              result.push_back(*site);
+                          }
                           return true;
                       });
     // Same-kind rows can share one anchor: a macro body using an argument
@@ -593,7 +613,7 @@ std::optional<Site> IndexQuery::first_site(index::SymbolHash hash, RelationKind 
                       {},
                       [&](const RowSource& source, const index::Relation& relation) {
                           result = source.site(relation.range);
-                          return false;
+                          return !result;
                       });
     return result;
 }
@@ -631,7 +651,9 @@ std::vector<IndexQuery::Group> IndexQuery::grouped(index::SymbolHash hash,
                       Order::DiskFirst,
                       {.preamble = false},
                       [&](const RowSource& source, const index::Relation& relation) {
-                          by_target[relation.target_symbol].push_back(source.site(relation.range));
+                          if(auto site = source.site(relation.range)) {
+                              by_target[relation.target_symbol].push_back(*site);
+                          }
                           return true;
                       });
     std::vector<Group> groups;
@@ -769,13 +791,17 @@ std::optional<IndexQuery::Definition> IndexQuery::definition_text(index::SymbolH
                           if(extent.begin >= extent.end || extent.end > source.coords.size()) {
                               return true;
                           }
+                          auto site = source.site(extent);
+                          if(!site) {
+                              return true;
+                          }
                           std::unique_ptr<llvm::MemoryBuffer> storage;
                           auto text = source_text(source, storage);
                           if(!text) {
                               return true;
                           }
                           found = Definition{
-                              .extent = source.site(extent),
+                              .extent = *site,
                               .text = std::string(text->substr(extent.begin, extent.length())),
                               .comment = feature::preceding_comment(*text, extent.begin),
                           };
@@ -785,11 +811,11 @@ std::optional<IndexQuery::Definition> IndexQuery::definition_text(index::SymbolH
 }
 
 std::string IndexQuery::context_line(const Site& site) const {
-    if(!site.coords.text().empty()) {
-        return extract_line(site.coords.text(), site.range.begin);
-    }
     if(!site.file.valid()) {
         return {};
+    }
+    if(auto serving = serving_source(site.file); serving && !serving.coords.text().empty()) {
+        return extract_line(serving.coords.text(), site.range.begin);
     }
     auto it = workspace.shards.find(site.file);
     if(it == workspace.shards.end()) {
@@ -991,25 +1017,20 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const index::SymbolQuery& qu
         if(!serving) {
             return {};
         }
-        auto line = static_cast<protocol::uinteger>(place.line - 1);
-        auto path = workspace.file_table.resolve(*path_id);
-        // A site read straight from the serving source.
-        auto site_of = [&](const index::Relation& relation) {
-            return Site{.file = *path_id,
-                        .path = path,
-                        .range = relation.range,
-                        .coords = serving.coords};
-        };
+        auto line = static_cast<std::uint32_t>(place.line - 1);
+        auto bounds = serving.coords.line_bounds(line);
+        if(!bounds) {
+            return {};
+        }
+        RowSource source{.file = *path_id,
+                         .path = workspace.file_table.resolve(*path_id),
+                         .rows = serving.rows,
+                         .coords = serving.coords};
         if(place.column) {
             // The column counts bytes: the line's start plus the column,
             // bounded by the line's own length.
-            auto start = serving.coords.to_offset({.line = line, .character = 0});
-            if(!start) {
-                return {};
-            }
-            auto offset = *start + static_cast<std::uint32_t>(*place.column - 1);
-            auto position = serving.coords.to_position(offset);
-            if(!position || position->line != line) {
+            auto offset = bounds->begin + static_cast<std::uint32_t>(*place.column - 1);
+            if(offset > bounds->end) {
                 return {};
             }
             auto cursor = symbol_at(*path_id, offset);
@@ -1029,8 +1050,8 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const index::SymbolQuery& qu
             std::optional<Site> site;
             for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
                 serving.rows->lookup(cursor->symbol, kind, [&](const index::Relation& relation) {
-                    site = site_of(relation);
-                    return false;
+                    site = source.site(relation.range);
+                    return !site;
                 });
                 if(site) {
                     return {
@@ -1045,15 +1066,16 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const index::SymbolQuery& qu
         std::vector<Located> defined;
         llvm::DenseSet<index::SymbolHash> seen;
         serving.rows->for_each_relation([&](index::SymbolHash hash, const index::Relation& r) {
-            if(r.kind != RelationKind::Definition) {
+            if(r.kind != RelationKind::Definition || !bounds->contains(r.range.begin) ||
+               !seen.insert(hash).second) {
                 return true;
             }
-            auto position = serving.coords.to_position(r.range.begin);
-            if(!position || position->line != line || !seen.insert(hash).second) {
+            auto site = source.site(r.range);
+            if(!site) {
                 return true;
             }
             if(auto info = symbol_info(hash)) {
-                defined.push_back({.symbol = std::move(*info), .site = site_of(r)});
+                defined.push_back({.symbol = std::move(*info), .site = *site});
             }
             return true;
         });
@@ -1080,17 +1102,20 @@ std::vector<IndexQuery::Located> IndexQuery::definitions_in(Fid file) const {
     if(!serving) {
         return {};
     }
-    auto path = workspace.file_table.resolve(file);
+    RowSource source{.file = file,
+                     .path = workspace.file_table.resolve(file),
+                     .rows = serving.rows,
+                     .coords = serving.coords};
     std::vector<Located> result;
     for(auto& [hash, symbol]: workspace.project_index.symbols) {
         if(symbol.name.empty() || !symbol.reference_files.contains(file.raw)) {
             continue;
         }
         serving.rows->lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
-            result.push_back({
-                .symbol = SymbolRef::from(hash, symbol.identity()),
-                .site = {.file = file, .path = path, .range = r.range, .coords = serving.coords},
-            });
+            if(auto site = source.site(r.range)) {
+                result.push_back(
+                    {.symbol = SymbolRef::from(hash, symbol.identity()), .site = *site});
+            }
             return true;
         });
     }

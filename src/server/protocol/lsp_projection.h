@@ -3,6 +3,7 @@
 #include <optional>
 #include <vector>
 
+#include "index/site.h"
 #include "index/types.h"
 #include "semantic/symbol.h"
 #include "server/protocol/position.h"
@@ -19,14 +20,11 @@ namespace clice::to_lsp {
 
 namespace protocol = kota::ipc::protocol;
 
-/// A site's range in LSP positions; nullopt when its bytes fall outside
-/// the coordinates' text (a row the index recorded past its content).
-std::optional<protocol::Range> range(const Site& site);
+protocol::Range range(const index::Site& site);
 
-std::optional<protocol::Location> location(const Site& site);
+protocol::Location location(const index::Site& site);
 
-/// The locations of every mappable site, in order.
-std::vector<protocol::Location> locations(llvm::ArrayRef<Site> sites);
+std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites);
 
 /// The navigation surfaces' SymbolKind policy: the outline's exhaustive
 /// table, with the kinds these surfaces display differently overridden.
@@ -34,17 +32,17 @@ protocol::SymbolKind symbol_kind(SymbolKind kind);
 
 /// `container` is the qualified name of the symbol's parent, empty at the
 /// translation unit.
-std::optional<protocol::SymbolInformation> symbol_information(const index::SymbolRef& symbol,
-                                                              const Site& site,
-                                                              llvm::StringRef container);
+protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
+                                               const index::Site& site,
+                                               llvm::StringRef container);
 
 /// Hierarchy items carry their symbol handle in `data` as a decimal
 /// string: a raw 64-bit integer would be parsed into a double by a
 /// JavaScript client and come back rounded.
-std::optional<protocol::CallHierarchyItem> call_hierarchy_item(const index::SymbolRef& symbol,
-                                                               const Site& site);
-std::optional<protocol::TypeHierarchyItem> type_hierarchy_item(const index::SymbolRef& symbol,
-                                                               const Site& site);
+protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolRef& symbol,
+                                                const index::Site& site);
+protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolRef& symbol,
+                                                const index::Site& site);
 
 /// The symbol handle a prepared hierarchy item came back with, if intact.
 std::optional<index::SymbolHash> hierarchy_symbol(const std::optional<protocol::LSPAny>& data);

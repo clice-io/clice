@@ -125,15 +125,7 @@ kota::task<std::optional<Features::Stop>> Features::nav_gate(const Ticket& ticke
 
 std::optional<IndexQuery::Cursor> Features::cursor_at(Fid path_id,
                                                       const protocol::Position& position) const {
-    auto serving = query.serving_source(path_id);
-    if(!serving) {
-        return std::nullopt;
-    }
-    auto offset = serving.coords.to_offset(position);
-    if(!offset) {
-        return std::nullopt;
-    }
-    return query.symbol_at(path_id, *offset);
+    return query.symbol_at(path_id, position.line, position.character);
 }
 
 /// The language selectors of a file's own command — its first entry, or
@@ -855,11 +847,10 @@ Features::RawResult Features::implementation(std::shared_ptr<Session> session,
 /// the symbol's canonical site so expanding from a use renders the same
 /// root as expanding from the declaration.
 template <typename Item>
-static std::optional<Item> prepared_item(const IndexQuery& query,
-                                         const SymbolRef& symbol,
-                                         const Site& cursor,
-                                         std::optional<Item> (*project)(const SymbolRef&,
-                                                                        const Site&)) {
+static Item prepared_item(const IndexQuery& query,
+                          const SymbolRef& symbol,
+                          const Site& cursor,
+                          Item (*project)(const SymbolRef&, const Site&)) {
     auto site = query.canonical_site(symbol.hash);
     return project(symbol, site ? *site : cursor);
 }
@@ -882,10 +873,8 @@ Features::RawResult Features::call_hierarchy_prepare(std::shared_ptr<Session> se
          info->kind == SymbolKind::Operator))
         co_return serde_raw{"null"};
 
-    auto item = prepared_item(query, *info, cursor->site, &to_lsp::call_hierarchy_item);
-    if(!item)
-        co_return serde_raw{"null"};
-    std::vector<protocol::CallHierarchyItem> items{std::move(*item)};
+    std::vector<protocol::CallHierarchyItem> items{
+        prepared_item(query, *info, cursor->site, &to_lsp::call_hierarchy_item)};
     co_return to_raw(items);
 }
 
@@ -914,15 +903,12 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
         auto caller = query.resolve(group.symbol);
         if(!caller)
             continue;
-        auto from = to_lsp::call_hierarchy_item(caller->symbol, caller->site);
-        if(!from)
-            continue;
         std::vector<protocol::Range> ranges;
         for(auto& site: group.sites) {
-            if(auto range = to_lsp::range(site))
-                ranges.push_back(*range);
+            ranges.push_back(to_lsp::range(site));
         }
-        results.push_back({std::move(*from), std::move(ranges)});
+        results.push_back(
+            {to_lsp::call_hierarchy_item(caller->symbol, caller->site), std::move(ranges)});
     }
     co_return to_raw(results);
 }
@@ -938,15 +924,12 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
         auto callee = query.resolve(group.symbol);
         if(!callee)
             continue;
-        auto to = to_lsp::call_hierarchy_item(callee->symbol, callee->site);
-        if(!to)
-            continue;
         std::vector<protocol::Range> ranges;
         for(auto& site: group.sites) {
-            if(auto range = to_lsp::range(site))
-                ranges.push_back(*range);
+            ranges.push_back(to_lsp::range(site));
         }
-        results.push_back({std::move(*to), std::move(ranges)});
+        results.push_back(
+            {to_lsp::call_hierarchy_item(callee->symbol, callee->site), std::move(ranges)});
     }
     co_return to_raw(results);
 }
@@ -969,10 +952,8 @@ Features::RawResult Features::type_hierarchy_prepare(std::shared_ptr<Session> se
          info->kind == SymbolKind::Enum || info->kind == SymbolKind::Union))
         co_return serde_raw{"null"};
 
-    auto item = prepared_item(query, *info, cursor->site, &to_lsp::type_hierarchy_item);
-    if(!item)
-        co_return serde_raw{"null"};
-    std::vector<protocol::TypeHierarchyItem> items{std::move(*item)};
+    std::vector<protocol::TypeHierarchyItem> items{
+        prepared_item(query, *info, cursor->site, &to_lsp::type_hierarchy_item)};
     co_return to_raw(items);
 }
 
@@ -982,11 +963,9 @@ static std::vector<protocol::TypeHierarchyItem> type_items(const IndexQuery& que
                                                            RelationKind kind) {
     std::vector<protocol::TypeHierarchyItem> results;
     for(auto target: query.targets(symbol, kind)) {
-        auto located = query.resolve(target);
-        if(!located)
-            continue;
-        if(auto item = to_lsp::type_hierarchy_item(located->symbol, located->site))
-            results.push_back(std::move(*item));
+        if(auto located = query.resolve(target)) {
+            results.push_back(to_lsp::type_hierarchy_item(located->symbol, located->site));
+        }
     }
     return results;
 }
@@ -1019,12 +998,11 @@ Features::RawResult Features::workspace_symbol(llvm::StringRef text) {
     bool qualified = parsed->absolute || !parsed->scope.empty();
     for(auto& located: query.search(*parsed, 100)) {
         auto container = query.container_name(located.symbol.hash);
-        if(auto info = to_lsp::symbol_information(located.symbol, located.site, container)) {
-            if(qualified && !container.empty()) {
-                info->name = container + "::" + info->name;
-            }
-            results.push_back(std::move(*info));
+        auto info = to_lsp::symbol_information(located.symbol, located.site, container);
+        if(qualified && !container.empty()) {
+            info.name = container + "::" + info.name;
         }
+        results.push_back(std::move(info));
     }
     co_return to_raw(results);
 }

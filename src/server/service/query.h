@@ -7,10 +7,10 @@
 #include <vector>
 
 #include "feature/feature.h"
+#include "index/site.h"
 #include "index/symbol_query.h"
 #include "sched/workspace.h"
 #include "semantic/symbol.h"
-#include "server/protocol/position.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -25,6 +25,7 @@ struct RowSource;
 struct Session;
 struct SessionStore;
 
+using index::Site;
 using index::SymbolRef;
 
 /// Which of a file's index sources serves it right now — the freshness
@@ -42,7 +43,7 @@ struct ServingSource {
 
     By by = By::None;
     const index::Shard* rows = nullptr;
-    Coordinates coords;
+    index::Coordinates coords;
 
     explicit operator bool() const {
         return by != By::None;
@@ -144,6 +145,10 @@ public:
     };
 
     std::optional<Cursor> symbol_at(Fid file, std::uint32_t offset) const;
+
+    /// The same for a position as the editor spells it: a line and a
+    /// UTF-16 column in the serving source's text.
+    std::optional<Cursor> symbol_at(Fid file, std::uint32_t line, std::uint32_t utf16_column) const;
 
     /// A symbol's name and kind, from whichever table knows the hash: open
     /// sessions, the project index, PCH overlays, then the per-file shards

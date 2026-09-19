@@ -10,25 +10,22 @@
 
 namespace clice::to_lsp {
 
-std::optional<protocol::Range> range(const Site& site) {
-    return site.coords.to_range(site.range.begin, site.range.end);
+protocol::Range range(const index::Site& site) {
+    return {
+        .start = {.line = site.begin.line, .character = site.begin.utf16_column},
+        .end = {.line = site.end.line,   .character = site.end.utf16_column  },
+    };
 }
 
-std::optional<protocol::Location> location(const Site& site) {
-    auto mapped = range(site);
-    if(!mapped) {
-        return std::nullopt;
-    }
-    return protocol::Location{.uri = feature::to_uri(site.path), .range = *mapped};
+protocol::Location location(const index::Site& site) {
+    return {.uri = feature::to_uri(site.path), .range = range(site)};
 }
 
-std::vector<protocol::Location> locations(llvm::ArrayRef<Site> sites) {
+std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites) {
     std::vector<protocol::Location> result;
     result.reserve(sites.size());
     for(const auto& site: sites) {
-        if(auto mapped = location(site)) {
-            result.push_back(std::move(*mapped));
-        }
+        result.push_back(location(site));
     }
     return result;
 }
@@ -42,46 +39,38 @@ protocol::SymbolKind symbol_kind(SymbolKind kind) {
     }
 }
 
-std::optional<protocol::SymbolInformation> symbol_information(const index::SymbolRef& symbol,
-                                                              const Site& site,
-                                                              llvm::StringRef container) {
-    auto mapped = location(site);
-    if(!mapped) {
-        return std::nullopt;
-    }
+protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
+                                               const index::Site& site,
+                                               llvm::StringRef container) {
     protocol::SymbolInformation info;
     info.name = symbol.display_name();
     info.kind = symbol_kind(symbol.kind);
     if(!container.empty()) {
         info.container_name = container.str();
     }
-    info.location = std::move(*mapped);
+    info.location = location(site);
     return info;
 }
 
 template <typename Item>
-static std::optional<Item> hierarchy_item(const index::SymbolRef& symbol, const Site& site) {
-    auto mapped = location(site);
-    if(!mapped) {
-        return std::nullopt;
-    }
+static Item hierarchy_item(const index::SymbolRef& symbol, const index::Site& site) {
     Item item;
     item.name = symbol.display_name();
     item.kind = symbol_kind(symbol.kind);
-    item.uri = std::move(mapped->uri);
-    item.range = mapped->range;
-    item.selection_range = mapped->range;
+    item.uri = feature::to_uri(site.path);
+    item.range = range(site);
+    item.selection_range = item.range;
     item.data = protocol::LSPAny(std::format("{}", symbol.hash));
     return item;
 }
 
-std::optional<protocol::CallHierarchyItem> call_hierarchy_item(const index::SymbolRef& symbol,
-                                                               const Site& site) {
+protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolRef& symbol,
+                                                const index::Site& site) {
     return hierarchy_item<protocol::CallHierarchyItem>(symbol, site);
 }
 
-std::optional<protocol::TypeHierarchyItem> type_hierarchy_item(const index::SymbolRef& symbol,
-                                                               const Site& site) {
+protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolRef& symbol,
+                                                const index::Site& site) {
     return hierarchy_item<protocol::TypeHierarchyItem>(symbol, site);
 }
 
