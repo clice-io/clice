@@ -12,9 +12,19 @@ on:
         required: false
         default: "main"
         type: string
+      os_filter:
+        description: "Only run legs whose runner OS contains this string (e.g. windows); empty runs all"
+        required: false
+        default: ""
+        type: string
+      defender_off:
+        description: "Windows legs: disable Defender real-time monitoring before building (timing experiment)"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
-  group: build-llvm-${{ github.ref }}
+  group: build-llvm-${{ github.ref }}-${{ inputs.os_filter }}-${{ inputs.defender_off }}
   cancel-in-progress: true
 
 jobs:
@@ -85,7 +95,16 @@ jobs:
             pixi_env: cross-windows-arm64
 
     runs-on: ${{ matrix.os }}
+    if: ${{ inputs.os_filter == '' || contains(matrix.os, inputs.os_filter) }}
     steps:
+      - name: Disable Defender real-time monitoring
+        if: ${{ runner.os == 'Windows' && inputs.defender_off }}
+        shell: powershell
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
+          Get-MpPreference | Select-Object DisableRealtimeMonitoring, ExclusionPath | Format-List
+
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
