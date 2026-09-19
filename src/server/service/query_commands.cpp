@@ -3,6 +3,7 @@
 #include <format>
 
 #include "index/serialization.h"
+#include "support/filesystem.h"
 
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
@@ -66,20 +67,46 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, llvm::StringRef path) {
     return file;
 }
 
+/// Anchor a query's place in the workspace: its path becomes absolute the
+/// way the command's own path arguments do, and must be an indexed file.
+/// Nullopt when the file is not indexed, which the caller answers as not
+/// found with the path noted.
+Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
+    if(!query.position) {
+        return true;
+    }
+    auto& place = *query.position;
+    llvm::SmallString<256> absolute(
+        path::is_absolute(place.path)
+            ? place.path
+            : path::join(ctx.workspace.config.workspace_root, place.path));
+    path::remove_dots(absolute, /*remove_dot_dot=*/true);
+    place.path = absolute.str();
+    path::canonicalize(place.path);
+    auto file = indexed_file(ctx, place.path);
+    if(!file) {
+        return std::unexpected(file.error());
+    }
+    return file->has_value();
+}
+
 /// Resolve a locator to exactly one symbol: no candidate is an unknown
 /// symbol, several ask the caller to disambiguate by id. A locator naming
 /// a path the index has no rows for answers as unknown and notes the path.
 Outcome<IndexQuery::Located> resolve_unique(Context& ctx, const SymbolLocatorParams& params) {
-    SymbolLocator locator;
+    index::SymbolQuery query;
     if(params.symbol) {
-        auto hash = parse_symbol_id(*params.symbol);
-        if(!hash) {
+        auto parsed = index::SymbolQuery::parse(*params.symbol);
+        if(!parsed || !parsed->handle) {
             return std::unexpected(std::format("invalid symbol id: {}", *params.symbol));
         }
-        locator.symbol = *hash;
-    }
-    if(params.name) {
-        locator.name = *params.name;
+        query = std::move(*parsed);
+    } else if(params.name) {
+        auto parsed = index::SymbolQuery::parse(*params.name);
+        if(!parsed) {
+            return std::unexpected(parsed.error());
+        }
+        query = std::move(*parsed);
     }
     if(params.line && *params.line <= 0) {
         return std::unexpected("line must be positive");
@@ -92,19 +119,37 @@ Outcome<IndexQuery::Located> resolve_unique(Context& ctx, const SymbolLocatorPar
         if(!*file) {
             return std::unexpected("symbol not found");
         }
-        locator.path = *params.path;
+        if(params.name) {
+            query.paths.push_back(*params.path);
+        } else if(params.line && !params.symbol) {
+            query.position = {.path = *params.path, .line = *params.line};
+        }
     }
-    locator.line = params.line;
-    if(!locator.symbol && locator.name.empty() && !(locator.line && !locator.path.empty())) {
+    if(!params.symbol && !params.name && !query.position) {
         return std::unexpected("name a symbol with --name, --symbol, or --path and --line");
     }
-    auto candidates = ctx.query.locate(locator);
+    auto anchored = anchor_place(ctx, query);
+    if(!anchored) {
+        return std::unexpected(anchored.error());
+    }
+    if(!*anchored) {
+        return std::unexpected("symbol not found");
+    }
+    auto candidates = ctx.query.locate(query);
     if(candidates.empty()) {
         return std::unexpected("symbol not found");
     }
     if(candidates.size() > 1) {
-        return std::unexpected(std::format("ambiguous: {} candidates, use --symbol to disambiguate",
-                                           candidates.size()));
+        std::string listed;
+        for(auto& candidate: llvm::ArrayRef(candidates).take_front(5)) {
+            listed += std::format("{}{} ({})",
+                                  listed.empty() ? "" : ", ",
+                                  ctx.query.qualified_name(candidate.symbol.hash),
+                                  symbol_id(candidate.symbol.hash));
+        }
+        return std::unexpected(std::format("ambiguous: {} candidates, use --symbol to pick one: {}",
+                                           candidates.size(),
+                                           listed));
     }
     return std::move(candidates[0]);
 }
@@ -312,22 +357,47 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
                                           llvm::StringRef text,
                                           std::size_t limit,
                                           llvm::ArrayRef<std::string> kinds) {
-    constexpr auto names = kota::meta::reflection<SymbolKind::Kind>::member_names;
+    auto query = index::SymbolQuery::parse(text);
+    if(!query) {
+        return std::unexpected(query.error());
+    }
     for(auto& kind: kinds) {
-        if(!llvm::is_contained(names, kind)) {
+        auto parsed = index::SymbolQuery::parse_kind(kind);
+        if(!parsed) {
             return std::unexpected(std::format("unknown symbol kind '{}'", kind));
         }
+        query->kinds.push_back(*parsed);
     }
-    auto accept = [&](SymbolKind kind) {
-        return kinds.empty() || llvm::is_contained(kinds, kind_name(kind));
-    };
     SymbolSearchResult result;
-    for(auto& located: ctx.query.search(text, limit, accept)) {
-        auto entry = graph_entry<SymbolEntry>(located);
+    auto anchored = anchor_place(ctx, *query);
+    if(!anchored) {
+        return std::unexpected(anchored.error());
+    }
+    if(!*anchored) {
+        return result;
+    }
+    auto located = query->by_pattern() ? ctx.query.search(*query, limit) : ctx.query.locate(*query);
+    // A locator names its symbols outright; the filters still apply.
+    if(!query->by_pattern()) {
+        llvm::erase_if(located, [&](const IndexQuery::Located& hit) {
+            if(!query->kinds.empty() && !llvm::is_contained(query->kinds, hit.symbol.kind)) {
+                return true;
+            }
+            return !query->paths.empty() &&
+                   llvm::none_of(query->paths, [&](const std::string& wanted) {
+                       return index::path_matches(wanted, hit.site.path);
+                   });
+        });
+        if(located.size() > limit) {
+            located.resize(limit);
+        }
+    }
+    for(auto& hit: located) {
+        auto entry = graph_entry<SymbolEntry>(hit);
         if(!entry) {
             continue;
         }
-        if(auto container = ctx.query.container_name(located.symbol.hash); !container.empty()) {
+        if(auto container = ctx.query.container_name(hit.symbol.hash); !container.empty()) {
             entry->container = std::move(container);
         }
         result.symbols.push_back(std::move(*entry));

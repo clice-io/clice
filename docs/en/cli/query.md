@@ -8,13 +8,32 @@
 
 ## Questions
 
-- `symbolSearch --query <text> [--limit <n>] [--kind <Kind,...>]` lists the symbols whose name contains the text, best matches first, with their kind, file, line and id.
-- `definition`, `readSymbol`, `references [--include-declaration]`, `callGraph [--direction callers|callees|both]` and `typeHierarchy [--direction supertypes|subtypes|both]` answer about one symbol, named by `--name <name>` (optionally narrowed with `--path`), by `--symbol <id>` (the `#<hex>` id an earlier answer carried) or by `--path <file> --line <n>` (the symbol defined on that line). An ambiguous name lists the candidates' count and asks for an id.
+- `symbolSearch --query <query> [--limit <n>] [--kind <Kind,...>]` lists the symbols a name query matches, best first, with their kind, file, line, container and id.
+- `definition`, `readSymbol`, `references [--include-declaration]`, `callGraph [--direction callers|callees|both]` and `typeHierarchy [--direction supertypes|subtypes|both]` answer about one symbol, named by `--name <query>` (a name query, optionally narrowed with `--path`), by `--symbol <id>` (the `#<hex>` id an earlier answer carried) or by `--path <file> --line <n>` (the symbol defined on that line). A name several symbols spell lists them and asks for an id; a name none spells exactly lists the closest matches the same way.
 - `documentSymbols --path <file>` is the file's outline.
 - `compileCommand --path <file>` is the command the editor would compile the file with, and where it came from: the file's own database entry, a host source for a header, a rule's default command, a command inferred from a nearby unit, or the fallback.
 - `projectFiles [--filter all|source|header|module]` lists the build's files; `fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` and `impactAnalysis --path <file>` follow the include graph.
 
 Paths are workspace-relative or absolute in questions, absolute in answers; lines are 1-based.
+
+## Name queries
+
+A name query is one string. Spaces separate its terms; quotes and angle brackets keep theirs. One term names the symbol, the others narrow the answer.
+
+| Query                        | Finds                                                                                                                                                                                                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `foo`                        | names matching `foo` as a subsequence aligned to their words — `LinLis` finds `LinkedList`, `up` finds `unique_ptr` — the exact name first, then the names starting with the query, then the rest; six letters or more also find names one typo away, last |
+| `"foo"`                      | the whole name, case-sensitive                                                                                                                                                                                                                             |
+| `foo*`, `*_test`, `get?Name` | names the glob matches, case-sensitive once the pattern has an uppercase letter                                                                                                                                                                            |
+| `ns::Foo::bar`               | symbols inside a container whose chain lists `ns` and `Foo` in that order, other containers allowed around them                                                                                                                                            |
+| `::ns::Foo::bar`             | symbols inside exactly that container                                                                                                                                                                                                                      |
+| `ns::*`, `ns::**`            | the container's members; everything below it                                                                                                                                                                                                               |
+| `Widget<int>`                | the specialization spelling those arguments                                                                                                                                                                                                                |
+| `#1a2b3c`                    | the symbol with that id                                                                                                                                                                                                                                    |
+| `src/a.cpp:120`              | the symbols defined on that line                                                                                                                                                                                                                           |
+| `src/a.cpp:120:8`            | the symbol under that cursor, with a 1-based line and byte column                                                                                                                                                                                          |
+| `kind:function,method`       | only these kinds (`--kind` says the same)                                                                                                                                                                                                                  |
+| `path:src/index/`            | symbols declared under that directory; a bare file name matches by name, any other path by its tail                                                                                                                                                        |
 
 ## Answers
 

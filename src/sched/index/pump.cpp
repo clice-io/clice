@@ -505,7 +505,8 @@ kota::task<> IndexPump::run_background_indexing() {
              total - dispatched,
              total,
              timer.ms());
-    claim_report(co_await store.save(save_debt()));
+    claim_report(
+        co_await store.save(save_debt(), /*settle=*/index_queue_pos >= index_queue.size()));
 
     // The round owns the "active" gate through its save: releasing it
     // before the write await would let a next round's save overlap this
@@ -527,13 +528,13 @@ kota::task<> shutdown_indexing(TaskGraph& graph,
                                WorkerPool& pool,
                                Workspace& workspace) {
     co_await graph.shutdown();
-    auto report = co_await store.save(pump.save_debt());
+    auto report = co_await store.save(pump.save_debt(), /*settle=*/true);
     pump.claim_report(report);
     if(report.snapshot_stale) {
         // Debt surfaced after the snapshot serialized (write-time
         // corruption recovery): one metadata retry, or a dropped
         // standalone header's repair debt dies with this process.
-        pump.claim_report(co_await store.save(pump.save_debt()));
+        pump.claim_report(co_await store.save(pump.save_debt(), /*settle=*/true));
     }
     co_await pool.stop();
     if(workspace.store) {

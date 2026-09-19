@@ -3,11 +3,12 @@
 /// - status: supported
 /// - verify: server
 ///
-/// Workspace symbol search matches names by case-insensitive substring
+/// Workspace symbol search matches names regardless of case
 ///
-/// A query matches any symbol whose name contains it, ignoring case:
-/// functions, types, enumerators and macros all participate, and a query
-/// with no match returns an empty list rather than an error.
+/// A query matches a symbol's name as a subsequence aligned to its words,
+/// ignoring case: functions, types, enumerators and macros all
+/// participate, and a query with no match returns an empty list rather
+/// than an error.
 
 // query: widget
 // query: parse_config

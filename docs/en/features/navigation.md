@@ -1176,11 +1176,12 @@ Search the whole project for a symbol by name (`workspace/symbol`).
 
 **Basic workspace-wide symbol search**
 
-Workspace symbol search matches names by case-insensitive substring
+Workspace symbol search matches names regardless of case
 
-A query matches any symbol whose name contains it, ignoring case:
-functions, types, enumerators and macros all participate, and a query
-with no match returns an empty list rather than an error.
+A query matches a symbol's name as a subsequence aligned to its words,
+ignoring case: functions, types, enumerators and macros all
+participate, and a query with no match returns an empty list rather
+than an error.
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/01_basic_search.cpp
@@ -1220,15 +1221,17 @@ tests/snap/workspace_symbol/workspace_symbol/03_overload_params.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#914 -->
+<!-- BEGIN CAPABILITY: supported clangd#914 -->
 
 **Fuzzy matching**
 
-Workspace symbol search does not support word-boundary fuzzy matching yet
+A query matches a name as a subsequence aligned to its words
 
-Matching is a case-insensitive substring test: `LinLis` does not find
-`LinkedList`, and `pcfg` does not find `parse_config`. Word-boundary
-initials do not match for any symbol kind, including macros.
+`LinLis` finds `LinkedList` and `pconf` finds `parse_config`: after its
+first letter, every letter of the query either continues a run or starts
+a word of the name, so `pcfg` finds nothing — its `f` lands in the middle
+of `config`. The name spelled exactly ranks first, then the names
+starting with the query, then matches deeper inside a name.
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/04_fuzzy_matching.cpp
@@ -1236,13 +1239,17 @@ tests/snap/workspace_symbol/workspace_symbol/04_fuzzy_matching.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#550 -->
+<!-- BEGIN CAPABILITY: supported clangd#550 -->
 
-**Partially qualified name search**
+**Qualified name search**
 
-Symbols match by bare name only: `net::Socket` finds nothing even though
-`deep::net::Socket` exists, and neither does any other qualifier-prefixed
-form
+A qualified query names the containers the symbol must lie in
+
+`net::Socket` finds `deep::net::Socket`: the qualifiers must appear in the
+symbol's container chain in that order, with other containers allowed
+around them, while a leading `::` demands exactly that chain. Replies to
+a qualified query spell the qualified name, so editors that filter
+results against the query text keep them.
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/05_qualified_search.cpp
@@ -1250,11 +1257,11 @@ tests/snap/workspace_symbol/workspace_symbol/05_qualified_search.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#931 -->
+<!-- BEGIN CAPABILITY: supported clangd#931 -->
 
 **Scoped enumerator lookup**
 
-Qualified enumerator queries return no results yet
+An enum qualifies its enumerators like any other container
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/06_enum_scope.cpp
@@ -1262,13 +1269,13 @@ tests/snap/workspace_symbol/workspace_symbol/06_enum_scope.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2253 -->
+<!-- BEGIN CAPABILITY: supported clangd#2253 -->
 
 **Alias ranking**
 
-Matching aliases and underlying declarations have no ranking yet
+The name spelled exactly ranks above the names merely starting with it
 
-Results carry no ranking today.
+`Connection` lists the alias first and `ConnectionImpl` after it.
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/07_alias_priority.cpp
@@ -1284,6 +1291,22 @@ Mangled linker names do not resolve to their source functions yet
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/08_mangled_name.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Query syntax**
+
+Quotes, wildcards, scopes and filters narrow a search
+
+`"process"` matches the whole name only and `proc*` whatever it globs;
+`io::*` lists a namespace's members and `io::**` its whole subtree;
+`kind:function` keeps one kind. Terms combine, separated by spaces.
+
+```snap
+tests/snap/workspace_symbol/workspace_symbol/09_query_syntax.cpp
 ```
 
 <!-- END CAPABILITY -->

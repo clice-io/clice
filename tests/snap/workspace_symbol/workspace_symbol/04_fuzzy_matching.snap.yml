@@ -1,0 +1,11 @@
+---
+created_at: 2026-09-19
+input_file: workspace_symbol/04_fuzzy_matching.cpp
+---
+"LinLis":
+  - { name: "LinkedList", kind: Struct, file: "${WS}/workspace_symbol/04_fuzzy_matching.cpp", range: "18:7-18:17" }
+
+"pconf":
+  - { name: "parse_config", kind: Function, file: "${WS}/workspace_symbol/04_fuzzy_matching.cpp", range: "20:5-20:17" }
+
+"pcfg": none

@@ -39,6 +39,10 @@ enum class IndexBlobKind : std::uint8_t {
     /// artifact hosts), key "contexts" — sovereignty records, never
     /// garbage-collected by content.
     Contexts,
+    /// The single name search index (index/search_index.h) derived from
+    /// the global symbol table, key "search"; rebuilt from the table when
+    /// missing.
+    Search,
 };
 
 /// One blob read out of the database. `generation` says which lifetime

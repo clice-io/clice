@@ -136,9 +136,8 @@ TEST_CASE(PendingGateSplitsRows) {
     ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
 
     // Line-based resolution in the file works while its rows are current.
-    SymbolLocator by_line;
-    by_line.path = workspace.file_table.resolve(main_id);
-    by_line.line = 3;
+    index::SymbolQuery by_line;
+    by_line.position = {.path = workspace.file_table.resolve(main_id).str(), .line = 3};
     ASSERT_FALSE(disk_query.locate(by_line).empty());
 
     // The file's own content changed: its contribution is skipped until the

@@ -1,11 +1,12 @@
 /// # Alias ranking
 ///
-/// - status: unsupported
+/// - status: supported
 /// - issues: clangd#2253
+/// - verify: server
 ///
-/// Matching aliases and underlying declarations have no ranking yet
+/// The name spelled exactly ranks above the names merely starting with it
 ///
-/// Results carry no ranking today.
+/// `Connection` lists the alias first and `ConnectionImpl` after it.
 
 // query: Connection
 

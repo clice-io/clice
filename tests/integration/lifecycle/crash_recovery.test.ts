@@ -49,7 +49,7 @@ async function indexedFunctions(client: CliceClient): Promise<Set<string>> {
 // Recovery after a mid-round worker kill polls up to ~150s under ASan.
 test.skipIf(process.platform !== "linux")(
     "crash during indexing",
-    { timeout: 300_000 },
+    { timeout: 360_000 },
     async ({ session }) => {
         const workspace = session.tmpdir();
         // Enough moderately heavy TUs that the indexing round is still in flight
@@ -108,7 +108,8 @@ test.skipIf(process.platform !== "linux")(
         const expected = new Set(Array.from({ length: FILE_COUNT }, (_, i) => `func_${i}`));
         // Budgeted for the Debug/ASan CI runners: 20 single-worker ASan
         // compiles plus a crash respawn and one round boundary for the
-        // requeued file measure ~130s there (~60s locally).
+        // requeued file measure ~130s there (~60s locally), and a slow
+        // runner has needed most of 180s.
         let found = new Set<string>();
         await waitUntil(
             async () => {
@@ -116,7 +117,7 @@ test.skipIf(process.platform !== "linux")(
                 return [...expected].every((name) => found.has(name));
             },
             {
-                timeout: 180_000,
+                timeout: 240_000,
                 interval: 1_000,
                 description: "every translation unit to be reindexed after a worker crash",
             },

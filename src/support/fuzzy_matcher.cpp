@@ -1,352 +1,472 @@
-// To check for a match between a Pattern ('u_p') and a Word ('unique_ptr'),
-// we consider the possible partial match states:
-//
-//     u n i q u e _ p t r
-//   +---------------------
-//   |A . . . . . . . . . .
-//  u|
-//   |. . . . . . . . . . .
-//  _|
-//   |. . . . . . . O . . .
-//  p|
-//   |. . . . . . . . . . B
-//
-// Each dot represents some prefix of the pattern being matched against some
-// prefix of the word.
-//   - A is the initial state: '' matched against ''
-//   - O is an intermediate state: 'u_' matched against 'unique_'
-//   - B is the target state: 'u_p' matched against 'unique_ptr'
-//
-// We aim to find the best path from A->B.
-//  - Moving right (consuming a word character)
-//    Always legal: not all word characters must match.
-//  - Moving diagonally (consuming both a word and pattern character)
-//    Legal if the characters match.
-//  - Moving down (consuming a pattern character) is never legal.
-//    Never legal: all pattern characters must match something.
-// Characters are matched case-insensitively.
-// The first pattern character may only match the start of a word segment.
-//
-// The scoring is based on heuristics:
-//  - when matching a character, apply a bonus or penalty depending on the
-//    match quality (does case match, do word segments align, etc)
-//  - when skipping a character, apply a penalty if it hurts the match
-//    (it starts a word segment, or splits the matched region, etc)
-//
-// These heuristics require the ability to "look backward" one character, to
-// see whether it was matched or not. Therefore the dynamic-programming matrix
-// has an extra dimension (last character matched).
-// Each entry also has an additional flag indicating whether the last-but-one
-// character matched, which is needed to trace back through the scoring table
-// and reconstruct the match.
-//
-// We treat strings as byte-sequences, so only ASCII has first-class support.
-//
-// This algorithm was inspired by VS code's client-side filtering, and aims
-// to be mostly-compatible.
-//
-//===----------------------------------------------------------------------===//
-
 #include "support/fuzzy_matcher.h"
 
 #include <algorithm>
 #include <cassert>
+#include <utility>
 
 namespace clice {
 
-static char lower(char C) {
-    return C >= 'A' && C <= 'Z' ? C + ('a' - 'A') : C;
+namespace {
+
+/// Characters past these are ignored, bounding the cost of a match.
+constexpr std::size_t max_pattern = 63;
+constexpr std::size_t max_name = name_bound;
+
+enum class CharClass : std::uint8_t {
+    Separator,
+    Lower,
+    Upper,
+};
+
+CharClass classify(char c) {
+    auto byte = static_cast<unsigned char>(c);
+    if(byte >= 'A' && byte <= 'Z') {
+        return CharClass::Upper;
+    }
+    if((byte >= 'a' && byte <= 'z') || (byte >= '0' && byte <= '9') || byte >= 128) {
+        return CharClass::Lower;
+    }
+    return CharClass::Separator;
 }
 
-// A "negative infinity" score that won't overflow.
-// We use this to mark unreachable states and forbidden solutions.
-// Score field is 15 bits wide, min value is -2^14, we use half of that.
-constexpr static int AwfulScore = -(1 << 13);
-
-static bool is_awful(int S) {
-    return S < AwfulScore / 2;
+char lower(char c) {
+    return classify(c) == CharClass::Upper ? static_cast<char>(c + ('a' - 'A')) : c;
 }
 
-constexpr static int PerfectBonus = 4;  // Perfect per-pattern-char score.
+bool is_upper(char c) {
+    return classify(c) == CharClass::Upper;
+}
 
-FuzzyMatcher::FuzzyMatcher(llvm::StringRef pattern) :
-    pat_n(std::min<int>(MaxPat, pattern.size())),
-    score_scale(pat_n ? float{1} / (PerfectBonus * pat_n) : 0), word_n(0) {
-    std::copy(pattern.begin(), pattern.begin() + pat_n, Pat);
-    for(int I = 0; I < pat_n; ++I)
-        low_pat[I] = lower(Pat[I]);
-    scores[0][0][action_index(Action::Miss)] = {0, Action::Miss};
-    scores[0][0][action_index(Action::Match)] = {AwfulScore, Action::Miss};
+bool has_lowercase_letter(llvm::StringRef text) {
+    return llvm::any_of(text, [](char c) { return c >= 'a' && c <= 'z'; });
+}
 
-    for(int P = 0; P <= pat_n; ++P) {
-        for(int W = 0; W < P; ++W) {
-            for(Action action: {Action::Miss, Action::Match}) {
-                scores[P][W][action_index(action)] = {AwfulScore, Action::Miss};
+/// Whether a match may land on the character after a gap: a word head, a
+/// separator, or an uppercase letter of an initialism inside a
+/// mixed-case name. `has_lower` is whether the name has any lowercase
+/// letter: without one there is no initialism to speak of, and `b` inside
+/// `NDEBUG` is a plain start inside a word.
+bool is_anchor(char c, CharRole role, bool has_lower) {
+    return role != CharRole::Tail || (is_upper(c) && has_lower);
+}
+
+/// Match points. A pattern character earns up to `perfect` when it lands
+/// on a head or continues a run and its case agrees; the penalties keep
+/// a prefix at exactly `perfect` per character and everything else
+/// below, with a run resumed after a gap costing more than a skipped
+/// word so a contiguous match wins over a scattered one.
+constexpr int perfect = 4;
+constexpr int anchored_or_contiguous = 3;
+constexpr int case_agrees = 1;
+constexpr int gap = 2;
+constexpr int start_inside_word = 2;
+constexpr int skipped_head = 1;
+constexpr int skipped_first = 2;
+constexpr int typo = 3;
+
+/// Marks a state no path reaches; far below any reachable score, which
+/// is bounded by the name length.
+constexpr std::int16_t unreachable = -10000;
+
+NameToken unigram(char a) {
+    return static_cast<unsigned char>(a);
+}
+
+NameToken bigram(char a, char b) {
+    return (unigram(a) << 8) | unigram(b);
+}
+
+NameToken trigram(char a, char b, char c) {
+    return (bigram(a, b) << 8) | unigram(c);
+}
+
+void sort_unique(llvm::SmallVectorImpl<NameToken>& tokens) {
+    llvm::sort(tokens);
+    tokens.erase(llvm::unique(tokens), tokens.end());
+}
+
+/// The lowercase letters of a pattern in order, separators dropped —
+/// the sequence a query's tokens are formed from.
+llvm::SmallVector<char, 32> pattern_letters(llvm::StringRef pattern) {
+    llvm::SmallVector<char, 32> letters;
+    for(char c: pattern) {
+        if(classify(c) != CharClass::Separator) {
+            letters.push_back(lower(c));
+        }
+    }
+    return letters;
+}
+
+}  // namespace
+
+void segment(llvm::StringRef text, llvm::MutableArrayRef<CharRole> roles) {
+    assert(text.size() == roles.size());
+    auto prev = CharClass::Separator;
+    for(std::size_t i = 0; i < text.size(); i += 1) {
+        auto cur = classify(text[i]);
+        auto next = i + 1 < text.size() ? classify(text[i + 1]) : CharClass::Separator;
+        if(cur == CharClass::Separator) {
+            roles[i] = CharRole::Separator;
+        } else if(prev == CharClass::Separator) {
+            roles[i] = CharRole::Head;
+        } else if(cur == CharClass::Upper &&
+                  (prev == CharClass::Lower || next == CharClass::Lower)) {
+            roles[i] = CharRole::Head;
+        } else {
+            roles[i] = CharRole::Tail;
+        }
+        prev = cur;
+    }
+}
+
+FuzzyMatcher::FuzzyMatcher(llvm::StringRef pattern, MatchOptions options) :
+    options(options), whole_pattern(pattern.size() <= max_pattern) {
+    pattern = pattern.take_front(max_pattern);
+    pat.assign(pattern.begin(), pattern.end());
+    for(char c: pat) {
+        low_pat.push_back(lower(c));
+        pat_has_upper = pat_has_upper || is_upper(c);
+    }
+    cells.resize((pat.size() + 1) * (max_name + 1) * 6);
+}
+
+FuzzyMatcher::Cell& FuzzyMatcher::cell(std::size_t p, std::size_t n, Run run, bool typo) {
+    return cells[((p * (max_name + 1) + n) * 3 + static_cast<std::size_t>(run)) * 2 + typo];
+}
+
+bool FuzzyMatcher::prepare(llvm::StringRef text) {
+    whole_name = text.size() <= max_name;
+    text = text.take_front(max_name);
+    if(pat.size() > text.size() + (options.typo ? 1 : 0)) {
+        return false;
+    }
+    name.assign(text.begin(), text.end());
+    low_name.clear();
+    for(char c: name) {
+        low_name.push_back(lower(c));
+    }
+    // The letters must appear in order for a match to exist; with a
+    // typo allowed the full table has to judge.
+    if(!options.typo) {
+        std::size_t p = 0;
+        for(char c: low_name) {
+            if(p < low_pat.size() && low_pat[p] == c) {
+                p += 1;
+            }
+        }
+        if(p < low_pat.size()) {
+            return false;
+        }
+    }
+    role.resize(name.size());
+    segment(text, role);
+    bool has_lower = has_lowercase_letter(text);
+    anchor.clear();
+    for(std::size_t i = 0; i < name.size(); i += 1) {
+        anchor.push_back(is_anchor(name[i], role[i], has_lower));
+    }
+    return true;
+}
+
+void FuzzyMatcher::fill() {
+    constexpr Run runs[] = {Run::Gap, Run::Free, Run::Inside};
+    auto plen = pat.size();
+    auto nlen = name.size();
+    for(std::size_t p = 0; p <= plen; p += 1) {
+        for(std::size_t n = 0; n <= nlen; n += 1) {
+            for(auto run: runs) {
+                for(bool spent: {false, true}) {
+                    cell(p, n, run, spent) = {unreachable, Step::None, Run::Gap, false};
+                }
             }
         }
     }
+    cell(0, 0, Run::Gap, false).score = 0;
 
-    pat_type_set =
-        calculate_roles(llvm::StringRef(Pat, pat_n), llvm::MutableArrayRef(pat_role, pat_n));
+    auto relax = [](Cell& target, int score, Step step, Run prev_run, bool prev_typo) {
+        if(score > target.score) {
+            target = {static_cast<std::int16_t>(score), step, prev_run, prev_typo};
+        }
+    };
+    // A lowercase pattern carries no case of its own: landing on an
+    // uppercase head is as good as agreeing.
+    auto case_agreement = [&](std::size_t p, std::size_t n) {
+        return pat[p] == name[n] || (!pat_has_upper && is_upper(name[n]) && anchor[n]);
+    };
+    // The run state after consuming name character `n` in a match.
+    auto continued = [&](std::size_t p, std::size_t n, Run run) {
+        if(p == 0 && !anchor[n]) {
+            return Run::Inside;
+        }
+        if(run == Run::Inside && role[n] == CharRole::Tail) {
+            return Run::Inside;
+        }
+        return Run::Free;
+    };
+
+    // Every step leads to a state later in this order, so each state is
+    // final when its own steps are taken.
+    for(std::size_t n = 0; n <= nlen; n += 1) {
+        for(std::size_t p = 0; p <= plen; p += 1) {
+            for(auto run: runs) {
+                for(bool spent: {false, true}) {
+                    int score = cell(p, n, run, spent).score;
+                    if(score == unreachable) {
+                        continue;
+                    }
+                    // Skipping a name character: skipped heads cost, and
+                    // skipping the very first character costs extra so a
+                    // prefix beats a match further in. Once the pattern is
+                    // consumed the rest is free; a run begun inside a word
+                    // may not skip the rest of that word.
+                    if(n < nlen && !(run == Run::Inside && p < plen && role[n] == CharRole::Tail)) {
+                        int cost = 0;
+                        if(p < plen) {
+                            cost += role[n] == CharRole::Head ? skipped_head : 0;
+                            cost += n == 0 ? skipped_first : 0;
+                        }
+                        relax(cell(p, n + 1, Run::Gap, spent),
+                              score - cost,
+                              Step::Skip,
+                              run,
+                              spent);
+                    }
+                    if(p < plen && n < nlen && low_pat[p] == low_name[n]) {
+                        bool contiguous = run != Run::Gap;
+                        int points = 0;
+                        if(anchor[n] || contiguous) {
+                            points += anchored_or_contiguous;
+                        }
+                        if(case_agreement(p, n)) {
+                            points += case_agrees;
+                        }
+                        if(p == 0 && !anchor[n]) {
+                            points -= start_inside_word;
+                        }
+                        auto& target = cell(p + 1, n + 1, continued(p, n, run), spent);
+                        if((p == 0 && options.inside_word) || contiguous || anchor[n]) {
+                            if(!contiguous && p > 0) {
+                                points -= gap;
+                            }
+                            relax(target, score + points, Step::Match, run, spent);
+                        } else if(options.typo && !spent) {
+                            // Landing inside a word after a gap: the name
+                            // has characters the pattern does not.
+                            relax(cell(p + 1, n + 1, Run::Free, true),
+                                  score + points - typo,
+                                  Step::Match,
+                                  run,
+                                  false);
+                        }
+                    }
+                    if(options.typo && !spent && p < plen) {
+                        relax(cell(p + 1, n, run, true), score - typo, Step::Drop, run, false);
+                        if(n < nlen && low_pat[p] != low_name[n]) {
+                            relax(cell(p + 1, n + 1, continued(p, n, run), true),
+                                  score - typo,
+                                  Step::Replace,
+                                  run,
+                                  false);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
-std::optional<float> FuzzyMatcher::match(llvm::StringRef word) {
-    if(!(word_contains_pattern = init(word))) {
+/// The best complete match, a clean one whenever there is one: a match
+/// spending the typo allowance is judged only when no clean path exists.
+std::optional<std::pair<int, FuzzyMatcher::Cell*>> FuzzyMatcher::best() {
+    for(bool spent: {false, true}) {
+        std::optional<std::pair<int, Cell*>> result;
+        for(auto run: {Run::Gap, Run::Free, Run::Inside}) {
+            auto& end = cell(pat.size(), name.size(), run, spent);
+            if(end.score != unreachable && (!result || end.score > result->first)) {
+                result = {end.score, &end};
+            }
+        }
+        if(result) {
+            return result;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<float> FuzzyMatcher::match(llvm::StringRef text) {
+    if(!prepare(text)) {
         return std::nullopt;
     }
-
-    if(!pat_n) {
+    if(pat.empty()) {
         return 1;
     }
-
-    build_graph();
-    auto best = std::max(scores[pat_n][word_n][action_index(Action::Miss)].score,
-                         scores[pat_n][word_n][action_index(Action::Match)].score);
-    if(is_awful(best)) {
+    fill();
+    auto found = best();
+    if(!found) {
         return std::nullopt;
     }
-
-    float score = score_scale * std::min(PerfectBonus * pat_n, std::max<int>(0, best));
-
-    // If the pattern is as long as the word, we have an exact string match,
-    // since every pattern character must match something.
-    if(word_n == pat_n) {
-        // May not be perfect 2 if case differs in a significant way.
-        score *= 2;
+    auto [raw, end] = *found;
+    // Penalties can sink a match below zero; it stays a match, at the
+    // smallest positive score so quality still orders such results.
+    int ceiling = perfect * static_cast<int>(pat.size());
+    float score = static_cast<float>(std::clamp(raw, 1, ceiling)) / static_cast<float>(ceiling);
+    // The end cell's typo flag is the last dimension of its index.
+    bool spent = (end - cells.data()) % 2 == 1;
+    if(spent) {
+        return score / 2;
     }
-
+    // Only the whole pattern spelling the whole name is exact: a match
+    // within the truncation bounds is not.
+    if(whole_pattern && whole_name && pat.size() == name.size()) {
+        return score * 2;
+    }
     return score;
 }
 
-// We get CharTypes from a lookup table. Each is 2 bits, 4 fit in each byte.
-// The top 6 bits of the char select the byte, the bottom 2 select the offset.
-// e.g. 'q' = 011100 01 = byte 28 (55), bits 3-2 (01) -> Lower.
-constexpr static uint8_t CharTypes[] = {
-    0x00, 0x00, 0x00, 0x00,                          // Control characters
-    0x00, 0x00, 0x00, 0x00,                          // Control characters
-    0xff, 0xff, 0xff, 0xff,                          // Punctuation
-    0x55, 0x55, 0xf5, 0xff,                          // Numbers->Lower, more Punctuation.
-    0xab, 0xaa, 0xaa, 0xaa,                          // @ and A-O
-    0xaa, 0xaa, 0xea, 0xff,                          // P-Z, more Punctuation.
-    0x57, 0x55, 0x55, 0x55,                          // ` and a-o
-    0x55, 0x55, 0xd5, 0x3f,                          // p-z, Punctuation, DEL.
-    0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,  // Bytes over 127 -> Lower.
-    0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,  // (probably UTF-8).
-    0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,
-};
-
-// The Role can be determined from the Type of a character and its neighbors:
-//
-//   Example  | Chars | Type | Role
-//   ---------+--------------+-----
-//   F(o)oBar | Foo   | Ull  | Tail
-//   Foo(B)ar | oBa   | lUl  | Head
-//   (f)oo    | ^fo   | Ell  | Head
-//   H(T)TP   | HTT   | UUU  | Tail
-//
-// Our lookup table maps a 6 bit key (Prev, Curr, Next) to a 2-bit Role.
-// A byte packs 4 Roles. (Prev, Curr) selects a byte, Next selects the offset.
-// e.g. Lower, Upper, Lower -> 01 10 01 -> byte 6 (aa), bits 3-2 (10) -> Head.
-constexpr static uint8_t CharRoles[] = {
-    // clang-format off
-    //         Curr= Empty Lower Upper Separ
-    /* Prev=Empty */ 0x00, 0xaa, 0xaa, 0xff, // At start, Lower|Upper->Head
-    /* Prev=Lower */ 0x00, 0x55, 0xaa, 0xff, // In word, Upper->Head;Lower->Tail
-    /* Prev=Upper */ 0x00, 0x55, 0x59, 0xff, // Ditto, but U(U)U->Tail
-    /* Prev=Separ */ 0x00, 0xaa, 0xaa, 0xff, // After separator, like at start
-    // clang-format on
-};
-
-template <typename T>
-static T packed_lookup(const uint8_t* Data, int I) {
-    return static_cast<T>((Data[I >> 2] >> ((I & 3) * 2)) & 3);
+llvm::SmallVector<std::uint8_t, 32> FuzzyMatcher::matched_positions() {
+    llvm::SmallVector<std::uint8_t, 32> positions;
+    auto found = best();
+    if(!found) {
+        return positions;
+    }
+    std::size_t p = pat.size();
+    std::size_t n = name.size();
+    Cell* current = found->second;
+    while(current->step != Step::None) {
+        auto prev_run = current->prev_run;
+        bool prev_typo = current->prev_typo;
+        switch(current->step) {
+            case Step::Skip: n -= 1; break;
+            case Step::Match:
+                p -= 1;
+                n -= 1;
+                positions.push_back(static_cast<std::uint8_t>(n));
+                break;
+            case Step::Drop: p -= 1; break;
+            case Step::Replace:
+                p -= 1;
+                n -= 1;
+                break;
+            case Step::None: std::unreachable();
+        }
+        current = &cell(p, n, prev_run, prev_typo);
+    }
+    std::ranges::reverse(positions);
+    return positions;
 }
 
-CharTypeSet calculate_roles(llvm::StringRef text, llvm::MutableArrayRef<CharRole> roles) {
-    assert(text.size() == roles.size());
-    if(text.size() == 0) {
-        return 0;
+std::string FuzzyMatcher::annotate(llvm::StringRef text) {
+    if(!match(text)) {
+        return {};
     }
+    auto positions = matched_positions();
+    std::string result;
+    std::size_t next = 0;
+    bool open = false;
+    for(std::size_t i = 0; i < name.size(); i += 1) {
+        bool hit = next < positions.size() && positions[next] == i;
+        if(hit != open) {
+            result += hit ? '[' : ']';
+            open = hit;
+        }
+        if(hit) {
+            next += 1;
+        }
+        result += name[i];
+    }
+    if(open) {
+        result += ']';
+    }
+    return result;
+}
 
-    CharType type = packed_lookup<CharType>(CharTypes, text[0]);
-    CharTypeSet TypeSet = 1 << type;
-    // Types holds a sliding window of (Prev, Curr, Next) types.
-    // Initial value is (Empty, Empty, type of Text[0]).
-    int types = type;
-    // Rotate slides in the type of the next character.
-    auto rotate = [&](CharType T) {
-        types = ((types << 2) | T) & 0x3f;
+void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
+    out.clear();
+    name = name.take_front(max_name);
+    if(name.empty()) {
+        return;
+    }
+    llvm::SmallVector<CharRole, 64> roles(name.size());
+    segment(name, roles);
+    bool has_lower = has_lowercase_letter(name);
+
+    // The positions a match may jump to from anywhere before them.
+    llvm::SmallVector<std::uint32_t, 32> anchors;
+    for(std::size_t i = 0; i < name.size(); i += 1) {
+        if(roles[i] != CharRole::Separator && is_anchor(name[i], roles[i], has_lower)) {
+            anchors.push_back(static_cast<std::uint32_t>(i));
+        }
+    }
+    // Where the matcher may go from position `i`: on to the next
+    // character of the same word, or to any later anchor.
+    auto successors = [&](std::size_t i) {
+        llvm::SmallVector<std::uint32_t, 16> next;
+        if(i + 1 < name.size() && roles[i + 1] == CharRole::Tail) {
+            next.push_back(static_cast<std::uint32_t>(i + 1));
+        }
+        auto later = std::ranges::upper_bound(anchors, static_cast<std::uint32_t>(i));
+        for(auto it = later; it != anchors.end(); it += 1) {
+            if(next.empty() || next.front() != *it) {
+                next.push_back(*it);
+            }
+        }
+        return next;
     };
 
-    for(unsigned I = 0; I < text.size() - 1; ++I) {
-        // For each character, rotate in the next, and look up the role.
-        type = packed_lookup<CharType>(CharTypes, text[I + 1]);
-        TypeSet |= 1 << type;
-        rotate(type);
-        roles[I] = packed_lookup<CharRole>(CharRoles, types);
-    }
-
-    // For the last character, the "next character" is Empty.
-    rotate(Empty);
-    roles[text.size() - 1] = packed_lookup<CharRole>(CharRoles, types);
-    return TypeSet;
-}
-
-// Sets up the data structures matching Word.
-// Returns false if we can cheaply determine that no match is possible.
-bool FuzzyMatcher::init(llvm::StringRef new_word) {
-    word_n = std::min<int>(MaxWord, new_word.size());
-    if(pat_n > word_n) {
-        return false;
-    }
-
-    std::copy(new_word.begin(), new_word.begin() + word_n, word);
-    if(pat_n == 0) {
-        return true;
-    }
-
-    for(int I = 0; I < word_n; ++I) {
-        low_word[I] = lower(word[I]);
-    }
-
-    // Cheap subsequence check.
-    for(int W = 0, P = 0; P != pat_n; ++W) {
-        if(W == word_n) {
-            return false;
+    std::size_t heads_seen = 0;
+    for(std::size_t i = 0; i < name.size(); i += 1) {
+        if(roles[i] == CharRole::Separator) {
+            continue;
         }
-
-        if(low_word[W] == low_pat[P]) {
-            ++P;
+        auto first = successors(i);
+        bool short_head = roles[i] == CharRole::Head && heads_seen < 2;
+        if(short_head) {
+            heads_seen += 1;
+            out.push_back(unigram(lower(name[i])));
         }
-    }
-
-    // FIXME: some words are hard to tokenize algorithmically.
-    // e.g. vsprintf is V S Print F, and should match [pri] but not [int].
-    // We could add a tokenization dictionary for common stdlib names.
-    word_type_set =
-        calculate_roles(llvm::StringRef(word, word_n), llvm::MutableArrayRef(word_role, word_n));
-    return true;
-}
-
-// The forwards pass finds the mappings of Pattern onto Word.
-// Score = best score achieved matching Word[..W] against Pat[..P].
-// Unlike other tables, indices range from 0 to N *inclusive*
-// Matched = whether we chose to match Word[W] with Pat[P] or not.
-//
-// Points are mostly assigned to matched characters, with 1 being a good score
-// and 3 being a great one. So we treat the score range as [0, 3 * PatN].
-// This range is not strict: we can apply larger bonuses/penalties, or penalize
-// non-matched characters.
-void FuzzyMatcher::build_graph() {
-    for(int W = 0; W < word_n; ++W) {
-        scores[0][W + 1][action_index(Action::Miss)] = {
-            scores[0][W][action_index(Action::Miss)].score - skip_penalty(W, Action::Miss),
-            Action::Miss,
-        };
-        scores[0][W + 1][action_index(Action::Match)] = {AwfulScore, Action::Miss};
-    }
-
-    for(int P = 0; P < pat_n; ++P) {
-        for(int W = P; W < word_n; ++W) {
-            auto &score = scores[P + 1][W + 1], &PreMiss = scores[P + 1][W];
-
-            auto match_miss_score = PreMiss[action_index(Action::Match)].score;
-            auto miss_miss_score = PreMiss[action_index(Action::Miss)].score;
-            if(P < pat_n - 1) {  // Skipping trailing characters is always free.
-                match_miss_score -= skip_penalty(W, Action::Match);
-                miss_miss_score -= skip_penalty(W, Action::Miss);
+        for(auto j: first) {
+            if(short_head) {
+                out.push_back(bigram(lower(name[i]), lower(name[j])));
             }
-            score[action_index(Action::Miss)] = (match_miss_score > miss_miss_score)
-                                                    ? ScoreInfo{match_miss_score, Action::Match}
-                                                    : ScoreInfo{miss_miss_score, Action::Miss};
-
-            auto& pre_match = scores[P][W];
-            auto match_match_score = allow_match(P, W, Action::Match)
-                                         ? pre_match[action_index(Action::Match)].score +
-                                               match_bonus(P, W, Action::Match)
-                                         : AwfulScore;
-            auto miss_match_score =
-                allow_match(P, W, Action::Miss)
-                    ? pre_match[action_index(Action::Miss)].score + match_bonus(P, W, Action::Miss)
-                    : AwfulScore;
-            score[action_index(Action::Match)] = (match_match_score > miss_match_score)
-                                                     ? ScoreInfo{match_match_score, Action::Match}
-                                                     : ScoreInfo{miss_match_score, Action::Miss};
+            for(auto k: successors(j)) {
+                out.push_back(trigram(lower(name[i]), lower(name[j]), lower(name[k])));
+            }
         }
     }
+    sort_unique(out);
 }
 
-bool FuzzyMatcher::allow_match(int P, int W, Action last) const {
-    if(low_pat[P] != low_word[W]) {
-        return false;
-    }
-
-    // We require a "strong" match:
-    // - for the first pattern character.  [foo] !~ "barefoot"
-    // - after a gap.                      [pat] !~ "patnther"
-    if(last == Action::Miss) {
-        // We're banning matches outright, so conservatively accept some other cases
-        // where our segmentation might be wrong:
-        //  - allow matching B in ABCDef (but not in NDEBUG)
-        //  - we'd like to accept print in sprintf, but too many false positives
-        if(word_role[W] == Tail && (word[W] == low_word[W] || !(word_type_set & 1 << Lower))) {
-            return false;
+void query_tokens(llvm::StringRef pattern, llvm::SmallVectorImpl<NameToken>& out) {
+    out.clear();
+    auto letters = pattern_letters(pattern.take_front(max_pattern));
+    if(letters.size() >= 3) {
+        for(std::size_t i = 0; i + 2 < letters.size(); i += 1) {
+            out.push_back(trigram(letters[i], letters[i + 1], letters[i + 2]));
         }
+    } else if(letters.size() == 2) {
+        out.push_back(bigram(letters[0], letters[1]));
+    } else if(letters.size() == 1) {
+        out.push_back(unigram(letters[0]));
     }
-    return true;
+    sort_unique(out);
 }
 
-int FuzzyMatcher::skip_penalty(int W, Action Last) const {
-    // Skipping the first character.
-    if(W == 0) {
-        return 3;
+void typo_tokens(llvm::StringRef pattern, llvm::SmallVectorImpl<TypoAlternative>& out) {
+    out.clear();
+    auto letters = pattern_letters(pattern.take_front(max_pattern));
+    if(letters.size() < 6) {
+        return;
     }
-
-    // Skipping a segment. We want to keep this lower than a consecutive match bonus.
-    // Instead of penalizing non-consecutive matches, we give a bonus to a
-    // consecutive match in matchBonus. This produces a better score distribution
-    // than penalties in case of small patterns, e.g. 'up' for 'unique_ptr'.
-    if(word_role[W] == Head) {
-        return 1;
+    for(std::size_t wrong = 0; wrong < letters.size(); wrong += 1) {
+        TypoAlternative alternative;
+        for(std::size_t i = 0; i + 2 < letters.size(); i += 1) {
+            if(i + 2 < wrong || i > wrong) {
+                alternative.tokens.push_back(trigram(letters[i], letters[i + 1], letters[i + 2]));
+            }
+        }
+        sort_unique(alternative.tokens);
+        out.push_back(std::move(alternative));
     }
-
-    return 0;
-}
-
-int FuzzyMatcher::match_bonus(int P, int W, Action last) const {
-    assert(low_pat[P] == low_word[W]);
-    int S = 1;
-    bool is_pat_single_case = (pat_type_set == 1 << Lower) || (pat_type_set == 1 << Upper);
-    // Bonus: case matches, or a Head in the pattern aligns with one in the word.
-    // Single-case patterns lack segmentation signals and we assume any character
-    // can be a head of a segment.
-    if(Pat[P] == word[W] || (word_role[W] == Head && (is_pat_single_case || pat_role[P] == Head))) {
-        ++S;
-    }
-
-    // Bonus: a consecutive match. First character match also gets a bonus to
-    // ensure prefix final match score normalizes to 1.0.
-    if(W == 0 || last == Action::Match) {
-        S += 2;
-    }
-
-    // Penalty: matching inside a segment (and previous char wasn't matched).
-    if(word_role[W] == Tail && P && last == Action::Miss) {
-        S -= 3;
-    }
-
-    // Penalty: a Head in the pattern matches in the middle of a word segment.
-    if(pat_role[P] == Head && word_role[W] == Tail) {
-        --S;
-    }
-
-    // Penalty: matching the first pattern character in the middle of a segment.
-    if(P == 0 && word_role[W] == Tail) {
-        S -= 4;
-    }
-
-    assert(S <= PerfectBonus);
-    return S;
 }
 
 }  // namespace clice

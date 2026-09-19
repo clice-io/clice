@@ -8,13 +8,32 @@
 
 ## 支持的问题
 
-- `symbolSearch --query <text> [--limit <n>] [--kind <Kind,...>]` 列出名称中包含该文本的符号，匹配度最高的排在最前，并附上各符号的种类、文件、行号和 id。
-- `definition`、`readSymbol`、`references [--include-declaration]`、`callGraph [--direction callers|callees|both]` 和 `typeHierarchy [--direction supertypes|subtypes|both]` 回答关于单个符号的问题。符号由 `--name <name>`（可用 `--path` 进一步缩小范围）、`--symbol <id>`（此前的答案所带的 `#<hex>` id）或 `--path <file> --line <n>`（该行上定义的符号）指定。名称有歧义时，会列出候选的数量并要求改用 id。
+- `symbolSearch --query <query> [--limit <n>] [--kind <Kind,...>]` 列出名称查询匹配到的符号，最佳匹配排在最前，并附上各符号的种类、文件、行号、所属容器和 id。
+- `definition`、`readSymbol`、`references [--include-declaration]`、`callGraph [--direction callers|callees|both]` 和 `typeHierarchy [--direction supertypes|subtypes|both]` 回答关于单个符号的问题。符号由 `--name <query>`（一个名称查询，可用 `--path` 进一步缩小范围）、`--symbol <id>`（此前的答案所带的 `#<hex>` id）或 `--path <file> --line <n>`（该行上定义的符号）指定。多个符号叫同一个名字时，会把它们一一列出并要求改用 id；没有符号与该名称完全一致时，同样会列出最接近的匹配。
 - `documentSymbols --path <file>` 给出该文件的大纲。
 - `compileCommand --path <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、根据邻近翻译单元推断出的命令，或内置的回退命令。
 - `projectFiles [--filter all|source|header|module]` 列出构建涉及的文件；`fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` 和 `impactAnalysis --path <file>` 则沿包含关系图查询。
 
 问题中的路径可以相对于工作区，也可以是绝对路径，答案中的路径一律是绝对路径；行号从 1 开始。
+
+## 名称查询
+
+一条名称查询就是一个字符串。空格分隔其中的各个词项，引号和尖括号里的空格则原样保留。其中一项指明符号，其余各项用来收窄答案。
+
+| 查询                         | 匹配结果                                                                                                                                                                                                                                |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `foo`                        | 名称能按单词对齐、把 `foo` 作为子序列匹配上的符号——`LinLis` 找到 `LinkedList`，`up` 找到 `unique_ptr`——名称完全一致的排在最前，其次是以查询开头的名称，然后才是其余的；查询有六个及以上字母时，还会找到相差一处拼写错误的名称，排在最后 |
+| `"foo"`                      | 完整的名称，区分大小写                                                                                                                                                                                                                  |
+| `foo*`、`*_test`、`get?Name` | 该 glob 模式匹配上的名称；模式中一旦出现大写字母就区分大小写                                                                                                                                                                            |
+| `ns::Foo::bar`               | 位于某个容器内的符号，且该容器链按此顺序列出 `ns` 和 `Foo`，其间和两端允许有别的容器                                                                                                                                                    |
+| `::ns::Foo::bar`             | 恰好位于该容器内的符号                                                                                                                                                                                                                  |
+| `ns::*`、`ns::**`            | 该容器的成员；以及它之下的全部内容                                                                                                                                                                                                      |
+| `Widget<int>`                | 以这些实参写出的那个特化                                                                                                                                                                                                                |
+| `#1a2b3c`                    | 具有该 id 的符号                                                                                                                                                                                                                        |
+| `src/a.cpp:120`              | 在该行上定义的符号                                                                                                                                                                                                                      |
+| `src/a.cpp:120:8`            | 该光标处的符号，行号从 1 开始，列号按字节计                                                                                                                                                                                             |
+| `kind:function,method`       | 只保留这些种类（`--kind` 的作用相同）                                                                                                                                                                                                   |
+| `path:src/index/`            | 在该目录下声明的符号；只写文件名时按名称匹配，其他路径则按尾部匹配                                                                                                                                                                      |
 
 ## 答案
 

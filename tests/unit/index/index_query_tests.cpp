@@ -46,6 +46,14 @@ clice::IndexQuery query{
 Fid main_id;
 Fid header_id;
 
+std::vector<clice::IndexQuery::Located> search(llvm::StringRef text, std::size_t limit = 10) {
+    return query.search(*index::SymbolQuery::parse(text), limit);
+}
+
+std::vector<clice::IndexQuery::Located> locate(llvm::StringRef text) {
+    return query.locate(*index::SymbolQuery::parse(text));
+}
+
 /// Mirror of the indexer's merge over in-memory sources: project symbols,
 /// per-section shard blobs, and the TU manifest with its contributions —
 /// so live-variant masks and staleness gates behave as in production.
@@ -59,7 +67,9 @@ void merge_into_workspace() {
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         file_ids_map.push_back(workspace.file_table.intern(view.path(i)));
     }
-    ASSERT_TRUE(project.merge(view, file_ids_map));
+    llvm::SmallVector<index::SymbolHash> added;
+    ASSERT_TRUE(project.merge(view, file_ids_map, &added));
+    workspace.search_pending.insert(added.begin(), added.end());
     main_id = file_ids_map[view.path_count() - 1];
 
     // The consumed-content hash per TU-local path: the section's own
@@ -161,7 +171,7 @@ TEST_CASE(SearchSymbols) {
     ASSERT_TRUE(compile());
     merge_into_workspace();
 
-    auto results = query.search("Searchable", 10);
+    auto results = search("Searchable");
     ASSERT_FALSE(results.empty());
     ASSERT_EQ(results.front().symbol.name, "Searchable");
 }
@@ -196,22 +206,22 @@ TEST_CASE(QualifiedNames) {
     // Locating by a qualified name matches the parent chain, a bare one
     // the symbol's own name; both find the specialization by its
     // arguments.
-    auto by_qualified = query.locate({.name = "inner::Widget<int>"});
+    auto by_qualified = locate("inner::Widget<int>");
     ASSERT_EQ(by_qualified.size(), std::size_t(1));
     ASSERT_EQ(by_qualified.front().symbol.args, "<int>");
     ASSERT_EQ(query.qualified_name(by_qualified.front().symbol.hash), "outer::inner::Widget<int>");
-    auto by_bare = query.locate({.name = "Widget<int>"});
+    auto by_bare = locate("Widget<int>");
     ASSERT_EQ(by_bare.size(), std::size_t(1));
     ASSERT_EQ(by_bare.front().symbol.hash, by_qualified.front().symbol.hash);
-    ASSERT_TRUE(query.locate({.name = "v2::Widget"}).empty());
+    ASSERT_TRUE(locate("v2::Widget").empty());
 
     // Search matches the displayed name too, and a member of an inline
     // namespace reports the enclosing named one as its container.
-    auto searched = query.search("Widget<int>", 10);
+    auto searched = search("Widget<int>");
     ASSERT_EQ(searched.size(), std::size_t(1));
     ASSERT_EQ(searched.front().symbol.hash, by_qualified.front().symbol.hash);
     ASSERT_EQ(query.container_name(searched.front().symbol.hash), "outer::inner");
-    auto versioned = query.search("versioned", 10);
+    auto versioned = search("versioned");
     ASSERT_EQ(versioned.size(), std::size_t(1));
     ASSERT_EQ(query.container_name(versioned.front().symbol.hash), "outer");
     ASSERT_EQ(query.qualified_name(versioned.front().symbol.hash), "outer::versioned");
@@ -225,16 +235,47 @@ TEST_CASE(QualifiedNames) {
 
     // A scoped query keeps the results whose container lists the scope's
     // components in order; a leading `::` pins the container exactly.
-    ASSERT_EQ(query.search("inner::paint", 10).size(), std::size_t(2));
-    ASSERT_EQ(query.search("outer::inner::paint", 10).size(), std::size_t(2));
-    ASSERT_EQ(query.search("outer::paint", 10).size(), std::size_t(2));
-    ASSERT_TRUE(query.search("inner::outer::paint", 10).empty());
-    ASSERT_TRUE(query.search("::inner::paint", 10).empty());
-    ASSERT_EQ(query.search("::outer::versioned", 10).size(), std::size_t(1));
-    ASSERT_EQ(query.search("inner::", 10).size(), std::size_t(4));
-    ASSERT_TRUE(
-        query.search("paint", 10, [](SymbolKind kind) { return kind == SymbolKind::Struct; })
-            .empty());
+    ASSERT_EQ(search("inner::paint").size(), std::size_t(2));
+    ASSERT_EQ(search("outer::inner::paint").size(), std::size_t(2));
+    ASSERT_EQ(search("outer::paint").size(), std::size_t(2));
+    ASSERT_TRUE(search("inner::outer::paint").empty());
+    ASSERT_TRUE(search("::inner::paint").empty());
+    ASSERT_EQ(search("::outer::versioned").size(), std::size_t(1));
+    ASSERT_EQ(search("inner::*").size(), std::size_t(2));
+    ASSERT_EQ(search("inner::").size(), std::size_t(2));
+    ASSERT_EQ(search("inner::**").size(), std::size_t(4));
+    ASSERT_TRUE(search("paint kind:struct").empty());
+    ASSERT_EQ(search("pai").size(), std::size_t(2));
+    ASSERT_EQ(search(R"("paint")").size(), std::size_t(2));
+    ASSERT_EQ(search("Wid*").size(), std::size_t(2));
+}
+
+TEST_CASE(LocalsAndCursors) {
+    add_main("main.cpp", R"(
+        struct S { int operator()() { int hidden = 0; return hidden; } };
+        static void helper() {}
+        void use() { helper(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    // A callable's locals are no search target, whatever its kind.
+    ASSERT_TRUE(search("hidden").empty());
+    ASSERT_FALSE(search("use").empty());
+
+    // A cursor on the file's own static function resolves through the
+    // serving source, which the global table knows nothing about.
+    index::SymbolQuery at;
+    at.position = {.path = workspace.file_table.resolve(main_id).str(), .line = 3, .column = 21};
+    auto located = query.locate(at);
+    ASSERT_EQ(located.size(), std::size_t(1));
+    ASSERT_EQ(located.front().symbol.name, "helper");
+    ASSERT_TRUE(located.front().site.path.ends_with("main.cpp"));
+    // The line alone lists it too.
+    at.position->column.reset();
+    auto on_line = query.locate(at);
+    ASSERT_EQ(on_line.size(), std::size_t(1));
+    ASSERT_EQ(on_line.front().symbol.name, "helper");
 }
 
 TEST_CASE(LocalSymbolName) {
