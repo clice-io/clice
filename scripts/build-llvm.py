@@ -174,6 +174,17 @@ def llvm_version_of(source_root: Path) -> str:
     return ".".join(m.group(1) for m in parts if m)
 
 
+def compiler_info(build_dir: Path) -> dict[str, str]:
+    """The compiler CMake detected: it is not in the cache, only in its own file."""
+    values: dict[str, str] = {}
+    for path in build_dir.glob("CMakeFiles/*/CMakeCXXCompiler.cmake"):
+        for key in ("CMAKE_CXX_COMPILER_ID", "CMAKE_CXX_COMPILER_VERSION"):
+            match = re.search(rf'set\({key} "([^"]*)"\)', path.read_text())
+            if match:
+                values[key] = match.group(1)
+    return values
+
+
 def read_cmake_cache(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     if not path.exists():
@@ -230,6 +241,11 @@ class Build:
                 "-DCMAKE_C_COMPILER=clang-cl",
                 "-DCMAKE_CXX_COMPILER=clang-cl",
                 "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
+                # LLVM opts into CMP0141, under which CMake appends -Zi (full
+                # debug info) to every RelWithDebInfo/Debug target after the
+                # per-config flags, overriding -gline-tables-only. Empty means
+                # CMake adds no debug format flag at all.
+                "-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=",
                 "-DLLVM_USE_LINKER=lld-link",
             ]
         return [
@@ -396,10 +412,11 @@ class Build:
     def write_manifest(self, build_dir: Path) -> None:
         """Record the configuration a consumer must match, for cmake/llvm.cmake."""
         cache = read_cmake_cache(build_dir / "CMakeCache.txt")
+        compiler = compiler_info(build_dir)
         entries = {
             "LLVM_VERSION": llvm_version_of(self.root),
-            "COMPILER_ID": cache.get("CMAKE_CXX_COMPILER_ID", ""),
-            "COMPILER_VERSION": cache.get("CMAKE_CXX_COMPILER_VERSION", ""),
+            "COMPILER_ID": compiler.get("CMAKE_CXX_COMPILER_ID", ""),
+            "COMPILER_VERSION": compiler.get("CMAKE_CXX_COMPILER_VERSION", ""),
             "TARGET_TRIPLE": self.triple,
             "BUILD_TYPE": self.mode,
             "LTO": "ON" if self.lto else "OFF",
@@ -520,6 +537,7 @@ def main() -> None:
         build_dir = build.configure_llvm()
         if args.configure_only:
             print_build_plan(build_dir)
+            build.write_manifest(build_dir)
             return
         build.install_llvm(build_dir)
         build.write_manifest(build_dir)
