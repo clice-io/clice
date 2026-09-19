@@ -223,8 +223,9 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
        !monotone_ends(bitmap_ends, bitmaps.size())) {
         return std::unexpected("symbol arenas do not line up");
     }
-    // Hashes and parents become table keys downstream, which reserve two
-    // sentinel values; a repeated hash would let one row shadow another.
+    // Hashes, parents and pending rows become table keys downstream, which
+    // reserve two sentinel values; a repeated hash would let one row shadow
+    // another.
     for(std::size_t i = 0; i < count; i += 1) {
         if(reserved_key(hashes[i]) || (i > 0 && hashes[i] <= hashes[i - 1])) {
             return std::unexpected("symbol hashes are not ascending");
@@ -234,6 +235,11 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
         }
         if(files[i] != no_file && files[i] >= paths.size()) {
             return std::unexpected("symbol file outside the path table");
+        }
+    }
+    for(auto hash: search_pending) {
+        if(reserved_key(hash)) {
+            return std::unexpected("reserved pending search row");
         }
     }
     // The writer only emits interned paths, which are never empty; an

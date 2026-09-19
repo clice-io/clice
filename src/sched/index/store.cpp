@@ -1083,8 +1083,9 @@ kota::task<> IndexStore::rebuild_search_index() {
     ScopedTimer timer;
     index::SearchSnapshot snapshot;
     snapshot.entries.reserve(project.symbol_count());
-    // The generation this save's batch writes the global blob under.
-    snapshot.generation = project.global_generation + (global_dirty ? 1 : 0);
+    // A rebuild dirties the table (below): the save writes the global blob
+    // under its next generation, and the search blob is pinned to it.
+    snapshot.generation = project.global_generation + 1;
     llvm::DenseMap<std::uint32_t, std::uint32_t> path_index;
     project.for_each_symbol(
         [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, std::uint32_t references) {
@@ -1136,6 +1137,7 @@ kota::task<> IndexStore::rebuild_search_index() {
     // The table pins the blob it was saved with: a reader adopts the
     // persisted search index only under this generation.
     workspace.project_index.search_generation = snapshot.generation;
+    global_dirty = true;
     restore.release();
     merges_since_search_build -= merges_in_snapshot;
     for(auto hash: pending_in_snapshot) {

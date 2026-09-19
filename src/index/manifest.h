@@ -14,12 +14,6 @@
 
 namespace clice::index {
 
-/// What one TU's indexing produced, replaced wholesale by its next reindex:
-/// the include tree over file versions (the envelope's nodes with their
-/// path ids remapped, which doubles as the TU's dependency set for
-/// staleness) and the rows each file received, keyed by content-identity
-/// so a re-merge can tell "already stored" from "new variant" without
-/// touching any shard.
 /// An include edge of a document, from a TU manifest: the 1-based
 /// directive line and the resolved target's absolute path.
 struct IncludeEdge {
@@ -27,6 +21,12 @@ struct IncludeEdge {
     std::string target;
 };
 
+/// What one TU's indexing produced, replaced wholesale by its next reindex:
+/// the include tree over file versions (the envelope's nodes with their
+/// path ids remapped, which doubles as the TU's dependency set for
+/// staleness) and the rows each file received, keyed by content-identity
+/// so a re-merge can tell "already stored" from "new variant" without
+/// touching any shard.
 struct TUManifest {
     /// ProjectIndex::global_generation stamped by the save that persisted
     /// this manifest. The global blob pins the stamp it expects per TU and

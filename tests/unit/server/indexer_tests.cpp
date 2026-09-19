@@ -65,8 +65,8 @@ struct IndexerFixture {
 
     /// Persist with the pump's debt snapshot and claim the report back, as
     /// the round tail does.
-    kota::task<> async_save() {
-        pump.claim_report(co_await index_store.save(pump.save_debt()));
+    kota::task<> async_save(bool settle = false) {
+        pump.claim_report(co_await index_store.save(pump.save_debt(), settle));
     }
 
     /// Load and claim the report, as the workspace load does. Returns the
@@ -158,8 +158,8 @@ struct IndexerFixture {
     }
 
     /// Run one save() to completion on the fixture's loop.
-    void save() {
-        auto task = async_save();
+    void save(bool settle = false) {
+        auto task = async_save(settle);
         loop.schedule(task);
         loop.run();
     }
@@ -1331,6 +1331,31 @@ TEST_CASE(LoadRestoresIndex) {
     // The persisted FileVersion stamps make the untouched TU judge fresh
     // without any reindex.
     ASSERT_FALSE(f.need_update(src));
+}
+
+TEST_CASE(SettledRebuildPinsSearch) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int use() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.merge(indexed.data.data(), indexed.data.size());
+        // The plain save persists the table; the settled one then rebuilds
+        // the search index with no other change to write.
+        f.save();
+        ASSERT_FALSE(f.global_dirty());
+        f.save(/*settle=*/true);
+        ASSERT_TRUE(f.workspace.project_index.search_index.loaded());
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.load();
+    ASSERT_TRUE(f.workspace.project_index.search_index.loaded());
 }
 
 TEST_CASE(LoadHealsBrokenShard) {
