@@ -152,7 +152,7 @@ struct RowColumns {
     /// every slice proven to decode, so this cannot fail.
     Bitmap bitmap_of(std::uint32_t row) const {
         auto begin = roaring_offsets[row];
-        return *read_bitmap(roaring.data() + begin, roaring_offsets[row + 1] - begin);
+        return *view_bitmap(roaring.data() + begin, roaring_offsets[row + 1] - begin);
     }
 };
 
@@ -744,7 +744,7 @@ Verdict masks_ok(BlobView root) {
                 // and the blob rebuilds instead.
                 for(std::uint32_t row = 0; row < count; row += 1) {
                     auto begin = columns.roaring_offsets[row];
-                    auto mask = read_bitmap(columns.roaring.data() + begin,
+                    auto mask = view_bitmap(columns.roaring.data() + begin,
                                             columns.roaring_offsets[row + 1] - begin);
                     if(!mask || mask->isEmpty() || mask->maximum() >= variant_count) {
                         return std::unexpected(

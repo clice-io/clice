@@ -153,6 +153,25 @@ TEST_CASE(Loads) {
     EXPECT_FALSE(built.search(*SymbolQuery::parse("foo"), 2).exhausted);
 }
 
+TEST_CASE(DamagedPosting) {
+    auto corpus = sample();
+    auto bytes = index::build_search_blob(corpus.snapshot);
+    // Every bitmap image opens with the portable cookie of a bitmap
+    // without run containers; breaking each one leaves the blob's
+    // structure intact and every posting list undecodable.
+    const std::string cookie("\x3a\x30\x00\x00", 4);
+    for(auto at = bytes.find(cookie); at != std::string::npos; at = bytes.find(cookie, at + 4)) {
+        bytes.replace(at, 4, "\xff\xff\xff\xff");
+    }
+    SearchIndex built;
+    ASSERT_TRUE(built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
+    EXPECT_FALSE(built.damaged());
+    // The exact matches come from the name order, the fuzzy ones from
+    // the posting lists.
+    EXPECT_EQ(names(corpus, built, "foo"), (Names{"foo", "Foo"}));
+    EXPECT_TRUE(built.damaged());
+}
+
 TEST_CASE(FuzzyRanking) {
     auto corpus = sample();
     auto built = corpus.build();

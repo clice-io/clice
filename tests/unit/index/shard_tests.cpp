@@ -1163,6 +1163,16 @@ TEST_CASE(CorruptRoaringMaskRejected) {
     blob.occs.roaring = {0xff, 0xff, 0xff};
     blob.occs.roaring_offsets = {0, 3};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    // The payload offset in the image's header, which the in-place view
+    // follows, pointing past the slice.
+    blob.occs.roaring.clear();
+    for(auto byte: index::write_bitmap(mask)) {
+        blob.occs.roaring.push_back(static_cast<std::uint8_t>(byte));
+    }
+    blob.occs.roaring[12] = 0xff;
+    blob.occs.roaring_offsets = {0, static_cast<std::uint32_t>(blob.occs.roaring.size())};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
 TEST_CASE(RebindSwapsIdenticalBytes) {

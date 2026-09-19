@@ -48,6 +48,14 @@ inline std::optional<Bitmap> read_bitmap(const void* data, std::size_t size) {
     return Bitmap(decoded);
 }
 
+/// A bitmap over a portable image in place: the container payloads stay
+/// in `data`, which must outlive the bitmap, and the bitmap is read-only
+/// (croaring aborts on a write to a frozen one). Validated like
+/// read_bitmap, plus the container offsets the image's header carries:
+/// the in-place reader follows them instead of walking the payload, so a
+/// corrupt one would send it outside the image.
+std::optional<Bitmap> view_bitmap(const void* data, std::size_t size);
+
 /// Encode a bitmap as its portable image — the only format with a bounded
 /// deserializer.
 inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
