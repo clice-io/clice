@@ -48,6 +48,10 @@ CONDA_MARKERS = ("conda", ".pixi", "/envs/")
 # macOS system library location prefixes. Anything outside these (notably
 # @rpath / @loader_path / absolute conda paths) is a violation.
 MACOS_SYSTEM_PREFIXES = ("/usr/lib/", "/System/Library/")
+# clice links the LLVM package's libc++ statically; a dependency on the SDK's
+# libc++ means the link fell back to it (the macOS twin of libstdc++.so.6 on
+# Linux), so it is rejected even though /usr/lib/ is a system prefix.
+MACOS_FORBIDDEN_DYLIBS = ("libc++.", "libc++abi.")
 
 
 def run_tool(args: list[str]) -> str:
@@ -141,6 +145,8 @@ def check_macho(binary: Path) -> list[str]:
         parsed += 1
         if not dylib.startswith(MACOS_SYSTEM_PREFIXES):
             violations.append(f"non-system dylib dependency: {dylib}")
+        elif Path(dylib).name.startswith(MACOS_FORBIDDEN_DYLIBS):
+            violations.append(f"C++ runtime dylib dependency: {dylib}")
 
     violations.extend(assert_parsed(parsed, "llvm-otool -L", "dylib dependencies"))
 
