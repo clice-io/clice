@@ -310,10 +310,10 @@ int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
     // overlay; each caller must report it exactly once.
     merge_disk_index();
 
-    auto groups = index_query.grouped(hash_of("callee"), RelationKind::Caller);
-    ASSERT_EQ(groups.size(), 2);
-    for(auto& group: groups) {
-        EXPECT_EQ(group.sites.size(), 1);
+    auto callers = index_query.call_graph(hash_of("callee"), {.callees = false}).callers;
+    ASSERT_EQ(callers.size(), 2);
+    for(auto& edge: callers) {
+        EXPECT_EQ(edge.sites.size(), 1);
     }
 }
 
@@ -332,16 +332,14 @@ Derived instance;
     open_with_overlay();
 
     auto derived = hash_of("Derived");
-    auto supertypes = index_query.targets(derived, RelationKind::Base);
+    auto supertypes = index_query.type_hierarchy(derived, {.subtypes = false}).supertypes;
     ASSERT_EQ(supertypes.size(), 1);
-    auto base = index_query.symbol_info(supertypes[0]);
-    ASSERT_TRUE(base.has_value());
-    EXPECT_EQ(base->name, "Base");
+    EXPECT_EQ(supertypes[0].symbol.name, "Base");
 
     // Once derived.h is open, its session owns the type relations spelled
     // there; the overlay's disk-snapshot rows must stop contributing.
     session_store.open(workspace.file_table.intern(header_path("derived.h")));
-    supertypes = index_query.targets(derived, RelationKind::Base);
+    supertypes = index_query.type_hierarchy(derived, {.subtypes = false}).supertypes;
     EXPECT_EQ(supertypes.size(), 0);
 }
 

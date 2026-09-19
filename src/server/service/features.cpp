@@ -901,16 +901,9 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
         co_return kota::outcome_error(item_not_resolved("call hierarchy"));
 
     std::vector<protocol::CallHierarchyIncomingCall> results;
-    for(auto& group: query.grouped(*symbol, RelationKind::Caller)) {
-        auto caller = query.resolve(group.symbol);
-        if(!caller)
-            continue;
-        std::vector<protocol::Range> ranges;
-        for(auto& site: group.sites) {
-            ranges.push_back(to_lsp::range(site));
-        }
-        results.push_back(
-            {to_lsp::call_hierarchy_item(caller->symbol, caller->site), std::move(ranges)});
+    for(auto& edge: query.call_graph(*symbol, {.callees = false}).callers) {
+        results.push_back({to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site),
+                           to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
 }
@@ -922,16 +915,9 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
         co_return kota::outcome_error(item_not_resolved("call hierarchy"));
 
     std::vector<protocol::CallHierarchyOutgoingCall> results;
-    for(auto& group: query.grouped(*symbol, RelationKind::Callee)) {
-        auto callee = query.resolve(group.symbol);
-        if(!callee)
-            continue;
-        std::vector<protocol::Range> ranges;
-        for(auto& site: group.sites) {
-            ranges.push_back(to_lsp::range(site));
-        }
-        results.push_back(
-            {to_lsp::call_hierarchy_item(callee->symbol, callee->site), std::move(ranges)});
+    for(auto& edge: query.call_graph(*symbol, {.callers = false}).callees) {
+        results.push_back({to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site),
+                           to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
 }
@@ -959,15 +945,11 @@ Features::RawResult Features::type_hierarchy_prepare(std::shared_ptr<Session> se
     co_return to_raw(items);
 }
 
-/// The items of every resolvable relation target of `symbol`.
-static std::vector<protocol::TypeHierarchyItem> type_items(const index::IndexQuery& query,
-                                                           index::SymbolHash symbol,
-                                                           RelationKind kind) {
+static std::vector<protocol::TypeHierarchyItem>
+    type_items(llvm::ArrayRef<index::IndexQuery::Located> types) {
     std::vector<protocol::TypeHierarchyItem> results;
-    for(auto target: query.targets(symbol, kind)) {
-        if(auto located = query.resolve(target)) {
-            results.push_back(to_lsp::type_hierarchy_item(located->symbol, located->site));
-        }
+    for(auto& located: types) {
+        results.push_back(to_lsp::type_hierarchy_item(located.symbol, located.site));
     }
     return results;
 }
@@ -977,7 +959,7 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
     auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("type hierarchy"));
-    co_return to_raw(type_items(query, *symbol, RelationKind::Base));
+    co_return to_raw(type_items(query.type_hierarchy(*symbol, {.subtypes = false}).supertypes));
 }
 
 Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
@@ -985,7 +967,7 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
     auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("type hierarchy"));
-    co_return to_raw(type_items(query, *symbol, RelationKind::Derived));
+    co_return to_raw(type_items(query.type_hierarchy(*symbol, {.supertypes = false}).subtypes));
 }
 
 Features::RawResult Features::workspace_symbol(llvm::StringRef text) {

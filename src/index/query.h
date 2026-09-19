@@ -238,19 +238,6 @@ public:
     /// nothing defines it (pure virtuals, externs, decl-only APIs).
     std::optional<Site> canonical_site(SymbolHash hash) const;
 
-    /// Relations of `kind` grouped by their target symbol, each with the
-    /// sites spelling it: the shape behind call hierarchies.
-    struct Group {
-        SymbolHash symbol = 0;
-        std::vector<Site> sites;
-    };
-
-    std::vector<Group> grouped(SymbolHash hash, RelationKind kind) const;
-
-    /// The distinct target symbols of the symbol's relations of `kind`
-    /// (bases, derived types, overrides), in first-seen order.
-    llvm::SmallVector<SymbolHash> targets(SymbolHash hash, RelationKind kind) const;
-
     /// Go-to-definition from a cursor: the definition sites, or — standing
     /// on the definition itself, or when nothing defines the symbol — the
     /// declarations (and sibling definitions), so definition and
@@ -301,6 +288,42 @@ public:
     };
 
     std::optional<Located> resolve(SymbolHash hash) const;
+
+    /// One neighbour of a symbol in a graph: the symbol at its canonical
+    /// site and the sites of the relation rows that connect them.
+    struct Edge {
+        Located symbol;
+        std::vector<Site> sites;
+    };
+
+    /// The functions calling `root` and the ones it calls, with the call
+    /// sites; only the sides asked for are walked. A neighbour no source
+    /// places is left out.
+    struct CallGraphOptions {
+        bool callers = true;
+        bool callees = true;
+    };
+
+    struct CallGraph {
+        std::vector<Edge> callers;
+        std::vector<Edge> callees;
+    };
+
+    CallGraph call_graph(SymbolHash root, CallGraphOptions options) const;
+
+    /// The types `root` derives from and the ones deriving from it, each
+    /// at its canonical site; only the sides asked for are walked.
+    struct TypeHierarchyOptions {
+        bool supertypes = true;
+        bool subtypes = true;
+    };
+
+    struct TypeHierarchy {
+        std::vector<Located> supertypes;
+        std::vector<Located> subtypes;
+    };
+
+    TypeHierarchy type_hierarchy(SymbolHash root, TypeHierarchyOptions options) const;
 
     /// The symbols a name query (index/symbol_query.h) matches, best
     /// first, at most `limit`: the search index's hits, the symbols merged
@@ -358,6 +381,17 @@ private:
     };
 
     RankedHits ranked_search(const SymbolQuery& query, std::size_t limit) const;
+
+    /// Relations of `kind` grouped by their target symbol, each with the
+    /// sites spelling it, the targets resolved to their canonical sites.
+    std::vector<Edge> edges(SymbolHash hash, RelationKind kind) const;
+
+    /// The distinct target symbols of the symbol's relations of `kind`
+    /// (bases, derived types, overrides), in first-seen order.
+    llvm::SmallVector<SymbolHash> targets(SymbolHash hash, RelationKind kind) const;
+
+    /// One canonical site per distinct relation target.
+    std::vector<Located> located_targets(SymbolHash hash, RelationKind kind) const;
 
     /// The one federation walk every relation query is a fold over. The
     /// visitor returns false to stop.

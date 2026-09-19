@@ -30,6 +30,15 @@ std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites) {
     return result;
 }
 
+std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites) {
+    std::vector<protocol::Range> result;
+    result.reserve(sites.size());
+    for(const auto& site: sites) {
+        result.push_back(range(site));
+    }
+    return result;
+}
+
 protocol::SymbolKind symbol_kind(SymbolKind kind) {
     switch(kind) {
         case SymbolKind::Type: return protocol::SymbolKind::TypeParameter;

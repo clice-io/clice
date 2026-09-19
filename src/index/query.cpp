@@ -482,7 +482,7 @@ std::optional<Site> IndexQuery::canonical_site(SymbolHash hash) const {
     return first_site(hash, RelationKind::Declaration);
 }
 
-std::vector<IndexQuery::Group> IndexQuery::grouped(SymbolHash hash, RelationKind kind) const {
+std::vector<IndexQuery::Edge> IndexQuery::edges(SymbolHash hash, RelationKind kind) const {
     // The main-file preamble entry cannot contribute: the preamble region
     // holds only preprocessor directives, never call or type relations.
     llvm::DenseMap<SymbolHash, std::vector<Site>> by_target;
@@ -496,15 +496,53 @@ std::vector<IndexQuery::Group> IndexQuery::grouped(SymbolHash hash, RelationKind
                           }
                           return true;
                       });
-    std::vector<Group> groups;
-    groups.reserve(by_target.size());
+    std::vector<Edge> result;
+    result.reserve(by_target.size());
     for(auto& [target, sites]: by_target) {
+        auto located = resolve(target);
+        if(!located) {
+            continue;
+        }
         // A row present in both a shard and an overlay lands twice;
         // hierarchy items must not repeat call sites.
         dedup_sites(sites);
-        groups.push_back({.symbol = target, .sites = std::move(sites)});
+        result.push_back({.symbol = std::move(*located), .sites = std::move(sites)});
     }
-    return groups;
+    return result;
+}
+
+std::vector<IndexQuery::Located> IndexQuery::located_targets(SymbolHash hash,
+                                                             RelationKind kind) const {
+    std::vector<Located> result;
+    for(auto target: targets(hash, kind)) {
+        if(auto located = resolve(target)) {
+            result.push_back(std::move(*located));
+        }
+    }
+    return result;
+}
+
+IndexQuery::CallGraph IndexQuery::call_graph(SymbolHash root, CallGraphOptions options) const {
+    CallGraph graph;
+    if(options.callers) {
+        graph.callers = edges(root, RelationKind::Caller);
+    }
+    if(options.callees) {
+        graph.callees = edges(root, RelationKind::Callee);
+    }
+    return graph;
+}
+
+IndexQuery::TypeHierarchy IndexQuery::type_hierarchy(SymbolHash root,
+                                                     TypeHierarchyOptions options) const {
+    TypeHierarchy hierarchy;
+    if(options.supertypes) {
+        hierarchy.supertypes = located_targets(root, RelationKind::Base);
+    }
+    if(options.subtypes) {
+        hierarchy.subtypes = located_targets(root, RelationKind::Derived);
+    }
+    return hierarchy;
 }
 
 llvm::SmallVector<SymbolHash> IndexQuery::targets(SymbolHash hash, RelationKind kind) const {
@@ -583,10 +621,8 @@ std::vector<Site> IndexQuery::references(const Cursor& cursor, bool include_decl
 
 std::vector<Site> IndexQuery::target_sites(SymbolHash hash, RelationKind kind) const {
     std::vector<Site> result;
-    for(auto target: targets(hash, kind)) {
-        if(auto site = canonical_site(target)) {
-            result.push_back(*site);
-        }
+    for(auto& located: located_targets(hash, kind)) {
+        result.push_back(located.site);
     }
     return result;
 }

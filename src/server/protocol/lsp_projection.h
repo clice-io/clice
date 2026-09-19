@@ -26,6 +26,8 @@ protocol::Location location(const index::Site& site);
 
 std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites);
 
+std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites);
+
 /// The navigation surfaces' SymbolKind policy: the outline's exhaustive
 /// table, with the kinds these surfaces display differently overridden.
 protocol::SymbolKind symbol_kind(SymbolKind kind);

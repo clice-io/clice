@@ -189,17 +189,22 @@ Entry graph_entry(const index::IndexQuery::Located& located) {
     };
 }
 
-/// The relation targets of `root` of `kind` as graph entries, each
-/// resolved to its canonical site.
-void collect_targets(Context& ctx,
-                     index::SymbolHash root,
-                     RelationKind kind,
-                     std::vector<GraphEntry>& into) {
-    for(auto target: ctx.query.targets(root, kind)) {
-        if(auto located = ctx.query.resolve(target)) {
-            into.push_back(graph_entry<GraphEntry>(*located));
-        }
+std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Located> symbols) {
+    std::vector<GraphEntry> entries;
+    entries.reserve(symbols.size());
+    for(auto& located: symbols) {
+        entries.push_back(graph_entry<GraphEntry>(located));
     }
+    return entries;
+}
+
+std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Edge> edges) {
+    std::vector<GraphEntry> entries;
+    entries.reserve(edges.size());
+    for(auto& edge: edges) {
+        entries.push_back(graph_entry<GraphEntry>(edge.symbol));
+    }
+    return entries;
 }
 
 }  // namespace
@@ -504,21 +509,14 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    CallGraphResult result{.root = graph_entry<GraphEntry>(*resolved)};
-    auto collect = [&](RelationKind kind, std::vector<GraphEntry>& into) {
-        for(auto& group: ctx.query.grouped(resolved->symbol.hash, kind)) {
-            if(auto located = ctx.query.resolve(group.symbol)) {
-                into.push_back(graph_entry<GraphEntry>(*located));
-            }
-        }
+    auto graph = ctx.query.call_graph(
+        resolved->symbol.hash,
+        {.callers = direction != "callees", .callees = direction != "callers"});
+    return CallGraphResult{
+        .root = graph_entry<GraphEntry>(*resolved),
+        .callers = graph_entries(graph.callers),
+        .callees = graph_entries(graph.callees),
     };
-    if(direction != "callees") {
-        collect(RelationKind::Caller, result.callers);
-    }
-    if(direction != "callers") {
-        collect(RelationKind::Callee, result.callees);
-    }
-    return result;
 }
 
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
@@ -533,14 +531,14 @@ Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    TypeHierarchyResult result{.root = graph_entry<GraphEntry>(*resolved)};
-    if(direction != "subtypes") {
-        collect_targets(ctx, resolved->symbol.hash, RelationKind::Base, result.supertypes);
-    }
-    if(direction != "supertypes") {
-        collect_targets(ctx, resolved->symbol.hash, RelationKind::Derived, result.subtypes);
-    }
-    return result;
+    auto hierarchy = ctx.query.type_hierarchy(
+        resolved->symbol.hash,
+        {.supertypes = direction != "subtypes", .subtypes = direction != "supertypes"});
+    return TypeHierarchyResult{
+        .root = graph_entry<GraphEntry>(*resolved),
+        .supertypes = graph_entries(hierarchy.supertypes),
+        .subtypes = graph_entries(hierarchy.subtypes),
+    };
 }
 
 }  // namespace clice::query
