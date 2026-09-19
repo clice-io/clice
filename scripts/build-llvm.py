@@ -153,11 +153,7 @@ class Build:
         self, args: argparse.Namespace, project_root: Path, toolchain_file: Path
     ):
         self.root = project_root
-        self.runtimes_root = (
-            Path(args.runtimes_src).expanduser().resolve()
-            if args.runtimes_src
-            else project_root
-        )
+        self.runtimes_root = args.runtimes_root or project_root
         self.toolchain_file = toolchain_file
         self.mode = MODE_MAP[args.mode.strip().lower()]
         self.lto = args.lto == "ON"
@@ -574,14 +570,17 @@ def main() -> None:
     )
     if not (project_root / "llvm" / "CMakeLists.txt").exists():
         sys.exit(f"Error: {project_root} is not the root of an llvm-project checkout.")
+    # Resolved before the chdir below, like project_root: the workflow passes
+    # both as paths relative to the repository.
+    args.runtimes_root = (
+        Path(args.runtimes_src).expanduser().resolve() if args.runtimes_src else None
+    )
     if (
-        args.runtimes_src
-        and not (
-            Path(args.runtimes_src).expanduser() / "runtimes" / "CMakeLists.txt"
-        ).exists()
+        args.runtimes_root
+        and not (args.runtimes_root / "runtimes" / "CMakeLists.txt").exists()
     ):
         sys.exit(
-            f"Error: {args.runtimes_src} is not the root of an llvm-project checkout."
+            f"Error: {args.runtimes_root} is not the root of an llvm-project checkout."
         )
     os.chdir(project_root)
 
