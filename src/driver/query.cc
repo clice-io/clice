@@ -7,12 +7,13 @@
 #include "index/writer_lock.h"
 #include "sched/batch.h"
 #include "sched/configuration.h"
-#include "sched/index_view.h"
+#include "sched/open_index.h"
 #include "server/service/query_commands.h"
 #include "server/transport/control_client.h"
 
 #include "kota/ipc/codec/json.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/FileSystem.h"
 
 namespace clice::driver {
 
@@ -158,6 +159,43 @@ void print_json(const T& value) {
     std::println("{}", render_json(value));
 }
 
+/// The symbol locator the flags spell, as a name query: `--symbol` an id,
+/// `--name` a name query narrowed to `--path`, or `--path` and `--line` a
+/// place. The path must be a file; one the index has no rows for is noted
+/// as unindexed by the command.
+std::expected<index::SymbolQuery, std::string> locator_of(const QueryOptions& opts,
+                                                          llvm::StringRef absolute) {
+    if(opts.line && *opts.line <= 0) {
+        return std::unexpected("line must be positive");
+    }
+    if(opts.path && !llvm::sys::fs::is_regular_file(absolute)) {
+        return std::unexpected(std::format("no such file: {}", std::string_view(absolute)));
+    }
+    std::string text;
+    if(opts.symbol) {
+        auto parsed = index::SymbolQuery::parse(*opts.symbol);
+        if(!parsed || !parsed->handle) {
+            return std::unexpected(std::format("invalid symbol id: {}", *opts.symbol));
+        }
+        return std::move(*parsed);
+    }
+    if(opts.name) {
+        text = *opts.name;
+        if(opts.path) {
+            text += std::format(" path:\"{}\"", std::string_view(absolute));
+        }
+    } else if(opts.path && opts.line) {
+        text = std::format("\"{}:{}\"", std::string_view(absolute), *opts.line);
+    } else {
+        return std::unexpected("name a symbol with --name, --symbol, or --path and --line");
+    }
+    auto parsed = index::SymbolQuery::parse(text);
+    if(!parsed) {
+        return std::unexpected(parsed.error());
+    }
+    return std::move(*parsed);
+}
+
 struct Reply {
     std::string json;
     int exit_code = 0;
@@ -165,26 +203,20 @@ struct Reply {
 
 /// Answer the question against the opened index; the argument checks are
 /// the commands' own. `failed` are the units a --fresh refresh could not
-/// index: their rows are as absent as a withheld file's.
-Reply answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::string> failed) {
-    index::DiskGate gate(view.workspace.project_index, view.workspace.file_table);
-    index::IndexQuery index_query(view.workspace.project_index,
-                                  view.workspace.file_table,
-                                  &gate,
-                                  nullptr);
-    query::Context ctx{.workspace = view.workspace,
-                       .contexts = view.contexts,
-                       .query = index_query};
+/// index: their rows are as absent as a withheld file's. `dropped` are
+/// the units the load found unservable.
+Reply answer(Workspace& workspace,
+             ContextResolver& contexts,
+             const QueryOptions& opts,
+             llvm::ArrayRef<std::string> failed,
+             llvm::ArrayRef<Fid> dropped) {
+    index::DiskGate gate(workspace.project_index, workspace.file_table);
+    index::IndexQuery index_query(workspace.project_index, workspace.file_table, &gate, nullptr);
+    query::Context ctx{.workspace = workspace, .contexts = contexts, .query = index_query};
 
     auto method = opts.method.value_or("");
     auto path = opts.path.value_or("");
-    auto absolute = path.empty() ? std::string() : inspected_path(view, path);
-    query::SymbolLocatorParams locator{
-        .name = opts.name.as_optional(),
-        .path = absolute.empty() ? std::nullopt : std::optional(absolute),
-        .line = opts.line.as_optional(),
-        .symbol = opts.symbol.as_optional(),
-    };
+    auto absolute = path.empty() ? std::string() : inspected_path(workspace, path);
     auto direction = opts.direction.value_or("both");
     auto kind_list = opts.kind.value_or("");
     llvm::SmallVector<llvm::StringRef> kind_refs;
@@ -196,12 +228,12 @@ Reply answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::stri
     auto emit = [&](auto outcome) {
         std::vector<std::string> stale;
         for(auto file: gate.withheld()) {
-            stale.emplace_back(view.path_of(file));
+            stale.emplace_back(workspace.file_table.resolve(file));
         }
         stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
         stale.insert(stale.end(), failed.begin(), failed.end());
-        for(auto unit: view.dropped) {
-            stale.emplace_back(view.path_of(unit));
+        for(auto unit: dropped) {
+            stale.emplace_back(workspace.file_table.resolve(unit));
         }
         std::ranges::sort(stale);
         auto duplicates = std::ranges::unique(stale);
@@ -214,6 +246,19 @@ Reply answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::stri
             reply.json = render_json(
                 Failure{.error = std::move(outcome.error()), .stale = std::move(stale)});
         }
+    };
+    // A file named by --path that the index holds no rows for is reported
+    // next to the rows the query withheld.
+    auto locator = [&]() -> std::expected<index::SymbolQuery, std::string> {
+        auto query = locator_of(opts, absolute);
+        if(query && opts.path) {
+            auto file = workspace.file_table.find(absolute);
+            if(!file || !workspace.project_index.shard(*file)) {
+                ctx.unindexed.emplace_back(absolute);
+                return std::unexpected("symbol not found");
+            }
+        }
+        return query;
     };
 
     if(method == "compileCommand") {
@@ -230,18 +275,21 @@ Reply answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::stri
                                   opts.query.value_or(""),
                                   static_cast<std::size_t>(std::max(limit, 0)),
                                   kinds));
-    } else if(method == "readSymbol") {
-        emit(query::read_symbol(ctx, locator));
     } else if(method == "documentSymbols") {
         emit(query::document_symbols(ctx, absolute));
+    } else if(auto query = locator(); !query) {
+        emit(query::Outcome<int>(std::unexpected(query.error())));
+    } else if(method == "readSymbol") {
+        emit(query::read_symbol(ctx, std::move(*query)));
     } else if(method == "definition") {
-        emit(query::definition(ctx, locator));
+        emit(query::definition(ctx, std::move(*query)));
     } else if(method == "references") {
-        emit(query::references(ctx, locator, static_cast<bool>(opts.include_declaration)));
+        emit(
+            query::references(ctx, std::move(*query), static_cast<bool>(opts.include_declaration)));
     } else if(method == "callGraph") {
-        emit(query::call_graph(ctx, locator, direction));
+        emit(query::call_graph(ctx, std::move(*query), direction));
     } else if(method == "typeHierarchy") {
-        emit(query::type_hierarchy(ctx, locator, direction));
+        emit(query::type_hierarchy(ctx, std::move(*query), direction));
     }
     return reply;
 }
@@ -318,17 +366,29 @@ int run_query(const QueryOptions& opts, const char* self_path) {
         }
         failed = std::move(*refreshed);
     }
-    Reply reply;
-    with_index(root, configuration, {.with_build = with_build}, [&](IndexView& view) {
-        reply = answer(view, opts, failed);
-        return reply.exit_code;
-    });
-    if(reply.json.empty()) {
+    // The build questions walk manifests and contexts, which only the
+    // writer's load restores; the index questions bind the tables in
+    // place and touch nothing else.
+    Workspace workspace;
+    ContextResolver contexts{workspace};
+    llvm::SmallVector<Fid> dropped;
+    bool opened = false;
+    if(with_build) {
+        if(auto loaded =
+               load_index(workspace, contexts, root, configuration, /*with_build=*/true)) {
+            dropped = std::move(loaded->dropped);
+            opened = true;
+        }
+    } else {
+        opened = open_index(workspace, root, configuration);
+    }
+    if(!opened) {
         print_json(Failure{
             .error =
                 "the index could not be opened (the log above says why); run `clice index` or pass --fresh"});
         return 1;
     }
+    auto reply = answer(workspace, contexts, opts, failed, dropped);
     std::println("{}", reply.json);
     return reply.exit_code;
 }

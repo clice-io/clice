@@ -88,42 +88,7 @@ Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
 /// Resolve a locator to exactly one symbol: no candidate is an unknown
 /// symbol, several ask the caller to disambiguate by id. A locator naming
 /// a path the index has no rows for answers as unknown and notes the path.
-Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx,
-                                                   const SymbolLocatorParams& params) {
-    index::SymbolQuery query;
-    if(params.symbol) {
-        auto parsed = index::SymbolQuery::parse(*params.symbol);
-        if(!parsed || !parsed->handle) {
-            return std::unexpected(std::format("invalid symbol id: {}", *params.symbol));
-        }
-        query = std::move(*parsed);
-    } else if(params.name) {
-        auto parsed = index::SymbolQuery::parse(*params.name);
-        if(!parsed) {
-            return std::unexpected(parsed.error());
-        }
-        query = std::move(*parsed);
-    }
-    if(params.line && *params.line <= 0) {
-        return std::unexpected("line must be positive");
-    }
-    if(params.path) {
-        auto file = indexed_file(ctx, *params.path);
-        if(!file) {
-            return std::unexpected(file.error());
-        }
-        if(!*file) {
-            return std::unexpected("symbol not found");
-        }
-        if(params.name) {
-            query.paths.push_back(*params.path);
-        } else if(params.line && !params.symbol) {
-            query.position = {.path = *params.path, .line = *params.line};
-        }
-    }
-    if(!params.symbol && !params.name && !query.position) {
-        return std::unexpected("name a symbol with --name, --symbol, or --path and --line");
-    }
+Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQuery query) {
     auto anchored = anchor_place(ctx, query);
     if(!anchored) {
         return std::unexpected(anchored.error());
@@ -395,8 +360,8 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
     return result;
 }
 
-Outcome<ReadSymbolResult> read_symbol(Context& ctx, const SymbolLocatorParams& locator) {
-    auto resolved = resolve_unique(ctx, locator);
+Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) {
+    auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
@@ -451,8 +416,8 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, llvm::StringRef pa
     return result;
 }
 
-Outcome<DefinitionResult> definition(Context& ctx, const SymbolLocatorParams& locator) {
-    auto resolved = resolve_unique(ctx, locator);
+Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
+    auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
@@ -474,9 +439,9 @@ Outcome<DefinitionResult> definition(Context& ctx, const SymbolLocatorParams& lo
 }
 
 Outcome<ReferencesResult> references(Context& ctx,
-                                     const SymbolLocatorParams& locator,
+                                     index::SymbolQuery locator,
                                      bool include_declaration) {
-    auto resolved = resolve_unique(ctx, locator);
+    auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
@@ -498,14 +463,14 @@ Outcome<ReferencesResult> references(Context& ctx,
 }
 
 Outcome<CallGraphResult> call_graph(Context& ctx,
-                                    const SymbolLocatorParams& locator,
+                                    index::SymbolQuery locator,
                                     llvm::StringRef direction) {
     if(!llvm::is_contained<llvm::StringRef>({"callers", "callees", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected callers, callees or both",
                         std::string_view(direction)));
     }
-    auto resolved = resolve_unique(ctx, locator);
+    auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
@@ -520,14 +485,14 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
 }
 
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
-                                            const SymbolLocatorParams& locator,
+                                            index::SymbolQuery locator,
                                             llvm::StringRef direction) {
     if(!llvm::is_contained<llvm::StringRef>({"supertypes", "subtypes", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected supertypes, subtypes or both",
                         std::string_view(direction)));
     }
-    auto resolved = resolve_unique(ctx, locator);
+    auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
     }

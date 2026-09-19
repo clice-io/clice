@@ -34,16 +34,6 @@ struct Context {
 template <typename T>
 using Outcome = std::expected<T, std::string>;
 
-/// How a symbol is named: by its id (the `#<hex>` the answers carry); by
-/// a name query (index/symbol_query.h), optionally narrowed to a path; or
-/// by path and 1-based line.
-struct SymbolLocatorParams {
-    std::optional<std::string> name;
-    std::optional<std::string> path;
-    std::optional<int> line;
-    std::optional<std::string> symbol;
-};
-
 struct CompileCommandResult {
     std::string file;
     std::string directory;
@@ -193,26 +183,31 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
                                           std::size_t limit,
                                           llvm::ArrayRef<std::string> kinds);
 
+/// A `locator` names one symbol (index/symbol_query.h): by its id (the
+/// `#<hex>` the answers carry), by a name query optionally narrowed to a
+/// path, or by a place. Several candidates ask the caller to disambiguate
+/// by id; none is "symbol not found".
+
 /// The symbol's definition as text.
-Outcome<ReadSymbolResult> read_symbol(Context& ctx, const SymbolLocatorParams& locator);
+Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator);
 
 /// The document-level symbols defined in the file.
 Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, llvm::StringRef path);
 
-Outcome<DefinitionResult> definition(Context& ctx, const SymbolLocatorParams& locator);
+Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator);
 
 Outcome<ReferencesResult> references(Context& ctx,
-                                     const SymbolLocatorParams& locator,
+                                     index::SymbolQuery locator,
                                      bool include_declaration);
 
 /// `direction` one of callers, callees, both.
 Outcome<CallGraphResult> call_graph(Context& ctx,
-                                    const SymbolLocatorParams& locator,
+                                    index::SymbolQuery locator,
                                     llvm::StringRef direction);
 
 /// `direction` one of supertypes, subtypes, both.
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
-                                            const SymbolLocatorParams& locator,
+                                            index::SymbolQuery locator,
                                             llvm::StringRef direction);
 
 }  // namespace clice::query
