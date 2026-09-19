@@ -92,9 +92,6 @@ jobs:
           path: |
             build/${{ matrix.build_type }}/bin/
             build/${{ matrix.build_type }}/lib/
-            build/${{ matrix.build_type }}/.llvm/lib/*.so*
-            build/${{ matrix.build_type }}/.llvm/lib/*.dylib
-            build/${{ matrix.build_type }}/.llvm/bin/*.dll
           if-no-files-found: error
           retention-days: 1
 

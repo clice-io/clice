@@ -130,7 +130,7 @@ namespace clice::index {
 /// name, parent, specialization arguments, flags and canonical file, the
 /// include tree is one node type on the wire and in manifests, and module
 /// names are keyed by their entity).
-constexpr inline std::uint32_t index_format_version = 14;
+constexpr inline std::uint32_t index_format_version = 15;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       llvm_version:
-        description: "LLVM version (e.g. 22.1.4)"
+        description: "Release tag in clice-llvm (e.g. 22.1.8+r1)"
         required: true
         type: string
 
@@ -21,87 +21,7 @@ env:
   LLVM_VERSION: ${{ inputs.llvm_version }}
 
 jobs:
-  discover:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            artifact: x86_64-unknown-linux-gnu.releasedbg.tar.xz
-          - os: macos-15
-            artifact: aarch64-apple-darwin.releasedbg.tar.xz
-          - os: windows-2025
-            artifact: x86_64-pc-windows-msvc.releasedbg.tar.xz
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: package
-
-      - name: Free Disk Space (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          if [ -d "/Library/Developer/CoreSimulator" ]; then
-            sudo rm -rf /Library/Developer/CoreSimulator
-          fi
-          XCODE_PATH="$(xcode-select -p)"
-          PLATFORMS_DIR="${XCODE_PATH}/Platforms"
-          for p in iPhoneOS.platform iPhoneSimulator.platform AppleTVOS.platform AppleTVSimulator.platform WatchOS.platform WatchSimulator.platform XROS.platform XRSimulator.platform; do
-            [ -d "${PLATFORMS_DIR}/${p}" ] && sudo rm -rf "${PLATFORMS_DIR}/${p}"
-          done
-          sudo rm -rf ~/Library/Android /usr/local/share/dotnet /usr/local/share/powershell ~/.ghcup
-
-      - name: Download LLVM artifact
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh run download "${{ env.SOURCE_RUN_ID }}" \
-            -n "${{ matrix.artifact }}" -D .llvm-download
-          mkdir -p .llvm
-          tar -xf ".llvm-download/${{ matrix.artifact }}" -C .llvm
-          rm -rf .llvm-download
-
-      - name: Build clice
-        shell: bash
-        run: |
-          pixi run cmake-config RelWithDebInfo ON -- \
-            "-DLLVM_INSTALL_PATH=.llvm"
-          pixi run cmake-build RelWithDebInfo
-
-      - name: Discover unused libraries
-        shell: bash
-        run: |
-          python3 scripts/release-llvm.py discover \
-            --install-dir .llvm/lib \
-            --build-dir build/RelWithDebInfo \
-            --manifest pruned-libs.json \
-            --skip-pattern "*Tidy*Module*"
-
-      - name: Print prune results
-        shell: bash
-        run: |
-          python3 -c "
-          import json
-          data = json.load(open('pruned-libs.json'))
-          removed = data['removed']
-          total = data.get('total_saved_bytes', 0)
-          print(f'Libraries prunable: {len(removed)}')
-          print(f'Space saved: {total / 1048576:.1f} MB')
-          for entry in sorted(removed, key=lambda e: e['size'], reverse=True)[:20]:
-              print(f'  {entry[\"size\"] / 1048576:>7.1f} MB  {entry[\"name\"]}')
-          "
-
-      - name: Upload manifest
-        uses: actions/upload-artifact@v7
-        with:
-          name: prune-manifest-${{ matrix.os }}
-          path: pruned-libs.json
-
   create-release:
-    needs: discover
     runs-on: ubuntu-24.04
     steps:
       - name: Create or reuse release
@@ -110,15 +30,15 @@ jobs:
         run: |
           TAG="${{ env.LLVM_VERSION }}"
           REPO="clice-io/clice-llvm"
-          NOTES="LLVM ${TAG} — build run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          NOTES="LLVM ${TAG} — build run https://github.com/${{ github.repository }}/actions/runs/${{ env.SOURCE_RUN_ID }}"
           if gh release view "$TAG" --repo "$REPO" &>/dev/null; then
             gh release edit "$TAG" --repo "$REPO" --notes "$NOTES"
           else
             gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "$NOTES"
           fi
 
-  repackage:
-    needs: [discover, create-release]
+  upload:
+    needs: create-release
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -142,29 +62,13 @@ jobs:
           - x86_64-pc-windows-msvc.releasedbg-lto.tar.xz
           - x86_64-pc-windows-msvc.releasedbg.tar.xz
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup
-
-      - name: Download prune manifests
-        uses: actions/download-artifact@v8
-        with:
-          pattern: prune-manifest-*
-          path: manifests
-
-      - name: Repackage
+      - name: Download build artifact
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 scripts/release-llvm.py repackage \
-            --source-run-id "${{ env.SOURCE_RUN_ID }}" \
-            --manifests-dir manifests \
-            --output-dir artifacts \
-            --max-parallel 1 \
-            --artifacts "${{ matrix.artifact }}"
+          gh run download "${{ env.SOURCE_RUN_ID }}" \
+            --repo "${{ github.repository }}" \
+            -n "${{ matrix.artifact }}" -D artifacts
 
       - name: Upload to release
         env:

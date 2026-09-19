@@ -36,12 +36,12 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 python = ">=3.13"
 cmake = ">=3.30"
 ninja = "*"
-clang = "==22.1.8"
-clangxx = "==22.1.8"
-lld = "==22.1.8"
-llvm-tools = "==22.1.8"
-clang-tools = "==22.1.8"
-compiler-rt = "==22.1.8"
+clang = "==23.1.1"
+clangxx = "==23.1.1"
+lld = "==23.1.1"
+llvm-tools = "==23.1.1"
+clang-tools = "==23.1.1"
+compiler-rt = "==23.1.1"
 # cmake/archive.cmake pipes tar through xz for the symbol archives.
 xz = ">=5.8.1,<6"
 
@@ -93,7 +93,7 @@ python = ">=3.13"
 nodejs = ">=24"
 # `clice format` runs the clang-format found in PATH; the integration
 # tests drive it on real files.
-clang-format = "==22.1.8"
+clang-format = "==23.1.1"
 
 # ToolchainTests.GCC queries the g++ found in PATH and compiles C++23
 # (<print>), so the test env must provide the same pinned gcc the build
@@ -103,7 +103,7 @@ gcc = "==15.2.0"
 gxx = "==15.2.0"
 # The symbolization round-trip test replays the release strip/GSYM flow
 # (linux-only, like the crash tests it builds on).
-llvm-tools = "==22.1.8"
+llvm-tools = "==23.1.1"
 
 # The NVCC toolchain tests drive a real nvcc; cudart is the runtime the
 # probe compiles against and curand is included unconditionally by clang's
@@ -118,22 +118,22 @@ libcurand-dev = "*"
 # The linux-aarch64 cross-test job runs the integration suite on a native
 # arm64 runner, so the symbolization test needs the same tools there.
 [feature.test.target.linux-aarch64.dependencies]
-llvm-tools = "==22.1.8"
+llvm-tools = "==23.1.1"
 
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
 # LLVM cannot parse.  Providing upstream clang + lld in PATH prevents
 # fallback to /usr/bin/clang++ and satisfies toolchain.cmake's -fuse-ld=lld.
 [feature.test.target.osx-64.dependencies]
-clang = "==22.1.8"
-clangxx = "==22.1.8"
-lld = "==22.1.8"
-compiler-rt = "==22.1.8"
+clang = "==23.1.1"
+clangxx = "==23.1.1"
+lld = "==23.1.1"
+compiler-rt = "==23.1.1"
 
 [feature.test.target.osx-arm64.dependencies]
-clang = "==22.1.8"
-clangxx = "==22.1.8"
-lld = "==22.1.8"
-compiler-rt = "==22.1.8"
+clang = "==23.1.1"
+clangxx = "==23.1.1"
+lld = "==23.1.1"
+compiler-rt = "==23.1.1"
 
 # Debug builds are ASAN-instrumented; macOS links the ASAN runtime as a
 # dylib resolved against the build env, which artifact-based test jobs
@@ -285,16 +285,16 @@ platforms = ["linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 # Same mitigation as feature.test: editor-prepare configures fixtures with
 # toolchain.cmake's -fuse-ld=lld, which Apple system clang rejects.
 [feature.editor.target.osx-arm64.dependencies]
-clang = "==22.1.8"
-clangxx = "==22.1.8"
-lld = "==22.1.8"
-compiler-rt = "==22.1.8"
+clang = "==23.1.1"
+clangxx = "==23.1.1"
+lld = "==23.1.1"
+compiler-rt = "==23.1.1"
 
 [feature.editor.target.osx-64.dependencies]
-clang = "==22.1.8"
-clangxx = "==22.1.8"
-lld = "==22.1.8"
-compiler-rt = "==22.1.8"
+clang = "==23.1.1"
+clangxx = "==23.1.1"
+lld = "==23.1.1"
+compiler-rt = "==23.1.1"
 
 # Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]
@@ -337,7 +337,7 @@ nodejs = ">=20"
 # The instant-build packaging strips test binaries before bundling them
 # into the vsix (an unstripped ELF carries ~700MB of DWARF).
 [feature.node.target.linux-64.dependencies]
-llvm-tools = "==22.1.8"
+llvm-tools = "==23.1.1"
 
 [feature.node.tasks]
 # The trailing "--" forwards extra `pixi run` arguments (--target, -p, ...)
@@ -370,7 +370,7 @@ tombi = "*"
 stylua = "*"
 fd-find = "*"
 prettier = "*"
-clang-format = "==22.1.8"
+clang-format = "==23.1.1"
 
 [feature.format.tasks]
 format-cpp = "fd -H -e cpp -e h -e cc -e hpp -e cppm -x clang-format -i"
