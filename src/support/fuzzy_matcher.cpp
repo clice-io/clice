@@ -10,7 +10,7 @@ namespace {
 
 /// Characters past these are ignored, bounding the cost of a match.
 constexpr std::size_t max_pattern = 63;
-constexpr std::size_t max_name = 127;
+constexpr std::size_t max_name = name_bound;
 
 enum class CharClass : std::uint8_t {
     Separator,
@@ -382,6 +382,7 @@ std::string FuzzyMatcher::annotate(llvm::StringRef text) {
 
 void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out) {
     out.clear();
+    name = name.take_front(max_name);
     if(name.empty()) {
         return;
     }

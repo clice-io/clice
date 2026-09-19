@@ -65,6 +65,11 @@ struct SearchBlob {
     /// The docs with no parent in the index, one image.
     std::vector<std::uint8_t> top_level;
 
+    /// The docs whose name runs past the token bound (name_bound), one
+    /// image: their tail carries no token, so every name lookup scans
+    /// them.
+    std::vector<std::uint8_t> long_names;
+
     /// Namespace docs, sorted; everything below each as bitmaps.
     std::vector<std::uint32_t> subtree_docs;
     std::vector<std::uint32_t> subtree_ends;
@@ -362,6 +367,16 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     blob.top_level.assign(reinterpret_cast<const std::uint8_t*>(top_image.data()),
                           reinterpret_cast<const std::uint8_t*>(top_image.data()) +
                               top_image.size());
+    Bitmap long_names;
+    for(std::uint32_t doc = 0; doc < count; doc += 1) {
+        if(entry_of(doc).name.size() > name_bound) {
+            long_names.add(doc);
+        }
+    }
+    auto long_image = write_bitmap(long_names);
+    blob.long_names.assign(reinterpret_cast<const std::uint8_t*>(long_image.data()),
+                           reinterpret_cast<const std::uint8_t*>(long_image.data()) +
+                               long_image.size());
 
     llvm::DenseMap<std::uint32_t, Bitmap> subtrees;
     llvm::DenseSet<std::uint32_t> visiting;
@@ -521,6 +536,7 @@ struct SearchIndex::View {
     llvm::ArrayRef<std::uint32_t> children_ends;
     llvm::ArrayRef<std::uint8_t> children_postings;
     llvm::ArrayRef<std::uint8_t> top_level_image;
+    llvm::ArrayRef<std::uint8_t> long_names_image;
     llvm::ArrayRef<std::uint32_t> subtree_docs;
     llvm::ArrayRef<std::uint32_t> subtree_ends;
     llvm::ArrayRef<std::uint8_t> subtree_postings;
@@ -536,6 +552,7 @@ struct SearchIndex::View {
     mutable llvm::DenseMap<std::uint32_t, Bitmap> kind_cache;
     mutable llvm::DenseMap<std::uint32_t, Bitmap> file_cache;
     mutable std::optional<Bitmap> top_level_cache;
+    mutable std::optional<Bitmap> long_names_cache;
 
     /// Whether a posting image failed to decode: the answers since are
     /// incomplete, and the owner rebuilds the index.
@@ -570,7 +587,7 @@ struct SearchIndex::View {
                   std::uint32_t i) const {
         auto begin = i == 0 ? 0 : ends[i - 1];
         auto decoded = read_bitmap(arena.data() + begin, ends[i] - begin);
-        if(!decoded) {
+        if(!decoded || (!decoded->isEmpty() && decoded->maximum() >= count())) {
             if(!damaged) {
                 LOG_WARN("A search index posting list does not decode; the index is rebuilt");
             }
@@ -617,6 +634,15 @@ struct SearchIndex::View {
         }
         auto i = static_cast<std::uint32_t>(it - container_docs.begin());
         return cached(children_cache, children_postings, children_ends, i);
+    }
+
+    /// The docs whose name outruns the token bound.
+    const Bitmap& long_names() const {
+        if(!long_names_cache) {
+            std::uint32_t ends[] = {static_cast<std::uint32_t>(long_names_image.size())};
+            long_names_cache = decode(long_names_image, ends, 0);
+        }
+        return *long_names_cache;
     }
 
     bool is_container(std::uint32_t doc) const {
@@ -735,6 +761,7 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     view.children_ends = to_array_ref(root[&SearchBlob::children_ends]);
     view.children_postings = to_array_ref(root[&SearchBlob::children_postings]);
     view.top_level_image = to_array_ref(root[&SearchBlob::top_level]);
+    view.long_names_image = to_array_ref(root[&SearchBlob::long_names]);
     view.subtree_docs = to_array_ref(root[&SearchBlob::subtree_docs]);
     view.subtree_ends = to_array_ref(root[&SearchBlob::subtree_ends]);
     view.subtree_postings = to_array_ref(root[&SearchBlob::subtree_postings]);
@@ -991,9 +1018,7 @@ std::vector<SearchHit> SearchIndex::search(const SymbolQuery& query, std::size_t
             }
             llvm::sort(tokens);
             tokens.erase(llvm::unique(tokens), tokens.end());
-            if(auto candidates = index.intersection(tokens)) {
-                scan(*candidates, false);
-            }
+            scan(index.intersection(tokens).value_or(Bitmap{}) | index.long_names(), false);
             break;
         }
         case Mode::Fuzzy: {
@@ -1012,15 +1037,13 @@ std::vector<SearchHit> SearchIndex::search(const SymbolQuery& query, std::size_t
                 scan(everything(), false);
                 break;
             }
-            if(auto candidates = index.intersection(tokens)) {
-                scan(*candidates, false);
-            }
+            scan(index.intersection(tokens).value_or(Bitmap{}) | index.long_names(), false);
             if(top.full() || !ranker.has_typo_matches()) {
                 break;
             }
             llvm::SmallVector<TypoAlternative> alternatives;
             typo_tokens(query.pattern, alternatives);
-            Bitmap candidates;
+            Bitmap candidates = index.long_names();
             for(auto& alternative: alternatives) {
                 if(auto some = index.intersection(alternative.tokens)) {
                     candidates |= *some;

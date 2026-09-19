@@ -1176,11 +1176,12 @@ Search the whole project for a symbol by name (`workspace/symbol`).
 
 **Basic workspace-wide symbol search**
 
-Workspace symbol search matches names by case-insensitive substring
+Workspace symbol search matches names regardless of case
 
-A query matches any symbol whose name contains it, ignoring case:
-functions, types, enumerators and macros all participate, and a query
-with no match returns an empty list rather than an error.
+A query matches a symbol's name as a subsequence aligned to its words,
+ignoring case: functions, types, enumerators and macros all
+participate, and a query with no match returns an empty list rather
+than an error.
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/01_basic_search.cpp

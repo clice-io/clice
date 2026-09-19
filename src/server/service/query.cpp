@@ -806,6 +806,11 @@ std::vector<IndexQuery::Ranked> IndexQuery::ranked_search(const index::SymbolQue
     bool scan_table = workspace.search_index.damaged();
     if(!scan_table) {
         for(auto& hit: indexed) {
+            // A row the table changed since the index was built is read
+            // from the table below, not from the index's stale copy.
+            if(workspace.search_pending.contains(hit.hash)) {
+                continue;
+            }
             auto info = symbol_info(hit.hash);
             if(info && seen.insert(hit.hash).second) {
                 auto display_name = info->display_name();
@@ -834,7 +839,8 @@ std::vector<IndexQuery::Ranked> IndexQuery::ranked_search(const index::SymbolQue
         auto containers = container_chain(hash);
         if(llvm::any_of(containers, [](const SymbolRef& container) {
                return container.kind == SymbolKind::Function ||
-                      container.kind == SymbolKind::Method;
+                      container.kind == SymbolKind::Method ||
+                      container.kind == SymbolKind::Operator;
            })) {
             return;
         }
@@ -969,6 +975,14 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const index::SymbolQuery& qu
             return {};
         }
         auto line = static_cast<protocol::uinteger>(place.line - 1);
+        auto path = workspace.file_table.resolve(*path_id);
+        // A site read straight from the serving source.
+        auto site_of = [&](const index::Relation& relation) {
+            return Site{.file = *path_id,
+                        .path = path,
+                        .range = relation.range,
+                        .coords = serving.coords};
+        };
         if(place.column) {
             // The column counts bytes: the line's start plus the column,
             // bounded by the line's own length.
@@ -988,9 +1002,27 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const index::SymbolQuery& qu
             if(auto located = resolve(cursor->symbol)) {
                 return {std::move(*located)};
             }
+            // A symbol of the file's own (a static function, a local) has
+            // no row in the global table to fan out from: its sites are
+            // in the serving source itself.
+            auto info = symbol_info(cursor->symbol);
+            if(!info) {
+                return {};
+            }
+            std::optional<Site> site;
+            for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
+                serving.rows->lookup(cursor->symbol, kind, [&](const index::Relation& relation) {
+                    site = site_of(relation);
+                    return false;
+                });
+                if(site) {
+                    return {
+                        Located{.symbol = std::move(*info), .site = *site}
+                    };
+                }
+            }
             return {};
         }
-        auto path = workspace.file_table.resolve(*path_id);
         std::vector<Located> defined;
         for(auto& [hash, symbol]: workspace.project_index.symbols) {
             if(!symbol.reference_files.contains(path_id->raw)) {
@@ -999,13 +1031,8 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const index::SymbolQuery& qu
             serving.rows->lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
                 auto position = serving.coords.to_position(r.range.begin);
                 if(position && position->line == line) {
-                    defined.push_back({
-                        .symbol = SymbolRef::from(hash, symbol.identity()),
-                        .site = {.file = *path_id,
-                                 .path = path,
-                                 .range = r.range,
-                                 .coords = serving.coords},
-                    });
+                    defined.push_back(
+                        {.symbol = SymbolRef::from(hash, symbol.identity()), .site = site_of(r)});
                     return false;
                 }
                 return true;

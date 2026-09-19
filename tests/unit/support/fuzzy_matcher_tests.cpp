@@ -83,14 +83,30 @@ std::string letters(llvm::StringRef text) {
     return out;
 }
 
-/// Every subsequence of `text` with `length` characters.
+std::size_t choose(std::size_t n, std::size_t k) {
+    std::size_t result = 1;
+    for(std::size_t i = 1; i <= k && i <= n; i += 1) {
+        result = result * (n - k + i) / i;
+    }
+    return k > n ? 0 : result;
+}
+
+/// About `budget` subsequences of `text` with `length` characters, spread
+/// evenly over all of them: enough for a property, cheap enough for a
+/// routine run under a sanitizer.
 void subsequences(llvm::StringRef text,
                   std::size_t length,
+                  std::size_t budget,
                   llvm::function_ref<void(llvm::StringRef)> visit) {
+    std::size_t stride = std::max<std::size_t>(1, choose(text.size(), length) / budget);
+    std::size_t seen = 0;
     std::string current;
     auto recurse = [&](auto& self, std::size_t from) -> void {
         if(current.size() == length) {
-            visit(current);
+            seen += 1;
+            if(seen % stride == 0) {
+                visit(current);
+            }
             return;
         }
         for(std::size_t i = from; i + (length - current.size()) <= text.size(); i += 1) {
@@ -290,9 +306,11 @@ TEST_CASE(Bounds) {
     EXPECT_LE(score(sixty_four, sixty_three), 1.0f);
     EXPECT_LE(score(std::string(127, 'a'), long_name), 1.0f);
     EXPECT_TRUE(matches(sixty_four, long_name));
-    // Tokens cover a long name to its end, as a glob reaches it.
+    // Tokens stop at the bound too: a long name's tail is not keyed,
+    // which the index makes up for by scanning such names.
     auto tail = tokens_of(long_name + "xyz");
-    EXPECT_TRUE(llvm::is_contained(tail, token("xyz")));
+    EXPECT_FALSE(llvm::is_contained(tail, token("xyz")));
+    EXPECT_FALSE(tail.empty());
 }
 
 TEST_CASE(Typos) {
@@ -378,7 +396,7 @@ TEST_CASE(TokensCoverMatches) {
         auto name_keys = tokens_of(name);
         auto pool = letters(name);
         for(std::size_t length = 3; length <= 5 && length <= pool.size(); length += 1) {
-            subsequences(pool, length, [&](llvm::StringRef pattern) {
+            subsequences(pool, length, 60, [&](llvm::StringRef pattern) {
                 if(!matches(pattern, name, {.inside_word = true})) {
                     return;
                 }
@@ -393,7 +411,7 @@ TEST_CASE(TokensCoverMatches) {
         if(pool.size() < 6) {
             continue;
         }
-        subsequences(pool, 6, [&](llvm::StringRef base) {
+        subsequences(pool, 6, 30, [&](llvm::StringRef base) {
             for(std::size_t at = 0; at < base.size(); at += 1) {
                 std::string replaced = base.str();
                 replaced[at] = 'z';

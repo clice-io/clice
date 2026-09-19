@@ -160,7 +160,8 @@ TEST_CASE(FuzzyRanking) {
     EXPECT_EQ(names(corpus, built, "up"), (Names{"upper_bound", "unique_ptr"}));
     // A short query keys the first two words in the index and in a row.
     EXPECT_TRUE(names(corpus, built, "qu").empty());
-    index::NameRanker short_ranker(*SymbolQuery::parse("qu"));
+    auto short_query = *SymbolQuery::parse("qu");
+    index::NameRanker short_ranker(short_query);
     EXPECT_FALSE(short_ranker.rank("zap_bar_quux", "", 1).has_value());
     EXPECT_TRUE(short_ranker.rank("zap_quux", "", 1).has_value());
     EXPECT_EQ(names(corpus, built, "u_p"), (Names{"unique_ptr"}));

@@ -29,6 +29,7 @@
 #include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -275,10 +276,11 @@ struct Workspace {
     llvm::DenseMap<Fid, index::Shard> shards;
 
     /// The name search index over `project_index.symbols` as last built,
-    /// and the symbols merged since, which a search scans directly until
-    /// the store folds them into a rebuilt index.
+    /// and the symbols it does not describe — merged or changed since —
+    /// which a search reads from the table instead until the store folds
+    /// them into a rebuilt index.
     index::SearchIndex search_index;
-    std::vector<index::SymbolHash> search_pending;
+    llvm::DenseSet<index::SymbolHash> search_pending;
 
     /// Monotonic generation of context-affecting workspace state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext

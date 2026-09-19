@@ -119,8 +119,9 @@ bool glob_matches(llvm::StringRef pattern, llvm::StringRef name);
 llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern);
 
 /// Whether a file satisfies a `path:` term: a bare file name by name, a
-/// directory (trailing separator) by containing it, an absolute path by
-/// prefix, any other path by its tail on a component boundary.
+/// directory (trailing separator) by containing it, an absolute path
+/// exactly (or as a directory prefix with its separator), any other path
+/// by its tail on a component boundary.
 bool path_matches(llvm::StringRef wanted, llvm::StringRef path);
 
 /// One container of a symbol's chain as the scope check sees it.

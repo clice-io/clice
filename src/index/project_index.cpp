@@ -132,37 +132,43 @@ bool ProjectIndex::merge(this ProjectIndex& self,
     // wins, then the smaller one, so the table reads the same whatever the
     // merge order.
     auto prefer = [](std::string& current, llvm::StringRef incoming) {
-        if(incoming.empty()) {
-            return;
+        if(incoming.empty() ||
+           (!current.empty() && (incoming.size() > current.size() ||
+                                 (incoming.size() == current.size() && incoming >= current)))) {
+            return false;
         }
-        if(current.empty() || incoming.size() < current.size() ||
-           (incoming.size() == current.size() && incoming < current)) {
-            current = incoming.str();
-        }
+        current = incoming.str();
+        return true;
     };
     for(auto& [hash, identity, references]: staged) {
         auto [it, inserted] = self.symbols.try_emplace(hash);
         auto& target = it->second;
-        if(inserted && added) {
-            added->push_back(hash);
-        }
+        bool changed = inserted;
         if(target.name.empty() && !identity.name.empty()) {
             target.parent = identity.parent;
             target.kind = identity.kind;
+            changed = true;
         }
-        prefer(target.name, identity.name);
-        prefer(target.args, identity.args);
+        changed = prefer(target.name, identity.name) || changed;
+        changed = prefer(target.args, identity.args) || changed;
         // A unit that defines the symbol always places it: the table never
         // retracts a unit's earlier report, so an old definition bit must
         // not pin the file after the definition moved. Declarations only
         // fill an empty slot.
         bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
         if(identity.file != no_file && (target.file == no_file || defines)) {
-            target.file = file_ids_map[identity.file].raw;
+            auto file = file_ids_map[identity.file].raw;
+            changed = changed || target.file != file;
+            target.file = file;
         }
-        target.flags |= identity.flags;
+        auto flags = target.flags | identity.flags;
+        changed = changed || flags != target.flags;
+        target.flags = flags;
         for(auto ref: references) {
             target.reference_files.add(file_ids_map[ref].raw);
+        }
+        if(changed && added) {
+            added->push_back(hash);
         }
     }
 

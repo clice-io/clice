@@ -377,6 +377,21 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
         return result;
     }
     auto located = query->by_pattern() ? ctx.query.search(*query, limit) : ctx.query.locate(*query);
+    // A locator names its symbols outright; the filters still apply.
+    if(!query->by_pattern()) {
+        llvm::erase_if(located, [&](const IndexQuery::Located& hit) {
+            if(!query->kinds.empty() && !llvm::is_contained(query->kinds, hit.symbol.kind)) {
+                return true;
+            }
+            return !query->paths.empty() &&
+                   llvm::none_of(query->paths, [&](const std::string& wanted) {
+                       return index::path_matches(wanted, hit.site.path);
+                   });
+        });
+        if(located.size() > limit) {
+            located.resize(limit);
+        }
+    }
     for(auto& hit: located) {
         auto entry = graph_entry<SymbolEntry>(hit);
         if(!entry) {

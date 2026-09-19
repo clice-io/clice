@@ -580,7 +580,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         LOG_WARN("Reject merge for {}: symbol reference bitmap failed verification", main_tu_path);
         return std::nullopt;
     }
-    workspace.search_pending.insert(workspace.search_pending.end(), added.begin(), added.end());
+    workspace.search_pending.insert(added.begin(), added.end());
     merges_since_search_build += 1;
 
     // Intern a FileVersion per file of the parse. The freshness baseline is
@@ -1097,20 +1097,26 @@ kota::task<> IndexStore::rebuild_search_index() {
         });
     }
     auto merges_in_snapshot = merges_since_search_build;
+    // Rows that change across the build stay pending: only the ones the
+    // snapshot saw are settled by the index built from it.
+    auto pending_in_snapshot = std::move(workspace.search_pending);
+    workspace.search_pending.clear();
 
     std::string bytes;
     co_await kota::queue([&] { bytes = index::build_search_blob(snapshot); });
     index::SearchIndex built;
     if(!built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes))) {
         LOG_ERROR("The rebuilt search index does not load; keeping the previous one");
+        workspace.search_pending.insert(pending_in_snapshot.begin(), pending_in_snapshot.end());
         co_return;
     }
     workspace.search_index = std::move(built);
     merges_since_search_build -= merges_in_snapshot;
-    // Merges that landed across the build appended to the pending list
-    // and are not in the snapshot; everything the new index files leaves it.
-    llvm::erase_if(workspace.search_pending,
-                   [&](index::SymbolHash hash) { return workspace.search_index.contains(hash); });
+    for(auto hash: pending_in_snapshot) {
+        if(!workspace.search_index.contains(hash)) {
+            workspace.search_pending.insert(hash);
+        }
+    }
     search_bytes = std::move(bytes);
     LOG_PERF("index",
              "phase=search_build symbols={} bytes={} elapsed_ms={}",
@@ -1386,7 +1392,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     workspace.search_pending.clear();
     for(auto hash: llvm::make_first_range(project.symbols)) {
         if(!workspace.search_index.contains(hash)) {
-            workspace.search_pending.push_back(hash);
+            workspace.search_pending.insert(hash);
         }
     }
 

@@ -134,6 +134,8 @@ TEST_CASE(HandlesAndPositions) {
     EXPECT_TRUE(handle.handle.has_value());
     EXPECT_EQ(*handle.handle, index::SymbolHash(0x1a2b));
     EXPECT_FALSE(handle.by_pattern());
+    EXPECT_EQ(error_of("#xyz"), "invalid symbol id '#xyz'");
+    EXPECT_EQ(error_of("#"), "invalid symbol id '#'");
 
     auto line = parsed("src/a.cpp:120");
     EXPECT_TRUE(line.position.has_value());
@@ -204,6 +206,9 @@ TEST_CASE(Paths) {
     EXPECT_TRUE(index::path_matches("src/index/", "/w/src/index/a.cpp"));
     EXPECT_FALSE(index::path_matches("src/index/", "/w/src/indexer/a.cpp"));
     EXPECT_TRUE(index::path_matches("/w/src/", "/w/src/a.cpp"));
+    EXPECT_TRUE(index::path_matches("/w/src/a.cpp", "/w/src/a.cpp"));
+    EXPECT_FALSE(index::path_matches("/w/src/a.cpp", "/w/src/a.cpp2"));
+    EXPECT_TRUE(index::path_matches("/w/src", "/w/src/a.cpp"));
     EXPECT_FALSE(index::path_matches("/w/src/", "/x/w/src/a.cpp"));
     EXPECT_TRUE(index::path_matches(R"(src\a.cpp)", "C:/w/src/a.cpp"));
     EXPECT_TRUE(index::path_matches("C:/w/", R"(C:\w\src\a.cpp)"));

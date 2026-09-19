@@ -52,8 +52,10 @@ struct ProjectIndex {
 
     /// Merge a TU's external symbols straight off the wire; `file_ids_map`
     /// maps the TU-local ids of `index`'s path table to pool ids. Symbol
-    /// names are copied only for symbols new to the table, whose hashes
-    /// `added` receives. Returns false —
+    /// names are copied only for symbols new to the table. `added`
+    /// receives the hashes of the symbols new to the table or whose name,
+    /// arguments, parent, file or flags the merge changed — what a name
+    /// search keyed on the table's rows must re-read. Returns false —
     /// with the table untouched — when a reference bitmap fails to decode
     /// or carries an id past the path table (the bound TUIndex::from_bytes
     /// enforces; the zero-copy reader leaves it to this consumer): the

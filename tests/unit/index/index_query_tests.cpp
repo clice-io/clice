@@ -69,7 +69,7 @@ void merge_into_workspace() {
     }
     llvm::SmallVector<index::SymbolHash> added;
     ASSERT_TRUE(project.merge(view, file_ids_map, &added));
-    workspace.search_pending.insert(workspace.search_pending.end(), added.begin(), added.end());
+    workspace.search_pending.insert(added.begin(), added.end());
     main_id = file_ids_map[view.path_count() - 1];
 
     // The consumed-content hash per TU-local path: the section's own
@@ -248,6 +248,29 @@ TEST_CASE(QualifiedNames) {
     ASSERT_EQ(search("pai").size(), std::size_t(2));
     ASSERT_EQ(search(R"("paint")").size(), std::size_t(2));
     ASSERT_EQ(search("Wid*").size(), std::size_t(2));
+}
+
+TEST_CASE(LocalsAndCursors) {
+    add_main("main.cpp", R"(
+        struct S { int operator()() { int hidden = 0; return hidden; } };
+        static void helper() {}
+        void use() { helper(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    // A callable's locals are no search target, whatever its kind.
+    ASSERT_TRUE(search("hidden").empty());
+    ASSERT_FALSE(search("use").empty());
+
+    // A cursor on the file's own static function resolves through the
+    // serving source, which the global table knows nothing about.
+    index::SymbolQuery at;
+    at.position = {.path = workspace.file_table.resolve(main_id).str(), .line = 3, .column = 21};
+    auto located = query.locate(at);
+    ASSERT_EQ(located.size(), std::size_t(1));
+    ASSERT_EQ(located.front().symbol.name, "helper");
+    ASSERT_TRUE(located.front().site.path.ends_with("main.cpp"));
 }
 
 TEST_CASE(LocalSymbolName) {

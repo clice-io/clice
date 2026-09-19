@@ -1058,9 +1058,9 @@ tests/snap/navigation/type_hierarchy/05_types_template_args.cpp
 
 **基本的工作区全局符号搜索**
 
-工作区符号搜索通过子串匹配名称，不区分大小写
+工作区符号搜索匹配名称时不区分大小写
 
-查询会匹配名称中包含查询字符串的所有符号，不区分大小写：函数、类型、枚举项和宏都在搜索范围内；没有匹配项时返回空列表，不会报错。
+查询以子序列的形式匹配符号名称，并对齐到名称中的各个单词，不区分大小写：函数、类型、枚举项和宏都在搜索范围内；没有匹配项时返回空列表，不会报错。
 
 ```snap
 tests/snap/workspace_symbol/workspace_symbol/01_basic_search.cpp

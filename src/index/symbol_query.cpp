@@ -267,7 +267,12 @@ std::expected<SymbolQuery, std::string> SymbolQuery::parse(llvm::StringRef text)
                 std::format("one name per query; '{}' is a second", std::string_view(term)));
         }
         named = true;
-        if(auto handle = parse_handle(term)) {
+        if(term.starts_with("#")) {
+            auto handle = parse_handle(term);
+            if(!handle) {
+                return std::unexpected(
+                    std::format("invalid symbol id '{}'", std::string_view(term)));
+            }
             query.handle = handle;
             continue;
         }
@@ -352,7 +357,7 @@ bool path_matches(llvm::StringRef wanted, llvm::StringRef path) {
     }
     bool rooted = w.front() == '/' || (w.size() > 1 && w[1] == ':');
     if(rooted) {
-        return h.starts_with(w);
+        return w.back() == '/' ? h.starts_with(w) : h == w || h.starts_with(want + "/");
     }
     if(w.back() == '/') {
         return h.contains("/" + want);

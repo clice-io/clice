@@ -138,6 +138,10 @@ private:
     std::vector<Cell> cells;
 };
 
+/// Characters past this many are ignored, by the matcher and by the
+/// tokens alike: a longer name is matched on this prefix of it.
+constexpr std::size_t name_bound = 127;
+
 /// A token of the search index: one to three lowercase bytes packed
 /// big-endian, so the byte count is the width of the value. Tokens below
 /// `first_trigram` are the short form of one or two letters.
