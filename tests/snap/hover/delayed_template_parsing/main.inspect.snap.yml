@@ -14,3 +14,19 @@ Trivial accessor for `level`.
 // In Gauge<T>
 public: T getLevel()
 ```
+
+dependent_setter: { range: "16:10-16:18" }
+### method `setLevel`  
+
+---
+→ `void`  
+Parameters:  
+- `T value`
+
+Trivial setter for `level`.  
+
+---
+```cpp
+// In Gauge<T>
+public: void setLevel(T value)
+```
