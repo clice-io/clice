@@ -252,8 +252,8 @@ Reply answer(Workspace& workspace,
     auto locator = [&]() -> std::expected<index::SymbolQuery, std::string> {
         auto query = locator_of(opts, absolute);
         if(query && opts.path) {
-            auto file = workspace.file_table.find(absolute);
-            if(!file || !workspace.project_index.shard(*file)) {
+            auto file = workspace.file_table.intern(absolute);
+            if(!workspace.project_index.shard(file)) {
                 ctx.unindexed.emplace_back(absolute);
                 return std::unexpected("symbol not found");
             }

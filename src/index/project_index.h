@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -177,8 +178,10 @@ struct ProjectIndex {
     /// Per-file row blobs keyed by project-level path_id: symbol
     /// occurrences, relations and stored content for position mapping,
     /// served zero-copy. The writer holds every persisted shard here; a
-    /// reader opened over a database fills it on first use (shard()).
-    mutable llvm::DenseMap<Fid, Shard> shards;
+    /// reader opened over a database fills it on first use (shard()). A
+    /// node-based map: a query keeps pointers to the shards it read while
+    /// its fan-out fetches others.
+    mutable std::map<Fid, Shard> shards;
 
     /// The file's shard: held, or fetched from the database the index was
     /// opened over. Null when the file has no rows.

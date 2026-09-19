@@ -1,17 +1,23 @@
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
+#include "index/database.h"
 #include "index/project_index.h"
 #include "index/serialization.h"
+#include "index/shard.h"
 #include "index/tu_index.h"
+#include "support/cache_store.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 namespace {
@@ -379,6 +385,58 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
     auto fresh_id = fresh.find(main_path);
     ASSERT_TRUE(fresh_id.has_value());
     ASSERT_TRUE(llvm::is_contained(reference_files(loaded, symbol), fresh_id->raw));
+}
+
+TEST_CASE(LazyShardsStayPut) {
+    // A reader fetches shards while a query still holds the ones it read
+    // first: the fan-out of a position query resolves other files between
+    // taking a shard and reading it again.
+    TempDir tmp;
+    auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
+    ASSERT_TRUE(store.has_value());
+    auto db = index::open_database(*store, "");
+    ASSERT_TRUE(db != nullptr);
+
+    clice::FileTable writer_files;
+    index::ProjectIndex writer;
+    writer.touch(7).name = "x";
+    std::vector<index::BlobDatabase::Blob> puts;
+    std::string global;
+    llvm::raw_string_ostream global_os(global);
+    writer.serialize_global(global_os, writer_files);
+    puts.push_back({index::IndexBlobKind::Global, "global", global});
+
+    constexpr std::uint32_t count = 300;
+    llvm::StringRef content = "int x = 1;\n";
+    index::FileIndex rows;
+    rows.relations[7].push_back({
+        .kind = RelationKind::Definition,
+        .range = {4, 5}
+    });
+    std::string shard;
+    llvm::raw_string_ostream shard_os(shard);
+    index::write_shard(rows, {}, content, shard_os);
+    for(std::uint32_t i = 0; i < count; i += 1) {
+        puts.push_back(
+            {index::IndexBlobKind::Shard, index::blob_key(std::format("/proj/f{}.cpp", i)), shard});
+    }
+    ASSERT_TRUE(db->write(puts, {}).empty());
+    ASSERT_TRUE(db->advance_read_snapshot().has_value());
+
+    clice::FileTable files;
+    index::ProjectIndex project;
+    ASSERT_TRUE(project.open(*db, files));
+    auto first = files.intern("/proj/f0.cpp");
+    const auto* held = project.shard(first);
+    ASSERT_TRUE(held != nullptr);
+    for(std::uint32_t i = 1; i < count; i += 1) {
+        ASSERT_TRUE(project.shard(files.intern(std::format("/proj/f{}.cpp", i))) != nullptr);
+    }
+    ASSERT_TRUE(project.shard(first) == held);
+    ASSERT_EQ(held->content_hash(), llvm::xxh3_64bits(content));
+    // A file the database holds no rows for is asked once and stays absent.
+    ASSERT_TRUE(project.shard(files.intern("/proj/none.cpp")) == nullptr);
+    ASSERT_TRUE(project.shard(files.intern("/proj/none.cpp")) == nullptr);
 }
 
 };  // TEST_SUITE(ProjectIndex)
