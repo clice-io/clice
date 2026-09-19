@@ -1,0 +1,29 @@
+---
+created_at: 2026-09-19
+input_file: delayed_template_parsing/main.cpp
+---
+dependent_getter: { range: "11:17-11:25" }
+### method `getLevel`  
+
+---
+→ `T`  
+
+---
+```cpp
+// In Gauge<T>
+public: T getLevel()
+```
+
+dependent_setter: { range: "16:10-16:18" }
+### method `setLevel`  
+
+---
+→ `void`  
+Parameters:  
+- `T value`
+
+---
+```cpp
+// In Gauge<T>
+public: void setLevel(T value)
+```

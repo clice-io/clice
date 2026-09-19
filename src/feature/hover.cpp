@@ -188,7 +188,9 @@ auto getter_variable_name(const clang::CXXMethodDecl* method) -> std::optional<l
         return std::nullopt;
     }
 
-    const auto* body = llvm::dyn_cast<clang::CompoundStmt>(method->getBody());
+    // A method of a class template in the preamble may still be late-parsed:
+    // hasBody() holds but the body itself is absent.
+    const auto* body = llvm::dyn_cast_if_present<clang::CompoundStmt>(method->getBody());
     const auto* only_return = (body && body->size() == 1)
                                   ? llvm::dyn_cast<clang::ReturnStmt>(body->body_front())
                                   : nullptr;
@@ -216,7 +218,7 @@ auto setter_variable_name(const clang::CXXMethodDecl* method) -> std::optional<l
         return std::nullopt;
     }
 
-    const auto* body = llvm::dyn_cast<clang::CompoundStmt>(method->getBody());
+    const auto* body = llvm::dyn_cast_if_present<clang::CompoundStmt>(method->getBody());
     if(!body || body->size() == 0 || body->size() > 2) {
         return std::nullopt;
     }
