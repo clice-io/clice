@@ -6,8 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "index/query.h"
 #include "sched/context.h"
-#include "server/service/query.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -15,13 +15,13 @@
 namespace clice::query {
 
 /// What the commands read: the workspace's persisted index through an
-/// IndexQuery and, for the build questions (compile commands, the file
+/// index::IndexQuery and, for the build questions (compile commands, the file
 /// set, include dependencies), the loaded build. Paths in and out are
 /// absolute filesystem paths, not URIs.
 struct Context {
     Workspace& workspace;
     ContextResolver& contexts;
-    const IndexQuery& query;
+    const index::IndexQuery& query;
 
     /// Files a command was asked about that the index holds no rows for;
     /// the caller reports them next to the rows the query withheld.

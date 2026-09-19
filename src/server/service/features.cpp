@@ -43,7 +43,7 @@ bool Features::ast_answerable(const Session& session) const {
 
 kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
                                                  RouteOptions options,
-                                                 ServingSource* source) {
+                                                 std::optional<index::RowSource>* source) {
     for(bool waited = false;;) {
         // This handler is resumed eagerly: drain the transport pipe before
         // reading any buffer state, so a queued didChange or cancel lands
@@ -65,7 +65,7 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
             // The session's own rows when current (the quarantine fallback
             // — the worker cannot be asked, the rows are still true), else
             // the disk shard admitted by freshness clause 4.
-            if(auto serving = query.serving_source(session.path_id)) {
+            if(auto serving = query.serving(session.path_id)) {
                 // An index answer must not strand an escalated session's
                 // pending build: this request still pulls the compile it
                 // would otherwise have waited on, just without blocking.
@@ -123,8 +123,8 @@ kota::task<std::optional<Features::Stop>> Features::nav_gate(const Ticket& ticke
     co_return std::nullopt;
 }
 
-std::optional<IndexQuery::Cursor> Features::cursor_at(Fid path_id,
-                                                      const protocol::Position& position) const {
+std::optional<index::IndexQuery::Cursor>
+    Features::cursor_at(Fid path_id, const protocol::Position& position) const {
     return query.symbol_at(path_id, position.line, position.character);
 }
 
@@ -230,7 +230,7 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
 }
 
 std::vector<feature::DocumentLink> Features::find_preamble_links(const Session& session) {
-    auto state = query.preamble_blob(session);
+    auto state = query.preamble_blob(session.path_id);
     return state ? state->links() : std::vector<feature::DocumentLink>{};
 }
 
@@ -332,10 +332,10 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             // manifest never described — an edited directive would get
             // the old target, confidently wrong.
             std::vector<protocol::DocumentLink> links;
-            if(query.matching_shard(*session)) {
+            if(query.shard_matching(session->path_id, session->text)) {
                 auto raw = feature::index_document_links(session->text,
                                                          index_lang_options(*session),
-                                                         query.include_edges(*session));
+                                                         query.include_edges(session->path_id));
                 convert(raw, links);
             }
             session->index_served = true;
@@ -404,15 +404,16 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
     // the manifest edges answer instead, under the same content gate as
     // the links projection: manifest lines are meaningless against a
     // buffer the index never described.
+    auto serving = query.serving(path_id);
     if(session->serving == ServingMode::IndexOnly || session->quarantine.blocked() ||
-       query.serving_source(path_id).by == ServingSource::By::ShardAsClosed) {
-        if(!query.matching_shard(*session)) {
+       (serving && serving->kind == index::RowSource::Kind::Shard)) {
+        if(!query.shard_matching(session->path_id, session->text)) {
             co_return serde_raw{"[]"};
         }
         if(auto offset = session->line_map().to_offset(position)) {
             auto links = feature::index_document_links(session->text,
                                                        index_lang_options(*session),
-                                                       query.include_edges(*session));
+                                                       query.include_edges(session->path_id));
             for(const auto& link: links) {
                 if(*offset >= link.range.begin && *offset < link.range.end) {
                     std::vector<protocol::Location> locations{
@@ -520,11 +521,11 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
 Features::RawResult Features::semantic_tokens(std::shared_ptr<Session> session,
                                               std::optional<kota::cancellation_token> token) {
     auto ticket = Ticket::take(session);
-    ServingSource source;
+    std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
         case Route::Index: {
-            auto rows = feature::extract_index_rows(*source.rows);
+            auto rows = feature::extract_index_rows(*source->rows);
             auto tokens = feature::index_semantic_tokens(
                 session->text,
                 index_lang_options(*session),
@@ -577,11 +578,11 @@ Features::RawResult Features::inlay_hints(std::shared_ptr<Session> session,
 Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
                                             std::optional<kota::cancellation_token> token) {
     auto ticket = Ticket::take(session);
-    ServingSource source;
+    std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
         case Route::Index: {
-            auto rows = feature::extract_index_rows(*source.rows);
+            auto rows = feature::extract_index_rows(*source->rows);
             auto folds = feature::index_folding_ranges(
                 session->text,
                 index_lang_options(*session),
@@ -613,11 +614,11 @@ Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
 Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,
                                               std::optional<kota::cancellation_token> token) {
     auto ticket = Ticket::take(session);
-    ServingSource source;
+    std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.await_cold_attempt = true}, &source)) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
         case Route::Index: {
-            auto rows = feature::extract_index_rows(*source.rows);
+            auto rows = feature::extract_index_rows(*source->rows);
             auto symbols = feature::index_document_symbols(rows.decls, [&](index::SymbolHash hash) {
                 return query.symbol_info(hash);
             });
@@ -847,10 +848,10 @@ Features::RawResult Features::implementation(std::shared_ptr<Session> session,
 /// the symbol's canonical site so expanding from a use renders the same
 /// root as expanding from the declaration.
 template <typename Item>
-static Item prepared_item(const IndexQuery& query,
-                          const SymbolRef& symbol,
-                          const Site& cursor,
-                          Item (*project)(const SymbolRef&, const Site&)) {
+static Item prepared_item(const index::IndexQuery& query,
+                          const index::SymbolRef& symbol,
+                          const index::Site& cursor,
+                          Item (*project)(const index::SymbolRef&, const index::Site&)) {
     auto site = query.canonical_site(symbol.hash);
     return project(symbol, site ? *site : cursor);
 }
@@ -880,9 +881,10 @@ Features::RawResult Features::call_hierarchy_prepare(std::shared_ptr<Session> se
 
 /// The symbol a hierarchy item stands for: its handle when intact, else
 /// the symbol at the item's recorded range in the file's serving source.
-static std::optional<index::SymbolHash> item_symbol(const IndexQuery& query,
-                                                    std::optional<IndexQuery::Cursor> at_range,
-                                                    const std::optional<protocol::LSPAny>& data) {
+static std::optional<index::SymbolHash>
+    item_symbol(const index::IndexQuery& query,
+                std::optional<index::IndexQuery::Cursor> at_range,
+                const std::optional<protocol::LSPAny>& data) {
     if(auto hash = to_lsp::hierarchy_symbol(data); hash && query.symbol_info(*hash)) {
         return hash;
     }
@@ -958,7 +960,7 @@ Features::RawResult Features::type_hierarchy_prepare(std::shared_ptr<Session> se
 }
 
 /// The items of every resolvable relation target of `symbol`.
-static std::vector<protocol::TypeHierarchyItem> type_items(const IndexQuery& query,
+static std::vector<protocol::TypeHierarchyItem> type_items(const index::IndexQuery& query,
                                                            index::SymbolHash symbol,
                                                            RelationKind kind) {
     std::vector<protocol::TypeHierarchyItem> results;

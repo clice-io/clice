@@ -4,6 +4,7 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
+#include "index/query.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/context.h"
@@ -12,7 +13,7 @@
 #include "sched/graph.h"
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
-#include "server/service/query.h"
+#include "server/service/live_sources.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
 #include "worker/pool.h"
@@ -38,19 +39,18 @@ ASTProjectionTable projections;
 IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
-clice::IndexQuery query{
-    workspace,
-    {.sessions = &store, .projections = &projections, .pump = &indexer}
-};
+ServerLiveSources live{workspace, store, projections};
+PumpGate gate{indexer, workspace.config};
+index::IndexQuery query{workspace.project_index, workspace.file_table, &gate, &live};
 
 Fid main_id;
 Fid header_id;
 
-std::vector<clice::IndexQuery::Located> search(llvm::StringRef text, std::size_t limit = 10) {
+std::vector<index::IndexQuery::Located> search(llvm::StringRef text, std::size_t limit = 10) {
     return query.search(*index::SymbolQuery::parse(text), limit);
 }
 
-std::vector<clice::IndexQuery::Located> locate(llvm::StringRef text) {
+std::vector<index::IndexQuery::Located> locate(llvm::StringRef text) {
     return query.locate(*index::SymbolQuery::parse(text));
 }
 
@@ -340,7 +340,7 @@ TEST_CASE(DivergedBufferWithdrawsShard) {
 
     // The buffer no longer matches the rows' content: the shard withdraws
     // and the un-compiled session resolves nothing.
-    ASSERT_EQ(query.serving_source(main_id).by, ServingSource::By::None);
+    ASSERT_FALSE(query.serving(main_id).has_value());
     ASSERT_FALSE(query.symbol_at(main_id, point("use")).has_value());
 }
 
@@ -363,14 +363,14 @@ TEST_CASE(HeaderEdgesFromHostManifest) {
     // the host TU's manifest hanging off the header's node.
     auto session = store.open(header_id);
     store.apply_open(*session, sources.all_files.lookup("header.h").content, 1);
-    auto edges = query.include_edges(*session);
+    auto edges = query.include_edges(session->path_id);
     ASSERT_EQ(edges.size(), std::size_t(1));
     ASSERT_TRUE(llvm::StringRef(edges[0].target).ends_with("inner.h"));
 
     // The TU's own manifest still answers for the TU itself.
     auto main_session = store.open(main_id);
     store.apply_open(*main_session, unit->main_content().str(), 1);
-    auto main_edges = query.include_edges(*main_session);
+    auto main_edges = query.include_edges(main_session->path_id);
     ASSERT_EQ(main_edges.size(), std::size_t(1));
     ASSERT_TRUE(llvm::StringRef(main_edges[0].target).ends_with("header.h"));
 }

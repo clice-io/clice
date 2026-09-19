@@ -41,7 +41,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
                            std::string self_path,
                            std::string requested_configuration) :
     loop(loop), pool(loop), contexts(workspace),
-    index_query(workspace, {.sessions = &sessions, .projections = &ast.projections, .pump = &pump}),
+    index_query(workspace.project_index, workspace.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, workspace, contexts, pump, sessions),
     invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
     self_path(std::move(self_path)), requested_configuration(std::move(requested_configuration)) {

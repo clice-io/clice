@@ -5,6 +5,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
+#include "index/query.h"
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
@@ -14,7 +15,7 @@
 #include "sched/graph.h"
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
-#include "server/service/query.h"
+#include "server/service/live_sources.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
 #include "support/cache_store.h"
@@ -43,11 +44,10 @@ ASTProjectionTable projections;
 IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
-IndexQuery index_query{
-    workspace,
-    {.sessions = &session_store, .projections = &projections, .pump = &indexer}
-};
-IndexQuery disk_query{workspace, {.pump = &indexer}};
+ServerLiveSources live{workspace, session_store, projections};
+PumpGate gate{indexer, workspace.config};
+index::IndexQuery index_query{workspace.project_index, workspace.file_table, &gate, &live};
+index::IndexQuery disk_query{workspace.project_index, workspace.file_table, &gate, nullptr};
 
 TempDir dir;
 index::TUIndex full_index;
@@ -163,20 +163,21 @@ void install_empty_index(std::source_location location = std::source_location::c
 
 /// The symbol under a marker in the open session, through the query's
 /// serving source (buffer coordinates).
-IndexQuery::Cursor cursor_of(llvm::StringRef name,
-                             std::source_location location = std::source_location::current()) {
+index::IndexQuery::Cursor
+    cursor_of(llvm::StringRef name,
+              std::source_location location = std::source_location::current()) {
     auto cursor = index_query.symbol_at(session->path_id, point(name));
     EXPECT_TRUE(cursor.has_value());
-    return cursor.value_or(IndexQuery::Cursor{});
+    return cursor.value_or(index::IndexQuery::Cursor{});
 }
 
 /// The sites carrying `kind` for the symbol under a marker.
-std::vector<Site> relations(llvm::StringRef name, RelationKind kind) {
+std::vector<index::Site> relations(llvm::StringRef name, RelationKind kind) {
     return index_query.sites(cursor_of(name).symbol, kind);
 }
 
 /// The 0-based line a site starts on.
-std::uint32_t line_of(const Site& site) {
+std::uint32_t line_of(const index::Site& site) {
     return site.begin.line;
 }
 

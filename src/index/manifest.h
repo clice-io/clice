@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -19,6 +20,13 @@ namespace clice::index {
 /// staleness) and the rows each file received, keyed by content-identity
 /// so a re-merge can tell "already stored" from "new variant" without
 /// touching any shard.
+/// An include edge of a document, from a TU manifest: the 1-based
+/// directive line and the resolved target's absolute path.
+struct IncludeEdge {
+    std::uint32_t line = 0;
+    std::string target;
+};
+
 struct TUManifest {
     /// ProjectIndex::global_generation stamped by the save that persisted
     /// this manifest. The global blob pins the stamp it expects per TU and

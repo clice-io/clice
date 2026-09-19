@@ -43,7 +43,7 @@ struct Lines {
     int end;
 };
 
-Lines lines_of(const Site& site) {
+Lines lines_of(const index::Site& site) {
     return {.start = static_cast<int>(site.begin.line) + 1,
             .end = static_cast<int>(site.end.line) + 1};
 }
@@ -88,7 +88,8 @@ Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
 /// Resolve a locator to exactly one symbol: no candidate is an unknown
 /// symbol, several ask the caller to disambiguate by id. A locator naming
 /// a path the index has no rows for answers as unknown and notes the path.
-Outcome<IndexQuery::Located> resolve_unique(Context& ctx, const SymbolLocatorParams& params) {
+Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx,
+                                                   const SymbolLocatorParams& params) {
     index::SymbolQuery query;
     if(params.symbol) {
         auto parsed = index::SymbolQuery::parse(*params.symbol);
@@ -178,7 +179,7 @@ std::vector<DepEntry> collect_deps(Workspace& ws,
 }
 
 template <typename Entry>
-Entry graph_entry(const IndexQuery::Located& located) {
+Entry graph_entry(const index::IndexQuery::Located& located) {
     return {
         .name = located.symbol.display_name(),
         .kind = kind_name(located.symbol.kind),
@@ -366,7 +367,7 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
     auto located = query->by_pattern() ? ctx.query.search(*query, limit) : ctx.query.locate(*query);
     // A locator names its symbols outright; the filters still apply.
     if(!query->by_pattern()) {
-        llvm::erase_if(located, [&](const IndexQuery::Located& hit) {
+        llvm::erase_if(located, [&](const index::IndexQuery::Located& hit) {
             if(!query->kinds.empty() && !llvm::is_contained(query->kinds, hit.symbol.kind)) {
                 return true;
             }
@@ -479,7 +480,7 @@ Outcome<ReferencesResult> references(Context& ctx,
         .kind = kind_name(resolved->symbol.kind),
         .symbol_id = symbol_id(resolved->symbol.hash),
     };
-    IndexQuery::Cursor cursor{.symbol = resolved->symbol.hash, .site = resolved->site};
+    index::IndexQuery::Cursor cursor{.symbol = resolved->symbol.hash, .site = resolved->site};
     for(auto& site: ctx.query.references(cursor, include_declaration)) {
         result.references.push_back({
             .file = std::string(site.path),

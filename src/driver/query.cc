@@ -167,8 +167,11 @@ struct Reply {
 /// the commands' own. `failed` are the units a --fresh refresh could not
 /// index: their rows are as absent as a withheld file's.
 Reply answer(IndexView& view, const QueryOptions& opts, llvm::ArrayRef<std::string> failed) {
-    DiskGate gate;
-    IndexQuery index_query(view.workspace, {.disk = &gate});
+    index::DiskGate gate(view.workspace.project_index, view.workspace.file_table);
+    index::IndexQuery index_query(view.workspace.project_index,
+                                  view.workspace.file_table,
+                                  &gate,
+                                  nullptr);
     query::Context ctx{.workspace = view.workspace,
                        .contexts = view.contexts,
                        .query = index_query};

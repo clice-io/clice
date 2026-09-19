@@ -9,13 +9,13 @@
 
 #include "driver/driver.h"
 #include "index/database.h"
+#include "index/query.h"
 #include "index/serialization.h"
 #include "index/writer_lock.h"
 #include "sched/batch.h"
 #include "sched/configuration.h"
 #include "sched/index_view.h"
 #include "sched/workspace.h"
-#include "server/service/query.h"
 #include "server/transport/control_client.h"
 #include "support/timer.h"
 
@@ -555,7 +555,7 @@ llvm::StringRef kind_name(SymbolKind kind) {
 /// The symbol a `--show-symbol` argument names: `#<hex>` is a hash, anything
 /// else a display name (`Box<int>`) or a qualified one (`ns::Box<int>`).
 std::vector<index::SymbolHash> matching_symbols(IndexView& view,
-                                                IndexQuery& query,
+                                                index::IndexQuery& query,
                                                 llvm::StringRef wanted) {
     std::vector<index::SymbolHash> matches;
     if(wanted.consume_front("#")) {
@@ -577,7 +577,10 @@ std::vector<index::SymbolHash> matching_symbols(IndexView& view,
 }
 
 int run_show_symbol(IndexView& view, llvm::StringRef wanted) {
-    IndexQuery query(view.workspace, {});
+    index::IndexQuery query(view.workspace.project_index,
+                            view.workspace.file_table,
+                            nullptr,
+                            nullptr);
     auto matches = matching_symbols(view, query, wanted);
     if(matches.empty()) {
         std::println(
