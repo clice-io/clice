@@ -1,9 +1,8 @@
 /// # Variable explicit instantiation directives
 ///
-/// - status: partial
-/// - issues: llvm#191658
+/// - status: supported
 ///
-/// Identifiers in a variable explicit-instantiation directive remain unpainted
+/// Identifiers in a variable explicit-instantiation directive are painted
 
 struct Widget {};
 

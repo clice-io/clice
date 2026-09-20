@@ -137,12 +137,12 @@ tests/snap/document_symbol/symbol_kinds/04_kinds_type_aliases.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial llvm#191658 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Explicit instantiation directives**
 
-Class explicit instantiations appear as childless symbols, while function
-and variable forms are missing from the outline
+Class, function and variable explicit instantiations appear as childless
+symbols
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/05_kinds_explicit_instantiations.cpp

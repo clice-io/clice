@@ -125,11 +125,11 @@ tests/snap/document_symbol/symbol_kinds/04_kinds_type_aliases.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial llvm#191658 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **显式实例化指令**
 
-类的显式实例化显示为没有子节点的符号，而函数和变量的显式实例化尚未出现在大纲中
+类、函数和变量的显式实例化都显示为没有子节点的符号
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/05_kinds_explicit_instantiations.cpp

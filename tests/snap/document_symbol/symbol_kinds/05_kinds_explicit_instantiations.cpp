@@ -1,10 +1,9 @@
 /// # Explicit instantiation directives
 ///
-/// - status: partial
-/// - issues: llvm#191658
+/// - status: supported
 ///
-/// Class explicit instantiations appear as childless symbols, while function
-/// and variable forms are missing from the outline
+/// Class, function and variable explicit instantiations appear as childless
+/// symbols
 
 template <typename T>
 struct Box {

@@ -357,14 +357,6 @@ private:
         if(node.flags.in_instantiation) {
             return;
         }
-        // The function and variable forms of an explicit instantiation
-        // directive sit at their pattern's location in clang 22 (see
-        // decls::is_instantiation); under the instantiation option they
-        // reach the table inside their template anyway.
-        if(decls::is_instantiation(decl) &&
-           !llvm::isa<clang::ClassTemplateSpecializationDecl>(decl)) {
-            return;
-        }
 
         if(auto span = spelled_span(i)) {
             candidates.push_back(*span);
@@ -383,11 +375,9 @@ private:
             if(!decl) {
                 continue;
             }
-            // An instantiation subtree reuses the pattern's locations: an
-            // explicit function or variable instantiation under its
-            // template is unflagged but sits at the pattern's definition
-            // (decls::is_instantiation), possibly in another declaration.
-            if(node.flags.in_instantiation || (j != i && decls::is_instantiation(decl))) {
+            // An instantiation subtree reuses the pattern's locations,
+            // possibly in another declaration.
+            if(node.flags.in_instantiation) {
                 j = node.subtree_end - 1;
                 continue;
             }
