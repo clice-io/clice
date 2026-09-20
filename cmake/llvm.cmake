@@ -45,9 +45,9 @@ function(_download_llvm LLVM_VERSION)
 
     set(_FILENAME "${_TRIPLE}.${_MODE}${_SUFFIX}.tar.xz")
     string(REPLACE "+" "%2B" _URL_VERSION "${LLVM_VERSION}")
-    # A release like 22.1.8+1 is not a CMake version; CPM hands VERSION to
+    # A release like 23.1.1+r1 is not a CMake version; CPM hands VERSION to
     # find_package when local packages are enabled.
-    string(REPLACE "+" "." _CMAKE_VERSION "${LLVM_VERSION}")
+    string(REGEX REPLACE "\\+.*" "" _CMAKE_VERSION "${LLVM_VERSION}")
 
     CPMAddPackage(
         NAME llvm_prebuilt
@@ -163,6 +163,12 @@ function(_check_llvm_manifest install_path)
             "(-ULLVM_INSTALL_PATH) to download one.")
     endif()
     include("${_manifest}")
+    if(NOT DEFINED CLICE_LLVM_LIBCXX_ABI_VERSION)
+        message(FATAL_ERROR
+            "The LLVM package at ${install_path} ships no libc++: it predates the "
+            "23.1.1+r1 packages. Point LLVM_INSTALL_PATH at a newer package, or unset it "
+            "(-ULLVM_INSTALL_PATH) to download one.")
+    endif()
     clice_target_triple(_triple)
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -229,9 +235,9 @@ endfunction()
 # __throw_bad_alloc. On the vcruntime ABI libc++ leaves std::set_new_handler to
 # the MSVC STL (libcpmt), which nothing auto-links once its headers are
 # shadowed; it duplicates libc++'s exception_ptr definitions, so it stays a
-# default library, searched after everything else. The compile step has no use
-# for -stdlib=libc++ once -nostdinc++ is given (clang warns), so it is a link
-# flag only.
+# default library, searched after everything else. Elsewhere the archive is
+# also named outright: -stdlib=libc++ with a -L would still let a libc++.so
+# from an earlier -L (LDFLAGS) win the link.
 function(_llvm_libcxx_flags install_path cxx_flags_var link_flags_var)
     set(_include "${install_path}/include/c++/v1")
     set(_lib "${install_path}/lib")
@@ -243,6 +249,6 @@ function(_llvm_libcxx_flags install_path cxx_flags_var link_flags_var)
         set(${link_flags_var} "\"${_lib}/libc++.lib\" -Wl,/DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
     else()
         set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
-        set(${link_flags_var} "-stdlib=libc++ -L\"${_lib}\"" PARENT_SCOPE)
+        set(${link_flags_var} "-nostdlib++ \"${_lib}/libc++.a\"" PARENT_SCOPE)
     endif()
 endfunction()
