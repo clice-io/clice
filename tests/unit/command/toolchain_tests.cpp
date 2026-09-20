@@ -579,6 +579,44 @@ TEST_CASE(ResolveReplacesResourceDir, skip = Windows) {
     }
 }
 
+TEST_CASE(ResolveKeepsExternalIgnorelist, skip = Windows) {
+    constexpr llvm::StringRef line =
+        R"( "/usr/bin/clang-22" "-cc1" "-resource-dir" "/clice-fake/lib/clang/22" "-internal-isystem" "/clice-fake/lib/clang/22/include" "-fsanitize=address" "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22/share/asan_ignorelist.txt" "-std=c++23")";
+    auto driver = create_fake_clang(line);
+    ASSERT_TRUE(driver.has_value());
+
+    Fixture f;
+    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
+    ASSERT_TRUE(f.db.toolchain().resolve(ref.config, ref.input).has_value());
+
+    // The builtin headers become ours; the ignorelist the driver found
+    // under the external share/ has no counterpart in our tree.
+    auto argv = f.db.render(ref);
+    EXPECT_TRUE(std::ranges::contains(argv, resource_dir()));
+    EXPECT_TRUE(std::ranges::contains(argv, llvm::StringRef(resource_dir().str() + "/include")));
+    EXPECT_TRUE(std::ranges::contains(
+        argv,
+        llvm::StringRef(
+            "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22/share/asan_ignorelist.txt")));
+}
+
+TEST_CASE(ResolveTrailingSlashResourceDir, skip = Windows) {
+    constexpr llvm::StringRef line =
+        R"( "/usr/bin/clang-22" "-cc1" "-resource-dir" "/clice-fake/lib/clang/22//" "-internal-isystem" "/clice-fake/lib/clang/22//include" "-std=c++23")";
+    auto driver = create_fake_clang(line);
+    ASSERT_TRUE(driver.has_value());
+
+    Fixture f;
+    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
+    ASSERT_TRUE(f.db.toolchain().resolve(ref.config, ref.input).has_value());
+
+    auto argv = f.db.render(ref);
+    EXPECT_TRUE(std::ranges::contains(argv, llvm::StringRef(resource_dir().str() + "/include")));
+    for(llvm::StringRef arg: argv) {
+        EXPECT_FALSE(arg.starts_with("/clice-fake"));
+    }
+}
+
 /// A fake driver whose -### line reflects the -resource-dir it was invoked
 /// with, falling back to `fallback_dir` when none was passed — the same
 /// observable difference a real driver shows between a forced resource dir

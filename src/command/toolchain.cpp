@@ -1064,28 +1064,50 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
     }
 
     /// Preserve a real LLVM-MinGW resource tree (a matched installation:
-    /// resource headers and libc++ belong together). Other external
-    /// resource paths are replaced with ours to keep the embedded frontend
-    /// and builtin headers version-matched.
+    /// resource headers and libc++ belong together). Otherwise the external
+    /// resource dir and its builtin headers are replaced with ours to keep
+    /// them version-matched with the embedded frontend. Everything else the
+    /// driver derived from its resource dir stays external — sanitizer
+    /// ignorelists under share/, runtime libraries under lib/: the driver
+    /// verified those files exist there, our tree ships include/ alone, and
+    /// cc1 aborts the process on an ignorelist it cannot open.
     if(!resource_dir().empty()) {
         llvm::StringRef old_resource_dir;
         for(auto& arg: staged) {
             if((arg.opt_id == option::OPT_resource_dir ||
                 arg.opt_id == option::OPT_resource_dir_EQ) &&
                arg.values.size() == 1) {
-                old_resource_dir = arg.values[0];
+                // A trailing separator on the command's -resource-dir reaches
+                // cc1 verbatim while the derived paths append without doubling it.
+                old_resource_dir = llvm::StringRef(arg.values[0]).rtrim("/\\");
                 break;
             }
         }
         bool keep_external =
             uses_windows_gnu_target(config) && llvm::sys::fs::is_directory(old_resource_dir);
         if(!old_resource_dir.empty() && old_resource_dir != resource_dir() && !keep_external) {
+            // The remainder below the resource dir when ours ships it (the
+            // resource dir itself or its builtin headers), separators dropped.
+            auto shipped = [](llvm::StringRef rest) -> std::optional<llvm::StringRef> {
+                if(!rest.empty() && rest.front() != '/' && rest.front() != '\\') {
+                    return std::nullopt;
+                }
+                rest = rest.ltrim("/\\");
+                if(rest.empty() || rest == "include" || rest.starts_with("include/") ||
+                   rest.starts_with("include\\")) {
+                    return rest;
+                }
+                return std::nullopt;
+            };
             for(auto& arg: staged) {
                 for(auto& value: arg.values) {
-                    llvm::StringRef s(value);
-                    if(s.starts_with(old_resource_dir)) {
-                        auto replaced =
-                            resource_dir().str() + s.substr(old_resource_dir.size()).str();
+                    llvm::StringRef rest(value);
+                    if(!rest.consume_front(old_resource_dir)) {
+                        continue;
+                    }
+                    if(auto tail = shipped(rest)) {
+                        auto replaced = tail->empty() ? resource_dir().str()
+                                                      : path::join(resource_dir(), *tail);
                         value = db.strings.save(replaced).data();
                     }
                 }
