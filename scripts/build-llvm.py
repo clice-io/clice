@@ -355,15 +355,20 @@ class Build:
         lib = (self.install_prefix / "lib").as_posix()
         if IS_WINDOWS:
             # clang-cl has no -nostdinc++; the MSVC STL headers sit in the
-            # INCLUDE directories, which -isystem precedes. libc++'s headers
-            # auto-link libc++.lib through a #pragma. On the vcruntime ABI
-            # libc++ leaves std::set_new_handler to the MSVC STL (libcpmt),
-            # which nothing auto-links once its headers are shadowed; it
-            # duplicates libc++'s exception_ptr definitions, so it has to be
-            # searched after libc++.lib, hence both are named in that order.
+            # INCLUDE directories, which -isystem precedes. libc++.lib is a
+            # plain linker input, not a /DEFAULTLIB: lld-link reads the
+            # command-line inputs and the objects' directive libraries
+            # (libcmt) before any /DEFAULTLIB, and libcmt also defines
+            # std::nothrow, so as a default library libc++ would lose that
+            # symbol to libcmt and then duplicate it when new_helpers.cpp.obj
+            # is pulled in for __throw_bad_alloc. On the vcruntime ABI libc++
+            # leaves std::set_new_handler to the MSVC STL (libcpmt), which
+            # nothing auto-links once its headers are shadowed; it duplicates
+            # libc++'s exception_ptr definitions, so it stays a default
+            # library, searched after everything else.
             return (
                 f"-w /clang:-isystem{include}",
-                f"/LIBPATH:{lib} /DEFAULTLIB:libc++.lib /DEFAULTLIB:libcpmt.lib",
+                f"{lib}/libc++.lib /DEFAULTLIB:libcpmt.lib",
             )
         # -D on the command line replaces the toolchain file's *_INIT linker
         # flags, so lld is repeated here.

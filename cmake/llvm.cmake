@@ -221,22 +221,26 @@ endfunction()
 # Compile and link flags that make the package's static libc++ the standard
 # library. -nostdinc++ removes the host's C++ headers on Linux and macOS; on
 # Windows the MSVC STL sits in the INCLUDE directories together with the C
-# runtime headers, which -isystem precedes, and libc++'s headers auto-link
-# libc++.lib through a #pragma. On the vcruntime ABI libc++ leaves
-# std::set_new_handler to the MSVC STL (libcpmt), which nothing auto-links once
-# its headers are shadowed; it duplicates libc++'s exception_ptr definitions,
-# so it has to be searched after libc++.lib, hence both are named in that
-# order. The compile step has no use for -stdlib=libc++ once -nostdinc++ is
-# given (clang warns), so it is a link flag only.
+# runtime headers, which -isystem precedes. There libc++.lib is a plain linker
+# input rather than a /DEFAULTLIB: lld-link reads the command-line inputs and
+# the objects' directive libraries (libcmt) before any /DEFAULTLIB, and libcmt
+# also defines std::nothrow, so a default-library libc++ loses that symbol to
+# libcmt and then duplicates it once new_helpers.cpp.obj is pulled in for
+# __throw_bad_alloc. On the vcruntime ABI libc++ leaves std::set_new_handler to
+# the MSVC STL (libcpmt), which nothing auto-links once its headers are
+# shadowed; it duplicates libc++'s exception_ptr definitions, so it stays a
+# default library, searched after everything else. The compile step has no use
+# for -stdlib=libc++ once -nostdinc++ is given (clang warns), so it is a link
+# flag only.
 function(_llvm_libcxx_flags install_path cxx_flags_var link_flags_var)
     set(_include "${install_path}/include/c++/v1")
     set(_lib "${install_path}/lib")
     if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         set(${cxx_flags_var} "/clang:-isystem\"${_include}\"" PARENT_SCOPE)
-        set(${link_flags_var} "/LIBPATH:\"${_lib}\" /DEFAULTLIB:libc++.lib /DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
+        set(${link_flags_var} "\"${_lib}/libc++.lib\" /DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
     elseif(WIN32)
         set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
-        set(${link_flags_var} "-L\"${_lib}\" -Wl,/DEFAULTLIB:libc++.lib -Wl,/DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
+        set(${link_flags_var} "\"${_lib}/libc++.lib\" -Wl,/DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
     else()
         set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
         set(${link_flags_var} "-stdlib=libc++ -L\"${_lib}\"" PARENT_SCOPE)
