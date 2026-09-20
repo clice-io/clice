@@ -373,8 +373,7 @@ Features::RawResult Features::diagnostics(std::shared_ptr<Session> session) {
     // diagnostic through the same CompileOutput path so pull and push expose
     // the same explanation. Other failed rounds answer an honest empty set
     // rather than reusing a previous projection's stale diagnostics.
-    if(projection && projection->output.has_value() &&
-       (compiled || session->quarantine.active())) {
+    if(projection && projection->output.has_value() && (compiled || session->quarantine.active())) {
         report.items = format_diagnostics(*projection->output);
     }
     co_return to_raw(report);
