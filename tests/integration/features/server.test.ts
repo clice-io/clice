@@ -121,7 +121,13 @@ test("document diagnostics pull", async ({ client }) => {
     if (report.kind !== proto.DocumentDiagnosticReportKind.Full) {
         throw new Error("expected full document diagnostic report");
     }
-    expect(report.items.some((d) => d.message.includes("UnknownType"))).toBe(true);
+    expect(
+        report.items.some((d) =>
+            typeof d.message === "string"
+                ? d.message.includes("UnknownType")
+                : d.message.value.includes("UnknownType"),
+        ),
+    ).toBe(true);
     expect(report.items.some((d) => d.source === "clang")).toBe(true);
     client.close(uri);
 });
