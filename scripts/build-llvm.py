@@ -251,16 +251,10 @@ class Build:
                 "-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=",
                 "-DLLVM_USE_LINKER=lld-link",
             ]
-        args = [
+        return [
             f"-DCMAKE_TOOLCHAIN_FILE={self.toolchain_file.as_posix()}",
             "-DLLVM_USE_LINKER=lld",
         ]
-        if IS_DARWIN:
-            # CMake 4 leaves CMAKE_OSX_SYSROOT unset; libc++ reads the SDK
-            # name from it under LLVM_USE_SANITIZER.
-            sdk = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True)
-            args.append(f"-DCMAKE_OSX_SYSROOT={sdk.strip()}")
-        return args
 
     def debug_info_args(self) -> list[str]:
         # Function names and line tables are all the symbolizers need; the
@@ -293,8 +287,6 @@ class Build:
             *self.compiler_args(),
             *self.debug_info_args(),
         ]
-        if self.asan:
-            args.append("-DLLVM_USE_SANITIZER=Address")
         if self.ccache:
             args += ["-DLLVM_CCACHE_BUILD=ON", f"-DCCACHE_PROGRAM={self.ccache}"]
         if self.target_triple:
@@ -309,6 +301,10 @@ class Build:
         return "none" if self.lto else "fast"
 
     def build_runtimes(self) -> None:
+        """The libc++ is not sanitizer-instrumented even in the ASan variant:
+        the instrumented build needs a compiler-rt lookup that fails on Apple
+        for static-only builds, and container-overflow detection is not worth
+        a patch."""
         build_dir = self.build_dir / "runtimes"
         args = self.common_args("-w") + [
             "-DLLVM_ENABLE_RUNTIMES="
@@ -322,7 +318,20 @@ class Build:
             "-DLIBCXX_INCLUDE_BENCHMARKS=OFF",
             "-DLIBCXX_INCLUDE_TESTS=OFF",
         ]
-        if not IS_WINDOWS:
+        if IS_WINDOWS:
+            # Upstream compiles libc++ with _CRT_STDIO_ISO_WIDE_SPECIFIERS, and
+            # the UCRT's detect_mismatch then forces that mode on every object
+            # linked with it; the ISO mode changes what %s means in the wide
+            # printf family, which libuv relies on. The library only formats
+            # numbers with it, so it is built mode-agnostic instead (the
+            # "static library" mode of corecrt_stdio_config.h). Target flags
+            # come after the definitions on the command line, so the
+            # undefine wins.
+            args.append(
+                "-DLIBCXX_ADDITIONAL_COMPILE_FLAGS="
+                "/U_CRT_STDIO_ISO_WIDE_SPECIFIERS;/D_CRT_STDIO_ARBITRARY_WIDE_SPECIFIERS"
+            )
+        else:
             args += [
                 "-DLIBCXX_CXX_ABI=libcxxabi",
                 "-DLIBCXX_ENABLE_STATIC_ABI_LIBRARY=ON",
@@ -369,6 +378,7 @@ class Build:
             f"-DCMAKE_EXE_LINKER_FLAGS={linker_flags}",
             f"-DCMAKE_SHARED_LINKER_FLAGS={linker_flags}",
             f"-DCMAKE_MODULE_LINKER_FLAGS={linker_flags}",
+            *(["-DLLVM_USE_SANITIZER=Address"] if self.asan else []),
             "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
             # No backend is built, but clang/lib/Headers generates arm_neon.h,
             # arm_sve.h and riscv_vector.h only when their target is listed;
