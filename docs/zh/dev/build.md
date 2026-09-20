@@ -55,15 +55,14 @@ cmake --build build/RelWithDebInfo
 
 ### CMake 选项
 
-| 选项                   | 默认值 | 作用                                                           |
-| ---------------------- | ------ | -------------------------------------------------------------- |
-| LLVM_INSTALL_PATH      | ""     | 使用自定义路径中的 LLVM 构建 clice                             |
-| CLICE_ENABLE_TEST      | OFF    | 构建单元测试和基准测试基础设施                                 |
-| CLICE_ENABLE_BENCHMARK | OFF    | 构建基准测试                                                   |
-| CLICE_ENABLE_LTO       | OFF    | 为所有目标启用 ThinLTO                                         |
-| CLICE_USE_LIBCXX       | OFF    | 使用 libc++（添加 `-stdlib=libc++`）；LLVM 库也必须使用 libc++ |
-| CLICE_CI_ENVIRONMENT   | OFF    | 启用 `CLICE_CI_ENVIRONMENT` 宏；部分测试仅在 CI 中运行         |
-| CLICE_OFFLINE_BUILD    | OFF    | 禁止在配置期间从网络下载                                       |
+| 选项                   | 默认值 | 作用                                                   |
+| ---------------------- | ------ | ------------------------------------------------------ |
+| LLVM_INSTALL_PATH      | ""     | 使用自定义路径中的 LLVM 构建 clice                     |
+| CLICE_ENABLE_TEST      | OFF    | 构建单元测试和基准测试基础设施                         |
+| CLICE_ENABLE_BENCHMARK | OFF    | 构建基准测试                                           |
+| CLICE_ENABLE_LTO       | OFF    | 为所有目标启用 ThinLTO                                 |
+| CLICE_CI_ENVIRONMENT   | OFF    | 启用 `CLICE_CI_ENVIRONMENT` 宏；部分测试仅在 CI 中运行 |
+| CLICE_OFFLINE_BUILD    | OFF    | 禁止在配置期间从网络下载                               |
 
 ## 关于 LLVM
 

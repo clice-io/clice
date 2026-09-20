@@ -45,9 +45,9 @@ function(_download_llvm LLVM_VERSION)
 
     set(_FILENAME "${_TRIPLE}.${_MODE}${_SUFFIX}.tar.xz")
     string(REPLACE "+" "%2B" _URL_VERSION "${LLVM_VERSION}")
-    # A release like 22.1.8+1 is not a CMake version; CPM hands VERSION to
+    # A release like 23.1.1+r1 is not a CMake version; CPM hands VERSION to
     # find_package when local packages are enabled.
-    string(REPLACE "+" "." _CMAKE_VERSION "${LLVM_VERSION}")
+    string(REGEX REPLACE "\\+.*" "" _CMAKE_VERSION "${LLVM_VERSION}")
 
     CPMAddPackage(
         NAME llvm_prebuilt
@@ -110,6 +110,23 @@ function(setup_llvm LLVM_VERSION)
 
     _check_llvm_manifest("${LLVM_INSTALL_PATH}")
 
+    # The package's libc++ is the standard library of everything in this
+    # build, third-party dependencies and their configure checks included, so
+    # the flags go into the global CMAKE_* variables (add_compile_options and
+    # link_libraries do not reach try_compile). The archive itself goes into
+    # the standard libraries, which CMake places after the objects and link
+    # libraries: a linker that scans archives in command-line order (GNU ld,
+    # ld64) would otherwise drop it before anything references it. try_compile
+    # does not carry that variable on its own.
+    _llvm_libcxx_flags("${LLVM_INSTALL_PATH}" _cxx_flags _link_flags _libcxx)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_cxx_flags}" PARENT_SCOPE)
+    foreach(kind EXE SHARED MODULE)
+        set(CMAKE_${kind}_LINKER_FLAGS "${CMAKE_${kind}_LINKER_FLAGS} ${_link_flags}" PARENT_SCOPE)
+    endforeach()
+    set(CMAKE_CXX_STANDARD_LIBRARIES "${_libcxx} ${CMAKE_CXX_STANDARD_LIBRARIES}" PARENT_SCOPE)
+    list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES CMAKE_CXX_STANDARD_LIBRARIES)
+    set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES "${CMAKE_TRY_COMPILE_PLATFORM_VARIABLES}" PARENT_SCOPE)
+
     llvm_map_components_to_libnames(LLVM_RESOLVED
         support frontendopenmp option targetparser)
 
@@ -149,10 +166,16 @@ function(_check_llvm_manifest install_path)
     if(NOT EXISTS "${_manifest}")
         message(FATAL_ERROR
             "No clice-llvm manifest at ${_manifest}: this LLVM install predates the "
-            "23.1.1 packages. Point LLVM_INSTALL_PATH at a newer package, or unset it "
+            "libc++ packages (23.1.1+r1). Point LLVM_INSTALL_PATH at a newer package, or unset it "
             "(-ULLVM_INSTALL_PATH) to download one.")
     endif()
     include("${_manifest}")
+    if(NOT DEFINED CLICE_LLVM_LIBCXX_ABI_VERSION)
+        message(FATAL_ERROR
+            "The LLVM package at ${install_path} ships no libc++: it predates the "
+            "23.1.1+r1 packages. Point LLVM_INSTALL_PATH at a newer package, or unset it "
+            "(-ULLVM_INSTALL_PATH) to download one.")
+    endif()
     clice_target_triple(_triple)
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -196,11 +219,46 @@ function(_check_llvm_manifest install_path)
     if(NOT CLICE_LLVM_ASAN STREQUAL _expected_asan)
         string(APPEND _mismatch "\n  ASan: package ${CLICE_LLVM_ASAN}, this build ${_expected_asan}")
     endif()
+    if(NOT CLICE_LLVM_STDLIB STREQUAL "libc++")
+        string(APPEND _mismatch "\n  standard library: package ${CLICE_LLVM_STDLIB}, this build libc++")
+    endif()
     if(WIN32 AND NOT CLICE_LLVM_MSVC_RUNTIME_LIBRARY STREQUAL CMAKE_MSVC_RUNTIME_LIBRARY)
         string(APPEND _mismatch "\n  MSVC runtime: package ${CLICE_LLVM_MSVC_RUNTIME_LIBRARY}, "
             "this build '${CMAKE_MSVC_RUNTIME_LIBRARY}'")
     endif()
     if(_mismatch)
         message(FATAL_ERROR "The LLVM package at ${install_path} does not match this build:${_mismatch}")
+    endif()
+endfunction()
+
+# Compile and link flags that make the package's static libc++ the standard
+# library. -nostdinc++ removes the host's C++ headers on Linux and macOS; on
+# Windows the MSVC STL sits in the INCLUDE directories together with the C
+# runtime headers, which -isystem precedes. There libc++.lib is a plain linker
+# input rather than a /DEFAULTLIB: lld-link reads the command-line inputs and
+# the objects' directive libraries (libcmt) before any /DEFAULTLIB, and libcmt
+# also defines std::nothrow, so a default-library libc++ loses that symbol to
+# libcmt and then duplicates it once new_helpers.cpp.obj is pulled in for
+# __throw_bad_alloc. On the vcruntime ABI libc++ leaves std::set_new_handler to
+# the MSVC STL (libcpmt), which nothing auto-links once its headers are
+# shadowed; it duplicates libc++'s exception_ptr definitions, so it stays a
+# default library, searched after everything else. Elsewhere the archive is
+# also named outright: -stdlib=libc++ with a -L would still let a libc++.so
+# from an earlier -L (LDFLAGS) win the link.
+function(_llvm_libcxx_flags install_path cxx_flags_var link_flags_var libcxx_var)
+    set(_include "${install_path}/include/c++/v1")
+    set(_lib "${install_path}/lib")
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        set(${cxx_flags_var} "/clang:-isystem\"${_include}\"" PARENT_SCOPE)
+        set(${link_flags_var} "/DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
+        set(${libcxx_var} "\"${_lib}/libc++.lib\"" PARENT_SCOPE)
+    elseif(WIN32)
+        set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
+        set(${link_flags_var} "-Wl,/DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
+        set(${libcxx_var} "\"${_lib}/libc++.lib\"" PARENT_SCOPE)
+    else()
+        set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
+        set(${link_flags_var} "-nostdlib++" PARENT_SCOPE)
+        set(${libcxx_var} "\"${_lib}/libc++.a\"" PARENT_SCOPE)
     endif()
 endfunction()
