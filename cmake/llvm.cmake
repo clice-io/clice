@@ -110,6 +110,16 @@ function(setup_llvm LLVM_VERSION)
 
     _check_llvm_manifest("${LLVM_INSTALL_PATH}")
 
+    # The package's libc++ is the standard library of everything in this
+    # build, third-party dependencies and their configure checks included, so
+    # the flags go into the global CMAKE_* variables (add_compile_options and
+    # link_libraries do not reach try_compile).
+    _llvm_libcxx_flags("${LLVM_INSTALL_PATH}" _cxx_flags _link_flags)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_cxx_flags}" PARENT_SCOPE)
+    foreach(kind EXE SHARED MODULE)
+        set(CMAKE_${kind}_LINKER_FLAGS "${CMAKE_${kind}_LINKER_FLAGS} ${_link_flags}" PARENT_SCOPE)
+    endforeach()
+
     llvm_map_components_to_libnames(LLVM_RESOLVED
         support frontendopenmp option targetparser)
 
@@ -196,11 +206,39 @@ function(_check_llvm_manifest install_path)
     if(NOT CLICE_LLVM_ASAN STREQUAL _expected_asan)
         string(APPEND _mismatch "\n  ASan: package ${CLICE_LLVM_ASAN}, this build ${_expected_asan}")
     endif()
+    if(NOT CLICE_LLVM_STDLIB STREQUAL "libc++")
+        string(APPEND _mismatch "\n  standard library: package ${CLICE_LLVM_STDLIB}, this build libc++")
+    endif()
     if(WIN32 AND NOT CLICE_LLVM_MSVC_RUNTIME_LIBRARY STREQUAL CMAKE_MSVC_RUNTIME_LIBRARY)
         string(APPEND _mismatch "\n  MSVC runtime: package ${CLICE_LLVM_MSVC_RUNTIME_LIBRARY}, "
             "this build '${CMAKE_MSVC_RUNTIME_LIBRARY}'")
     endif()
     if(_mismatch)
         message(FATAL_ERROR "The LLVM package at ${install_path} does not match this build:${_mismatch}")
+    endif()
+endfunction()
+
+# Compile and link flags that make the package's static libc++ the standard
+# library. -nostdinc++ removes the host's C++ headers on Linux and macOS; on
+# Windows the MSVC STL sits in the INCLUDE directories together with the C
+# runtime headers, which -isystem precedes, and libc++'s headers auto-link
+# libc++.lib through a #pragma. On the vcruntime ABI libc++ leaves
+# std::set_new_handler to the MSVC STL (libcpmt), which nothing auto-links once
+# its headers are shadowed; it duplicates libc++'s exception_ptr definitions,
+# so it has to be searched after libc++.lib, hence both are named in that
+# order. The compile step has no use for -stdlib=libc++ once -nostdinc++ is
+# given (clang warns), so it is a link flag only.
+function(_llvm_libcxx_flags install_path cxx_flags_var link_flags_var)
+    set(_include "${install_path}/include/c++/v1")
+    set(_lib "${install_path}/lib")
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        set(${cxx_flags_var} "/clang:-isystem\"${_include}\"" PARENT_SCOPE)
+        set(${link_flags_var} "/LIBPATH:\"${_lib}\" /DEFAULTLIB:libc++.lib /DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
+    elseif(WIN32)
+        set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
+        set(${link_flags_var} "-L\"${_lib}\" -Wl,/DEFAULTLIB:libc++.lib -Wl,/DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
+    else()
+        set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
+        set(${link_flags_var} "-stdlib=libc++ -L\"${_lib}\"" PARENT_SCOPE)
     endif()
 endfunction()

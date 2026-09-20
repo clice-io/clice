@@ -61,7 +61,6 @@ cmake --build build/RelWithDebInfo
 | CLICE_ENABLE_TEST      | OFF     | Build unit tests and benchmarks infrastructure                     |
 | CLICE_ENABLE_BENCHMARK | OFF     | Build benchmarks                                                   |
 | CLICE_ENABLE_LTO       | OFF     | Enable ThinLTO for all targets                                     |
-| CLICE_USE_LIBCXX       | OFF     | Use libc++ (adds `-stdlib=libc++`); LLVM libs must also use libc++ |
 | CLICE_CI_ENVIRONMENT   | OFF     | Enable `CLICE_CI_ENVIRONMENT` macro; some tests only run in CI     |
 | CLICE_OFFLINE_BUILD    | OFF     | Disable network downloads during configuration                     |
 

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Build the LLVM package clice links against.
 
-Only the libraries clice links (COMPONENTS) are built and installed, no
-code-generation target is configured, and lib/cmake/clice-llvm/config.cmake
-records the toolchain configuration for cmake/llvm.cmake to check against.
+Two configure/build passes share one install prefix. The runtimes pass builds
+a static, hermetic libc++ (libc++abi merged in outside Windows) from the same
+llvm-project tree; the LLVM pass then builds clang and the libraries clice
+links (COMPONENTS) against that libc++, with no code-generation target, and
+lib/cmake/clice-llvm/config.cmake records the toolchain configuration for
+cmake/llvm.cmake to check against.
 """
 
 import argparse
@@ -248,10 +251,16 @@ class Build:
                 "-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=",
                 "-DLLVM_USE_LINKER=lld-link",
             ]
-        return [
+        args = [
             f"-DCMAKE_TOOLCHAIN_FILE={self.toolchain_file.as_posix()}",
             "-DLLVM_USE_LINKER=lld",
         ]
+        if IS_DARWIN:
+            # CMake 4 leaves CMAKE_OSX_SYSROOT unset; libc++ reads the SDK
+            # name from it under LLVM_USE_SANITIZER.
+            sdk = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True)
+            args.append(f"-DCMAKE_OSX_SYSROOT={sdk.strip()}")
+        return args
 
     def debug_info_args(self) -> list[str]:
         # Function names and line tables are all the symbolizers need; the
@@ -268,35 +277,105 @@ class Build:
             args.append(f"-DCMAKE_{lang}_FLAGS_DEBUG={debug}")
         return args
 
-    def stdlib(self) -> str:
-        if IS_WINDOWS:
-            return "msvc-stl"
-        if IS_DARWIN:
-            return "libc++"
-        return "libstdc++"
-
-    def llvm_args(self) -> list[str]:
+    def common_args(self, cxx_flags: str) -> list[str]:
         args = [
             "-G",
             "Ninja",
             f"-DCMAKE_BUILD_TYPE={self.mode}",
             f"-DCMAKE_INSTALL_PREFIX={self.install_prefix.as_posix()}",
             f"-DCMAKE_C_FLAGS=-w{self.driver_flags()}{self.target_flags()}",
-            f"-DCMAKE_CXX_FLAGS=-w{self.driver_flags()}{self.target_flags()}",
+            f"-DCMAKE_CXX_FLAGS={cxx_flags}{self.driver_flags()}{self.target_flags()}",
+            # The archive triple doubles as the default: without a native
+            # backend LLVM would leave it empty, and clang would then have no
+            # target for compile commands that do not spell one.
+            f"-DLLVM_DEFAULT_TARGET_TRIPLE={self.triple}",
+            f"-DLLVM_ENABLE_LTO={'Thin' if self.lto else 'OFF'}",
             *self.compiler_args(),
             *self.debug_info_args(),
+        ]
+        if self.asan:
+            args.append("-DLLVM_USE_SANITIZER=Address")
+        if self.ccache:
+            args += ["-DLLVM_CCACHE_BUILD=ON", f"-DCCACHE_PROGRAM={self.ccache}"]
+        if self.target_triple:
+            args.append(f"-DCLICE_TARGET_TRIPLE={self.target_triple}")
+        return args
+
+    # --------------------------------------------------------------- runtimes
+
+    def hardening_mode(self) -> str:
+        if self.mode == "Debug":
+            return "debug"
+        return "none" if self.lto else "fast"
+
+    def build_runtimes(self) -> None:
+        build_dir = self.build_dir / "runtimes"
+        args = self.common_args("-w") + [
+            "-DLLVM_ENABLE_RUNTIMES="
+            + ("libcxx" if IS_WINDOWS else "libcxxabi;libcxx"),
+            "-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=OFF",
+            "-DLLVM_INCLUDE_TESTS=OFF",
+            "-DLIBCXX_ENABLE_SHARED=OFF",
+            "-DLIBCXX_ENABLE_STATIC=ON",
+            "-DLIBCXX_HERMETIC_STATIC_LIBRARY=ON",
+            f"-DLIBCXX_HARDENING_MODE={self.hardening_mode()}",
+            "-DLIBCXX_INCLUDE_BENCHMARKS=OFF",
+            "-DLIBCXX_INCLUDE_TESTS=OFF",
+        ]
+        if not IS_WINDOWS:
+            args += [
+                "-DLIBCXX_CXX_ABI=libcxxabi",
+                "-DLIBCXX_ENABLE_STATIC_ABI_LIBRARY=ON",
+                "-DLIBCXXABI_ENABLE_SHARED=OFF",
+                "-DLIBCXXABI_HERMETIC_STATIC_LIBRARY=ON",
+                "-DLIBCXXABI_USE_LLVM_UNWINDER=OFF",
+                "-DLIBCXXABI_INCLUDE_TESTS=OFF",
+            ]
+
+        print(f"\nConfiguring runtimes in {build_dir}...")
+        run(["cmake", "-S", self.root / "runtimes", "-B", build_dir] + args)
+        print("\nInstalling runtimes...")
+        run(["cmake", "--build", build_dir, "--target", "install"])
+
+    # ------------------------------------------------------------------- llvm
+
+    def libcxx_args(self) -> tuple[str, str]:
+        """Compile and link flags that make the runtimes pass's libc++ the
+        standard library of the LLVM pass."""
+        include = (self.install_prefix / "include/c++/v1").as_posix()
+        lib = (self.install_prefix / "lib").as_posix()
+        if IS_WINDOWS:
+            # clang-cl has no -nostdinc++; the MSVC STL headers sit in the
+            # INCLUDE directories, which -isystem precedes. libc++'s headers
+            # auto-link libc++.lib through a #pragma. On the vcruntime ABI
+            # libc++ leaves std::set_new_handler to the MSVC STL (libcpmt),
+            # which nothing auto-links once its headers are shadowed; it
+            # duplicates libc++'s exception_ptr definitions, so it has to be
+            # searched after libc++.lib, hence both are named in that order.
+            return (
+                f"-w /clang:-isystem{include}",
+                f"/LIBPATH:{lib} /DEFAULTLIB:libc++.lib /DEFAULTLIB:libcpmt.lib",
+            )
+        # -D on the command line replaces the toolchain file's *_INIT linker
+        # flags, so lld is repeated here.
+        return (
+            f"-w -nostdinc++ -isystem {include}",
+            f"-fuse-ld=lld{self.driver_flags()} -stdlib=libc++ -L{lib}",
+        )
+
+    def llvm_args(self) -> list[str]:
+        cxx_flags, linker_flags = self.libcxx_args()
+        args = self.common_args(cxx_flags) + [
+            f"-DCMAKE_EXE_LINKER_FLAGS={linker_flags}",
+            f"-DCMAKE_SHARED_LINKER_FLAGS={linker_flags}",
+            f"-DCMAKE_MODULE_LINKER_FLAGS={linker_flags}",
             "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
             # No backend is built, but clang/lib/Headers generates arm_neon.h,
             # arm_sve.h and riscv_vector.h only when their target is listed;
             # install-distribution never reaches the backends themselves.
             "-DLLVM_TARGETS_TO_BUILD=AArch64;ARM;RISCV",
-            # Without a native backend LLVM leaves the default triple empty,
-            # and clang would then have no target for compile commands that
-            # do not spell one. The archive triple doubles as the default.
-            f"-DLLVM_DEFAULT_TARGET_TRIPLE={self.triple}",
             f"-DLLVM_DISTRIBUTION_COMPONENTS={';'.join(COMPONENTS)}",
             f"-DLLVM_ENABLE_ASSERTIONS={'ON' if self.assertions else 'OFF'}",
-            f"-DLLVM_ENABLE_LTO={'Thin' if self.lto else 'OFF'}",
             "-DBUILD_SHARED_LIBS=OFF",
             "-DLLVM_ENABLE_RTTI=OFF",
             "-DLLVM_ENABLE_DIA_SDK=OFF",
@@ -336,12 +415,7 @@ class Build:
             "-DCLANG_TIDY_ENABLE_STATIC_ANALYZER=OFF",
             "-DCLANG_TIDY_ENABLE_QUERY_BASED_CUSTOM_CHECKS=OFF",
         ]
-        if self.asan:
-            args.append("-DLLVM_USE_SANITIZER=Address")
-        if self.ccache:
-            args += ["-DLLVM_CCACHE_BUILD=ON", f"-DCCACHE_PROGRAM={self.ccache}"]
         if self.target_triple:
-            args.append(f"-DCLICE_TARGET_TRIPLE={self.target_triple}")
             args.append(f"-DLLVM_HOST_TRIPLE={self.target_triple}")
             if not IS_DARWIN:
                 args.append(f"-DLLVM_NATIVE_TOOL_DIR={self.build_native_tools()}")
@@ -418,6 +492,9 @@ class Build:
     def write_manifest(self, build_dir: Path) -> None:
         """Record the configuration a consumer must match, for cmake/llvm.cmake."""
         cache = read_cmake_cache(build_dir / "CMakeCache.txt")
+        runtimes_cache = read_cmake_cache(
+            self.build_dir / "runtimes" / "CMakeCache.txt"
+        )
         compiler = compiler_info(build_dir)
         entries = {
             "LLVM_VERSION": llvm_version_of(self.root),
@@ -429,7 +506,9 @@ class Build:
             "ASAN": "ON" if self.asan else "OFF",
             "ASSERTIONS": "ON" if self.assertions else "OFF",
             "RTTI": "OFF",
-            "STDLIB": self.stdlib(),
+            "STDLIB": "libc++",
+            "LIBCXX_ABI_VERSION": runtimes_cache.get("LIBCXX_ABI_VERSION", ""),
+            "LIBCXX_HARDENING_MODE": self.hardening_mode(),
             "MSVC_RUNTIME_LIBRARY": cache.get("CMAKE_MSVC_RUNTIME_LIBRARY", ""),
             "OSX_DEPLOYMENT_TARGET": cache.get("CMAKE_OSX_DEPLOYMENT_TARGET", ""),
         }
@@ -502,7 +581,7 @@ def main() -> None:
     parser.add_argument(
         "--configure-only",
         action="store_true",
-        help="Configure LLVM and print the size of the build plan, then stop before building",
+        help="Build the runtimes and configure LLVM, print the size of the build plan, then stop before building LLVM",
     )
     args = parser.parse_args()
 
@@ -540,6 +619,7 @@ def main() -> None:
 
     build.build_dir.mkdir(parents=True, exist_ok=True)
     try:
+        build.build_runtimes()
         build_dir = build.configure_llvm()
         if args.configure_only:
             print_build_plan(build_dir)

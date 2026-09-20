@@ -15,7 +15,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 
 option(CLICE_ENABLE_LTO "Enable ThinLTO for all targets" OFF)
-option(CLICE_USE_LIBCXX "Use libc++ instead of libstdc++" OFF)
 option(CLICE_OFFLINE_BUILD "Disable network downloads during configuration" OFF)
 option(CLICE_ENABLE_TEST "Build unit tests" OFF)
 option(CLICE_CI_ENVIRONMENT "Enable CI-specific configuration" OFF)
@@ -36,14 +35,8 @@ elseif(APPLE)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-dead_strip")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-dead_strip")
 else()
-    string(APPEND CMAKE_EXE_LINKER_FLAGS " -static-libstdc++ -static-libgcc -Wl,--gc-sections")
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -static-libgcc -Wl,--gc-sections")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--gc-sections")
-endif()
-
-if(CLICE_USE_LIBCXX)
-    string(APPEND CMAKE_CXX_FLAGS " -stdlib=libc++")
-    string(APPEND CMAKE_EXE_LINKER_FLAGS " -stdlib=libc++")
-    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -stdlib=libc++")
 endif()
 
 # Releases deliberately do NOT enable LTO yet. LLVM 22 removed the old
