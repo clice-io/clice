@@ -296,8 +296,11 @@ class Build:
     # --------------------------------------------------------------- runtimes
 
     def hardening_mode(self) -> str:
+        # The debug mode's comparator validation (every sort comparison is
+        # evaluated twice) made the Debug clice nine times slower on its
+        # semantic pass; extensive keeps every bounds check without it.
         if self.mode == "Debug":
-            return "debug"
+            return "extensive"
         return "none" if self.lto else "fast"
 
     def build_runtimes(self) -> None:
