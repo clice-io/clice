@@ -55,14 +55,14 @@ cmake --build build/RelWithDebInfo
 
 ### CMake Options
 
-| Option                 | Default | Effect                                                             |
-| ---------------------- | ------- | ------------------------------------------------------------------ |
-| LLVM_INSTALL_PATH      | ""      | Build clice with LLVM from a custom path                           |
-| CLICE_ENABLE_TEST      | OFF     | Build unit tests and benchmarks infrastructure                     |
-| CLICE_ENABLE_BENCHMARK | OFF     | Build benchmarks                                                   |
-| CLICE_ENABLE_LTO       | OFF     | Enable ThinLTO for all targets                                     |
-| CLICE_CI_ENVIRONMENT   | OFF     | Enable `CLICE_CI_ENVIRONMENT` macro; some tests only run in CI     |
-| CLICE_OFFLINE_BUILD    | OFF     | Disable network downloads during configuration                     |
+| Option                 | Default | Effect                                                         |
+| ---------------------- | ------- | -------------------------------------------------------------- |
+| LLVM_INSTALL_PATH      | ""      | Build clice with LLVM from a custom path                       |
+| CLICE_ENABLE_TEST      | OFF     | Build unit tests and benchmarks infrastructure                 |
+| CLICE_ENABLE_BENCHMARK | OFF     | Build benchmarks                                               |
+| CLICE_ENABLE_LTO       | OFF     | Enable ThinLTO for all targets                                 |
+| CLICE_CI_ENVIRONMENT   | OFF     | Enable `CLICE_CI_ENVIRONMENT` macro; some tests only run in CI |
+| CLICE_OFFLINE_BUILD    | OFF     | Disable network downloads during configuration                 |
 
 ## About LLVM
 
