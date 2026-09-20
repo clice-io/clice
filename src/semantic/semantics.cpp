@@ -392,22 +392,18 @@ public:
         }
 
         // An instantiation subtree reuses the pattern's source locations, so
-        // nothing under it is written here. An explicit instantiation
-        // directive's own decl is the exception: the directive is written,
-        // and the traversal visits only its written template arguments (the
-        // instantiated members arrive as separate top-level decls, carrying
-        // the directive's specialization kind but written nowhere — flag
-        // their whole subtrees like any implicit instantiation).
+        // nothing under it is written here. The explicit instantiation
+        // directive behind one is a written decl of its own
+        // (ExplicitInstantiationDecl); the instantiated members arrive as
+        // top-level decls of their own, carrying the directive's
+        // specialization kind but written nowhere.
         bool head = decls::is_instantiation(X);
-        bool written_head = head &&
-                            !decls::is_implicit_instantiation(llvm::cast<clang::NamedDecl>(X)) &&
-                            !decls::is_member_specialization(X);
-        if(head && !written_head) {
+        if(head) {
             instantiation_depth += 1;
         }
         bool ret = traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)),
                                  [&] { return Base::TraverseDecl(X); });
-        if(head && !written_head) {
+        if(head) {
             instantiation_depth -= 1;
         }
         return ret;
@@ -757,6 +753,13 @@ private:
     // claiming its entire expanded stream would be paid on every PCH build.
     void claim_range(clang::SourceRange S, std::uint32_t self) {
         if(!options.main_file_only) {
+            return;
+        }
+
+        // An instantiation node's range points into the pattern (an explicit
+        // class instantiation's still spans the directive) and it carries no
+        // references; the written nodes own those tokens.
+        if(semantics.nodes[self].flags.in_instantiation) {
             return;
         }
 
@@ -1273,30 +1276,31 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
         return;
     }
 
+    /// template void foo<int>(int);
+    ///               ^~~~ reference
+    /// RecursiveASTVisitor visits the directive's qualifier, declared type
+    /// and template arguments, never the entity's name.
+    if(auto* EID = llvm::dyn_cast<clang::ExplicitInstantiationDecl>(D)) {
+        refer(out, EID->getSpecialization(), RelationKind::Reference, EID->getNameLoc());
+        return;
+    }
+
     /// struct/class/union/enum Foo { ... };
     ///                          ^~~~ declaration/definition
     if(auto* TD = llvm::dyn_cast<clang::TagDecl>(D)) {
         if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(TD)) {
             switch(CTSD->getSpecializationKind()) {
-                /// Unlike the old filtered traversal, the semantic map may
-                /// record implicit instantiations; they produce no written
-                /// occurrence.
+                /// The semantic map records instantiations, implicit and
+                /// explicit alike; nothing of them is written here.
                 case clang::TSK_Undeclared:
-                case clang::TSK_ImplicitInstantiation: {
+                case clang::TSK_ImplicitInstantiation:
+                case clang::TSK_ExplicitInstantiationDeclaration:
+                case clang::TSK_ExplicitInstantiationDefinition: {
                     return;
                 }
 
                 case clang::TSK_ExplicitSpecialization: {
                     break;
-                }
-
-                case clang::TSK_ExplicitInstantiationDeclaration:
-                case clang::TSK_ExplicitInstantiationDefinition: {
-                    refer(out,
-                          decls::instantiated_from(CTSD),
-                          RelationKind::Reference,
-                          CTSD->getLocation());
-                    return;
                 }
             }
         }
@@ -1312,10 +1316,6 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
     if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(D)) {
         switch(FD->getTemplateSpecializationKind()) {
             case clang::TSK_ImplicitInstantiation:
-            /// FIXME(explicit-instantiation): clang doesn't record the written
-            /// location of a function template's explicit instantiation until
-            /// clang 23's ExplicitInstantiationDecl (llvm/llvm-project#191658).
-            /// Skip it temporarily.
             case clang::TSK_ExplicitInstantiationDeclaration:
             case clang::TSK_ExplicitInstantiationDefinition: {
                 return;
@@ -1346,10 +1346,6 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
         if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(VD)) {
             switch(VTSD->getSpecializationKind()) {
                 case clang::TSK_ImplicitInstantiation:
-                /// FIXME(explicit-instantiation): clang doesn't record the
-                /// written location of a variable template's explicit
-                /// instantiation until clang 23's ExplicitInstantiationDecl
-                /// (llvm/llvm-project#191658). Skip it temporarily.
                 case clang::TSK_ExplicitInstantiationDeclaration:
                 case clang::TSK_ExplicitInstantiationDefinition: {
                     return;

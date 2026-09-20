@@ -4,8 +4,10 @@
 
 #include "sched/families/pcm.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/xxhash.h"
 
 namespace clice {

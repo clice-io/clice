@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/xxhash.h"
 

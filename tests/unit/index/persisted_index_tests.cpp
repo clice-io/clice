@@ -1,3 +1,5 @@
+#include <limits>
+
 #include "test/test.h"
 #include "index/manifest.h"
 #include "index/project_index.h"
@@ -433,7 +435,7 @@ TEST_CASE(GlobalBadCounterRejected) {
     ASSERT_TRUE(lagging.has_value());
     ASSERT_FALSE(loaded.load_global(bytes_of(*lagging), pool, pins).has_value());
 
-    mirror.next_fv_id = llvm::DenseMapInfo<std::uint32_t>::getTombstoneKey();
+    mirror.next_fv_id = std::numeric_limits<std::uint32_t>::max() - 1;
     mirror.fv_ids = {};
     mirror.fv_paths = {};
     mirror.fv_hashes = {};

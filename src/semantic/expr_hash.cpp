@@ -113,7 +113,7 @@ void ExprHasher::VisitGCCAsmStmt(const GCCAsmStmt* node) {
     VisitStmt(node);
     id.AddBoolean(node->isVolatile());
     id.AddBoolean(node->isSimple());
-    VisitExpr(node->getAsmStringExpr());
+    Visit(node->getAsmStringExpr());
     id.AddInteger(node->getNumOutputs());
     for(unsigned i = 0, count = node->getNumOutputs(); i != count; i += 1) {
         id.AddString(node->getOutputName(i));
@@ -126,7 +126,7 @@ void ExprHasher::VisitGCCAsmStmt(const GCCAsmStmt* node) {
     }
     id.AddInteger(node->getNumClobbers());
     for(unsigned i = 0, count = node->getNumClobbers(); i != count; i += 1)
-        VisitExpr(node->getClobberExpr(i));
+        Visit(node->getClobberExpr(i));
     id.AddInteger(node->getNumLabels());
     for(auto* label: node->labels())
         leaves.add_decl(label->getLabel());
@@ -147,6 +147,15 @@ void ExprHasher::VisitCXXTryStmt(const CXXTryStmt* node) {
 
 void ExprHasher::VisitCXXForRangeStmt(const CXXForRangeStmt* node) {
     VisitStmt(node);
+}
+
+void ExprHasher::VisitCXXExpansionStmtPattern(const CXXExpansionStmtPattern* node) {
+    VisitStmt(node);
+}
+
+void ExprHasher::VisitCXXExpansionStmtInstantiation(const CXXExpansionStmtInstantiation* node) {
+    VisitStmt(node);
+    id.AddBoolean(node->shouldApplyLifetimeExtensionToPreamble());
 }
 
 void ExprHasher::VisitMSDependentExistsStmt(const MSDependentExistsStmt* node) {
@@ -196,6 +205,10 @@ void ExprHasher::VisitDeclRefExpr(const DeclRefExpr* node) {
 void ExprHasher::VisitSYCLUniqueStableNameExpr(const SYCLUniqueStableNameExpr* node) {
     VisitExpr(node);
     leaves.add_type(node->getTypeSourceInfo()->getType());
+}
+
+void ExprHasher::VisitUnresolvedSYCLKernelCallStmt(const UnresolvedSYCLKernelCallStmt* node) {
+    VisitStmt(node);
 }
 
 void ExprHasher::VisitPredefinedExpr(const PredefinedExpr* node) {
@@ -431,6 +444,11 @@ void ExprHasher::VisitImplicitValueInitExpr(const ImplicitValueInitExpr* node) {
 }
 
 void ExprHasher::VisitExtVectorElementExpr(const ExtVectorElementExpr* node) {
+    VisitExpr(node);
+    leaves.add_name(&node->getAccessor(), false);
+}
+
+void ExprHasher::VisitMatrixElementExpr(const MatrixElementExpr* node) {
     VisitExpr(node);
     leaves.add_name(&node->getAccessor(), false);
 }
@@ -819,6 +837,10 @@ void ExprHasher::VisitLambdaExpr(const LambdaExpr* node) {
     leaves.add_decl(node->getLambdaClass());
 }
 
+void ExprHasher::VisitCXXReflectExpr(const CXXReflectExpr*) {
+    // Upstream asserts "not implemented yet" and profiles nothing, so neither does this.
+}
+
 void ExprHasher::VisitCXXDeleteExpr(const CXXDeleteExpr* node) {
     VisitExpr(node);
     id.AddBoolean(node->isGlobalDelete());
@@ -954,14 +976,14 @@ void ExprHasher::VisitSizeOfPackExpr(const SizeOfPackExpr* node) {
 }
 
 void ExprHasher::VisitPackIndexingExpr(const PackIndexingExpr* expr) {
-    VisitExpr(expr->getIndexExpr());
-
+    visit_stmt_class(expr);
+    Visit(expr->getIndexExpr());
     if(expr->expandsToEmptyPack() || expr->getExpressions().size() != 0) {
         id.AddInteger(expr->getExpressions().size());
         for(const Expr* sub: expr->getExpressions())
             Visit(sub);
     } else {
-        VisitExpr(expr->getPackIdExpression());
+        Visit(expr->getPackIdExpression());
     }
 }
 
@@ -1045,6 +1067,10 @@ void ExprHasher::VisitSourceLocExpr(const SourceLocExpr* expr) {
 }
 
 void ExprHasher::VisitEmbedExpr(const EmbedExpr* expr) {
+    VisitExpr(expr);
+}
+
+void ExprHasher::VisitCXXExpansionSelectExpr(const CXXExpansionSelectExpr* expr) {
     VisitExpr(expr);
 }
 

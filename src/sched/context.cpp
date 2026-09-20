@@ -15,7 +15,9 @@
 #include "syntax/include_resolver.h"
 #include "syntax/preamble_synthesis.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"

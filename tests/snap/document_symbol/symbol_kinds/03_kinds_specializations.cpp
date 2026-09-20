@@ -49,9 +49,8 @@ Deduced(T*) -> Deduced<T>;
 // Forces the implicit instantiation Box<int>, which must not appear.
 Box<int> instantiated;
 
-// An explicit class instantiation gets a childless node; the instantiated
-// members and the function instantiation (whose source location points at
-// the primary) produce no symbols.
+// Explicit instantiations get childless nodes; the instantiated members
+// produce no symbols.
 template struct Box<char>;
 template long zero<long>();
 

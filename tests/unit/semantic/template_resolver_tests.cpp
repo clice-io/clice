@@ -3834,6 +3834,57 @@ TEST_CASE(TemplateThroughLayer) {
     )code");
 }
 
+TEST_CASE(ConcreteScopeMemberTemplate) {
+    run(R"code(
+        template <typename A>
+        struct traits {
+            template <typename U>
+            struct rebind {
+                using other = U;
+            };
+        };
+
+        template <typename T, typename A>
+        struct box {
+            using type = typename A::template rebind<T>::other;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename box<X, traits<int>>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(ConcreteScopeTemplateArgument) {
+    run(R"code(
+        template <typename A>
+        struct traits {
+            template <typename U>
+            struct rebind {
+                using other = U;
+            };
+        };
+
+        template <template <typename> class TT, typename U>
+        struct apply {
+            using type = typename TT<U>::other;
+        };
+
+        template <typename T, typename U>
+        struct box {
+            using type = typename apply<T::template rebind, U>::type;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename box<traits<int>, X>::type;
+            using expect = X;
+        };
+    )code");
+}
+
 TEST_CASE(StandardMap) {
     add_main("main.cpp", R"code(
         #include <map>

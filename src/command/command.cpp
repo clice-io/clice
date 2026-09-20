@@ -15,7 +15,9 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/StringSaver.h"

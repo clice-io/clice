@@ -426,3 +426,57 @@ Type: `const T &`
 // In View<T>
 public: using reference = const T &
 ```
+
+38_extern_class_directive: { range: "237:23-237:26" }
+### struct `Box<Item>`  
+
+---
+```cpp
+// In namespace explicit_instantiation
+template <> struct Box<Item> {}
+```
+
+39_class_directive_argument: { range: "237:27-237:31" }
+### struct `Item`  
+
+---
+```cpp
+// In namespace explicit_instantiation
+struct Item {}
+```
+
+40_class_directive: { range: "238:16-238:19" }
+### struct `Box<Item>`  
+
+---
+```cpp
+// In namespace explicit_instantiation
+template <> struct Box<Item>
+```
+
+41_function_directive: { range: "240:14-240:17" }
+### function `run`  
+
+---
+→ `void`  
+Parameters:  
+- `long`
+
+---
+```cpp
+// In namespace explicit_instantiation
+template <> void run<long>(long)
+```
+
+42_variable_directive: { range: "242:14-242:18" }
+### variable `zero<long>`  
+
+---
+Type: `long`  
+Value = `0`  
+
+---
+```cpp
+// In namespace explicit_instantiation
+long zero = 0
+```

@@ -187,31 +187,12 @@ struct DenseMapInfo<clice::object_ptr<T>> {
     using U = std::remove_cvref_t<T>;
     using O = clice::object_ptr<T>;
 
-    inline static O getEmptyKey() {
-        return O(DenseMapInfo<U*>::getEmptyKey());
-    }
-
-    inline static O getTombstoneKey() {
-        return O(DenseMapInfo<U*>::getTombstoneKey());
-    }
-
     inline static unsigned getHashValue(O value) {
         return DenseMapInfo<U>::getHashValue(*value);
     }
 
     inline static bool isEqual(O lhs, O rhs) {
-        if(lhs == rhs) {
-            return true;
-        }
-
-        const O Empty = getEmptyKey();
-        const O Tombstone = getTombstoneKey();
-
-        if(lhs == Empty || rhs == Empty || lhs == Tombstone || rhs == Tombstone) {
-            return false;
-        }
-
-        return DenseMapInfo<U>::isEqual(*lhs, *rhs);
+        return lhs == rhs || DenseMapInfo<U>::isEqual(*lhs, *rhs);
     }
 };
 

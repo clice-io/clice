@@ -75,14 +75,6 @@ struct VersionID {
 
 template <>
 struct llvm::DenseMapInfo<clice::Fid> {
-    static clice::Fid getEmptyKey() {
-        return {DenseMapInfo<std::uint32_t>::getEmptyKey()};
-    }
-
-    static clice::Fid getTombstoneKey() {
-        return {DenseMapInfo<std::uint32_t>::getTombstoneKey()};
-    }
-
     static unsigned getHashValue(clice::Fid fid) {
         return DenseMapInfo<std::uint32_t>::getHashValue(fid.raw);
     }
@@ -94,14 +86,6 @@ struct llvm::DenseMapInfo<clice::Fid> {
 
 template <>
 struct llvm::DenseMapInfo<clice::VersionID> {
-    static clice::VersionID getEmptyKey() {
-        return {DenseMapInfo<std::uint32_t>::getEmptyKey()};
-    }
-
-    static clice::VersionID getTombstoneKey() {
-        return {DenseMapInfo<std::uint32_t>::getTombstoneKey()};
-    }
-
     static unsigned getHashValue(clice::VersionID vid) {
         return DenseMapInfo<std::uint32_t>::getHashValue(vid.raw);
     }

@@ -111,7 +111,7 @@ endif()
 if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "")
 
-    # conda-forge clang 22's bundled config files (<triple>-clang++.cfg)
+    # conda-forge clang's bundled config files (<triple>-clang++.cfg)
     # inject -L/-rpath pointing into the conda env at link time, binding
     # binaries to conda's @rpath libc++ — they then fail to load outside
     # the build machine. Disable config files: libc++ headers are still

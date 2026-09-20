@@ -10,6 +10,8 @@
 #include "index/tu_index.h"
 
 #include "kota/ipc/lsp/text.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"

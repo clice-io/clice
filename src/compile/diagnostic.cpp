@@ -32,13 +32,15 @@ llvm::StringRef DiagnosticID::diagnostic_code() const {
              CLASS,                                                                                \
              DEFAULT_MAPPING,                                                                      \
              DESC,                                                                                 \
-             GROPU,                                                                                \
+             GROUP,                                                                                \
              SFINAE,                                                                               \
              NOWERROR,                                                                             \
              SHOWINSYSHEADER,                                                                      \
              SHOWINSYSMACRO,                                                                       \
              DEFERRABLE,                                                                           \
-             CATEGORY)                                                                             \
+             CATEGORY,                                                                             \
+             STABLE_ID,                                                                            \
+             LEGACY_STABLE_IDS)                                                                    \
     case clang::diag::ENUM: return #ENUM;
 #include "clang/Basic/DiagnosticASTKinds.inc"
 #include "clang/Basic/DiagnosticAnalysisKinds.inc"

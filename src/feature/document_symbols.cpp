@@ -6,7 +6,6 @@
 
 #include "compile/compilation_unit.h"
 #include "feature/feature.h"
-#include "semantic/decls.h"
 #include "semantic/display.h"
 #include "semantic/semantics.h"
 #include "semantic/symbol.h"
@@ -159,29 +158,17 @@ private:
 
     /// Returns false when the decl's whole subtree should be skipped.
     bool handle_decl(const clang::Decl* decl, std::uint32_t subtree_end) {
+        // An explicit instantiation directive outlines as a childless symbol
+        // of its specialization: the instantiated members sit at the pattern.
+        if(const auto* directive = llvm::dyn_cast<clang::ExplicitInstantiationDecl>(decl)) {
+            add_symbol(*directive->getSpecialization(),
+                       directive->getNameLoc(),
+                       directive->getSourceRange());
+            return false;
+        }
+
         const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
-        if(!named) {
-            return true;
-        }
-
-        // Explicit instantiation directives carry no written body (implicit
-        // instantiations never reach here — the walk skips flagged nodes).
-        // The class form (`template struct Box<int>;`) gets a childless
-        // outline node — its members are instantiated decls located in the
-        // primary template.
-        // FIXME(explicit-instantiation): clang mislocates the function and
-        // variable directive forms at the pattern, so they produce no symbol
-        // at all (mirroring resolve_occurrences) until the pin gains
-        // clang 23's ExplicitInstantiationDecl (llvm/llvm-project#191658).
-        bool childless_instantiation = false;
-        if(decls::is_instantiation(decl)) {
-            if(!llvm::isa<clang::ClassTemplateSpecializationDecl>(decl)) {
-                return false;
-            }
-            childless_instantiation = true;
-        }
-
-        if(!is_supported(decl)) {
+        if(!named || !is_supported(decl)) {
             return true;
         }
 
@@ -193,6 +180,21 @@ private:
             name_range = function->getNameInfo().getSourceRange();
         }
 
+        DocumentSymbol* symbol = add_symbol(*named, name_range, named->getSourceRange());
+        if(!symbol) {
+            return false;
+        }
+
+        frames.push_back({subtree_end, cursor});
+        cursor = &symbol->children;
+        return true;
+    }
+
+    /// Appends the symbol at the cursor; nullptr when a range falls outside
+    /// the main file.
+    auto add_symbol(const clang::NamedDecl& named,
+                    clang::SourceRange name_range,
+                    clang::SourceRange full_range) -> DocumentSymbol* {
         // Names spelled inside a macro argument (`DEFINE(name)`) select the
         // written spelling; names spelled in the macro body keep the
         // invocation site.
@@ -200,9 +202,9 @@ private:
                                         unit.file_location(name_range.getEnd()));
 
         auto [fid, selection_range] = unit.decompose_range(name_range);
-        auto [fid2, range] = unit.decompose_expansion_range(named->getSourceRange());
+        auto [fid2, range] = unit.decompose_expansion_range(full_range);
         if(fid != fid2 || fid != unit.main_file() || !selection_range.valid() || !range.valid()) {
-            return false;
+            return nullptr;
         }
 
         // LSP requires the selection range to be contained in the full
@@ -212,19 +214,12 @@ private:
         range.end = std::max(range.end, selection_range.end);
 
         auto& symbol = cursor->emplace_back();
-        symbol.kind = SymbolKind::from(decl);
-        symbol.name = display::name_of(named);
-        symbol.detail = symbol_detail(unit.context(), *named);
+        symbol.kind = SymbolKind::from(&named);
+        symbol.name = display::name_of(&named);
+        symbol.detail = symbol_detail(unit.context(), named);
         symbol.selection_range = selection_range;
         symbol.range = range;
-
-        if(childless_instantiation) {
-            return false;
-        }
-
-        frames.push_back({subtree_end, cursor});
-        cursor = &symbol.children;
-        return true;
+        return &symbol;
     }
 
     /// A `#define` written in this file. The AST walk never sees

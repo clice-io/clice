@@ -108,13 +108,13 @@ function(setup_llvm LLVM_VERSION)
     find_package(Clang REQUIRED CONFIG
         PATHS "${LLVM_INSTALL_PATH}/lib/cmake/clang" NO_DEFAULT_PATH)
 
+    _check_llvm_manifest("${LLVM_INSTALL_PATH}")
+
     llvm_map_components_to_libnames(LLVM_RESOLVED
         support frontendopenmp option targetparser)
 
-    # Every library clice uses directly must be listed here. A static link
-    # resolves symbols from any archive pulled in transitively, so a missing
-    # entry only surfaces on the shared-library Debug packages (Linux and
-    # macOS) as undefined symbols.
+    # The package ships the transitive closure of this list (COMPONENTS in
+    # scripts/build-llvm.py); a library added here goes there as well.
     add_library(llvm-libs INTERFACE IMPORTED)
     target_link_libraries(llvm-libs INTERFACE
         ${LLVM_RESOLVED}
@@ -125,9 +125,9 @@ function(setup_llvm LLVM_VERSION)
         clangTidyBoostModule clangTidyBugproneModule clangTidyCERTModule
         clangTidyConcurrencyModule clangTidyCppCoreGuidelinesModule
         clangTidyDarwinModule clangTidyFuchsiaModule
-        clangTidyGoogleModule clangTidyHICPPModule clangTidyLinuxKernelModule
+        clangTidyGoogleModule clangTidyLinuxKernelModule
         clangTidyLLVMModule clangTidyLLVMLibcModule clangTidyMiscModule
-        clangTidyModernizeModule clangTidyMPIModule clangTidyObjCModule
+        clangTidyModernizeModule clangTidyObjCModule
         clangTidyOpenMPModule clangTidyPerformanceModule
         clangTidyPortabilityModule clangTidyReadabilityModule
         clangTidyZirconModule
@@ -137,10 +137,70 @@ function(setup_llvm LLVM_VERSION)
 
     target_include_directories(llvm-libs SYSTEM INTERFACE
         "${LLVM_INSTALL_PATH}/include")
-
-    if(NOT BUILD_SHARED_LIBS)
-        target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)
-    endif()
+    target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)
 
     message(STATUS "LLVM ${LLVM_VERSION} at ${LLVM_INSTALL_PATH}")
+endfunction()
+
+# The archive records the toolchain it was built with. Every field checked
+# here is one where a mismatch still links and then fails at runtime.
+function(_check_llvm_manifest install_path)
+    set(_manifest "${install_path}/lib/cmake/clice-llvm/config.cmake")
+    if(NOT EXISTS "${_manifest}")
+        message(FATAL_ERROR
+            "No clice-llvm manifest at ${_manifest}: this LLVM install predates the "
+            "23.1.1 packages. Point LLVM_INSTALL_PATH at a newer package, or unset it "
+            "(-ULLVM_INSTALL_PATH) to download one.")
+    endif()
+    include("${_manifest}")
+    clice_target_triple(_triple)
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(_expected_debug ON)
+    else()
+        set(_expected_debug OFF)
+    endif()
+    if(CLICE_LLVM_BUILD_TYPE STREQUAL "Debug")
+        set(_package_debug ON)
+    else()
+        set(_package_debug OFF)
+    endif()
+    if(_expected_debug AND NOT WIN32)
+        set(_expected_asan ON)
+    else()
+        set(_expected_asan OFF)
+    endif()
+    if(CLICE_ENABLE_LTO)
+        set(_expected_lto ON)
+    else()
+        set(_expected_lto OFF)
+    endif()
+
+    set(_mismatch "")
+    if(NOT CLICE_LLVM_TARGET_TRIPLE STREQUAL _triple)
+        string(APPEND _mismatch "\n  target: package ${CLICE_LLVM_TARGET_TRIPLE}, this build ${_triple}")
+    endif()
+    if(NOT CLICE_LLVM_COMPILER_ID STREQUAL CMAKE_CXX_COMPILER_ID
+            OR NOT CLICE_LLVM_COMPILER_VERSION VERSION_EQUAL CMAKE_CXX_COMPILER_VERSION)
+        string(APPEND _mismatch "\n  compiler: package ${CLICE_LLVM_COMPILER_ID} "
+            "${CLICE_LLVM_COMPILER_VERSION}, this build ${CMAKE_CXX_COMPILER_ID} "
+            "${CMAKE_CXX_COMPILER_VERSION}")
+    endif()
+    if(NOT _package_debug STREQUAL _expected_debug)
+        string(APPEND _mismatch "\n  build type: package ${CLICE_LLVM_BUILD_TYPE}, "
+            "this build ${CMAKE_BUILD_TYPE}")
+    endif()
+    if(NOT CLICE_LLVM_LTO STREQUAL _expected_lto)
+        string(APPEND _mismatch "\n  LTO: package ${CLICE_LLVM_LTO}, this build ${_expected_lto}")
+    endif()
+    if(NOT CLICE_LLVM_ASAN STREQUAL _expected_asan)
+        string(APPEND _mismatch "\n  ASan: package ${CLICE_LLVM_ASAN}, this build ${_expected_asan}")
+    endif()
+    if(WIN32 AND NOT CLICE_LLVM_MSVC_RUNTIME_LIBRARY STREQUAL CMAKE_MSVC_RUNTIME_LIBRARY)
+        string(APPEND _mismatch "\n  MSVC runtime: package ${CLICE_LLVM_MSVC_RUNTIME_LIBRARY}, "
+            "this build '${CMAKE_MSVC_RUNTIME_LIBRARY}'")
+    endif()
+    if(_mismatch)
+        message(FATAL_ERROR "The LLVM package at ${install_path} does not match this build:${_mismatch}")
+    endif()
 endfunction()

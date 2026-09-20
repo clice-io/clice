@@ -12,7 +12,7 @@
 #include "clang-tidy/ClangTidyCheck.h"
 #include "clang-tidy/ClangTidyDiagnosticConsumer.h"
 #include "clang-tidy/ClangTidyForceLinker.h"
-#include "clang-tidy/ClangTidyModuleRegistry.h"
+#include "clang-tidy/ClangTidyModule.h"
 #include "clang-tidy/ClangTidyOptions.h"
 
 namespace clice::tidy {
@@ -115,8 +115,6 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
                          // code, which is often the case when clangd
                          // tries to build an AST.
                          "-bugprone-use-after-move",
-                         // Alias for bugprone-use-after-move.
-                         "-hicpp-invalid-access-moved",
                          // Check uses dataflow analysis, which might hang/crash unexpectedly on
                          // incomplete code.
                          "-bugprone-unchecked-optional-access");

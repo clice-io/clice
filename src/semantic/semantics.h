@@ -301,11 +301,11 @@ public:
     struct NodeFlags {
         /// The node belongs to a template instantiation rather than the
         /// written template, so its locations point into the pattern.
-        /// Instantiations reach the table as member subtrees of explicit
-        /// instantiation directives and, under SemanticsOptions::instantiations,
-        /// as subtrees under the template's canonical declaration node; the
-        /// directive's own decl and its written template-argument TypeLocs
-        /// stay unflagged.
+        /// Instantiations reach the table as the specializations explicit
+        /// instantiation directives create (the directive itself, an
+        /// ExplicitInstantiationDecl, stays unflagged) and, under
+        /// SemanticsOptions::instantiations, as subtrees under the template's
+        /// canonical declaration node.
         bool in_instantiation : 1 = false;
     };
 

@@ -371,11 +371,11 @@ tests/snap/semantic_tokens/declarations/16_friend_declarations.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial llvm#191658 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Function explicit instantiation directives**
 
-Identifiers in a function explicit-instantiation directive remain unpainted
+Identifiers in a function explicit-instantiation directive are painted
 
 ```snap
 tests/snap/semantic_tokens/declarations/17_explicit_instantiation_function.cpp
@@ -383,11 +383,11 @@ tests/snap/semantic_tokens/declarations/17_explicit_instantiation_function.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial llvm#191658 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Variable explicit instantiation directives**
 
-Identifiers in a variable explicit-instantiation directive remain unpainted
+Identifiers in a variable explicit-instantiation directive are painted
 
 ```snap
 tests/snap/semantic_tokens/declarations/18_explicit_instantiation_variable.cpp

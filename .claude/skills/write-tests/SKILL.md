@@ -232,6 +232,15 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
 - Under `-ffreestanding` clang recognizes no library builtins
   (`getBuiltinID` is 0): logic keyed on builtin recognition behaves
   differently in unit tests than under a hosted `clice inspect`.
+- In a CI log of an aborted unit run, the `[ RUN ]` line before the
+  assertion names an innocent test: stdout is block-buffered on a pipe,
+  stderr is not, and the buffer dies with the process. Take the crashing
+  test from a local backtrace (`lldb --batch -o run -k "bt 40" -- ...`)
+  or run the suspects one by one with `--test-filter=Suite.Case`.
+- The Tester's driver is the `clang++` on PATH: the cross test legs install
+  only the `test-run` env, so they compile against the runner's system
+  libstdc++, not conda's. A wrapper script named `clang++` that execs the
+  pixi clang with another `--gcc-install-dir` reproduces such a leg locally.
 
 ## C++ unit tests (zest)
 

@@ -359,11 +359,11 @@ tests/snap/semantic_tokens/declarations/16_friend_declarations.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial llvm#191658 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **函数显式实例化指令**
 
-函数显式实例化指令中的标识符仍不高亮
+函数显式实例化指令中的标识符会被高亮
 
 ```snap
 tests/snap/semantic_tokens/declarations/17_explicit_instantiation_function.cpp
@@ -371,11 +371,11 @@ tests/snap/semantic_tokens/declarations/17_explicit_instantiation_function.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial llvm#191658 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **变量显式实例化指令**
 
-变量显式实例化指令中的标识符仍不高亮
+变量显式实例化指令中的标识符会被高亮
 
 ```snap
 tests/snap/semantic_tokens/declarations/18_explicit_instantiation_variable.cpp

@@ -1,10 +1,11 @@
+#include <utility>
+
 /// Parts of this file are ported from clangd's AST.cpp, Hover.cpp,
 /// InlayHints.cpp and CodeCompletionStrings.cpp (llvmorg-21.1.8), part of
 /// the LLVM project, licensed under Apache License v2.0 with LLVM
 /// Exceptions. See https://llvm.org/LICENSE.txt for license information.
 
 #include "semantic/display.h"
-
 #include "semantic/types.h"
 #include "support/format.h"
 
@@ -42,7 +43,9 @@ auto derive_policy(clang::ASTContext& context, const Options& options) -> clang:
     policy.PolishForDeclaration = options.polish_for_declaration;
     policy.ConstantsAsWritten = options.constants_as_written;
     policy.SuppressTemplateArgsInCXXConstructors = options.suppress_ctor_template_args;
-    policy.AnonymousTagLocations = options.anonymous_tag_locations;
+    policy.AnonymousTagNameStyle = std::to_underlying(
+        options.anonymous_tag_locations ? clang::PrintingPolicy::AnonymousTagMode::SourceLocation
+                                        : clang::PrintingPolicy::AnonymousTagMode::Plain);
     return policy;
 }
 
@@ -151,7 +154,8 @@ std::string qualified_name(const clang::NamedDecl& decl) {
     /// (unnamed struct), not (unnamed struct at /path/to/foo.cc:42:1).
     /// In the language server, context is usually available and paths are
     /// mostly noise.
-    policy.AnonymousTagLocations = false;
+    policy.AnonymousTagNameStyle =
+        std::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
     decl.printQualifiedName(os, policy);
     assert(!llvm::StringRef(name).starts_with("::"));
     return name;

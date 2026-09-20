@@ -7,7 +7,9 @@
 #include "semantic/hasher.h"
 
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/AST/ASTConcept.h"

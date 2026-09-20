@@ -11,8 +11,11 @@
 #include "support/logging.h"
 
 #include "kota/ipc/lsp/position.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/xxhash.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/Stack.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
@@ -181,6 +184,12 @@ public:
             }
         }
 
+        // Sema hands a function template specialization over again for every
+        // explicit instantiation directive that finds it already defined.
+        if(!collected.insert(decl).second) {
+            return;
+        }
+
         unit->top_level_decls.push_back(decl);
     }
 
@@ -204,8 +213,24 @@ public:
         return clang::MultiplexConsumer::HandleTopLevelDecl(group);
     }
 
+    // Sema adds an explicit instantiation directive's decl to its declaration
+    // context and never hands it to the consumer, so the ones at file scope
+    // are picked up here (a namespace block brings its own along).
+    // noload_decls leaves a preamble's declarations on disk.
+    void HandleTranslationUnit(clang::ASTContext& context) final {
+        if(unit->kind == CompilationKind::Content) {
+            for(auto* decl: context.getTranslationUnitDecl()->noload_decls()) {
+                if(llvm::isa<clang::ExplicitInstantiationDecl>(decl)) {
+                    collect_decl(decl);
+                }
+            }
+        }
+        clang::MultiplexConsumer::HandleTranslationUnit(context);
+    }
+
 private:
     CompilationUnitRef unit;
+    llvm::SmallPtrSet<const clang::Decl*, 8> collected;
 };
 
 class ProxyAction final : public clang::WrapperFrontendAction {

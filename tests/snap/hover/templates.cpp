@@ -231,3 +231,14 @@ template <typename T> struct View {
     using §(37_dependent_member_alias)reference = const T&;
 };
 }
+
+namespace explicit_instantiation {
+struct Item {};
+template <typename T> struct Box {};
+extern template struct §(38_extern_class_directive)Box<§(39_class_directive_argument)Item>;
+template struct §(40_class_directive)Box<Item>;
+template <typename T> void run(T) {}
+template void §(41_function_directive)run<long>(long);
+template <typename T> long zero = 0;
+template long §(42_variable_directive)zero<long>;
+}

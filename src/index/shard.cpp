@@ -13,9 +13,11 @@
 #include "support/logging.h"
 
 #include "kota/ipc/lsp/text.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/xxhash.h"
 
 namespace clice::index {

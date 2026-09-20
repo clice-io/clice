@@ -1,7 +1,7 @@
 #pragma once
 
 /// Expression profiling for declaration identity: a port of clang's
-/// StmtProfiler (clang/lib/AST/StmtProfile.cpp, LLVM 22.1.8) restricted to
+/// StmtProfiler (clang/lib/AST/StmtProfile.cpp, LLVM 23.1.1) restricted to
 /// the canonical profile Sema uses to decide template equivalence
 /// (isSameConstraintExpr, isSameTemplateParameterList), with every
 /// pointer-valued leaf routed through ExprHashLeaves. Upstream feeds raw
@@ -101,6 +101,8 @@ public:
     void VisitCXXCatchStmt(const clang::CXXCatchStmt* stmt);
     void VisitCXXTryStmt(const clang::CXXTryStmt* stmt);
     void VisitCXXForRangeStmt(const clang::CXXForRangeStmt* stmt);
+    void VisitCXXExpansionStmtPattern(const clang::CXXExpansionStmtPattern* stmt);
+    void VisitCXXExpansionStmtInstantiation(const clang::CXXExpansionStmtInstantiation* stmt);
     void VisitMSDependentExistsStmt(const clang::MSDependentExistsStmt* stmt);
     void VisitSEHTryStmt(const clang::SEHTryStmt* stmt);
     void VisitSEHFinallyStmt(const clang::SEHFinallyStmt* stmt);
@@ -112,6 +114,7 @@ public:
     void VisitConstantExpr(const clang::ConstantExpr* expr);
     void VisitDeclRefExpr(const clang::DeclRefExpr* expr);
     void VisitSYCLUniqueStableNameExpr(const clang::SYCLUniqueStableNameExpr* expr);
+    void VisitUnresolvedSYCLKernelCallStmt(const clang::UnresolvedSYCLKernelCallStmt* stmt);
     void VisitPredefinedExpr(const clang::PredefinedExpr* expr);
     void VisitIntegerLiteral(const clang::IntegerLiteral* expr);
     void VisitFixedPointLiteral(const clang::FixedPointLiteral* expr);
@@ -153,6 +156,7 @@ public:
     void VisitNoInitExpr(const clang::NoInitExpr* expr);
     void VisitImplicitValueInitExpr(const clang::ImplicitValueInitExpr* expr);
     void VisitExtVectorElementExpr(const clang::ExtVectorElementExpr* expr);
+    void VisitMatrixElementExpr(const clang::MatrixElementExpr* expr);
     void VisitBlockExpr(const clang::BlockExpr* expr);
     void VisitGenericSelectionExpr(const clang::GenericSelectionExpr* expr);
     void VisitPseudoObjectExpr(const clang::PseudoObjectExpr* expr);
@@ -209,6 +213,7 @@ public:
     void VisitCXXFoldExpr(const clang::CXXFoldExpr* expr);
     void VisitCXXParenListInitExpr(const clang::CXXParenListInitExpr* expr);
     void VisitLambdaExpr(const clang::LambdaExpr* expr);
+    void VisitCXXReflectExpr(const clang::CXXReflectExpr* expr);
     void VisitCoroutineBodyStmt(const clang::CoroutineBodyStmt* stmt);
     void VisitCoreturnStmt(const clang::CoreturnStmt* stmt);
     void VisitCoawaitExpr(const clang::CoawaitExpr* expr);
@@ -217,6 +222,7 @@ public:
     void VisitOpaqueValueExpr(const clang::OpaqueValueExpr* expr);
     void VisitSourceLocExpr(const clang::SourceLocExpr* expr);
     void VisitEmbedExpr(const clang::EmbedExpr* expr);
+    void VisitCXXExpansionSelectExpr(const clang::CXXExpansionSelectExpr* expr);
     void VisitRecoveryExpr(const clang::RecoveryExpr* expr);
     void VisitHLSLOutArgExpr(const clang::HLSLOutArgExpr* expr);
 

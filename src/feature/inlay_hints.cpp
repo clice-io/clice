@@ -148,8 +148,7 @@ public:
 
             // An instantiation subtree repeats the pattern's locations;
             // hinting it duplicates every hint there — and with several
-            // instantiations the deduced types contradict each other. The
-            // explicit directive's own decl produces no hints either.
+            // instantiations the deduced types contradict each other.
             if(entry.flags.in_instantiation) {
                 index = entry.subtree_end;
                 continue;
@@ -157,22 +156,7 @@ public:
 
             switch(entry.node.kind()) {
                 case SemanticNode::Kind::Decl: {
-                    const auto* decl = entry.node.get<clang::Decl>();
-                    // An explicit instantiation directive produces no hints
-                    // itself. A class directive's subtree holds only its
-                    // written template arguments — hintable code (a call
-                    // inside decltype) — so walk into it; the function and
-                    // variable directives are mislocated relics until
-                    // ExplicitInstantiationDecl and are skipped whole.
-                    if(decls::is_instantiation(decl)) {
-                        if(llvm::isa<clang::ClassTemplateSpecializationDecl>(decl)) {
-                            index += 1;
-                        } else {
-                            index = entry.subtree_end;
-                        }
-                        continue;
-                    }
-                    handle_decl(decl);
+                    handle_decl(entry.node.get<clang::Decl>());
                     break;
                 }
 

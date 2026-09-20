@@ -153,11 +153,26 @@ auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
                 }
                 break;
             case CK::CK_Text:
-            case CK::CK_Informative:
                 if(in_parens && chunk.Text) {
                     signature += chunk.Text;
                 }
                 break;
+            case CK::CK_Informative: {
+                // A function that cannot be called where completion happens
+                // (a destructor after `T::`) carries its whole parameter list
+                // as informative chunks, parentheses included.
+                llvm::StringRef text = chunk.Text ? chunk.Text : "";
+                if(text == "(") {
+                    in_parens = true;
+                }
+                if(in_parens) {
+                    signature += text;
+                }
+                if(text == ")") {
+                    in_parens = false;
+                }
+                break;
+            }
             case CK::CK_LeftAngle:
                 signature += '<';
                 in_parens = true;

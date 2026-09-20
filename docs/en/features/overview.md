@@ -20,10 +20,10 @@ Language Server Protocol features available when using clice as an editor backen
 | [Signature Help](./signature-help.md)     | 14 supported                               |
 | [Code Navigation](./navigation.md)        | 49 supported · 14 partial · 30 unsupported |
 | [Document Links](./document-links.md)     | 7 supported · 1 partial · 1 unsupported    |
-| [Semantic Tokens](./semantic-tokens.md)   | 54 supported · 4 partial · 10 unsupported  |
+| [Semantic Tokens](./semantic-tokens.md)   | 56 supported · 2 partial · 10 unsupported  |
 | [Inlay Hints](./inlay-hints.md)           | 31 supported · 6 partial · 4 unsupported   |
 | [Folding Ranges](./folding-ranges.md)     | 13 supported · 2 partial · 6 unsupported   |
-| [Document Symbols](./document-symbols.md) | 18 supported · 2 partial · 7 unsupported   |
+| [Document Symbols](./document-symbols.md) | 19 supported · 1 partial · 7 unsupported   |
 | [Formatting](./formatting.md)             | Implemented                                |
 | [Diagnostics](./diagnostics.md)           | Partial                                    |
 | [Code Action](./code-action.md)           | Stub                                       |
