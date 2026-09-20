@@ -159,7 +159,7 @@ function(_check_llvm_manifest install_path)
     if(NOT EXISTS "${_manifest}")
         message(FATAL_ERROR
             "No clice-llvm manifest at ${_manifest}: this LLVM install predates the "
-            "23.1.1 packages. Point LLVM_INSTALL_PATH at a newer package, or unset it "
+            "libc++ packages (23.1.1+r1). Point LLVM_INSTALL_PATH at a newer package, or unset it "
             "(-ULLVM_INSTALL_PATH) to download one.")
     endif()
     include("${_manifest}")
