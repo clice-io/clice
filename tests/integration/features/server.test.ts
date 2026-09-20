@@ -122,10 +122,8 @@ test("document diagnostics pull", async ({ client }) => {
         throw new Error("expected full document diagnostic report");
     }
     expect(
-        report.items.some((d) =>
-            typeof d.message === "string"
-                ? d.message.includes("UnknownType")
-                : d.message.value.includes("UnknownType"),
+        report.items.some(
+            (d) => typeof d.message === "string" && d.message.includes("UnknownType"),
         ),
     ).toBe(true);
     expect(report.items.some((d) => d.source === "clang")).toBe(true);
