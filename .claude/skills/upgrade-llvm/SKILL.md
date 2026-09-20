@@ -21,6 +21,18 @@ pixi run -e package python3 scripts/build-llvm.py --llvm-src ../llvm-project \
 
 This configures LLVM without building it (a minute) and prints the size of the build plan. The configure fails on both kinds of drift: an entry whose library no longer exists ("doesn't have an install target") and a library the closure now needs but the list lacks ("requires target X that is not in any export set"). Fix `COMPONENTS` until it passes; a Debug run (`--mode Debug`) covers the ASan variant, `--lto ON` the LTO one, and `pixi run -e cross-linux-arm64 ... --target-triple aarch64-unknown-linux-gnu` the cross build (it also builds the native tablegen tools, minutes). With a Windows checkout reachable from WSL, run the same there with `pixi run -e package python scripts\build-llvm.py ...`. Never do this by pushing attempts at CI.
 
+The configure also decides what goes into `lib/clang/<major>/include`, and nothing complains when a header is missing there — the failure surfaces as `<arm_neon.h> not found` inside a standard header on one CI leg. Check the resource headers against the previous package before trusting the plan:
+
+```bash
+grep -n LLVM_TARGETS_TO_BUILD ../llvm-project/clang/lib/Headers/CMakeLists.txt   # the gated blocks; ARM/AArch64 and RISCV as of 23
+grep -o '"[^"]*"' ../llvm-project/build-validate/llvm/tools/clang/lib/Headers/cmake_install.cmake | tr -d '"' \
+  | grep Headers/ | sed -E 's#.*/lib/Headers/##' | sort -u > /tmp/plan.txt
+(cd ~/.cache/clice/cpm/llvm_prebuilt/<hash>/lib/clang/<previous major>/include && find . -type f | sed 's#^\./##' | sort) > /tmp/previous.txt
+comm -13 /tmp/plan.txt /tmp/previous.txt      # in the previous package, not in the plan
+```
+
+Every name that comes out must be a header the new release deleted (`ls ../llvm-project/clang/lib/Headers/<name>` fails); anything that still exists in the source is a gate the target list does not open, and the list in `scripts/build-llvm.py` grows until the diff is clean.
+
 The pixi clang and the LLVM being packaged are always the same release: the pixi pins move together with the package version in one PR. Configure-level validation cannot see link-time problems; the first CI round is the real test for those, and a failure there is reproduced locally with a small program, never by rebuilding LLVM.
 
 Trigger the `build-llvm` workflow on GitHub Actions:
