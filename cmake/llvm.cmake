@@ -113,12 +113,19 @@ function(setup_llvm LLVM_VERSION)
     # The package's libc++ is the standard library of everything in this
     # build, third-party dependencies and their configure checks included, so
     # the flags go into the global CMAKE_* variables (add_compile_options and
-    # link_libraries do not reach try_compile).
-    _llvm_libcxx_flags("${LLVM_INSTALL_PATH}" _cxx_flags _link_flags)
+    # link_libraries do not reach try_compile). The archive itself goes into
+    # the standard libraries, which CMake places after the objects and link
+    # libraries: a linker that scans archives in command-line order (GNU ld,
+    # ld64) would otherwise drop it before anything references it. try_compile
+    # does not carry that variable on its own.
+    _llvm_libcxx_flags("${LLVM_INSTALL_PATH}" _cxx_flags _link_flags _libcxx)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_cxx_flags}" PARENT_SCOPE)
     foreach(kind EXE SHARED MODULE)
         set(CMAKE_${kind}_LINKER_FLAGS "${CMAKE_${kind}_LINKER_FLAGS} ${_link_flags}" PARENT_SCOPE)
     endforeach()
+    set(CMAKE_CXX_STANDARD_LIBRARIES "${_libcxx} ${CMAKE_CXX_STANDARD_LIBRARIES}" PARENT_SCOPE)
+    list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES CMAKE_CXX_STANDARD_LIBRARIES)
+    set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES "${CMAKE_TRY_COMPILE_PLATFORM_VARIABLES}" PARENT_SCOPE)
 
     llvm_map_components_to_libnames(LLVM_RESOLVED
         support frontendopenmp option targetparser)
@@ -238,17 +245,20 @@ endfunction()
 # default library, searched after everything else. Elsewhere the archive is
 # also named outright: -stdlib=libc++ with a -L would still let a libc++.so
 # from an earlier -L (LDFLAGS) win the link.
-function(_llvm_libcxx_flags install_path cxx_flags_var link_flags_var)
+function(_llvm_libcxx_flags install_path cxx_flags_var link_flags_var libcxx_var)
     set(_include "${install_path}/include/c++/v1")
     set(_lib "${install_path}/lib")
     if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         set(${cxx_flags_var} "/clang:-isystem\"${_include}\"" PARENT_SCOPE)
-        set(${link_flags_var} "\"${_lib}/libc++.lib\" /DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
+        set(${link_flags_var} "/DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
+        set(${libcxx_var} "\"${_lib}/libc++.lib\"" PARENT_SCOPE)
     elseif(WIN32)
         set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
-        set(${link_flags_var} "\"${_lib}/libc++.lib\" -Wl,/DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
+        set(${link_flags_var} "-Wl,/DEFAULTLIB:libcpmt.lib" PARENT_SCOPE)
+        set(${libcxx_var} "\"${_lib}/libc++.lib\"" PARENT_SCOPE)
     else()
         set(${cxx_flags_var} "-nostdinc++ -isystem \"${_include}\"" PARENT_SCOPE)
-        set(${link_flags_var} "-nostdlib++ \"${_lib}/libc++.a\"" PARENT_SCOPE)
+        set(${link_flags_var} "-nostdlib++" PARENT_SCOPE)
+        set(${libcxx_var} "\"${_lib}/libc++.a\"" PARENT_SCOPE)
     endif()
 endfunction()
