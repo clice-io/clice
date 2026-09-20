@@ -13,6 +13,7 @@
 #include "semantic/symbol.h"
 #include "server/protocol/lsp_projection.h"
 #include "server/service/ast_family.h"
+#include "server/service/format.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
 #include "worker/protocol.h"
@@ -355,6 +356,28 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     convert(find_preamble_links(*session), links);
     convert(result.value(), links);
     co_return links;
+}
+
+Features::RawResult Features::diagnostics(std::shared_ptr<Session> session) {
+    auto ticket = Ticket::take(session);
+    bool compiled = co_await ast.ensure_compiled(session);
+    if(!ticket.fresh()) {
+        co_return kota::outcome_error(content_modified());
+    }
+
+    protocol::RelatedFullDocumentDiagnosticReport report;
+    auto projection = ast.projections.projection(session->path_id);
+
+    // A successful join guarantees the projection is current. Quarantine
+    // deliberately has no current AST, but materializes a versionless clice
+    // diagnostic through the same CompileOutput path so pull and push expose
+    // the same explanation. Other failed rounds answer an honest empty set
+    // rather than reusing a previous projection's stale diagnostics.
+    if(projection && projection->output.has_value() &&
+       (compiled || session->quarantine.active())) {
+        report.items = format_diagnostics(*projection->output);
+    }
+    co_return to_raw(report);
 }
 
 Features::RawResult Features::definition(std::shared_ptr<Session> session,
