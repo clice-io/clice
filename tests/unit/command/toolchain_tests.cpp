@@ -602,7 +602,7 @@ TEST_CASE(ResolveKeepsExternalIgnorelist, skip = Windows) {
 
 TEST_CASE(ResolveTrailingSlashResourceDir, skip = Windows) {
     constexpr llvm::StringRef line =
-        R"( "/usr/bin/clang-22" "-cc1" "-resource-dir" "/clice-fake/lib/clang/22/" "-internal-isystem" "/clice-fake/lib/clang/22/include" "-std=c++23")";
+        R"( "/usr/bin/clang-22" "-cc1" "-resource-dir" "/clice-fake/lib/clang/22//" "-internal-isystem" "/clice-fake/lib/clang/22//include" "-std=c++23")";
     auto driver = create_fake_clang(line);
     ASSERT_TRUE(driver.has_value());
 

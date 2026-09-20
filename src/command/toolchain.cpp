@@ -1086,22 +1086,29 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
         bool keep_external =
             uses_windows_gnu_target(config) && llvm::sys::fs::is_directory(old_resource_dir);
         if(!old_resource_dir.empty() && old_resource_dir != resource_dir() && !keep_external) {
-            auto builtin_headers = [](llvm::StringRef rest) {
-                if(rest.empty()) {
-                    return true;
+            // The remainder below the resource dir when ours ships it (the
+            // resource dir itself or its builtin headers), separators dropped.
+            auto shipped = [](llvm::StringRef rest) -> std::optional<llvm::StringRef> {
+                if(!rest.empty() && rest.front() != '/' && rest.front() != '\\') {
+                    return std::nullopt;
                 }
-                if(rest.front() != '/' && rest.front() != '\\') {
-                    return false;
+                rest = rest.ltrim("/\\");
+                if(rest.empty() || rest == "include" || rest.starts_with("include/") ||
+                   rest.starts_with("include\\")) {
+                    return rest;
                 }
-                rest = rest.drop_front();
-                return rest.empty() || rest == "include" || rest.starts_with("include/") ||
-                       rest.starts_with("include\\");
+                return std::nullopt;
             };
             for(auto& arg: staged) {
                 for(auto& value: arg.values) {
                     llvm::StringRef rest(value);
-                    if(rest.consume_front(old_resource_dir) && builtin_headers(rest)) {
-                        value = db.strings.save(resource_dir().str() + rest.str()).data();
+                    if(!rest.consume_front(old_resource_dir)) {
+                        continue;
+                    }
+                    if(auto tail = shipped(rest)) {
+                        auto replaced = tail->empty() ? resource_dir().str()
+                                                      : path::join(resource_dir(), *tail);
+                        value = db.strings.save(replaced).data();
                     }
                 }
             }
