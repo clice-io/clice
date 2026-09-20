@@ -360,6 +360,15 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
 
 Features::RawResult Features::diagnostics(std::shared_ptr<Session> session) {
     auto ticket = Ticket::take(session);
+
+    // Drain queued transport work before taking the clean-projection fast
+    // path in ensure_compiled(): a didChange already in the pipe must make
+    // this pull stale instead of letting it serialize the previous output.
+    co_await kota::yield();
+    if(!ticket.fresh()) {
+        co_return kota::outcome_error(content_modified());
+    }
+
     bool compiled = co_await ast.ensure_compiled(session);
     if(!ticket.fresh()) {
         co_return kota::outcome_error(content_modified());
