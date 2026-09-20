@@ -1064,9 +1064,13 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
     }
 
     /// Preserve a real LLVM-MinGW resource tree (a matched installation:
-    /// resource headers and libc++ belong together). Other external
-    /// resource paths are replaced with ours to keep the embedded frontend
-    /// and builtin headers version-matched.
+    /// resource headers and libc++ belong together). Otherwise the external
+    /// resource dir and its builtin headers are replaced with ours to keep
+    /// them version-matched with the embedded frontend. Everything else the
+    /// driver derived from its resource dir stays external — sanitizer
+    /// ignorelists under share/, runtime libraries under lib/: the driver
+    /// verified those files exist there, our tree ships include/ alone, and
+    /// cc1 aborts the process on an ignorelist it cannot open.
     if(!resource_dir().empty()) {
         llvm::StringRef old_resource_dir;
         for(auto& arg: staged) {
@@ -1080,13 +1084,22 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
         bool keep_external =
             uses_windows_gnu_target(config) && llvm::sys::fs::is_directory(old_resource_dir);
         if(!old_resource_dir.empty() && old_resource_dir != resource_dir() && !keep_external) {
+            auto builtin_headers = [](llvm::StringRef rest) {
+                if(rest.empty()) {
+                    return true;
+                }
+                if(rest.front() != '/' && rest.front() != '\\') {
+                    return false;
+                }
+                rest = rest.drop_front();
+                return rest == "include" || rest.starts_with("include/") ||
+                       rest.starts_with("include\\");
+            };
             for(auto& arg: staged) {
                 for(auto& value: arg.values) {
-                    llvm::StringRef s(value);
-                    if(s.starts_with(old_resource_dir)) {
-                        auto replaced =
-                            resource_dir().str() + s.substr(old_resource_dir.size()).str();
-                        value = db.strings.save(replaced).data();
+                    llvm::StringRef rest(value);
+                    if(rest.consume_front(old_resource_dir) && builtin_headers(rest)) {
+                        value = db.strings.save(resource_dir().str() + rest.str()).data();
                     }
                 }
             }
