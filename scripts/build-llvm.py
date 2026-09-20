@@ -286,7 +286,10 @@ class Build:
             *self.compiler_args(),
             *self.debug_info_args(),
             "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
-            "-DLLVM_TARGETS_TO_BUILD=",
+            # No backend is built, but clang/lib/Headers generates arm_neon.h,
+            # arm_sve.h and riscv_vector.h only when their target is listed;
+            # install-distribution never reaches the backends themselves.
+            "-DLLVM_TARGETS_TO_BUILD=AArch64;ARM;RISCV",
             # Without a native backend LLVM leaves the default triple empty,
             # and clang would then have no target for compile commands that
             # do not spell one. The archive triple doubles as the default.
@@ -388,6 +391,13 @@ class Build:
     # ------------------------------------------------------------------- llvm
 
     def configure_llvm(self) -> Path:
+        sema = self.root / "clang/lib/Sema"
+        missing = [
+            header for header in SEMA_PRIVATE_HEADERS if not (sema / header).exists()
+        ]
+        if missing:
+            sys.exit(f"Private Sema headers missing in {sema}: {', '.join(missing)}")
+
         build_dir = self.build_dir / "llvm"
         print(f"\nConfiguring LLVM in {build_dir}...")
         run(["cmake", "-S", self.root / "llvm", "-B", build_dir] + self.llvm_args())
@@ -401,11 +411,7 @@ class Build:
         dest = self.install_prefix / "include/clang/Sema"
         dest.mkdir(parents=True, exist_ok=True)
         for header in SEMA_PRIVATE_HEADERS:
-            src = self.root / "clang/lib/Sema" / header
-            if src.exists():
-                shutil.copy(src, dest / header)
-            else:
-                print(f"  Warning: {header} not found in source.")
+            shutil.copy(self.root / "clang/lib/Sema" / header, dest / header)
 
     # --------------------------------------------------------------- manifest
 

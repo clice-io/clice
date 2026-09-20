@@ -14,7 +14,7 @@ This is the complete workflow for upgrading the LLVM prebuilt packages that clic
 The package is built from an explicit component list (`COMPONENTS` in `scripts/build-llvm.py`), and that list drifts between LLVM versions: libraries appear, split or disappear. Validate it against the new version before spending CI time:
 
 ```bash
-cd ../llvm-project && git checkout llvmorg-<VERSION>   # or a worktree at that tag
+git -C ../llvm-project checkout llvmorg-<VERSION>   # or a worktree at that tag
 pixi run -e package python3 scripts/build-llvm.py --llvm-src ../llvm-project \
   --mode RelWithDebInfo --build-dir ../llvm-project/build-validate --configure-only
 ```
@@ -37,21 +37,23 @@ gh workflow run build-llvm.yml \
 
 ## Step 2: Download Local Platform Artifact
 
-Download the artifact matching the development machine:
+Download the artifact matching the development machine into a directory outside the checkout — nothing in the repository holds a package:
 
 ```bash
 gh run view <RUN_ID>
-gh run download <RUN_ID> -n x86_64-unknown-linux-gnu.releasedbg.tar.xz -D .llvm-download
-mkdir -p .llvm
-tar -xf .llvm-download/x86_64-unknown-linux-gnu.releasedbg.tar.xz -C .llvm
+gh run download <RUN_ID> -n x86_64-unknown-linux-gnu.releasedbg.tar.xz -D /tmp/llvm-download
+mkdir -p ~/.cache/clice/llvm-<VERSION>
+tar -xf /tmp/llvm-download/x86_64-unknown-linux-gnu.releasedbg.tar.xz -C ~/.cache/clice/llvm-<VERSION>
 ```
 
 Configure clice to build against it:
 
 ```bash
-pixi run cmake-config RelWithDebInfo ON -- "-DLLVM_INSTALL_PATH=.llvm"
+pixi run cmake-config RelWithDebInfo ON -- "-DLLVM_INSTALL_PATH=$HOME/.cache/clice/llvm-<VERSION>"
 pixi run cmake-build RelWithDebInfo
 ```
+
+Once the release exists, drop the override (`-ULLVM_INSTALL_PATH`) so the build goes back to the CPM download. A release re-published under the same tag is invisible to CPM's cache: delete `~/.cache/clice/cpm/llvm_prebuilt/` first (toolchain changelog).
 
 An existing build directory caches `LLVM_DIR` and `Clang_DIR` from the previous package, and `find_package` honours them before the `PATHS` we pass — the new package is silently ignored. Add `-ULLVM_DIR -UClang_DIR` to the `--` arguments, or use a fresh build directory.
 
@@ -163,5 +165,5 @@ The user decides whether all changes are acceptable or if adjustments are needed
 ## Notes
 
 - **Artifact size limit**: GitHub Release max 2GB per file. macOS LTO artifacts are largest, currently ~1.7GB with xz -9e.
-- **Package contents**: `LLVM_TARGETS_TO_BUILD` is empty (clice generates no code) and only `COMPONENTS` are built, so a configure that passes locally with `--configure-only` is what CI builds.
+- **Package contents**: no backend is built (clice generates no code); `LLVM_TARGETS_TO_BUILD` lists `AArch64;ARM;RISCV` only because `clang/lib/Headers` generates `arm_neon.h` and friends on that condition. Only `COMPONENTS` are built, so a configure that passes locally with `--configure-only` is what CI builds.
 - **Private headers**: clice depends on private Clang Sema headers (TreeTransform.h etc.), copied from source during `build-llvm.py`. Users must use our packaged LLVM.

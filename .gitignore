@@ -39,7 +39,6 @@ temp/
 # Materialized benchmark workloads (fetch_workload.py)
 benchmarks/workloads/
 
-.llvm*/
 .clice/
 compile_commands.json
 !tests/data/**/compile_commands.json
