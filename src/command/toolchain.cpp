@@ -1077,7 +1077,9 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
             if((arg.opt_id == option::OPT_resource_dir ||
                 arg.opt_id == option::OPT_resource_dir_EQ) &&
                arg.values.size() == 1) {
-                old_resource_dir = arg.values[0];
+                // A trailing separator on the command's -resource-dir reaches
+                // cc1 verbatim while the derived paths append without doubling it.
+                old_resource_dir = llvm::StringRef(arg.values[0]).rtrim("/\\");
                 break;
             }
         }
@@ -1092,7 +1094,7 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
                     return false;
                 }
                 rest = rest.drop_front();
-                return rest == "include" || rest.starts_with("include/") ||
+                return rest.empty() || rest == "include" || rest.starts_with("include/") ||
                        rest.starts_with("include\\");
             };
             for(auto& arg: staged) {
