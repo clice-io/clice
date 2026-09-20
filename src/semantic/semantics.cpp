@@ -756,6 +756,13 @@ private:
             return;
         }
 
+        // An instantiation node's range points into the pattern (an explicit
+        // class instantiation's still spans the directive) and it carries no
+        // references; the written nodes own those tokens.
+        if(semantics.nodes[self].flags.in_instantiation) {
+            return;
+        }
+
         for(const auto& claimed: unclaimed_expanded_tokens.erase(unit.expanded_tokens(S))) {
             attribute_tokens(claimed, self);
         }
