@@ -1,6 +1,7 @@
 #include "semantic/resolver.h"
 
 #include <cstdint>
+#include <optional>
 #include <ranges>
 
 #include "semantic/unifier.h"
@@ -832,16 +833,17 @@ private:
                 if(dependent && policy == Policy::Resolve) {
                     result = resolve_dependent_template(TST);
                 } else if(dependent) {
-                    auto NNS = rewrite_specifier(dependent->getQualifier(), policy);
+                    auto name = rewrite_template_name(TST->getTemplateName(), policy);
+                    if(!name) {
+                        break;
+                    }
                     llvm::SmallVector<clang::TemplateArgument, 4> arguments;
                     bool changed = rewrite_arguments(TST->template_arguments(), arguments, policy);
-                    if(NNS != dependent->getQualifier() || changed) {
-                        auto name = context.getDependentTemplateName(
-                            clang::DependentTemplateStorage(NNS,
-                                                            dependent->getName(),
-                                                            dependent->hasTemplateKeyword()));
+                    if(!name->getAsDependentTemplateName()) {
+                        result = make_specialization(*name, arguments);
+                    } else if(*name != TST->getTemplateName() || changed) {
                         result = context.getTemplateSpecializationType(TST->getKeyword(),
-                                                                       name,
+                                                                       *name,
                                                                        arguments,
                                                                        /*CanonicalArgs=*/{});
                     }
@@ -1516,14 +1518,10 @@ private:
                     /// A dependent name (`apply<T::template tmpl>`) carries
                     /// its qualifier inside the TemplateName; rewrite it so
                     /// the frame's bindings do not go stale.
-                    if(auto dependent = argument.getAsTemplate().getAsDependentTemplateName()) {
-                        auto qualifier = rewrite_specifier(dependent->getQualifier(), policy);
-                        if(qualifier != dependent->getQualifier()) {
-                            auto name = context.getDependentTemplateName(
-                                clang::DependentTemplateStorage(qualifier,
-                                                                dependent->getName(),
-                                                                dependent->hasTemplateKeyword()));
-                            out.emplace_back(name);
+                    if(argument.getAsTemplate().getAsDependentTemplateName()) {
+                        auto name = rewrite_template_name(argument.getAsTemplate(), policy);
+                        if(name && *name != argument.getAsTemplate()) {
+                            out.emplace_back(*name);
                             changed = true;
                             continue;
                         }
@@ -1638,6 +1636,36 @@ private:
             return std::nullopt;
         }
         return expanded;
+    }
+
+    /// Rewrites the qualifier of a dependent template name. Substitution can
+    /// make the scope concrete (`traits<A>::template rebind` once `A` is
+    /// bound), and a dependent template name cannot carry a non-dependent
+    /// qualifier; the name is then looked up in that scope, while the
+    /// bindings that made it concrete are still in place. Nullopt when the
+    /// scope became concrete but names no template there.
+    std::optional<clang::TemplateName> rewrite_template_name(clang::TemplateName name,
+                                                             Policy policy) {
+        auto* dependent = name.getAsDependentTemplateName();
+        auto NNS = rewrite_specifier(dependent->getQualifier(), policy);
+        if(NNS == dependent->getQualifier()) {
+            return name;
+        }
+        if(NNS.isDependent()) {
+            return context.getDependentTemplateName(
+                clang::DependentTemplateStorage(NNS,
+                                                dependent->getName(),
+                                                dependent->hasTemplateKeyword()));
+        }
+        auto* identifier = dependent->getName().getIdentifier();
+        auto* decl =
+            identifier
+                ? llvm::dyn_cast_or_null<clang::TemplateDecl>(preferred(lookup(NNS, identifier)))
+                : nullptr;
+        if(!decl) {
+            return std::nullopt;
+        }
+        return clang::TemplateName(decl);
     }
 
     clang::NestedNameSpecifier rewrite_specifier(clang::NestedNameSpecifier NNS, Policy policy) {
