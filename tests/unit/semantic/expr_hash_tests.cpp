@@ -799,6 +799,8 @@ using mark_cuda_call = decltype(kernel<<<1, 1>>>());
         Tester fixture;
         fixture.add_main("main.cpp", R"cpp(
 class Kernel;
+template <typename KernelName, typename... Ts>
+void sycl_kernel_launch(const char*, Ts...) {}
 using mark_sycl_kernel = decltype([] {
     struct Launcher {
         [[clang::sycl_kernel_entry_point(Kernel)]] static void run() {}
@@ -806,6 +808,8 @@ using mark_sycl_kernel = decltype([] {
 });
 using mark_sycl_name = decltype(__builtin_sycl_unique_stable_name(int));
 )cpp");
+        // clang 23 refuses SYCL device compilation for a non-GPU triple.
+        fixture.triple = "spirv64-unknown-unknown";
         fixture.prepare("-std=c++20");
         fixture.params.arguments.insert(fixture.params.arguments.end(), {"-fsycl-is-device"});
         ASSERT_TRUE(fixture.try_compile());

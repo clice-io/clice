@@ -6,7 +6,7 @@
 
 void f() {
     struct §module {};
-    §module §m;
+    struct §module §m;
     int §import = 1;
     int §module = 2;
 }
