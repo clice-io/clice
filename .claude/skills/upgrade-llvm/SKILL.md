@@ -49,13 +49,14 @@ gh workflow run build-llvm.yml \
 
 ## Step 2: Download Local Platform Artifact
 
-Download the artifact matching the development machine into a directory outside the checkout — nothing in the repository holds a package:
+Download the artifact matching the development machine (`<HOST_TRIPLE>` is `x86_64`/`aarch64` plus `unknown-linux-gnu`, `apple-darwin` or `pc-windows-msvc`) into a directory outside the checkout — nothing in the repository holds a package:
 
 ```bash
 gh run view <RUN_ID>
-gh run download <RUN_ID> -n x86_64-unknown-linux-gnu.releasedbg.tar.xz -D /tmp/llvm-download
+ARCHIVE="<HOST_TRIPLE>.releasedbg.tar.xz"
+gh run download <RUN_ID> -n "$ARCHIVE" -D /tmp/llvm-download
 mkdir -p ~/.cache/clice/llvm-<VERSION>
-tar -xf /tmp/llvm-download/x86_64-unknown-linux-gnu.releasedbg.tar.xz -C ~/.cache/clice/llvm-<VERSION>
+tar -xf "/tmp/llvm-download/$ARCHIVE" -C ~/.cache/clice/llvm-<VERSION>
 ```
 
 Configure clice to build against it:
