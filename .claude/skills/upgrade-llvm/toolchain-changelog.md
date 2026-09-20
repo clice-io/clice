@@ -56,15 +56,18 @@ same release.
 - Windows runner speed, settled by an A/B on a scratch branch (Windows-only matrix, `Set-MpPreference -DisableRealtimeMonitoring` on or off, 4 legs each, a `Runner info` step printing the CPU): build-step minutes with Defender on 86 / 93 / 65 / 114, off 102 / 94 / 86 / 117. Defender makes no difference; the spread is the CPU the `windows-2022` label happens to hand out (AMD EPYC 9V74 and Intel Xeon 6973P fast, EPYC 7763 and Xeon 8370C slow, all 4 cores). Nothing on the runner is worth tuning; faster Windows legs mean a larger or self-labelled runner, or cross-compiling the msvc target from Linux.
 - Baselines from the libc++ attempt below, same component list and targets: a full leg (RelWithDebInfo, LTO) took 52 minutes on macOS and on the aarch64 Linux cross build, against 130–226 minutes for the old packages; archives 197 MB (aarch64 Linux) and 202 MB (x86_64 macOS) against 687 MB and 1755 MB. The 22.1.8 plan had 2857 build steps / 2207 compiles against 5804 / 4457; the 23.1.1 plan has 2996 / 2307 (Windows 2997).
 
-## Parked: libc++ inside the package (branch `build/toolchain-23-libcxx`)
+## 2026-09: libc++ inside the package
 
-An attempt to ship a static, hermetic libc++ in the package and link every platform
-against it (LLVM 22.1.8 built with the pixi clang 23.1.1). Parked because libc++ and
-LLVM at different releases cost one workaround per platform; it resumes once the two
-are the same release again, and then everything below still applies. The branch has
-the two-pass script (`--runtimes-src`), the consumer flags, and one unverified WIP
-commit for the last finding; the clice-llvm branch `patches/22.1.8-libcxx-legacy-wide`
-holds the two libc++ 23.1.1 patches.
+The package carries a static, hermetic libc++ (libc++abi merged in outside Windows)
+built from the same llvm-project tree by a runtimes pass ahead of the LLVM pass, and
+every platform links clice against it: `-nostdinc++ -isystem <prefix>/include/c++/v1`
+for the compile, `-stdlib=libc++ -L<prefix>/lib` (Windows: `/DEFAULTLIB:libc++.lib
+/DEFAULTLIB:libcpmt.lib`) for the link, hardening `debug`/`fast`/`none` by variant,
+the ASan variant's libc++ instrumented too. A first attempt (branch
+`build/toolchain-23-libcxx`, LLVM 22.1.8 with libc++ 23.1.1) was parked because two
+releases in one package cost one workaround per platform; the rows below are what it
+found and what the same-release round re-verified. The two libc++ 23.1.1 patches live
+in clice-llvm under `patches/23.1.1/`.
 
 ### Runtimes build
 
@@ -75,7 +78,6 @@ holds the two libc++ 23.1.1 patches.
 | aarch64 cross leg: `x86_64-conda-linux-gnu-ld: unrecognised emulation mode: aarch64linux` in the runtimes compiler test. | `-DCMAKE_EXE_LINKER_FLAGS=` on the command line replaced the toolchain file's `-fuse-ld=lld`; `LLVM_USE_LINKER` only acts after `project()`.                                                                                                                                        | Name `-fuse-ld=lld` (and `--no-default-config` on Darwin) explicitly whenever linker flags are passed.                                                                                                           | The cross env locally.                                                     |
 | ASan libc++ needs more than `-fsanitize=address`.                                                                        | `LLVM_USE_SANITIZER=Address` also sets `_LIBCPP_INSTRUMENTED_WITH_ASAN` in `__config_site` (`#cmakedefine01`, so not addable through `LIBCXX_EXTRA_SITE_DEFINES`); without it the headers assume an uninstrumented library and string annotations misfire.                          | Keep `LLVM_USE_SANITIZER` for the Debug runtimes pass.                                                                                                                                                           | `grep INSTRUMENTED_WITH_ASAN <prefix>/include/c++/v1/__config_site` → `1`. |
 | Does the LTO variant's libc++ carry bitcode?                                                                             | The runtimes build honors `LLVM_ENABLE_LTO=Thin`.                                                                                                                                                                                                                                   | Nothing.                                                                                                                                                                                                         | `llvm-ar p libc++.a <member> \| head -c4` → `BC\xC0\xDE`.                  |
-| LLVM 22 sources fail against libc++ 23 headers: `ProgramStack.cpp: use of undeclared identifier 'malloc'`.               | libc++ 23 dropped many transitive includes; LLVM 22 relied on `<cstdlib>` arriving indirectly (fixed upstream in 23 by [#194249](https://github.com/llvm/llvm-project/pull/194249)). libc++ keeps the old includes under `_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23` for one release. | This is the cost of two releases in one package and what parked the attempt: libc++ and LLVM stay the same release. (The WIP commit on the branch defines the macro when the libc++ major is newer; unverified.) |                                                                            |
 
 ### macOS
 
