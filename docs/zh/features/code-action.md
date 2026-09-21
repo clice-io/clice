@@ -487,6 +487,18 @@ tests/snap/code_action/include/03_no_include_yet.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**条件编译下的包含指令**
+
+嵌套在条件编译里的包含指令不是必须始终生效的指令该去的位置：新指令跟在文件自身层级的最后一条之后，或者跟在头文件保护（include guard）之后
+
+```snap
+tests/snap/code_action/include/04_conditional_includes.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 重排定义
@@ -605,6 +617,18 @@ tests/snap/code_action/constructor/04_declarator_fields.cpp
 
 ```snap
 tests/snap/code_action/constructor/05_base_without_default.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**默认构造函数被删除的基类**
+
+当基类的默认构造函数被删除时，无论是显式删除还是因引用成员而隐式删除，同样不会生成逐成员构造函数
+
+```snap
+tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp
 ```
 
 <!-- END CAPABILITY -->

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "command/command.h"
+#include "index/shard.h"
 #include "index/symbol_query.h"
 #include "sched/context.h"
 #include "server/protocol/position.h"
@@ -164,21 +165,28 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         auto host_session = sessions.find(host);
         auto formatted = feature::format_snippet(host_path, *text);
 
-        // After the last definition of the container's members the index
-        // places in the host, in the coordinates its serving source
-        // vouches for; at the end of the file when it holds none.
+        // After the last definition of the container's members in the
+        // host's serving rows, in the coordinates that source vouches
+        // for; at the end of the file when it holds none. The rows are
+        // read directly: an open host's own rows know its definitions
+        // before the background index merges them into the project table.
         std::optional<protocol::Position> after;
-        if(request.container != 0) {
-            for(const auto& located: query.definitions_in(host)) {
-                auto chain = query.container_chain(located.symbol.hash);
+        auto source = request.container != 0 ? query.serving(host) : std::nullopt;
+        if(source) {
+            source->rows->for_each_relation([&](index::SymbolHash hash,
+                                                const index::Relation& relation) {
+                if(relation.kind != RelationKind::Definition) {
+                    return true;
+                }
+                auto chain = query.container_chain(hash);
                 if(llvm::none_of(chain, [&](const index::SymbolRef& container) {
                        return container.hash == request.container;
                    })) {
-                    continue;
+                    return true;
                 }
-                auto definition = query.definition_text(located.symbol.hash);
+                auto definition = query.definition_text(hash);
                 if(!definition) {
-                    continue;
+                    return true;
                 }
                 protocol::Position end{.line = definition->extent.end.line,
                                        .character = definition->extent.end.utf16_column};
@@ -186,7 +194,8 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                    std::pair(end.line, end.character) > std::pair(after->line, after->character)) {
                     after = end;
                 }
-            }
+                return true;
+            });
         }
         protocol::TextEdit edit;
         if(after) {
