@@ -266,6 +266,9 @@ class Build:
         ]
         if self.mingw:
             args.append(f"-DCLICE_MINGW_ROOT={self.mingw_root.as_posix()}")
+            # LLVM defaults this to ON for MinGW; clice and its tests expect
+            # the MSVC package's backslash-preferred paths.
+            args.append("-DLLVM_WINDOWS_PREFER_FORWARD_SLASH=OFF")
         return args
 
     def debug_info_args(self) -> list[str]:
