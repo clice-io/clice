@@ -7,6 +7,38 @@
 namespace clice::testing {
 namespace {
 
+TEST_SUITE(FollowsAccessOperator) {
+
+TEST_CASE(MemberAccess) {
+    EXPECT_TRUE(follows_access_operator("w.", 2));
+    EXPECT_TRUE(follows_access_operator("p->", 3));
+    EXPECT_TRUE(follows_access_operator("std::", 5));
+}
+
+TEST_CASE(PackEllipsis) {
+    EXPECT_FALSE(follows_access_operator("template <typename..", 20));
+    EXPECT_FALSE(follows_access_operator("template <typename...", 21));
+}
+
+TEST_CASE(NumericLiteral) {
+    EXPECT_FALSE(follows_access_operator("float f = 3.", 12));
+    EXPECT_FALSE(follows_access_operator("x = 0x1F.", 9));
+    EXPECT_TRUE(follows_access_operator("x1.", 3));
+    EXPECT_TRUE(follows_access_operator("f(1).", 5));
+}
+
+TEST_CASE(TemplateDelimiters) {
+    EXPECT_FALSE(follows_access_operator("template<", 9));
+    EXPECT_FALSE(follows_access_operator("template<typename T>", 20));
+}
+
+TEST_CASE(CursorBeforeOperator) {
+    // Only the text up to the cursor counts.
+    EXPECT_FALSE(follows_access_operator("w.x", 1));
+}
+
+};  // TEST_SUITE(FollowsAccessOperator)
+
 TEST_SUITE(DetectCompletionContext) {
 
 TEST_CASE(IncludeAngled) {

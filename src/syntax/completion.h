@@ -34,6 +34,12 @@ struct PreambleCompletionContext {
 /// Pure text parsing — no compiler state needed.
 PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset);
 
+/// Whether the text before `offset` ends in a member or scope access
+/// operator (`.`, `->`, `::`) — outside a directive, the only trigger
+/// characters worth a candidate build. A pack ellipsis is not a member
+/// access.
+bool follows_access_operator(llvm::StringRef text, std::uint32_t offset);
+
 /// The names of the graph's provided modules that start with `prefix`,
 /// suitable for `import` completion.
 std::vector<std::string> complete_module_import(const DependencyGraph& graph,

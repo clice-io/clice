@@ -2880,6 +2880,47 @@ TEST_CASE(ArrowWithoutPointer) {
     EXPECT_TRUE(candidates.empty());
 }
 
+TEST_CASE(ArrowThroughSmartPointer) {
+    /// `operator->` returns `T*` in the class's own parameter; the lookup's
+    /// deduction frame must substitute the specialization's argument for
+    /// the pointee's members to resolve.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Node {
+            int val;
+        };
+
+        template <typename T>
+        struct SP {
+            T* operator->();
+        };
+
+        template <typename T>
+        void f(SP<Node<T>> p) {
+            p->val;
+        }
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CXXDependentScopeMemberExpr* expr = nullptr;
+
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
+            if(e->isArrow()) {
+                expr = e;
+            }
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    auto candidates = unit->resolver().lookup(finder.expr);
+    ASSERT_FALSE(candidates.empty());
+    EXPECT_TRUE(llvm::isa<clang::FieldDecl>(*candidates.begin()));
+}
+
 TEST_CASE(RecordOfMemberAlias) {
     /// The alias resolves with the written arguments substituted, so the
     /// record is the class the alias stands for, not the bare parameter.
