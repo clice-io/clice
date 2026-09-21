@@ -78,9 +78,16 @@ gxx_linux-aarch64 = "==15.2.0"
 [feature.cross-linux-arm64.target.linux-64.activation]
 scripts = ["scripts/activate_cross_linux.sh"]
 
-# Windows through mingw-w64 (from x64 Linux): the sysroot, compiler-rt and
-# libunwind come from llvm-mingw (scripts/fetch_llvm_mingw.py), so the env
-# only clears the host flags conda's activation exports.
+# Windows through mingw-w64: the mingw-w64 UCRT sysroot and the target
+# libgcc (builtins and unwinder, like on Linux) come from conda-forge; the
+# compiler is the pixi clang. Cross from Linux, or native on Windows.
+[feature.cross-windows-mingw]
+platforms = ["linux-64", "win-64", "osx-arm64", "linux-aarch64"]
+
+[feature.cross-windows-mingw.dependencies]
+m2w64-sysroot_win-64 = "*"
+libgcc-devel_win-64 = "==16.2.0"
+
 [feature.cross-windows-mingw.target.linux-64.activation]
 scripts = ["scripts/activate_cross_linux.sh"]
 

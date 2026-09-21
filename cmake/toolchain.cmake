@@ -1,38 +1,51 @@
 cmake_minimum_required(VERSION 3.30)
 
-# Windows through mingw-w64: CLICE_MINGW_ROOT names an llvm-mingw install
-# (scripts/fetch_llvm_mingw.py), whose <triple>-clang wrappers carry the
-# sysroot, compiler-rt and libunwind. Native on Windows or cross from any
-# host; the target is CLICE_TARGET_TRIPLE, else this machine's architecture.
-if(DEFINED CLICE_MINGW_ROOT)
-    if(NOT DEFINED CLICE_TARGET_TRIPLE)
-        if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
-            set(CLICE_TARGET_TRIPLE "aarch64-w64-mingw32")
-        else()
-            set(CLICE_TARGET_TRIPLE "x86_64-w64-mingw32")
-        endif()
-    endif()
-    if(NOT CLICE_TARGET_TRIPLE MATCHES "-w64-mingw32$")
-        message(FATAL_ERROR "CLICE_MINGW_ROOT is set but ${CLICE_TARGET_TRIPLE} is not a mingw target")
-    endif()
+# Windows through mingw-w64, from any host: a `<arch>-w64-mingw32` target
+# triple selects the mingw-w64 sysroot and libgcc that conda-forge ships
+# (m2w64-sysroot_win-64 and libgcc-devel_win-64, pulled in by the pixi
+# feature); clang and lld are the pixi ones. libgcc serves as builtins and
+# unwinder like on Linux.
+if(DEFINED CLICE_TARGET_TRIPLE AND CLICE_TARGET_TRIPLE MATCHES "^([a-z0-9_]+)-w64-mingw32$")
+    set(_mingw_arch "${CMAKE_MATCH_1}")
     if(NOT CMAKE_HOST_WIN32)
         set(CMAKE_SYSTEM_NAME Windows)
-        if(CLICE_TARGET_TRIPLE MATCHES "^aarch64")
+        if(_mingw_arch STREQUAL "aarch64")
             set(CMAKE_SYSTEM_PROCESSOR ARM64)
         else()
             set(CMAKE_SYSTEM_PROCESSOR AMD64)
         endif()
     endif()
-    foreach(tool IN ITEMS clang clang++ windres)
-        find_program(CLICE_MINGW_${tool} "${CLICE_TARGET_TRIPLE}-${tool}"
-            PATHS "${CLICE_MINGW_ROOT}/bin" NO_DEFAULT_PATH)
-        if(NOT CLICE_MINGW_${tool})
-            message(FATAL_ERROR "No ${CLICE_TARGET_TRIPLE}-${tool} in ${CLICE_MINGW_ROOT}/bin")
-        endif()
-    endforeach()
-    set(CMAKE_C_COMPILER "${CLICE_MINGW_clang}" CACHE STRING "")
-    set(CMAKE_CXX_COMPILER "${CLICE_MINGW_clang++}" CACHE STRING "")
-    set(CMAKE_RC_COMPILER "${CLICE_MINGW_windres}" CACHE FILEPATH "")
+    if(NOT DEFINED ENV{CONDA_PREFIX})
+        message(FATAL_ERROR "A mingw target needs the pixi environment for its sysroot (CONDA_PREFIX is unset)")
+    endif()
+    if(CMAKE_HOST_WIN32)
+        set(_conda_lib "$ENV{CONDA_PREFIX}/Library")
+    else()
+        set(_conda_lib "$ENV{CONDA_PREFIX}")
+    endif()
+    file(TO_CMAKE_PATH "${_conda_lib}" _conda_lib)
+    set(CMAKE_SYSROOT "${_conda_lib}/${CLICE_TARGET_TRIPLE}/sysroot/usr")
+    file(GLOB _mingw_gcc_dir LIST_DIRECTORIES true "${_conda_lib}/lib/gcc/${CLICE_TARGET_TRIPLE}/*")
+    if(NOT EXISTS "${CMAKE_SYSROOT}/include/windows.h" OR NOT _mingw_gcc_dir)
+        message(FATAL_ERROR
+            "No mingw-w64 sysroot or libgcc under ${_conda_lib}: the pixi environment lacks "
+            "m2w64-sysroot_win-64 / libgcc-devel_win-64 (feature cross-windows-mingw)")
+    endif()
+    list(GET _mingw_gcc_dir 0 _mingw_gcc_dir)
+    set(CMAKE_C_COMPILER_TARGET "${CLICE_TARGET_TRIPLE}" CACHE STRING "")
+    set(CMAKE_CXX_COMPILER_TARGET "${CLICE_TARGET_TRIPLE}" CACHE STRING "")
+    # As compiler arguments rather than *_FLAGS_INIT: a -DCMAKE_<LANG>_FLAGS
+    # on the command line (scripts/build-llvm.py gives one) replaces the
+    # initial flags, and the driver only finds this libgcc through -L.
+    # -nostdlib++ keeps CMake's compiler check from asking for a libstdc++
+    # the sysroot does not have; the C++ standard library is the package's
+    # libc++, named by cmake/llvm.cmake.
+    set(_mingw_args "-rtlib=libgcc;-unwindlib=libgcc;-nostdlib++;-L${_mingw_gcc_dir}")
+    set(CMAKE_C_COMPILER "clang;${_mingw_args}" CACHE STRING "")
+    set(CMAKE_CXX_COMPILER "clang++;${_mingw_args}" CACHE STRING "")
+    find_program(LLVM_WINDRES_PATH "llvm-windres")
+    set(CMAKE_RC_COMPILER "${LLVM_WINDRES_PATH}" CACHE FILEPATH "")
+    set(CMAKE_RC_FLAGS "--target=${CLICE_TARGET_TRIPLE}" CACHE STRING "")
 endif()
 
 # Cross-compilation support via CLICE_TARGET_TRIPLE.
@@ -132,7 +145,7 @@ foreach(lang C CXX)
         CACHE STRING "" FORCE)
 endforeach()
 
-if(WIN32 AND NOT DEFINED CLICE_MINGW_ROOT)
+if(WIN32 AND NOT CLICE_TARGET_TRIPLE MATCHES "-w64-mingw32$")
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "")
     set(CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=lld-link")
     set(CMAKE_SHARED_LINKER_FLAGS_INIT "-fuse-ld=lld-link")

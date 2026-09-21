@@ -206,13 +206,6 @@ jobs:
             echo "No patches for LLVM ${VERSION}"
           fi
 
-      - name: Install llvm-mingw
-        if: contains(matrix.target_triple, 'mingw')
-        shell: bash
-        run: |
-          ROOT="$(python3 scripts/fetch_llvm_mingw.py "$RUNNER_TEMP/llvm-mingw")"
-          echo "CLICE_MINGW_ROOT=$ROOT" >> "$GITHUB_ENV"
-
       - name: Build LLVM (install-distribution)
         shell: bash
         run: |

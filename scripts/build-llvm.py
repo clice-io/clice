@@ -210,14 +210,7 @@ class Build:
         self.target_triple: str | None = args.target_triple
         self.triple = args.target_triple or host_triple()
         self.mingw = self.triple.endswith("-w64-mingw32")
-        if self.mingw:
-            root = os.environ.get("CLICE_MINGW_ROOT")
-            if not root:
-                sys.exit(
-                    "CLICE_MINGW_ROOT must point at an llvm-mingw install "
-                    "(scripts/fetch_llvm_mingw.py) for a mingw target."
-                )
-            self.mingw_root = Path(root).resolve()
+        self.msvc = IS_WINDOWS and not self.mingw
         self.asan = self.mode == "Debug" and not IS_WINDOWS and not self.mingw
         self.assertions = self.mode == "Debug" or not self.lto
 
@@ -248,7 +241,7 @@ class Build:
         return " --no-default-config" if IS_DARWIN else ""
 
     def compiler_args(self) -> list[str]:
-        if IS_WINDOWS:
+        if self.msvc:
             return [
                 "-DCMAKE_C_COMPILER=clang-cl",
                 "-DCMAKE_CXX_COMPILER=clang-cl",
@@ -265,7 +258,6 @@ class Build:
             "-DLLVM_USE_LINKER=lld",
         ]
         if self.mingw:
-            args.append(f"-DCLICE_MINGW_ROOT={self.mingw_root.as_posix()}")
             # LLVM defaults this to ON for MinGW; clice and its tests expect
             # the MSVC package's backslash-preferred paths.
             args.append("-DLLVM_WINDOWS_PREFER_FORWARD_SLASH=OFF")
@@ -274,7 +266,7 @@ class Build:
     def debug_info_args(self) -> list[str]:
         # Function names and line tables are all the symbolizers need; the
         # type and variable information of a full -g is most of the archive.
-        if IS_WINDOWS:
+        if self.msvc:
             relwithdebinfo = "/O2 /Ob1 /DNDEBUG -gcodeview -gline-tables-only"
             debug = "/Ob0 /Od -gcodeview -gline-tables-only"
         else:
@@ -332,8 +324,7 @@ class Build:
         a patch."""
         build_dir = self.build_dir / "runtimes"
         args = self.common_args("-w") + [
-            "-DLLVM_ENABLE_RUNTIMES="
-            + ("libcxx" if IS_WINDOWS else "libcxxabi;libcxx"),
+            "-DLLVM_ENABLE_RUNTIMES=" + ("libcxx" if self.msvc else "libcxxabi;libcxx"),
             "-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=OFF",
             "-DLLVM_INCLUDE_TESTS=OFF",
             "-DLIBCXX_ENABLE_SHARED=OFF",
@@ -343,7 +334,7 @@ class Build:
             "-DLIBCXX_INCLUDE_BENCHMARKS=OFF",
             "-DLIBCXX_INCLUDE_TESTS=OFF",
         ]
-        if IS_WINDOWS:
+        if self.msvc:
             # Upstream compiles libc++ with _CRT_STDIO_ISO_WIDE_SPECIFIERS, and
             # the UCRT's detect_mismatch then forces that mode on every object
             # linked with it; the ISO mode changes what %s means in the wide
@@ -378,7 +369,7 @@ class Build:
         standard library of the LLVM pass."""
         include = (self.install_prefix / "include/c++/v1").as_posix()
         lib = (self.install_prefix / "lib").as_posix()
-        if IS_WINDOWS:
+        if self.msvc:
             # clang-cl has no -nostdinc++; the MSVC STL headers sit in the
             # INCLUDE directories, which -isystem precedes. libc++.lib is a
             # plain linker input, not a /DEFAULTLIB: lld-link reads the
