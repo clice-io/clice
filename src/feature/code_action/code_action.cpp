@@ -289,6 +289,10 @@ std::string type_name(clang::ASTContext& context,
     return bind_declarators(std::move(printed));
 }
 
+namespace {
+
+/// One "template <...>" head, the parameters spelled without defaults,
+/// followed by the requires-clause when the list has one.
 std::string template_head(CompilationUnitRef unit, const clang::TemplateParameterList* params) {
     auto& context = unit.context();
     std::string head;
@@ -326,6 +330,8 @@ std::string template_head(CompilationUnitRef unit, const clang::TemplateParamete
     }
     return head;
 }
+
+}  // namespace
 
 std::string template_heads(CompilationUnitRef unit,
                            const clang::Decl* decl,

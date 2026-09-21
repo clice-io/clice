@@ -101,10 +101,6 @@ std::string template_heads(CompilationUnitRef unit,
                            const clang::Decl* decl,
                            const clang::DeclContext* from);
 
-/// One "template <...>" head, the parameters spelled without defaults,
-/// followed by the requires-clause when the list has one.
-std::string template_head(CompilationUnitRef unit, const clang::TemplateParameterList* params);
-
 /// Where member declarations go into a class body: right before the
 /// closing brace, on lines of the body's own indentation.
 struct BodyInsertion {
