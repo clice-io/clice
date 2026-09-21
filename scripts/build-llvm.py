@@ -388,9 +388,9 @@ class Build:
             )
         # -D on the command line replaces the toolchain file's *_INIT linker
         # flags, so lld is repeated here. The archive is named outright: a
-        # -stdlib=libc++ would resolve -lc++ from the driver's own search
-        # path first (llvm-mingw ships one), and lld does not care where on
-        # the command line an archive sits.
+        # -stdlib=libc++ would take any libc++ an earlier -L (LDFLAGS, a
+        # host toolchain) puts in the search path, and lld does not care
+        # where on the command line an archive sits.
         return (
             f"-w -nostdinc++ -isystem {include}",
             f"-fuse-ld=lld{self.driver_flags()} -nostdlib++ {lib}/libc++.a",
