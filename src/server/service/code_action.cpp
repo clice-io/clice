@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <format>
 #include <optional>
 #include <string>
@@ -11,6 +12,7 @@
 #include "server/protocol/position.h"
 #include "server/service/features.h"
 #include "support/filesystem.h"
+#include "syntax/include_resolver.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
@@ -61,32 +63,53 @@ protocol::CodeAction render(std::string title, protocol::CodeActionKind kind, Fi
 /// How `header` is spelled in an include directive of `file`: its path
 /// below the file's own directory (where a quoted include looks first),
 /// else the shortest path below one of the command's search directories,
-/// angled past the quoted segment.
+/// angled past the quoted segment — whichever of these the command's
+/// lookup order actually resolves to `header`, since a shorter spelling
+/// can name a same-named file in an earlier directory.
 std::optional<std::string> include_spelling(llvm::StringRef header,
                                             const SearchConfig& search,
-                                            llvm::StringRef file) {
+                                            llvm::StringRef file,
+                                            DirListingCache& dir_cache) {
     auto below = [&](llvm::StringRef root) -> std::optional<llvm::StringRef> {
         if(root.empty() || !path::under(header, root) || header.size() <= root.size()) {
             return std::nullopt;
         }
         return header.drop_front(root.size()).ltrim("/\\");
     };
-    if(auto relative = below(llvm::sys::path::parent_path(file))) {
-        return std::format("\"{}\"", *relative);
+
+    struct Candidate {
+        llvm::StringRef name;
+        bool angled;
+    };
+
+    std::vector<Candidate> candidates;
+    auto directory = llvm::sys::path::parent_path(file);
+    if(auto relative = below(directory)) {
+        candidates.push_back({*relative, false});
     }
-    std::optional<llvm::StringRef> best;
-    bool angled = false;
     for(auto [index, dir]: llvm::enumerate(search.dirs)) {
-        auto relative = below(dir.path);
-        if(relative && (!best || relative->size() < best->size())) {
-            best = relative;
-            angled = index >= search.angled_start_idx;
+        if(auto relative = below(dir.path)) {
+            candidates.push_back({*relative, index >= search.angled_start_idx});
         }
     }
-    if(!best) {
-        return std::nullopt;
+    std::ranges::stable_sort(candidates, {}, [](const Candidate& candidate) {
+        return candidate.name.size();
+    });
+    for(const auto& candidate: candidates) {
+        auto resolved = resolve_include(candidate.name,
+                                        candidate.angled,
+                                        directory,
+                                        false,
+                                        0,
+                                        search,
+                                        dir_cache);
+        llvm::SmallString<256> storage;
+        if(resolved && path::canonical(resolved->path, storage) == header) {
+            return candidate.angled ? std::format("<{}>", candidate.name)
+                                    : std::format("\"{}\"", candidate.name);
+        }
     }
-    return angled ? std::format("<{}>", *best) : std::format("\"{}\"", *best);
+    return std::nullopt;
 }
 
 }  // namespace
@@ -262,10 +285,12 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         contexts
             .resolve_command(path, directory, arguments, ContextUse::Editor, nullptr, {}, {}, &ref);
         auto search = workspace.cdb.search_config(ref);
+        DirListingCache dir_cache;
+        dir_cache.shared = &workspace.file_table;
         llvm::StringRef text = session->text;
         std::string before = request.offset == text.size() && !text.ends_with('\n') ? "\n" : "";
         for(const auto& header: headers) {
-            if(auto spelling = include_spelling(header, search, path)) {
+            if(auto spelling = include_spelling(header, search, path, dir_cache)) {
                 emit(std::format("Add #include {}", *spelling),
                      action.kind,
                      {

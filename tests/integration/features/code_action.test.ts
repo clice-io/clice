@@ -132,3 +132,38 @@ test("plain changes for a client without versioned edits", async ({ session }) =
     }
     client.close(uri);
 });
+
+test("include spelling resolves to the declaring header", async ({ session }) => {
+    const workspace = session.tmpdir();
+    workspace.write("first/util.h", "#pragma once\nint unrelated();\n");
+    workspace.write("second/util.h", "#pragma once\nint shadowed();\n");
+    workspace.write("other.cpp", '#include "second/util.h"\nint shadowed() { return 1; }\n');
+    workspace.write("main.cpp", "int main() {\n  return shadowed();\n}\n");
+    workspace.writeCDB(["main.cpp", "other.cpp"], { extraArgs: ["-Ifirst", "-Isecond"] });
+    const client = await session
+        .spawn(workspace)
+        .initialize(workspace, { initializationOptions: { project: { enable_indexing: true } } });
+    const [uri] = await client.openAndWait("main.cpp");
+    let indexed = false;
+    for (let i = 0; i < 60 && !indexed; i++) {
+        const symbols = (await client.workspaceSymbols("shadowed")) ?? [];
+        indexed = symbols.some((symbol) => symbol.location.uri.endsWith("/other.cpp"));
+        if (!indexed) {
+            await sleep(SETTLE_TIME);
+        }
+    }
+    expect(indexed).toBe(true);
+
+    // "util.h" would find first/util.h through -Ifirst; the spelling must
+    // resolve to the header that declares the name.
+    const actions = actionsOf(
+        await client.codeActions(uri, {
+            start: { line: 1, character: 9 },
+            end: { line: 1, character: 9 },
+        }),
+    );
+    const titles = actions.map((action) => action.title);
+    expect(titles).toContain('Add #include "second/util.h"');
+    expect(titles).not.toContain('Add #include "util.h"');
+    client.close(uri);
+});
