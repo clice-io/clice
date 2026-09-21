@@ -32,6 +32,10 @@ TEST_CASE(TemplateDelimiters) {
     EXPECT_FALSE(follows_access_operator("template<typename T>", 20));
 }
 
+TEST_CASE(PostfixDecrement) {
+    EXPECT_FALSE(follows_access_operator("while (x-->", 11));
+}
+
 TEST_CASE(CursorBeforeOperator) {
     // Only the text up to the cursor counts.
     EXPECT_FALSE(follows_access_operator("w.x", 1));

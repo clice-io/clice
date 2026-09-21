@@ -14,8 +14,12 @@ namespace clice {
 
 bool follows_access_operator(llvm::StringRef text, std::uint32_t offset) {
     auto before = text.take_front(offset);
-    if(before.ends_with("->") || before.ends_with("::")) {
+    if(before.ends_with("::")) {
         return true;
+    }
+    /// `x-->y` is a postfix decrement followed by `>`.
+    if(before.ends_with("->")) {
+        return !before.ends_with("-->");
     }
     if(!before.ends_with(".") || before.ends_with("..")) {
         return false;
