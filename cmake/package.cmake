@@ -31,7 +31,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/CPM.cmake)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
 include(${CMAKE_CURRENT_LIST_DIR}/llvm.cmake)
-setup_llvm("23.1.1+r1")
+setup_llvm("23.1.1+r2")
 
 set(KOTA_ENABLE_ZEST ON)
 set(KOTA_ENABLE_TEST OFF)
