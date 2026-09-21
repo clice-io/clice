@@ -95,17 +95,16 @@ std::optional<QualifiedName> qualified_name_at(CompilationUnitRef unit, std::uin
     return result;
 }
 
-/// After the main file's last `#include` line among the ones nested
-/// least deeply in conditionals — an include inside `#if FEATURE` is no
-/// place for one that must always apply, while an include guard wraps
-/// them all — else after its `#pragma once`, else after the guard's
+/// After the main file's last `#include` line at the file's own level —
+/// outside every conditional, or directly inside its include guard; an
+/// include under `#if FEATURE` is no place for one that must always
+/// apply — else after its `#pragma once`, else after the guard's
 /// `#define`, else at its start. A raw lex of the text rather than the
 /// directive table: the preamble's directives are compiled into the PCH
 /// and never reach this AST.
 std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
     auto content = unit.main_content();
     std::optional<std::uint32_t> last_include;
-    std::uint32_t include_depth = 0;
     std::optional<std::uint32_t> pragma_once;
     std::optional<std::uint32_t> guard_define;
     std::optional<llvm::StringRef> guard_macro;
@@ -123,9 +122,8 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
         directives += 1;
         auto text = keyword.text(content);
         if(text == "include") {
-            if(!last_include || depth <= include_depth) {
+            if(depth == (guard_define ? 1 : 0)) {
                 last_include = token.range.begin;
-                include_depth = depth;
             }
         } else if(text == "pragma") {
             if(lexer.advance().text(content) == "once") {

@@ -1,0 +1,9 @@
+---
+created_at: 2026-09-21
+input_file: constructor/06_implicitly_deleted_base.cpp
+---
+explicit_base:
+(no actions)
+
+implicit_base:
+(no actions)

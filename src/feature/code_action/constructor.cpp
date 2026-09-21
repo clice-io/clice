@@ -14,16 +14,41 @@ namespace clice::feature::action {
 
 namespace {
 
-/// Whether a derived class's constructor can leave `base` to its default
-/// constructor: one it declares must be neither deleted nor private,
-/// else the implicit one must exist.
-bool default_constructible(const clang::CXXRecordDecl* base) {
-    for(const auto* ctor: base->ctors()) {
+/// Whether a derived class's constructor can leave `record` to its
+/// default constructor: one it declares must be neither deleted nor
+/// private; the implicit one exists only without user-declared
+/// constructors, and is deleted by a reference or const member without
+/// an initializer, or by a base or member that cannot default-construct
+/// itself.
+bool default_constructible(const clang::CXXRecordDecl* record) {
+    for(const auto* ctor: record->ctors()) {
         if(ctor->isDefaultConstructor()) {
             return !ctor->isDeleted() && ctor->getAccess() != clang::AS_private;
         }
     }
-    return !base->hasUserDeclaredConstructor();
+    if(record->hasUserDeclaredConstructor()) {
+        return false;
+    }
+    for(const auto& base: record->bases()) {
+        const auto* base_record = base.getType()->getAsCXXRecordDecl();
+        if(!base_record || !default_constructible(base_record)) {
+            return false;
+        }
+    }
+    for(const auto* field: record->fields()) {
+        if(field->hasInClassInitializer()) {
+            continue;
+        }
+        auto type = field->getType();
+        if(type->isReferenceType()) {
+            return false;
+        }
+        const auto* member = type->getAsCXXRecordDecl();
+        if(member ? !default_constructible(member) : type.isConstQualified()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace

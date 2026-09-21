@@ -499,6 +499,18 @@ tests/snap/code_action/include/03_no_include_yet.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Includes under conditionals**
+
+An include nested in a feature condition is not where a directive that must always apply goes: it follows the last one at the file's own level, or the include guard
+
+```snap
+tests/snap/code_action/include/04_conditional_includes.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Reordering Definitions
@@ -617,6 +629,18 @@ No constructor is generated when a base class needs its own initializer, since t
 
 ```snap
 tests/snap/code_action/constructor/05_base_without_default.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Deleted base default constructor**
+
+A base whose default constructor is deleted, explicitly or by a reference member, blocks the memberwise constructor too
+
+```snap
+tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp
 ```
 
 <!-- END CAPABILITY -->
