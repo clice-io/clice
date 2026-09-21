@@ -72,6 +72,18 @@ jobs:
             target_triple: aarch64-unknown-linux-gnu
             pixi_env: cross-linux-arm64
 
+          # Windows x64 through mingw-w64 (from x64 ubuntu-24.04)
+          - os: ubuntu-24.04
+            llvm_mode: RelWithDebInfo
+            lto: OFF
+            target_triple: x86_64-w64-mingw32
+            pixi_env: cross-windows-mingw
+          - os: ubuntu-24.04
+            llvm_mode: RelWithDebInfo
+            lto: ON
+            target_triple: x86_64-w64-mingw32
+            pixi_env: cross-windows-mingw
+
           # Windows arm64 (from x64 windows-2022)
           - os: windows-2022
             llvm_mode: RelWithDebInfo
@@ -193,6 +205,13 @@ jobs:
           else
             echo "No patches for LLVM ${VERSION}"
           fi
+
+      - name: Install llvm-mingw
+        if: contains(matrix.target_triple, 'mingw')
+        shell: bash
+        run: |
+          ROOT="$(python3 scripts/fetch_llvm_mingw.py "$RUNNER_TEMP/llvm-mingw")"
+          echo "CLICE_MINGW_ROOT=$ROOT" >> "$GITHUB_ENV"
 
       - name: Build LLVM (install-distribution)
         shell: bash

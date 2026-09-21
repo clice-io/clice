@@ -209,7 +209,16 @@ class Build:
         self.lto = args.lto == "ON"
         self.target_triple: str | None = args.target_triple
         self.triple = args.target_triple or host_triple()
-        self.asan = self.mode == "Debug" and not IS_WINDOWS
+        self.mingw = self.triple.endswith("-w64-mingw32")
+        if self.mingw:
+            root = os.environ.get("CLICE_MINGW_ROOT")
+            if not root:
+                sys.exit(
+                    "CLICE_MINGW_ROOT must point at an llvm-mingw install "
+                    "(scripts/fetch_llvm_mingw.py) for a mingw target."
+                )
+            self.mingw_root = Path(root).resolve()
+        self.asan = self.mode == "Debug" and not IS_WINDOWS and not self.mingw
         self.assertions = self.mode == "Debug" or not self.lto
 
         if args.build_dir:
@@ -251,10 +260,13 @@ class Build:
                 "-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=",
                 "-DLLVM_USE_LINKER=lld-link",
             ]
-        return [
+        args = [
             f"-DCMAKE_TOOLCHAIN_FILE={self.toolchain_file.as_posix()}",
             "-DLLVM_USE_LINKER=lld",
         ]
+        if self.mingw:
+            args.append(f"-DCLICE_MINGW_ROOT={self.mingw_root.as_posix()}")
+        return args
 
     def debug_info_args(self) -> list[str]:
         # Function names and line tables are all the symbolizers need; the
@@ -281,8 +293,10 @@ class Build:
             f"-DCMAKE_CXX_FLAGS={cxx_flags}{self.driver_flags()}{self.target_flags()}",
             # The archive triple doubles as the default: without a native
             # backend LLVM would leave it empty, and clang would then have no
-            # target for compile commands that do not spell one.
-            f"-DLLVM_DEFAULT_TARGET_TRIPLE={self.triple}",
+            # target for compile commands that do not spell one. The mingw
+            # package is the Windows package, and what Windows users compile
+            # targets MSVC unless their command says otherwise.
+            f"-DLLVM_DEFAULT_TARGET_TRIPLE={self.default_triple()}",
             f"-DLLVM_ENABLE_LTO={'Thin' if self.lto else 'OFF'}",
             *self.compiler_args(),
             *self.debug_info_args(),
@@ -292,6 +306,11 @@ class Build:
         if self.target_triple:
             args.append(f"-DCLICE_TARGET_TRIPLE={self.target_triple}")
         return args
+
+    def default_triple(self) -> str:
+        if self.mingw:
+            return self.triple.replace("-w64-mingw32", "-pc-windows-msvc")
+        return self.triple
 
     # --------------------------------------------------------------- runtimes
 
@@ -374,10 +393,13 @@ class Build:
                 f"{lib}/libc++.lib /DEFAULTLIB:libcpmt.lib",
             )
         # -D on the command line replaces the toolchain file's *_INIT linker
-        # flags, so lld is repeated here.
+        # flags, so lld is repeated here. The archive is named outright: a
+        # -stdlib=libc++ would resolve -lc++ from the driver's own search
+        # path first (llvm-mingw ships one), and lld does not care where on
+        # the command line an archive sits.
         return (
             f"-w -nostdinc++ -isystem {include}",
-            f"-fuse-ld=lld{self.driver_flags()} -stdlib=libc++ -L{lib}",
+            f"-fuse-ld=lld{self.driver_flags()} -nostdlib++ {lib}/libc++.a",
         )
 
     def llvm_args(self) -> list[str]:

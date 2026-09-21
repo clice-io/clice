@@ -26,6 +26,16 @@ jobs:
       pixi_env: cross-linux-arm64
       asset_name: clice.aarch64-unknown-linux-gnu.tar.gz
 
+  windows-x64-mingw:
+    uses: ./.github/workflows/cross-pair.yml
+    with:
+      build_os: ubuntu-24.04
+      test_os: windows-2025
+      target_triple: x86_64-w64-mingw32
+      target_name: x86_64-w64-mingw32
+      pixi_env: cross-windows-mingw
+      asset_name: clice.x86_64-w64-mingw32.zip
+
   windows-arm64:
     uses: ./.github/workflows/cross-pair.yml
     with:

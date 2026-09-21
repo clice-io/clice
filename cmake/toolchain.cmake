@@ -1,5 +1,40 @@
 cmake_minimum_required(VERSION 3.30)
 
+# Windows through mingw-w64: CLICE_MINGW_ROOT names an llvm-mingw install
+# (scripts/fetch_llvm_mingw.py), whose <triple>-clang wrappers carry the
+# sysroot, compiler-rt and libunwind. Native on Windows or cross from any
+# host; the target is CLICE_TARGET_TRIPLE, else this machine's architecture.
+if(DEFINED CLICE_MINGW_ROOT)
+    if(NOT DEFINED CLICE_TARGET_TRIPLE)
+        if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+            set(CLICE_TARGET_TRIPLE "aarch64-w64-mingw32")
+        else()
+            set(CLICE_TARGET_TRIPLE "x86_64-w64-mingw32")
+        endif()
+    endif()
+    if(NOT CLICE_TARGET_TRIPLE MATCHES "-w64-mingw32$")
+        message(FATAL_ERROR "CLICE_MINGW_ROOT is set but ${CLICE_TARGET_TRIPLE} is not a mingw target")
+    endif()
+    if(NOT CMAKE_HOST_WIN32)
+        set(CMAKE_SYSTEM_NAME Windows)
+        if(CLICE_TARGET_TRIPLE MATCHES "^aarch64")
+            set(CMAKE_SYSTEM_PROCESSOR ARM64)
+        else()
+            set(CMAKE_SYSTEM_PROCESSOR AMD64)
+        endif()
+    endif()
+    foreach(tool IN ITEMS clang clang++ windres)
+        find_program(CLICE_MINGW_${tool} "${CLICE_TARGET_TRIPLE}-${tool}"
+            PATHS "${CLICE_MINGW_ROOT}/bin" NO_DEFAULT_PATH)
+        if(NOT CLICE_MINGW_${tool})
+            message(FATAL_ERROR "No ${CLICE_TARGET_TRIPLE}-${tool} in ${CLICE_MINGW_ROOT}/bin")
+        endif()
+    endforeach()
+    set(CMAKE_C_COMPILER "${CLICE_MINGW_clang}" CACHE STRING "")
+    set(CMAKE_CXX_COMPILER "${CLICE_MINGW_clang++}" CACHE STRING "")
+    set(CMAKE_RC_COMPILER "${CLICE_MINGW_windres}" CACHE FILEPATH "")
+endif()
+
 # Cross-compilation support via CLICE_TARGET_TRIPLE.
 # Examples:
 #   -DCLICE_TARGET_TRIPLE=x86_64-apple-darwin       (macOS x64 from arm64)
@@ -97,7 +132,7 @@ foreach(lang C CXX)
         CACHE STRING "" FORCE)
 endforeach()
 
-if(WIN32)
+if(WIN32 AND NOT DEFINED CLICE_MINGW_ROOT)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "")
     set(CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=lld-link")
     set(CMAKE_SHARED_LINKER_FLAGS_INIT "-fuse-ld=lld-link")

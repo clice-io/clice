@@ -12,12 +12,17 @@ set(CLICE_STRIPPED "${CLICE_SYMBOL_DIR}/stripped/$<TARGET_FILE_NAME:clice>")
 if(WIN32)
     set(CLICE_ARCHIVE_EXT ".zip")
     set(CLICE_SYMBOL_ARCHIVE_EXT ".zip")
-    set(CLICE_SYMBOL_NAME "clice.pdb")
 else()
     set(CLICE_ARCHIVE_EXT ".tar.gz")
     # The main archive stays .tar.gz for downloader compatibility; the symbol
     # archive is new enough to pick xz.
     set(CLICE_SYMBOL_ARCHIVE_EXT ".tar.xz")
+endif()
+# The mingw build carries DWARF inside the executable like the ELF builds,
+# so its symbols follow the objcopy path below rather than a PDB.
+if(WIN32 AND NOT MINGW)
+    set(CLICE_SYMBOL_NAME "clice.pdb")
+else()
     if(APPLE)
         set(CLICE_SYMBOL_NAME "clice.dSYM")
     else()
@@ -28,7 +33,7 @@ else()
     find_program(CLICE_GSYMUTIL llvm-gsymutil)
 endif()
 
-if(WIN32)
+if(WIN32 AND NOT MINGW)
     # The PDB already lives outside the binary; the "stripped" copy is plain.
     add_custom_target(clice-strip
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}/stripped"

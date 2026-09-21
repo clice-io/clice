@@ -21,6 +21,7 @@ default = ["build", "test"]
 package = ["build", "test", "package"]
 cross-linux-arm64 = ["build", "package", "cross-linux-arm64"]
 cross-windows-arm64 = ["build", "package", "cross-windows-arm64"]
+cross-windows-mingw = ["build", "package", "cross-windows-mingw"]
 node = ["node"]
 format = ["format"]
 test-run = ["test", "cuda"]
@@ -75,6 +76,12 @@ gcc_linux-aarch64 = "==15.2.0"
 gxx_linux-aarch64 = "==15.2.0"
 
 [feature.cross-linux-arm64.target.linux-64.activation]
+scripts = ["scripts/activate_cross_linux.sh"]
+
+# Windows through mingw-w64 (from x64 Linux): the sysroot, compiler-rt and
+# libunwind come from llvm-mingw (scripts/fetch_llvm_mingw.py), so the env
+# only clears the host flags conda's activation exports.
+[feature.cross-windows-mingw.target.linux-64.activation]
 scripts = ["scripts/activate_cross_linux.sh"]
 
 # Windows arm64 (from x64): Windows SDK on CI already includes ARM64 libs.

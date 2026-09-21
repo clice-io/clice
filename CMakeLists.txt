@@ -28,9 +28,13 @@ endif()
 # Keyed on the target OS, not the compiler frontend: CI links Windows with
 # GNU-driver clang++ + lld-link, where the frontend variant is "GNU" but the
 # linker still speaks MSVC-style /OPT flags (see the Debug /OPT:NOICF below).
-if(WIN32)
+# The mingw target links through lld's GNU-flavoured driver instead.
+if(WIN32 AND NOT MINGW)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:REF")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,/OPT:REF")
+elseif(MINGW)
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--gc-sections")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--gc-sections")
 elseif(APPLE)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-dead_strip")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-dead_strip")
@@ -56,9 +60,11 @@ endif()
 # friendly flags below instead. icf=safe (not =all) so address-taken
 # functions keep C++ pointer identity.
 if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    if(WIN32)
+    if(WIN32 AND NOT MINGW)
         # SAFEICF, not ICF: plain /OPT:ICF folds address-taken functions.
         set(CLICE_LINK_OPT_FLAGS "-Wl,/OPT:SAFEICF")
+    elseif(MINGW)
+        set(CLICE_LINK_OPT_FLAGS "-Wl,--icf=safe")
     elseif(APPLE)
         # --keep-icf-stabs: without it dsymutil cannot see ICF-folded symbols,
         # so they would be missing from the dSYM (and thus from GSYM).
@@ -107,7 +113,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fsanitize=address")
     endif()
 
-    if(WIN32)
+    if(WIN32 AND NOT MINGW)
         # Disable Identical COMDAT Folding in Debug to avoid ASan ODR false positives.
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:NOICF")
         string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,/OPT:NOICF")
