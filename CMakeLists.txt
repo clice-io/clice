@@ -40,9 +40,15 @@ elseif(MINGW)
     # on the mingw target the C copy is a plain symbol and lld reports the
     # duplicate, whichever comes first. Both copies are the same code.
     # -static: the driver's -unwindlib=libunwind would otherwise pick the
-    # import library of libunwind.dll over libunwind.a.
-    string(APPEND CMAKE_EXE_LINKER_FLAGS " -static -Wl,--gc-sections -Wl,--allow-multiple-definition")
-    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--gc-sections -Wl,--allow-multiple-definition")
+    # import library of libunwind.dll over libunwind.a. No --gc-sections:
+    # lld's MinGW mode roots only the non-COMDAT .ctors entries, so the
+    # dynamic initializer of an inline or template static variable (its
+    # .ctors entry is a COMDAT tied to the variable) is collected together
+    # with the variable when nothing else references it; zest registers
+    # every test case through such a variable, and a quarter of the suite
+    # silently disappeared.
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -static -Wl,--allow-multiple-definition")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--allow-multiple-definition")
 elseif(APPLE)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-dead_strip")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-dead_strip")
