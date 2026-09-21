@@ -698,12 +698,21 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
         pctx = detect_completion_context(session->text, *offset);
     }
 
-    // Space is advertised as a trigger character only so that `import `
-    // opens module suggestions. Clients without request-side gating
-    // (nvim, zed) forward every space keystroke; answer everything else
-    // with an empty list before any include scanning or completion build.
-    if(trigger_character == " " && pctx.kind != CompletionContext::Import) {
-        co_return serde_raw{"[]"};
+    // Clients without request-side gating (nvim, zed) forward every
+    // keystroke of an advertised trigger character. Space is advertised
+    // only so that `import ` opens module suggestions; the others exist
+    // for include paths and member or scope access. Anything else —
+    // `template<`, a closing `>`, the dots of a pack ellipsis — is
+    // answered with an empty list before any include scanning or
+    // completion build.
+    if(!trigger_character.empty()) {
+        bool served = trigger_character == " "
+                          ? pctx.kind == CompletionContext::Import
+                          : pctx.kind != CompletionContext::None || !offset ||
+                                follows_access_operator(session->text, *offset);
+        if(!served) {
+            co_return serde_raw{"[]"};
+        }
     }
 
     if(offset) {

@@ -162,6 +162,41 @@ test("space trigger gated include", async ({ session }) => {
     ).toBe(0);
 });
 
+/// `<` opening a template parameter list is not a completion point.
+test("angle trigger gated template", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+    client.change(uri, 1, "#define UNRELATED_MACRO 123\ntemplate<");
+
+    const result = await client.completionAt(uri, 1, 9, { triggerCharacter: "<" });
+
+    const items = labelsOf(result);
+    expect(items.length, `Expected no items after template<, got: ${items.join(", ")}`).toBe(0);
+});
+
+/// The third dot of a parameter pack is not a member access.
+test("ellipsis trigger gated", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+    client.change(uri, 1, "template<typename...");
+
+    const result = await client.completionAt(uri, 0, 20, { triggerCharacter: "." });
+
+    const items = labelsOf(result);
+    expect(items.length, `Expected no items after an ellipsis, got: ${items.join(", ")}`).toBe(0);
+});
+
+/// A dot after an object still completes its members on the trigger path.
+test("dot trigger serves member", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+    client.change(uri, 1, "struct Widget { int member; };\nvoid f() { Widget w; w. }");
+
+    const result = await client.completionAt(uri, 1, 23, { triggerCharacter: "." });
+
+    expect(labelsOf(result)).toContain("member");
+});
+
 /// Import completion with prefix should filter to matching modules.
 test("import completion with prefix", async ({ session }) => {
     const { client } = await session("modules/chained_modules");

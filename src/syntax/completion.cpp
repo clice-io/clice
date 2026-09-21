@@ -8,8 +8,30 @@
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
+#include "clang/Basic/CharInfo.h"
 
 namespace clice {
+
+bool follows_access_operator(llvm::StringRef text, std::uint32_t offset) {
+    auto before = text.take_front(offset);
+    if(before.ends_with("::")) {
+        return true;
+    }
+    /// `x-->y` is a postfix decrement followed by `>`.
+    if(before.ends_with("->")) {
+        return !before.ends_with("-->");
+    }
+    if(!before.ends_with(".") || before.ends_with("..")) {
+        return false;
+    }
+    /// A dot right after a numeric literal continues the literal (`3.`).
+    auto operand = before.drop_back(1);
+    auto start = operand.size();
+    while(start > 0 && clang::isAsciiIdentifierContinue(operand[start - 1])) {
+        start -= 1;
+    }
+    return start == operand.size() || !clang::isDigit(operand[start]);
+}
 
 PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset) {
     // TODO: cache newline offsets from incremental text updates to avoid

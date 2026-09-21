@@ -2263,10 +2263,10 @@ static TemplateResolver::lookup_result
             if(!method) {
                 break;
             }
-            type = method->getReturnType();
-            if(type.isNull()) {
-                return {};
-            }
+            /// The lookup leaves its deduction frames in place, so a return
+            /// type written in the class's own parameters (`T*`, `pointer`)
+            /// comes back with the specialization's arguments filled in.
+            type = instantiator.substitute(method->getReturnType());
         }
         if(!dereferenced) {
             return {};
