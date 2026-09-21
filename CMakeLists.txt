@@ -33,8 +33,14 @@ if(WIN32 AND NOT MINGW)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:REF")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,/OPT:REF")
 elseif(MINGW)
-    string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--gc-sections")
-    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--gc-sections")
+    # CRoaring's headers define C99 `inline` functions that its C sources
+    # emit once more as strong definitions (`extern inline`); a C++ user of
+    # the headers emits the same functions as COMDATs. clang targeting MSVC
+    # puts the C definitions into COMDATs as well and the pair merges, but
+    # on the mingw target the C copy is a plain symbol and lld reports the
+    # duplicate, whichever comes first. Both copies are the same code.
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--gc-sections -Wl,--allow-multiple-definition")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--gc-sections -Wl,--allow-multiple-definition")
 elseif(APPLE)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-dead_strip")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-dead_strip")
