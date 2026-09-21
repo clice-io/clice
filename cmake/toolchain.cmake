@@ -39,8 +39,9 @@ if(DEFINED CLICE_TARGET_TRIPLE AND CLICE_TARGET_TRIPLE MATCHES "^([a-z0-9_]+)-w6
     # initial flags, and the driver only finds this libgcc through -L.
     # -nostdlib++ keeps CMake's compiler check from asking for a libstdc++
     # the sysroot does not have; the C++ standard library is the package's
-    # libc++, named by cmake/llvm.cmake.
-    set(_mingw_args "-rtlib=libgcc;-unwindlib=libgcc;-nostdlib++;-L${_mingw_gcc_dir}")
+    # libc++, named by cmake/llvm.cmake. The link-only arguments would be
+    # "unused" on every compile, an error under a dependency's -Werror.
+    set(_mingw_args "-rtlib=libgcc;-unwindlib=libgcc;-nostdlib++;-L${_mingw_gcc_dir};-Qunused-arguments")
     set(CMAKE_C_COMPILER "clang;${_mingw_args}" CACHE STRING "")
     set(CMAKE_CXX_COMPILER "clang++;${_mingw_args}" CACHE STRING "")
     find_program(LLVM_WINDRES_PATH "llvm-windres")
