@@ -191,6 +191,18 @@ tests/snap/code_action/define/13_dependent_return_type.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**链接说明（linkage specification）中的声明**
+
+以 C 链接声明的函数和其他函数一样可以生成定义，位置在链接块内部，或者单条声明形式之后
+
+```snap
+tests/snap/code_action/define/14_linkage_specification.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 实现接口
@@ -233,6 +245,18 @@ tests/snap/code_action/implement/02_inheritance_chain.cpp
 
 ```snap
 tests/snap/code_action/implement/03_qualified_types.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**转换函数与指针参数**
+
+转换函数没有返回类型要写出，参数的类型若把名字包在中间，也会保持这一形状
+
+```snap
+tests/snap/code_action/implement/04_conversion_and_pointers.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -295,6 +319,18 @@ tests/snap/code_action/switch_cases/04_complete_switch.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**覆盖整个 switch 的选区**
+
+选区覆盖整条语句时，给出的操作与光标停在语句内部时相同
+
+```snap
+tests/snap/code_action/switch_cases/05_selection_range.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 推导类型
@@ -349,6 +385,18 @@ tests/snap/code_action/deduced_type/04_unnameable_types.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**转发引用（forwarding reference）与声明符类型**
+
+`auto&&` 绑定到左值时，推导出的引用会同时替换掉这两个 Token，而把名字包在中间的类型保持不动
+
+```snap
+tests/snap/code_action/deduced_type/05_forwarding_reference.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 宏
@@ -377,6 +425,18 @@ tests/snap/code_action/macro/01_expand_macro.cpp
 
 ```snap
 tests/snap/code_action/macro/02_nested_expansion.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**预处理指令中的宏引用与空宏**
+
+预处理条件中出现的宏名不是可以替换的展开，而展开为空的宏会被删除
+
+```snap
+tests/snap/code_action/macro/03_directives_and_empty.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -471,6 +531,18 @@ tests/snap/code_action/reorder/03_free_functions.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**行尾注释留在原处**
+
+位于某个定义行尾的注释会跟着该定义移动，不会跟着下面那个定义走
+
+```snap
+tests/snap/code_action/reorder/04_trailing_comments.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 构造函数
@@ -509,6 +581,30 @@ tests/snap/code_action/constructor/02_existing_constructor.cpp
 
 ```snap
 tests/snap/code_action/constructor/03_single_field.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**声明符形状的字段类型**
+
+字段的类型若把名字包在中间，例如函数指针，在参数中会保持这一形状
+
+```snap
+tests/snap/code_action/constructor/04_declarator_fields.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**没有默认构造函数的基类**
+
+当基类需要自己的初始化项时，不会生成构造函数，因为逐成员构造函数只初始化字段
+
+```snap
+tests/snap/code_action/constructor/05_base_without_default.cpp
 ```
 
 <!-- END CAPABILITY -->
