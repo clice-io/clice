@@ -5,6 +5,7 @@
 
 #include "compile/compilation_unit.h"
 #include "feature/code_action/action.h"
+#include "syntax/lexer.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -89,25 +90,28 @@ std::optional<QualifiedName> qualified_name_at(CompilationUnitRef unit, std::uin
 }
 
 /// After the main file's last `#include` line, else after its `#pragma
-/// once`, else at its start. A line scan rather than the directive table:
-/// the preamble's directives are compiled into the PCH and never reach
-/// this AST.
+/// once`, else at its start. A raw lex of the text rather than the
+/// directive table: the preamble's directives are compiled into the PCH
+/// and never reach this AST.
 std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
     auto content = unit.main_content();
     std::optional<std::uint32_t> last_include;
     std::optional<std::uint32_t> pragma_once;
-    std::uint32_t offset = 0;
-    for(llvm::StringRef line: llvm::split(content, '\n')) {
-        auto directive = line.ltrim(" \t");
-        if(directive.consume_front("#")) {
-            directive = directive.ltrim(" \t");
-            if(directive.starts_with("include")) {
-                last_include = offset;
-            } else if(directive.starts_with("pragma once")) {
-                pragma_once = offset;
-            }
+    Lexer lexer(content, {.lang_opts = &unit.lang_options()});
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        if(!token.is_directive_hash()) {
+            continue;
         }
-        offset += static_cast<std::uint32_t>(line.size() + 1);
+        auto keyword = lexer.advance();
+        if(!keyword.is_identifier()) {
+            continue;
+        }
+        auto text = keyword.text(content);
+        if(text == "include") {
+            last_include = token.range.begin;
+        } else if(text == "pragma" && lexer.advance().text(content) == "once") {
+            pragma_once = token.range.begin;
+        }
     }
     if(last_include) {
         return line_end(content, *last_include);
@@ -136,7 +140,11 @@ void add_include(CompilationUnitRef unit,
     if(!unresolved) {
         return;
     }
+    auto content = unit.main_content();
     auto offset = include_insertion_offset(unit);
+    // A last line without its newline: the directive still needs a line
+    // of its own.
+    std::string before = offset == content.size() && !content.ends_with('\n') ? "\n" : "";
 
     auto language = unit.lang_options().CPlusPlus ? stdlib::Lang::CXX : stdlib::Lang::C;
     llvm::SmallVector<llvm::StringRef, 2> scopes;
@@ -154,18 +162,17 @@ void add_include(CompilationUnitRef unit,
         }
         for(auto header: symbol->headers()) {
             out.push_back(CodeAction{
-                .id = "add-include",
                 .title = std::format("Add #include {}", header.name()),
-                .kind = CodeActionKind::QuickFix,
-                .edits = {{{offset, offset}, std::format("#include {}\n", header.name())}},
+                .kind = protocol::CodeActionKind::quick_fix,
+                .edits = {{{offset, offset},
+                           std::format("{}#include {}\n", before, header.name())}},
             });
         }
         break;
     }
     out.push_back(CodeAction{
-        .id = "add-include",
         .title = std::format("Add #include for '{}{}'", name->scope, name->name),
-        .kind = CodeActionKind::QuickFix,
+        .kind = protocol::CodeActionKind::quick_fix,
         .index = IncludeRequest{.scope = name->scope, .name = name->name, .offset = offset},
     });
 }

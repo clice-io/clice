@@ -1,8 +1,10 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -470,15 +472,13 @@ struct TextReplacement {
     std::string text;
 };
 
-/// The LSP code action kinds the actions produce.
-enum class CodeActionKind : std::uint8_t {
-    QuickFix,
-    Refactor,
-    RefactorInline,
-    RefactorRewrite,
+/// The kinds the actions produce: the advertised capability, and what a
+/// request's `only` filter is matched against.
+constexpr inline std::array<std::string_view, 3> code_action_kinds = {
+    protocol::CodeActionKind::quick_fix,
+    protocol::CodeActionKind::refactor_inline,
+    protocol::CodeActionKind::refactor_rewrite,
 };
-
-auto code_action_kind_name(CodeActionKind kind) -> llvm::StringRef;
 
 /// One definition the index vets: dropped when any source knows a
 /// definition of its symbol — this TU proved nothing defines it here,
@@ -488,18 +488,22 @@ struct DefinitionPiece {
     std::string text;
 };
 
-/// Definitions to insert once the index vetted them: the surviving
-/// pieces joined by blank lines replace `range` of the main file, wrapped
-/// in `before` and `after`, and formatted by whoever assembles them.
-/// With `host` they go into the file's host source instead, after the
-/// definitions of `container`'s members there (at its end when it has
-/// none); the texts are then fully qualified, valid at namespace scope
-/// anywhere in the host, and `range`, `before` and `after` are unused.
+/// Definitions to insert into the main file once the index vetted them:
+/// the surviving pieces joined by blank lines replace `range`, wrapped in
+/// `before` and `after`, formatted by whoever assembles them.
 struct DefineRequest {
-    bool host = false;
     LocalSourceRange range;
     std::string before;
     std::string after;
+    std::vector<DefinitionPiece> pieces;
+};
+
+/// Definitions to insert into the file's host source once the index
+/// vetted them: after the definitions of `container`'s members there, at
+/// its end when it has none (a container of 0 goes to the end outright).
+/// The texts are fully qualified, valid at namespace scope anywhere in
+/// the host.
+struct DefineInHostRequest {
     std::uint64_t container = 0;
     std::vector<DefinitionPiece> pieces;
 };
@@ -515,13 +519,11 @@ struct IncludeRequest {
 
 /// What only the project index can settle: resolved by the master at the
 /// reply edge; clice inspect resolves it as an empty index would.
-using IndexRequest = std::variant<DefineRequest, IncludeRequest>;
+using IndexRequest = std::variant<DefineRequest, DefineInHostRequest, IncludeRequest>;
 
 struct CodeAction {
-    /// The action's stable identifier, e.g. "define-out-of-line".
-    std::string id;
     std::string title;
-    CodeActionKind kind = CodeActionKind::Refactor;
+    protocol::CodeActionKind kind;
     std::vector<TextReplacement> edits;
     std::optional<IndexRequest> index;
 };
@@ -531,9 +533,9 @@ struct CodeAction {
 /// carry their edits, the ones needing the index carry their request.
 auto code_actions(CompilationUnitRef unit, LocalSourceRange selection) -> std::vector<CodeAction>;
 
-/// The pieces of a define request the index keeps, joined by blank lines;
-/// nullopt when none survives.
-auto assemble_definitions(const DefineRequest& request,
+/// The pieces the index keeps, joined by blank lines; nullopt when none
+/// survives.
+auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
                           llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
     -> std::optional<std::string>;
 

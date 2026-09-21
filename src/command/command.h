@@ -127,6 +127,9 @@ constexpr inline ConfigID invalid_config = ConfigID(~0u);
 /// unknown suffixes alike.
 clang::driver::types::ID suffix_type(llvm::StringRef path);
 
+/// Whether clang types the file as a C or C++ header by its extension.
+bool is_header_path(llvm::StringRef path);
+
 /// The language dimension of a command for one input file: the clang
 /// language name ("c++", "cuda", ...) selected by the governing selector or
 /// derived from the file extension; the raw extension itself when no table

@@ -93,6 +93,17 @@ public:
                      std::optional<kota::cancellation_token> token = {});
 
 private:
+    /// Shared body of the typed requests to the worker holding the AST
+    /// (document links, code actions): the compile, the gate, the send
+    /// and the landing; a missing AST answers an empty result.
+    template <typename Params>
+    kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
+        typed(const Ticket& ticket,
+              EvidenceKind kind,
+              llvm::StringRef label,
+              Params params,
+              std::optional<kota::cancellation_token> token);
+
     /// Shared body of the interactive builds: identical inputs and
     /// quarantine passage, different wire type, evidence slot and label.
     template <typename Params>

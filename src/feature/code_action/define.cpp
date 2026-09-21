@@ -1,7 +1,9 @@
 #include <algorithm>
+#include <cassert>
 #include <format>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "compile/compilation_unit.h"
@@ -21,19 +23,28 @@ namespace clice::feature::action {
 
 namespace {
 
+/// `void f(), g();` declares two functions in one declaration: the text
+/// belongs to both, so neither can be rewritten on its own.
+bool shares_declaration(const clang::FunctionDecl* decl) {
+    return llvm::any_of(decl->getDeclContext()->decls(), [&](const clang::Decl* sibling) {
+        return sibling != decl && !sibling->isImplicit() &&
+               sibling->getBeginLoc() == decl->getBeginLoc();
+    });
+}
+
 /// Whether the declaration wants a definition this TU does not have.
 bool definable(const clang::FunctionDecl* decl) {
     return !decl->isImplicit() && !decl->isInvalidDecl() && !decl->isThisDeclarationADefinition() &&
            !decl->isDefined() && !decl->isPureVirtual() &&
            decl->getFriendObjectKind() == clang::Decl::FOK_None &&
            decl->getTemplateSpecializationKind() != clang::TSK_ExplicitSpecialization &&
-           !llvm::isa<clang::CXXDeductionGuideDecl>(decl);
+           !llvm::isa<clang::CXXDeductionGuideDecl>(decl) && !shares_declaration(decl);
 }
 
 /// Whether a definition can name the function from file scope: a member
 /// of a local or unnamed class cannot be defined out of line.
 bool qualifiable(const clang::FunctionDecl* decl) {
-    for(const auto* context = decl->getDeclContext(); !context->isFileContext();
+    for(const auto* context = decl->getDeclContext(); !at_file_scope(context);
         context = context->getParent()) {
         auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
         if(!record || record->isLocalClass() || record->getName().empty()) {
@@ -85,18 +96,18 @@ struct Patch {
     std::string text;
 };
 
-/// The declaration's source with the patches applied; nullopt when
-/// patches overlap (a transform bug, the action is not offered).
-std::optional<std::string> apply(llvm::StringRef text, std::vector<Patch> patches) {
+/// The declaration's source with the patches applied. The patches touch
+/// disjoint parts of the declaration by construction: specifiers before
+/// the return type, the return type before the name, defaults inside the
+/// parameters, `override` past them.
+std::string apply(llvm::StringRef text, std::vector<Patch> patches) {
     std::ranges::sort(patches, {}, [](const Patch& patch) {
         return std::pair(patch.begin, patch.end);
     });
     std::string result;
     std::uint32_t cursor = 0;
     for(const auto& patch: patches) {
-        if(patch.begin < cursor) {
-            return std::nullopt;
-        }
+        assert(patch.begin >= cursor && "overlapping patches");
         result += text.substr(cursor, patch.begin - cursor);
         result += patch.text;
         cursor = patch.end;
@@ -120,6 +131,10 @@ clang::SourceRange default_argument_range(const clang::NamedDecl* param) {
         }
     }
     return {};
+}
+
+bool is_cv(const clang::syntax::Token& token) {
+    return token.kind() == clang::tok::kw_const || token.kind() == clang::tok::kw_volatile;
 }
 
 /// The source transform turning a declaration into the head of its
@@ -152,20 +167,24 @@ public:
         }
         qualify_return_type();
 
-        auto head = apply(source, std::move(patches));
-        if(!head) {
-            return std::nullopt;
-        }
         auto indent = line_indent(unit.file_content(fid), base);
-        return template_heads(unit, decl, from) + reindent(*head, indent) + " {\n}\n";
+        return template_heads(unit, decl, from) +
+               reindent(apply(source, std::move(patches)), indent) + " {\n}\n";
     }
 
 private:
+    /// A location of the declaration relative to its text; nullopt when
+    /// a macro spells it.
     std::optional<std::uint32_t> offset_of(clang::SourceLocation location) {
         if(!location.isFileID() || unit.file_id(location) != fid) {
             return std::nullopt;
         }
         return unit.file_offset(location) - base;
+    }
+
+    /// The spelled tokens all lie in the declaration's text.
+    std::uint32_t offset_of(const clang::syntax::Token& token) {
+        return unit.file_offset(token.location()) - base;
     }
 
     /// The end of a token at `offset`, with the spaces following it.
@@ -186,13 +205,13 @@ private:
     /// `virtual`, `static` and `explicit` are declaration-only.
     void drop_specifiers(std::uint32_t name) {
         for(const auto& token: tokens) {
-            auto offset = offset_of(token.location());
-            if(!offset || *offset >= name) {
+            auto offset = offset_of(token);
+            if(offset >= name) {
                 break;
             }
             if(token.kind() == clang::tok::kw_virtual || token.kind() == clang::tok::kw_static ||
                token.kind() == clang::tok::kw_explicit) {
-                patches.push_back({*offset, past_spaces(*offset + token.length()), ""});
+                patches.push_back({offset, past_spaces(offset + token.length()), ""});
             }
         }
     }
@@ -218,11 +237,11 @@ private:
         }
         std::optional<std::uint32_t> equal;
         for(const auto& token: tokens) {
-            auto offset = offset_of(token.location());
-            if(!offset || *offset >= *begin) {
+            auto offset = offset_of(token);
+            if(offset >= *begin) {
                 break;
             }
-            equal = token.kind() == clang::tok::equal ? offset : std::nullopt;
+            equal = token.kind() == clang::tok::equal ? std::optional(offset) : std::nullopt;
         }
         if(!equal) {
             return false;
@@ -233,9 +252,13 @@ private:
 
     /// Default arguments belong to the declaration alone: the function's
     /// parameters and, for a function template, its own template
-    /// parameters.
+    /// parameters. An inherited default is spelled by an earlier
+    /// declaration, not this one.
     bool drop_default_arguments() {
         for(const auto* param: decl->parameters()) {
+            if(param->hasInheritedDefaultArg()) {
+                continue;
+            }
             if(auto range = param->getDefaultArgRange(); range.isValid() && !drop_default(range)) {
                 return false;
             }
@@ -252,7 +275,7 @@ private:
     }
 
     /// Prefix the name with the qualifier `from` needs, replacing one the
-    /// declaration already spells.
+    /// declaration already spells. A destructor's name begins at its `~`.
     bool qualify_name(std::uint32_t name) {
         auto qualifier = qualifier_at(decl->getDeclContext(), from);
         if(auto written = decl->getQualifierLoc()) {
@@ -261,13 +284,9 @@ private:
                 return false;
             }
             patches.push_back({*begin, name, qualifier});
-            return true;
+        } else if(!qualifier.empty()) {
+            patches.push_back({name, name, qualifier});
         }
-        if(qualifier.empty()) {
-            return true;
-        }
-        // A destructor's name begins at its `~`.
-        patches.push_back({name, name, qualifier});
         return true;
     }
 
@@ -290,22 +309,22 @@ private:
         *end += unit.token_length(range.getEnd());
         // cv-qualifiers have no location of their own: fold the ones
         // spelled around the written type into the replaced span.
-        auto is_cv = [](const clang::syntax::Token& token) {
-            return token.kind() == clang::tok::kw_const || token.kind() == clang::tok::kw_volatile;
-        };
-        for(auto [index, token]: llvm::enumerate(tokens)) {
-            auto offset = offset_of(token.location());
-            if(!offset) {
-                continue;
-            }
-            if(*offset + token.length() == before_spaces(*begin) && is_cv(token)) {
-                *begin = *offset;
-            }
-            if(*offset == past_spaces(*end) && is_cv(token)) {
-                *end = *offset + token.length();
-            }
+        auto first = std::ranges::find_if(tokens, [&](const clang::syntax::Token& token) {
+            return offset_of(token) >= *begin;
+        });
+        for(auto it = first; it != tokens.begin() && is_cv(*std::prev(it)); --it) {
+            *begin = offset_of(*std::prev(it));
         }
-        patches.push_back({*begin, *end, type_name(unit.context(), type, from)});
+        for(auto it = std::ranges::find_if(
+                tokens,
+                [&](const clang::syntax::Token& token) { return offset_of(token) >= *end; });
+            it != tokens.end() && is_cv(*it);
+            ++it) {
+            *end = offset_of(*it) + it->length();
+        }
+        if(auto spelling = type_name(unit.context(), type, from)) {
+            patches.push_back({*begin, *end, std::move(*spelling)});
+        }
     }
 
     CompilationUnitRef unit;
@@ -354,18 +373,21 @@ const clang::CXXRecordDecl* outermost_record(const clang::CXXRecordDecl* record)
     return record;
 }
 
+Placement placement_at(llvm::StringRef content,
+                       std::uint32_t offset,
+                       const clang::DeclContext* from) {
+    return Placement{
+        .offset = offset,
+        .from = from,
+        .code_follows = offset < content.size() && content[offset] != '\n',
+    };
+}
+
 /// After the last out-of-line definition of the class's members in the
 /// main file, else after the (outermost enclosing) class itself.
 std::optional<Placement> member_placement(CompilationUnitRef unit,
                                           const clang::CXXRecordDecl* record) {
     auto content = unit.main_content();
-    auto placement = [&](std::uint32_t offset, const clang::DeclContext* from) {
-        return Placement{
-            .offset = offset,
-            .from = from,
-            .code_follows = offset < content.size() && content[offset] != '\n',
-        };
-    };
     auto definitions = out_of_line_definitions(unit, record);
     if(!definitions.empty()) {
         const auto* last = definitions.back();
@@ -373,14 +395,18 @@ std::optional<Placement> member_placement(CompilationUnitRef unit,
         if(!range) {
             return std::nullopt;
         }
-        return placement(line_end(content, range->end - 1), last->getLexicalDeclContext());
+        return placement_at(content,
+                            line_end(content, range->end - 1),
+                            last->getLexicalDeclContext());
     }
     const auto* outermost = outermost_record(record);
     auto range = main_range(unit, outermost->getSourceRange());
     if(!range) {
         return std::nullopt;
     }
-    return placement(past_declaration(content, range->end), outermost->getLexicalDeclContext());
+    return placement_at(content,
+                        past_declaration(content, range->end),
+                        outermost->getLexicalDeclContext());
 }
 
 std::optional<Placement> placement_of(CompilationUnitRef unit, const clang::FunctionDecl* decl) {
@@ -392,12 +418,9 @@ std::optional<Placement> placement_of(CompilationUnitRef unit, const clang::Func
         return std::nullopt;
     }
     auto content = unit.main_content();
-    auto offset = past_declaration(content, range->end);
-    return Placement{
-        .offset = offset,
-        .from = decl->getLexicalDeclContext(),
-        .code_follows = offset < content.size() && content[offset] != '\n',
-    };
+    return placement_at(content,
+                        past_declaration(content, range->end),
+                        decl->getLexicalDeclContext());
 }
 
 std::uint64_t container_entity(CompilationUnitRef unit, const clang::FunctionDecl* decl) {
@@ -407,11 +430,10 @@ std::uint64_t container_entity(CompilationUnitRef unit, const clang::FunctionDec
     return 0;
 }
 
-CodeAction define_action(std::string id, std::string title, DefineRequest request) {
+CodeAction define_action(std::string title, IndexRequest request) {
     return CodeAction{
-        .id = std::move(id),
         .title = std::move(title),
-        .kind = CodeActionKind::RefactorRewrite,
+        .kind = protocol::CodeActionKind::refactor_rewrite,
         .index = std::move(request),
     };
 }
@@ -448,8 +470,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
                 semicolon += 1;
             }
             if(semicolon < content.size() && content[semicolon] == ';') {
-                out.push_back(define_action("define-in-class",
-                                            std::format("Define '{}' inline", name),
+                out.push_back(define_action(std::format("Define '{}' inline", name),
                                             DefineRequest{
                                                 .range = {semicolon, semicolon + 1},
                                                 .before = " ",
@@ -465,8 +486,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
     if(auto placement = placement_of(unit, decl)) {
         if(auto text = definition_text(unit, decl, placement->from)) {
             out.push_back(
-                define_action("define-out-of-line",
-                              std::format("Define '{}' out of line", qualified(placement->from)),
+                define_action(std::format("Define '{}' out of line", qualified(placement->from)),
                               at_placement(*placement,
                                            {
                                                {entity, std::move(*text)}
@@ -475,10 +495,8 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
     }
     if(ctx.main_is_header && host_definable(decl)) {
         if(auto text = definition_text(unit, decl, unit.tu())) {
-            out.push_back(define_action("define-in-host",
-                                        std::format("Define '{}'", qualified(unit.tu())),
-                                        DefineRequest{
-                                            .host = true,
+            out.push_back(define_action(std::format("Define '{}'", qualified(unit.tu())),
+                                        DefineInHostRequest{
                                             .container = container_entity(unit, decl),
                                             .pieces = {{entity, std::move(*text)}},
                                         }));
@@ -492,7 +510,7 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
     if(!record) {
         const auto* method = ctx.node.get<clang::CXXMethodDecl>();
         if(!method || !method->isThisDeclarationADefinition() || !method->isOutOfLine() ||
-           !method->getLexicalDeclContext()->isFileContext()) {
+           !at_file_scope(method->getLexicalDeclContext())) {
             return;
         }
         record = method->getParent();
@@ -529,20 +547,16 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
         return pieces;
     };
 
-    auto name = display::name_of(record, {.qualified = false});
+    auto title = std::format("Define missing members of '{}'", record->getName());
     if(auto placement = member_placement(unit, record)) {
         if(auto same_file = pieces(placement->from, false); !same_file.empty()) {
-            out.push_back(define_action("define-missing",
-                                        std::format("Define missing members of '{}'", name),
-                                        at_placement(*placement, std::move(same_file))));
+            out.push_back(define_action(title, at_placement(*placement, std::move(same_file))));
         }
     }
     if(ctx.main_is_header) {
         if(auto host = pieces(unit.tu(), true); !host.empty()) {
-            out.push_back(define_action("define-missing-in-host",
-                                        std::format("Define missing members of '{}'", name),
-                                        DefineRequest{
-                                            .host = true,
+            out.push_back(define_action(title,
+                                        DefineInHostRequest{
                                             .container = unit.entity(outermost_record(record)),
                                             .pieces = std::move(host),
                                         }));

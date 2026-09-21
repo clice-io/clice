@@ -19,6 +19,14 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
        record->isLambda() || record->getName().empty()) {
         return;
     }
+    // A base without a default constructor would need its own
+    // initializer; the constructor initializes the fields alone.
+    for(const auto& base: record->bases()) {
+        const auto* base_record = base.getType()->getAsCXXRecordDecl();
+        if(!base_record || !base_record->hasDefaultConstructor()) {
+            return;
+        }
+    }
 
     std::vector<const clang::FieldDecl*> fields;
     for(const auto* field: record->fields()) {
@@ -36,10 +44,6 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
         }
     }
 
-    auto insertion = class_body_insertion(unit, record);
-    if(!insertion) {
-        return;
-    }
     auto& context = unit.context();
     std::string line;
     llvm::raw_string_ostream os(line);
@@ -52,14 +56,22 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
             os << ", ";
         }
         auto type = field->getType();
+        std::optional<std::string> parameter;
         if(type->isReferenceType()) {
-            os << type_name(context, type, record);
+            parameter = type_name(context, type, record, field->getName());
         } else if(type.getUnqualifiedType()->isScalarType()) {
-            os << type_name(context, type.getUnqualifiedType(), record);
+            parameter = type_name(context, type.getUnqualifiedType(), record, field->getName());
         } else {
-            os << "const " << type_name(context, type.getUnqualifiedType(), record) << '&';
+            parameter =
+                type_name(context,
+                          context.getLValueReferenceType(type.getUnqualifiedType().withConst()),
+                          record,
+                          field->getName());
         }
-        os << ' ' << field->getName();
+        if(!parameter) {
+            return;
+        }
+        os << *parameter;
     }
     os << ") : ";
     for(auto [index, field]: llvm::enumerate(fields)) {
@@ -70,25 +82,13 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
     }
     os << " {}";
 
-    auto content = unit.main_content();
-    auto record_indent = line_indent(content, main_range(unit, record->getBeginLoc())->begin);
-    std::string text;
-    if(insertion->break_before) {
-        text += '\n';
+    if(auto edit = insert_members(unit, record, {line})) {
+        out.push_back(CodeAction{
+            .title = std::format("Generate a memberwise constructor for '{}'", record->getName()),
+            .kind = protocol::CodeActionKind::refactor_rewrite,
+            .edits = {std::move(*edit)},
+        });
     }
-    if(!ends_public(record)) {
-        text += std::format("{}public:\n", record_indent);
-    }
-    text += std::format("{}{}\n", insertion->indent, line);
-    if(insertion->break_before) {
-        text += record_indent;
-    }
-    out.push_back(CodeAction{
-        .id = "memberwise-constructor",
-        .title = std::format("Generate a memberwise constructor for '{}'", record->getName()),
-        .kind = CodeActionKind::RefactorRewrite,
-        .edits = {{{insertion->offset, insertion->offset}, std::move(text)}},
-    });
 }
 
 }  // namespace clice::feature::action

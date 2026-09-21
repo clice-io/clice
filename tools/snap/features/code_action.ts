@@ -33,7 +33,6 @@ interface RawTextReplacement {
 }
 
 interface RawCodeAction {
-    id: string;
     title: string;
     kind: string;
     edits: RawTextReplacement[];

@@ -4,6 +4,7 @@
 
 #include "compile/compilation_unit.h"
 #include "feature/code_action/action.h"
+#include "semantic/display.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -62,26 +63,30 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
         return;
     }
 
+    // The labels go before `default`, falling through into it as the
+    // missing cases already did, else before the closing brace with a
+    // `break` of their own; either way on the labels' own indentation.
     auto content = unit.main_content();
-    std::optional<LocalSourceRange> anchor;
-    std::string indent;
-    if(default_stmt) {
-        anchor = main_range(unit, default_stmt->getDefaultLoc());
-    } else {
-        anchor = main_range(unit, body->getRBracLoc());
-    }
+    auto anchor =
+        main_range(unit, default_stmt ? default_stmt->getDefaultLoc() : body->getRBracLoc());
     if(!anchor) {
         return;
     }
-    if(const auto* first = stmt->getSwitchCaseList(); first && !default_stmt) {
-        if(auto range = main_range(unit, first->getKeywordLoc())) {
-            indent = line_indent(content, range->begin).str();
-        }
-    }
+    std::string indent;
     if(default_stmt) {
         indent = line_indent(content, anchor->begin).str();
-    } else if(indent.empty()) {
-        indent = line_indent(content, main_range(unit, stmt->getSwitchLoc())->begin).str() + "    ";
+    } else if(const auto* first = stmt->getSwitchCaseList()) {
+        auto range = main_range(unit, first->getKeywordLoc());
+        if(!range) {
+            return;
+        }
+        indent = line_indent(content, range->begin).str();
+    } else {
+        auto range = main_range(unit, stmt->getSwitchLoc());
+        if(!range) {
+            return;
+        }
+        indent = line_indent(content, range->begin).str() + "    ";
     }
 
     auto begin = line_begin(content, anchor->begin);
@@ -89,7 +94,10 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
     const auto& from = ctx.node.decl_context();
     std::string text = own_line ? "" : "\n";
     for(const auto* enumerator: missing) {
-        text += std::format("{}case {}:\n", indent, name_at(enumerator, &from));
+        text += std::format("{}case {}{}:\n",
+                            indent,
+                            qualifier_at(enumerator->getDeclContext(), &from),
+                            display::name_of(enumerator, {.qualified = false}));
     }
     if(!default_stmt) {
         text += std::format("{}    break;\n", indent);
@@ -99,11 +107,10 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
     }
     auto offset = own_line ? begin : anchor->begin;
     out.push_back(CodeAction{
-        .id = "populate-switch",
         .title = std::format("Add {} missing enum case{} to switch",
                              missing.size(),
                              missing.size() == 1 ? "" : "s"),
-        .kind = CodeActionKind::RefactorRewrite,
+        .kind = protocol::CodeActionKind::refactor_rewrite,
         .edits = {{{offset, offset}, std::move(text)}},
     });
 }

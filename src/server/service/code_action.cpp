@@ -1,5 +1,3 @@
-#include <algorithm>
-#include <array>
 #include <format>
 #include <optional>
 #include <string>
@@ -29,17 +27,9 @@ bool admits(llvm::ArrayRef<protocol::CodeActionKind> only, llvm::StringRef kind)
     }
     return llvm::any_of(only, [&](const protocol::CodeActionKind& wanted) {
         llvm::StringRef prefix = wanted;
-        return prefix.empty() || kind == prefix ||
-               (kind.starts_with(prefix) && kind[prefix.size()] == '.');
+        return kind == prefix || (kind.starts_with(prefix) && kind[prefix.size()] == '.');
     });
 }
-
-constexpr std::array producible = {
-    feature::CodeActionKind::QuickFix,
-    feature::CodeActionKind::Refactor,
-    feature::CodeActionKind::RefactorInline,
-    feature::CodeActionKind::RefactorRewrite,
-};
 
 struct FileEdit {
     std::string uri;
@@ -47,7 +37,7 @@ struct FileEdit {
     std::vector<protocol::TextEdit> edits;
 };
 
-protocol::CodeAction render(std::string title, feature::CodeActionKind kind, FileEdit file) {
+protocol::CodeAction render(std::string title, protocol::CodeActionKind kind, FileEdit file) {
     protocol::TextDocumentEdit change{
         .text_document = {.uri = std::move(file.uri), .version = file.version},
     };
@@ -62,15 +52,9 @@ protocol::CodeAction render(std::string title, feature::CodeActionKind kind, Fil
     edit.document_changes->emplace_back(std::move(change));
     return protocol::CodeAction{
         .title = std::move(title),
-        .kind = protocol::CodeActionKind(feature::code_action_kind_name(kind)),
+        .kind = std::move(kind),
         .edit = std::move(edit),
     };
-}
-
-bool is_header_file(llvm::StringRef path) {
-    namespace types = clang::driver::types;
-    auto type = suffix_type(path);
-    return type == types::TY_CHeader || type == types::TY_CXXHeader;
 }
 
 /// How `header` is spelled in an include directive of `file`: its path
@@ -104,14 +88,6 @@ std::optional<std::string> include_spelling(llvm::StringRef header,
     return angled ? std::format("<{}>", *best) : std::format("\"{}\"", *best);
 }
 
-/// The position past the last byte of `content`.
-protocol::Position end_of(llvm::StringRef content) {
-    auto line = static_cast<std::uint32_t>(std::ranges::count(content, '\n'));
-    auto last = content.rfind('\n');
-    auto tail = content.substr(last == llvm::StringRef::npos ? 0 : last + 1);
-    return {.line = line, .character = static_cast<std::uint32_t>(tail.size())};
-}
-
 }  // namespace
 
 kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
@@ -120,9 +96,8 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                           llvm::ArrayRef<protocol::CodeActionKind> only,
                           std::optional<kota::cancellation_token> token) {
     std::vector<protocol::CodeAction> out;
-    if(llvm::none_of(producible, [&](feature::CodeActionKind kind) {
-           return admits(only, feature::code_action_kind_name(kind));
-       })) {
+    if(llvm::none_of(feature::code_action_kinds,
+                     [&](std::string_view kind) { return admits(only, kind); })) {
         co_return out;
     }
     // Code actions are AST products with no index projection; a session
@@ -142,49 +117,47 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     auto path = workspace.file_table.resolve(path_id);
     auto uri = feature::to_uri(path);
     auto map = session->line_map();
-    auto main_edit = [&](LocalSourceRange local, std::string text) -> std::optional<FileEdit> {
-        auto converted = feature::to_range(map, local);
-        if(!converted) {
-            return std::nullopt;
+
+    /// The action rendered over main-file replacements, all of them or
+    /// none: half an edit set would corrupt the buffer.
+    auto emit = [&](std::string title,
+                    protocol::CodeActionKind kind,
+                    llvm::ArrayRef<feature::TextReplacement> replacements) {
+        std::vector<protocol::TextEdit> edits;
+        for(const auto& replacement: replacements) {
+            auto converted = feature::to_range(map, replacement.range);
+            if(!converted) {
+                return;
+            }
+            edits.push_back({.range = *converted, .new_text = replacement.text});
         }
-        return FileEdit{
-            .uri = uri,
-            .version = session->version,
-            .edits = {{.range = *converted, .new_text = std::move(text)}},
-        };
+        out.push_back(
+            render(std::move(title),
+                   std::move(kind),
+                   FileEdit{.uri = uri, .version = session->version, .edits = std::move(edits)}));
     };
     auto defined_elsewhere = [&](std::uint64_t entity) {
         return query.first_site(entity, RelationKind::Definition).has_value();
     };
 
-    auto resolve_define = [&](const feature::CodeAction& action,
-                              const feature::DefineRequest& request) {
-        auto text = feature::assemble_definitions(request, defined_elsewhere);
-        if(!text) {
-            return;
+    auto resolve_define = [&](feature::CodeAction& action, const feature::DefineRequest& request) {
+        if(auto text = feature::assemble_definitions(request.pieces, defined_elsewhere)) {
+            emit(std::move(action.title),
+                 std::move(action.kind),
+                 feature::format_edits(
+                     path,
+                     session->text,
+                     {
+                         {request.range, request.before + *text + request.after}
+            }));
         }
-        if(!request.host) {
-            std::vector<protocol::TextEdit> edits;
-            for(auto& replacement: feature::format_edits(
-                    path,
-                    session->text,
-                    {
-                        {request.range, request.before + *text + request.after}
-            })) {
-                if(auto converted = feature::to_range(map, replacement.range)) {
-                    edits.push_back({.range = *converted, .new_text = std::move(replacement.text)});
-                }
-            }
-            if(!edits.empty()) {
-                out.push_back(render(action.title,
-                                     action.kind,
-                                     FileEdit{uri, session->version, std::move(edits)}));
-            }
-            return;
-        }
+    };
 
+    auto resolve_host = [&](feature::CodeAction& action,
+                            const feature::DefineInHostRequest& request) {
+        auto text = feature::assemble_definitions(request.pieces, defined_elsewhere);
         Fid host = host_of(path_id);
-        if(!host.valid()) {
+        if(!text || !host.valid()) {
             return;
         }
         auto host_path = workspace.file_table.resolve(host);
@@ -228,14 +201,17 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             } else {
                 return;
             }
-            auto end = end_of(content);
-            edit.range = {end, end};
+            auto end = feature::to_position(feature::LineMap(content), content.size());
+            if(!end) {
+                return;
+            }
+            edit.range = {*end, *end};
             edit.new_text =
                 (content.empty() || content.ends_with('\n') ? "\n" : "\n\n") + formatted;
         }
         out.push_back(render(
             std::format("{} in {}", action.title, llvm::sys::path::filename(host_path)),
-            action.kind,
+            std::move(action.kind),
             FileEdit{
                 .uri = feature::to_uri(host_path),
                 .version = host_session ? std::optional(host_session->version) : std::nullopt,
@@ -243,7 +219,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             }));
     };
 
-    auto resolve_include = [&](const feature::CodeAction& action,
+    auto resolve_include = [&](feature::CodeAction& action,
                                const feature::IncludeRequest& request) {
         index::SymbolQuery symbol_query;
         symbol_query.mode = index::SymbolQuery::Mode::Exact;
@@ -261,7 +237,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             }
             for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
                 for(const auto& site: query.sites(located.symbol.hash, kind)) {
-                    if(site.file != path_id && is_header_file(site.path) &&
+                    if(site.file != path_id && is_header_path(site.path) &&
                        seen.insert(site.path).second) {
                         headers.push_back(site.path.str());
                     }
@@ -277,36 +253,26 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         contexts
             .resolve_command(path, directory, arguments, ContextUse::Editor, nullptr, {}, {}, &ref);
         auto search = workspace.cdb.search_config(ref);
+        llvm::StringRef text = session->text;
+        std::string before = request.offset == text.size() && !text.ends_with('\n') ? "\n" : "";
         for(const auto& header: headers) {
-            auto spelling = include_spelling(header, search, path);
-            if(!spelling) {
-                continue;
-            }
-            if(auto edit = main_edit({request.offset, request.offset},
-                                     std::format("#include {}\n", *spelling))) {
-                out.push_back(render(std::format("Add #include {}", *spelling),
-                                     action.kind,
-                                     std::move(*edit)));
+            if(auto spelling = include_spelling(header, search, path)) {
+                emit(std::format("Add #include {}", *spelling),
+                     action.kind,
+                     {
+                         {{request.offset, request.offset},
+                          std::format("{}#include {}\n", before, *spelling)}
+                });
             }
         }
     };
 
     for(auto& action: result.value()) {
-        if(!admits(only, feature::code_action_kind_name(action.kind))) {
+        if(!admits(only, action.kind)) {
             continue;
         }
         if(!action.index) {
-            std::vector<protocol::TextEdit> edits;
-            for(auto& replacement: action.edits) {
-                if(auto converted = feature::to_range(map, replacement.range)) {
-                    edits.push_back({.range = *converted, .new_text = std::move(replacement.text)});
-                }
-            }
-            if(!edits.empty()) {
-                out.push_back(render(std::move(action.title),
-                                     action.kind,
-                                     FileEdit{uri, session->version, std::move(edits)}));
-            }
+            emit(std::move(action.title), std::move(action.kind), action.edits);
             continue;
         }
         std::visit(
@@ -314,6 +280,8 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                 using Request = std::remove_cvref_t<decltype(request)>;
                 if constexpr(std::same_as<Request, feature::DefineRequest>) {
                     resolve_define(action, request);
+                } else if constexpr(std::same_as<Request, feature::DefineInHostRequest>) {
+                    resolve_host(action, request);
                 } else {
                     resolve_include(action, request);
                 }

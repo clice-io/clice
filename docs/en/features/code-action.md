@@ -200,6 +200,18 @@ tests/snap/code_action/define/13_dependent_return_type.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Declarations under a linkage specification**
+
+Functions declared with C linkage are defined like any other, inside the linkage block or after a single-declaration form
+
+```snap
+tests/snap/code_action/define/14_linkage_specification.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Implementing Interfaces
@@ -242,6 +254,18 @@ Reference qualifiers and constness are carried over.
 
 ```snap
 tests/snap/code_action/implement/03_qualified_types.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Conversion functions and pointer parameters**
+
+A conversion function has no return type to print, and a parameter whose type wraps its name keeps that shape
+
+```snap
+tests/snap/code_action/implement/04_conversion_and_pointers.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -304,6 +328,18 @@ tests/snap/code_action/switch_cases/04_complete_switch.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Selection covering the switch**
+
+A selection spanning the whole statement offers the same action as a cursor inside it
+
+```snap
+tests/snap/code_action/switch_cases/05_selection_range.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Deduced Types
@@ -358,6 +394,18 @@ tests/snap/code_action/deduced_type/04_unnameable_types.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Forwarding references and declarator types**
+
+`auto&&` bound to an lvalue takes the deduced reference in place of both tokens, and a type that wraps the name is left alone
+
+```snap
+tests/snap/code_action/deduced_type/05_forwarding_reference.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Macros
@@ -387,6 +435,18 @@ A macro whose body invokes other macros expands to the final tokens
 
 ```snap
 tests/snap/code_action/macro/02_nested_expansion.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Directive references and empty macros**
+
+A macro named in a preprocessor condition is not an expansion to replace, while a macro expanding to nothing is deleted
+
+```snap
+tests/snap/code_action/macro/03_directives_and_empty.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -483,6 +543,18 @@ tests/snap/code_action/reorder/03_free_functions.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Trailing comments stay in place**
+
+A comment ending a definition's line moves with that definition, never with the one below it
+
+```snap
+tests/snap/code_action/reorder/04_trailing_comments.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Constructors
@@ -521,6 +593,30 @@ A one-field class gets an `explicit` constructor, placed under a `public:` label
 
 ```snap
 tests/snap/code_action/constructor/03_single_field.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Declarator-shaped field types**
+
+A field whose type wraps the name, such as a function pointer, keeps that shape in the parameter
+
+```snap
+tests/snap/code_action/constructor/04_declarator_fields.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Base without a default constructor**
+
+No constructor is generated when a base class needs its own initializer, since the memberwise one initializes fields alone
+
+```snap
+tests/snap/code_action/constructor/05_base_without_default.cpp
 ```
 
 <!-- END CAPABILITY -->

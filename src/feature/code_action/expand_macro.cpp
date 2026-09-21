@@ -38,6 +38,12 @@ bool needs_space(clang::tok::TokenKind left, clang::tok::TokenKind right) {
     }
 }
 
+/// Whether the line holding `offset` is a preprocessor directive, whose
+/// macro references (`#if GUARD`) expand to nothing in the token stream.
+bool on_directive_line(llvm::StringRef content, std::uint32_t offset) {
+    return content.substr(line_begin(content, offset)).ltrim(" \t").starts_with('#');
+}
+
 }  // namespace
 
 void expand_macro(CompilationUnitRef unit,
@@ -49,6 +55,7 @@ void expand_macro(CompilationUnitRef unit,
         return;
     }
     auto& SM = unit.context().getSourceManager();
+    auto content = unit.main_content();
     for(const auto& expansion: unit.expansions_overlapping(touching)) {
         // Directives are mappings too, from their `#`.
         if(expansion.Spelled.empty() ||
@@ -56,6 +63,10 @@ void expand_macro(CompilationUnitRef unit,
             continue;
         }
         const auto& name = expansion.Spelled.front();
+        auto begin = unit.file_offset(name.location());
+        if(on_directive_line(content, begin)) {
+            continue;
+        }
         std::string text;
         const clang::syntax::Token* previous = nullptr;
         for(const auto& token: expansion.Expanded) {
@@ -66,11 +77,9 @@ void expand_macro(CompilationUnitRef unit,
             previous = &token;
         }
         out.push_back(CodeAction{
-            .id = "expand-macro",
             .title = std::format("Expand macro '{}'", name.text(SM)),
-            .kind = CodeActionKind::RefactorInline,
-            .edits = {{{unit.file_offset(name.location()),
-                        unit.file_offset(expansion.Spelled.back().endLocation())},
+            .kind = protocol::CodeActionKind::refactor_inline,
+            .edits = {{{begin, unit.file_offset(expansion.Spelled.back().endLocation())},
                        std::move(text)}},
         });
         return;

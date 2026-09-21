@@ -100,3 +100,24 @@ test("definitions vetted and placed through the index", async ({ session }) => {
     client.close(header);
     client.close(uri);
 });
+
+test("plain changes for a client without versioned edits", async ({ session }) => {
+    const workspace = session.tmpdir();
+    workspace.write("main.cpp", "struct S {\n  int f();\n};\n");
+    workspace.writeCDB(["main.cpp"]);
+    const client = await session.spawn(workspace).initialize(workspace, { capabilities: {} });
+    const [uri] = await client.openAndWait("main.cpp");
+
+    const actions = actionsOf(
+        await client.codeActions(uri, {
+            start: { line: 1, character: 6 },
+            end: { line: 1, character: 6 },
+        }),
+    );
+    expect(actions.length).toBeGreaterThan(0);
+    for (const action of actions) {
+        expect(action.edit!.documentChanges).toBeUndefined();
+        expect(Object.keys(action.edit!.changes!)).toEqual([uri]);
+    }
+    client.close(uri);
+});

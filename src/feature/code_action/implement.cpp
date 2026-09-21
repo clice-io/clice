@@ -17,25 +17,32 @@ namespace clice::feature::action {
 
 namespace {
 
-/// The declaration overriding `method` in a derived class, its types
-/// spelled fully qualified: the base's unqualified spellings need not
-/// resolve in the derived class's scope.
-std::string override_declaration(CompilationUnitRef unit,
-                                 const clang::CXXMethodDecl* method,
-                                 const clang::DeclContext* from) {
+/// The declaration overriding `method` in `record`, its types spelled
+/// fully qualified: the base's unqualified spellings need not resolve in
+/// the derived class's scope. Nullopt when a type has no spelling.
+std::optional<std::string> override_declaration(CompilationUnitRef unit,
+                                                const clang::CXXMethodDecl* method,
+                                                const clang::CXXRecordDecl* record) {
     auto& context = unit.context();
     std::string text;
     llvm::raw_string_ostream os(text);
-    os << type_name(context, method->getReturnType(), from) << ' '
-       << display::name_of(method, {.qualified = false}) << '(';
+    if(!llvm::isa<clang::CXXConversionDecl>(method)) {
+        auto result = type_name(context, method->getReturnType(), record);
+        if(!result) {
+            return std::nullopt;
+        }
+        os << *result << ' ';
+    }
+    os << display::name_of(method, {.qualified = false}) << '(';
     for(auto [index, param]: llvm::enumerate(method->parameters())) {
         if(index) {
             os << ", ";
         }
-        os << type_name(context, param->getOriginalType(), from);
-        if(!param->getName().empty()) {
-            os << ' ' << param->getName();
+        auto declaration = type_name(context, param->getOriginalType(), record, param->getName());
+        if(!declaration) {
+            return std::nullopt;
         }
+        os << *declaration;
     }
     if(method->isVariadic()) {
         os << ", ...";
@@ -71,49 +78,31 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
 
     clang::CXXFinalOverriderMap overriders;
     record->getFinalOverriders(overriders);
-    std::vector<const clang::CXXMethodDecl*> pending;
+    std::vector<std::string> lines;
     llvm::SmallPtrSet<const clang::CXXMethodDecl*, 8> seen;
     for(const auto& [method, overriding]: overriders) {
         for(const auto& [subobject, finals]: overriding) {
             for(const auto& final: finals) {
-                if(final.Method->isPureVirtual() && final.Method->getParent() != record &&
-                   seen.insert(final.Method->getCanonicalDecl()).second) {
-                    pending.push_back(final.Method);
+                if(!final.Method->isPureVirtual() || final.Method->getParent() == record ||
+                   !seen.insert(final.Method->getCanonicalDecl()).second) {
+                    continue;
+                }
+                if(auto line = override_declaration(unit, final.Method, record)) {
+                    lines.push_back(std::move(*line));
                 }
             }
         }
     }
-    if(pending.empty()) {
+    if(lines.empty()) {
         return;
     }
-
-    auto insertion = class_body_insertion(unit, record);
-    if(!insertion) {
-        return;
+    if(auto edit = insert_members(unit, record, lines)) {
+        out.push_back(CodeAction{
+            .title = std::format("Implement pure virtual methods of '{}'", record->getName()),
+            .kind = protocol::CodeActionKind::refactor_rewrite,
+            .edits = {std::move(*edit)},
+        });
     }
-    auto content = unit.main_content();
-    auto record_indent = line_indent(content, main_range(unit, record->getBeginLoc())->begin);
-
-    std::string text;
-    if(insertion->break_before) {
-        text += '\n';
-    }
-    if(!ends_public(record)) {
-        text += std::format("{}public:\n", record_indent);
-    }
-    for(const auto* method: pending) {
-        text +=
-            std::format("{}{}\n", insertion->indent, override_declaration(unit, method, record));
-    }
-    if(insertion->break_before) {
-        text += record_indent;
-    }
-    out.push_back(CodeAction{
-        .id = "implement-pure-virtuals",
-        .title = std::format("Implement pure virtual methods of '{}'", record->getName()),
-        .kind = CodeActionKind::RefactorRewrite,
-        .edits = {{{insertion->offset, insertion->offset}, std::move(text)}},
-    });
 }
 
 }  // namespace clice::feature::action

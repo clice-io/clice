@@ -209,7 +209,6 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
 }
 
 struct RawCodeAction {
-    std::string id;
     std::string title;
     std::string kind;
     std::vector<feature::TextReplacement> edits;
@@ -224,32 +223,32 @@ std::optional<kota::codec::RawValue> run_code_action(CompilationUnitRef unit,
                                                      LocalSourceRange selection,
                                                      [[maybe_unused]] llvm::StringRef config) {
     std::vector<RawCodeAction> out;
+    auto path = unit.file_path(unit.main_file());
     for(auto& action: feature::code_actions(unit, selection)) {
         RawCodeAction raw{
-            .id = std::move(action.id),
             .title = std::move(action.title),
-            .kind = feature::code_action_kind_name(action.kind).str(),
+            .kind = std::string(action.kind),
             .edits = std::move(action.edits),
         };
         if(action.index) {
-            const auto* request = std::get_if<feature::DefineRequest>(&*action.index);
-            if(!request) {
-                continue;
-            }
-            if(request->host) {
-                raw.host_definitions.emplace();
-                for(const auto& piece: request->pieces) {
-                    raw.host_definitions->push_back(piece.text);
-                }
-            } else if(auto text = feature::assemble_definitions(*request, [](std::uint64_t) {
-                          return false;
-                      })) {
+            auto keep = [](std::uint64_t) {
+                return false;
+            };
+            if(auto* request = std::get_if<feature::DefineRequest>(&*action.index)) {
+                auto text = feature::assemble_definitions(request->pieces, keep);
                 raw.edits = feature::format_edits(
-                    unit.file_path(unit.main_file()),
+                    path,
                     unit.main_content(),
                     {
                         {request->range, request->before + *text + request->after}
                 });
+            } else if(auto* host = std::get_if<feature::DefineInHostRequest>(&*action.index)) {
+                raw.host_definitions.emplace();
+                for(const auto& piece: host->pieces) {
+                    raw.host_definitions->push_back(piece.text);
+                }
+            } else {
+                continue;
             }
         }
         out.push_back(std::move(raw));
@@ -742,46 +741,25 @@ void run_feature(FileEntry& entry,
         return;
     }
 
+    // Range and selection features run once per `§⟦...⟧` range; a
+    // selection feature also once per `§` point, as an empty selection,
+    // and has no whole-document default.
+    auto ranges = marker_ranges(source);
+    auto run = spec.run_select != nullptr ? spec.run_select : spec.run_over;
     if(spec.run_select != nullptr) {
-        // Selection feature: every `§` point is an empty selection, every
-        // `§⟦...⟧` range a selection; a fixture marking neither has
-        // nothing to pin.
-        std::map<std::string, kota::codec::RawValue> markers;
-        auto run = [&](const std::string& name, LocalSourceRange selection) {
-            auto value = spec.run_select(unit, selection, config);
-            if(!value.has_value()) {
-                entry.error = "serialize_error";
-                return false;
-            }
-            markers.emplace(name, std::move(*value));
-            return true;
-        };
         for(auto& [name, offset]: marker_points(source)) {
-            if(!run(name, LocalSourceRange(offset, offset))) {
-                return;
-            }
+            ranges.emplace_back(name, LocalSourceRange(offset, offset));
         }
-        for(auto& [name, range]: marker_ranges(source)) {
-            if(!run(name, range)) {
-                return;
-            }
-        }
-        if(markers.empty()) {
+        std::ranges::sort(ranges, {}, [](const auto& pair) { return pair.first; });
+        if(ranges.empty()) {
             entry.error = "no_markers";
             return;
         }
-        entry.markers = std::move(markers);
-        return;
     }
-
-    // Range feature: run once per `§⟦...⟧` range, or over the whole
-    // document when the fixture marks none.
-    auto ranges = marker_ranges(source);
     if(ranges.empty()) {
-        entry.result =
-            spec.run_over(unit,
-                          LocalSourceRange(0, static_cast<std::uint32_t>(source.content.size())),
-                          config);
+        entry.result = run(unit,
+                           LocalSourceRange(0, static_cast<std::uint32_t>(source.content.size())),
+                           config);
         if(!entry.result.has_value()) {
             entry.error = "serialize_error";
         }
@@ -789,7 +767,7 @@ void run_feature(FileEntry& entry,
     }
     std::map<std::string, kota::codec::RawValue> markers;
     for(auto& [name, range]: ranges) {
-        auto value = spec.run_over(unit, range, config);
+        auto value = run(unit, range, config);
         if(!value.has_value()) {
             entry.error = "serialize_error";
             return;

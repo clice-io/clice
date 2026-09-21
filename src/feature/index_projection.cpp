@@ -9,6 +9,7 @@
 #include "feature/feature.h"
 #include "feature/lexical_classify.h"
 #include "index/shard.h"
+#include "support/text.h"
 #include "syntax/lexer.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -565,12 +566,7 @@ auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::st
 
     // Walk to the start of the line containing `offset`, then collect the
     // contiguous run of comment-looking lines directly above it.
-    auto line_begin = [&](std::uint32_t pos) {
-        auto nl = content.rfind('\n', pos);
-        return nl == llvm::StringRef::npos ? 0 : static_cast<std::uint32_t>(nl) + 1;
-    };
-
-    auto begin = line_begin(offset);
+    auto begin = line_begin(content, offset);
     llvm::SmallVector<llvm::StringRef, 8> lines;
     // Between a closing */ and its opener the scan is inside a block
     // comment: interior lines need no marker of their own (`/*` above bare
@@ -579,7 +575,7 @@ auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::st
     bool in_block = false;
     std::size_t block_start = 0;
     while(begin > 0) {
-        auto prev_begin = line_begin(begin - 1);
+        auto prev_begin = line_begin(content, begin - 1);
         auto line = content.substr(prev_begin, begin - prev_begin).rtrim("\r\n").trim();
         if(in_block) {
             // An opener sharing its line with code marks a comment trailing

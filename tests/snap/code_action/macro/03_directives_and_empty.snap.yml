@@ -1,0 +1,10 @@
+---
+created_at: 2026-09-21
+input_file: macro/03_directives_and_empty.cpp
+---
+directive:
+(no actions)
+
+empty:
+- [refactor.inline] Expand macro 'EMPTY'
+  10:14-10:19 => ""

@@ -1,0 +1,11 @@
+---
+created_at: 2026-09-21
+input_file: define/14_linkage_specification.cpp
+---
+block:
+- [refactor.rewrite] Define 'c_helper' out of line
+  10:0-10:0 => "\nint c_helper(int x) {\n}\n\n"
+
+single:
+- [refactor.rewrite] Define 'c_entry' out of line
+  7:0-7:0 => "\nint c_entry(int argc) {\n}\n"

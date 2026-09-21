@@ -13,6 +13,7 @@
 
 #include "feature/feature.h"
 #include "semantic/selection.h"
+#include "support/text.h"
 
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/DeclCXX.h"
@@ -22,11 +23,10 @@ namespace clice::feature::action {
 
 struct Context {
     CompilationUnitRef unit;
-    LocalSourceRange selection;
     /// The node the action anchored on.
     const SelectionTree::Node& node;
     /// Whether the main file is a header: a definition then belongs in the
-    /// host source (the DefineInHost request) as much as in the header.
+    /// host source (the DefineInHostRequest) as much as in the header.
     bool main_is_header;
 };
 
@@ -71,28 +71,27 @@ std::optional<LocalSourceRange> main_range(CompilationUnitRef unit, clang::Sourc
 /// macro locations and ranges crossing files.
 std::optional<llvm::StringRef> spelled_text(CompilationUnitRef unit, clang::SourceRange range);
 
-/// The line containing `offset`: its first byte, and the byte past its
-/// newline (the content's end on the last line).
-std::uint32_t line_begin(llvm::StringRef content, std::uint32_t offset);
-std::uint32_t line_end(llvm::StringRef content, std::uint32_t offset);
-
 /// The whitespace opening the line containing `offset`.
 llvm::StringRef line_indent(llvm::StringRef content, std::uint32_t offset);
+
+/// Whether a context is a file scope a definition is written at: the
+/// translation unit, a namespace, a linkage specification or an export
+/// block.
+bool at_file_scope(const clang::DeclContext* context);
 
 /// The qualifier ("ns::S::") spelling members of `target` from inside
 /// `from`: the named contexts of `target` not enclosing `from`. Class
 /// templates spell their parameters as arguments ("S<T>::").
 std::string qualifier_at(const clang::DeclContext* target, const clang::DeclContext* from);
 
-/// `decl` spelled from inside `from`: the qualifier of its context and its
-/// name. Enumerators of unscoped enums live in the enum's context.
-std::string name_at(const clang::NamedDecl* decl, const clang::DeclContext* from);
-
-/// A type spelled fully qualified, minus the namespaces enclosing `from`:
-/// valid at `from` (null: at any scope of the TU).
-std::string type_name(clang::ASTContext& context,
-                      clang::QualType type,
-                      const clang::DeclContext* from = nullptr);
+/// A type spelled fully qualified minus the namespaces enclosing `from`
+/// (null: at any scope of the TU), declaring `name` when one is given
+/// ("int (*name)(int)"); nullopt for a type no spelling names, such as a
+/// lambda or an unnamed struct.
+std::optional<std::string> type_name(clang::ASTContext& context,
+                                     clang::QualType type,
+                                     const clang::DeclContext* from,
+                                     llvm::StringRef name = {});
 
 /// "template <...>" heads of the class templates enclosing `decl` up to
 /// `from`, outermost first, one per line, the parameters spelled without
@@ -101,21 +100,12 @@ std::string template_heads(CompilationUnitRef unit,
                            const clang::Decl* decl,
                            const clang::DeclContext* from);
 
-/// Where member declarations go into a class body: right before the
-/// closing brace, on lines of the body's own indentation.
-struct BodyInsertion {
-    std::uint32_t offset;
-    std::string indent;
-    /// The brace shares its line with earlier tokens: the inserted lines
-    /// need a newline in front.
-    bool break_before;
-};
-
-std::optional<BodyInsertion> class_body_insertion(CompilationUnitRef unit,
-                                                  const clang::CXXRecordDecl* record);
-
-/// Whether members appended at the end of the class body are public.
-bool ends_public(const clang::CXXRecordDecl* record);
+/// `lines` appended to the class body, on the body's own indentation and
+/// under a `public:` label when the body ends in another section; nullopt
+/// when the class head or brace is spelled by a macro.
+std::optional<TextReplacement> insert_members(CompilationUnitRef unit,
+                                              const clang::CXXRecordDecl* record,
+                                              llvm::ArrayRef<std::string> lines);
 
 /// Visit the main file's declarations at file scope — the translation
 /// unit's and, descending, those of namespaces, linkage specifications and

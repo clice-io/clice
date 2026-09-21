@@ -205,12 +205,8 @@ void LSPClient::register_lifecycle() {
         caps.document_range_formatting_provider = true;
         caps.code_action_provider = protocol::CodeActionOptions{
             .code_action_kinds =
-                std::vector<protocol::CodeActionKind>{
-                                                      protocol::CodeActionKind(protocol::CodeActionKind::quick_fix),
-                                                      protocol::CodeActionKind(protocol::CodeActionKind::refactor),
-                                                      protocol::CodeActionKind(protocol::CodeActionKind::refactor_inline),
-                                                      protocol::CodeActionKind(protocol::CodeActionKind::refactor_rewrite),
-                                                      },
+                std::vector<protocol::CodeActionKind>(feature::code_action_kinds.begin(),
+                                                      feature::code_action_kinds.end()),
         };
 
         protocol::SemanticTokensOptions sem_opts;

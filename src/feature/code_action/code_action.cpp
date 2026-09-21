@@ -22,7 +22,6 @@
 #include "clang/AST/QualTypeNames.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TypeLoc.h"
-#include "clang/Driver/Types.h"
 
 namespace clice::feature {
 
@@ -82,7 +81,6 @@ void format_actions(CompilationUnitRef unit, std::vector<CodeAction>& actions, s
 /// each spec its innermost matching node, once.
 void enumerate(CompilationUnitRef unit,
                const SelectionTree& tree,
-               LocalSourceRange selection,
                bool main_is_header,
                std::vector<CodeAction>& out) {
     const auto* innermost = tree.common_ancestor();
@@ -100,7 +98,7 @@ void enumerate(CompilationUnitRef unit,
             }
             fired[index] = true;
             auto before = out.size();
-            spec.run(Context{unit, selection, *node, main_is_header}, out);
+            spec.run(Context{unit, *node, main_is_header}, out);
             if(spec.format) {
                 format_actions(unit, out, before);
             }
@@ -108,62 +106,18 @@ void enumerate(CompilationUnitRef unit,
     }
 }
 
-bool is_header(llvm::StringRef path) {
-    namespace types = clang::driver::types;
-    auto type = suffix_type(path);
-    return type == types::TY_CHeader || type == types::TY_CXXHeader;
-}
-
-}  // namespace
-
-std::optional<LocalSourceRange> main_range(CompilationUnitRef unit, clang::SourceRange range) {
-    if(range.isInvalid() || !range.getBegin().isFileID() || !range.getEnd().isFileID()) {
-        return std::nullopt;
-    }
-    auto main = unit.main_file();
-    if(unit.file_id(range.getBegin()) != main || unit.file_id(range.getEnd()) != main) {
-        return std::nullopt;
-    }
-    return unit.decompose_range(range).second;
-}
-
-std::optional<llvm::StringRef> spelled_text(CompilationUnitRef unit, clang::SourceRange range) {
-    if(range.isInvalid() || !range.getBegin().isFileID() || !range.getEnd().isFileID()) {
-        return std::nullopt;
-    }
-    auto fid = unit.file_id(range.getBegin());
-    if(fid != unit.file_id(range.getEnd()) || unit.is_builtin_file(fid)) {
-        return std::nullopt;
-    }
-    auto local = unit.decompose_range(range).second;
-    return unit.file_content(fid).substr(local.begin, local.length());
-}
-
-std::uint32_t line_begin(llvm::StringRef content, std::uint32_t offset) {
-    auto newline = content.rfind('\n', offset);
-    return newline == llvm::StringRef::npos ? 0 : static_cast<std::uint32_t>(newline + 1);
-}
-
-std::uint32_t line_end(llvm::StringRef content, std::uint32_t offset) {
-    auto newline = content.find('\n', offset);
-    return newline == llvm::StringRef::npos ? static_cast<std::uint32_t>(content.size())
-                                            : static_cast<std::uint32_t>(newline + 1);
-}
-
-llvm::StringRef line_indent(llvm::StringRef content, std::uint32_t offset) {
-    auto line = content.substr(line_begin(content, offset));
-    return line.take_while([](char c) { return c == ' ' || c == '\t'; });
-}
-
-namespace {
-
-/// Declarators bind to their type: `T*`, `T&`, never `T *`.
+/// Declarators bind to their type: `T* p`, `const T& r`, never `T *p`.
 std::string bind_declarators(std::string text) {
-    for(auto at = text.find(" *"); at != std::string::npos; at = text.find(" *", at)) {
+    for(auto at = text.find(' '); at != std::string::npos; at = text.find(' ', at + 1)) {
+        auto next = at + 1;
+        if(next >= text.size() || (text[next] != '*' && text[next] != '&')) {
+            continue;
+        }
         text.erase(at, 1);
-    }
-    for(auto at = text.find(" &"); at != std::string::npos; at = text.find(" &", at)) {
-        text.erase(at, 1);
+        auto after = text.find_first_not_of("*&", at);
+        if(after != std::string::npos && (llvm::isAlnum(text[after]) || text[after] == '_')) {
+            text.insert(after, 1, ' ');
+        }
     }
     return text;
 }
@@ -195,7 +149,99 @@ std::string record_component(const clang::RecordDecl* record) {
     return name;
 }
 
+/// Erase every occurrence of `prefix` that starts a qualified name: at
+/// the beginning or after a character no identifier or qualifier ends
+/// with.
+void strip_qualifier(std::string& text, llvm::StringRef prefix) {
+    for(auto at = text.find(prefix); at != std::string::npos; at = text.find(prefix, at)) {
+        if(at == 0 ||
+           (!llvm::isAlnum(text[at - 1]) && text[at - 1] != '_' && text[at - 1] != ':')) {
+            text.erase(at, prefix.size());
+        } else {
+            at += 1;
+        }
+    }
+}
+
+/// One "template <...>" head, the parameters spelled without defaults,
+/// followed by the requires-clause when the list has one.
+std::string template_head(CompilationUnitRef unit,
+                          const clang::TemplateParameterList* params,
+                          const clang::DeclContext* from) {
+    std::string head;
+    llvm::raw_string_ostream os(head);
+    os << "template <";
+    for(auto [index, param]: llvm::enumerate(*params)) {
+        if(index) {
+            os << ", ";
+        }
+        if(auto* value = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(param)) {
+            os << type_name(unit.context(), value->getType(), from).value_or("auto");
+            if(value->isParameterPack()) {
+                os << "...";
+            }
+        } else {
+            os << display::template_param_type(param).text;
+        }
+        if(!param->getName().empty()) {
+            os << ' ' << param->getName();
+        }
+    }
+    os << '>';
+    if(auto* requires_clause = params->getRequiresClause()) {
+        if(auto text = spelled_text(unit, requires_clause->getSourceRange())) {
+            os << " requires " << *text;
+        }
+    }
+    return head;
+}
+
+/// Whether members appended at the end of the class body are public.
+bool ends_public(const clang::CXXRecordDecl* record) {
+    auto access =
+        record->getTagKind() == clang::TagTypeKind::Class ? clang::AS_private : clang::AS_public;
+    for(const auto* member: record->decls()) {
+        if(auto* specifier = llvm::dyn_cast<clang::AccessSpecDecl>(member)) {
+            access = specifier->getAccess();
+        }
+    }
+    return access == clang::AS_public;
+}
+
 }  // namespace
+
+std::optional<LocalSourceRange> main_range(CompilationUnitRef unit, clang::SourceRange range) {
+    if(range.isInvalid() || !range.getBegin().isFileID() || !range.getEnd().isFileID()) {
+        return std::nullopt;
+    }
+    auto main = unit.main_file();
+    if(unit.file_id(range.getBegin()) != main || unit.file_id(range.getEnd()) != main) {
+        return std::nullopt;
+    }
+    return unit.decompose_range(range).second;
+}
+
+std::optional<llvm::StringRef> spelled_text(CompilationUnitRef unit, clang::SourceRange range) {
+    if(range.isInvalid() || !range.getBegin().isFileID() || !range.getEnd().isFileID()) {
+        return std::nullopt;
+    }
+    auto fid = unit.file_id(range.getBegin());
+    if(fid != unit.file_id(range.getEnd()) || unit.is_builtin_file(fid)) {
+        return std::nullopt;
+    }
+    auto local = unit.decompose_range(range).second;
+    return unit.file_content(fid).substr(local.begin, local.length());
+}
+
+llvm::StringRef line_indent(llvm::StringRef content, std::uint32_t offset) {
+    auto line = content.substr(line_begin(content, offset));
+    return line.take_while([](char c) { return c == ' ' || c == '\t'; });
+}
+
+bool at_file_scope(const clang::DeclContext* context) {
+    return context->isFileContext() ||
+           llvm::isa<clang::LinkageSpecDecl, clang::ExportDecl>(context);
+}
 
 std::string qualifier_at(const clang::DeclContext* target, const clang::DeclContext* from) {
     llvm::SmallVector<std::string, 4> components;
@@ -228,32 +274,10 @@ std::string qualifier_at(const clang::DeclContext* target, const clang::DeclCont
     return qualifier;
 }
 
-std::string name_at(const clang::NamedDecl* decl, const clang::DeclContext* from) {
-    return qualifier_at(decl->getDeclContext(), from) +
-           display::name_of(decl, {.qualified = false});
-}
-
-namespace {
-
-/// Erase every occurrence of `prefix` that starts a qualified name: at
-/// the beginning or after a character no identifier or qualifier ends
-/// with.
-void strip_qualifier(std::string& text, llvm::StringRef prefix) {
-    for(auto at = text.find(prefix); at != std::string::npos; at = text.find(prefix, at)) {
-        char before = at == 0 ? ' ' : text[at - 1];
-        if(at == 0 || (!llvm::isAlnum(before) && before != '_' && before != ':')) {
-            text.erase(at, prefix.size());
-        } else {
-            at += 1;
-        }
-    }
-}
-
-}  // namespace
-
-std::string type_name(clang::ASTContext& context,
-                      clang::QualType type,
-                      const clang::DeclContext* from) {
+std::optional<std::string> type_name(clang::ASTContext& context,
+                                     clang::QualType type,
+                                     const clang::DeclContext* from,
+                                     llvm::StringRef name) {
     clang::PrintingPolicy policy = context.getPrintingPolicy();
     policy.SuppressScope = false;
     policy.SuppressUnwrittenScope = true;
@@ -267,11 +291,20 @@ std::string type_name(clang::ASTContext& context,
         deduced = type->getAs<clang::DeducedType>()) {
         type = context.getQualifiedType(deduced->getDeducedType(), type.getLocalQualifiers());
     }
-    auto printed = clang::TypeName::getFullyQualifiedName(type, context, policy);
+    if(!type->isDependentType()) {
+        type = clang::TypeName::getFullyQualifiedType(type, context);
+    }
+    std::string printed;
+    llvm::raw_string_ostream os(printed);
+    type.print(os, policy, name);
+    llvm::StringRef view = printed;
+    if(view.contains("(lambda") || view.contains("(anonymous") || view.contains("(unnamed")) {
+        return std::nullopt;
+    }
 
     llvm::SmallVector<const clang::NamespaceDecl*, 4> namespaces;
-    for(const auto* context_ = from; context_; context_ = context_->getParent()) {
-        auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context_);
+    for(const auto* scope = from; scope; scope = scope->getParent()) {
+        auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(scope);
         if(ns && !ns->isAnonymousNamespace() && !ns->isInline()) {
             namespaces.push_back(ns);
         }
@@ -288,50 +321,6 @@ std::string type_name(clang::ASTContext& context,
     }
     return bind_declarators(std::move(printed));
 }
-
-namespace {
-
-/// One "template <...>" head, the parameters spelled without defaults,
-/// followed by the requires-clause when the list has one.
-std::string template_head(CompilationUnitRef unit, const clang::TemplateParameterList* params) {
-    auto& context = unit.context();
-    std::string head;
-    llvm::raw_string_ostream os(head);
-    os << "template <";
-    for(auto [index, param]: llvm::enumerate(*params)) {
-        if(index) {
-            os << ", ";
-        }
-        if(auto* type = llvm::dyn_cast<clang::TemplateTypeParmDecl>(param)) {
-            os << (type->wasDeclaredWithTypename() ? "typename" : "class");
-            if(type->isParameterPack()) {
-                os << "...";
-            }
-        } else if(auto* value = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(param)) {
-            os << type_name(context, value->getType());
-            if(value->isParameterPack()) {
-                os << "...";
-            }
-        } else if(auto* tmpl = llvm::dyn_cast<clang::TemplateTemplateParmDecl>(param)) {
-            os << template_head(unit, tmpl->getTemplateParameters()) << " class";
-            if(tmpl->isParameterPack()) {
-                os << "...";
-            }
-        }
-        if(!param->getName().empty()) {
-            os << ' ' << param->getName();
-        }
-    }
-    os << '>';
-    if(auto* requires_clause = params->getRequiresClause()) {
-        if(auto text = spelled_text(unit, requires_clause->getSourceRange())) {
-            os << " requires " << *text;
-        }
-    }
-    return head;
-}
-
-}  // namespace
 
 std::string template_heads(CompilationUnitRef unit,
                            const clang::Decl* decl,
@@ -354,19 +343,22 @@ std::string template_heads(CompilationUnitRef unit,
     }
     std::string heads;
     for(const auto* params: llvm::reverse(lists)) {
-        heads += template_head(unit, params);
+        heads += template_head(unit, params, from);
         heads += '\n';
     }
     return heads;
 }
 
-std::optional<BodyInsertion> class_body_insertion(CompilationUnitRef unit,
-                                                  const clang::CXXRecordDecl* record) {
+std::optional<TextReplacement> insert_members(CompilationUnitRef unit,
+                                              const clang::CXXRecordDecl* record,
+                                              llvm::ArrayRef<std::string> lines) {
     auto brace = main_range(unit, record->getBraceRange().getEnd());
-    if(!brace) {
+    auto head = main_range(unit, record->getBeginLoc());
+    if(!brace || !head) {
         return std::nullopt;
     }
     auto content = unit.main_content();
+    auto record_indent = line_indent(content, head->begin);
     auto begin = line_begin(content, brace->begin);
     bool own_line = content.substr(begin, brace->begin - begin).trim().empty();
 
@@ -381,27 +373,29 @@ std::optional<BodyInsertion> class_body_insertion(CompilationUnitRef unit,
         }
     }
     if(indent.empty()) {
-        auto record_line = main_range(unit, record->getBeginLoc());
-        indent =
-            (record_line ? line_indent(content, record_line->begin) : llvm::StringRef()).str() +
-            "    ";
+        indent = record_indent.str() + "    ";
     }
-    return BodyInsertion{
-        .offset = own_line ? begin : brace->begin,
-        .indent = std::move(indent),
-        .break_before = !own_line,
-    };
-}
 
-bool ends_public(const clang::CXXRecordDecl* record) {
-    auto access =
-        record->getTagKind() == clang::TagTypeKind::Class ? clang::AS_private : clang::AS_public;
-    for(const auto* member: record->decls()) {
-        if(auto* specifier = llvm::dyn_cast<clang::AccessSpecDecl>(member)) {
-            access = specifier->getAccess();
-        }
+    std::string text;
+    if(!own_line) {
+        text += '\n';
     }
-    return access == clang::AS_public;
+    if(!ends_public(record)) {
+        text += record_indent;
+        text += "public:\n";
+    }
+    for(const auto& line: lines) {
+        text += indent;
+        text += line;
+        text += '\n';
+    }
+    if(!own_line) {
+        text += record_indent;
+    }
+    auto offset = own_line ? begin : brace->begin;
+    return TextReplacement{
+        {offset, offset},
+        std::move(text)};
 }
 
 void for_each_file_scope_decl(CompilationUnitRef unit,
@@ -452,24 +446,14 @@ std::vector<const clang::FunctionDecl*>
 
 }  // namespace action
 
-auto code_action_kind_name(CodeActionKind kind) -> llvm::StringRef {
-    switch(kind) {
-        case CodeActionKind::QuickFix: return "quickfix";
-        case CodeActionKind::Refactor: return "refactor";
-        case CodeActionKind::RefactorInline: return "refactor.inline";
-        case CodeActionKind::RefactorRewrite: return "refactor.rewrite";
-    }
-    std::unreachable();
-}
-
 auto code_actions(CompilationUnitRef unit, LocalSourceRange selection) -> std::vector<CodeAction> {
     std::vector<CodeAction> out;
     action::add_include(unit, selection, out);
 
-    bool main_is_header = action::is_header(unit.file_path(unit.main_file()));
+    bool main_is_header = is_header_path(unit.file_path(unit.main_file()));
     SelectionTree::create_each(unit, selection, [&](SelectionTree tree) {
         auto before = out.size();
-        action::enumerate(unit, tree, selection, main_is_header, out);
+        action::enumerate(unit, tree, main_is_header, out);
         return out.size() > before;
     });
 
@@ -479,11 +463,11 @@ auto code_actions(CompilationUnitRef unit, LocalSourceRange selection) -> std::v
     return out;
 }
 
-auto assemble_definitions(const DefineRequest& request,
+auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
                           llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
     -> std::optional<std::string> {
     std::string text;
-    for(const auto& piece: request.pieces) {
+    for(const auto& piece: pieces) {
         if(defined_elsewhere(piece.entity)) {
             continue;
         }

@@ -42,20 +42,24 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
     auto main = unit.main_file();
     auto begin = range->begin;
 
-    // Comments directly above the definition travel with it: each one
-    // separated from what follows by nothing but whitespace holding a
-    // single line break.
+    // Comments directly above the definition travel with it: each on
+    // lines of its own, separated from what follows by nothing but
+    // whitespace holding a single line break. A comment trailing the
+    // previous definition's line belongs to that line.
     if(const auto* comments = unit.context().Comments.getCommentsInFile(main)) {
         auto it = comments->lower_bound(begin);
         while(it != comments->begin()) {
             --it;
+            auto comment_begin = it->first;
             auto comment_end = unit.file_offset(it->second->getEndLoc()) +
                                unit.token_length(it->second->getEndLoc());
+            auto line = line_begin(content, comment_begin);
             auto gap = content.substr(comment_end, begin - comment_end);
-            if(comment_end > begin || !gap.trim().empty() || gap.count('\n') != 1) {
+            if(comment_end > begin || !gap.trim().empty() || gap.count('\n') != 1 ||
+               !content.substr(line, comment_begin - line).trim().empty()) {
                 break;
             }
-            begin = it->first;
+            begin = comment_begin;
         }
     }
     auto line = line_begin(content, begin);
@@ -76,9 +80,15 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
 }
 
 /// The edits permuting the slots of each block into rank order; empty
-/// when they already are.
+/// when they already are, or when two definitions share a line and
+/// their slots overlap.
 std::vector<TextReplacement> permutation(llvm::StringRef content, std::vector<Slot> slots) {
     std::ranges::sort(slots, {}, [](const Slot& slot) { return slot.range.begin; });
+    for(auto [previous, slot]: llvm::zip(slots, llvm::drop_begin(slots))) {
+        if(slot.range.begin < previous.range.end) {
+            return {};
+        }
+    }
     llvm::MapVector<const clang::DeclContext*, std::vector<Slot>> blocks;
     for(auto& slot: slots) {
         blocks[slot.block].push_back(slot);
@@ -107,7 +117,7 @@ void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
     if(!record) {
         anchor = ctx.node.get<clang::FunctionDecl>();
         if(!anchor || !anchor->isThisDeclarationADefinition() ||
-           !anchor->getLexicalDeclContext()->isFileContext()) {
+           !at_file_scope(anchor->getLexicalDeclContext())) {
             return;
         }
         if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(anchor)) {
@@ -186,9 +196,8 @@ void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
         return;
     }
     out.push_back(CodeAction{
-        .id = "reorder-definitions",
         .title = std::move(title),
-        .kind = CodeActionKind::RefactorRewrite,
+        .kind = protocol::CodeActionKind::refactor_rewrite,
         .edits = std::move(edits),
     });
 }
