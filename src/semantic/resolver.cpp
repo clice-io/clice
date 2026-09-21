@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <ranges>
+#include <utility>
 
 #include "semantic/unifier.h"
 #include "support/logging.h"
@@ -660,42 +661,18 @@ public:
             return lookup_result();
         }
 
-        llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*> partials;
-        CTD->getPartialSpecializations(partials);
-
         LOG_DEBUG(
             "{}"
-            "lookup '{}' in '{}' (partials={})",
+            "lookup '{}' in '{}'",
             pad(),
             name.getAsString(),
-            CTD->getNameAsString(),
-            partials.size());
+            CTD->getNameAsString());
         indent += 1;
-        /// Deduction alone may match several overlapping partials; pick the
-        /// most specialized one, as real instantiation would — but only among
-        /// partials whose dependent pattern constraints survive the
-        /// pseudo-SFINAE probe (see member_absent).
-        llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4> matched;
-        for(auto partial: partials) {
-            if(deduce_template_arguments(partial, arguments)) {
-                bool viable = satisfies_pattern(partial);
-                stack.pop();
-                if(!viable) {
-                    LOG_DEBUG(
-                        "{}"
-                        "pruned partial '{}' (member absent)",
-                        pad(),
-                        partial->getNameAsString());
-                    continue;
-                }
-                matched.push_back(partial);
-            }
-        }
 
         /// An ambiguous or constrained winner degrades to unresolved:
         /// neither a partial nor the primary may be chosen (see
         /// select_partial).
-        auto choice = select_partial(context, matched);
+        auto choice = match_partial(CTD, arguments);
         if(choice.verdict == PartialVerdict::Ambiguous) {
             LOG_DEBUG(
                 "{}"
@@ -767,6 +744,56 @@ public:
 
         indent -= 1;
         return lookup_result();
+    }
+
+    /// Deduction alone may match several overlapping partials; pick the
+    /// most specialized one, as real instantiation would — but only among
+    /// partials whose dependent pattern constraints survive the
+    /// pseudo-SFINAE probe (see member_absent).
+    PartialChoice<clang::ClassTemplatePartialSpecializationDecl>
+        match_partial(clang::ClassTemplateDecl* CTD, TemplateArguments arguments) {
+        llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*> partials;
+        CTD->getPartialSpecializations(partials);
+
+        llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4> matched;
+        for(auto partial: partials) {
+            if(deduce_template_arguments(partial, arguments)) {
+                bool viable = satisfies_pattern(partial);
+                stack.pop();
+                if(!viable) {
+                    LOG_DEBUG(
+                        "{}"
+                        "pruned partial '{}' (member absent)",
+                        pad(),
+                        partial->getNameAsString());
+                    continue;
+                }
+                matched.push_back(partial);
+            }
+        }
+
+        return select_partial(context, matched);
+    }
+
+    /// The pattern real instantiation of `CTD<visibleArguments>` would use:
+    /// the most specialized viable partial specialization, else the primary
+    /// template. Null when the arguments do not fit the parameter list or
+    /// the choice degrades (see select_partial).
+    clang::CXXRecordDecl* select_pattern(clang::ClassTemplateDecl* CTD,
+                                         TemplateArguments visibleArguments) {
+        llvm::SmallVector<clang::TemplateArgument, 4> arguments;
+        if(!check_template_arguments(CTD, visibleArguments, arguments)) {
+            return nullptr;
+        }
+
+        auto choice = match_partial(CTD, arguments);
+        switch(choice.verdict) {
+            case PartialVerdict::Selected: return choice.winner;
+            case PartialVerdict::None: return CTD->getTemplatedDecl();
+            case PartialVerdict::Ambiguous:
+            case PartialVerdict::Constrained: return nullptr;
+        }
+        std::unreachable();
     }
 
 private:
@@ -2181,6 +2208,25 @@ TemplateResolver::lookup_result TemplateResolver::lookup(clang::NestedNameSpecif
                                                          clang::DeclarationName name) {
     PseudoInstantiator instantiator(context, resolved);
     return instantiator.lookup(NNS, name);
+}
+
+clang::CXXRecordDecl* TemplateResolver::resolve_record(clang::QualType type) {
+    PseudoInstantiator instantiator(context, resolved);
+    type = instantiator.resolve(type);
+    if(auto* record = type->getAsCXXRecordDecl()) {
+        return record;
+    }
+
+    auto* TST = type->getAs<clang::TemplateSpecializationType>();
+    if(!TST) {
+        return nullptr;
+    }
+    auto* CTD = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
+        TST->getTemplateName().getAsTemplateDecl());
+    if(!CTD) {
+        return nullptr;
+    }
+    return instantiator.select_pattern(CTD, TST->template_arguments());
 }
 
 /// Shared base-type member resolution for dependent member expressions.

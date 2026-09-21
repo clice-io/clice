@@ -1,0 +1,13 @@
+---
+created_at: 2026-09-21
+input_file: symbols/12_dependent_scope.cpp
+---
+nested:
+- { label: "Vec", kind: Class, edit: "29:37-29:37" }
+- { label: "capacity", kind: Variable, description: "int", edit: "29:37-29:37" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "29:37-29:37" }
+- { label: "value_type", kind: TypeParameter, edit: "29:37-29:37" }
+
+partial:
+- { label: "Traits", kind: Class, edit: "30:24-30:24" }
+- { label: "pointer_only", kind: Variable, description: "int", edit: "30:24-30:24" }
