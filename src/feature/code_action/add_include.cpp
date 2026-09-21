@@ -58,9 +58,15 @@ std::optional<QualifiedName> qualified_name_at(CompilationUnitRef unit, std::uin
     auto offset_of = [&](const clang::syntax::Token& token) {
         return unit.file_offset(token.location());
     };
+    // The token under the cursor, else the one the cursor sits right
+    // after: editors ask at either end of a name.
     auto it = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
         return offset_of(token) + token.length() <= offset;
     });
+    if((it == tokens.end() || offset_of(*it) > offset) && it != tokens.begin() &&
+       offset_of(*std::prev(it)) + std::prev(it)->length() == offset) {
+        --it;
+    }
     if(it == tokens.end() || it->kind() != clang::tok::identifier || offset_of(*it) > offset) {
         return std::nullopt;
     }
@@ -89,14 +95,22 @@ std::optional<QualifiedName> qualified_name_at(CompilationUnitRef unit, std::uin
     return result;
 }
 
-/// After the main file's last `#include` line, else after its `#pragma
-/// once`, else at its start. A raw lex of the text rather than the
+/// After the main file's last `#include` line among the ones nested
+/// least deeply in conditionals — an include inside `#if FEATURE` is no
+/// place for one that must always apply, while an include guard wraps
+/// them all — else after its `#pragma once`, else after the guard's
+/// `#define`, else at its start. A raw lex of the text rather than the
 /// directive table: the preamble's directives are compiled into the PCH
 /// and never reach this AST.
 std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
     auto content = unit.main_content();
     std::optional<std::uint32_t> last_include;
+    std::uint32_t include_depth = 0;
     std::optional<std::uint32_t> pragma_once;
+    std::optional<std::uint32_t> guard_define;
+    std::optional<llvm::StringRef> guard_macro;
+    std::uint32_t depth = 0;
+    std::uint32_t directives = 0;
     Lexer lexer(content, {.lang_opts = &unit.lang_options()});
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
         if(!token.is_directive_hash()) {
@@ -106,18 +120,34 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
         if(!keyword.is_identifier()) {
             continue;
         }
+        directives += 1;
         auto text = keyword.text(content);
         if(text == "include") {
-            last_include = token.range.begin;
-        } else if(text == "pragma" && lexer.advance().text(content) == "once") {
-            pragma_once = token.range.begin;
+            if(!last_include || depth <= include_depth) {
+                last_include = token.range.begin;
+                include_depth = depth;
+            }
+        } else if(text == "pragma") {
+            if(lexer.advance().text(content) == "once") {
+                pragma_once = token.range.begin;
+            }
+        } else if(text == "if" || text == "ifdef" || text == "ifndef") {
+            if(text == "ifndef" && directives == 1) {
+                guard_macro = lexer.advance().text(content);
+            }
+            depth += 1;
+        } else if(text == "define") {
+            if(guard_macro && directives == 2 && lexer.advance().text(content) == *guard_macro) {
+                guard_define = token.range.begin;
+            }
+        } else if(text == "endif" && depth > 0) {
+            depth -= 1;
         }
     }
-    if(last_include) {
-        return line_end(content, *last_include);
-    }
-    if(pragma_once) {
-        return line_end(content, *pragma_once);
+    for(auto anchor: {last_include, pragma_once, guard_define}) {
+        if(anchor) {
+            return line_end(content, *anchor);
+        }
     }
     return 0;
 }

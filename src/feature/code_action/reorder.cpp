@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <format>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "compile/compilation_unit.h"
@@ -9,6 +11,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
@@ -27,7 +30,54 @@ struct Slot {
     /// The namespace block it is written in: definitions only move
     /// within their block, whose scope their names are spelled for.
     const clang::DeclContext* block;
+    /// The innermost conditional branch enclosing it (the offset of its
+    /// `#if`, `#elif` or `#else`; none at top level): definitions only
+    /// move within their branch, or a symbol would come and go with a
+    /// macro it never depended on.
+    std::optional<std::uint32_t> branch;
 };
+
+/// The innermost conditional branch open at `offset` of the main file.
+std::optional<std::uint32_t> enclosing_branch(CompilationUnitRef unit, std::uint32_t offset) {
+    auto main = unit.main_file();
+    auto it = unit.directives().find(main);
+    if(it == unit.directives().end()) {
+        return std::nullopt;
+    }
+    llvm::SmallVector<std::uint32_t, 4> open;
+    for(const auto& condition: it->second.conditions) {
+        if(condition.loc.isInvalid() || unit.file_id(condition.loc) != main) {
+            continue;
+        }
+        auto at = unit.file_offset(condition.loc);
+        if(at >= offset) {
+            break;
+        }
+        using enum Condition::BranchKind;
+        switch(condition.kind) {
+            case If:
+            case Ifdef:
+            case Ifndef: open.push_back(at); break;
+            case Elif:
+            case Elifdef:
+            case Elifndef:
+            case Else:
+                if(!open.empty()) {
+                    open.back() = at;
+                }
+                break;
+            case EndIf:
+                if(!open.empty()) {
+                    open.pop_back();
+                }
+                break;
+        }
+    }
+    if(open.empty()) {
+        return std::nullopt;
+    }
+    return open.back();
+}
 
 /// The lines the definition owns; nullopt when it spans a macro, another
 /// file or a conditional directive, whose text cannot be moved as a
@@ -79,9 +129,9 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
     return lines;
 }
 
-/// The edits permuting the slots of each block into rank order; empty
-/// when they already are, or when two definitions share a line and
-/// their slots overlap.
+/// The edits permuting the slots of each block and branch into rank
+/// order; empty when they already are, or when two definitions share a
+/// line and their slots overlap.
 std::vector<TextReplacement> permutation(llvm::StringRef content, std::vector<Slot> slots) {
     std::ranges::sort(slots, {}, [](const Slot& slot) { return slot.range.begin; });
     for(auto [previous, slot]: llvm::zip(slots, llvm::drop_begin(slots))) {
@@ -89,9 +139,11 @@ std::vector<TextReplacement> permutation(llvm::StringRef content, std::vector<Sl
             return {};
         }
     }
-    llvm::MapVector<const clang::DeclContext*, std::vector<Slot>> blocks;
+    llvm::MapVector<std::pair<const clang::DeclContext*, std::optional<std::uint32_t>>,
+                    std::vector<Slot>>
+        blocks;
     for(auto& slot: slots) {
-        blocks[slot.block].push_back(slot);
+        blocks[{slot.block, slot.branch}].push_back(slot);
     }
     std::vector<TextReplacement> edits;
     for(auto& [block, members]: blocks) {
@@ -153,7 +205,10 @@ void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
             if(!lines) {
                 return;
             }
-            slots.push_back({*lines, rank->second, definition->getLexicalDeclContext()});
+            slots.push_back({*lines,
+                             rank->second,
+                             definition->getLexicalDeclContext(),
+                             enclosing_branch(unit, lines->begin)});
         }
         title = std::format("Reorder definitions of '{}' by declaration order", record->getName());
     } else {
@@ -182,7 +237,8 @@ void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
             if(auto lines = definition_lines(unit, function)) {
                 slots.push_back({*lines,
                                  unit.file_offset(canonical->getLocation()),
-                                 function->getLexicalDeclContext()});
+                                 function->getLexicalDeclContext(),
+                                 enclosing_branch(unit, lines->begin)});
             }
         });
         title = "Reorder definitions by declaration order";

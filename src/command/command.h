@@ -130,6 +130,11 @@ clang::driver::types::ID suffix_type(llvm::StringRef path);
 /// Whether clang types the file as a C or C++ header by its extension.
 bool is_header_path(llvm::StringRef path);
 
+/// Whether the extension marks a fragment only ever included into a
+/// translation unit — a `.def` list, a `.inc`, `.inl`, `.tpp` or `.ipp`
+/// body — which compiles only under its includer's context.
+bool is_context_header_path(llvm::StringRef path);
+
 /// The language dimension of a command for one input file: the clang
 /// language name ("c++", "cuda", ...) selected by the governing selector or
 /// derived from the file extension; the raw extension itself when no table

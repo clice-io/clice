@@ -12,6 +12,22 @@
 
 namespace clice::feature::action {
 
+namespace {
+
+/// Whether a derived class's constructor can leave `base` to its default
+/// constructor: one it declares must be neither deleted nor private,
+/// else the implicit one must exist.
+bool default_constructible(const clang::CXXRecordDecl* base) {
+    for(const auto* ctor: base->ctors()) {
+        if(ctor->isDefaultConstructor()) {
+            return !ctor->isDeleted() && ctor->getAccess() != clang::AS_private;
+        }
+    }
+    return !base->hasUserDeclaredConstructor();
+}
+
+}  // namespace
+
 void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
     auto unit = ctx.unit;
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
@@ -19,11 +35,11 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
        record->isLambda() || record->getName().empty()) {
         return;
     }
-    // A base without a default constructor would need its own
+    // A base without a usable default constructor would need its own
     // initializer; the constructor initializes the fields alone.
     for(const auto& base: record->bases()) {
         const auto* base_record = base.getType()->getAsCXXRecordDecl();
-        if(!base_record || !base_record->hasDefaultConstructor()) {
+        if(!base_record || !default_constructible(base_record)) {
             return;
         }
     }

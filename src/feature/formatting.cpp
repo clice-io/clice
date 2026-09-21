@@ -6,6 +6,7 @@
 #include "feature/feature.h"
 #include "support/logging.h"
 
+#include "llvm/Support/Error.h"
 #include "clang/Format/Format.h"
 
 namespace clice::feature {
@@ -20,7 +21,7 @@ auto file_style(llvm::StringRef file) -> std::expected<clang::format::FormatStyl
                                          clang::format::DefaultFallbackStyle,
                                          "");
     if(!style) {
-        return std::unexpected(std::format("{}", style.takeError()));
+        return std::unexpected(llvm::toString(style.takeError()));
     }
     return std::move(*style);
 }
@@ -36,7 +37,7 @@ auto format_content(llvm::StringRef file, llvm::StringRef content, tooling::Rang
     auto include_replacements = clang::format::sortIncludes(*style, content, ranges, file);
     auto changed = tooling::applyAllReplacements(content, include_replacements);
     if(!changed) {
-        return std::unexpected(std::format("{}", changed.takeError()));
+        return std::unexpected(llvm::toString(changed.takeError()));
     }
 
     return include_replacements.merge(clang::format::reformat(
@@ -108,14 +109,14 @@ auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<Tex
         auto error = replacements.add(
             tooling::Replacement(file, edit.range.begin, edit.range.length(), edit.text));
         if(error) {
-            LOG_WARN("Overlapping edits in {}: {}", file, error);
+            LOG_WARN("Overlapping edits in {}: {}", file, llvm::toString(std::move(error)));
             return edits;
         }
         ranges.emplace_back(edit.range.begin, edit.range.length());
     }
     auto changed = tooling::applyAllReplacements(content, replacements);
     if(!changed) {
-        LOG_WARN("Failed to apply edits of {}: {}", file, changed.takeError());
+        LOG_WARN("Failed to apply edits of {}: {}", file, llvm::toString(changed.takeError()));
         return edits;
     }
     auto formatted =

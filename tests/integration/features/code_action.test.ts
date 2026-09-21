@@ -4,6 +4,7 @@
 /// with a project index.
 
 import type * as proto from "vscode-languageserver-protocol";
+import { SETTLE_TIME, sleep } from "@clice/tools/client";
 import { applyTextEdits, editsFor } from "@clice/tools/client/edits";
 import { expect, test } from "../fixtures.ts";
 
@@ -77,7 +78,17 @@ test("definitions vetted and placed through the index", async ({ session }) => {
         .spawn(workspace)
         .initialize(workspace, { initializationOptions: { project: { enable_indexing: true } } });
     const [uri] = await client.openAndWait("main.cpp");
-    expect(await client.waitForIndex(uri, "b")).toBe(true);
+    // The open session already knows the declaration of b; the vetting
+    // needs the definition, which only other.cpp's indexing provides.
+    let indexed = false;
+    for (let i = 0; i < 60 && !indexed; i++) {
+        const symbols = (await client.workspaceSymbols("b")) ?? [];
+        indexed = symbols.some((symbol) => symbol.location.uri.endsWith("/other.cpp"));
+        if (!indexed) {
+            await sleep(SETTLE_TIME);
+        }
+    }
+    expect(indexed).toBe(true);
     const [header] = await client.openAndWait("widget.h");
 
     const actions = actionsOf(

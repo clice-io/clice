@@ -450,7 +450,8 @@ auto code_actions(CompilationUnitRef unit, LocalSourceRange selection) -> std::v
     std::vector<CodeAction> out;
     action::add_include(unit, selection, out);
 
-    bool main_is_header = is_header_path(unit.file_path(unit.main_file()));
+    auto path = unit.file_path(unit.main_file());
+    bool main_is_header = is_header_path(path) || is_context_header_path(path);
     SelectionTree::create_each(unit, selection, [&](SelectionTree tree) {
         auto before = out.size();
         action::enumerate(unit, tree, main_is_header, out);

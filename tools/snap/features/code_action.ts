@@ -1,4 +1,5 @@
 import type * as proto from "vscode-languageserver-protocol";
+import { SETTLE_TIME, sleep } from "../../client/client.ts";
 import { markerPoints, markerRanges } from "../annotation.ts";
 import {
     directiveLines,
@@ -118,14 +119,26 @@ export const codeAction: Feature = {
     async fromServer(client, uri, ctx) {
         // The index-backed actions (definitions vetted and placed in the
         // host, headers declaring a name) race the background index: an
-        // indexing fixture names the symbols that must have arrived.
+        // indexing fixture names the symbols that must have arrived from
+        // another file's rows — the requested file's own session already
+        // knows the declarations it sees, which is not the fact awaited.
         const indexed = directiveLines(ctx.stripped, "indexed");
         if (indexed.length > 0 && ctx.indexing !== true) {
             throw new Error("'// indexed:' lines require 'indexing: true' in the fixture meta");
         }
         for (const name of indexed) {
-            if (!(await client.waitForIndex(uri, name))) {
-                throw new Error(`symbol '${name}' never arrived from the background index`);
+            let elsewhere = false;
+            for (let i = 0; i < 60 && !elsewhere; i++) {
+                const symbols = (await client.workspaceSymbols(name)) ?? [];
+                elsewhere = symbols.some(
+                    (symbol) => symbol.name === name && symbol.location.uri !== uri,
+                );
+                if (!elsewhere) {
+                    await sleep(SETTLE_TIME);
+                }
+            }
+            if (!elsewhere) {
+                throw new Error(`symbol '${name}' never arrived from another file's index rows`);
             }
         }
         const map = new OffsetConverter(ctx.stripped);
