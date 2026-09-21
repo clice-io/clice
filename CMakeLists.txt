@@ -39,7 +39,9 @@ elseif(MINGW)
     # puts the C definitions into COMDATs as well and the pair merges, but
     # on the mingw target the C copy is a plain symbol and lld reports the
     # duplicate, whichever comes first. Both copies are the same code.
-    string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--gc-sections -Wl,--allow-multiple-definition")
+    # -static: the driver's -unwindlib=libunwind would otherwise pick the
+    # import library of libunwind.dll over libunwind.a.
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -static -Wl,--gc-sections -Wl,--allow-multiple-definition")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--gc-sections -Wl,--allow-multiple-definition")
 elseif(APPLE)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-dead_strip")
