@@ -10,16 +10,21 @@
 
 #include "feature/feature.h"
 #include "semantic/display.h"
+#include "semantic/resolver.h"
 #include "support/fuzzy_matcher.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/raw_ostream.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/Expr.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
+#include "clang/Sema/DeclSpec.h"
+#include "clang/Sema/HeuristicResolver.h"
 #include "clang/Sema/Sema.h"
+#include "clang/Sema/SemaCodeCompletion.h"
 
 namespace clice::feature {
 
@@ -291,12 +296,113 @@ public:
         return info;
     }
 
+    /// Sema resolves a dependent member base or scope with its own
+    /// heuristics, which stop at the primary template and a single typedef.
+    /// When pseudo-instantiation reaches a class Sema did not, run the
+    /// completion again against that class. Returns whether the nested run
+    /// produced the reply, which is then in `output`.
+    bool complete_resolved(clang::Sema& sema, clang::CodeCompletionContext& context) {
+        using Kind = clang::CodeCompletionContext::Kind;
+        auto kind = context.getKind();
+        auto& ast = sema.getASTContext();
+        auto* scope = sema.getCurScope();
+        auto loc = sema.getPreprocessor().getCodeCompletionLoc();
+        types::TemplateResolver resolver(ast);
+
+        auto same = [](const clang::Decl* lhs, const clang::Decl* rhs) {
+            return lhs && rhs && lhs->getCanonicalDecl() == rhs->getCanonicalDecl();
+        };
+
+        /// Sema's reply is replaced only when the nested run finds
+        /// something; otherwise `output` keeps what an earlier callback
+        /// left there.
+        auto run = [&](auto complete) {
+            std::vector<protocol::CompletionItem> previous;
+            previous.swap(output);
+            resolving = true;
+            complete();
+            resolving = false;
+            if(output.empty()) {
+                output.swap(previous);
+                return false;
+            }
+            return true;
+        };
+
+        if(kind == Kind::CCC_DotMemberAccess || kind == Kind::CCC_ArrowMemberAccess) {
+            /// For an arrow Sema reports the pointee: it only gets here once
+            /// it has unwrapped the pointer itself.
+            auto base = context.getBaseType();
+            if(base.isNull() || !base->isDependentType()) {
+                return false;
+            }
+            auto* record = resolver.resolve_record(base);
+            if(!record || same(record, clang::HeuristicResolver(ast).resolveTypeToTagDecl(base))) {
+                return false;
+            }
+
+            auto type = ast.getQualifiedType(ast.getCanonicalTagType(record), base.getQualifiers());
+            auto* object = new (ast) clang::OpaqueValueExpr(loc, type, clang::VK_LValue);
+            return run([&] {
+                sema.CodeCompletion().CodeCompleteMemberReferenceExpr(scope,
+                                                                      object,
+                                                                      /*OtherOpBase=*/nullptr,
+                                                                      loc,
+                                                                      /*IsArrow=*/false,
+                                                                      /*IsBaseExprStatement=*/false,
+                                                                      context.getPreferredType());
+            });
+        }
+
+        if(kind == Kind::CCC_Symbol) {
+            auto spec = context.getCXXScopeSpecifier();
+            if(!spec) {
+                return false;
+            }
+            auto NNS = (*spec)->getScopeRep();
+            if(NNS.getKind() != clang::NestedNameSpecifier::Kind::Type || !NNS.isDependent()) {
+                return false;
+            }
+            auto* record = resolver.resolve_record(clang::QualType(NNS.getAsType(), 0));
+            auto* entered = llvm::dyn_cast_or_null<clang::TagDecl>(
+                sema.computeDeclContext(**spec, /*EnteringContext=*/true));
+            if(!record || same(record, entered)) {
+                return false;
+            }
+
+            clang::CXXScopeSpec resolved;
+            resolved.MakeTrivial(
+                ast,
+                clang::NestedNameSpecifier(ast.getCanonicalTagType(record).getTypePtr()),
+                (*spec)->getRange());
+            return run([&] {
+                sema.CodeCompletion().CodeCompleteQualifiedId(scope,
+                                                              resolved,
+                                                              /*EnteringContext=*/false,
+                                                              context.isUsingDeclaration(),
+                                                              /*IsAddressOfOperand=*/false,
+                                                              /*IsInDeclarationContext=*/false,
+                                                              /*BaseType=*/{},
+                                                              context.getPreferredType());
+            });
+        }
+
+        return false;
+    }
+
     void ProcessCodeCompleteResults(clang::Sema& sema,
                                     clang::CodeCompletionContext context,
                                     clang::CodeCompletionResult* candidates,
                                     unsigned candidate_count) final {
-        if(context.getKind() == clang::CodeCompletionContext::CCC_Recovery ||
-           candidate_count == 0) {
+        if(context.getKind() == clang::CodeCompletionContext::CCC_Recovery) {
+            return;
+        }
+
+        if(!resolving && complete_resolved(sema, context)) {
+            return;
+        }
+
+        if(candidate_count == 0) {
             return;
         }
 
@@ -572,6 +678,7 @@ private:
     std::vector<protocol::CompletionItem>& output;
     const CodeCompletionOptions& options;
     clang::CodeCompletionTUInfo info;
+    bool resolving = false;
 };
 
 }  // namespace

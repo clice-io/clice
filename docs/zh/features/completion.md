@@ -252,6 +252,56 @@ tests/snap/code_completion/member_access/05_inherited_members.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**依赖成员类型**
+
+若变量的类型是某个依赖模板特化的成员别名，补全该别名所代表的类的成员
+
+解析别名时会代入代码中写出的模板实参，因此 `Vec<Vec<T>>::value_type` 会列出 `Vec<T>` 的成员，而不是什么都列不出来。
+
+```snap
+tests/snap/code_completion/member_access/06_dependent_member_type.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**偏特化的成员**
+
+依赖模板特化匹配到某个偏特化时，补全的成员来自该偏特化，而不是主模板
+
+```snap
+tests/snap/code_completion/member_access/07_partial_specialization_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**依赖别名链**
+
+别名自身指向的又是依赖成员类型时，解析会走完链条上的每一环
+
+```snap
+tests/snap/code_completion/member_access/08_dependent_alias_chain.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**所指依赖类型的成员**
+
+对指向依赖成员类型的指针使用 `->` 时，补全其所指对象的成员
+
+```snap
+tests/snap/code_completion/member_access/09_dependent_pointee.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] `->`——指针成员访问（带有 Clang 修正）
@@ -480,6 +530,18 @@ tests/snap/code_completion/symbols/10_local_shadow.cpp
 
 ```snap
 tests/snap/code_completion/symbols/11_using_declaration.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**依赖作用域限定符**
+
+`::` 位于依赖成员类型之后时列出该类型的成员，位于依赖模板特化之后时则列出与之匹配的偏特化的成员
+
+```snap
+tests/snap/code_completion/symbols/12_dependent_scope.cpp
 ```
 
 <!-- END CAPABILITY -->

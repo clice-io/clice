@@ -24,6 +24,12 @@ public:
 
     clang::QualType resolve(clang::QualType type);
 
+    /// The class definition `type` denotes once resolved. A dependent
+    /// specialization yields the pattern real instantiation would use: the
+    /// matching partial specialization, else the primary template. Null
+    /// when the type does not resolve to a class.
+    clang::CXXRecordDecl* resolve_record(clang::QualType type);
+
     using lookup_result = clang::DeclContext::lookup_result;
 
     /// Look up the name in the given nested name specifier.

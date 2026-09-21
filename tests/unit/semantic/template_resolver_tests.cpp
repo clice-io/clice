@@ -2880,6 +2880,72 @@ TEST_CASE(ArrowWithoutPointer) {
     EXPECT_TRUE(candidates.empty());
 }
 
+TEST_CASE(RecordOfMemberAlias) {
+    /// The alias resolves with the written arguments substituted, so the
+    /// record is the class the alias stands for, not the bare parameter.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Vec {
+            using value_type = T;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename Vec<Vec<X>>::value_type;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto* record = unit->resolver().resolve_record(finder.input);
+    ASSERT_TRUE(record != nullptr);
+    EXPECT_TRUE(record->getName() == "Vec");
+    EXPECT_TRUE(record->getDescribedClassTemplate() != nullptr);
+}
+
+TEST_CASE(RecordOfPartialPattern) {
+    /// A dependent specialization matching a partial specialization yields
+    /// that partial's pattern, as real instantiation would.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Traits {};
+
+        template <typename T>
+        struct Traits<T*> {};
+
+        template <typename X>
+        struct test {
+            using input = Traits<X*>;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto* record = unit->resolver().resolve_record(finder.input);
+    ASSERT_TRUE(record != nullptr);
+    EXPECT_TRUE(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record));
+}
+
+TEST_CASE(RecordOfParameter) {
+    /// A bare template parameter names no class.
+    add_main("main.cpp", R"code(
+        template <typename X>
+        struct test {
+            using input = X;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    EXPECT_TRUE(unit->resolver().resolve_record(finder.input) == nullptr);
+}
+
 TEST_CASE(MixedPackCandidate) {
     /// A type pack cannot cover `mixed`'s non-type slot, so the primary
     /// applies even though one type argument would satisfy the defaults.

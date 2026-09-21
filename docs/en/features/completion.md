@@ -263,6 +263,62 @@ tests/snap/code_completion/member_access/05_inherited_members.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent member type**
+
+A variable whose type is a member alias of a dependent specialization
+completes the members of the class the alias stands for
+
+The alias is resolved with the written template arguments substituted,
+so `Vec<Vec<T>>::value_type` lists the members of `Vec<T>` rather than
+nothing at all.
+
+```snap
+tests/snap/code_completion/member_access/06_dependent_member_type.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Partial specialization members**
+
+A dependent specialization that matches a partial specialization
+completes through that specialization, not the primary template
+
+```snap
+tests/snap/code_completion/member_access/07_partial_specialization_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent alias chain**
+
+An alias that itself names a dependent member type resolves through
+every link of the chain
+
+```snap
+tests/snap/code_completion/member_access/08_dependent_alias_chain.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent pointee members**
+
+`->` on a pointer to a dependent member type completes the pointee's
+members
+
+```snap
+tests/snap/code_completion/member_access/09_dependent_pointee.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] `->` — pointer member access (with Clang fixup)
@@ -498,6 +554,20 @@ A name pulled in with `using` completes unqualified
 
 ```snap
 tests/snap/code_completion/symbols/11_using_declaration.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent scope qualifier**
+
+`::` after a dependent member type lists that type's members, and after
+a dependent specialization the members of its matching partial
+specialization
+
+```snap
+tests/snap/code_completion/symbols/12_dependent_scope.cpp
 ```
 
 <!-- END CAPABILITY -->
