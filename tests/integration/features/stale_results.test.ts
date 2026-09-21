@@ -50,6 +50,7 @@ test("edit mid-flight answers ContentModified", async ({ session }) => {
         ["textDocument/foldingRange", { textDocument: td }],
         ["textDocument/documentSymbol", { textDocument: td }],
         ["textDocument/documentLink", { textDocument: td }],
+        ["textDocument/diagnostic", { textDocument: td }],
         ["textDocument/definition", { textDocument: td, position: { line: 0, character: 4 } }],
     ];
     let version = 0;

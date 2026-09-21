@@ -7,7 +7,7 @@
 - [x] Diagnostic ranges with source locations
 - [x] Related information (notes attached to diagnostics)
 - [x] File URI conversion for cross-file diagnostics
-- [ ] Pull diagnostics model (`textDocument/diagnostic`) ([clangd#2108](https://github.com/clangd/clangd/issues/2108))
+- [x] Pull diagnostics model (`textDocument/diagnostic`)
 - [ ] Report all missing `#include` errors, not just the first — the parser stops on the first fatal error
 
   ```cpp

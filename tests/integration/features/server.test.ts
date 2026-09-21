@@ -45,6 +45,7 @@ test("capabilities", ({ client }) => {
     ).toBe(true);
     expect(caps.documentFormattingProvider).toBe(true);
     expect(caps.documentRangeFormattingProvider).toBe(true);
+    expect(capabilityEnabled(caps.diagnosticProvider)).toBe(true);
     expect(caps.semanticTokensProvider).toBeDefined();
 });
 
@@ -106,6 +107,26 @@ test("incremental change", async ({ client }) => {
         await sleep(EDIT_INTERVAL);
     }
     await sleep(SETTLE_TIME * 2);
+    client.close(uri);
+});
+
+test("document diagnostics pull", async ({ client }) => {
+    const [uri] = client.open("main.cpp", 0, {
+        text: "int main() { UnknownType value{}; return 0; }\n",
+    });
+    const report = await client.sendRequest(proto.DocumentDiagnosticRequest.type, {
+        textDocument: { uri },
+    });
+    expect(report.kind).toBe(proto.DocumentDiagnosticReportKind.Full);
+    if (report.kind !== proto.DocumentDiagnosticReportKind.Full) {
+        throw new Error("expected full document diagnostic report");
+    }
+    expect(
+        report.items.some(
+            (d) => typeof d.message === "string" && d.message.includes("UnknownType"),
+        ),
+    ).toBe(true);
+    expect(report.items.some((d) => d.source === "clang")).toBe(true);
     client.close(uri);
 });
 

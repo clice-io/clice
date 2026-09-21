@@ -7,7 +7,7 @@
 - [x] 带源位置的诊断范围
 - [x] 相关信息（附加到诊断的备注）
 - [x] 跨文件诊断的文件 URI 转换
-- [ ] 拉取式诊断模型（`textDocument/diagnostic`）（[clangd#2108](https://github.com/clangd/clangd/issues/2108)）
+- [x] 拉取式诊断模型（`textDocument/diagnostic`）
 - [ ] 报告所有因缺少 `#include` 而产生的错误，而不只是第一个——解析器遇到首个致命错误后便会停止
 
   ```cpp

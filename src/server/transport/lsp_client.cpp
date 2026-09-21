@@ -177,6 +177,11 @@ void LSPClient::register_lifecycle() {
         caps.workspace_symbol_provider = true;
         caps.document_formatting_provider = true;
         caps.document_range_formatting_provider = true;
+        caps.diagnostic_provider = protocol::DiagnosticOptions{
+            .work_done_progress = false,
+            .inter_file_dependencies = true,
+            .workspace_diagnostics = false,
+        };
 
         protocol::SemanticTokensOptions sem_opts;
         {
@@ -405,6 +410,16 @@ void LSPClient::register_language_features() {
             if(!session)
                 co_return kota::outcome_error(document_not_open());
             co_return co_await srv.features.folding_range(session, ctx.cancellation);
+        });
+
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentDiagnosticParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto& srv = this->server;
+            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            if(!session)
+                co_return kota::outcome_error(document_not_open());
+            co_return co_await srv.features.diagnostics(session);
         });
 
     peer.on_request(

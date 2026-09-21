@@ -71,6 +71,12 @@ public:
         document_links(std::shared_ptr<Session> session,
                        std::optional<kota::cancellation_token> token = {});
 
+    /// Pull diagnostics for the currently synced document. The request joins
+    /// the document's AST compile, then projects the same materialized
+    /// CompileOutput used by publishDiagnostics. A superseded buffer answers
+    /// ContentModified instead of leaking diagnostics for stale text.
+    RawResult diagnostics(std::shared_ptr<Session> session);
+
     /// Go-to-definition, assembled across all providers: preamble directive
     /// targets, the index, and the worker's AST, with an index/directive
     /// retry after the dispatch's compile refreshes a dirty session.
