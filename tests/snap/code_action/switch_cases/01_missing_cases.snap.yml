@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: switch_cases/01_missing_cases.cpp
+---
+sw:
+- [refactor.rewrite] Add 2 missing enum cases to switch
+  15:0-15:0 => "    case Color::Green:\n    case Color::Blue:\n        break;\n"

@@ -1,0 +1,11 @@
+---
+created_at: 2026-09-21
+input_file: define/07_free_function.cpp
+---
+global:
+- [refactor.rewrite] Define 'compute' out of line
+  15:0-15:0 => "\nint compute(int x) {\n}\n"
+
+load:
+- [refactor.rewrite] Define 'load' out of line
+  12:0-12:0 => "\nConfig load(const char* path) {\n}\n\n"

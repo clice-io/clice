@@ -350,6 +350,17 @@ void StatefulWorker::register_handlers() {
             [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
     });
 
+    // === CodeAction ===
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const worker::CodeActionParams& params) -> RequestResult<worker::CodeActionParams> {
+            co_return co_await with_ast_or(
+                "CodeAction",
+                params.path,
+                std::vector<feature::CodeAction>{},
+                [&](DocumentEntry& doc) { return feature::code_actions(doc.unit, params.range); });
+        });
+
     // === CancelCompile ===
     peer.on_notification([this](const worker::CancelCompileParams& params) {
         LOG_DEBUG("CancelCompile notification: path={}", params.path);
@@ -421,9 +432,6 @@ void StatefulWorker::register_handlers() {
                     return to_raw(
                         feature::document_symbols(doc.unit, feature::PositionEncoding::UTF16));
                 });
-            case K::CodeAction:
-                // TODO: Implement code actions
-                co_return kota::codec::RawValue{"[]"};
         }
         co_return kota::codec::RawValue{"null"};
     });

@@ -1,0 +1,15 @@
+---
+created_at: 2026-09-21
+input_file: define/03_qualified_return_type.cpp
+---
+begin:
+- [refactor.rewrite] Define 'begin' inline
+  16:20-16:21 => " {}"
+- [refactor.rewrite] Define 'Shape::begin' out of line
+  19:0-19:0 => "\nShape::Iterator Shape::begin() {\n}\n\n"
+
+origin:
+- [refactor.rewrite] Define 'origin' inline
+  17:52-17:53 => " {}"
+- [refactor.rewrite] Define 'Shape::origin' out of line
+  19:0-19:0 => "\nconst geometry::Point& Shape::origin(Iterator it) const {\n}\n\n"

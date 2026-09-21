@@ -3,6 +3,7 @@
 /// ask for or fails loudly — never a silently skipped feature.
 
 import type { AnnotatedSource } from "./annotation.ts";
+import { codeAction } from "./features/code_action.ts";
 import { codeCompletion } from "./features/code_completion.ts";
 import { content } from "./features/content.ts";
 import { documentLinks } from "./features/document_links.ts";
@@ -18,6 +19,7 @@ import { workspaceSymbol } from "./features/workspace_symbol.ts";
 import type { Feature, FeatureShape } from "./render.ts";
 
 const FEATURES: Record<string, Feature> = {
+    code_action: codeAction,
     code_completion: codeCompletion,
     content,
     document_links: documentLinks,
@@ -52,6 +54,9 @@ export function participates(
     const hasPoints = source.offsets.size > 0 || source.namelessOffsets.length > 0;
     if (shape === "point" || shape === "completion") {
         return hasPoints;
+    }
+    if (shape === "selection") {
+        return hasPoints || source.ranges.size > 0;
     }
     return entry || hasPoints || source.ranges.size > 0;
 }

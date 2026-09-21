@@ -1,0 +1,5 @@
+# Snapshot fixture layout is part of the tested input (line breaks and
+# indentation shape the generated text), so formatting is disabled here;
+# the actions' own clang-format pass finds this file too and stays off.
+DisableFormat: true
+SortIncludes: false

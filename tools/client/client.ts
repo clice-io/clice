@@ -436,7 +436,11 @@ export class CliceClient {
         const wsUri = URI.file(ws.root).toString();
         const params: proto.InitializeParams = {
             processId: process.pid,
-            capabilities: options.capabilities ?? {},
+            // Versioned workspace edits, like every editor client: code
+            // action replies then carry the buffer version they apply to.
+            capabilities: options.capabilities ?? {
+                workspace: { workspaceEdit: { documentChanges: true } },
+            },
             rootUri: wsUri,
             workspaceFolders: [{ uri: wsUri, name: "test" }],
             initializationOptions,

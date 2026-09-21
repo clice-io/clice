@@ -137,6 +137,7 @@ function(setup_llvm LLVM_VERSION)
         ${LLVM_RESOLVED}
         clangAST clangASTMatchers clangBasic clangDriver
         clangFormat clangFrontend clangLex clangOptions clangSema clangSerialization
+        clangToolingInclusionsStdlib
         clangTidy clangTidyUtils
         clangTidyAbseilModule clangTidyAlteraModule clangTidyAndroidModule
         clangTidyBoostModule clangTidyBugproneModule clangTidyCERTModule

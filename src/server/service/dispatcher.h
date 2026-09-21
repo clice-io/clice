@@ -69,6 +69,13 @@ public:
     kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         document_links(const Ticket& ticket, std::optional<kota::cancellation_token> token = {});
 
+    /// The code actions on a range of the buffer, from the stateful worker
+    /// holding the AST; index requests come back unresolved.
+    kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
+        code_actions(const Ticket& ticket,
+                     const protocol::Range& range,
+                     std::optional<kota::cancellation_token> token = {});
+
     /// The interactive stateless builds: the buffer and its compile inputs
     /// go to a stateless worker, which compiles a buffer state the shared
     /// AST round may not have seen yet.

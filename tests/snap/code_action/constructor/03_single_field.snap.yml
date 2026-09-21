@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: constructor/03_single_field.cpp
+---
+handle:
+- [refactor.rewrite] Generate a memberwise constructor for 'Handle'
+  8:0-8:0 => "public:\n    explicit Handle(int fd) : fd(fd) {}\n"

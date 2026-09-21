@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: implement/02_inheritance_chain.cpp
+---
+leaf:
+- [refactor.rewrite] Implement pure virtual methods of 'Leaf'
+  18:0-18:0 => "public:\n    int a() override;\n"

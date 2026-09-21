@@ -1,0 +1,21 @@
+---
+created_at: 2026-09-21
+input_file: define/02_declaration_specifiers.cpp
+---
+draw:
+- [refactor.rewrite] Define 'draw' inline
+  13:24-13:25 => " {}"
+- [refactor.rewrite] Define 'Derived::draw' out of line
+  17:0-17:0 => "\nvoid Derived::draw() {\n}\n"
+
+make:
+- [refactor.rewrite] Define 'make' inline
+  14:34-14:35 => " {}"
+- [refactor.rewrite] Define 'Derived::make' out of line
+  17:0-17:0 => "\nDerived Derived::make() noexcept {\n}\n"
+
+size:
+- [refactor.rewrite] Define 'size' inline
+  15:30-15:31 => " {}"
+- [refactor.rewrite] Define 'Derived::size' out of line
+  17:0-17:0 => "\nconstexpr int Derived::size() const {\n}\n"

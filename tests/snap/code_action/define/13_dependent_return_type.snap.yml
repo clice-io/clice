@@ -1,0 +1,9 @@
+---
+created_at: 2026-09-21
+input_file: define/13_dependent_return_type.cpp
+---
+front:
+- [refactor.rewrite] Define 'front' inline
+  9:28-9:29 => " {}"
+- [refactor.rewrite] Define 'Container<T>::front' out of line
+  11:0-11:0 => "\ntemplate <typename T>\nvalue_type Container<T>::front() const {\n}\n"

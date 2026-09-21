@@ -246,6 +246,57 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     co_return std::move(result);
 }
 
+kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
+    Dispatcher::code_actions(const Ticket& ticket,
+                             const protocol::Range& range,
+                             std::optional<kota::cancellation_token> token) {
+    auto& session = *ticket.session;
+    auto path_id = session.path_id;
+    auto path = std::string(workspace.file_table.resolve(path_id));
+    auto evidence = evidence_kind(EvidenceKind::CodeAction);
+
+    ScopedTimer timer;
+    if(!co_await ast.ensure_compiled(ticket.session)) {
+        if(!ticket.fresh()) {
+            co_return kota::outcome_error(content_modified());
+        }
+        co_return std::vector<feature::CodeAction>{};
+    }
+    if(!ticket.fresh()) {
+        co_return kota::outcome_error(content_modified());
+    }
+    auto wait_ms = timer.ms_f();
+
+    QuarantineGate gate(session.quarantine, evidence, QuarantineGate::Scope::Kind);
+    if(gate.refused()) {
+        co_return kota::outcome_error(quarantined());
+    }
+    gate.arm();
+    auto map = session.line_map();
+    LocalSourceRange selection{clamped_offset(map, range.start), clamped_offset(map, range.end)};
+    if(selection.begin > selection.end) {
+        co_return kota::outcome_error(
+            kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
+                             "Range start is after its end"});
+    }
+    auto result = co_await pool.send_stateful(path_id.raw,
+                                              worker::CodeActionParams{path, selection},
+                                              {.token = std::move(token)},
+                                              gate.suspect());
+    if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
+        session.quarantine.on_kind_crash(evidence, worker::death_of(result.error()));
+    }
+    result = land(ticket, evidence, "CodeAction", std::move(result));
+    if(result.has_value()) {
+        LOG_PERF("request",
+                 "kind=CodeAction file={} wait_ms={:.2f} total_ms={:.2f}",
+                 path,
+                 wait_ms,
+                 timer.ms_f());
+    }
+    co_return std::move(result);
+}
+
 template <typename Params>
 Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
                                               llvm::StringRef label,

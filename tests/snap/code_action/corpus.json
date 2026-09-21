@@ -1,0 +1,4 @@
+{
+  "notes": "Freestanding, -undef and -nostdinc keep host stdlib headers out: every type an action spells is declared by the fixture itself, so the rendered text stays identical across hosts. The standard-library include mapping is a static table and needs no headers.",
+  "flags": ["-I${corpus}", "-std=c++23", "-ffreestanding", "-undef", "-nostdinc"]
+}
