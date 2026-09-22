@@ -1,0 +1,15 @@
+---
+created_at: 2026-09-21
+input_file: define/05_member_template.cpp
+---
+small:
+- [refactor.rewrite] Define 'small' inline
+  19:23-19:24 => " {}"
+- [refactor.rewrite] Define 'Visitor<T>::small' out of line
+  21:0-21:0 => "\ntemplate <typename T>\ntemplate <Small V>\n    requires(sizeof(V) > 1)\nvoid Visitor<T>::small(V value) {\n}\n"
+
+visit:
+- [refactor.rewrite] Define 'visit' inline
+  15:23-15:24 => " {}"
+- [refactor.rewrite] Define 'Visitor<T>::visit' out of line
+  21:0-21:0 => "\ntemplate <typename T>\ntemplate <typename U>\nvoid Visitor<T>::visit(U value) {\n}\n"

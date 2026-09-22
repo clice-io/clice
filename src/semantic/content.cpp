@@ -12,6 +12,7 @@
 #include "semantic/hasher.h"
 #include "semantic/semantics.h"
 #include "semantic/types.h"
+#include "support/text.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
@@ -171,23 +172,11 @@ void sort_unique(Container& values) {
     values.erase(duplicates.begin(), duplicates.end());
 }
 
-std::uint32_t line_begin(llvm::StringRef content, std::uint32_t offset) {
-    auto newline = content.rfind('\n', offset);
-    return newline == llvm::StringRef::npos ? 0 : static_cast<std::uint32_t>(newline + 1);
-}
-
 /// The start of the line before the one containing `offset`: where a
 /// `// NOLINTNEXTLINE` for it would sit.
 std::uint32_t previous_line_begin(llvm::StringRef content, std::uint32_t offset) {
     auto line = line_begin(content, offset);
     return line > 0 ? line_begin(content, line - 1) : 0;
-}
-
-/// One past the newline ending the line containing `offset`, or the file end.
-std::uint32_t line_end(llvm::StringRef content, std::uint32_t offset) {
-    auto newline = content.find('\n', offset);
-    return newline == llvm::StringRef::npos ? static_cast<std::uint32_t>(content.size())
-                                            : static_cast<std::uint32_t>(newline + 1);
 }
 
 /// A unit's spelled span before merging and partitioning: where its

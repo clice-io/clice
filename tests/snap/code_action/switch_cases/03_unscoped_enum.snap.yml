@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: switch_cases/03_unscoped_enum.cpp
+---
+sw:
+- [refactor.rewrite] Add 2 missing enum cases to switch
+  14:0-14:0 => "    case io::Write:\n    case io::Append:\n        break;\n"

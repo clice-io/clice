@@ -85,9 +85,9 @@ public:
     /// Whole-document features and hover, routed by readiness (see
     /// pick_route): the AST answers when current, the index projections
     /// answer while it is not, and a session the policy keeps un-compiled
-    /// answers with its pinned degraded surface (empty inlay hints and
-    /// code actions). Each takes the request's cancellation token and
-    /// forwards it to the worker sends (see Dispatcher::query).
+    /// answers with its pinned degraded surface (empty inlay hints). Each
+    /// takes the request's cancellation token and forwards it to the
+    /// worker sends (see Dispatcher::query).
     RawResult hover(std::shared_ptr<Session> session,
                     const protocol::Position& position,
                     std::optional<kota::cancellation_token> token = {});
@@ -100,8 +100,18 @@ public:
                             std::optional<kota::cancellation_token> token = {});
     RawResult document_symbol(std::shared_ptr<Session> session,
                               std::optional<kota::cancellation_token> token = {});
-    RawResult code_action(std::shared_ptr<Session> session,
-                          std::optional<kota::cancellation_token> token = {});
+
+    /// Code actions on a range of the buffer: the worker computes them to
+    /// completion against its AST, and the index requests they carry
+    /// (definitions to vet and place in the host source, headers
+    /// declaring a name) are resolved here, at the reply edge. Every edit
+    /// is versioned against the buffer it was computed for. `only` is the
+    /// client's kind filter (LSP CodeActionContext.only); empty keeps all.
+    kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
+        code_action(std::shared_ptr<Session> session,
+                    const protocol::Range& range,
+                    llvm::ArrayRef<protocol::CodeActionKind> only,
+                    std::optional<kota::cancellation_token> token = {});
 
     /// Code completion. Serves preamble contexts (include/import) locally from
     /// the include graph and module map; delegates ordinary code completion to
@@ -240,6 +250,11 @@ private:
     /// — see feature::index_hover.
     std::optional<feature::HoverInfo> index_hover_card(const Session& session,
                                                        const protocol::Position& position);
+
+    /// The host source of a header session: the user's persisted choice,
+    /// else the resolved header context, else its best-ranked includer;
+    /// invalid for a file without any.
+    Fid host_of(Fid path_id) const;
 
     /// The preamble include links of a session's active PCH; empty when
     /// there is no PCH or its preamble no longer matches the buffer.

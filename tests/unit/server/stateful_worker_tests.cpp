@@ -307,14 +307,14 @@ TEST_CASE(CodeActionReturnsEmpty) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::CodeAction;
+        worker::CodeActionParams params;
         params.path = "/tmp/test.cpp";
+        params.range = {0, 0};
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
-        // No document: the shared with_ast default is "null".
-        EXPECT_EQ(result.value().data, std::string("[]"));
+        // No document: the typed request's missing value is an empty list.
+        EXPECT_TRUE(result.value().empty());
         test_done = true;
     });
 
@@ -478,9 +478,9 @@ TEST_CASE(MultipleSequentialRequests) {
         auto r1 = co_await w.peer->send_request(hp);
         EXPECT_TRUE(r1.has_value());
 
-        worker::QueryParams cap;
-        cap.kind = worker::QueryKind::CodeAction;
+        worker::CodeActionParams cap;
         cap.path = src;
+        cap.range = {4, 4};
         auto r2 = co_await w.peer->send_request(cap);
         EXPECT_TRUE(r2.has_value());
 

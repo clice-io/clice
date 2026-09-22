@@ -1,8 +1,11 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <variant>
 #include <vector>
 
 #include "compile/compilation.h"
@@ -461,6 +464,90 @@ auto document_format(llvm::StringRef file,
                      std::optional<LocalSourceRange> range,
                      PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::TextEdit>;
+
+/// One replacement of the main file's text, in byte offsets of the text
+/// the action was computed against.
+struct TextReplacement {
+    LocalSourceRange range;
+    std::string text;
+};
+
+/// The kinds the actions produce: the advertised capability, and what a
+/// request's `only` filter is matched against.
+constexpr inline std::array<std::string_view, 3> code_action_kinds = {
+    protocol::CodeActionKind::quick_fix,
+    protocol::CodeActionKind::refactor_inline,
+    protocol::CodeActionKind::refactor_rewrite,
+};
+
+/// One definition the index vets: dropped when any source knows a
+/// definition of its symbol — this TU proved nothing defines it here,
+/// another TU may.
+struct DefinitionPiece {
+    std::uint64_t entity = 0;
+    std::string text;
+};
+
+/// Definitions to insert into the main file once the index vetted them:
+/// the surviving pieces joined by blank lines replace `range`, wrapped in
+/// `before` and `after`, formatted by whoever assembles them.
+struct DefineRequest {
+    LocalSourceRange range;
+    std::string before;
+    std::string after;
+    std::vector<DefinitionPiece> pieces;
+};
+
+/// Definitions to insert into the file's host source once the index
+/// vetted them: after the definitions of `container`'s members there, at
+/// its end when it has none (a container of 0 goes to the end outright).
+/// The texts are fully qualified, valid at namespace scope anywhere in
+/// the host.
+struct DefineInHostRequest {
+    std::uint64_t container = 0;
+    std::vector<DefinitionPiece> pieces;
+};
+
+/// One action per header declaring `name` under `scope` ("std::" style,
+/// empty for an unqualified name), each inserting its include directive
+/// at `offset` of the main file.
+struct IncludeRequest {
+    std::string scope;
+    std::string name;
+    std::uint32_t offset = 0;
+};
+
+/// What only the project index can settle: resolved by the master at the
+/// reply edge; clice inspect resolves it as an empty index would.
+using IndexRequest = std::variant<DefineRequest, DefineInHostRequest, IncludeRequest>;
+
+struct CodeAction {
+    std::string title;
+    protocol::CodeActionKind kind;
+    std::vector<TextReplacement> edits;
+    std::optional<IndexRequest> index;
+};
+
+/// The code actions available on a selection of the main file. Every
+/// action is computed to completion against this AST: single-TU actions
+/// carry their edits, the ones needing the index carry their request.
+auto code_actions(CompilationUnitRef unit, LocalSourceRange selection) -> std::vector<CodeAction>;
+
+/// The pieces the index keeps, joined by blank lines; nullopt when none
+/// survives.
+auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
+                          llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
+    -> std::optional<std::string>;
+
+/// Reformat the lines `edits` touch with the file's clang-format style,
+/// folding the formatting back into replacements of the original text.
+/// A style that disables formatting returns the edits unchanged.
+auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<TextReplacement> edits)
+    -> std::vector<TextReplacement>;
+
+/// `text` reformatted as a standalone snippet with the style that applies
+/// to `file`.
+auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
 
 /// Index projections: whole-document features computed from index rows plus
 /// the document text, serving open files that have no AST yet (see

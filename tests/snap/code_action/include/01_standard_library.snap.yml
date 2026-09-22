@@ -1,0 +1,11 @@
+---
+created_at: 2026-09-21
+input_file: include/01_standard_library.cpp
+---
+printf:
+- [quickfix] Add #include <cstdio>
+  12:0-12:0 => "#include <cstdio>\n"
+
+vector:
+- [quickfix] Add #include <vector>
+  12:0-12:0 => "#include <vector>\n"

@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: switch_cases/02_before_default.cpp
+---
+inside:
+- [refactor.rewrite] Add 2 missing enum cases to switch
+  14:0-14:0 => "    case Level::Mid:\n    case Level::High:\n"

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <format>
+#include <map>
 #include <string>
 #include <type_traits>
 #include <variant>
@@ -91,6 +92,29 @@ void LSPClient::forward_notify_messages() {
     notify_cursor = server.notify_seq;
 }
 
+/// Fold versioned document changes into the plain `changes` map for a
+/// client without documentChanges support.
+static void unversion(protocol::WorkspaceEdit& edit) {
+    if(!edit.document_changes) {
+        return;
+    }
+    std::map<protocol::DocumentUri, std::vector<protocol::TextEdit>> changes;
+    for(auto& change: *edit.document_changes) {
+        auto* document = std::get_if<protocol::TextDocumentEdit>(&change);
+        if(!document) {
+            continue;
+        }
+        auto& edits = changes[document->text_document.uri];
+        for(auto& text_edit: document->edits) {
+            if(auto* plain = std::get_if<protocol::TextEdit>(&text_edit)) {
+                edits.push_back(std::move(*plain));
+            }
+        }
+    }
+    edit.changes = std::move(changes);
+    edit.document_changes.reset();
+}
+
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = uri_to_path(uri);
     auto path_id = this->server.workspace.file_table.intern(path);
@@ -125,6 +149,8 @@ void LSPClient::register_lifecycle() {
                 ws_caps.inlay_hint.has_value() && ws_caps.inlay_hint->refresh_support;
             folding_range_refresh =
                 ws_caps.folding_range.has_value() && ws_caps.folding_range->refresh_support;
+            versioned_edits =
+                ws_caps.workspace_edit.has_value() && ws_caps.workspace_edit->document_changes;
         }
 
         if(init.initialization_options.has_value()) {
@@ -177,6 +203,11 @@ void LSPClient::register_lifecycle() {
         caps.workspace_symbol_provider = true;
         caps.document_formatting_provider = true;
         caps.document_range_formatting_provider = true;
+        caps.code_action_provider = protocol::CodeActionOptions{
+            .code_action_kinds =
+                std::vector<protocol::CodeActionKind>(feature::code_action_kinds.begin(),
+                                                      feature::code_action_kinds.end()),
+        };
 
         protocol::SemanticTokensOptions sem_opts;
         {
@@ -436,7 +467,19 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.code_action(session, ctx.cancellation);
+            auto actions = co_await srv.features.code_action(
+                session,
+                params.range,
+                params.context.only.value_or(std::vector<protocol::CodeActionKind>{}),
+                ctx.cancellation);
+            if(!actions.has_value())
+                co_return kota::outcome_error(std::move(actions.error()));
+            if(!versioned_edits) {
+                for(auto& action: actions.value()) {
+                    unversion(*action.edit);
+                }
+            }
+            co_return to_raw(actions.value());
         });
 
     peer.on_request(

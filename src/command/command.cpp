@@ -33,6 +33,17 @@ clang::driver::types::ID suffix_type(llvm::StringRef path) {
     return ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
 }
 
+bool is_header_path(llvm::StringRef path) {
+    namespace types = clang::driver::types;
+    auto type = suffix_type(path);
+    return type == types::TY_CHeader || type == types::TY_CXXHeader;
+}
+
+bool is_context_header_path(llvm::StringRef path) {
+    return path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
+           path.ends_with(".tpp") || path.ends_with(".ipp");
+}
+
 namespace {
 
 namespace ranges = std::ranges;

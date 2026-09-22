@@ -79,8 +79,7 @@ static Candidate pick_pinned_config(Workspace& workspace,
 }
 
 HeaderMode ContextResolver::header_mode(llvm::StringRef path, Fid path_id) const {
-    if(path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
-       path.ends_with(".tpp") || path.ends_with(".ipp")) {
+    if(is_context_header_path(path)) {
         return HeaderMode::NeedsContext;
     }
     if(auto it = header_verdicts.find(path_id); it != header_verdicts.end()) {

@@ -92,7 +92,6 @@ enum class QueryKind : uint8_t {
     InlayHints,
     FoldingRange,
     DocumentSymbol,
-    CodeAction,
 };
 
 /// Unified parameters for all stateful AST queries.
@@ -332,6 +331,14 @@ struct DocumentLinkParams {
     std::string path;
 };
 
+/// Request the code actions of an open file's AST on a byte range of its
+/// text: fully computed against the worker's AST, index requests included
+/// (see feature::CodeAction).
+struct CodeActionParams {
+    std::string path;
+    LocalSourceRange range;
+};
+
 struct EvictParams {
     std::string path;
 };
@@ -384,6 +391,12 @@ template <>
 struct RequestTraits<clice::worker::DocumentLinkParams> {
     using Result = std::vector<clice::feature::DocumentLink>;
     constexpr inline static std::string_view method = "clice/worker/documentLink";
+};
+
+template <>
+struct RequestTraits<clice::worker::CodeActionParams> {
+    using Result = std::vector<clice::feature::CodeAction>;
+    constexpr inline static std::string_view method = "clice/worker/codeAction";
 };
 
 template <>

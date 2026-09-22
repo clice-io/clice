@@ -1,0 +1,15 @@
+---
+created_at: 2026-09-21
+input_file: macro/01_expand_macro.cpp
+---
+argument:
+- [refactor.inline] Expand macro 'SQUARE'
+  14:11-14:24 => "((n + 1) * (n + 1))"
+
+name:
+- [refactor.inline] Expand macro 'SQUARE'
+  14:11-14:24 => "((n + 1) * (n + 1))"
+
+object:
+- [refactor.inline] Expand macro 'LIMIT'
+  14:27-14:32 => "42"

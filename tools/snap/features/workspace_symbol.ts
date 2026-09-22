@@ -1,5 +1,5 @@
 import * as proto from "vscode-languageserver-protocol";
-import { enumName, fmtRange, type Feature } from "../render.ts";
+import { directiveLines, enumName, fmtRange, type Feature } from "../render.ts";
 import { normalizeFileUri, yamlStr } from "../snapshot.ts";
 
 /// workspace/symbol snapshots. The request is query-driven, not
@@ -32,26 +32,6 @@ function byRange(a: proto.Range, b: proto.Range): number {
         a.end.line - b.end.line ||
         a.end.character - b.end.character
     );
-}
-
-/// The `<directive>:` comment lines of a fixture, in source order.
-function directiveLines(stripped: Buffer, directive: string): string[] {
-    const out: string[] = [];
-    for (const line of stripped.toString("utf8").split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith(`// ${directive}:`)) {
-            continue;
-        }
-        const value = trimmed.slice(`// ${directive}:`.length).trim();
-        if (value === "") {
-            throw new Error(`empty '// ${directive}:' line in workspace_symbol fixture`);
-        }
-        if (out.includes(value)) {
-            throw new Error(`duplicate '// ${directive}:' line '${value}'`);
-        }
-        out.push(value);
-    }
-    return out;
 }
 
 export const workspaceSymbol: Feature = {

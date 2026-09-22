@@ -90,6 +90,12 @@ private:
     bool inlay_hint_refresh = false;
     bool folding_range_refresh = false;
 
+    /// Whether the client applies versioned document changes (the
+    /// workspace/workspaceEdit.documentChanges capability): code action
+    /// edits then carry the buffer version they were computed for, and
+    /// a client refuses to apply them to a buffer that moved on.
+    bool versioned_edits = false;
+
     /// Document version last pushed per path (see push_output): a compile
     /// landing for an already-published version means the text did not
     /// change, so the client's pulled results went stale without any

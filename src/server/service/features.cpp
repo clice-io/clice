@@ -9,6 +9,7 @@
 
 #include "command/search_config.h"
 #include "sched/context.h"
+#include "sched/hosting.h"
 #include "sched/index/pump.h"
 #include "semantic/symbol.h"
 #include "server/protocol/lsp_projection.h"
@@ -160,6 +161,21 @@ static std::optional<CommandLang> command_lang(Workspace& workspace, llvm::Strin
     return result;
 }
 
+Fid Features::host_of(Fid path_id) const {
+    if(auto it = contexts.selections.find(path_id); it != contexts.selections.end()) {
+        if(it->second.host_path_id.valid()) {
+            return it->second.host_path_id;
+        }
+    }
+    if(const auto* context = contexts.header_context(path_id)) {
+        return context->host_path_id;
+    }
+    // A header compiled under its own entry resolves no context; its
+    // includers still name the source its definitions belong in.
+    auto hosts = ranked_hosts(workspace, path_id);
+    return hosts.empty() ? Fid{} : hosts.front();
+}
+
 const clang::LangOptions& Features::index_lang_options(const Session& session) {
     auto path = workspace.file_table.resolve(session.path_id);
     auto own = command_lang(workspace, path);
@@ -172,15 +188,7 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
     // A header's active context (the user's persisted choice, else the
     // resolved host) names the view being read; its command beats the
     // contributor union the way it does for the AST after an escalation.
-    Fid host;
-    if(auto it = contexts.selections.find(session.path_id); it != contexts.selections.end()) {
-        host = it->second.host_path_id;
-    }
-    if(!host.valid()) {
-        if(const auto* context = contexts.header_context(session.path_id)) {
-            host = context->host_path_id;
-        }
-    }
+    Fid host = host_of(session.path_id);
     if(host.valid()) {
         auto host_path = workspace.file_table.resolve(host);
         auto host_lang = command_lang(workspace, host_path);
@@ -634,21 +642,6 @@ Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,
     }
     co_return co_await dispatcher.query(worker::QueryKind::DocumentSymbol,
                                         ticket,
-                                        {},
-                                        {},
-                                        std::move(token));
-}
-
-Features::RawResult Features::code_action(std::shared_ptr<Session> session,
-                                          std::optional<kota::cancellation_token> token) {
-    // Code actions are AST products with no index projection; a session
-    // the policy keeps un-compiled answers honestly empty rather than
-    // forcing the compile the policy declined.
-    if(!ast_answerable(*session) && session->serving == ServingMode::IndexOnly) {
-        co_return serde_raw{"[]"};
-    }
-    co_return co_await dispatcher.query(worker::QueryKind::CodeAction,
-                                        Ticket::take(session),
                                         {},
                                         {},
                                         std::move(token));

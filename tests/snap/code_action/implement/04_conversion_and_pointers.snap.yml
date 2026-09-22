@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: implement/04_conversion_and_pointers.cpp
+---
+sink:
+- [refactor.rewrite] Implement pure virtual methods of 'Sink'
+  13:0-13:0 => "    operator bool() const override;\n    void subscribe(void (*callback)(int, char)) override;\n"

@@ -40,8 +40,9 @@ export interface RenderContext {
 /// The marker shape a feature consumes, deciding which files of a
 /// multi-file fixture participate: point/completion features run per `§`
 /// point, range features per `§⟦...⟧` range (whole document without one),
-/// document features once per participating file.
-export type FeatureShape = "document" | "point" | "range" | "completion";
+/// selection features per `§` point (an empty selection) and per
+/// `§⟦...⟧` range, document features once per participating file.
+export type FeatureShape = "document" | "point" | "range" | "selection" | "completion";
 
 export interface Feature {
     shape: FeatureShape;
@@ -176,3 +177,23 @@ export function fileSections(sections: [string, string[]][]): string[] {
 /// most ten items and announces the cut, so a truncated list never reads
 /// as "nothing else matched".
 export const SNAP_ITEM_LIMIT = 10;
+
+/// The `<directive>:` comment lines of a fixture, in source order.
+export function directiveLines(stripped: Buffer, directive: string): string[] {
+    const out: string[] = [];
+    for (const line of stripped.toString("utf8").split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith(`// ${directive}:`)) {
+            continue;
+        }
+        const value = trimmed.slice(`// ${directive}:`.length).trim();
+        if (value === "") {
+            throw new Error(`empty '// ${directive}:' line in fixture`);
+        }
+        if (out.includes(value)) {
+            throw new Error(`duplicate '// ${directive}:' line '${value}'`);
+        }
+        out.push(value);
+    }
+    return out;
+}

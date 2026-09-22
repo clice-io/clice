@@ -24,6 +24,11 @@ kota::ipc::Error content_modified() {
 
 namespace {
 
+kota::ipc::Error invalid_range() {
+    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
+                            "Range start is after its end"};
+}
+
 kota::ipc::Error quarantined() {
     return kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"};
 }
@@ -170,12 +175,11 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
         wp.offset = clamped_offset(map, *position);
     }
     if(range) {
-        wp.range = {clamped_offset(map, range->start), clamped_offset(map, range->end)};
-        if(wp.range.begin > wp.range.end) {
-            co_return kota::outcome_error(
-                kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                                 "Range start is after its end"});
+        auto clamped = clamped_range(map, *range);
+        if(!clamped) {
+            co_return kota::outcome_error(invalid_range());
         }
+        wp.range = *clamped;
     }
 
     QuarantineGate gate(session.quarantine, evidence, QuarantineGate::Scope::Kind);
@@ -203,20 +207,24 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
     co_return std::move(result);
 }
 
-kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
-    Dispatcher::document_links(const Ticket& ticket,
-                               std::optional<kota::cancellation_token> token) {
+template <typename Params>
+kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
+    Dispatcher::typed(const Ticket& ticket,
+                      EvidenceKind kind,
+                      llvm::StringRef label,
+                      Params params,
+                      std::optional<kota::cancellation_token> token) {
+    using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;
-    auto path = std::string(workspace.file_table.resolve(path_id));
-    auto evidence = evidence_kind(EvidenceKind::DocumentLink);
+    auto evidence = evidence_kind(kind);
 
     ScopedTimer timer;
     if(!co_await ast.ensure_compiled(ticket.session)) {
         if(!ticket.fresh()) {
             co_return kota::outcome_error(content_modified());
         }
-        co_return std::vector<feature::DocumentLink>{};
+        co_return Result{};
     }
     if(!ticket.fresh()) {
         co_return kota::outcome_error(content_modified());
@@ -229,21 +237,51 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     }
     gate.arm();
     auto result = co_await pool.send_stateful(path_id.raw,
-                                              worker::DocumentLinkParams{path},
+                                              std::move(params),
                                               {.token = std::move(token)},
                                               gate.suspect());
     if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
         session.quarantine.on_kind_crash(evidence, worker::death_of(result.error()));
     }
-    result = land(ticket, evidence, "DocumentLink", std::move(result));
+    result = land(ticket, evidence, label, std::move(result));
     if(result.has_value()) {
         LOG_PERF("request",
-                 "kind=DocumentLink file={} wait_ms={:.2f} total_ms={:.2f}",
-                 path,
+                 "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
+                 label,
+                 workspace.file_table.resolve(path_id),
                  wait_ms,
                  timer.ms_f());
     }
     co_return std::move(result);
+}
+
+kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
+    Dispatcher::document_links(const Ticket& ticket,
+                               std::optional<kota::cancellation_token> token) {
+    auto path = std::string(workspace.file_table.resolve(ticket.session->path_id));
+    co_return co_await typed(ticket,
+                             EvidenceKind::DocumentLink,
+                             "DocumentLink",
+                             worker::DocumentLinkParams{std::move(path)},
+                             std::move(token));
+}
+
+kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
+    Dispatcher::code_actions(const Ticket& ticket,
+                             const protocol::Range& range,
+                             std::optional<kota::cancellation_token> token) {
+    // Clamped against the buffer the ticket was taken on: a buffer that
+    // moves before the reply lands turns the reply into ContentModified.
+    auto selection = clamped_range(ticket.session->line_map(), range);
+    if(!selection) {
+        co_return kota::outcome_error(invalid_range());
+    }
+    auto path = std::string(workspace.file_table.resolve(ticket.session->path_id));
+    co_return co_await typed(ticket,
+                             EvidenceKind::CodeAction,
+                             "CodeAction",
+                             worker::CodeActionParams{std::move(path), *selection},
+                             std::move(token));
 }
 
 template <typename Params>

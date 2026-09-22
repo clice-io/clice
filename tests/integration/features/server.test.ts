@@ -36,8 +36,7 @@ test("capabilities", ({ client }) => {
     expect(capabilityEnabled(caps.documentSymbolProvider)).toBe(true);
     expect(capabilityEnabled(caps.foldingRangeProvider)).toBe(true);
     expect(capabilityEnabled(caps.inlayHintProvider)).toBe(true);
-    // codeAction is not implemented yet, so it must not be advertised.
-    expect(capabilityEnabled(caps.codeActionProvider)).toBe(false);
+    expect(capabilityEnabled(caps.codeActionProvider)).toBe(true);
     // workspace/didChangeWorkspaceFolders is not handled, so workspace
     // folder support must not be advertised.
     expect(

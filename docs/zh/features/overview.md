@@ -26,7 +26,7 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 | [文档符号](./document-symbols.md)  | 支持 19 项 · 部分支持 1 项 · 不支持 7 项   |
 | [格式化](./formatting.md)          | 已实现                                     |
 | [诊断](./diagnostics.md)           | 部分支持                                   |
-| [代码操作](./code-action.md)       | 存根                                       |
+| [代码操作](./code-action.md)       | 支持 44 项 · 部分支持 1 项                 |
 
 <!-- END GENERATED OVERVIEW -->
 

@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: implement/03_qualified_types.cpp
+---
+painter:
+- [refactor.rewrite] Implement pure virtual methods of 'Painter'
+  18:0-18:0 => "    shapes::Color paint(const shapes::Painter::Options& options) const& override;\n"

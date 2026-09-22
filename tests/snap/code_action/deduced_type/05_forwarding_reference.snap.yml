@@ -1,0 +1,17 @@
+---
+created_at: 2026-09-21
+input_file: deduced_type/05_forwarding_reference.cpp
+---
+array:
+(no actions)
+
+lvalue:
+- [refactor.rewrite] Replace 'auto&&' with 'int&'
+  10:4-10:10 => "int&"
+
+pointer:
+(no actions)
+
+rvalue:
+- [refactor.rewrite] Replace 'auto' with 'int'
+  11:4-11:8 => "int"

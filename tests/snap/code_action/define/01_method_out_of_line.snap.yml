@@ -1,0 +1,9 @@
+---
+created_at: 2026-09-21
+input_file: define/01_method_out_of_line.cpp
+---
+f:
+- [refactor.rewrite] Define 'f' inline
+  12:33-12:34 => " {}"
+- [refactor.rewrite] Define 'S::f' out of line
+  14:0-14:0 => "\nint S::f(int x, int y) const {\n}\n"

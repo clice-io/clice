@@ -32,11 +32,6 @@ std::optional<index::SymbolHash> parse_symbol_id(llvm::StringRef id) {
     return hash;
 }
 
-bool is_header(llvm::StringRef path) {
-    auto ext = llvm::sys::path::extension(path);
-    return ext == ".h" || ext == ".hpp" || ext == ".hxx" || ext == ".hh";
-}
-
 /// The 1-based lines a site spans, as the answers spell positions.
 struct Lines {
     int start;
@@ -221,9 +216,9 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
             continue;
         }
         auto module_name = ws.dep_graph.module_of(member);
-        llvm::StringRef kind = !module_name.empty()   ? "module"
-                               : is_header(file_path) ? "header"
-                                                      : "source";
+        llvm::StringRef kind = !module_name.empty()        ? "module"
+                               : is_header_path(file_path) ? "header"
+                                                           : "source";
         if(filter != "all" && filter != kind) {
             continue;
         }
@@ -236,7 +231,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
     if(filter == "all" || filter == "header") {
         for(auto path_id: llvm::make_first_range(ws.project_index.shards)) {
             auto path = ws.file_table.resolve(path_id);
-            if(!seen.contains(path_id) && is_header(path)) {
+            if(!seen.contains(path_id) && is_header_path(path)) {
                 seen.insert(path_id);
                 result.files.push_back({.path = path.str(), .kind = "header"});
             }
