@@ -1,7 +1,7 @@
 #include <string>
 
 #include "test/test.h"
-#include "server/transport/master_server.h"
+#include "server/master_server.h"
 #include "support/anomaly.h"
 #include "support/logging.h"
 

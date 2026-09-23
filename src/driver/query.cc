@@ -8,8 +8,8 @@
 #include "project/configuration.h"
 #include "project/open_index.h"
 #include "sched/batch.h"
-#include "server/service/query_commands.h"
-#include "server/transport/control_client.h"
+#include "server/control_client.h"
+#include "server/query_commands.h"
 
 #include "kota/ipc/codec/json.h"
 #include "llvm/ADT/STLExtras.h"

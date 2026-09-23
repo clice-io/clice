@@ -1,0 +1,117 @@
+#include "server/session_store.h"
+
+#include <type_traits>
+#include <utility>
+#include <variant>
+
+#include "server/position.h"
+#include "support/logging.h"
+
+#include "kota/ipc/lsp/position.h"
+
+namespace clice {
+
+namespace lsp = kota::ipc::lsp;
+
+std::shared_ptr<Session> SessionStore::find(Fid path_id) const {
+    auto it = sessions.find(path_id);
+    return it != sessions.end() ? it->second : nullptr;
+}
+
+std::shared_ptr<Session> SessionStore::open(Fid path_id) {
+    auto it = sessions.find(path_id);
+    if(it != sessions.end()) {
+        it->second->generation++;
+    }
+    auto session = std::make_shared<Session>();
+    session->path_id = path_id;
+    sessions[path_id] = session;
+    return session;
+}
+
+void SessionStore::close(Fid path_id) {
+    auto it = sessions.find(path_id);
+    if(it != sessions.end()) {
+        it->second->generation++;
+        sessions.erase(it);
+    }
+}
+
+void SessionStore::for_each(llvm::function_ref<bool(Fid, const Session&)> visitor) const {
+    for(auto& [path_id, session]: sessions) {
+        if(!session)
+            continue;
+        if(!visitor(path_id, *session))
+            break;
+    }
+}
+
+void SessionStore::apply_open(Session& session, std::string text, int version) {
+    session.version = version;
+    session.text = std::move(text);
+    session.line_starts = lsp::build_line_starts(session.text);
+    session.generation++;
+    session.quarantine.reset();
+}
+
+void SessionStore::apply_change(Session& session,
+                                llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
+                                int version) {
+    session.version = version;
+
+    bool applied = false;
+    for(auto& change: changes) {
+        std::visit(
+            [&](auto& c) {
+                using T = std::remove_cvref_t<decltype(c)>;
+                if constexpr(std::is_same_v<T, protocol::TextDocumentContentChangeWholeDocument>) {
+                    if(session.text != c.text) {
+                        session.text = c.text;
+                        applied = true;
+                    }
+                } else {
+                    auto& range = c.range;
+                    auto map = session.line_map();
+                    auto start = map.to_offset(range.start);
+                    auto end = map.to_offset(range.end);
+                    if(!start || !end || *start > *end) {
+                        // The client's view has drifted from ours (or the
+                        // client is buggy). LSP 3.17 requires clamping
+                        // positions past the document instead of dropping
+                        // the edit, which would silently desync every
+                        // subsequent position until a full sync or reopen.
+                        LOG_INFO(
+                            "didChange range {}:{}-{}:{} does not fit the buffer "
+                            "(path_id={} version={}); clamped",
+                            range.start.line,
+                            range.start.character,
+                            range.end.line,
+                            range.end.character,
+                            session.path_id,
+                            version);
+                        start = clamped_offset(map, range.start);
+                        end = clamped_offset(map, range.end);
+                        if(*start > *end) {
+                            // Inverted even after clamping: treat it as an
+                            // empty range at the clamped start.
+                            end = start;
+                        }
+                    }
+                    if(llvm::StringRef(session.text).substr(*start, *end - *start) != c.text) {
+                        session.text.replace(*start, *end - *start, c.text);
+                        applied = true;
+                    }
+                }
+                session.line_starts = lsp::build_line_starts(session.text);
+            },
+            change);
+    }
+
+    // A real content change re-arms a quarantined document with one probe
+    // attempt; no-op edits grant none (see Quarantine::on_edit).
+    session.quarantine.on_edit(applied);
+
+    session.generation++;
+}
+
+}  // namespace clice

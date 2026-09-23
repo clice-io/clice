@@ -16,7 +16,7 @@
 #include "project/open_index.h"
 #include "project/project.h"
 #include "sched/batch.h"
-#include "server/transport/control_client.h"
+#include "server/control_client.h"
 #include "support/timer.h"
 
 #include "kota/meta/enum.h"

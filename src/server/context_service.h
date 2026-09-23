@@ -1,0 +1,82 @@
+#pragma once
+
+#include <cstdint>
+
+#include "server/editor_context.h"
+#include "server/extension.h"
+#include "server/session.h"
+
+#include "kota/async/async.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
+
+namespace clice {
+
+class ASTFamily;
+struct SessionStore;
+
+namespace protocol = kota::ipc::protocol;
+
+/// Diagnostic codes that strictly indicate a missing includer context (as
+/// opposed to ordinary in-progress typing errors). Deliberately narrow:
+/// a false positive costs a pointless prefix synthesis, a false negative
+/// just leaves the header in trial mode.
+bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics);
+
+/// The editor-facing context protocol (clice/queryContext, currentContext,
+/// switchContext) and session-coupled maintenance of context choices. The
+/// domain state lives in EditorContext; this service drives it with LSP
+/// types and session knowledge, which the editor context deliberately
+/// knows nothing about.
+struct ContextService {
+    Project& project;
+    EditorContext& editor;
+    ASTFamily& ast;
+
+    /// clice/queryContext: list the compilation contexts (host sources and
+    /// the file's own CDB configurations) available for a file, paginated.
+    ext::QueryContextResult query_contexts(llvm::StringRef path,
+                                           Fid path_id,
+                                           const ext::QueryContextParams& params);
+
+    /// clice/currentContext: describe the file's currently active context.
+    ext::CurrentContextResult current_context(llvm::StringRef path,
+                                              const Session* session,
+                                              const ext::CurrentContextParams& params);
+
+    /// clice/switchContext: pin a host source or CDB entry as the file's
+    /// compilation context and persist the choice across sessions. When
+    /// persistence is available, success is acknowledged only once the
+    /// choice is durably committed: the request marks the contexts blob
+    /// dirty and awaits the write pipeline's ticket. Sessions without a
+    /// writable database (read-only, caching disabled, open failure) apply
+    /// the choice in memory and acknowledge immediately.
+    kota::task<ext::SwitchContextResult> switch_context(llvm::StringRef path,
+                                                        Fid path_id,
+                                                        Session* session,
+                                                        llvm::StringRef context_path,
+                                                        Fid context_path_id,
+                                                        const ext::SwitchContextParams& params);
+
+    /// clice/listConfigurations: the configuration menu with the running,
+    /// persisted and default names.
+    ext::ListConfigurationsResult list_configurations() const;
+
+    /// clice/switchConfiguration: persist `name` as the configuration the
+    /// next server start activates; the running one is unchanged. Fails
+    /// for a name no rule declares, while `pinned` (the command line's
+    /// `--configuration`, when it names a declared tag) owns the choice,
+    /// and when the selection cannot be persisted.
+    ext::SwitchConfigurationResult switch_configuration(llvm::StringRef name,
+                                                        llvm::StringRef pinned);
+
+    /// Drop active context choices whose include edge no longer exists. A
+    /// stale choice suppresses automatic host resolution, so it would strand
+    /// the header on the fallback command (or silently pin its command hash
+    /// to a different host). Expects the include graph to be current (the
+    /// caller rescans on save). Returns whether any persisted choice was
+    /// removed, i.e. whether the cache snapshot needs saving.
+    bool drop_orphaned_choices(SessionStore& sessions);
+};
+
+}  // namespace clice

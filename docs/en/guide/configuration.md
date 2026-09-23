@@ -14,9 +14,9 @@ Relative paths and patterns in the file resolve against the directory of the con
 
 ## Several Folders
 
-Each workspace folder the editor opens is a project of its own: its `clice.toml`, its compilation databases and its cache directory. A file opened outside every folder belongs to the nearest directory above it holding a `clice.toml` or a `compile_commands.json`, which is then served as if it were open. A file is compiled by the project whose database lists it; a header without an entry of its own borrows a host from a project whose sources include it. Workspace symbol search spans every project, and references and go-to-definition reach into the projects that index the file declaring the symbol.
+Each workspace folder the editor opens is a project of its own: its `clice.toml`, its compilation databases and its cache directory. A file opened outside every folder belongs to the nearest directory above it holding a `clice.toml` or a `compile_commands.json` (directly or in its `build/` directory), which is then served as if it were open, unless a served project loads that database already. A file is compiled by the project whose database lists it; a header without an entry of its own borrows a host from a project whose sources include it, preferring the project whose folder holds it. Workspace symbol search spans every project, and references and go-to-definition reach into the projects that index the file declaring the symbol.
 
-`initializationOptions` apply to every project, with one exception: a cache directory they name goes to the first folder, and the other projects keep their own. The worker counts are the largest any folder asks for at startup.
+`initializationOptions` apply to every project, and a cache directory serves one project at a time: a project whose cache directory already serves another falls back to the one its `clice.toml` names, then to `.clice` in its folder, and runs without a cache when those are taken too. An absolute `cache_dir` in `initializationOptions` therefore goes to the first folder only. The worker counts are the largest any folder asks for at startup, and listing or switching configurations acts on the first folder.
 
 ## Variable Substitution
 

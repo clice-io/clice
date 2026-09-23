@@ -1,7 +1,7 @@
 #include <string>
 
 #include "test/test.h"
-#include "server/state/session_store.h"
+#include "server/session_store.h"
 
 #include "kota/ipc/lsp/text.h"
 

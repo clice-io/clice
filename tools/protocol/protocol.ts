@@ -1,6 +1,6 @@
 /// Typed definitions of clice's custom LSP extensions — the single source
 /// shared by the integration tests and the VSCode extension. Wire shapes
-/// mirror src/server/protocol/extension.h (camelCase on the wire).
+/// mirror src/server/extension.h (camelCase on the wire).
 
 import { RequestType, RequestType0 } from "vscode-languageserver-protocol";
 

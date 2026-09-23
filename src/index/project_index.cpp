@@ -281,9 +281,9 @@ bool ProjectIndex::bind_global(std::unique_ptr<llvm::MemoryBuffer> blob, FileTab
     return true;
 }
 
-std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions(
-    FileTable& files,
-    llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
+std::expected<void, llvm::StringRef>
+    ProjectIndex::adopt_file_versions(FileTable& files,
+                                      llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
     if(!base) {
         return {};
     }

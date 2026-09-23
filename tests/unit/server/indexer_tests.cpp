@@ -21,7 +21,7 @@
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "sched/index/pump.h"
-#include "server/state/editor_context.h"
+#include "server/editor_context.h"
 #include "server/worker_test_helpers.h"
 #include "support/cache_store.h"
 #include "syntax/dependency_graph.h"

@@ -2,7 +2,7 @@
 
 #include "test/test.h"
 #include "sched/crash_budget.h"
-#include "server/state/quarantine.h"
+#include "server/quarantine.h"
 
 namespace clice::testing {
 
