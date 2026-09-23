@@ -1,8 +1,16 @@
 /// File tracker: each test drives deterministic ticks through the
-/// clice/internal/poll hook (loops disabled). The first workspace tick only
-/// seeds the stat baseline, so tests poll once before mutating the disk.
+/// clice/internal/poll hook (loops disabled). The first workspace tick
+/// judges scanned files against the bytes the scan read and seeds the stat
+/// baseline of the rest.
 
-import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
+import * as fs from "node:fs";
+import {
+    MTIME_GRANULARITY,
+    sleep,
+    waitUntil,
+    withTimeout,
+    type CliceClient,
+} from "@clice/tools/client";
 import { test, expect } from "../fixtures.ts";
 
 const GATED_MAIN = `#ifndef FEATURE
@@ -245,4 +253,105 @@ test("cdb flag change reindexes closed", async ({ session }) => {
         await client.waitForIndex(mainUri, "feature_on"),
         "closed file was not reindexed after its flags changed",
     ).toBe(true);
+});
+
+test("rewrite before first sweep reported", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("header.h", HEADER_V1);
+    workspace.write("closed.cpp", '#include "header.h"\nint use_target() { return TARGET(); }\n');
+    workspace.writeCDB(["closed.cpp"]);
+    await client.initialize(workspace);
+
+    const headerUri = workspace.uri("header.h");
+    const closedUri = workspace.uri("closed.cpp");
+    expect(
+        await client.waitForReference(headerUri, 2, 11, closedUri),
+        "initial index never resolved the closed TU's alpha call",
+    ).toBe(true);
+
+    // No seeding sweep: the first one judges the header against the bytes
+    // the startup scan read.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("header.h", HEADER_V2);
+    expect(await eventsOf(client, "workspace")).toBe(1);
+    expect(
+        await client.waitForReference(headerUri, 3, 11, closedUri),
+        "closed TU was not reindexed against the rewritten header",
+    ).toBe(true);
+});
+
+test("delete while open reported on close", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("header.h", HEADER_V1);
+    workspace.write("main.cpp", '#include "header.h"\nint main() { return VALUE; }\n');
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    const [header] = client.open("header.h");
+    expect(await eventsOf(client, "workspace")).toBe(0);
+    workspace.rm("header.h");
+    expect(await eventsOf(client, "workspace"), "an open file's disk is not reported").toBe(0);
+    client.close(header);
+    expect(await eventsOf(client, "workspace"), "the close hands the removal to the sweep").toBe(1);
+    expect(await eventsOf(client, "workspace")).toBe(0);
+});
+
+test("unchanged save no recompile", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("h.h", "#pragma once\ninline int helper() { return 1; }\n");
+    workspace.write("a.cpp", '#include "h.h"\nint use() { return helper(); }\n');
+    workspace.writeCDB(["a.cpp"]);
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+    const [header] = client.open("h.h");
+    const [host] = await client.openAndWait("a.cpp");
+    client.assertNoErrors(host);
+
+    // A recompile of the host publishes fresh diagnostics; a hover on a
+    // clean AST publishes nothing.
+    const hoverRecompiles = async (): Promise<boolean> => {
+        const arrived = client.armDiagnostics(host);
+        await client.hoverAt(host, 1, 21);
+        return withTimeout(arrived, 5_000, "publish").then(
+            () => true,
+            () => false,
+        );
+    };
+    expect(await hoverRecompiles(), "control: a clean AST serves the hover").toBe(false);
+    client.save(header);
+    expect(await hoverRecompiles(), "saving unchanged bytes must not dirty the host").toBe(false);
+});
+
+test("same stamp cdb rewrite applied", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write(
+        "main.cpp",
+        "#ifndef NEW\n#error missing NEW\n#endif\nint main() { return 0; }\n",
+    );
+    workspace.writeCDB(["main.cpp"], { extraArgs: ["-DOLD"] });
+    // A stamp the filesystem cannot vouch for: the mtime is not safely in
+    // the past, so an unchanged stat proves nothing about the bytes.
+    const cdb = workspace.path("compile_commands.json");
+    const stamp = new Date(Date.now() + 3_600_000);
+    fs.utimesSync(cdb, stamp, stamp);
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+    const [main] = await client.openAndWait("main.cpp");
+    expect(client.errors(main)).toHaveLength(1);
+
+    const stamped = { force: false };
+    expect(await eventsOf(client, "cdb", stamped)).toBe(0);
+    // In place, same length, same mtime: only the content tells.
+    const before = fs.statSync(cdb, { bigint: true });
+    fs.writeFileSync(cdb, fs.readFileSync(cdb, "utf8").replace("-DOLD", "-DNEW"));
+    fs.utimesSync(cdb, stamp, stamp);
+    const after = fs.statSync(cdb, { bigint: true });
+    expect(after.size).toBe(before.size);
+    expect(after.mtimeNs).toBe(before.mtimeNs);
+
+    expect(await eventsOf(client, "cdb", stamped)).toBe(1);
+    await client.waitForRecompile(main);
+    client.assertNoErrors(main, "the rewritten flag must reach the open file");
 });

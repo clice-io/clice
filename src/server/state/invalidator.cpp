@@ -83,6 +83,7 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
 void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
     std::string old_module(project.dep_graph.module_of(path_id));
     project.rescan_after_save(path_id);
+    reverse_map_stale = true;
     auto new_module = project.dep_graph.module_of(path_id);
     if(new_module == old_module) {
         return;
@@ -111,12 +112,12 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     dirty.reset_header_mode.push_back(path_id);
     dirty.reset_trial.push_back(path_id);
 
-    // Root TUs transitively including the file, snapshotted before the
-    // rescan rewrites the include graph. A content change only rewrites
-    // the file's own outgoing edges, so this set normally equals the
-    // post-rescan one — the pre-rescan snapshot is a cheap safety net for
-    // a reverse map that was stale when the change landed.
-    auto old_dependents = project.dep_graph.find_host_sources(path_id);
+    // Root TUs transitively including the file. The rescan below rewrites
+    // only the file's own outgoing edges, never the includers this walks;
+    // an includer an earlier event of the batch added is still missing
+    // from the reverse map, but that event's own cascade reaches its
+    // roots.
+    auto dependents = project.dep_graph.find_host_sources(path_id);
 
     // Rescan disk state (include edges, module declaration); then cascade
     // through the module graph — importers' build products went stale, and
@@ -131,13 +132,9 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     // staleness check filters TUs whose dependencies did not actually
     // change, and the idle/priority scheduling throttles the rest.
     // TODO: observe on large projects before adding debouncing.
-    auto split_dependents = [&](llvm::ArrayRef<Fid> roots) {
-        for(auto root: roots) {
-            mark_dependent(root, dirty);
-        }
-    };
-    split_dependents(old_dependents);
-    split_dependents(project.dep_graph.find_host_sources(path_id));
+    for(auto root: dependents) {
+        mark_dependent(root, dirty);
+    }
 
     // Headers whose resolved context embeds the file through its include
     // chain must re-synthesize their preamble: it copies the chain files'
@@ -168,10 +165,7 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
 
 DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     DirtySet dirty;
-
-    // DiskRemoved defers its reverse-map rebuild here so a batch of
-    // removals pays for one rebuild, not one per file.
-    bool rebuild_reverse_map = false;
+    reverse_map_stale = false;
 
     // The lender set changed: every borrowed or synthesized command may
     // resolve differently now — which no delta can tell, so all of them
@@ -198,12 +192,27 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
             case FileEvent::Kind::BufferSaved: {
                 auto path_id = event.path_id;
+                auto disk = project.file_table.current(path_id);
+                // A DiskChanged consumed while the buffer was open still owes
+                // its cascade; the save's own cascade discharges it.
+                bool owed = disk_changed_while_open.erase(path_id);
+                // A save of the very bytes the project last derived from the
+                // file (unmodified text, or a formatter restoring it) changes
+                // nothing built from them. The buffer can still disagree
+                // with the disk when a save hook rewrote the file as it
+                // landed; that recompile is the file's own business.
+                auto scanned = project.dep_graph.scanned_hash(path_id);
+                if(!owed && disk && scanned == disk->hash) {
+                    if(auto session = store.find(path_id);
+                       session && (disk->size != session->text.size() ||
+                                   disk->hash != llvm::xxh3_64bits(session->text))) {
+                        dirty.mark_ast_dirty.push_back(path_id);
+                    }
+                    break;
+                }
                 // The disk now holds the buffer's content: the standard
-                // disk-content cascade covers everything a save invalidates —
-                // including anything a DiskChanged consumed while the buffer
-                // was open still owed, so that debt is discharged here.
+                // disk-content cascade covers everything a save invalidates.
                 cascade_disk_content_change(path_id, dirty);
-                disk_changed_while_open.erase(path_id);
 
                 // The file's own shard describes the pre-save disk; the
                 // queued reindex refreshes it from the saved bytes. Saves
@@ -226,7 +235,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the pull-side staleness check alone can miss when the
                 // rewrite lands within mtime granularity of the compile.
                 if(auto session = store.find(path_id)) {
-                    auto disk = project.file_table.current(path_id);
                     if(!disk || disk->size != session->text.size() ||
                        disk->hash != llvm::xxh3_64bits(session->text)) {
                         dirty.mark_ast_dirty.push_back(path_id);
@@ -372,7 +380,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // within-batch cascades tolerate a stale reverse map by
                 // design (they union the pre/post snapshots).
                 project.dep_graph.clear_includes(path_id);
-                rebuild_reverse_map = true;
+                project.dep_graph.forget_scanned_hash(path_id);
+                reverse_map_stale = true;
                 project.context_epoch += 1;
                 // Contexts hosted by (or chained through) the removed file
                 // are cleaned by the resolver's orphan pass.
@@ -544,7 +553,12 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
         }
     }
 
-    if(rebuild_reverse_map) {
+    // Rescans and removals rewrite forward edges only; the batch pays for
+    // one reverse-map rebuild, not one per file. Within the batch the
+    // cascades tolerate a stale map by design: a rescan rewrites the
+    // file's own outgoing edges, never the includers its cascade walks,
+    // and removals union the pre- and post-scrub snapshots.
+    if(reverse_map_stale) {
         project.dep_graph.build_reverse_map();
     }
 

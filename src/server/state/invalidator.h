@@ -299,6 +299,10 @@ private:
     const EditorContext& contexts;
     PCMFamily& pcm;
 
+    /// Set by any rescan or removal of the batch in flight: apply() rebuilds
+    /// the reverse include map once at its end.
+    bool reverse_map_stale = false;
+
     /// Files whose disk content changed while their buffer was open. The
     /// DiskChanged case defers the dependent cascade (the buffer is the
     /// truth until close) and the tracker has already consumed the event,

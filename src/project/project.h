@@ -282,9 +282,10 @@ struct Project {
 
     /// Rescan a file after it was saved to disk, from one read: refresh
     /// its include edges (so host lookups and context queries see includes
-    /// the save added or removed) and its module declaration. The
-    /// module-graph cascade is the invalidator's job
-    /// (PCMFamily::invalidate).
+    /// the save added or removed), its scanned hash and its module
+    /// declaration. The module-graph cascade is the invalidator's job
+    /// (PCMFamily::invalidate), and so is rebuilding the reverse include
+    /// map — once per event batch, not once per rescanned file.
     void rescan_after_save(Fid path_id);
 
     /// Persistence signal for the artifact validity metadata (PCH/PCM

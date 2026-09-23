@@ -10,6 +10,8 @@
 #include "server/state/invalidator.h"
 #include "worker/pool.h"
 
+#include "llvm/Support/xxhash.h"
+
 namespace clice::testing {
 namespace {
 
@@ -331,18 +333,54 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
 }
 
-TEST_CASE(StaleReverseMapUnion) {
+TEST_CASE(BatchRebuildsReverseMapOnce) {
+    // A batch pays for one reverse-map rebuild at its end. An includer an
+    // earlier event adds is not yet mapped when a later event cascades,
+    // but the earlier event's own cascade already reached its roots.
+    TempDir tmp;
+    tmp.touch("h.h", "int h;");
+    tmp.touch("a.cpp", R"(#include "h.h")");
+    tmp.touch("b.cpp", "int b;");
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern("/proj/h.h");
-    auto known = project.file_table.intern("/proj/a.cpp");
-    auto unmapped = project.file_table.intern("/proj/b.cpp");
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto known = project.file_table.intern(tmp.path("a.cpp"));
+    auto added = project.file_table.intern(tmp.path("b.cpp"));
     project.dep_graph.set_includes(known, 0, {{header}});
+    project.dep_graph.set_includes(added, 0, {});
     project.dep_graph.build_reverse_map();
-    // Edge added without rebuilding the reverse map: visible only after the
-    // save's rescan rebuilds it. Both snapshots must contribute.
-    project.dep_graph.set_includes(unmapped, 0, {{header}});
+    tmp.touch("b.cpp", R"(#include "h.h")");
+
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.pcm);
+    auto dirty =
+        invalidator.apply({FileEvent::disk_changed(added), FileEvent::disk_changed(header)});
+
+    llvm::SmallVector<Fid> changed{added, header};
+    llvm::sort(changed);
+    ASSERT_EQ(dirty.reindex_content_changed, changed);
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{known});
+    ASSERT_TRUE(llvm::is_contained(project.dep_graph.get_includers(header), added));
+}
+
+TEST_CASE(UnchangedSaveNoCascade) {
+    // Saving the bytes the project last derived from the file dirties
+    // nothing: no recompile of open dependents, no reindex.
+    TempDir tmp;
+    tmp.touch("h.h", "int h;");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(tmp.path("a.cpp"));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
+    store.apply_open(*store.open(header), "int h;", 1);
+    store.open(host);
 
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
@@ -350,10 +388,78 @@ TEST_CASE(StaleReverseMapUnion) {
     Invalidator invalidator(project, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
-    llvm::SmallVector<Fid> expected{known, unmapped};
-    llvm::sort(expected);
-    ASSERT_EQ(dirty.reindex_deps_only, expected);
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_TRUE(dirty.empty());
+}
+
+TEST_CASE(EditedSaveCascades) {
+    // New bytes on disk: the save's full cascade, and the scanned content
+    // moves with the rescan so a second identical save is quiet.
+    TempDir tmp;
+    tmp.touch("h.h", "int edited;");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(tmp.path("a.cpp"));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
+    store.apply_open(*store.open(header), "int edited;", 1);
+    store.open(host);
+
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.pcm);
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{host});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{header});
+    ASSERT_EQ(project.dep_graph.scanned_hash(header), llvm::xxh3_64bits("int edited;"));
+
+    ASSERT_TRUE(invalidator.apply(FileEvent::buffer_saved(header)).empty());
+}
+
+TEST_CASE(OwedSaveCascades) {
+    // A disk change observed while the buffer was open owes the cascade
+    // the close would have run; saving the old bytes back still pays it.
+    TempDir tmp;
+    tmp.touch("h.h", "int h;");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(tmp.path("a.cpp"));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
+    store.apply_open(*store.open(header), "int h;", 1);
+
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.pcm);
+    invalidator.apply(FileEvent::disk_changed(header));
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{host});
+}
+
+TEST_CASE(RemovalForgetsScannedContent) {
+    // A removed file's scanned content leaves with its edges: when it
+    // comes back, nothing is judged against the bytes it once held.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern("/proj/h.h");
+    project.dep_graph.set_includes(header, 0, {});
+    project.dep_graph.build_reverse_map();
+    project.dep_graph.set_scanned_hash(header, 7);
+
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.pcm);
+    invalidator.apply(FileEvent::disk_removed(header));
+    ASSERT_FALSE(project.dep_graph.scanned_hash(header).has_value());
 }
 
 TEST_CASE(CloseWithoutShardReindexes) {

@@ -140,27 +140,29 @@ std::size_t DependencyGraph::edge_count() const {
 }
 
 void DependencyGraph::clear_includes(Fid path_id) {
-    llvm::SmallVector<IncludeKey> stale;
-    for(auto& [key, ids]: includes) {
-        if(key.path_id == path_id) {
-            stale.push_back(key);
-        }
+    auto it = file_configs.find(path_id);
+    if(it == file_configs.end()) {
+        return;
     }
-    for(auto& key: stale) {
-        includes.erase(key);
+    for(auto config_id: it->second) {
+        includes.erase(IncludeKey{path_id, config_id});
     }
-    file_configs.erase(path_id);
+    file_configs.erase(it);
 }
 
 void DependencyGraph::build_reverse_map() {
     reverse_includes.clear();
     for(auto& [key, ids]: includes) {
         for(auto edge: ids) {
-            auto& vec = reverse_includes[edge.fid];
-            if(llvm::find(vec, key.path_id) == vec.end()) {
-                vec.push_back(key.path_id);
-            }
+            reverse_includes[edge.fid].push_back(key.path_id);
         }
+    }
+    // One includer appears once per configuration including the file, and
+    // a widely included header has thousands of includers: deduplicate by
+    // sorting, not by a linear search per edge.
+    for(auto& [path_id, includers]: reverse_includes) {
+        llvm::sort(includers);
+        includers.erase(llvm::unique(includers), includers.end());
     }
 }
 
@@ -724,6 +726,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
             }
             graph.set_import_candidate(scan_result.path_id, scan_result.scan_result.has_import);
+            graph.set_scanned_hash(scan_result.path_id, scan_result.obs.hash);
 
             report.includes_found += scan_result.scan_result.includes.size();
 

@@ -716,13 +716,12 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     auto& source = source_files[static_cast<std::size_t>(id)];
     llvm::StringRef path = source.path;
 
-    simdjson::padded_string json_buf;
-    if(auto error = simdjson::padded_string::load(std::string(path)).get(json_buf)) {
-        LOG_ERROR("Failed to read compilation database from {}: {}",
-                  path,
-                  simdjson::error_message(error));
+    auto observed = read_file_observed(source.path.c_str());
+    if(!observed) {
+        LOG_ERROR("Failed to read compilation database from {}", path);
         return std::nullopt;
     }
+    simdjson::padded_string json_buf(observed->content->getBuffer());
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(json_buf).get(doc)) {
@@ -861,11 +860,16 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     source.entries = std::move(new_entries);
     source.loaded = true;
     source.present = true;
+    source.observed = observed->obs;
     ranges::sort(source.response_files);
     auto duplicates = ranges::unique(source.response_files);
     source.response_files.erase(duplicates.begin(), duplicates.end());
     rebuild_entry_list();
     return count;
+}
+
+const DiskObservation& CompilationDatabase::observation(SourceID id) const {
+    return source_files[static_cast<std::size_t>(id)].observed;
 }
 
 bool CompilationDatabase::present(SourceID id) const {

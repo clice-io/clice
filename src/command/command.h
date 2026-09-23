@@ -318,6 +318,12 @@ public:
     /// Whether the source's last load succeeded, so its entries are current.
     bool loaded(SourceID id) const;
 
+    /// The read the source's current entries came from: its stat and the
+    /// hash of the bytes (see read_file_observed). A watcher compares the
+    /// disk against this, not against a stat taken after the load, which a
+    /// rewrite landing in between would already describe.
+    const DiskObservation& observation(SourceID id) const;
+
     /// Whether the source's file exists on disk as last observed: set by a
     /// successful load, then maintained by the file tracker's stats. A
     /// discovered source that vanished keeps serving its entries but yields
@@ -503,6 +509,7 @@ private:
         bool loaded = false;
         bool present = false;
         std::vector<std::string> response_files;
+        DiskObservation observed;
     };
 
     std::vector<Source> source_files;
