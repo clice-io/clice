@@ -90,15 +90,24 @@ Includes: code completion, hover information, signature help, semantic highlight
 
 > `feature/` only covers single-file, AST-based feature implementations. Cross-file navigation features (go to definition, find references, etc.) are served from index data by the server's `service/` layer (`Features`/`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
 
+### `src/project/` — Projects on Disk
+
+A project is what one set of compilation databases and one cache directory describe: the state derived from files on disk, independent of editors and of scheduling. The command line runs one project; the server runs its projects plus the open buffers.
+
+- `Project`: The disk-truth aggregate — configuration, compilation database, build view, dependency graph, artifact records, persisted index. Core invariant: unsaved buffer contents of open files never modify a `Project`; it only reflects the state on disk
+- `CommandResolver`: Resolves the compile command a file is compiled under from the project alone — own entry, a host's command for a header, a default or borrowed command — and synthesizes the includer context a header needs, owning the header-context verdicts
+- `IndexStore`: Index persistence transactions — merge, save, reconcile with the CDB — and the metadata blobs the index database carries beside it
+- `CDBWatcher`: Stat-polling of the project's compilation databases, judged against the reads their entries came from
+- Project loading: opens the cache store and index, loads the build, scans the dependency graph
+
 ### `src/sched/` — Compile Scheduling Core
 
 The task-graph engine that decides what gets built, when, and shares the results.
 
 - `TaskGraph`: The shared build graph. Every expensive product is a node; concurrent requests for the same node join one build round instead of duplicating work, cancellation is cooperative, and edges drive dependency-aware invalidation
 - `PCHFamily` / `PCMFamily` / `TURunFamily`: Node families for preamble PCHs (keyed by content), C++20 module PCMs (with import edges and provider tracking), and one-shot translation-unit runs shared by indexing and lint
-- `Workspace`: The disk-truth aggregate — compilation database, dependency graph, artifact registries, project index. Core invariant: unsaved buffer contents of open files never modify the `Workspace`; it only reflects the state on disk
-- `ContextResolver`: Resolves the compile command and includer context a file is compiled under, owning header-context verdicts, user context choices, and synthesized preambles
-- `IndexStore` / `IndexPump`: Index persistence transactions (merge, save, reconcile with the CDB) and the background scheduler that feeds stale files through workers with foreground-aware budgeting
+- `IndexPump`: The background scheduler that feeds stale files through workers with foreground-aware budgeting
+- `SchedulingStack`: The worker pool, the task graph with its families, and a project's index store and pump, assembled the same way for the server and the batch drivers
 - Bootstrap and batch drivers: cold-start orchestration for the server, and the headless execution mode behind `clice index` / `clice lint`
 
 ### `src/worker/` — Worker Processes
@@ -117,8 +126,9 @@ The language server's core runtime, responsible for assembling all the layers ab
 
 - `Session` / `SessionStore`: The open-buffer truth for each open file — content, document version, generation, and serving state — created on didOpen and destroyed on didClose. Compile products do not live here
 - `ASTProjection` / `ASTProjectionTable`: The published products of each document's most recent compilation (feature results, PCH key, dependency snapshot) — an immutable read model replaced wholesale on each publication
+- `EditorContext`: The editor's side of command resolution — the user's context choices, the header contexts resolved for open files, and the hosts of their synthesized preambles — layered over the project's `CommandResolver` for editor-facing compiles only
 - `Invalidator`: The invalidation engine — folds file events (buffer opens/saves, on-disk changes, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
-- `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`
+- `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`: the project's database watch plus a sweep of the files on disk, which judges each file against the content its include edges were scanned from
 - `Quarantine`: Per-document crash accounting — documents whose content keeps killing workers are isolated and recover through licensed probe attempts
 
 **`service/`** — Read-side services consuming compilation and index results.
