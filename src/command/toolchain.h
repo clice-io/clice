@@ -89,10 +89,6 @@ public:
         failed_retry = retry;
     }
 
-    bool probe_cwd_sensitive_for(ConfigID id) {
-        return probe_key(id, {}).cwd_sensitive;
-    }
-
     std::size_t probe_count() const {
         return probes.size();
     }

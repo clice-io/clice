@@ -118,41 +118,6 @@ export function asLocations(result: unknown): proto.Location[] {
 
 const SANITIZER_MARKER_BUFFERS = SANITIZER_MARKERS.map((m) => Buffer.from(m));
 
-let nextPortOffset = 0;
-
-function tryBind(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-        const server = net.createServer();
-        server.once("error", () => {
-            resolve(false);
-        });
-        server.listen(port, "127.0.0.1", () => {
-            server.close(() => {
-                resolve(true);
-            });
-        });
-    });
-}
-
-/// Pick a port from a per-worker range.
-///
-/// bind(0) draws from the kernel's shared pool: two concurrent workers can
-/// grab the same port in the close-then-rebind gap. Disjoint per-worker
-/// ranges (below the ephemeral range) remove that race; the advancing
-/// offset avoids immediately reusing a just-released port.
-export async function findFreePort(): Promise<number> {
-    const index = Number(process.env["VITEST_POOL_ID"] ?? "0") || 0;
-    const base = 21000 + index * 100;
-    for (let i = 0; i < 100; i++) {
-        const port = base + nextPortOffset;
-        nextPortOffset = (nextPortOffset + 1) % 100;
-        if (await tryBind(port)) {
-            return port;
-        }
-    }
-    throw new Error(`no free port in range ${base}-${base + 99}`);
-}
-
 export interface StartOptions {
     /// The server treats stderr as best-effort, but a client that never
     /// reads it forfeits the full mirror (lines are dropped once the pipe
