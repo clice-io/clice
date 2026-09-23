@@ -226,7 +226,10 @@ test("stale epoch rejected", async ({ session }) => {
         `queryContext must stamp an epoch, got: ${JSON.stringify(query)}`,
     ).toBeTruthy();
 
-    // Any save bumps the workspace epoch.
+    // A save of new bytes bumps the project epoch.
+    const saved = '#define VALUE_TYPE int\n#include "shared.h"\nint main() { return 1; }\n';
+    workspace.write("main.cpp", saved);
+    client.change(mainUri, 2, saved);
     client.save(mainUri);
     await sleep(SETTLE_TIME);
 

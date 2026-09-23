@@ -141,9 +141,9 @@ The language server's core runtime, responsible for assembling all the layers ab
 
 **`transport/`** — Protocol endpoints driving the server.
 
-- `MasterServer`: The composition root. Owns the workspace, sessions, worker pool, and all services above, and executes the `Invalidator`'s effects through its single dispatch entry point
+- `MasterServer`: The composition root. Owns the project, sessions, worker pool, and all services above, and executes the `Invalidator`'s effects through its single dispatch entry point
 - `LSPClient`: Request handlers for the LSP protocol
-- The control channel: a loopback listener the server opens while it holds the workspace's index writer lock, recorded next to the lock for the command-line tools to find
+- The control channel: a loopback listener the server opens while it holds the project's index writer lock, recorded next to the lock for the command-line tools to find
 
 See [Multi-process Architecture](multi-process.md).
 

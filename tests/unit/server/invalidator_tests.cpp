@@ -381,6 +381,7 @@ TEST_CASE(UnchangedSaveNoCascade) {
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
     project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
+    project.project_index.shards[header] = shard_of("int h;");
     store.apply_open(*store.open(header), "int h;", 1);
     store.open(host);
 
@@ -393,9 +394,37 @@ TEST_CASE(UnchangedSaveNoCascade) {
     ASSERT_TRUE(dirty.empty());
 }
 
+TEST_CASE(UnchangedSaveIndexesFile) {
+    // An open file enters the index with its save: unchanged bytes still
+    // queue the file's own rows when no shard holds them, and nothing else.
+    TempDir tmp;
+    tmp.touch("h.h", "int h;");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(tmp.path("a.cpp"));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
+    store.apply_open(*store.open(header), "int h;", 1);
+    store.open(host);
+
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{header});
+    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
+    ASSERT_TRUE(dirty.reindex_deps_only.empty());
+}
+
 TEST_CASE(EditedSaveCascades) {
     // New bytes on disk: the save's full cascade, and the scanned content
-    // moves with the rescan so a second identical save is quiet.
+    // moves with the rescan so a second identical save leaves the host
+    // alone.
     TempDir tmp;
     tmp.touch("h.h", "int edited;");
     FileTable files;
@@ -418,7 +447,9 @@ TEST_CASE(EditedSaveCascades) {
     ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{header});
     ASSERT_EQ(project.dep_graph.scanned_hash(header), llvm::xxh3_64bits("int edited;"));
 
-    ASSERT_TRUE(invalidator.apply(FileEvent::buffer_saved(header)).empty());
+    auto again = invalidator.apply(FileEvent::buffer_saved(header));
+    ASSERT_TRUE(again.mark_ast_dirty.empty());
+    ASSERT_TRUE(again.reindex_deps_only.empty());
 }
 
 TEST_CASE(OwedSaveCascades) {

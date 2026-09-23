@@ -199,11 +199,20 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 bool owed = disk_changed_while_open.erase(path_id);
                 // A save of the very bytes the project last derived from the
                 // file (unmodified text, or a formatter restoring it) changes
-                // nothing built from them. The buffer can still disagree
-                // with the disk when a save hook rewrote the file as it
-                // landed; that recompile is the file's own business.
+                // nothing built from them. Only the file's own rows may be
+                // owed: an open file enters the index with its save, so a
+                // file never indexed (or indexed from other bytes) still
+                // queues. The buffer can still disagree with the disk when a
+                // save hook rewrote the file as it landed; that recompile is
+                // the file's own business.
                 auto scanned = project.dep_graph.scanned_hash(path_id);
                 if(!owed && disk && scanned == disk->hash) {
+                    auto shard = project.project_index.shards.find(path_id);
+                    if(shard == project.project_index.shards.end() ||
+                       !shard->second.matches_content(disk->size, disk->hash)) {
+                        dirty.add_reindex_content_changed(path_id);
+                        dirty.reschedule_indexing = true;
+                    }
                     if(auto session = store.find(path_id);
                        session && (disk->size != session->text.size() ||
                                    disk->hash != llvm::xxh3_64bits(session->text))) {

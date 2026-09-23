@@ -5,7 +5,13 @@
 /// back to disk after a save, saves write only the true dirty set, and
 /// cancelled builds leave no tmp blobs behind.
 
-import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
+import {
+    MTIME_GRANULARITY,
+    SETTLE_TIME,
+    sleep,
+    waitUntil,
+    type CliceClient,
+} from "@clice/tools/client";
 import { wireKeys, type StatsResult } from "@clice/tools/protocol";
 import { expect, test } from "../fixtures.ts";
 
@@ -100,16 +106,19 @@ test("save writes only dirty shards", async ({ session }) => {
 
     // Saving the open file indexes its disk snapshot: the first save lands
     // the shard its session never contributed, a second save of the same
-    // bytes is a round with nothing to write.
+    // bytes queues nothing at all.
     const before = stats.indexShardContentBytes;
     client.save(uri);
-    await waitStats(
+    const landed = await waitStats(
         client,
         (s) => s.indexShardContentBytes > before && s.indexInmemoryShards === 0,
         "the open file's shard did not land",
     );
     client.save(uri);
-    await waitStats(client, (s) => s.lastSaveShards === 0, "a no-op round must save zero shards");
+    await sleep(SETTLE_TIME);
+    const settled = await client.stats();
+    expect(settled.indexShardContentBytes).toBe(landed.indexShardContentBytes);
+    expect(settled.lastSaveShards).toBe(landed.lastSaveShards);
     client.assertNoAnomaly();
 });
 

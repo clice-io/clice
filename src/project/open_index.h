@@ -13,10 +13,10 @@ namespace clice {
 
 struct ContextsOwner;
 
-/// Open a workspace's persisted index for reading: the configuration
+/// Open a project's persisted index for reading: the configuration
 /// resolved, the cache store and the blob database opened read-only, the
 /// global table and the search index bound in place from the database's
-/// read snapshot (pinned for the workspace's lifetime), shards fetched
+/// read snapshot (pinned for the project's lifetime), shards fetched
 /// on first use. Nothing is decoded or copied. False — with the cause
 /// logged — when there is no usable index.
 bool open_index(Project& project, llvm::StringRef root, llvm::StringRef requested_configuration);

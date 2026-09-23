@@ -27,7 +27,7 @@ struct BuildLoad {
 /// IndexStore::remembered_sources) for the server, those above the
 /// inspected files for `clice inspect` (see compile_commands_above) —
 /// then enumerate the build's members and scan the dependency graph from
-/// them. The workspace's configuration is final. The one loading path of
+/// them. The project's configuration is final. The one loading path of
 /// the server, the batch driver and `clice inspect`.
 BuildLoad load_build(Project& project,
                      llvm::StringRef root,

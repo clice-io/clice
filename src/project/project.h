@@ -227,7 +227,7 @@ struct Project {
     std::optional<CacheStore> store;
 
     /// The cache directory's writer lock, taken by a session that persists
-    /// its index and held until the workspace dies — after `index_db`, so
+    /// its index and held until the project dies — after `index_db`, so
     /// a reopened database never races another writer for the directory.
     std::optional<index::WriterLock> writer_lock;
 
@@ -253,7 +253,7 @@ struct Project {
     /// manifests, the per-file row blobs and the name search index.
     index::ProjectIndex project_index;
 
-    /// Monotonic generation of context-affecting workspace state (include
+    /// Monotonic generation of context-affecting project state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext
     /// stamps its results with it and clice/switchContext rejects requests
     /// made against an older epoch, so a client can never apply a context
