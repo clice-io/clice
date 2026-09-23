@@ -82,9 +82,16 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
 }
 
 void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
+    // A header resolves its includes under a host the reverse map ranks:
+    // edges an earlier event of the batch moved must be visible to it.
+    if(reverse_map_stale && !project.build.unit(path_id)) {
+        project.dep_graph.build_reverse_map();
+        reverse_map_stale = false;
+    }
     std::string old_module(project.dep_graph.module_of(path_id));
-    project.rescan_after_save(path_id);
-    reverse_map_stale = true;
+    if(project.rescan_after_save(path_id)) {
+        reverse_map_stale = true;
+    }
     auto new_module = project.dep_graph.module_of(path_id);
     if(new_module == old_module) {
         return;
@@ -521,10 +528,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     }
 
     // Rescans and removals rewrite forward edges only; the batch pays for
-    // one reverse-map rebuild, not one per file. Within the batch the
-    // cascades tolerate a stale map by design: a rescan rewrites the
-    // file's own outgoing edges, never the includers its cascade walks,
-    // and removals union the pre- and post-scrub snapshots.
+    // one reverse-map rebuild, not one per file. Cascades walk includers,
+    // which a file's own rescan or removal never changes.
     if(reverse_map_stale) {
         project.dep_graph.build_reverse_map();
     }

@@ -285,8 +285,10 @@ struct Project {
     /// the save added or removed), its scanned hash and its module
     /// declaration. The module-graph cascade is the invalidator's job
     /// (PCMFamily::invalidate), and so is rebuilding the reverse include
-    /// map — once per event batch, not once per rescanned file.
-    void rescan_after_save(Fid path_id);
+    /// map — once per event batch, not once per rescanned file. Returns
+    /// whether the file's include edges moved, which leaves the reverse
+    /// map stale.
+    bool rescan_after_save(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a
     /// replacement provider would otherwise sit behind it and never be

@@ -53,8 +53,15 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
                                      null_resolver);
 }
 
-void Project::rescan_after_save(Fid path_id) {
+bool Project::rescan_after_save(Fid path_id) {
     auto path = file_table.resolve(path_id);
+    auto edges_before = dep_graph.get_all_includes(path_id);
+    llvm::sort(edges_before);
+    auto edges_moved = [&] {
+        auto edges_after = dep_graph.get_all_includes(path_id);
+        llvm::sort(edges_after);
+        return edges_after != edges_before;
+    };
     dep_graph.clear_includes(path_id);
 
     // One read serves everything a save invalidates: the shared pair (so
@@ -178,10 +185,11 @@ void Project::rescan_after_save(Fid path_id) {
         }
         dep_graph.update_module_decl(path_id, module_name);
         dep_graph.set_import_candidate(path_id, scan.has_import);
-        return;
+        return edges_moved();
     }
 
     context_epoch += 1;
+    return edges_moved();
 }
 
 void Project::forget_file(Fid path_id) {
