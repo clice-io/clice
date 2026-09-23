@@ -10,11 +10,7 @@
 #include "project/command_resolver.h"
 #include "project/index_store.h"
 #include "project/project.h"
-#include "sched/families/pch.h"
-#include "sched/families/pcm.h"
-#include "sched/families/turun.h"
-#include "sched/graph.h"
-#include "sched/index/pump.h"
+#include "sched/stack.h"
 #include "server/service/ast_family.h"
 #include "server/service/context_service.h"
 #include "server/service/dispatcher.h"
@@ -162,30 +158,22 @@ public:
     kota::event_loop& loop;
     FileTable files;
     Project project{files};
-    WorkerPool pool;
     CommandResolver commands{project};
     EditorContext contexts{project, commands};
 
-    /// The scheduling core and its resident families, registered at
-    /// construction — nodes materialize on demand, so a module-free
-    /// project pays nothing. The AST family is assembled here in the
-    /// server: its rounds capture sessions, quarantine and publishing.
-    TaskGraph graph{loop};
-    PCMFamily pcm{graph, project, commands, pool};
-    PCHFamily pch{graph, project, pool};
-    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions, loop};
-
-    Dispatcher dispatcher{project, contexts, ast, pool};
-    ContextService context_service{project, contexts, ast};
-
-    /// Index scheduling, split along the serving boundary: the store and
-    /// the pump are serving-neutral sched machinery (the batch driver
-    /// reuses them); the session-side policy — admission vetoes,
+    /// The scheduling core the batch driver runs too, its families
+    /// registered at construction — nodes materialize on demand, so a
+    /// module-free project pays nothing. The store and the pump are
+    /// serving-neutral; the session-side policy — admission vetoes,
     /// unservable escalation, serving-row refresh — lives on this class
-    /// and is installed into the pump's hooks by wire().
-    IndexStore index_store{loop, project, commands};
-    TURunFamily turun{graph, project, commands, pcm, index_store, pool};
-    IndexPump pump{loop, project, turun, index_store, pool};
+    /// and is installed into the pump's hooks by wire(). The AST family is
+    /// assembled here in the server: its rounds capture sessions,
+    /// quarantine and publishing.
+    SchedulingStack sched{loop, project, commands};
+    ASTFamily ast{project, contexts, sched.graph, sched.pcm, sched.pch, sched.pool, sessions, loop};
+
+    Dispatcher dispatcher{project, contexts, ast, sched.pool};
+    ContextService context_service{project, contexts, ast};
 
     /// Emitted when rows an open index-served session is serving changed:
     /// results the client already pulled describe the old rows, and only a
@@ -194,8 +182,8 @@ public:
     /// cannot cover them.
     Signal<> on_serving_rows_changed;
 
-    ServerLiveSources live_sources{project, pch, sessions, ast.projections};
-    PumpGate freshness{pump, project.config};
+    ServerLiveSources live_sources{project, sched.pch, sessions, ast.projections};
+    PumpGate freshness{sched.pump, project.config};
     index::IndexQuery index_query;
 
     Features features;

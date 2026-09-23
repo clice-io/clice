@@ -522,24 +522,4 @@ kota::task<> IndexPump::run_background_indexing() {
     }
 }
 
-kota::task<> shutdown_indexing(TaskGraph& graph,
-                               IndexPump& pump,
-                               IndexStore& store,
-                               WorkerPool& pool,
-                               Project& project) {
-    co_await graph.shutdown();
-    auto report = co_await store.save(pump.save_debt(), /*settle=*/true);
-    pump.claim_report(report);
-    if(report.snapshot_stale) {
-        // Debt surfaced after the snapshot serialized (write-time
-        // corruption recovery): one metadata retry, or a dropped
-        // standalone header's repair debt dies with this process.
-        pump.claim_report(co_await store.save(pump.save_debt(), /*settle=*/true));
-    }
-    co_await pool.stop();
-    if(project.store) {
-        project.store->shutdown();
-    }
-}
-
 }  // namespace clice

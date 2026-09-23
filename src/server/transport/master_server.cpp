@@ -42,16 +42,12 @@ constexpr static std::size_t notify_log_limit = 128;
 MasterServer::MasterServer(kota::event_loop& loop,
                            std::string self_path,
                            std::string requested_configuration) :
-    loop(loop), pool(loop),
-    index_query(project.project_index, project.file_table, &freshness, &live_sources),
-    features(ast, dispatcher, index_query, project, contexts, pump, sessions),
-    invalidator(project, sessions, contexts, pcm), bg_tasks(loop), self_path(std::move(self_path)),
-    requested_configuration(std::move(requested_configuration)) {
-    index_store.attach_contexts(contexts);
-    pcm.register_runner();
-    pch.register_runner();
+    loop(loop), index_query(project.project_index, project.file_table, &freshness, &live_sources),
+    features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
+    invalidator(project, sessions, contexts, sched.pcm), bg_tasks(loop),
+    self_path(std::move(self_path)), requested_configuration(std::move(requested_configuration)) {
+    sched.store.attach_contexts(contexts);
     ast.register_runner();
-    turun.register_runner();
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) plus a wake-up
@@ -59,7 +55,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
     // (see support/anomaly.h), so no synchronization is needed here.
     // The loaded-state budget follows the open-document count; the PCH
     // family cannot see SessionStore, so the master wires the provider.
-    pch.open_documents = [this] {
+    sched.pch.open_documents = [this] {
         return sessions.sessions.size();
     };
     // Metadata marks (a PCH landing, a context switch) flush through the
@@ -169,7 +165,7 @@ void MasterServer::initialize() {
     pool_opts.min_stateless = cfg.min_stateless_worker_count;
     pool_opts.max_stateless = cfg.max_stateless_worker_count;
     pool_opts.log_dir = session_log_dir;
-    if(!pool.start(pool_opts)) {
+    if(!sched.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
         return;
     }
@@ -238,7 +234,7 @@ kota::task<> MasterServer::workspace_poll_task() {
 }
 
 void MasterServer::wire() {
-    pool.on_crash = [this](const WorkerCrashInfo& info) {
+    sched.pool.on_crash = [this](const WorkerCrashInfo& info) {
         // A stateless crash loses only in-flight requests, which fail back
         // to their callers with dispatch_errc::worker_crashed — the families
         // resend idempotent builds, the pump requeues the file. No state
@@ -250,7 +246,7 @@ void MasterServer::wire() {
             llvm::map_range(info.lost_documents, [](std::uint32_t id) { return Fid{id}; }))));
     };
 
-    pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
+    sched.pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
         auto id = project.file_table.find(path);
         if(!id) {
             LOG_WARN("Evicted path not in pool: {}", path);
@@ -262,7 +258,7 @@ void MasterServer::wire() {
         // Only the current owner's eviction counts: a stale copy left
         // behind by a probe reassignment says nothing about the document
         // the new owner still holds.
-        if(pool.remove_owner_from(id->raw, worker_index)) {
+        if(sched.pool.remove_owner_from(id->raw, worker_index)) {
             dispatch(FileEvent::document_evicted(*id));
         } else {
             LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
@@ -270,21 +266,18 @@ void MasterServer::wire() {
     };
 
     ast.on_indexing_needed = [this]() {
-        pump.schedule();
-    };
-    pcm.on_indexing_needed = [this]() {
-        pump.schedule();
+        sched.pump.schedule();
     };
 
     // The pump is serving-neutral; the session-side policy hooks live on
     // this class and are installed here.
-    pump.admission = [this](Fid path_id) {
+    sched.pump.admission = [this](Fid path_id) {
         return index_admission(path_id);
     };
-    pump.on_attempt_settled = [this](Fid path_id) {
+    sched.pump.on_attempt_settled = [this](Fid path_id) {
         index_attempt_settled(path_id);
     };
-    index_rows_conn = pump.on_rows_changed.connect(
+    index_rows_conn = sched.pump.on_rows_changed.connect(
         [this](llvm::ArrayRef<Fid> path_ids) { index_rows_changed(path_ids); });
 
     // The AST family's pull-side staleness check found a dependency changed
@@ -352,7 +345,7 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
     // pump cannot fulfill escalates through the adapter's attempt-settled
     // check.
     if(project.config.project.enable_indexing.value) {
-        pump.boost(session->path_id);
+        sched.pump.boost(session->path_id);
     } else {
         ast.escalate(*session);
     }
@@ -362,8 +355,8 @@ void MasterServer::close_session(Fid path_id) {
     auto path = project.file_table.resolve(path_id);
     // Route the eviction notification before dropping ownership:
     // notify_stateful uses the owner table to find the worker.
-    pool.notify_stateful(path_id.raw, worker::EvictParams{std::string(path)});
-    pool.remove_owner(path_id.raw);
+    sched.pool.notify_stateful(path_id.raw, worker::EvictParams{std::string(path)});
+    sched.pool.remove_owner(path_id.raw);
 
     // Retract the document's published diagnostics through the standard
     // output path: materialize an empty output and signal the transports
@@ -387,7 +380,7 @@ void MasterServer::close_session(Fid path_id) {
     // PCH entries are content-keyed and may be shared with other sessions,
     // so nothing entry-level to clean up — but the loaded-state budget
     // shrinks with the open count, and this is the moment it does.
-    pch.enforce_loaded_budget();
+    sched.pch.enforce_loaded_budget();
 
     dispatch(FileEvent::buffer_closed(path_id));
 
@@ -412,7 +405,7 @@ Admission MasterServer::index_admission(Fid server_path_id) {
         return Admission::Admit;
     }
     if(session->serving != ServingMode::IndexOnly) {
-        return pump.pending_reason(server_path_id) == ReindexReason::ContentChanged
+        return sched.pump.pending_reason(server_path_id) == ReindexReason::ContentChanged
                    ? Admission::Admit
                    : Admission::SkipAndSettle;
     }
@@ -501,7 +494,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // a same-stat dependency edit re-adopts the dropped fast paths and
     // judges the edited file fresh without a read.
     if(project.file_table.stamp_generation != stamps) {
-        index_store.mark_global_dirty();
+        sched.store.mark_global_dirty();
         project.mark_artifacts_dirty();
     }
 
@@ -514,20 +507,20 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     for(auto path_id: dirty.drop_index) {
-        pump.claim_report(index_store.drop_index(path_id));
+        sched.pump.claim_report(sched.store.drop_index(path_id));
     }
 
     for(auto path_id: dirty.reindex_content_changed) {
-        pump.enqueue(path_id, ReindexReason::ContentChanged);
+        sched.pump.enqueue(path_id, ReindexReason::ContentChanged);
     }
     for(auto path_id: dirty.reindex_deps_only) {
-        pump.enqueue(path_id, ReindexReason::DepsOnly);
+        sched.pump.enqueue(path_id, ReindexReason::DepsOnly);
     }
     // The engine keeps the reindex lists disjoint per file in event order
     // (see DirtySet's adders), so the clears may run in any order relative
     // to the enqueues above.
     for(auto path_id: dirty.clear_reindex) {
-        pump.clear_pending(path_id);
+        sched.pump.clear_pending(path_id);
     }
 
     if(dirty.recheck_contexts && context_service.drop_orphaned_choices(sessions)) {
@@ -540,7 +533,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // queue filled above is kept — the post-ready workspace load kicks the
     // scheduler.
     if(dirty.reschedule_indexing && lifecycle == ServerLifecycle::Ready) {
-        pump.schedule();
+        sched.pump.schedule();
     }
 }
 
@@ -560,11 +553,11 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     co_await bg_tasks.join();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await kota::when_all(pump.stop(), ast.stop());
+    co_await kota::when_all(sched.pump.stop(), ast.stop());
     // Requests have unwound and released their interest; the shared tail
     // winds down the graph's rounds before the persistence pass and the
     // pool stop.
-    co_await shutdown_indexing(graph, pump, index_store, pool, project);
+    co_await sched.shutdown();
     lifecycle = ServerLifecycle::Exited;
 }
 
@@ -585,7 +578,7 @@ kota::task<> MasterServer::metadata_flush_task() {
     // failure) retries on the next spawn with this backoff.
     co_await kota::sleep(std::chrono::milliseconds(50));
     metadata_flush_scheduled = false;
-    pump.claim_report(co_await index_store.save(pump.save_debt()));
+    sched.pump.claim_report(co_await sched.store.save(sched.pump.save_debt()));
     if(project.artifacts_dirty || contexts.dirty) {
         co_await kota::sleep(std::chrono::seconds(5));
         schedule_metadata_flush();
@@ -628,7 +621,7 @@ void MasterServer::drain_store_evictions() {
             continue;
         }
         if(auto it = project.pch_cache.find(evicted.key);
-           it != project.pch_cache.end() && !pch.building(evicted.key)) {
+           it != project.pch_cache.end() && !sched.pch.building(evicted.key)) {
             project.pch_cache.erase(it);
         }
     }
@@ -641,8 +634,11 @@ void MasterServer::load_root_project() {
     if(workspace_root.empty())
         return;
 
-    auto report =
-        bootstrap_project(project, index_store, pump, workspace_root, requested_configuration);
+    auto report = bootstrap_project(project,
+                                    sched.store,
+                                    sched.pump,
+                                    workspace_root,
+                                    requested_configuration);
     if(report.opened_store) {
         bg_tasks.spawn(cache_checkpoint_task());
     }

@@ -14,10 +14,8 @@
 #include "project/index_store.h"
 #include "project/project.h"
 #include "sched/bootstrap.h"
-#include "sched/families/pcm.h"
-#include "sched/families/turun.h"
-#include "sched/graph.h"
 #include "sched/index/pump.h"
+#include "sched/stack.h"
 #include "support/anomaly.h"
 #include "support/cache_store.h"
 #include "support/filesystem.h"
@@ -42,25 +40,14 @@ struct BatchStack {
     kota::event_loop& loop;
     FileTable files;
     Project project{files};
-    WorkerPool pool;
     CommandResolver commands{project};
-    TaskGraph graph;
-    PCMFamily pcm{graph, project, commands, pool};
-    IndexStore store{loop, project, commands};
-    TURunFamily turun{graph, project, commands, pcm, store, pool};
-    IndexPump pump{loop, project, turun, store, pool};
+    SchedulingStack sched{loop, project, commands};
 
     /// The session log directory start_batch created; empty when file
     /// logging is off.
     std::string log_dir;
 
-    explicit BatchStack(kota::event_loop& loop) : loop(loop), pool(loop), graph(loop) {
-        pcm.register_runner();
-        turun.register_runner();
-        pcm.on_indexing_needed = [this] {
-            pump.schedule();
-        };
-    }
+    explicit BatchStack(kota::event_loop& loop) : loop(loop) {}
 };
 
 /// Poll until the pump has drained every round (requeue rounds included)
@@ -102,19 +89,21 @@ kota::task<> checkpoint_task(BatchStack& stack) {
         if(stack.project.store) {
             co_await kota::queue([&stack] { stack.project.store->checkpoint(); });
         }
-        stack.pump.claim_report(co_await stack.store.save(stack.pump.save_debt()));
+        stack.sched.pump.claim_report(
+            co_await stack.sched.store.save(stack.sched.pump.save_debt()));
     }
 }
 
 /// The current round's progress to the driver's callback; nothing before
 /// the first round has a total.
 void report_progress(BatchStack& stack, const BatchOptions& options) {
-    auto& round = stack.pump.progress();
+    auto& round = stack.sched.pump.progress();
     if(!options.on_progress || round.total == 0) {
         return;
     }
-    options.on_progress(
-        {.completed = round.completed, .total = round.total, .failed = stack.pump.failed().size()});
+    options.on_progress({.completed = round.completed,
+                         .total = round.total,
+                         .failed = stack.sched.pump.failed().size()});
 }
 
 /// A paced report on top of the round boundaries: one unit can take
@@ -129,8 +118,8 @@ kota::task<> progress_ticker(BatchStack& stack, const BatchOptions& options) {
 
 /// Quiesce the pump, then the shared contract-11 tail.
 kota::task<> shutdown(BatchStack& stack) {
-    co_await stack.pump.stop();
-    co_await shutdown_indexing(stack.graph, stack.pump, stack.store, stack.pool, stack.project);
+    co_await stack.sched.pump.stop();
+    co_await stack.sched.shutdown();
 }
 
 /// A batch run's signal handling and the order of its ending. Interruption
@@ -202,7 +191,7 @@ bool start_batch(BatchStack& stack,
     pool_opts.min_stateless = cfg.min_stateless_worker_count;
     pool_opts.max_stateless = cfg.max_stateless_worker_count;
     pool_opts.log_dir = session_log_dir;
-    if(!stack.pool.start(pool_opts)) {
+    if(!stack.sched.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
         return false;
     }
@@ -220,19 +209,19 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         // A failed later spawn leaves earlier workers and their I/O tasks
         // live; unstopped they keep the batch event loop spinning and the
         // command hangs instead of exiting.
-        co_await stack.pool.stop();
+        co_await stack.sched.pool.stop();
         co_return;
     }
     if(!check_requested_configuration(project.config, options.configuration)) {
         result.exit_code = 1;
-        co_await stack.pool.stop();
+        co_await stack.sched.pool.stop();
         co_return;
     }
     project.config.project.enable_indexing.value = true;
 
     auto report = bootstrap_project(project,
-                                    stack.store,
-                                    stack.pump,
+                                    stack.sched.store,
+                                    stack.sched.pump,
                                     options.root,
                                     options.configuration,
                                     /*read_only_index=*/false,
@@ -257,14 +246,14 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_return;
     }
 
-    auto progress = stack.pump.on_progress_changed.connect([&] {
-        if(stack.pump.progress().stage != IndexPump::Progress::Stage::Report) {
+    auto progress = stack.sched.pump.on_progress_changed.connect([&] {
+        if(stack.sched.pump.progress().stage != IndexPump::Progress::Stage::Report) {
             report_progress(stack, options);
         }
     });
     BatchLifetime lifetime(stack);
     lifetime.aux.spawn(progress_ticker(stack, options));
-    co_await kota::with_token(wait_until_indexed(stack.pump), lifetime.token());
+    co_await kota::with_token(wait_until_indexed(stack.sched.pump), lifetime.token());
     if(co_await lifetime.finish()) {
         result.interrupted = true;
         result.exit_code = 130;
@@ -272,7 +261,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
 
     result.completed = true;
-    result.indexed_tus = stack.pump.indexed_files();
+    result.indexed_tus = stack.sched.pump.indexed_files();
     for(auto tu: llvm::make_first_range(project.project_index.manifests)) {
         if(!project.build.unit(tu)) {
             result.standalone_headers += 1;
@@ -283,13 +272,13 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         result.shard_bytes += shard.bytes().size();
     }
     result.symbol_count = project.project_index.symbol_count();
-    for(auto file: stack.pump.failed()) {
+    for(auto file: stack.sched.pump.failed()) {
         result.failed.emplace_back(project.file_table.resolve(file));
     }
     std::ranges::sort(result.failed);
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
-    result.unsaved = stack.store.has_unsaved_state();
+    result.unsaved = stack.sched.store.has_unsaved_state();
     if(!result.failed.empty() || result.unsaved) {
         result.exit_code = 1;
     }
@@ -336,10 +325,10 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
     // One budget-free retry: a worker crash or preemption says nothing
     // about the TU, and a one-shot sweep has no later round to requeue
     // into.
-    auto outcome = co_await stack.turun.run(path_id, plan);
+    auto outcome = co_await stack.sched.turun.run(path_id, plan);
     if(outcome.verdict == TURunFamily::Verdict::Crashed ||
        outcome.verdict == TURunFamily::Verdict::Preempted) {
-        outcome = co_await stack.turun.run(path_id, std::move(plan));
+        outcome = co_await stack.sched.turun.run(path_id, std::move(plan));
     }
 
     switch(outcome.verdict) {
@@ -348,7 +337,7 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
                 sweep.checked += 1;
             }
             if(with_index) {
-                stack.pump.claim_report(outcome.report);
+                stack.sched.pump.claim_report(outcome.report);
             }
             // The lint set applies to the findings too: a header outside
             // it reports nothing. A compiler error stays wherever it is:
@@ -404,7 +393,7 @@ kota::task<> run_lint_sweep(BatchStack& stack,
             // The pump feeder's window: deep enough that workers never
             // idle, shallow enough that a wind-down drains fast.
             while(sweep.inflight >=
-                  std::max<std::size_t>(2 * stack.pool.effective_low_limit(), 2)) {
+                  std::max<std::size_t>(2 * stack.sched.pool.effective_low_limit(), 2)) {
                 sweep.task_done.reset();
                 co_await sweep.task_done.wait();
             }
@@ -424,7 +413,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         result.exit_code = 2;
         // See run(): stop the partially started pool or the loop never
         // drains.
-        co_await stack.pool.stop();
+        co_await stack.sched.pool.stop();
         co_return;
     }
     // The command's product is the lint report: the background sweep must
@@ -433,14 +422,14 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     // or sweep writes, so the shutdown save commits nothing.
     if(!check_requested_configuration(project.config, options.configuration)) {
         result.exit_code = 2;
-        co_await stack.pool.stop();
+        co_await stack.sched.pool.stop();
         co_return;
     }
     project.config.project.enable_indexing.value = false;
 
     auto report = bootstrap_project(project,
-                                    stack.store,
-                                    stack.pump,
+                                    stack.sched.store,
+                                    stack.sched.pump,
                                     options.root,
                                     options.configuration,
                                     /*read_only_index=*/!options.with_index,
@@ -487,8 +476,8 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         // batch does, or an already-linted owner's rows stay missing while
         // the run exits clean.
         project.config.project.enable_indexing.value = true;
-        stack.pump.schedule(/*immediate=*/true);
-        co_await kota::with_token(wait_until_indexed(stack.pump), lifetime.token());
+        stack.sched.pump.schedule(/*immediate=*/true);
+        co_await kota::with_token(wait_until_indexed(stack.sched.pump), lifetime.token());
     }
     if(co_await lifetime.finish()) {
         result.interrupted = true;
@@ -498,11 +487,11 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
 
     result.completed = true;
     result.checked_tus = sweep.checked;
-    result.failed_tus = sweep.failed + stack.pump.failed().size();
+    result.failed_tus = sweep.failed + stack.sched.pump.failed().size();
     // The shutdown save was the last retry: with --index the persisted
     // index is part of the product, so unsaved state must fail the run
     // like the index-only batch does.
-    result.unsaved = options.with_index && stack.store.has_unsaved_state();
+    result.unsaved = options.with_index && stack.sched.store.has_unsaved_state();
     if(!result.findings.empty()) {
         result.exit_code = 1;
     }

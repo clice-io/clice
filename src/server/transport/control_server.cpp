@@ -50,22 +50,22 @@ void register_control(MasterServer& srv, kota::ipc::JsonPeer& peer) {
         control::IndexResult result;
         llvm::SmallVector<Fid> files;
         for(auto member: members) {
-            if(srv.pump.enqueue(member, ReindexReason::DepsOnly)) {
+            if(srv.sched.pump.enqueue(member, ReindexReason::DepsOnly)) {
                 files.push_back(member);
             }
         }
-        srv.pump.schedule(/*immediate=*/true);
+        srv.sched.pump.schedule(/*immediate=*/true);
         for(auto file: files) {
             // One await covers one attempt; a crash or preemption
             // requeues the file behind it.
-            while(srv.pump.pending_reason(file)) {
-                co_await srv.pump.await_attempt(file);
+            while(srv.sched.pump.pending_reason(file)) {
+                co_await srv.sched.pump.await_attempt(file);
             }
         }
         // The round persists at its end; the asker reads the disk, so its
         // rows must be there before the answer.
-        srv.pump.claim_report(co_await srv.index_store.save(srv.pump.save_debt()));
-        if(srv.index_store.has_unsaved_state()) {
+        srv.sched.pump.claim_report(co_await srv.sched.store.save(srv.sched.pump.save_debt()));
+        if(srv.sched.store.has_unsaved_state()) {
             co_return kota::outcome_error(
                 kota::ipc::Error{"part of the index could not be persisted; see the server log"});
         }

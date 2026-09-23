@@ -307,14 +307,4 @@ private:
                                 RoundState& round);
 };
 
-/// The shutdown tail every indexing stack shares once its compile and
-/// index work is quiesced (contract 11): wind down the graph's rounds,
-/// the final save with the one metadata retry late debt may owe, then
-/// the pool and the store.
-kota::task<> shutdown_indexing(TaskGraph& graph,
-                               IndexPump& pump,
-                               IndexStore& store,
-                               WorkerPool& pool,
-                               Project& project);
-
 }  // namespace clice
