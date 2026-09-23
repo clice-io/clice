@@ -327,12 +327,13 @@ test("indexing progress ends across folders", async ({ session }) => {
     expect(await client.waitForIndex(alpha, "beta_fn")).toBe(true);
 
     // A folder with nothing to index never runs a round; the others'
-    // rounds still end the one the client sees.
+    // rounds still end the one the client sees. A round that ends before
+    // the client acknowledged its token is never announced at all.
     const events = () =>
         client.progressEvents
             .filter((event) => event.token === "clice/backgroundIndex")
             .map((event) => event.value as { kind: string; message?: string });
-    await waitUntil(() => events().at(-1)?.kind === "end", {
+    await waitUntil(() => [undefined, "end"].includes(events().at(-1)?.kind), {
         timeout: INDEX_TIMEOUT,
         interval: SETTLE_TIME,
         description: "the indexing progress to end",
