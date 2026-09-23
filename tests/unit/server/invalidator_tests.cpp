@@ -28,16 +28,18 @@ index::Shard shard_of(llvm::StringRef content) {
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
 }
 
-/// Non-module fixtures need the invalidator's PCMFamily reference but
-/// never drive it; this bundles the inert graph plumbing behind it.
+/// Non-module fixtures need the invalidator's PCMFamily and index store
+/// references but never drive them; this bundles the inert plumbing
+/// behind them.
 struct PCMHarness {
     kota::event_loop loop;
     TaskGraph graph{loop};
     WorkerPool pool{loop};
     PCMFamily pcm;
+    IndexStore index;
 
     PCMHarness(Project& project, EditorContext& resolver) :
-        pcm(graph, project, resolver.commands, pool) {}
+        pcm(graph, project, resolver.commands, pool), index(loop, project, resolver.commands) {}
 };
 
 /// The orphaned-choice tests exercise ContextService's session reset,
@@ -64,7 +66,7 @@ TEST_CASE(EmptyBatchNoEffects) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     auto dirty = invalidator.apply({});
 
@@ -95,7 +97,7 @@ TEST_CASE(NewProviderDirtiesImporters) {
     PCMHarness ph(project, resolver);
     ph.graph.declare({Family::TURun, closed.raw}, {PCMFamily::unresolved_node("m")});
     ph.graph.declare({Family::AST, open.raw}, {PCMFamily::unresolved_node("m")});
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     FileEvent events[] = {FileEvent::disk_changed(iface)};
     auto dirty = invalidator.apply(events);
@@ -134,7 +136,7 @@ TEST_CASE(ReloadProviderCascades) {
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
     ph.graph.declare({Family::TURun, retired.raw}, {PCMFamily::unresolved_node("m")});
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     FileEvent::CDBDelta delta;
     delta.added = {iface};
@@ -160,7 +162,7 @@ TEST_CASE(DiskRemovedDropsProvider) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     FileEvent events[] = {FileEvent::disk_removed(iface)};
     invalidator.apply(events);
@@ -178,7 +180,7 @@ TEST_CASE(NoOpEventsNoEffects) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     // Buffer sync stays in SessionStore (exempt from the pipeline); these
     // events must produce no effects of their own.
     FileEvent events[] = {FileEvent::buffer_opened(file), FileEvent::buffer_edited(file)};
@@ -203,7 +205,7 @@ TEST_CASE(SaveResetsTrialOnly) {
     EditorContext resolver(project, commands);
     // A plain save: the disk holds exactly what the buffer holds.
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
 
     // The saved file itself is not stale — its buffer was already current —
@@ -235,7 +237,7 @@ TEST_CASE(CascadeSplitsOpenClosed) {
     ph.graph.declare(node(closed_user), {node(mod)});
 
     store.open(open_user);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     auto dirty = invalidator.apply(FileEvent::buffer_saved(mod));
 
@@ -267,7 +269,7 @@ TEST_CASE(ChainHitAndMiss) {
     resolver.header_contexts[miss].chain = {other};
     resolver.header_contexts[closed].chain = {saved};
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
 
     // Every context embedding the saved file re-validates and drops its
@@ -299,7 +301,7 @@ TEST_CASE(SaveMarksDependents) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
     // Open dependents recompile, closed ones reindex; the old/new dependent
@@ -324,7 +326,7 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
     // Only root TUs own index shards; the intermediate header is not one.
@@ -355,7 +357,7 @@ TEST_CASE(BatchRebuildsReverseMapOnce) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty =
         invalidator.apply({FileEvent::disk_changed(added), FileEvent::disk_changed(header)});
 
@@ -385,7 +387,7 @@ TEST_CASE(UnchangedSaveNoCascade) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
     ASSERT_TRUE(dirty.empty());
@@ -410,7 +412,7 @@ TEST_CASE(EditedSaveCascades) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{host});
     ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{header});
@@ -437,7 +439,7 @@ TEST_CASE(OwedSaveCascades) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     invalidator.apply(FileEvent::disk_changed(header));
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
     ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{host});
@@ -457,7 +459,7 @@ TEST_CASE(RemovalForgetsScannedContent) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     invalidator.apply(FileEvent::disk_removed(header));
     ASSERT_FALSE(project.dep_graph.scanned_hash(header).has_value());
 }
@@ -476,7 +478,7 @@ TEST_CASE(CloseWithoutShardReindexes) {
     EditorContext resolver(project, commands);
     // The file exists on disk, it just was never indexed.
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
     // No shard to compare against: nothing serves this file's rows anyway.
@@ -502,7 +504,7 @@ TEST_CASE(CloseCurrentShardDepsOnly) {
     // Disk matches the content the shard was built from: a browse-and-close
     // must not blank the file's rows for the reindex queue's latency.
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
     ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed});
@@ -525,7 +527,7 @@ TEST_CASE(CloseDivergentShardContentChanged) {
     // Disk holds edits the shard never saw (saved while open): the shard's
     // rows describe text that no longer exists.
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
     ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{closed});
@@ -561,7 +563,7 @@ TEST_CASE(CloseStaleModuleCascades) {
             user.raw
     },
         {{Family::PCM, mod.raw}});
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
 
     EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, mod));
@@ -593,7 +595,7 @@ TEST_CASE(CloseRefreshesEdges) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     invalidator.apply(FileEvent::buffer_closed(file));
 
     auto includes = project.dep_graph.get_all_includes(file);
@@ -623,7 +625,7 @@ TEST_CASE(DeferredDiskChangeCascades) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     auto deferred = invalidator.apply(FileEvent::disk_changed(header));
     ASSERT_TRUE(deferred.reindex_deps_only.empty());
@@ -658,7 +660,7 @@ TEST_CASE(CloseFirstProviderCascades) {
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
     ph.graph.declare({Family::TURun, importer.raw}, {PCMFamily::unresolved_node("m")});
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
     EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, importer));
@@ -693,7 +695,7 @@ TEST_CASE(CloseProviderRenameCascades) {
             importer.raw
     },
         {{Family::PCM, iface.raw}});
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
     EXPECT_TRUE(llvm::is_contained(dirty.reindex_deps_only, importer));
@@ -720,7 +722,7 @@ TEST_CASE(CloseKeepsGuardedProvider) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     invalidator.apply(FileEvent::buffer_closed(iface));
 
@@ -758,7 +760,7 @@ TEST_CASE(CloseStalePCMCascades) {
             user.raw
     },
         {{Family::PCM, mod.raw}});
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
 
     llvm::SmallVector<Fid> reindexed{mod, user};
@@ -780,7 +782,7 @@ TEST_CASE(CrashMarksLostDirty) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     Fid lost[] = {first, second};
     auto dirty = invalidator.apply(FileEvent::worker_crashed(lost));
 
@@ -802,7 +804,7 @@ TEST_CASE(EvictionMarksLost) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::document_evicted(file));
 
     // Same loss as a crash, scoped to one document.
@@ -821,7 +823,7 @@ TEST_CASE(BatchSavesDeduplicate) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     FileEvent events[] = {FileEvent::buffer_saved(saved), FileEvent::buffer_saved(saved)};
     auto dirty = invalidator.apply(events);
 
@@ -844,7 +846,7 @@ TEST_CASE(SaveDivergentDiskDirties) {
     EditorContext resolver(project, commands);
     // A save hook rewrote the file as it landed: disk != buffer.
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
 
     // The session recompiles so its deps snapshot re-validates against the
@@ -867,7 +869,7 @@ TEST_CASE(SaveUnreadableDiskDirties) {
     // present-but-unreadable file lands in the same nullopt): the disk
     // state is unknown, which is treated as divergent (conservative).
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
 
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{saved});
@@ -883,7 +885,7 @@ TEST_CASE(DiskChangeOpenMarksDirty) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(open_file));
 
     // The buffer is the truth for an open file: recompile so the next
@@ -912,7 +914,7 @@ TEST_CASE(DiskChangeClosedCascades) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // A closed file's disk change cascades exactly like a save, plus the
@@ -941,7 +943,7 @@ TEST_CASE(DiskRemovedScrubsSourceRole) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_removed(removed_tu));
 
     // The removed file stops being an includer (and thus a host-source
@@ -969,7 +971,7 @@ TEST_CASE(RemoveRecreateBatchOrder) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     // Change then delete: the removal is the later fact, the clear wins.
     {
@@ -1010,7 +1012,7 @@ TEST_CASE(EntryChangeThenRemoval) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     FileEvent::CDBDelta delta;
     delta.changed = {file};
     FileEvent events[] = {FileEvent::cdb_changed(std::move(delta)), FileEvent::disk_removed(file)};
@@ -1034,7 +1036,7 @@ TEST_CASE(CloseOfDeletedFile) {
     EditorContext resolver(project, commands);
     // Disk read fails: the file vanished while it was open.
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     auto dirty = invalidator.apply(FileEvent::buffer_closed(file));
 
@@ -1065,7 +1067,7 @@ TEST_CASE(CDBAddedScansAndEnqueues) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     FileEvent::CDBDelta delta;
     delta.added = {main_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -1102,7 +1104,7 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     FileEvent::CDBDelta delta;
     delta.changed = {open_id, closed_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -1139,7 +1141,7 @@ TEST_CASE(CDBAddedOpenMarksDirty) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     FileEvent::CDBDelta delta;
     delta.added = {file};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -1170,7 +1172,7 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     resolver.header_contexts[closed_header].host_path_id = host;
     resolver.header_contexts[other_header].host_path_id = Fid{};
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     FileEvent::CDBDelta delta;
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -1192,6 +1194,31 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     ASSERT_EQ(project.project_index.shards.count(closed_header), 1u);
 }
 
+TEST_CASE(CDBChangedDropsBorrowedIndex) {
+    // A header indexed standalone in an earlier session borrowed its
+    // host's command without ever being opened in this one: the host's
+    // command change drops and rebuilds its rows all the same.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto host = project.file_table.intern("/proj/host.cpp");
+    auto header = project.file_table.intern("/proj/header.h");
+
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
+    PCMHarness ph(project, resolver);
+    ph.index.record_header_host(header, host);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
+    FileEvent::CDBDelta delta;
+    delta.changed = {host};
+    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
+
+    ASSERT_TRUE(dirty.drop_context.empty());
+    ASSERT_TRUE(llvm::is_contained(dirty.drop_index, header));
+    ASSERT_TRUE(llvm::is_contained(dirty.reindex_content_changed, header));
+    ASSERT_FALSE(llvm::is_contained(dirty.mark_ast_dirty, header));
+}
+
 TEST_CASE(CDBChangedCascadesModule) {
     FileTable files;
     Project project{files};
@@ -1211,7 +1238,7 @@ TEST_CASE(CDBChangedCascadesModule) {
     ph.graph.declare(node(closed_user), {node(mod)});
 
     store.open(open_user);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
     FileEvent::CDBDelta delta;
     delta.changed = {mod};
@@ -1245,7 +1272,7 @@ TEST_CASE(DiskRemovedReindexesIncluders) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_removed(header));
 
     // Dependents now compile against a missing include: open ones
@@ -1280,7 +1307,7 @@ TEST_CASE(CDBRemovedDropsSourceRole) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     FileEvent::CDBDelta delta;
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -1319,7 +1346,7 @@ TEST_CASE(CDBRemovedStillClaimed) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     FileEvent::CDBDelta delta;
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -1337,7 +1364,7 @@ TEST_CASE(CDBEmptyDeltaNoEffects) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::cdb_changed({}));
 
     ASSERT_TRUE(dirty.empty());
@@ -1353,7 +1380,7 @@ TEST_CASE(BatchDiskEventsDeduplicate) {
     CommandResolver commands(project);
     EditorContext resolver(project, commands);
     PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     FileEvent events[] = {FileEvent::disk_changed(first),
                           FileEvent::disk_changed(first),
                           FileEvent::disk_changed(second)};

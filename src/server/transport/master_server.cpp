@@ -44,7 +44,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
                            std::string requested_configuration) :
     loop(loop), index_query(project.project_index, project.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
-    invalidator(project, sessions, contexts, sched.pcm), bg_tasks(loop),
+    invalidator(project, sessions, contexts, sched.pcm, sched.store), bg_tasks(loop),
     self_path(std::move(self_path)), requested_configuration(std::move(requested_configuration)) {
     sched.store.attach_contexts(contexts);
     ast.register_runner();

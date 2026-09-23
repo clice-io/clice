@@ -15,8 +15,9 @@ namespace clice {
 Invalidator::Invalidator(Project& project,
                          const SessionStore& store,
                          const EditorContext& contexts,
-                         PCMFamily& pcm) :
-    project(project), store(store), contexts(contexts), pcm(pcm) {}
+                         PCMFamily& pcm,
+                         const IndexStore& index) :
+    project(project), store(store), contexts(contexts), pcm(pcm), index(index) {}
 
 /// Batch effects may name the same file twice (two saves in one batch);
 /// execution must see each id once.
@@ -437,24 +438,30 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     if(contexts.header_context(path_id)) {
                         dirty.drop_context.push_back(path_id);
                     }
+                    // A standalone-indexed header borrowed the changed
+                    // command too, open or not: its manifest is as stale as
+                    // the host's (no-op for headers indexed only via TUs).
+                    auto borrowers = index.headers_hosted_by(path_id);
                     for(auto& [header_id, context]: contexts.header_contexts) {
                         if(context.host_path_id != path_id) {
                             continue;
                         }
                         dirty.drop_context.push_back(header_id);
-                        // A standalone-indexed header borrowed the changed
-                        // command too; its manifest is as stale as the
-                        // host's (no-op for headers indexed only via TUs).
-                        dirty.drop_index.push_back(header_id);
-                        if(auto session = store.find(header_id)) {
+                        if(store.find(header_id)) {
                             dirty.mark_ast_dirty.push_back(header_id);
-                            // An index-only session just lost its serving
-                            // rows with the drop; only a reindex under the
-                            // new command brings them back.
-                            if(session->serving == ServingMode::IndexOnly) {
-                                dirty.add_reindex_content_changed(header_id);
-                            }
-                        } else {
+                        }
+                        if(!llvm::is_contained(borrowers, header_id)) {
+                            borrowers.push_back(header_id);
+                        }
+                    }
+                    for(auto header_id: borrowers) {
+                        dirty.drop_index.push_back(header_id);
+                        // An index-only session just lost its serving rows
+                        // with the drop; only a reindex under the new
+                        // command brings them back. An open session that
+                        // compiles is reindexed when it closes.
+                        auto session = store.find(header_id);
+                        if(!session || session->serving == ServingMode::IndexOnly) {
                             dirty.add_reindex_content_changed(header_id);
                         }
                     }

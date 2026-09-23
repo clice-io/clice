@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "project/index_store.h"
 #include "project/project.h"
 #include "server/state/editor_context.h"
 #include "server/state/session_store.h"
@@ -261,7 +262,8 @@ public:
     Invalidator(Project& project,
                 const SessionStore& store,
                 const EditorContext& contexts,
-                PCMFamily& pcm);
+                PCMFamily& pcm,
+                const IndexStore& index);
 
     /// Fold a batch of events into one deduplicated effect set.
     DirtySet apply(llvm::ArrayRef<FileEvent> events);
@@ -298,6 +300,7 @@ private:
     const SessionStore& store;
     const EditorContext& contexts;
     PCMFamily& pcm;
+    const IndexStore& index;
 
     /// Set by any rescan or removal of the batch in flight: apply() rebuilds
     /// the reverse include map once at its end.

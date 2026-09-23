@@ -190,6 +190,18 @@ public:
         header_hosts[header] = host;
     }
 
+    /// The standalone-indexed headers whose retained rows borrowed
+    /// `host`'s command.
+    llvm::SmallVector<Fid> headers_hosted_by(Fid host) const {
+        llvm::SmallVector<Fid> headers;
+        for(auto& [header, recorded]: header_hosts) {
+            if(recorded == host) {
+                headers.push_back(header);
+            }
+        }
+        return headers;
+    }
+
     /// Start a freshness round: FileVersion verdicts hold for one round —
     /// the disk can change under a running round, but staleness is
     /// re-judged per round anyway.
