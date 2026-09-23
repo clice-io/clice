@@ -394,8 +394,25 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
     // and rejects the mixed-view lookup otherwise.
     auto index_definition = [&]() -> std::vector<protocol::Location> {
         auto cursor = cursor_at(path_id, position);
-        return cursor ? to_lsp::locations(query.definition(*cursor))
-                      : std::vector<protocol::Location>{};
+        if(!cursor) {
+            return {};
+        }
+        // A definition another project compiles (a library's source beside
+        // the application including its header) outranks the declarations
+        // this project alone can offer.
+        std::vector<index::Site> defined;
+        for(auto* peer: peers_of(*cursor)) {
+            auto more = peer->sites(cursor->symbol, RelationKind::Definition);
+            defined.insert(defined.end(),
+                           std::make_move_iterator(more.begin()),
+                           std::make_move_iterator(more.end()));
+        }
+        auto own = query.sites(cursor->symbol, RelationKind::Definition);
+        if(!defined.empty() && own.empty()) {
+            index::dedup_sites(defined);
+            return to_lsp::locations(defined);
+        }
+        return to_lsp::locations(query.definition(*cursor));
     };
     if(auto result = index_definition(); !result.empty()) {
         co_return to_raw(result);
@@ -789,7 +806,33 @@ Features::RawResult Features::references(std::shared_ptr<Session> session,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::locations(query.references(*cursor, include_declaration)));
+    auto sites = query.references(*cursor, include_declaration);
+    for(auto* peer: peers_of(*cursor)) {
+        auto more = peer->references(*cursor, include_declaration);
+        sites.insert(sites.end(),
+                     std::make_move_iterator(more.begin()),
+                     std::make_move_iterator(more.end()));
+    }
+    index::dedup_sites(sites);
+    co_return to_raw(to_lsp::locations(sites));
+}
+
+llvm::SmallVector<const index::IndexQuery*>
+    Features::peers_of(const index::IndexQuery::Cursor& cursor) {
+    llvm::SmallVector<const index::IndexQuery*> relevant;
+    if(!peers) {
+        return relevant;
+    }
+    llvm::SmallVector<Fid> declaring{cursor.site.file};
+    for(auto& site: query.declaration(cursor)) {
+        declaring.push_back(site.file);
+    }
+    for(auto* peer: peers()) {
+        if(llvm::any_of(declaring, [&](Fid file) { return peer->indexes(file); })) {
+            relevant.push_back(peer);
+        }
+    }
+    return relevant;
 }
 
 Features::RawResult Features::declaration(std::shared_ptr<Session> session,

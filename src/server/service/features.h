@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -64,6 +65,12 @@ public:
         pump(pump), sessions(sessions) {}
 
     using RawResult = Dispatcher::RawResult;
+
+    /// The other projects' index queries, wired by the master. A symbol's
+    /// references and definition are also sought in those whose index
+    /// holds a file declaring it: an application and the library beside
+    /// it see each other's uses.
+    std::function<llvm::SmallVector<const index::IndexQuery*>()> peers;
 
     /// Full document-link result for a session: the worker's main-file links
     /// merged behind the PCH's cached preamble links.
@@ -276,6 +283,9 @@ private:
     ASTFamily& ast;
     Dispatcher& dispatcher;
     index::IndexQuery& query;
+
+    /// The peers indexing a file that declares the cursor's symbol.
+    llvm::SmallVector<const index::IndexQuery*> peers_of(const index::IndexQuery::Cursor& cursor);
     Project& project;
     EditorContext& contexts;
     IndexPump& pump;

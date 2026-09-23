@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
 import { URI } from "vscode-uri";
-import type { CliceClient } from "@clice/tools/client";
+import { waitUntil, type CliceClient } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
 
@@ -102,4 +102,45 @@ test("removed folder releases its files", async ({ session }) => {
     await changeFolders(client, workspace, { removed: ["beta"] });
     await client.waitForRecompile(beta);
     client.assertHasErrors(beta, "the remaining project has no command for it");
+});
+
+/// A library and an application including its header, each its own folder.
+function libraryAndApp(ws: Workspace): void {
+    ws.write("lib/include/lib.h", "#pragma once\nint lib_fn();\n");
+    ws.write("lib/src/lib.cpp", '#include "lib.h"\nint lib_fn() { return 1; }\n');
+    ws.write("app/main.cpp", '#include "lib.h"\nint main() { return lib_fn(); }\n');
+    const include = `-I${ws.path("lib/include")}`;
+    ws.writeCDB(["lib/src/lib.cpp"], { extraArgs: [include], at: "lib/compile_commands.json" });
+    ws.writeCDB(["app/main.cpp"], { extraArgs: [include], at: "app/compile_commands.json" });
+}
+
+test("definition crosses folders", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    libraryAndApp(workspace);
+    await client.initialize(workspace, { folders: ["app", "lib"] });
+
+    const [main] = await client.openAndWait("app/main.cpp");
+
+    // The application's index only declares lib_fn; the library's defines
+    // it, once its background index lands.
+    const definitionUris = async () => {
+        const locations = await client.definitionAt(main, 1, 21);
+        return (Array.isArray(locations) ? locations : locations ? [locations] : []).map(
+            (location) => ("uri" in location ? location.uri : location.targetUri),
+        );
+    };
+    await waitUntil(
+        async () => (await definitionUris()).includes(workspace.uri("lib/src/lib.cpp")),
+        { timeout: 30_000, interval: 500, description: "the library's definition of lib_fn" },
+    );
+});
+
+test("references cross folders", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    libraryAndApp(workspace);
+    await client.initialize(workspace, { folders: ["app", "lib"] });
+
+    const [lib] = await client.openAndWait("lib/src/lib.cpp");
+    expect(await client.waitForIndex(lib, "main")).toBe(true);
+    expect(await client.waitForReference(lib, 1, 5, workspace.uri("app/main.cpp"))).toBe(true);
 });

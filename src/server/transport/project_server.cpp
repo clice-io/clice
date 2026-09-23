@@ -47,6 +47,15 @@ ProjectServer::ProjectServer(MasterServer& server, std::string root) :
     ast.on_indexing_needed = [this]() {
         sched.pump.schedule();
     };
+    features.peers = [this] {
+        llvm::SmallVector<const index::IndexQuery*> others;
+        for(auto& other: this->server.projects) {
+            if(other.get() != this) {
+                others.push_back(&other->index_query);
+            }
+        }
+        return others;
+    };
     output_conn = ast.on_output.connect(
         [this](const std::shared_ptr<Session>& session) { this->server.on_output.emit(session); });
     progress_conn =

@@ -71,18 +71,6 @@ bool same_site(const Site& lhs, const Site& rhs) {
     return lhs.path == rhs.path && lhs.range == rhs.range;
 }
 
-/// Cross-source dedup: a row present in both a disk shard and a PCH
-/// overlay (or in two overlays sharing a preamble) comes out identical.
-void dedup_sites(std::vector<Site>& sites) {
-    std::ranges::sort(sites, [](const Site& lhs, const Site& rhs) {
-        return site_key(lhs) < site_key(rhs);
-    });
-    auto dup = std::ranges::unique(sites, [](const Site& lhs, const Site& rhs) {
-        return site_key(lhs) == site_key(rhs);
-    });
-    sites.erase(dup.begin(), dup.end());
-}
-
 /// Drop the cursor's own site from an answer set — standing on a
 /// declaration or definition navigates to the other sites — unless it is
 /// the only site the symbol has (an inline definition, nowhere else to go).
@@ -95,6 +83,16 @@ void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
 }
 
 }  // namespace
+
+void dedup_sites(std::vector<Site>& sites) {
+    std::ranges::sort(sites, [](const Site& lhs, const Site& rhs) {
+        return site_key(lhs) < site_key(rhs);
+    });
+    auto dup = std::ranges::unique(sites, [](const Site& lhs, const Site& rhs) {
+        return site_key(lhs) == site_key(rhs);
+    });
+    sites.erase(dup.begin(), dup.end());
+}
 
 bool DiskGate::withhold(Fid file) const {
     auto [it, inserted] = verdicts.try_emplace(file, false);
