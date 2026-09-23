@@ -350,8 +350,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     mark_dependent(root, dirty);
                 }
                 // A removed module unit takes its PCM with it: importers'
-                // build products went stale, and it stops providing its
-                // module name.
+                // build products went stale.
                 cascade_compile_graph(path_id, dirty);
                 // The file's shard deliberately keeps serving navigation
                 // (its content snapshot is the only remaining truth), so any
@@ -363,26 +362,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // module itself among its dirtied units: the removal is this
                 // event's final word for the file itself.
                 dirty.add_clear_reindex(path_id);
-                // The provider leaves the module map too, or a later
-                // replacement provider would sit behind the deleted one in
-                // the candidate list and never be selected.
-                project.dep_graph.update_module_decl(path_id, {});
-                // The file's import syntax is gone with it: deleting the
-                // last import-bearing file must release the project-wide
-                // scan gate.
-                project.dep_graph.set_import_candidate(path_id, false);
-                // Scrub the includer role: the file's outgoing edges vanished
-                // with it, so it stops being a host-source candidate.
-                // Incoming edges stay — includers' text still names it, and
-                // their own rescan owns those edges. The reverse-map rebuild
-                // is deferred to the end of the batch: a mass deletion (git
-                // checkout) would otherwise rebuild it once per file, and
-                // within-batch cascades tolerate a stale reverse map by
-                // design (they union the pre/post snapshots).
-                project.dep_graph.clear_includes(path_id);
-                project.dep_graph.forget_scanned_hash(path_id);
+                project.forget_file(path_id);
                 reverse_map_stale = true;
-                project.context_epoch += 1;
                 // Contexts hosted by (or chained through) the removed file
                 // are cleaned by the resolver's orphan pass.
                 dirty.recheck_contexts = true;
@@ -400,33 +381,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 }
 
                 // The producer already reloaded the CDB; derived state must
-                // follow. Rebuild the include graph and module map from
-                // scratch against the new database: entry additions,
-                // removals and flag changes all funnel into one uniform
-                // rescan instead of per-entry graph surgery. The rescan is
-                // still cheap: per-file scan results are content-keyed in
-                // the file table, so unchanged files re-resolve without a
-                // read or lex.
-                // TODO: this scan runs synchronously on the event loop (same
-                // cost as the startup scan); if it shows up on large
-                // projects, move it off the dispatch path.
-                // Per name, the provider import resolution selects
-                // (direct_deps takes the list head) — not mere existence:
-                // a reload can move the selection to another provider
-                // while the old one's own entry stays unchanged.
-                llvm::StringMap<Fid> selected_provider;
-                for(auto& entry: project.dep_graph.modules()) {
-                    if(!entry.getValue().empty()) {
-                        selected_provider[entry.getKey()] = entry.getValue().front();
-                    }
-                }
-
-                project.dep_graph = DependencyGraph();
-                scan_dependency_graph(project.cdb,
-                                      project.dep_graph,
-                                      project.build.units(project.build.members()));
-                project.dep_graph.build_reverse_map();
-                project.context_epoch += 1;
+                // follow.
+                auto providers = project.rebuild_dependency_graph();
 
                 // A module name that just gained its first provider: its
                 // sentinel's dependents are the TUs that scanned it
@@ -436,16 +392,11 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // edges to the old selected node, and when its own entry
                 // is unchanged the delta walk cannot reach them either —
                 // cascade from that node so their next rounds re-resolve.
-                for(auto& entry: project.dep_graph.modules()) {
-                    if(entry.getValue().empty()) {
-                        continue;
-                    }
-                    auto it = selected_provider.find(entry.getKey());
-                    if(it == selected_provider.end()) {
-                        provider_appeared(entry.getKey(), dirty);
-                    } else if(it->second != entry.getValue().front()) {
-                        cascade_compile_graph(it->second, dirty);
-                    }
+                for(auto& name: providers.appeared) {
+                    provider_appeared(name, dirty);
+                }
+                for(auto replaced: providers.replaced) {
+                    cascade_compile_graph(replaced, dirty);
                 }
 
                 // Every delta entry needs the same treatment — the compile

@@ -288,6 +288,34 @@ struct Project {
     /// map — once per event batch, not once per rescanned file.
     void rescan_after_save(Fid path_id);
 
+    /// A file vanished from disk: it stops providing its module name (a
+    /// replacement provider would otherwise sit behind it and never be
+    /// selected) and its import syntax (the last import-bearing file must
+    /// release the project-wide scan gate), and its outgoing edges go, so
+    /// it stops being a host candidate. Incoming edges stay — includers'
+    /// text still names it, and their own rescans own those edges. The
+    /// reverse include map is left to the caller's batch, as for rescans.
+    void forget_file(Fid path_id);
+
+    /// What rebuilding the dependency graph did to module providers, per
+    /// name: the provider import resolution selects (the candidate list's
+    /// head), not mere existence.
+    struct ProviderChanges {
+        /// Names that gained their first provider.
+        llvm::SmallVector<std::string> appeared;
+
+        /// The previously selected providers of names whose selection moved
+        /// to another file.
+        llvm::SmallVector<Fid> replaced;
+    };
+
+    /// Rebuild the dependency graph from scratch against the current
+    /// database: entry additions, removals and flag changes all funnel into
+    /// one uniform rescan instead of per-entry graph surgery. Still cheap —
+    /// per-file scan results are content-keyed in the file table, so
+    /// unchanged files re-resolve without a read or lex.
+    ProviderChanges rebuild_dependency_graph();
+
     /// Persistence signal for the artifact validity metadata (PCH/PCM
     /// records, header modes) the index database carries beyond the index
     /// itself: producers mark, the single write pipeline (IndexStore::save)

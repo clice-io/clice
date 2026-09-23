@@ -184,6 +184,45 @@ void Project::rescan_after_save(Fid path_id) {
     context_epoch += 1;
 }
 
+void Project::forget_file(Fid path_id) {
+    dep_graph.update_module_decl(path_id, {});
+    dep_graph.set_import_candidate(path_id, false);
+    dep_graph.clear_includes(path_id);
+    dep_graph.forget_scanned_hash(path_id);
+    context_epoch += 1;
+}
+
+Project::ProviderChanges Project::rebuild_dependency_graph() {
+    llvm::StringMap<Fid> selected;
+    for(auto& entry: dep_graph.modules()) {
+        if(!entry.getValue().empty()) {
+            selected[entry.getKey()] = entry.getValue().front();
+        }
+    }
+
+    // TODO: this scan runs synchronously on the event loop (same cost as
+    // the startup scan); if it shows up on large projects, move it off the
+    // dispatch path.
+    dep_graph = DependencyGraph();
+    scan_dependency_graph(cdb, dep_graph, build.units(build.members()));
+    dep_graph.build_reverse_map();
+    context_epoch += 1;
+
+    ProviderChanges changes;
+    for(auto& entry: dep_graph.modules()) {
+        if(entry.getValue().empty()) {
+            continue;
+        }
+        auto it = selected.find(entry.getKey());
+        if(it == selected.end()) {
+            changes.appeared.push_back(entry.getKey().str());
+        } else if(it->second != entry.getValue().front()) {
+            changes.replaced.push_back(it->second);
+        }
+    }
+    return changes;
+}
+
 static std::string database_in(llvm::StringRef dir) {
     auto candidate = path::join(dir, "compile_commands.json");
     return llvm::sys::fs::exists(candidate) ? candidate : std::string();
