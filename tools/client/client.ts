@@ -175,7 +175,8 @@ export interface InitializeOptions {
     /// the most conservative client unless a test opts in.
     capabilities?: proto.ClientCapabilities | undefined;
     /// The workspace folders to announce, workspace-relative; the
-    /// workspace root alone when omitted.
+    /// workspace root alone when omitted, and no root at all (neither
+    /// folders nor rootUri) when empty.
     folders?: string[] | undefined;
 }
 
@@ -444,7 +445,7 @@ export class CliceClient {
             capabilities: options.capabilities ?? {
                 workspace: { workspaceEdit: { documentChanges: true } },
             },
-            rootUri: wsUri,
+            rootUri: options.folders?.length === 0 ? null : wsUri,
             workspaceFolders: options.folders
                 ? options.folders.map((folder) => ({
                       uri: URI.file(ws.path(folder)).toString(),

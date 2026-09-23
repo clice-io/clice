@@ -76,16 +76,43 @@ test("each folder keeps its own cache", async ({ session }) => {
     expect(fs.existsSync(workspace.path("beta/.clice"))).toBe(true);
 });
 
-test("added folder adopts its files", async ({ session }) => {
+test("unclaimed file opens its project", async ({ session }) => {
     const { client, workspace } = session.tmp();
     twoProjects(workspace);
     await client.initialize(workspace, { folders: ["alpha"] });
 
-    // Outside every folder: the first project serves it, without beta's
-    // database.
+    // Outside every folder, with a database above it: that folder is
+    // served as if it were open.
+    const [beta] = await client.openAndWait("beta/main.cpp");
+    client.assertNoErrors(beta, "the project found above the file compiles it");
+});
+
+test("rootless server finds projects", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    twoProjects(workspace);
+    await client.initialize(workspace, { folders: [] });
+
+    const [alpha] = await client.openAndWait("alpha/main.cpp");
+    const [beta] = await client.openAndWait("beta/main.cpp");
+    client.assertNoErrors(alpha);
+    client.assertNoErrors(beta);
+});
+
+test("added folder adopts its files", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    twoProjects(workspace);
+    workspace.rm("beta/compile_commands.json");
+    await client.initialize(workspace, { folders: ["alpha"] });
+
+    // Nothing above it knows the file: the first project serves it, without
+    // beta's flags.
     const [beta] = await client.openAndWait("beta/main.cpp");
     client.assertHasErrors(beta, "no project knows beta's flags yet");
 
+    workspace.writeCDB(["beta/main.cpp"], {
+        extraArgs: ["-DIN_BETA"],
+        at: "beta/compile_commands.json",
+    });
     await changeFolders(client, workspace, { added: ["beta"] });
     await client.waitForRecompile(beta);
     client.assertNoErrors(beta, "the new folder's project compiles the open file");

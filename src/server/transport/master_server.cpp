@@ -206,15 +206,15 @@ void MasterServer::wire() {
     };
 }
 
-ProjectServer& MasterServer::route(Fid path_id) {
+ProjectServer* MasterServer::claimant(Fid path_id) {
     for(auto& project: projects) {
         if(!project->project.build.commands(path_id).empty()) {
-            return *project;
+            return project.get();
         }
     }
     for(auto& project: projects) {
         if(!project->project.dep_graph.get_includers(path_id).empty()) {
-            return *project;
+            return project.get();
         }
     }
     auto path = files.resolve(path_id);
@@ -225,7 +225,12 @@ ProjectServer& MasterServer::route(Fid path_id) {
             deepest = project.get();
         }
     }
-    return deepest ? *deepest : *projects.front();
+    return deepest;
+}
+
+ProjectServer& MasterServer::route(Fid path_id) {
+    auto* project = claimant(path_id);
+    return project ? *project : *projects.front();
 }
 
 ProjectServer& MasterServer::owner_of(Fid path_id) {
@@ -241,6 +246,12 @@ std::shared_ptr<Session> MasterServer::find_session(Fid path_id) {
 }
 
 std::shared_ptr<Session> MasterServer::open_session(Fid path_id) {
+    if(lifecycle == ServerLifecycle::Ready && !owners.contains(path_id) && !claimant(path_id)) {
+        if(auto root = project_root_above(path::parent_path(files.resolve(path_id)));
+           !root.empty()) {
+            add_folder(std::move(root));
+        }
+    }
     auto& project = owner_of(path_id);
     owners[path_id] = &project;
     return project.open_session(path_id);

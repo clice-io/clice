@@ -351,6 +351,11 @@ llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_
 /// The `compile_commands.json` files in `start` and its ancestors up to
 /// `workspace_root`, nearest first: the databases a file deeper in the
 /// tree than startup discovery looks may compile from.
+/// The nearest directory at or above `start` holding a clice.toml or a
+/// compile_commands.json: the root of the project a file outside every
+/// served folder belongs to. Empty when no ancestor has either.
+std::string project_root_above(llvm::StringRef start);
+
 llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
                                                       llvm::StringRef workspace_root);
 

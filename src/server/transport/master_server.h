@@ -116,7 +116,9 @@ public:
 
     std::shared_ptr<Session> find_session(Fid path_id);
 
-    /// Route the file to its project and open its session there.
+    /// Route the file to its project and open its session there. A file no
+    /// project claims starts serving the project found above it (a
+    /// clice.toml or a compilation database), as if that folder were open.
     std::shared_ptr<Session> open_session(Fid path_id);
 
     /// Close the file's session in the project it was routed to.
@@ -206,7 +208,10 @@ private:
     /// The project a file belongs to: the one whose build compiles it (its
     /// own entry or a rule's default command), else one whose include graph
     /// reaches it (it borrows a host there), else the deepest root holding
-    /// it, else the first project.
+    /// it; null when none claims it.
+    ProjectServer* claimant(Fid path_id);
+
+    /// The claimant, else the first project.
     ProjectServer& route(Fid path_id);
 
     /// Move the open documents of `from` routing now sends elsewhere,
