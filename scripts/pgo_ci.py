@@ -32,7 +32,9 @@ def merge_profiles(raw_dir: Path, out: Path) -> None:
     total = sum(r.stat().st_size for r in raws)
     print(f"merging {len(raws)} raw profiles ({total / 1048576:.0f} MB)")
     out.parent.mkdir(parents=True, exist_ok=True)
-    run(["llvm-profdata", "merge", "--sparse", "-o", out, *raws], check=True)
+    # Tests kill some of their child processes mid-write; their truncated
+    # profiles are skipped rather than failing the merge.
+    run(["llvm-profdata", "merge", "--sparse", "--failure-mode=all", "-o", out, *raws], check=True)
     run(["llvm-profdata", "show", "--summary", "--topn=0", out], check=False)
 
 
@@ -176,7 +178,7 @@ def main() -> None:
     p = sub.add_parser("train-clice")
     p.add_argument("--build", required=True)
     p.add_argument("--out", required=True)
-    p.add_argument("--limit", default="60")
+    p.add_argument("--limit", default="30")
     p.add_argument("--filter", default="clice/src/")
     p.add_argument("--unit-tests", action="store_true")
     p.set_defaults(func=train_clice)

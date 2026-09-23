@@ -1,7 +1,7 @@
 {
-  "llvm_baseline": "build",
-  "llvm_instr": "build",
-  "clang_train": "build",
+  "llvm_baseline": "35906099298",
+  "llvm_instr": "35906099298",
+  "clang_train": "35906099298",
   "clice_train": "build",
   "llvm_pgo_clice": "build",
   "llvm_pgo_clang": "build",
