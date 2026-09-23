@@ -541,6 +541,33 @@ TEST_CASE(RemovalForgetsScannedContent) {
     ASSERT_FALSE(project.dep_graph.scanned_hash(header).has_value());
 }
 
+TEST_CASE(CloseUnscannedChangeCascades) {
+    // Changed on disk while open, unobserved: a shard already refreshed
+    // from the new bytes cannot reveal it, the scanned content still does.
+    TempDir tmp;
+    tmp.touch("h.h", "int changed;");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(tmp.path("a.cpp"));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
+    project.project_index.shards[header] = shard_of("int changed;");
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::buffer_closed(header));
+
+    ASSERT_TRUE(llvm::is_contained(dirty.reindex_deps_only, host));
+    ASSERT_TRUE(llvm::is_contained(dirty.reset_header_mode, header));
+    ASSERT_EQ(project.dep_graph.scanned_hash(header), llvm::xxh3_64bits("int changed;"));
+}
+
 TEST_CASE(CloseWithoutShardReindexes) {
     TempDir tmp;
     tmp.touch("a.cpp", "int x;");

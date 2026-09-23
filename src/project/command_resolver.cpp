@@ -405,11 +405,11 @@ Resolution CommandResolver::resolve_command(llvm::StringRef path,
     return settle(CommandSource::Fallback);
 }
 
-std::optional<HeaderContext>
-    CommandResolver::resolve_header_context(Fid header_path_id,
-                                            const Selection* choice,
-                                            bool synthesize,
-                                            llvm::SmallVectorImpl<std::string>& synthesized_files) {
+std::optional<HeaderContext> CommandResolver::resolve_header_context(
+    Fid header_path_id,
+    const Selection* choice,
+    bool synthesize,
+    llvm::SmallVectorImpl<Resolution::Synthesized>& synthesized_files) {
     // A pinned host (and its chosen include occurrence) wins while it
     // still compiles and still includes the header; otherwise the build's
     // default host.
@@ -589,7 +589,7 @@ std::optional<HeaderContext>
             return std::nullopt;
         }
         self_snapshot_path = std::move(*stored);
-        synthesized_files.push_back(self_snapshot_path);
+        synthesized_files.push_back({self_snapshot_path, host_path_id});
     }
 
     auto synthesized =
@@ -608,7 +608,7 @@ std::optional<HeaderContext>
         return std::nullopt;
     }
     auto preamble_path = std::move(*stored_preamble);
-    synthesized_files.push_back(preamble_path);
+    synthesized_files.push_back({preamble_path, host_path_id});
 
     // The suffix restores everything after the include position (closing
     // braces of enums/functions the fragment is embedded in). Injected by
@@ -621,7 +621,7 @@ std::optional<HeaderContext>
             return std::nullopt;
         }
         suffix_path = std::move(*stored);
-        synthesized_files.push_back(suffix_path);
+        synthesized_files.push_back({suffix_path, host_path_id});
     }
 
     // The chain files' snapshot (`deps`) was recorded as they were read:

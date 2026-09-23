@@ -60,7 +60,7 @@ Resolution EditorContext::resolve_command(llvm::StringRef path,
         guessed_commands.erase(path_id);
     }
     for(auto& file: resolution.synthesized) {
-        record_synthesized_host(file, resolution.host);
+        record_synthesized_host(file.path, file.host);
     }
     return resolution;
 }

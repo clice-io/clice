@@ -214,6 +214,8 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             // those stale rows fresh across restarts.
             if(resolved.source == CommandSource::IncludeGraph) {
                 store.record_header_host(path_id, resolved.host);
+            } else {
+                store.forget_header_host(path_id);
             }
             outcome.report = std::move(*report);
             outcome.perf.merge_ms = merge_timer.ms();

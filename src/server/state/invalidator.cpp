@@ -312,7 +312,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // have delivered. A file with no shard and no recorded
                 // change is no evidence either way: indexing simply never
                 // reached it, and cascading would tax every close.
-                if((has_shard && !shard_current) || pcm_stale || changed_while_open) {
+                // The disk also moved on when it no longer holds the bytes the
+                // include edges were scanned from: a change nobody observed
+                // while the buffer was open (the sweep skips open files),
+                // which a shard refreshed from the new bytes cannot reveal.
+                auto scanned = project.dep_graph.scanned_hash(event.path_id);
+                bool unscanned_change = scanned && *scanned != disk->hash;
+                if((has_shard && !shard_current) || pcm_stale || changed_while_open ||
+                   unscanned_change) {
                     cascade_disk_content_change(event.path_id, dirty);
                 } else if(has_shard) {
                     // The shard can be current while the edges are not:

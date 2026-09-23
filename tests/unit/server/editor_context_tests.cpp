@@ -70,7 +70,8 @@ TEST_CASE(SynthesisRecordsEditorHosts) {
     ASSERT_EQ(resolution.source, CommandSource::IncludeGraph);
     ASSERT_FALSE(resolution.synthesized.empty());
     for(auto& file: resolution.synthesized) {
-        ASSERT_EQ(editor.synthesized_hosts.lookup(file), fx.host);
+        ASSERT_EQ(file.host, fx.host);
+        ASSERT_EQ(editor.synthesized_hosts.lookup(file.path), fx.host);
     }
     ASSERT_TRUE(blob.dirty);
     auto* context = editor.header_context(fx.header);
@@ -82,6 +83,24 @@ TEST_CASE(SynthesisRecordsEditorHosts) {
     auto reused = editor.resolve_command(fx.header_path, directory, arguments);
     ASSERT_TRUE(reused.synthesized.empty());
     ASSERT_FALSE(blob.dirty);
+}
+
+TEST_CASE(FailedSynthesisKeepsHost) {
+    // The header's snapshot lands before the chain fails to match: the
+    // resolution falls through, and the snapshot still names its host.
+    HostedHeader fx;
+    fx.tmp.touch("host.cpp", "int unrelated;\n");
+    ContextsBlob blob;
+    EditorContext editor{fx.project, fx.commands, blob};
+    std::string directory;
+    std::vector<std::string> arguments;
+
+    auto resolution = editor.resolve_command(fx.header_path, directory, arguments);
+    ASSERT_TRUE(resolution.source != CommandSource::IncludeGraph);
+    ASSERT_EQ(resolution.synthesized.size(), 1u);
+    ASSERT_EQ(resolution.synthesized[0].host, fx.host);
+    ASSERT_EQ(editor.synthesized_hosts.lookup(resolution.synthesized[0].path), fx.host);
+    ASSERT_FALSE(blob.bytes.empty());
 }
 
 TEST_CASE(ArtifactNeedsEditorHost) {

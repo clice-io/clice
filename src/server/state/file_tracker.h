@@ -55,9 +55,9 @@ public:
     /// A file is judged against the content its include edges were scanned
     /// from when first seen — at construction for the load's scan, so a
     /// change landing before the first sweep is still reported — and again
-    /// when it closes, so a file deleted or changed while open without a
-    /// cascade is reported then. A file no scan read only seeds the
-    /// baseline.
+    /// once it closes, after BufferClosed's own cascade, so a file deleted
+    /// while open is reported removed then. A file no scan read only seeds
+    /// the baseline.
     ///
     /// Stats run synchronously in batches, yielding to the event loop
     /// between batches; each round's duration is perf-logged.

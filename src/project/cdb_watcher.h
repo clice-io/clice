@@ -23,7 +23,9 @@ namespace clice {
 /// a change. A baseline whose stat cannot vouch for the bytes — written
 /// within the filesystem's mtime granularity of the read — is compared by
 /// content until it can, so a same-size rewrite in the same mtime tick is
-/// not invisible.
+/// not invisible. An mtime ahead of the clock (skew on a network
+/// filesystem) cannot vouch either: such a database is compared by content
+/// on every poll until the clock catches up.
 class CDBWatcher {
 public:
     /// Construct after the project is loaded: every registered source is

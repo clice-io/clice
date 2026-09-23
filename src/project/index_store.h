@@ -182,6 +182,12 @@ public:
         header_hosts[header] = host;
     }
 
+    /// The header's retained rows no longer borrow a host's command: they
+    /// landed under its own, or a guessed one.
+    void forget_header_host(Fid header) {
+        header_hosts.erase(header);
+    }
+
     /// The standalone-indexed headers whose retained rows borrowed
     /// `host`'s command.
     llvm::SmallVector<Fid> headers_hosted_by(Fid host) const {

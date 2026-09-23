@@ -62,9 +62,17 @@ struct Resolution {
     /// structured consumers (search config, language queries).
     CommandRef ref;
 
-    /// Files this resolution synthesized for the header's context
-    /// (preamble, suffix, self snapshot): fragments of `host`'s TU.
-    llvm::SmallVector<std::string, 3> synthesized;
+    /// A file synthesized for a header's context, and the host whose TU it
+    /// is a fragment of.
+    struct Synthesized {
+        std::string path;
+        Fid host;
+    };
+
+    /// Files this resolution synthesized (preamble, suffix, self snapshot)
+    /// — kept even when a later step of the synthesis failed and the
+    /// resolution fell through to another source.
+    llvm::SmallVector<Synthesized, 3> synthesized;
 };
 
 /// Composes a file's final compile command from the project on disk.
@@ -156,7 +164,7 @@ private:
         resolve_header_context(Fid header_path_id,
                                const Selection* choice,
                                bool synthesize,
-                               llvm::SmallVectorImpl<std::string>& synthesized_files);
+                               llvm::SmallVectorImpl<Resolution::Synthesized>& synthesized_files);
 
     /// What dump_mode_slices would emit for this file (0 = nothing) — the
     /// before/after probe record and reset compare to mark the artifacts
