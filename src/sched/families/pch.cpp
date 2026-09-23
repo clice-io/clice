@@ -139,7 +139,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // starts a fresh key with a fresh budget. Consumption strikes park
     // the key the same way: rebuilding a pair whose every rebuild gets
     // blamed again would fare no better (see blame).
-    if(workspace.build_crashes.blocked(pch_key)) {
+    if(build_crashes.blocked(pch_key)) {
         LOG_WARN("PCH build for {} refused: key {} keeps crashing workers", request.file, pch_key);
         co_return RoundOutcome::Failed;
     }
@@ -172,7 +172,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // build) and, through the owner's probe, the owning document's (the
     // preamble is that document's content).
     auto crashed = [&](const kota::ipc::protocol::Error& error) {
-        workspace.build_crashes.on_crash(pch_key);
+        build_crashes.on_crash(pch_key);
         probe(worker::death_of(error));
     };
 
@@ -263,7 +263,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // The key built: its strikes were transient, not poison. The shared
     // account clears unconditionally; per-document ledgers clear on the
     // adoption side, each joiner for itself, gated on its own validity.
-    workspace.build_crashes.on_land(pch_key);
+    build_crashes.on_land(pch_key);
 
     auto& st = workspace.pch_cache[pch_key];
     st.path = *committed.value().pch_path;
@@ -274,8 +274,8 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // Replace the previous blob's mapping (same key, rebuilt content);
     // in-flight holders of the old shared_ptr stay valid.
     st.state = committed.value().state;
-    workspace.touch_loaded_state(pch_key);
-    workspace.enforce_loaded_budget();
+    touch_loaded_state(pch_key);
+    enforce_loaded_budget();
 
     LOG_INFO("PCH built for {}: {}", bp.file, st.path);
 
@@ -319,6 +319,72 @@ void PCHFamily::invalidate(llvm::StringRef pch_key) {
 void PCHFamily::blame(llvm::StringRef pch_key) {
     consume_blames.on_crash(pch_key);
     invalidate(pch_key);
+}
+
+std::shared_ptr<index::TUIndex> PCHFamily::preamble_state(llvm::StringRef pch_key) {
+    auto it = workspace.pch_cache.find(pch_key);
+    if(it == workspace.pch_cache.end()) {
+        return nullptr;
+    }
+
+    auto& st = it->second;
+    bool had_blob = !st.index_path.empty();
+    auto state = st.load_state();
+    if(!state && had_blob && workspace.store) {
+        // The blob was just found unreadable (load_state cleared the
+        // path): a pair that looks complete on disk but cannot be opened
+        // would be served to every session for the rest of the store's
+        // life. Retract it now; the entry itself stays until ensure_pch
+        // re-checks the store and rebuilds the pair.
+        LOG_WARN("Retracting PCH pair {} with unreadable pch.idx envelope", pch_key);
+        workspace.store->invalidate("pch", pch_key);
+    }
+    if(state) {
+        touch_loaded_state(pch_key);
+        enforce_loaded_budget();
+    }
+    return state;
+}
+
+void PCHFamily::touch_loaded_state(llvm::StringRef pch_key) {
+    auto it = std::ranges::find(loaded_state_lru, pch_key);
+    if(it != loaded_state_lru.end()) {
+        loaded_state_lru.erase(it);
+    }
+    loaded_state_lru.insert(loaded_state_lru.begin(), pch_key.str());
+}
+
+void PCHFamily::enforce_loaded_budget() {
+    // Two extra slots over the open-document count: a closed file's
+    // recently used state survives a quick close/reopen, and a shared key
+    // serving several documents stays warm while its consumers churn.
+    // Open documents' keys always fit the budget, so an unload can only
+    // hit keys past the working set; the reload an unlucky consumer then
+    // pays (mmap + verification, on the event loop) is the accepted cost
+    // of bounding tens of MB per key.
+    // Unwired (tests, tools) assumes a small editor-like working set.
+    constexpr std::size_t default_open_documents = 6;
+    std::size_t budget = 2 + (open_documents ? open_documents() : default_open_documents);
+
+    std::size_t kept = 0;
+    std::size_t i = 0;
+    while(i < loaded_state_lru.size()) {
+        auto it = workspace.pch_cache.find(loaded_state_lru[i]);
+        // Erased entries and already-unloaded keys just fall out of the
+        // list (invalidation and store eviction bypass the LRU).
+        if(it == workspace.pch_cache.end() || !it->second.state) {
+            loaded_state_lru.erase(loaded_state_lru.begin() + i);
+            continue;
+        }
+        if(kept < budget) {
+            kept += 1;
+            i += 1;
+            continue;
+        }
+        LOG_DEBUG("Unloading pch.idx envelope of {} (budget {})", loaded_state_lru[i], budget);
+        it->second.state.reset();
+        loaded_state_lru.erase(loaded_state_lru.begin() + i);
+    }
 }
 
 }  // namespace clice

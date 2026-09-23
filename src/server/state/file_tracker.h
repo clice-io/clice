@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include "sched/workspace.h"
+#include "project/project.h"
 #include "server/state/invalidator.h"
 #include "server/state/session_store.h"
 

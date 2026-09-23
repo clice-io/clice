@@ -3,8 +3,8 @@
 #include <optional>
 #include <string>
 
-#include "sched/command_resolver.h"
-#include "sched/workspace.h"
+#include "project/command_resolver.h"
+#include "project/project.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"

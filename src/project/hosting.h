@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "command/command.h"
-#include "sched/build.h"
+#include "project/build.h"
 #include "vfs/file_table.h"
 
 #include "llvm/ADT/SmallVector.h"

@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "sched/index/ledger.h"
-#include "sched/index/store.h"
-#include "sched/workspace.h"
+#include "project/index_store.h"
+#include "project/project.h"
 #include "support/signal.h"
 
 #include "kota/async/async.h"

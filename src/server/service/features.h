@@ -6,7 +6,7 @@
 
 #include "feature/feature.h"
 #include "index/query.h"
-#include "sched/workspace.h"
+#include "project/project.h"
 #include "server/service/dispatcher.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"

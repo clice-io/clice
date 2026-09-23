@@ -57,9 +57,9 @@ MasterServer::MasterServer(kota::event_loop& loop,
     // lifetime and turns reports into state (notify_log) plus a wake-up
     // signal. Master-side reports only ever fire on the event-loop thread
     // (see support/anomaly.h), so no synchronization is needed here.
-    // The loaded-state budget follows the open-document count; Workspace
-    // cannot see SessionStore, so the master wires the provider.
-    workspace.open_documents = [this] {
+    // The loaded-state budget follows the open-document count; the PCH
+    // family cannot see SessionStore, so the master wires the provider.
+    pch.open_documents = [this] {
         return sessions.sessions.size();
     };
     // Metadata marks (a PCH landing, a context switch) flush through the
@@ -384,6 +384,10 @@ void MasterServer::close_session(Fid path_id) {
 
     sessions.close(path_id);
     ast.drop(path_id);
+    // PCH entries are content-keyed and may be shared with other sessions,
+    // so nothing entry-level to clean up — but the loaded-state budget
+    // shrinks with the open count, and this is the moment it does.
+    pch.enforce_loaded_budget();
 
     dispatch(FileEvent::buffer_closed(path_id));
 

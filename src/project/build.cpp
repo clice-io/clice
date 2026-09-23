@@ -1,9 +1,9 @@
-#include "sched/build.h"
+#include "project/build.h"
 
 #include <cassert>
 #include <format>
 
-#include "sched/configuration.h"
+#include "project/configuration.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 

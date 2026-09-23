@@ -7,14 +7,14 @@
 #include <vector>
 
 #include "index/tu_index.h"
-#include "sched/workspace.h"
+#include "project/project.h"
 
 #include "kota/codec/visit/common.h"
 #include "llvm/ADT/DenseMap.h"
 
 namespace clice {
 
-/// Defined in sched/command_resolver.h — the resolver reports where
+/// Defined in project/command_resolver.h — the resolver reports where
 /// the compile command came from; the projection only stores the verdict.
 enum class CommandSource : std::uint8_t;
 

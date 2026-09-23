@@ -235,7 +235,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 break;
             }
             case FileEvent::Kind::BufferClosed: {
-                workspace.on_file_closed(event.path_id);
                 // Drained on every close — the deleted-while-open exit below
                 // (whose debt passes to DiskRemoved semantics) must not
                 // leave a stale entry behind.

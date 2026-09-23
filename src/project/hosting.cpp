@@ -1,9 +1,9 @@
-#include "sched/hosting.h"
+#include "project/hosting.h"
 
 #include <algorithm>
 #include <tuple>
 
-#include "sched/workspace.h"
+#include "project/project.h"
 #include "support/filesystem.h"
 
 #include "llvm/ADT/STLExtras.h"

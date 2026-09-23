@@ -6,8 +6,8 @@
 #include "driver/driver.h"
 #include "index/writer_lock.h"
 #include "sched/batch.h"
-#include "sched/configuration.h"
-#include "sched/open_index.h"
+#include "project/configuration.h"
+#include "project/open_index.h"
 #include "server/service/query_commands.h"
 #include "server/transport/control_client.h"
 

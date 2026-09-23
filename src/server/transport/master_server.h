@@ -7,14 +7,14 @@
 #include <vector>
 
 #include "config/config.h"
-#include "sched/command_resolver.h"
+#include "project/command_resolver.h"
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "sched/index/pump.h"
-#include "sched/index/store.h"
-#include "sched/workspace.h"
+#include "project/index_store.h"
+#include "project/project.h"
 #include "server/service/ast_family.h"
 #include "server/service/context_service.h"
 #include "server/service/dispatcher.h"
@@ -193,7 +193,7 @@ public:
     /// cannot cover them.
     Signal<> on_serving_rows_changed;
 
-    ServerLiveSources live_sources{workspace, sessions, ast.projections};
+    ServerLiveSources live_sources{workspace, pch, sessions, ast.projections};
     PumpGate freshness{pump, workspace.config};
     index::IndexQuery index_query;
 

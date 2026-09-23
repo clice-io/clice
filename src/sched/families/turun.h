@@ -6,11 +6,11 @@
 #include <vector>
 
 #include "compile/compilation.h"
-#include "sched/command_resolver.h"
+#include "project/command_resolver.h"
 #include "sched/graph.h"
 #include "sched/index/ledger.h"
-#include "sched/index/store.h"
-#include "sched/workspace.h"
+#include "project/index_store.h"
+#include "project/project.h"
 #include "worker/pool.h"
 
 #include "llvm/ADT/DenseMap.h"

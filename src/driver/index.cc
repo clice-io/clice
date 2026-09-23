@@ -13,9 +13,9 @@
 #include "index/serialization.h"
 #include "index/writer_lock.h"
 #include "sched/batch.h"
-#include "sched/configuration.h"
-#include "sched/open_index.h"
-#include "sched/workspace.h"
+#include "project/configuration.h"
+#include "project/open_index.h"
+#include "project/project.h"
 #include "server/transport/control_client.h"
 #include "support/timer.h"
 

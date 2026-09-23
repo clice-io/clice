@@ -1,8 +1,9 @@
 #pragma once
 
 #include "index/query.h"
+#include "project/project.h"
+#include "sched/families/pch.h"
 #include "sched/index/pump.h"
-#include "sched/workspace.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
 
@@ -14,9 +15,10 @@ namespace clice {
 class ServerLiveSources final : public index::LiveSources {
 public:
     ServerLiveSources(Workspace& workspace,
+                      PCHFamily& pch,
                       const SessionStore& sessions,
                       const ASTProjectionTable& projections) :
-        workspace(workspace), sessions(sessions), projections(projections) {}
+        workspace(workspace), pch(pch), sessions(sessions), projections(projections) {}
 
     bool is_open(Fid file) const override;
     std::optional<index::RowSource> claim(Fid file) const override;
@@ -38,6 +40,7 @@ private:
                                    const index::Shard& rows) const;
 
     Workspace& workspace;
+    PCHFamily& pch;
     const SessionStore& sessions;
     const ASTProjectionTable& projections;
 };

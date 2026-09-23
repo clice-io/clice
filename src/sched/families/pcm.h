@@ -4,9 +4,10 @@
 #include <functional>
 #include <optional>
 
-#include "sched/command_resolver.h"
+#include "project/command_resolver.h"
+#include "project/project.h"
+#include "sched/crash_budget.h"
 #include "sched/graph.h"
-#include "sched/workspace.h"
 #include "worker/pool.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -142,6 +143,12 @@ private:
     Workspace& workspace;
     CommandResolver& commands;
     WorkerPool& pool;
+
+    /// Crash budget of the builds, keyed by the content-derived PCM key:
+    /// a module interface that keeps killing workers is refused until its
+    /// content — and therefore its key — changes. Document quarantine
+    /// cannot contain it: every importer would burn workers of its own.
+    CrashBudget build_crashes;
 };
 
 }  // namespace clice

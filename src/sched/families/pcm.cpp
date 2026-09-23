@@ -195,7 +195,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     auto budget_key = std::format("{}-{:016x}",
                                   pcm_key,
                                   content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0);
-    if(workspace.build_crashes.blocked(budget_key)) {
+    if(build_crashes.blocked(budget_key)) {
         LOG_WARN("PCM build for module {} refused: key {} keeps crashing workers",
                  module_name,
                  budget_key);
@@ -221,7 +221,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         pool,
         bp,
         priority,
-        [&](const kota::ipc::protocol::Error&) { workspace.build_crashes.on_crash(budget_key); },
+        [&](const kota::ipc::protocol::Error&) { build_crashes.on_crash(budget_key); },
         {},
         ctx.token());
 
@@ -254,7 +254,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Failed;
     }
 
-    workspace.build_crashes.on_land(budget_key);
+    build_crashes.on_land(budget_key);
     auto pcm_path = std::move(committed.value().value());
     workspace.pcm_cache[path_id] = {.path = pcm_path,
                                     .key = pcm_key,

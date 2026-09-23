@@ -81,7 +81,7 @@ std::shared_ptr<index::TUIndex> ServerLiveSources::overlay_of(Fid file) const {
     }
     // Returned by value: a reference into the map value would not survive
     // a rehash.
-    return workspace.preamble_state(*projection->pch_key);
+    return pch.preamble_state(*projection->pch_key);
 }
 
 void ServerLiveSources::each_preamble(

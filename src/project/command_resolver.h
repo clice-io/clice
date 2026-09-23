@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "command/command.h"
-#include "sched/workspace.h"
+#include "project/project.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"

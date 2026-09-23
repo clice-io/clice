@@ -1,4 +1,4 @@
-#include "sched/configuration.h"
+#include "project/configuration.h"
 
 #include "config/config.h"
 #include "support/anomaly.h"

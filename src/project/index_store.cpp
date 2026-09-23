@@ -1,4 +1,4 @@
-#include "sched/index/store.h"
+#include "project/index_store.h"
 
 #include <algorithm>
 #include <cassert>
@@ -11,8 +11,8 @@
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/command_resolver.h"
-#include "sched/hosting.h"
+#include "project/command_resolver.h"
+#include "project/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"

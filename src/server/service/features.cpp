@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "command/search_config.h"
-#include "sched/hosting.h"
+#include "project/hosting.h"
 #include "sched/index/pump.h"
 #include "semantic/symbol.h"
 #include "server/protocol/lsp_projection.h"

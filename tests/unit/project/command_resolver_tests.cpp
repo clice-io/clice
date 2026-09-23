@@ -2,7 +2,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
-#include "sched/command_resolver.h"
+#include "project/command_resolver.h"
 
 namespace clice::testing {
 namespace {

@@ -1,4 +1,4 @@
-#include "sched/command_resolver.h"
+#include "project/command_resolver.h"
 
 #include <format>
 #include <optional>
@@ -7,7 +7,7 @@
 
 #include "command/argument_parser.h"
 #include "command/search_config.h"
-#include "sched/hosting.h"
+#include "project/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"

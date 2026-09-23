@@ -1,4 +1,4 @@
-#include "sched/workspace.h"
+#include "project/project.h"
 
 #include <algorithm>
 #include <chrono>
@@ -7,8 +7,8 @@
 
 #include "command/search_config.h"
 #include "index/serialization.h"
-#include "sched/command_resolver.h"
-#include "sched/hosting.h"
+#include "project/command_resolver.h"
+#include "project/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
@@ -183,13 +183,6 @@ void Workspace::rescan_after_save(Fid path_id) {
 
     dep_graph.build_reverse_map();
     context_epoch += 1;
-}
-
-void Workspace::on_file_closed(Fid path_id) {
-    // PCH entries are content-keyed and may be shared with other sessions,
-    // so nothing entry-level to clean up — but the loaded-state budget
-    // shrinks with the open count, and this is the moment it does.
-    enforce_loaded_budget();
 }
 
 static std::string database_in(llvm::StringRef dir) {
@@ -385,72 +378,6 @@ const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
         }
     }
     return state;
-}
-
-std::shared_ptr<index::TUIndex> Workspace::preamble_state(llvm::StringRef pch_key) {
-    auto it = pch_cache.find(pch_key);
-    if(it == pch_cache.end()) {
-        return nullptr;
-    }
-
-    auto& st = it->second;
-    bool had_blob = !st.index_path.empty();
-    auto state = st.load_state();
-    if(!state && had_blob && store) {
-        // The blob was just found unreadable (load_state cleared the
-        // path): a pair that looks complete on disk but cannot be opened
-        // would be served to every session for the rest of the store's
-        // life. Retract it now; the entry itself stays until ensure_pch
-        // re-checks the store and rebuilds the pair.
-        LOG_WARN("Retracting PCH pair {} with unreadable pch.idx envelope", pch_key);
-        store->invalidate("pch", pch_key);
-    }
-    if(state) {
-        touch_loaded_state(pch_key);
-        enforce_loaded_budget();
-    }
-    return state;
-}
-
-void Workspace::touch_loaded_state(llvm::StringRef pch_key) {
-    auto it = std::ranges::find(loaded_state_lru, pch_key);
-    if(it != loaded_state_lru.end()) {
-        loaded_state_lru.erase(it);
-    }
-    loaded_state_lru.insert(loaded_state_lru.begin(), pch_key.str());
-}
-
-void Workspace::enforce_loaded_budget() {
-    // Two extra slots over the open-document count: a closed file's
-    // recently used state survives a quick close/reopen, and a shared key
-    // serving several documents stays warm while its consumers churn.
-    // Open documents' keys always fit the budget, so an unload can only
-    // hit keys past the working set; the reload an unlucky consumer then
-    // pays (mmap + verification, on the event loop) is the accepted cost
-    // of bounding tens of MB per key.
-    // Unwired (tests, tools) assumes a small editor-like working set.
-    constexpr std::size_t default_open_documents = 6;
-    std::size_t budget = 2 + (open_documents ? open_documents() : default_open_documents);
-
-    std::size_t kept = 0;
-    std::size_t i = 0;
-    while(i < loaded_state_lru.size()) {
-        auto it = pch_cache.find(loaded_state_lru[i]);
-        // Erased entries and already-unloaded keys just fall out of the
-        // list (invalidation and store eviction bypass the LRU).
-        if(it == pch_cache.end() || !it->second.state) {
-            loaded_state_lru.erase(loaded_state_lru.begin() + i);
-            continue;
-        }
-        if(kept < budget) {
-            kept += 1;
-            i += 1;
-            continue;
-        }
-        LOG_DEBUG("Unloading pch.idx envelope of {} (budget {})", loaded_state_lru[i], budget);
-        it->second.state.reset();
-        loaded_state_lru.erase(loaded_state_lru.begin() + i);
-    }
 }
 
 void Workspace::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,

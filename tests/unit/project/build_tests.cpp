@@ -6,9 +6,9 @@
 #include "test/platform.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "sched/build.h"
-#include "sched/configuration.h"
-#include "sched/workspace.h"
+#include "project/build.h"
+#include "project/configuration.h"
+#include "project/project.h"
 #include "support/filesystem.h"
 
 namespace clice::testing {

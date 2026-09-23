@@ -2,14 +2,16 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "sched/crash_budget.h"
 #include "sched/graph.h"
-#include "sched/workspace.h"
+#include "project/project.h"
 #include "worker/pool.h"
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 
 namespace clice {
@@ -106,6 +108,29 @@ public:
         consume_blames.on_land(pch_key);
     }
 
+    /// Open the pch.idx envelope of a cached PCH. The single consumption
+    /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
+    /// on-disk pair is retracted from the store as well — otherwise every
+    /// later session re-adopts the corrupt pair from the artifacts blob and
+    /// silently degrades again. With the pair gone the next ensure_pch is
+    /// a miss and rebuilds both halves. Loads count against the
+    /// loaded-state budget (see enforce_loaded_budget).
+    std::shared_ptr<index::TUIndex> preamble_state(llvm::StringRef pch_key);
+
+    /// Unload pch.idx envelopes beyond the budget (open documents + 2),
+    /// least recently used first. Without this every preamble key ever
+    /// touched keeps its blob mapped for the server's lifetime — tens of
+    /// MB per key on real projects, released by neither didClose nor
+    /// store eviction. Unloading only drops the entry's reference:
+    /// consumers holding the shared_ptr finish safely, and the next use
+    /// reopens the blob from disk.
+    void enforce_loaded_budget();
+
+    /// Open-document count provider, wired by the master. Sizes the
+    /// loaded-state budget; unset (tests, tools) falls back to
+    /// default_open_documents.
+    std::function<std::size_t()> open_documents;
+
 private:
     /// One PCH round: run one attempt and retire the stash once a current
     /// round lands a verdict.
@@ -134,10 +159,24 @@ private:
     Workspace& workspace;
     WorkerPool& pool;
 
+    /// Move a pch key to the front of the loaded-state LRU. Called
+    /// whenever an entry's envelope is opened or replaced.
+    void touch_loaded_state(llvm::StringRef pch_key);
+
+    /// Crash budget of the builds, keyed by the content-derived pch key:
+    /// a preamble that keeps killing workers is refused until its content
+    /// — and therefore its key — changes. Document quarantine cannot
+    /// contain it: the artifact is shared, so every session with the same
+    /// preamble would burn workers of its own.
+    CrashBudget build_crashes;
+
     /// Consumption strikes per key (see blame); separate from the
-    /// build-side workspace.build_crashes, which every successful rebuild
-    /// clears.
+    /// build-side build_crashes, which every successful rebuild clears.
     CrashBudget consume_blames;
+
+    /// Keys of pch_cache entries whose envelope is currently loaded,
+    /// most recently used first (see enforce_loaded_budget).
+    llvm::SmallVector<std::string, 8> loaded_state_lru;
 
     llvm::StringMap<std::uint64_t> ids;
     std::vector<KeyState> states;

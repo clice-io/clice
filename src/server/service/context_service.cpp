@@ -5,8 +5,8 @@
 #include <vector>
 
 #include "command/argument_parser.h"
-#include "sched/configuration.h"
-#include "sched/hosting.h"
+#include "project/configuration.h"
+#include "project/hosting.h"
 #include "server/service/ast_family.h"
 #include "server/state/session_store.h"
 #include "support/logging.h"

@@ -601,7 +601,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // below and rehash the map from under a held pointer.
         std::shared_ptr<index::TUIndex> preamble_state;
         if(adopted_pch.has_value()) {
-            preamble_state = workspace.preamble_state(*adopted_pch);
+            preamble_state = pch.preamble_state(*adopted_pch);
         }
         if(preamble_state) {
             auto regions = preamble_state->inactive_regions();

@@ -12,7 +12,7 @@
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
-#include "sched/workspace.h"
+#include "project/project.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"

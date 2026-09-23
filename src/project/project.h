@@ -17,9 +17,8 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "index/writer_lock.h"
-#include "sched/build.h"
-#include "sched/crash_budget.h"
-#include "sched/hosting.h"
+#include "project/build.h"
+#include "project/hosting.h"
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
 #include "syntax/dependency_graph.h"
@@ -243,22 +242,6 @@ struct Workspace {
     /// of CacheStore state; blob paths come from the store.
     llvm::StringMap<PCHState> pch_cache;
 
-    /// Keys of pch_cache entries whose envelope is currently loaded,
-    /// most recently used first (see enforce_loaded_budget).
-    llvm::SmallVector<std::string, 8> loaded_state_lru;
-
-    /// Open-document count provider, wired by the master. Sizes the
-    /// loaded-state budget; unset (tests, tools) falls back to
-    /// default_open_documents.
-    std::function<std::size_t()> open_documents;
-
-    /// Crash budget for shared build artifacts (PCH/PCM), keyed by the
-    /// same content-derived cache keys: an artifact that keeps killing
-    /// workers is refused until its content — and therefore its key —
-    /// changes. Document quarantine cannot contain these: the artifact is
-    /// shared, so every dependent would burn workers of its own.
-    CrashBudget build_crashes;
-
     /// PCM cache, keyed by module source path_id.
     llvm::DenseMap<Fid, PCMState> pcm_cache;
 
@@ -299,32 +282,6 @@ struct Workspace {
     /// module-graph cascade is the invalidator's job
     /// (PCMFamily::invalidate).
     void rescan_after_save(Fid path_id);
-
-    /// Called when a file is closed.  Notifies compile_graph if this file
-    /// is a module unit so dependents can be re-evaluated on next compile.
-    void on_file_closed(Fid path_id);
-
-    /// Open the pch.idx envelope of a cached PCH. The single consumption
-    /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
-    /// on-disk pair is retracted from the store as well — otherwise every
-    /// later session re-adopts the corrupt pair from the artifacts blob and
-    /// silently degrades again. With the pair gone the next ensure_pch is
-    /// a miss and rebuilds both halves. Loads count against the
-    /// loaded-state budget (see enforce_loaded_budget).
-    std::shared_ptr<index::TUIndex> preamble_state(llvm::StringRef pch_key);
-
-    /// Move a pch key to the front of the loaded-state LRU. Called
-    /// whenever an entry's envelope is opened or replaced.
-    void touch_loaded_state(llvm::StringRef pch_key);
-
-    /// Unload pch.idx envelopes beyond the budget (open documents + 2),
-    /// least recently used first. Without this every preamble key ever
-    /// touched keeps its blob mapped for the server's lifetime — tens of
-    /// MB per key on real projects, released by neither didClose nor
-    /// store eviction. Unloading only drops the entry's reference:
-    /// consumers holding the shared_ptr finish safely, and the next use
-    /// reopens the blob from disk.
-    void enforce_loaded_budget();
 
     /// Persistence signal for the artifact validity metadata (PCH/PCM
     /// records, header modes) the index database carries beyond the index

@@ -8,12 +8,13 @@
 #include "index/query.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/command_resolver.h"
+#include "project/command_resolver.h"
+#include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "sched/index/pump.h"
-#include "sched/index/store.h"
+#include "project/index_store.h"
 #include "server/service/live_sources.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
@@ -39,7 +40,8 @@ ASTProjectionTable projections;
 IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
-ServerLiveSources live{workspace, store, projections};
+PCHFamily pch{graph, workspace, pool};
+ServerLiveSources live{workspace, pch, store, projections};
 PumpGate gate{indexer, workspace.config};
 index::IndexQuery index_query{workspace.project_index, workspace.file_table, &gate, &live};
 index::IndexQuery disk_query{workspace.project_index, workspace.file_table, &gate, nullptr};

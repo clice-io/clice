@@ -1,9 +1,9 @@
-#include "sched/open_index.h"
+#include "project/open_index.h"
 
 #include "index/database.h"
-#include "sched/bootstrap.h"
-#include "sched/configuration.h"
-#include "sched/index/store.h"
+#include "project/load.h"
+#include "project/configuration.h"
+#include "project/index_store.h"
 #include "support/cache_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"

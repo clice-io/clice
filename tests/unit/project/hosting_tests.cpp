@@ -3,8 +3,8 @@
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "sched/hosting.h"
-#include "sched/workspace.h"
+#include "project/hosting.h"
+#include "project/project.h"
 
 namespace clice::testing {
 

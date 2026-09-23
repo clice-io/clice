@@ -5,7 +5,7 @@
 #include <optional>
 #include <string>
 
-#include "sched/workspace.h"
+#include "project/project.h"
 
 #include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"

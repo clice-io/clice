@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "sched/command_resolver.h"
-#include "sched/index/store.h"
-#include "sched/workspace.h"
+#include "project/command_resolver.h"
+#include "project/index_store.h"
+#include "project/project.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"

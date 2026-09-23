@@ -5,7 +5,7 @@
 #include <optional>
 #include <string>
 
-#include "sched/workspace.h"
+#include "project/project.h"
 #include "server/state/editor_context.h"
 #include "server/state/session_store.h"
 

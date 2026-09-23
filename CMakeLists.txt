@@ -163,10 +163,10 @@ add_custom_target(generate_version_header
     COMMENT "Generating version header"
 )
 
-# Layered targets: core <- config <- worker <- sched <- server. Each layer
-# may include downward only; the link DAG plus the layering check in CI
-# (`pixi run check-layers`) enforce the boundary — sched and below never
-# see an LSP or server header.
+# Layered targets: core <- config <- project <- worker <- sched <- server.
+# Each layer may include downward only; the link DAG plus the layering check
+# in CI (`pixi run check-layers`) enforce the boundary — sched and below
+# never see an LSP or server header, and a project never sees scheduling.
 file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/src/support/*.cpp"
     "${PROJECT_SOURCE_DIR}/src/vfs/*.cpp"
@@ -207,10 +207,16 @@ add_library(clice::config ALIAS clice-config)
 target_link_libraries(clice-config PUBLIC clice::core)
 clice_precompile_headers(clice-config)
 
+file(GLOB_RECURSE CLICE_PROJECT_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/project/*.cpp")
+add_library(clice-project STATIC ${CLICE_PROJECT_SOURCES})
+add_library(clice::project ALIAS clice-project)
+target_link_libraries(clice-project PUBLIC clice::config)
+clice_precompile_headers(clice-project)
+
 file(GLOB_RECURSE CLICE_WORKER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/worker/*.cpp")
 add_library(clice-worker STATIC ${CLICE_WORKER_SOURCES})
 add_library(clice::worker ALIAS clice-worker)
-target_link_libraries(clice-worker PUBLIC clice::config)
+target_link_libraries(clice-worker PUBLIC clice::project)
 clice_precompile_headers(clice-worker)
 
 file(GLOB_RECURSE CLICE_SCHED_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/sched/*.cpp")
