@@ -51,6 +51,23 @@ if(CLICE_ENABLE_LTO)
     string(APPEND CMAKE_MODULE_LINKER_FLAGS " -flto=thin")
 endif()
 
+# IR PGO: "generate" instruments every target (the link also pulls in the
+# profile runtime an instrumented LLVM package needs); a path optimizes with
+# that .profdata. Functions newer than the profile just go unprofiled.
+set(CLICE_PGO "" CACHE STRING "PGO: 'generate', or the path of a .profdata to optimize with")
+if(CLICE_PGO STREQUAL "generate")
+    foreach(var C_FLAGS CXX_FLAGS EXE_LINKER_FLAGS SHARED_LINKER_FLAGS MODULE_LINKER_FLAGS)
+        string(APPEND CMAKE_${var} " -fprofile-generate")
+    endforeach()
+elseif(CLICE_PGO)
+    get_filename_component(CLICE_PGO "${CLICE_PGO}" ABSOLUTE)
+    set(_pgo_use "-fprofile-use=${CLICE_PGO} -Wno-profile-instr-unprofiled"
+        " -Wno-profile-instr-out-of-date -Wno-profile-instr-missing -Wno-backend-plugin")
+    string(CONCAT _pgo_use ${_pgo_use})
+    string(APPEND CMAKE_C_FLAGS " ${_pgo_use}")
+    string(APPEND CMAKE_CXX_FLAGS " ${_pgo_use}")
+endif()
+
 # Link optimizations are the default for optimized builds: what the test
 # suites run is byte-for-byte what releases ship. Debug keeps the ASan
 # friendly flags below instead. icf=safe (not =all) so address-taken

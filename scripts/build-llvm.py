@@ -210,7 +210,17 @@ class Build:
         self.target_triple: str | None = args.target_triple
         self.triple = args.target_triple or host_triple()
         self.asan = self.mode == "Debug" and not IS_WINDOWS
-        self.assertions = self.mode == "Debug" or not self.lto
+        self.pgo_instrument: bool = args.pgo_instrument
+        self.pgo_profile: Path | None = (
+            Path(args.pgo_profile).resolve() if args.pgo_profile else None
+        )
+        self.clang_only: bool = args.clang_only
+        self.default_triple: str = args.default_triple or self.triple
+        # A profile only matches code compiled the same way, so the
+        # instrumented build takes the release configuration of the final
+        # (LTO) build it trains: no assertions, no libc++ hardening.
+        self.release_config = self.lto or self.pgo_instrument or bool(self.pgo_profile)
+        self.assertions = self.mode == "Debug" or not self.release_config
 
         if args.build_dir:
             build_dir = Path(args.build_dir)
@@ -282,7 +292,7 @@ class Build:
             # The archive triple doubles as the default: without a native
             # backend LLVM would leave it empty, and clang would then have no
             # target for compile commands that do not spell one.
-            f"-DLLVM_DEFAULT_TARGET_TRIPLE={self.triple}",
+            f"-DLLVM_DEFAULT_TARGET_TRIPLE={self.default_triple}",
             f"-DLLVM_ENABLE_LTO={'Thin' if self.lto else 'OFF'}",
             *self.compiler_args(),
             *self.debug_info_args(),
@@ -301,7 +311,7 @@ class Build:
         # semantic pass; extensive keeps every bounds check without it.
         if self.mode == "Debug":
             return "extensive"
-        return "none" if self.lto else "fast"
+        return "none" if self.release_config else "fast"
 
     def build_runtimes(self) -> None:
         """The libc++ is not sanitizer-instrumented even in the ASan variant:
@@ -390,8 +400,10 @@ class Build:
             "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
             # No backend is built, but clang/lib/Headers generates arm_neon.h,
             # arm_sve.h and riscv_vector.h only when their target is listed;
-            # install-distribution never reaches the backends themselves.
-            "-DLLVM_TARGETS_TO_BUILD=AArch64;ARM;RISCV",
+            # install-distribution never reaches the backends themselves. The
+            # clang compiler itself (--clang-only) needs a real backend.
+            "-DLLVM_TARGETS_TO_BUILD="
+            + ("X86;AArch64;ARM;RISCV" if self.clang_only else "AArch64;ARM;RISCV"),
             f"-DLLVM_DISTRIBUTION_COMPONENTS={';'.join(COMPONENTS)}",
             f"-DLLVM_ENABLE_ASSERTIONS={'ON' if self.assertions else 'OFF'}",
             "-DBUILD_SHARED_LIBS=OFF",
@@ -433,6 +445,10 @@ class Build:
             "-DCLANG_TIDY_ENABLE_STATIC_ANALYZER=OFF",
             "-DCLANG_TIDY_ENABLE_QUERY_BASED_CUSTOM_CHECKS=OFF",
         ]
+        if self.pgo_instrument:
+            args.append("-DLLVM_BUILD_INSTRUMENTED=IR")
+        if self.pgo_profile:
+            args.append(f"-DLLVM_PROFDATA_FILE={self.pgo_profile.as_posix()}")
         if self.target_triple:
             args.append(f"-DLLVM_HOST_TRIPLE={self.target_triple}")
             if not IS_DARWIN:
@@ -521,6 +537,11 @@ class Build:
             "TARGET_TRIPLE": self.triple,
             "BUILD_TYPE": self.mode,
             "LTO": "ON" if self.lto else "OFF",
+            "PGO": (
+                "instrumented"
+                if self.pgo_instrument
+                else self.pgo_profile.name if self.pgo_profile else "OFF"
+            ),
             "ASAN": "ON" if self.asan else "OFF",
             "ASSERTIONS": "ON" if self.assertions else "OFF",
             "RTTI": "OFF",
@@ -597,6 +618,24 @@ def main() -> None:
         help="Cross-compilation target triple (e.g. x86_64-apple-darwin, aarch64-unknown-linux-gnu, aarch64-pc-windows-msvc)",
     )
     parser.add_argument(
+        "--pgo-instrument",
+        action="store_true",
+        help="Instrument LLVM for IR PGO (LLVM_BUILD_INSTRUMENTED=IR)",
+    )
+    parser.add_argument(
+        "--pgo-profile",
+        help="Optimize LLVM with this .profdata (LLVM_PROFDATA_FILE)",
+    )
+    parser.add_argument(
+        "--clang-only",
+        action="store_true",
+        help="Build the clang compiler (with the X86 backend) instead of the package",
+    )
+    parser.add_argument(
+        "--default-triple",
+        help="LLVM_DEFAULT_TARGET_TRIPLE, when it should differ from the target triple",
+    )
+    parser.add_argument(
         "--configure-only",
         action="store_true",
         help="Build the runtimes and configure LLVM, print the size of the build plan, then stop before building LLVM",
@@ -639,6 +678,11 @@ def main() -> None:
     try:
         build.build_runtimes()
         build_dir = build.configure_llvm()
+        if args.clang_only:
+            print("\nBuilding 'clang'...")
+            run(["cmake", "--build", build_dir, "--target", "clang"])
+            print(f"\nSuccess! clang built in: {build_dir / 'bin'}")
+            return
         if args.configure_only:
             print_build_plan(build_dir)
             build.write_manifest(build_dir)

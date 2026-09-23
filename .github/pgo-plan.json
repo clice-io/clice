@@ -1,0 +1,11 @@
+{
+  "llvm_baseline": "build",
+  "llvm_instr": "build",
+  "clang_train": "build",
+  "clice_train": "build",
+  "llvm_pgo_clice": "build",
+  "llvm_pgo_clang": "build",
+  "clice_train_own": "build",
+  "final": "build",
+  "bench": "build"
+}

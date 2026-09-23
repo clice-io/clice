@@ -1,0 +1,127 @@
+name: pgo clice
+
+# One clice build of the PGO experiment (see pgo-experiment.yml) against an
+# LLVM package artifact: instrumented to record a profile (train), or the
+# final optimized build whose pipeline_benchmark the bench job runs.
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        description: "Artifact to upload: the profile (train) or the benchmark bundle"
+        type: string
+        required: true
+      llvm:
+        type: string
+        required: true
+      llvm-run:
+        type: string
+        default: ""
+      lto:
+        type: string
+        default: "ON"
+      pgo:
+        description: "'generate', a profile artifact (holding profile.profdata), or empty"
+        type: string
+        default: ""
+      pgo-run:
+        type: string
+        default: ""
+      train:
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+
+      - name: Download LLVM
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.llvm }}
+          path: llvm-artifact
+          run-id: ${{ inputs.llvm-run || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download profile
+        if: inputs.pgo != '' && inputs.pgo != 'generate'
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.pgo }}
+          path: pgo-profile
+          run-id: ${{ inputs.pgo-run || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Configure
+        run: |
+          mkdir -p "$RUNNER_TEMP/llvm"
+          zstd -dc llvm-artifact/llvm.tar.zst | tar -C "$RUNNER_TEMP/llvm" -xf -
+          cat "$RUNNER_TEMP/llvm/lib/cmake/clice-llvm/config.cmake"
+          PGO="${{ inputs.pgo }}"
+          if [[ -n "$PGO" && "$PGO" != generate ]]; then PGO="$PWD/pgo-profile/profile.profdata"; fi
+          pixi run -e package cmake -B build/RelWithDebInfo -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
+            -DCLICE_ENABLE_TEST=ON \
+            -DCLICE_ENABLE_BENCHMARK=ON \
+            -DCLICE_ENABLE_LTO=${{ inputs.lto }} \
+            -DLLVM_INSTALL_PATH="$RUNNER_TEMP/llvm" \
+            -DCLICE_PGO="$PGO"
+
+      - name: Build
+        run: |
+          start=$SECONDS
+          pixi run -e package ninja -C build/RelWithDebInfo clice unit_tests pipeline_benchmark
+          echo "clice build: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
+          ls -la build/RelWithDebInfo/bin | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Train
+        if: inputs.train
+        run: |
+          start=$SECONDS
+          pixi run -e package python3 scripts/pgo_ci.py train-clice --build build/RelWithDebInfo \
+            --out pgo-out/profile.profdata --unit-tests
+          echo "clice training: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload profile
+        if: inputs.train
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.name }}
+          path: pgo-out
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Unit tests
+        if: ${{ !inputs.train }}
+        continue-on-error: true
+        run: |
+          CLICE_TEST_DATA_DIR="$PWD/tests/data" pixi run -e package ./build/RelWithDebInfo/bin/unit_tests 2>&1 | tail -n 30 | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Bundle
+        if: ${{ !inputs.train }}
+        run: |
+          tar -C build/RelWithDebInfo -cf - bin/pipeline_benchmark bin/clice lib/clang | zstd -T0 -3 -o bundle.tar.zst
+
+      - name: Upload bundle
+        if: ${{ !inputs.train }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.name }}
+          path: bundle.tar.zst
+          retention-days: 14
+          compression-level: 0
+          if-no-files-found: error

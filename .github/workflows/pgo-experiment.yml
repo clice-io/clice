@@ -1,0 +1,242 @@
+name: pgo experiment
+
+# Does a compiler-trained profile serve clice's LLVM as well as a profile
+# trained on clice itself? Linux x86_64, ThinLTO everywhere:
+#   V0  no PGO
+#   V1  LLVM and clice both optimized with the clice-trained profile
+#   V2  LLVM optimized with the clang-trained profile, clice without PGO
+#   V3  LLVM as in V2, clice with a profile trained on its own code only
+#
+# .github/pgo-plan.json says per stage "build", "skip", or the id of an
+# earlier run of this workflow whose artifact to reuse.
+
+on:
+  push:
+    branches: [exp/pgo]
+    paths: [".github/pgo-plan.json", ".github/workflows/pgo-*.yml", "scripts/pgo_ci.py", "scripts/build-llvm.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      llvm_baseline_build: ${{ steps.plan.outputs.llvm_baseline_build }}
+      llvm_baseline_run: ${{ steps.plan.outputs.llvm_baseline_run }}
+      llvm_instr_build: ${{ steps.plan.outputs.llvm_instr_build }}
+      llvm_instr_run: ${{ steps.plan.outputs.llvm_instr_run }}
+      clang_train_build: ${{ steps.plan.outputs.clang_train_build }}
+      clang_train_run: ${{ steps.plan.outputs.clang_train_run }}
+      clice_train_build: ${{ steps.plan.outputs.clice_train_build }}
+      clice_train_run: ${{ steps.plan.outputs.clice_train_run }}
+      llvm_pgo_clice_build: ${{ steps.plan.outputs.llvm_pgo_clice_build }}
+      llvm_pgo_clice_run: ${{ steps.plan.outputs.llvm_pgo_clice_run }}
+      llvm_pgo_clang_build: ${{ steps.plan.outputs.llvm_pgo_clang_build }}
+      llvm_pgo_clang_run: ${{ steps.plan.outputs.llvm_pgo_clang_run }}
+      clice_train_own_build: ${{ steps.plan.outputs.clice_train_own_build }}
+      clice_train_own_run: ${{ steps.plan.outputs.clice_train_own_run }}
+      final_build: ${{ steps.plan.outputs.final_build }}
+      final_run: ${{ steps.plan.outputs.final_run }}
+      bench_build: ${{ steps.plan.outputs.bench_build }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: plan
+        run: |
+          for stage in llvm_baseline llvm_instr clang_train clice_train llvm_pgo_clice llvm_pgo_clang clice_train_own final bench; do
+            value="$(jq -r --arg k "$stage" '.[$k] // "build"' .github/pgo-plan.json)"
+            case "$value" in
+              build) echo "${stage}_build=true"; echo "${stage}_run=${GITHUB_RUN_ID}" ;;
+              skip)  echo "${stage}_build=false"; echo "${stage}_run=" ;;
+              *)     echo "${stage}_build=false"; echo "${stage}_run=${value}" ;;
+            esac
+          done | tee -a "$GITHUB_OUTPUT"
+
+  llvm_baseline:
+    needs: plan
+    if: needs.plan.outputs.llvm_baseline_build == 'true'
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: llvm-baseline
+      lto: "ON"
+
+  llvm_instr:
+    needs: plan
+    if: needs.plan.outputs.llvm_instr_build == 'true'
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: llvm-instr
+      lto: "OFF"
+      instrument: true
+
+  clang_train:
+    needs: plan
+    if: needs.plan.outputs.clang_train_build == 'true'
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: profile-clang
+      instrument: true
+      clang-train: true
+
+  clice_train:
+    needs: [plan, llvm_instr]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.clice_train_build == 'true' }}
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: profile-clice
+      llvm: llvm-instr
+      llvm-run: ${{ needs.plan.outputs.llvm_instr_run }}
+      lto: "OFF"
+      pgo: generate
+      train: true
+
+  llvm_pgo_clice:
+    needs: [plan, clice_train]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.llvm_pgo_clice_build == 'true' }}
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: llvm-pgo-clice
+      lto: "ON"
+      profile: profile-clice
+      profile-run: ${{ needs.plan.outputs.clice_train_run }}
+
+  llvm_pgo_clang:
+    needs: [plan, clang_train]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.llvm_pgo_clang_build == 'true' }}
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: llvm-pgo-clang
+      lto: "ON"
+      profile: profile-clang
+      profile-run: ${{ needs.plan.outputs.clang_train_run }}
+
+  clice_train_own:
+    needs: [plan, llvm_pgo_clang]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.clice_train_own_build == 'true' }}
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: profile-clice-own
+      llvm: llvm-pgo-clang
+      llvm-run: ${{ needs.plan.outputs.llvm_pgo_clang_run }}
+      lto: "ON"
+      pgo: generate
+      train: true
+
+  final:
+    needs: [plan, llvm_baseline, clice_train, llvm_pgo_clice, llvm_pgo_clang, clice_train_own]
+    if: ${{ !cancelled() && needs.plan.outputs.final_build == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: V0
+            llvm: llvm-baseline
+            llvm-run: ${{ needs.plan.outputs.llvm_baseline_run }}
+            pgo: ""
+            pgo-run: ""
+          - variant: V1
+            llvm: llvm-pgo-clice
+            llvm-run: ${{ needs.plan.outputs.llvm_pgo_clice_run }}
+            pgo: profile-clice
+            pgo-run: ${{ needs.plan.outputs.clice_train_run }}
+          - variant: V2
+            llvm: llvm-pgo-clang
+            llvm-run: ${{ needs.plan.outputs.llvm_pgo_clang_run }}
+            pgo: ""
+            pgo-run: ""
+          - variant: V3
+            llvm: llvm-pgo-clang
+            llvm-run: ${{ needs.plan.outputs.llvm_pgo_clang_run }}
+            pgo: profile-clice-own
+            pgo-run: ${{ needs.plan.outputs.clice_train_own_run }}
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-${{ matrix.variant }}
+      llvm: ${{ matrix.llvm }}
+      llvm-run: ${{ matrix.llvm-run }}
+      lto: "ON"
+      pgo: ${{ matrix.pgo }}
+      pgo-run: ${{ matrix.pgo-run }}
+
+  bench:
+    needs: [plan, final]
+    if: ${{ !cancelled() && needs.plan.outputs.bench_build == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+
+      - name: Download bundles
+        uses: actions/download-artifact@v8
+        with:
+          pattern: final-V*
+          path: bundles
+          run-id: ${{ needs.plan.outputs.final_run }}
+          github-token: ${{ github.token }}
+
+      - name: Download profiles
+        continue-on-error: true
+        run: |
+          for pair in "profile-clice:${{ needs.plan.outputs.clice_train_run }}" \
+                      "profile-clang:${{ needs.plan.outputs.clang_train_run }}" \
+                      "profile-clice-own:${{ needs.plan.outputs.clice_train_own_run }}"; do
+            name="${pair%%:*}"; run="${pair#*:}"
+            [[ -n "$run" ]] && gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$name" -D "profiles/$name" || true
+          done
+          ls -laR profiles || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Unpack
+        run: |
+          nproc; grep -m1 'model name' /proc/cpuinfo; free -g | sed -n 2p
+          for dir in bundles/final-V*; do
+            mkdir -p "variants/${dir##*-}"
+            zstd -dc "$dir/bundle.tar.zst" | tar -C "variants/${dir##*-}" -xf -
+          done
+          ls -la variants/*/bin | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Profile overlap
+        continue-on-error: true
+        run: |
+          {
+            echo '## Profiles'
+            for p in profiles/*/profile.profdata; do
+              echo "### $p"; echo '```'
+              pixi run -e package llvm-profdata show --summary --topn=0 "$p" | head -n 20
+              echo '```'
+            done
+            echo '### overlap: clice-trained vs clang-trained'; echo '```'
+            pixi run -e package llvm-profdata overlap profiles/profile-clice/profile.profdata \
+              profiles/profile-clang/profile.profdata | head -n 40
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Workloads
+        run: pixi run -e package python3 scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads"
+
+      - name: Benchmark
+        run: |
+          ARGS=()
+          for v in V0 V1 V2 V3; do [[ -d "variants/$v" ]] && ARGS+=(--variant "$v=$PWD/variants/$v"); done
+          pixi run -e package python3 scripts/pgo_ci.py bench "${ARGS[@]}" --rounds 3 --out bench-out \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench-results
+          path: bench-out
+          retention-days: 30

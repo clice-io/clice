@@ -1,0 +1,120 @@
+name: pgo llvm
+
+# One LLVM build of the PGO experiment (see pgo-experiment.yml): the package,
+# instrumented or optimized with a profile, or (clang-train) an instrumented
+# clang compiler that then builds clice to record a compiler profile.
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        description: "Artifact to upload: the packed install, or the profile for clang-train"
+        type: string
+        required: true
+      lto:
+        type: string
+        default: "OFF"
+      instrument:
+        type: boolean
+        default: false
+      profile:
+        description: "Profile artifact (holding profile.profdata) to optimize with"
+        type: string
+        default: ""
+      profile-run:
+        type: string
+        default: ""
+      clang-train:
+        type: boolean
+        default: false
+
+env:
+  LLVM_VERSION: "23.1.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+
+      - name: Increase Swap Space
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          nproc; grep -m1 'model name' /proc/cpuinfo; free -g | sed -n 2p; df -h /
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+
+      - name: Clone llvm-project
+        run: git clone --branch "llvmorg-${LLVM_VERSION}" --depth 1 https://github.com/llvm/llvm-project.git .llvm
+
+      - name: Download profile
+        if: inputs.profile != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.profile }}
+          path: pgo-profile
+          run-id: ${{ inputs.profile-run || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Build LLVM
+        run: |
+          ARGS=(--llvm-src=.llvm --mode=RelWithDebInfo --lto="${{ inputs.lto }}" --build-dir=build)
+          if [[ "${{ inputs.instrument }}" == true ]]; then ARGS+=(--pgo-instrument); fi
+          if [[ -n "${{ inputs.profile }}" ]]; then ARGS+=(--pgo-profile="$PWD/pgo-profile/profile.profdata"); fi
+          # The trained clang stands in for the environment's clang-23, so it
+          # keeps that clang's triple and with it the conda config files.
+          if [[ "${{ inputs.clang-train }}" == true ]]; then ARGS+=(--clang-only --default-triple=x86_64-conda-linux-gnu); fi
+          start=$SECONDS
+          pixi run -e package python3 scripts/build-llvm.py "${ARGS[@]}"
+          echo "LLVM build: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Pack install
+        if: ${{ !inputs.clang-train }}
+        run: |
+          tar -C .llvm/build-install -cf - . | zstd -T0 -6 -o llvm.tar.zst
+          ls -la llvm.tar.zst
+          du -sh .llvm/build-install/lib | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload install
+        if: ${{ !inputs.clang-train }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.name }}
+          path: llvm.tar.zst
+          retention-days: 14
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Train with the instrumented clang
+        if: inputs.clang-train
+        run: |
+          prefix="$(pixi run -e package printenv CONDA_PREFIX)"
+          # The environment's clang-23 is hard-linked into the pixi cache.
+          rm -f "$prefix/bin/clang-23"
+          cp .llvm/build/llvm/bin/clang-23 "$prefix/bin/clang-23"
+          pixi run -e package clang++ --version
+          start=$SECONDS
+          pixi run -e package python3 scripts/pgo_ci.py train-clang --raw-dir pgo-raw --out pgo-out/profile.profdata
+          echo "clang training: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
+          ls -la pgo-out
+
+      - name: Upload profile
+        if: inputs.clang-train
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.name }}
+          path: pgo-out
+          retention-days: 14
+          if-no-files-found: error
