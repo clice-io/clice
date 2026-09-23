@@ -1,0 +1,10 @@
+{
+  "rounds": 3,
+  "variants": [
+    {"name": "V0-rel", "run": "35912427164", "artifact": "final-V0"},
+    {"name": "V4", "run": "35912427164", "artifact": "final-V4"}
+  ],
+  "profiles": [
+    {"name": "smoke", "run": "35912427164", "artifact": "profile-smoke"}
+  ]
+}

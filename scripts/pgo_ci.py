@@ -35,7 +35,7 @@ def merge_profiles(raw_dir: Path, out: Path) -> None:
     # Tests kill some of their child processes mid-write; their truncated
     # profiles are skipped rather than failing the merge.
     run(["llvm-profdata", "merge", "--sparse", "--failure-mode=all", "-o", out, *raws], check=True)
-    run(["llvm-profdata", "show", "--summary", "--topn=0", out], check=False)
+    run(["llvm-profdata", "show", out], check=False)
 
 
 def train_clice(args) -> None:
@@ -100,9 +100,10 @@ def workloads(args) -> None:
     # TU stops at a missing generated header.
     listing = run(["ninja", "-C", llvm / "build", "-t", "targets", "all"],
                   check=True, capture_output=True, text=True).stdout
-    gens = sorted({line.split(":")[0] for line in listing.splitlines()
-                   if "/" not in line.split(":")[0]
-                   and line.split(":")[0].endswith(("TableGen", "_gen", "tablegen-targets"))})
+    names = {line.split(":")[0] for line in listing.splitlines()}
+    gens = sorted(n for n in names
+                  if "/" not in n and not n.startswith("install-")
+                  and n.endswith(("TableGen", "_gen", "tablegen-targets")))
     print(f"tablegen targets: {len(gens)}")
     run(["ninja", "-C", llvm / "build", *gens], check=True)
 

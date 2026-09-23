@@ -213,7 +213,7 @@ jobs:
             echo '## Profiles'
             for p in profiles/*/profile.profdata; do
               echo "### $p"; echo '```'
-              pixi run -e package llvm-profdata show --summary --topn=0 "$p" | head -n 20
+              pixi run -e package llvm-profdata show "$p" | tail -n 8
               echo '```'
             done
             echo '### overlap: clice-trained vs clang-trained'; echo '```'

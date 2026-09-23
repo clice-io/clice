@@ -1,0 +1,81 @@
+name: pgo bench
+
+# Benchmark final builds of pgo-experiment.yml / pgo-smoke.yml side by side
+# on one runner. .github/pgo-bench.json lists the bundles: variant name, run
+# id, artifact name; the first variant is the baseline.
+
+on:
+  push:
+    branches: [exp/pgo-bench]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+
+      - name: Download bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          nproc; grep -m1 'model name' /proc/cpuinfo; free -g | sed -n 2p
+          jq -c '.variants[]' .github/pgo-bench.json | while read -r v; do
+            name=$(jq -r .name <<<"$v"); run=$(jq -r .run <<<"$v"); artifact=$(jq -r .artifact <<<"$v")
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$artifact" -D "bundles/$name"
+            mkdir -p "variants/$name"
+            zstd -dc "bundles/$name/bundle.tar.zst" | tar -C "variants/$name" -xf -
+          done
+          ls -la variants/*/bin | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Profiles
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          jq -c '.profiles[]?' .github/pgo-bench.json | while read -r p; do
+            name=$(jq -r .name <<<"$p"); run=$(jq -r .run <<<"$p"); artifact=$(jq -r .artifact <<<"$p")
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$artifact" -D "profiles/$name" || continue
+          done
+          {
+            echo '## Profiles'
+            for p in profiles/*/profile.profdata; do
+              echo "### $p"; echo '```'; pixi run -e package llvm-profdata show "$p" | tail -n 8; echo '```'
+            done
+            if [[ -f profiles/clice/profile.profdata && -f profiles/clang/profile.profdata ]]; then
+              echo '### overlap: clice-trained (base) vs clang-trained'; echo '```'
+              pixi run -e package llvm-profdata overlap profiles/clice/profile.profdata \
+                profiles/clang/profile.profdata | head -n 40
+              echo '```'
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Workloads
+        run: pixi run -e package python3 scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads"
+
+      - name: Benchmark
+        run: |
+          ARGS=()
+          for name in $(jq -r '.variants[].name' .github/pgo-bench.json); do ARGS+=(--variant "$name=$PWD/variants/$name"); done
+          pixi run -e package python3 scripts/pgo_ci.py bench "${ARGS[@]}" --rounds "$(jq -r '.rounds // 3' .github/pgo-bench.json)" \
+            --out bench-out \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-results
+          path: bench-out
+          retention-days: 30
