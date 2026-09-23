@@ -10,12 +10,12 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "project/command_resolver.h"
+#include "project/index_store.h"
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "sched/index/pump.h"
-#include "project/index_store.h"
 #include "server/service/live_sources.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
@@ -35,21 +35,22 @@ namespace {
 TEST_SUITE(QueryOverlay, Tester) {
 
 kota::event_loop loop;
-Workspace workspace;
+FileTable files;
+Project project{files};
 SessionStore session_store;
 WorkerPool pool{loop};
-CommandResolver resolver{workspace};
+CommandResolver resolver{project};
 TaskGraph graph{loop};
-PCMFamily pcm{graph, workspace, resolver, pool};
+PCMFamily pcm{graph, project, resolver, pool};
 ASTProjectionTable projections;
-IndexStore index_store{loop, workspace, resolver};
-TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
-IndexPump indexer{loop, workspace, turun, index_store, pool};
-PCHFamily pch{graph, workspace, pool};
-ServerLiveSources live{workspace, pch, session_store, projections};
-PumpGate gate{indexer, workspace.config};
-index::IndexQuery index_query{workspace.project_index, workspace.file_table, &gate, &live};
-index::IndexQuery disk_query{workspace.project_index, workspace.file_table, &gate, nullptr};
+IndexStore index_store{loop, project, resolver};
+TURunFamily turun{graph, project, resolver, pcm, index_store, pool};
+IndexPump indexer{loop, project, turun, index_store, pool};
+PCHFamily pch{graph, project, pool};
+ServerLiveSources live{project, pch, session_store, projections};
+PumpGate gate{indexer, project.config};
+index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
+index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
 
 TempDir dir;
 index::TUIndex full_index;
@@ -70,13 +71,13 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     auto blob_path = dir.path("overlay.pch.idx");
     dir.touch("overlay.pch.idx", index::build_preamble_index(*unit, {}, {}, {}));
 
-    auto& st = workspace.pch_cache["key"];
+    auto& st = project.pch_cache["key"];
     st.path = "unused.pch";
     st.index_path = blob_path;
     st.state = nullptr;
 
     main_path = std::string(full_index.path(full_index.path_count() - 1));
-    auto path_id = workspace.file_table.intern(main_path);
+    auto path_id = project.file_table.intern(main_path);
     session = session_store.open(path_id);
 
     auto it = sources.all_files.find(llvm::sys::path::filename(main_path));
@@ -122,13 +123,13 @@ std::string header_path(llvm::StringRef basename) {
 void merge_disk_index() {
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
-        file_ids_map.push_back(workspace.file_table.intern(full_index.path(i)));
+        file_ids_map.push_back(project.file_table.intern(full_index.path(i)));
     }
-    ASSERT_TRUE(workspace.project_index.merge(full_index, file_ids_map));
+    ASSERT_TRUE(project.project_index.merge(full_index, file_ids_map));
 
     for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
         auto local_id = full_index.section_path(section);
-        workspace.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+        project.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(full_index.section_blob(section)));
     }
 }
@@ -291,7 +292,7 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     // Opening the header makes its session authoritative: overlay rows
     // for it describe the disk snapshot and would map onto the edited
     // buffer at wrong lines, so they must vanish from results.
-    session_store.open(workspace.file_table.intern(header_path("foo.h")));
+    session_store.open(project.file_table.intern(header_path("foo.h")));
 
     auto locations = relations("ref", RelationKind::Reference);
     ASSERT_EQ(locations.size(), 1);
@@ -340,7 +341,7 @@ Derived instance;
 
     // Once derived.h is open, its session owns the type relations spelled
     // there; the overlay's disk-snapshot rows must stop contributing.
-    session_store.open(workspace.file_table.intern(header_path("derived.h")));
+    session_store.open(project.file_table.intern(header_path("derived.h")));
     supertypes = index_query.type_hierarchy(derived, {.subtypes = false}).supertypes;
     EXPECT_EQ(supertypes.size(), 0);
 }
@@ -360,8 +361,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     // The header's own disk content changed and awaits reindexing: its
     // overlay rows describe text that no longer exists (freshness
     // contract, clause 2), exactly like a shard contribution.
-    indexer.enqueue(workspace.file_table.intern(header_path("foo.h")),
-                    ReindexReason::ContentChanged);
+    indexer.enqueue(project.file_table.intern(header_path("foo.h")), ReindexReason::ContentChanged);
     EXPECT_FALSE(index_query.first_site(hash_of("foo"), RelationKind::Definition).has_value());
 }
 
@@ -418,7 +418,7 @@ TEST_CASE(AsciiPreviewFromDisk) {
     llvm::StringRef text = "int value = 1;\nint other = value;\n";
     dir.touch("preview.cpp", text);
     auto path = dir.path("preview.cpp");
-    auto path_id = workspace.file_table.intern(path);
+    auto path_id = project.file_table.intern(path);
 
     index::SymbolHash sym = 777;
     index::FileIndex rows;
@@ -441,10 +441,10 @@ TEST_CASE(AsciiPreviewFromDisk) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(rows, {}, text, os);
-    workspace.project_index.shards[path_id] =
+    project.project_index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    ASSERT_TRUE(workspace.project_index.shards[path_id].content().empty());
-    auto& row = workspace.project_index.touch(sym);
+    ASSERT_TRUE(project.project_index.shards[path_id].content().empty());
+    auto& row = project.project_index.touch(sym);
     row.name = "value";
     row.reference_files.add(path_id.raw);
 
@@ -477,7 +477,7 @@ int main() { return 0; }
     // file-local macro identities — its rows must stay scoped to the
     // file that built the blob.
     auto other_path = std::string(llvm::sys::path::parent_path(main_path)) + "/other.cpp";
-    auto other = session_store.open(workspace.file_table.intern(other_path));
+    auto other = session_store.open(project.file_table.intern(other_path));
     other->text = session->text;
     other->line_starts = session->line_starts;
     auto& other_entry = projections.entries[other->path_id];
@@ -542,13 +542,13 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     };
     relation.set_definition_range({0, 3});
     fake.relations[foo].push_back(relation);
-    auto header_id = workspace.file_table.intern(header_path("foo.h"));
+    auto header_id = project.file_table.intern(header_path("foo.h"));
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(fake, {}, "xxx\n", os);
-    workspace.project_index.shards[header_id] =
+    project.project_index.shards[header_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    workspace.project_index.touch(foo).reference_files.add(header_id.raw);
+    project.project_index.touch(foo).reference_files.add(header_id.raw);
 
     auto def = index_query.first_site(foo, RelationKind::Definition);
     ASSERT_TRUE(def.has_value());
@@ -559,11 +559,11 @@ TEST_CASE(SynthesizedArtifactSkipped) {
     auto store = CacheStore::open(dir.path("cache"), cache_format_version);
     ASSERT_TRUE(store.has_value());
     store->register_namespace({.name = std::string(header_context_ns), .extension = ".h"});
-    workspace.store.emplace(std::move(*store));
+    project.store.emplace(std::move(*store));
 
     // The header lives inside the store's synthesized-artifact namespace:
     // its overlay rows must never send the user into the cache.
-    auto header = path::join(workspace.store->base_dir(), header_context_ns, "gen.h");
+    auto header = path::join(project.store->base_dir(), header_context_ns, "gen.h");
     add_file(header, R"(
 inline void gen() {}
 )");

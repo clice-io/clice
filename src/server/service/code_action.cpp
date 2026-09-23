@@ -138,7 +138,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     }
 
     auto path_id = session->path_id;
-    auto path = workspace.file_table.resolve(path_id);
+    auto path = project.file_table.resolve(path_id);
     auto uri = feature::to_uri(path);
     auto map = session->line_map();
 
@@ -184,7 +184,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         if(!text || !host.valid()) {
             return;
         }
-        auto host_path = workspace.file_table.resolve(host);
+        auto host_path = project.file_table.resolve(host);
         auto host_session = sessions.find(host);
         auto formatted = feature::format_snippet(host_path, *text);
 
@@ -282,9 +282,9 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         std::string directory;
         std::vector<std::string> arguments;
         auto ref = contexts.resolve_command(path, directory, arguments).ref;
-        auto search = workspace.cdb.search_config(ref);
+        auto search = project.cdb.search_config(ref);
         DirListingCache dir_cache;
-        dir_cache.shared = &workspace.file_table;
+        dir_cache.shared = &project.file_table;
         llvm::StringRef text = session->text;
         std::string before = request.offset == text.size() && !text.ends_with('\n') ? "\n" : "";
         for(const auto& header: headers) {

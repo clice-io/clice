@@ -35,12 +35,12 @@ namespace {
 /// Entry hash of a file's default selection — the candidate-order winner,
 /// or the default command claiming a file without entries; empty when the
 /// build does not compile it.
-std::string selected_hash(Workspace& workspace, Fid file) {
-    auto commands = workspace.build.commands(file);
+std::string selected_hash(Project& project, Fid file) {
+    auto commands = project.build.commands(file);
     if(commands.empty()) {
         return {};
     }
-    return workspace.cdb.entry_hash_hex(commands.front().config);
+    return project.cdb.entry_hash_hex(commands.front().config);
 }
 
 /// JSON layout of the persisted CDB snapshot (blob kind CDB): per source
@@ -85,8 +85,8 @@ struct CDBSnapshot {
 /// caught the same way.
 /// The persisted spelling of a path under the workspace: relative to the
 /// root, or the absolute path when outside it.
-static std::string persisted_path(Workspace& workspace, llvm::StringRef path) {
-    llvm::StringRef root = workspace.config.workspace_root;
+static std::string persisted_path(Project& project, llvm::StringRef path) {
+    llvm::StringRef root = project.config.workspace_root;
     if(!root.empty() && path.size() > root.size() && path.starts_with(root) &&
        path::is_separator(path[root.size()])) {
         return path.drop_front(root.size() + 1).str();
@@ -94,35 +94,35 @@ static std::string persisted_path(Workspace& workspace, llvm::StringRef path) {
     return path.str();
 }
 
-static std::string absolute_path(Workspace& workspace, llvm::StringRef persisted) {
+static std::string absolute_path(Project& project, llvm::StringRef persisted) {
     if(path::is_absolute(persisted)) {
         return persisted.str();
     }
-    return path::join(workspace.config.workspace_root, persisted);
+    return path::join(project.config.workspace_root, persisted);
 }
 
-CDBSnapshot build_cdb_snapshot(Workspace& workspace,
+CDBSnapshot build_cdb_snapshot(Project& project,
                                const llvm::DenseMap<Fid, Fid>& header_hosts,
                                llvm::ArrayRef<Fid> standalone_debt) {
     CDBSnapshot snapshot;
-    for(auto& bucket: workspace.cdb.command_hash_snapshot()) {
+    for(auto& bucket: project.cdb.command_hash_snapshot()) {
         auto path_id = bucket.first;
-        auto candidates = workspace.build.entries(path_id);
+        auto candidates = project.build.entries(path_id);
         if(candidates.empty()) {
             // Entries only inactive configurations declare: not compiled
             // by this view, so not part of its identity.
             continue;
         }
-        auto file = workspace.file_table.resolve(path_id).str();
-        auto rules = workspace.build.edit_hash(llvm::StringRef(file));
+        auto file = project.file_table.resolve(path_id).str();
+        auto rules = project.build.edit_hash(llvm::StringRef(file));
         // In build order, which registration order — the order databases
         // were discovered in — must not leak into: the sequence is the
         // file's command identity across sessions.
         std::vector<std::string> hashes;
         std::vector<std::string> sources;
         for(auto& candidate: candidates) {
-            hashes.push_back(workspace.cdb.entry_hash_hex(candidate.config));
-            auto source = persisted_path(workspace, workspace.cdb.source_path(candidate.source));
+            hashes.push_back(project.cdb.entry_hash_hex(candidate.config));
+            auto source = persisted_path(project, project.cdb.source_path(candidate.source));
             if(!llvm::is_contained(sources, source)) {
                 sources.push_back(std::move(source));
             }
@@ -130,7 +130,7 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
         snapshot.entries.push_back({
             .file = std::move(file),
             .hashes = std::move(hashes),
-            .selected = workspace.cdb.entry_hash_hex(candidates.front().config),
+            .selected = project.cdb.entry_hash_hex(candidates.front().config),
             .sources = std::move(sources),
             .rules = std::move(rules),
         });
@@ -140,29 +140,29 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
     // from, and on the rules matching them and that host — all of it must
     // be snapshot to detect offline changes.
     auto add_standalone = [&](Fid tu) {
-        auto file = workspace.file_table.resolve(tu);
-        if(!workspace.build.entries(tu).empty()) {
+        auto file = project.file_table.resolve(tu);
+        if(!project.build.entries(tu).empty()) {
             return;
         }
         std::string host;
         std::string host_selected;
         llvm::SmallVector<llvm::StringRef, 2> edit_paths;
         if(auto host_it = header_hosts.find(tu); host_it != header_hosts.end()) {
-            host = workspace.file_table.resolve(host_it->second).str();
-            host_selected = selected_hash(workspace, host_it->second);
+            host = project.file_table.resolve(host_it->second).str();
+            host_selected = selected_hash(project, host_it->second);
             edit_paths.push_back(host);
         }
         edit_paths.push_back(file);
-        auto rules = workspace.build.edit_hash(edit_paths);
+        auto rules = project.build.edit_hash(edit_paths);
         snapshot.entries.push_back({
             .file = file.str(),
-            .selected = selected_hash(workspace, tu),
+            .selected = selected_hash(project, tu),
             .rules = std::move(rules),
             .host = std::move(host),
             .host_selected = std::move(host_selected),
         });
     };
-    for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
+    for(auto tu: llvm::make_first_range(project.project_index.manifests)) {
         add_standalone(tu);
     }
     // A dropped standalone TU whose rebuild has not landed keeps its entry:
@@ -176,11 +176,11 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
     return snapshot;
 }
 
-std::string serialize_cdb_snapshot(Workspace& workspace,
+std::string serialize_cdb_snapshot(Project& project,
                                    const llvm::DenseMap<Fid, Fid>& header_hosts,
                                    llvm::ArrayRef<Fid> standalone_debt) {
     auto json =
-        kota::codec::json::to_string(build_cdb_snapshot(workspace, header_hosts, standalone_debt));
+        kota::codec::json::to_string(build_cdb_snapshot(project, header_hosts, standalone_debt));
     return json ? std::move(*json) : std::string();
 }
 
@@ -234,17 +234,17 @@ struct ArtifactsData {
 
 }  // namespace
 
-IndexStore::IndexStore(kota::event_loop& loop, Workspace& workspace, CommandResolver& commands) :
-    loop(loop), workspace(workspace), commands(commands) {}
+IndexStore::IndexStore(kota::event_loop& loop, Project& project, CommandResolver& commands) :
+    loop(loop), project(project), commands(commands) {}
 
 std::string IndexStore::serialize_artifacts() {
     ArtifactsData data;
     data.pch_index_format = index::index_format_version;
-    data.revocation_generation = workspace.file_table.revocation_generation;
+    data.revocation_generation = project.file_table.revocation_generation;
     llvm::StringMap<std::uint32_t> index_map;
 
     auto intern = [&](Fid fid) -> std::uint32_t {
-        auto path = std::string(workspace.file_table.resolve(fid));
+        auto path = std::string(project.file_table.resolve(fid));
         auto [it, inserted] =
             index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
         if(inserted) {
@@ -264,7 +264,7 @@ std::string IndexStore::serialize_artifacts() {
                 out.push_back({intern(dep.path_id), 0, 0, 0, dep.missing});
                 continue;
             }
-            auto& version = workspace.file_table.version(dep.version);
+            auto& version = project.file_table.version(dep.version);
             out.push_back({intern(dep.path_id),
                            version.content_hash,
                            version.size,
@@ -273,7 +273,7 @@ std::string IndexStore::serialize_artifacts() {
         }
     };
 
-    for(auto& e: workspace.pch_cache) {
+    for(auto& e: project.pch_cache) {
         auto& st = e.second;
         if(st.path.empty())
             continue;
@@ -284,13 +284,13 @@ std::string IndexStore::serialize_artifacts() {
         data.pch.push_back(std::move(entry));
     }
 
-    for(auto& [path_id, st]: workspace.pcm_cache) {
+    for(auto& [path_id, st]: project.pcm_cache) {
         if(st.path.empty())
             continue;
         CachePCMEntry entry;
         entry.key = st.key;
         entry.source_file = intern(path_id);
-        entry.module_name = workspace.dep_graph.module_of(path_id).str();
+        entry.module_name = project.dep_graph.module_of(path_id).str();
         dump_deps(st.deps, entry.deps);
         data.pcm.push_back(std::move(entry));
     }
@@ -306,7 +306,7 @@ std::string IndexStore::serialize_artifacts() {
 }
 
 void IndexStore::load_artifacts(llvm::StringRef bytes) {
-    if(bytes.empty() || !workspace.store) {
+    if(bytes.empty() || !project.store) {
         return;
     }
     ArtifactsData data;
@@ -322,7 +322,7 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
     // stamps that revocation dropped; adopting them would undo it (a crash
     // between the two non-atomic blob writes leaves exactly this pair on
     // disk). The dep records themselves stay: they self-validate by hash.
-    bool adopt_stamps = data.revocation_generation >= workspace.file_table.revocation_generation;
+    bool adopt_stamps = data.revocation_generation >= project.file_table.revocation_generation;
     auto load_deps = [&](const std::vector<CacheDepEntry>& dep_entries) -> DepsSnapshot {
         DepsSnapshot deps;
         for(auto& dep: dep_entries) {
@@ -330,12 +330,12 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
             if(dep_path.empty())
                 continue;
             auto& state = deps.emplace_back();
-            state.path_id = workspace.file_table.intern(dep_path);
+            state.path_id = project.file_table.intern(dep_path);
             state.missing = dep.missing;
             if(dep.hash != 0) {
-                state.version = workspace.file_table.intern_version(state.path_id, dep.hash);
+                state.version = project.file_table.intern_version(state.path_id, dep.hash);
                 if(adopt_stamps) {
-                    workspace.file_table.adopt_stamp(state.version, dep.size, dep.mtime_ns);
+                    project.file_table.adopt_stamp(state.version, dep.size, dep.mtime_ns);
                 }
             }
         }
@@ -347,17 +347,17 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         if(!pch_format_ok) {
             break;
         }
-        auto pch_path = workspace.store->lookup("pch", entry.key);
+        auto pch_path = project.store->lookup("pch", entry.key);
         if(!pch_path)
             continue;
         // A PCH without its pch.idx envelope is an incomplete pair
         // (crash between the two commits): treat it as absent so the next
         // compile rebuilds both.
-        auto index_path = workspace.store->lookup_aux("pch", entry.key);
+        auto index_path = project.store->lookup_aux("pch", entry.key);
         if(!index_path)
             continue;
 
-        auto& st = workspace.pch_cache[entry.key];
+        auto& st = project.pch_cache[entry.key];
         st.path = *pch_path;
         st.bound = entry.bound;
         st.deps = load_deps(entry.deps);
@@ -365,7 +365,7 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
     }
 
     for(auto& entry: data.pcm) {
-        auto pcm_path = workspace.store->lookup("pcm", entry.key);
+        auto pcm_path = project.store->lookup("pcm", entry.key);
         auto source = resolve(entry.source_file);
         if(!pcm_path || source.empty())
             continue;
@@ -375,8 +375,8 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         if(entry.deps.empty()) {
             continue;
         }
-        auto path_id = workspace.file_table.intern(source);
-        auto& st = workspace.pcm_cache[path_id];
+        auto path_id = project.file_table.intern(source);
+        auto& st = project.pcm_cache[path_id];
         st.path = *pcm_path;
         st.key = entry.key;
         st.deps = load_deps(entry.deps);
@@ -388,8 +388,8 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
     commands.load_mode_slices(data.header_modes, intern_resolve);
 
     LOG_INFO("Loaded artifact metadata: {} PCH entries, {} PCM entries",
-             workspace.pch_cache.size(),
-             workspace.pcm_cache.size());
+             project.pch_cache.size(),
+             project.pcm_cache.size());
 }
 
 std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, std::size_t size) {
@@ -409,11 +409,11 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // result are inert. Everything that is index STATE (symbols,
     // FileVersions, the manifest, shards) commits only below the section
     // loop, once every part of the result validated.
-    auto& project = workspace.project_index;
+    auto& project_index = project.project_index;
     llvm::SmallVector<Fid> file_ids_map;
     file_ids_map.resize_for_overwrite(view.path_count());
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map[i] = workspace.file_table.intern(view.path(i));
+        file_ids_map[i] = project.file_table.intern(view.path(i));
     }
     auto tu_path_id = file_ids_map[main_local_id];
 
@@ -443,7 +443,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         if(path_hash != 0 && path_hash != content_hash) {
             LOG_WARN("Reject merge for {}: rows for {} consumed other content than the compiler",
                      main_tu_path,
-                     workspace.file_table.resolve(file_ids_map[local_id]));
+                     project.file_table.resolve(file_ids_map[local_id]));
             return false;
         }
         consumed_hashes[local_id] = content_hash;
@@ -454,9 +454,8 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         auto blob_hash = view.section_hash(section);
         auto global_id = file_ids_map[local_id];
 
-        auto shard_it = workspace.project_index.shards.find(global_id);
-        auto* shard =
-            shard_it != workspace.project_index.shards.end() ? &shard_it->second : nullptr;
+        auto shard_it = project.project_index.shards.find(global_id);
+        auto* shard = shard_it != project.project_index.shards.end() ? &shard_it->second : nullptr;
 
         // Fast path: the blob already stores this variant. The identity
         // hashes the blob bytes, which embed the content generation, so
@@ -482,14 +481,14 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         if(llvm::xxh3_64bits(bytes) != blob_hash) {
             LOG_WARN("Reject merge for {}: rows section for {} failed verification",
                      main_tu_path,
-                     workspace.file_table.resolve(global_id));
+                     project.file_table.resolve(global_id));
             return std::nullopt;
         }
         auto fresh = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(!fresh.loaded()) {
             LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
                      main_tu_path,
-                     workspace.file_table.resolve(global_id));
+                     project.file_table.resolve(global_id));
             return std::nullopt;
         }
         if(!record_consumed(local_id, fresh.content_hash())) {
@@ -526,11 +525,11 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // merge would install reads as fresh forever, with the lost bits never
     // rebuilt.
     llvm::SmallVector<index::SymbolHash> added;
-    if(!project.merge(view, file_ids_map, &added)) {
+    if(!project_index.merge(view, file_ids_map, &added)) {
         LOG_WARN("Reject merge for {}: symbol reference bitmap failed verification", main_tu_path);
         return std::nullopt;
     }
-    workspace.project_index.search_pending.insert(added.begin(), added.end());
+    project.project_index.search_pending.insert(added.begin(), added.end());
     merges_since_search_build += 1;
 
     // Intern a FileVersion per file of the parse. The freshness baseline is
@@ -558,14 +557,14 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
             // holds the consumed bytes, so take their hash from the shared
             // pair — or one read, unless the file moved between the stat
             // and the read, which voids the proof.
-            auto obs = workspace.file_table.observe_for(file_ids_map[i], status);
+            auto obs = project.file_table.observe_for(file_ids_map[i], status);
             if(obs && obs->size == status.getSize() && obs->mtime_ns == fs::mtime_ns(status)) {
                 hash = obs->hash;
             }
         }
 
-        auto fv = workspace.file_table.intern_version(file_ids_map[i], hash);
-        if(untouched && hash != 0 && workspace.file_table.version(fv).mtime_ns == 0) {
+        auto fv = project.file_table.intern_version(file_ids_map[i], hash);
+        if(untouched && hash != 0 && project.file_table.version(fv).mtime_ns == 0) {
             // The untouched mtime alone is no proof: a rewrite during the
             // build that preserves the size and backdates the mtime
             // (rsync -t) would stamp a stat describing bytes the rows were
@@ -574,12 +573,12 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
             // read (usually the shared pair, already paid for); an
             // already-stamped version earned its stamp the same way and
             // need not re-prove it every merge.
-            if(auto obs = workspace.file_table.observe_for(file_ids_map[i], status)) {
-                workspace.file_table.try_stamp(fv,
-                                               obs->size,
-                                               obs->mtime_ns,
-                                               obs->uid_device,
-                                               obs->uid_file);
+            if(auto obs = project.file_table.observe_for(file_ids_map[i], status)) {
+                project.file_table.try_stamp(fv,
+                                             obs->size,
+                                             obs->mtime_ns,
+                                             obs->uid_device,
+                                             obs->uid_file);
             }
         }
         fv_of[i] = fv;
@@ -600,7 +599,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
 
     Report report;
     for(auto& [global_id, replacement]: replacements) {
-        workspace.project_index.shards[global_id] = std::move(replacement);
+        project.project_index.shards[global_id] = std::move(replacement);
         dirty_shards.insert(global_id);
         report.add_rows_changed(global_id);
     }
@@ -608,14 +607,15 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // Replace this TU's manifest wholesale: files it no longer touches lose
     // their contribution here, which is also what retires their variants —
     // no sweep over other shards is needed.
-    auto affected = project.apply_manifest(workspace.file_table, tu_path_id, std::move(manifest));
+    auto affected =
+        project_index.apply_manifest(project.file_table, tu_path_id, std::move(manifest));
     for(auto path_id: affected) {
         report.add_rows_changed(path_id);
-        auto it = workspace.project_index.shards.find(path_id);
-        if(it == workspace.project_index.shards.end()) {
+        auto it = project.project_index.shards.find(path_id);
+        if(it == project.project_index.shards.end()) {
             continue;
         }
-        it->second.set_live(project.live_variants(path_id));
+        it->second.set_live(project_index.live_variants(path_id));
     }
 
     // A rebuild started its file's blob over, discarding the variants other
@@ -625,8 +625,8 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // ContentChanged — has no in-process event left to rebuild its rows,
     // only a restart reaching load()'s re-enqueue.
     for(auto path_id: rebuilt_ids) {
-        auto& shard = workspace.project_index.shards.find(path_id)->second;
-        for(auto& [tu, hash]: project.contributions.find(path_id)->second) {
+        auto& shard = project.project_index.shards.find(path_id)->second;
+        for(auto& [tu, hash]: project_index.contributions.find(path_id)->second) {
             if(!shard.has_variant(hash)) {
                 report.add_reindex(tu);
             }
@@ -643,7 +643,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         hits,
         appended,
         rebuilt_ids.size(),
-        workspace.project_index.shards.size());
+        project.project_index.shards.size());
 
     return report;
 }
@@ -655,17 +655,17 @@ IndexStore::Report IndexStore::drop_index(Fid tu_path_id) {
 }
 
 void IndexStore::drop_index_into(Fid tu_path_id, Report& report) {
-    auto& project = workspace.project_index;
-    if(!project.manifests.contains(tu_path_id)) {
+    auto& project_index = project.project_index;
+    if(!project_index.manifests.contains(tu_path_id)) {
         return;
     }
     // Dropped rows change index-served answers exactly like merged rows
     // do; without the refresh the client keeps them forever, since no
     // later merge or compile is owed.
-    for(auto path_id: project.remove_manifest(workspace.file_table, tu_path_id)) {
-        auto it = workspace.project_index.shards.find(path_id);
-        if(it != workspace.project_index.shards.end()) {
-            it->second.set_live(project.live_variants(path_id));
+    for(auto path_id: project_index.remove_manifest(project.file_table, tu_path_id)) {
+        auto it = project.project_index.shards.find(path_id);
+        if(it != project.project_index.shards.end()) {
+            it->second.set_live(project_index.live_variants(path_id));
         }
         report.add_rows_changed(path_id);
     }
@@ -682,16 +682,16 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     // A read-only session (batch lint, stats) keeps its metadata in memory
     // and exits with it — it must never write into a database a concurrent
     // writer owns.
-    if(!workspace.index_db || workspace.index_db->read_only())
+    if(!project.index_db || project.index_db->read_only())
         co_return report;
     co_await save_gate.acquire();
     auto gate = llvm::make_scope_exit([this] { save_gate.release(); });
     // Re-checked: the gate holder we just waited out may have hit
     // corruption and failed to reopen the database.
-    if(!workspace.index_db || workspace.index_db->read_only())
+    if(!project.index_db || project.index_db->read_only())
         co_return report;
-    auto& db = *workspace.index_db;
-    auto& project = workspace.project_index;
+    auto& db = *project.index_db;
+    auto& project_index = project.project_index;
     ScopedTimer timer;
 
     if(search_rebuild_due(settle)) {
@@ -709,8 +709,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     // would rebuild their rows otherwise (a reverted file even reads fresh
     // by hash), only a restart reaching load()'s re-enqueue.
     llvm::SmallVector<Fid> retired;
-    for(auto& [path_id, shard]: workspace.project_index.shards) {
-        auto live = project.live_variants(path_id);
+    for(auto& [path_id, shard]: project.project_index.shards) {
+        auto live = project_index.live_variants(path_id);
         if(llvm::none_of(live, [&](std::uint64_t hash) { return shard.has_variant(hash); })) {
             retired.push_back(path_id);
             continue;
@@ -727,7 +727,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         dirty_shards.insert(path_id);
     }
     for(auto path_id: retired) {
-        workspace.project_index.shards.erase(path_id);
+        project.project_index.shards.erase(path_id);
         dirty_shards.erase(path_id);
         report.add_rows_changed(path_id);
         requeue_owners(path_id, report);
@@ -744,14 +744,14 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     startup_removes.clear();
     for(auto path_id: retired) {
         removals.push_back(
-            {index::IndexBlobKind::Shard, index::blob_key(workspace.file_table.resolve(path_id))});
+            {index::IndexBlobKind::Shard, index::blob_key(project.file_table.resolve(path_id))});
     }
     for(auto path_id: dirty_shards) {
-        auto it = workspace.project_index.shards.find(path_id);
-        assert(it != workspace.project_index.shards.end() &&
+        auto it = project.project_index.shards.find(path_id);
+        assert(it != project.project_index.shards.end() &&
                "dirty shards stay resident until retirement");
         batch.push_back({index::IndexBlobKind::Shard,
-                         index::blob_key(workspace.file_table.resolve(path_id)),
+                         index::blob_key(project.file_table.resolve(path_id)),
                          it->second.bytes().str()});
         shard_ids.push_back(path_id);
     }
@@ -765,19 +765,19 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     // while the global landed — both FileVersion sets can stay fully
     // resolvable (a reindex that changed rows or the include tree only).
     if(global_dirty) {
-        project.global_generation += 1;
+        project_index.global_generation += 1;
     }
     for(auto tu_path_id: dirty_manifests) {
-        auto it = project.manifests.find(tu_path_id);
-        auto key = index::blob_key(workspace.file_table.resolve(tu_path_id));
+        auto it = project_index.manifests.find(tu_path_id);
+        auto key = index::blob_key(project.file_table.resolve(tu_path_id));
         // Dirty with no in-memory manifest means dropped (drop_index): the
         // persisted blob must go too, or a restart resurrects the TU's
         // rows as fresh.
-        if(it == project.manifests.end()) {
+        if(it == project_index.manifests.end()) {
             removals.push_back({index::IndexBlobKind::Manifest, std::move(key)});
             continue;
         }
-        it->second.global_gen = project.global_generation;
+        it->second.global_gen = project_index.global_generation;
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(it->second, os);
@@ -794,7 +794,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     if(global_dirty) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
-        project.serialize_global(os, workspace.file_table);
+        project_index.serialize_global(os, project.file_table);
         global_slot = batch.size();
         batch.push_back({index::IndexBlobKind::Global, "global", std::move(bytes)});
     }
@@ -823,7 +823,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     std::optional<std::size_t> cdb_index;
     if(!batch.empty() || !removals.empty() || cdb_dirty) {
         debt.append(report.reindex().begin(), report.reindex().end());
-        cdb_bytes = serialize_cdb_snapshot(workspace, header_hosts, standalone_of(debt));
+        cdb_bytes = serialize_cdb_snapshot(project, header_hosts, standalone_of(debt));
         if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
             cdb_index = batch.size();
             batch.push_back({index::IndexBlobKind::CDB, "cdb", cdb_bytes});
@@ -843,7 +843,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     std::optional<std::size_t> artifacts_index;
     std::optional<std::size_t> contexts_index;
     bool contexts_ok = true;
-    if(workspace.artifacts_dirty) {
+    if(project.artifacts_dirty) {
         if(auto bytes = serialize_artifacts(); !bytes.empty()) {
             artifacts_index = batch.size();
             batch.push_back({index::IndexBlobKind::Artifacts, "artifacts", std::move(bytes)});
@@ -864,7 +864,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     global_dirty = false;
     // Serialization failures keep their dirty flag for the next attempt.
     if(artifacts_index) {
-        workspace.artifacts_dirty = false;
+        project.artifacts_dirty = false;
     }
     if(contexts_index) {
         contexts->dirty = false;
@@ -914,12 +914,12 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         dirty_shards.insert(shard_ids.begin(), shard_ids.end());
         dirty_manifests.insert(manifest_ids.begin(), manifest_ids.end());
         global_dirty = global_dirty || had_global;
-        project.restore_unwritten();
+        project_index.restore_unwritten();
         if(search_slot) {
             search_bytes = std::move(batch[*search_slot].bytes);
         }
         cdb_dirty = cdb_dirty || cdb_index.has_value();
-        workspace.artifacts_dirty = workspace.artifacts_dirty || artifacts_index.has_value();
+        project.artifacts_dirty = project.artifacts_dirty || artifacts_index.has_value();
         contexts->dirty = contexts->dirty || contexts_index.has_value();
         startup_removes.append(std::make_move_iterator(removals.begin()),
                                std::make_move_iterator(removals.end()));
@@ -945,7 +945,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
             cdb_dirty = true;
             cdb_index.reset();
         } else if(artifacts_index && i == *artifacts_index) {
-            workspace.artifacts_dirty = true;
+            project.artifacts_dirty = true;
         } else if(contexts_index && i == *contexts_index) {
             contexts->dirty = true;
             contexts_ok = false;
@@ -959,10 +959,10 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     // The rows the landed blob holds now read from it; a failed global
     // write keeps them aside for the retry.
     if(global_slot) {
-        project.rebase(llvm::MemoryBuffer::getMemBufferCopy(batch[*global_slot].bytes),
-                       workspace.file_table);
+        project_index.rebase(llvm::MemoryBuffer::getMemBufferCopy(batch[*global_slot].bytes),
+                             project.file_table);
     } else if(had_global) {
-        project.restore_unwritten();
+        project_index.restore_unwritten();
     }
     if(cdb_index) {
         persisted_cdb_snapshot = std::move(cdb_bytes);
@@ -1001,15 +1001,15 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
              "phase=save shards={} manifests={} total={} elapsed_ms={}",
              shard_count,
              manifest_count,
-             workspace.project_index.shards.size(),
+             project.project_index.shards.size(),
              timer.ms());
     co_return report;
 }
 
 bool IndexStore::search_rebuild_due(bool settle) const {
-    auto& index = workspace.project_index.search_index;
+    auto& index = project.project_index.search_index;
     auto base = index.size();
-    if(workspace.project_index.search_pending.size() > std::max<std::size_t>(10000, base / 20)) {
+    if(project.project_index.search_pending.size() > std::max<std::size_t>(10000, base / 20)) {
         return true;
     }
     // A damaged index is replaced at the first save, settled or not: its
@@ -1024,24 +1024,24 @@ bool IndexStore::search_rebuild_due(bool settle) const {
     // the table's — leaves searches scanning the whole table until the
     // first settled save.
     if(!index.loaded()) {
-        return workspace.project_index.symbol_count() > 0;
+        return project.project_index.symbol_count() > 0;
     }
     // A twentieth of the units, so a small project refreshes on any
     // merge and a large one every twenty at most.
     return merges_since_search_build >
-           std::min<std::size_t>(20, workspace.project_index.manifests.size() / 20);
+           std::min<std::size_t>(20, project.project_index.manifests.size() / 20);
 }
 
 kota::task<> IndexStore::rebuild_search_index() {
-    auto& project = workspace.project_index;
+    auto& project_index = project.project_index;
     ScopedTimer timer;
     index::SearchSnapshot snapshot;
-    snapshot.entries.reserve(project.symbol_count());
+    snapshot.entries.reserve(project_index.symbol_count());
     // A rebuild dirties the table (below): the save writes the global blob
     // under its next generation, and the search blob is pinned to it.
-    snapshot.generation = project.global_generation + 1;
+    snapshot.generation = project_index.global_generation + 1;
     llvm::DenseMap<std::uint32_t, std::uint32_t> path_index;
-    project.for_each_symbol(
+    project_index.for_each_symbol(
         [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, std::uint32_t references) {
             if(!index::is_searchable_kind(symbol.kind) || symbol.name.empty()) {
                 return true;
@@ -1052,7 +1052,7 @@ kota::task<> IndexStore::rebuild_search_index() {
                     path_index.try_emplace(symbol.file,
                                            static_cast<std::uint32_t>(snapshot.paths.size()));
                 if(inserted) {
-                    snapshot.paths.push_back(workspace.file_table.resolve(Fid{symbol.file}).str());
+                    snapshot.paths.push_back(project.file_table.resolve(Fid{symbol.file}).str());
                 }
                 file = it->second;
             }
@@ -1071,13 +1071,13 @@ kota::task<> IndexStore::rebuild_search_index() {
     auto merges_in_snapshot = merges_since_search_build;
     // Rows that change across the build stay pending: only the ones the
     // snapshot saw are settled by the index built from it.
-    auto pending_in_snapshot = std::move(workspace.project_index.search_pending);
-    workspace.project_index.search_pending.clear();
+    auto pending_in_snapshot = std::move(project.project_index.search_pending);
+    project.project_index.search_pending.clear();
     // Until the rebuilt index is adopted the old one still needs them:
     // a cancelled or failed build gives them back.
     auto restore = llvm::make_scope_exit([&] {
-        workspace.project_index.search_pending.insert(pending_in_snapshot.begin(),
-                                                      pending_in_snapshot.end());
+        project.project_index.search_pending.insert(pending_in_snapshot.begin(),
+                                                    pending_in_snapshot.end());
     });
 
     std::string bytes;
@@ -1087,31 +1087,31 @@ kota::task<> IndexStore::rebuild_search_index() {
         LOG_ERROR("The rebuilt search index does not load; keeping the previous one");
         co_return;
     }
-    workspace.project_index.search_index = std::move(built);
+    project.project_index.search_index = std::move(built);
     // The table pins the blob it was saved with: a reader adopts the
     // persisted search index only under this generation.
-    workspace.project_index.search_generation = snapshot.generation;
+    project.project_index.search_generation = snapshot.generation;
     global_dirty = true;
     restore.release();
     merges_since_search_build -= merges_in_snapshot;
     for(auto hash: pending_in_snapshot) {
-        if(!workspace.project_index.search_index.contains(hash)) {
-            workspace.project_index.search_pending.insert(hash);
+        if(!project.project_index.search_index.contains(hash)) {
+            project.project_index.search_pending.insert(hash);
         }
     }
     search_bytes = std::move(bytes);
     LOG_PERF("index",
              "phase=search_build symbols={} bytes={} elapsed_ms={}",
-             workspace.project_index.search_index.size(),
+             project.project_index.search_index.size(),
              search_bytes.size(),
              timer.ms());
 }
 
 kota::task<> IndexStore::migrate_shard_views(Report& report) {
-    if(!workspace.index_db) {
+    if(!project.index_db) {
         co_return;
     }
-    auto& db = *workspace.index_db;
+    auto& db = *project.index_db;
 
     // A full-map write left nothing committed (everything is dirty again);
     // growing retires every snapshot at once, so the rebind below must run
@@ -1157,7 +1157,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
 
     constexpr std::size_t rebind_batch = 512;
     llvm::SmallVector<Fid> resident;
-    for(auto path_id: llvm::make_first_range(workspace.project_index.shards)) {
+    for(auto path_id: llvm::make_first_range(project.project_index.shards)) {
         if(!dirty_shards.contains(path_id)) {
             resident.push_back(path_id);
         }
@@ -1167,12 +1167,12 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
             co_await kota::sleep(std::chrono::milliseconds(0), loop);
         }
         auto path_id = resident[i];
-        auto it = workspace.project_index.shards.find(path_id);
-        if(it == workspace.project_index.shards.end() || dirty_shards.contains(path_id)) {
+        auto it = project.project_index.shards.find(path_id);
+        if(it == project.project_index.shards.end() || dirty_shards.contains(path_id)) {
             continue;
         }
         auto blob = db.read(index::IndexBlobKind::Shard,
-                            index::blob_key(workspace.file_table.resolve(path_id)));
+                            index::blob_key(project.file_table.resolve(path_id)));
         if(!blob || !it->second.rebind(std::move(blob.buffer))) {
             // Corruption can also surface first here (a damaged page only
             // this re-read reaches); the recovery below sheds the whole
@@ -1184,9 +1184,9 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
             // its owners requeued to rebuild the rows, while keeping the
             // old view would dangle once the snapshot retires.
             LOG_ERROR("Index shard for {} diverged during snapshot migration",
-                      workspace.file_table.resolve(path_id));
+                      project.file_table.resolve(path_id));
             assert(false && "persisted shard must survive snapshot migration");
-            workspace.project_index.shards.erase(path_id);
+            project.project_index.shards.erase(path_id);
             report.add_rows_changed(path_id);
             requeue_owners(path_id, report);
         }
@@ -1202,8 +1202,8 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
 }
 
 void IndexStore::requeue_owners(Fid path_id, Report& report) {
-    auto it = workspace.project_index.contributions.find(path_id);
-    if(it == workspace.project_index.contributions.end()) {
+    auto it = project.project_index.contributions.find(path_id);
+    if(it == project.project_index.contributions.end()) {
         return;
     }
     for(auto tu: llvm::make_first_range(it->second)) {
@@ -1213,13 +1213,13 @@ void IndexStore::requeue_owners(Fid path_id, Report& report) {
 
 void IndexStore::shed_borrowed_shards(Report& report) {
     llvm::SmallVector<Fid> shed;
-    for(auto path_id: llvm::make_first_range(workspace.project_index.shards)) {
+    for(auto path_id: llvm::make_first_range(project.project_index.shards)) {
         if(!dirty_shards.contains(path_id)) {
             shed.push_back(path_id);
         }
     }
     for(auto path_id: shed) {
-        workspace.project_index.shards.erase(path_id);
+        project.project_index.shards.erase(path_id);
         report.add_rows_changed(path_id);
         requeue_owners(path_id, report);
     }
@@ -1229,7 +1229,7 @@ void IndexStore::recover_corrupt_database(Report& report) {
     LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
     saved_shards = 0;
     shed_borrowed_shards(report);
-    for(auto tu_path_id: llvm::make_first_range(workspace.project_index.manifests)) {
+    for(auto tu_path_id: llvm::make_first_range(project.project_index.manifests)) {
         dirty_manifests.insert(tu_path_id);
     }
     global_dirty = true;
@@ -1243,15 +1243,14 @@ void IndexStore::recover_corrupt_database(Report& report) {
 }
 
 void IndexStore::reopen_fresh_database() {
-    workspace.index_db->condemn();
-    workspace.index_db.reset();
-    workspace.index_db =
-        index::open_database(*workspace.store, workspace.build.active_configuration());
+    project.index_db->condemn();
+    project.index_db.reset();
+    project.index_db = index::open_database(*project.store, project.build.active_configuration());
     // The metadata blobs died with the condemned database while their
     // loaded state lives on in memory; without a re-dirty the next save
     // skips them and a restart loses the user's context choices and every
     // rebuildable artifact record.
-    workspace.mark_artifacts_dirty();
+    project.mark_artifacts_dirty();
     contexts->rewrite();
     // Durability waiters re-evaluate against the new database: a failed
     // reopen disables persistence for the session, and a parked
@@ -1265,10 +1264,10 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     bool read_only = options.read_only;
     LoadResult result;
     auto& report = result.report;
-    if(!workspace.index_db)
+    if(!project.index_db)
         return result;
-    auto& db = *workspace.index_db;
-    auto& project = workspace.project_index;
+    auto& db = *project.index_db;
+    auto& project_index = project.project_index;
     ScopedTimer timer;
 
     auto sweep_all = [&] {
@@ -1290,7 +1289,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     // page reclamation to session start. Every return path that leaves
     // the database open owes this.
     auto retire_snapshot = [&] {
-        if(read_only && !options.borrow && workspace.index_db && db.advance_read_snapshot()) {
+        if(read_only && !options.borrow && project.index_db && db.advance_read_snapshot()) {
             db.retire_old_snapshot();
         }
     };
@@ -1331,7 +1330,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
                 // still read while only the global is unreadable.
                 load_metadata();
                 LOG_WARN("Index global blob unreadable; disabling index persistence this session");
-                workspace.index_db.reset();
+                project.index_db.reset();
             }
             return result;
         }
@@ -1344,7 +1343,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     }
     llvm::DenseMap<VersionID, std::uint64_t> manifest_pins;
     if(auto loaded =
-           project.load_global(global.buffer->getBuffer(), workspace.file_table, manifest_pins);
+           project_index.load_global(global.buffer->getBuffer(), project.file_table, manifest_pins);
        !loaded) {
         LOG_INFO("Discarding the index global blob: {}", loaded.error());
         sweep_all();
@@ -1368,7 +1367,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         if(!options.borrow && search.generation != 0) {
             search.buffer = llvm::MemoryBuffer::getMemBufferCopy(search.buffer->getBuffer());
         }
-        if(!project.bind_search(std::move(search.buffer)) && !read_only) {
+        if(!project_index.bind_search(std::move(search.buffer)) && !read_only) {
             startup_removes.push_back({index::IndexBlobKind::Search, "search"});
         }
     }
@@ -1385,22 +1384,22 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         auto manifest = blob ? index::deserialize_manifest(blob.buffer->getBuffer()) : std::nullopt;
         auto pin = manifest ? manifest_pins.find(manifest->tu_fv) : manifest_pins.end();
         if(!manifest || pin == manifest_pins.end() || pin->second != manifest->global_gen ||
-           !project.knows_file_versions(workspace.file_table, *manifest)) {
+           !project_index.knows_file_versions(project.file_table, *manifest)) {
             dead_manifests.push_back(key.str());
             // The manifest raced a crash ahead of the global blob (its own
             // pin never landed). When the TU's version is still resolvable,
             // re-enqueue it: the CDB sweep never covers standalone-indexed
             // headers.
             if(manifest) {
-                if(workspace.file_table.knows_version(manifest->tu_fv)) {
-                    report.add_reindex(workspace.file_table.version(manifest->tu_fv).fid);
+                if(project.file_table.knows_version(manifest->tu_fv)) {
+                    report.add_reindex(project.file_table.version(manifest->tu_fv).fid);
                 }
             }
             return;
         }
         adopted_pins.insert(manifest->tu_fv);
-        auto tu_path_id = workspace.file_table.version(manifest->tu_fv).fid;
-        project.apply_manifest(workspace.file_table, tu_path_id, std::move(*manifest));
+        auto tu_path_id = project.file_table.version(manifest->tu_fv).fid;
+        project_index.apply_manifest(project.file_table, tu_path_id, std::move(*manifest));
     });
     if(!read_only) {
         for(auto& key: dead_manifests) {
@@ -1413,7 +1412,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     // load_global rejects a blob whose pins its own table cannot cover.
     for(auto fv: llvm::make_first_range(manifest_pins)) {
         if(!adopted_pins.contains(fv)) {
-            report.add_reindex(workspace.file_table.version(fv).fid);
+            report.add_reindex(project.file_table.version(fv).fid);
         }
     }
 
@@ -1425,9 +1424,9 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     // text, forever. A version with no consumed-content hash (0) pins
     // nothing — it is permanently stale and reindexes its TU anyway.
     llvm::DenseMap<Fid, llvm::SmallVector<std::uint64_t, 1>> generations;
-    for(auto& manifest: llvm::make_second_range(project.manifests)) {
+    for(auto& manifest: llvm::make_second_range(project_index.manifests)) {
         for(auto fv: llvm::make_first_range(manifest.contributions)) {
-            auto& record = workspace.file_table.version(fv);
+            auto& record = project.file_table.version(fv);
             if(record.content_hash == 0) {
                 continue;
             }
@@ -1444,8 +1443,8 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     // headers no CDB entry would ever re-enqueue them otherwise).
     llvm::StringSet<> expected_keys;
     llvm::SmallVector<Fid> unservable;
-    for(auto& [path_id, entry]: project.contributions) {
-        auto key = index::blob_key(workspace.file_table.resolve(path_id));
+    for(auto& [path_id, entry]: project_index.contributions) {
+        auto key = index::blob_key(project.file_table.resolve(path_id));
         auto blob = db.read(index::IndexBlobKind::Shard, key);
         if(read_only && !options.borrow && blob && blob.generation != 0) {
             // A read-only session never advances snapshots, so borrowed
@@ -1471,18 +1470,18 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
                         llvm::all_of(llvm::make_second_range(entry),
                                      [&](std::uint64_t hash) { return shard.has_variant(hash); });
         if(!servable) {
-            LOG_INFO("Discarding unservable shard for {}", workspace.file_table.resolve(path_id));
+            LOG_INFO("Discarding unservable shard for {}", project.file_table.resolve(path_id));
             unservable.push_back(path_id);
             continue;
         }
         expected_keys.insert(key);
-        shard.set_live(project.live_variants(path_id));
-        workspace.project_index.shards[path_id] = std::move(shard);
+        shard.set_live(project_index.live_variants(path_id));
+        project.project_index.shards[path_id] = std::move(shard);
     }
     llvm::SmallVector<Fid> mask_refresh;
     for(auto path_id: unservable) {
-        auto contribution_it = project.contributions.find(path_id);
-        if(contribution_it == project.contributions.end()) {
+        auto contribution_it = project_index.contributions.find(path_id);
+        if(contribution_it == project_index.contributions.end()) {
             continue;
         }
         llvm::SmallVector<Fid> owners;
@@ -1493,19 +1492,19 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
             // The removal retires the TU's contributions to EVERY file it
             // touched, not just the unservable one; the affected set feeds
             // the mask refresh below, like the merge path's.
-            auto affected = project.remove_manifest(workspace.file_table, tu);
+            auto affected = project_index.remove_manifest(project.file_table, tu);
             mask_refresh.append(affected.begin(), affected.end());
             if(!read_only) {
                 startup_removes.push_back({index::IndexBlobKind::Manifest,
-                                           index::blob_key(workspace.file_table.resolve(tu))});
+                                           index::blob_key(project.file_table.resolve(tu))});
             }
             report.add_reindex(tu);
         }
     }
     for(auto path_id: mask_refresh) {
-        auto it = workspace.project_index.shards.find(path_id);
-        if(it != workspace.project_index.shards.end()) {
-            it->second.set_live(project.live_variants(path_id));
+        auto it = project.project_index.shards.find(path_id);
+        if(it != project.project_index.shards.end()) {
+            it->second.set_live(project_index.live_variants(path_id));
         }
     }
 
@@ -1534,13 +1533,13 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     // rebuild lands cannot lose them a second time.
     if(!read_only && db.corrupted()) {
         LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
-        for(auto tu: llvm::make_first_range(project.manifests)) {
-            if(workspace.build.entries(tu).empty()) {
+        for(auto tu: llvm::make_first_range(project_index.manifests)) {
+            if(project.build.entries(tu).empty()) {
                 report.add_reindex(tu);
             }
         }
-        workspace.project_index.shards.clear();
-        project = index::ProjectIndex();
+        project.project_index.shards.clear();
+        project_index = index::ProjectIndex();
         startup_removes.clear();
         persisted_cdb_snapshot.clear();
         cdb_dirty = true;
@@ -1550,17 +1549,17 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
 
     retire_snapshot();
 
-    if(!workspace.project_index.shards.empty()) {
+    if(!project.project_index.shards.empty()) {
         LOG_INFO("Loaded {} index shards, {} manifests, {} symbols",
-                 workspace.project_index.shards.size(),
-                 project.manifests.size(),
-                 project.symbol_count());
+                 project.project_index.shards.size(),
+                 project_index.manifests.size(),
+                 project_index.symbol_count());
     }
     LOG_PERF("startup",
              "phase=index_load symbols={} shards={} manifests={} elapsed_ms={}",
-             project.symbol_count(),
-             workspace.project_index.shards.size(),
-             project.manifests.size(),
+             project_index.symbol_count(),
+             project.project_index.shards.size(),
+             project_index.manifests.size(),
              timer.ms());
     return result;
 }
@@ -1569,7 +1568,7 @@ llvm::SmallVector<Fid> IndexStore::standalone_of(llvm::ArrayRef<Fid> candidates)
     llvm::SmallVector<Fid> debt;
     llvm::DenseSet<Fid> seen;
     for(auto id: candidates) {
-        if(workspace.project_index.manifests.contains(id) || !workspace.build.entries(id).empty() ||
+        if(project.project_index.manifests.contains(id) || !project.build.entries(id).empty() ||
            !seen.insert(id).second) {
             continue;
         }
@@ -1580,24 +1579,24 @@ llvm::SmallVector<Fid> IndexStore::standalone_of(llvm::ArrayRef<Fid> candidates)
 
 void IndexStore::retire_excluded(Report& report) {
     llvm::SmallVector<Fid> excluded;
-    for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
-        if(!workspace.build.indexed(workspace.file_table.resolve(tu))) {
+    for(auto tu: llvm::make_first_range(project.project_index.manifests)) {
+        if(!project.build.indexed(project.file_table.resolve(tu))) {
             excluded.push_back(tu);
         }
     }
     for(auto tu: excluded) {
         LOG_INFO("A rule keeps {} out of the index; dropping its rows",
-                 workspace.file_table.resolve(tu));
+                 project.file_table.resolve(tu));
         drop_index_into(tu, report);
     }
 }
 
 llvm::SmallVector<std::string> IndexStore::remembered_sources() {
     llvm::SmallVector<std::string> sources;
-    if(!workspace.index_db) {
+    if(!project.index_db) {
         return sources;
     }
-    auto blob = workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
+    auto blob = project.index_db->read(index::IndexBlobKind::CDB, "cdb");
     CDBSnapshot persisted;
     if(!blob ||
        !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
@@ -1605,7 +1604,7 @@ llvm::SmallVector<std::string> IndexStore::remembered_sources() {
     }
     for(auto& entry: persisted.entries) {
         for(auto& source: entry.sources) {
-            auto absolute = absolute_path(workspace, source);
+            auto absolute = absolute_path(project, source);
             if(!llvm::is_contained(sources, absolute)) {
                 sources.push_back(std::move(absolute));
             }
@@ -1615,7 +1614,7 @@ llvm::SmallVector<std::string> IndexStore::remembered_sources() {
 }
 
 void IndexStore::reconcile_cdb_snapshot(Report& report) {
-    auto blob = workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
+    auto blob = project.index_db->read(index::IndexBlobKind::CDB, "cdb");
     CDBSnapshot persisted;
     if(!blob ||
        !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
@@ -1633,15 +1632,15 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     for(auto& entry: persisted.entries) {
         before[entry.file] = &entry;
     }
-    auto& project = workspace.project_index;
+    auto& project_index = project.project_index;
     llvm::DenseSet<Fid> cdb_ids;
     llvm::SmallVector<Fid> changed_ids;
-    auto snapshot = build_cdb_snapshot(workspace, header_hosts, {});
+    auto snapshot = build_cdb_snapshot(project, header_hosts, {});
     for(auto& entry: snapshot.entries) {
         if(entry.hashes.empty()) {
             continue;
         }
-        auto server_id = workspace.file_table.intern(entry.file);
+        auto server_id = project.file_table.intern(entry.file);
         cdb_ids.insert(server_id);
         auto it = before.find(entry.file);
         // `selected` guards the offline winner flip: the candidate multiset
@@ -1653,7 +1652,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         changed_ids.push_back(server_id);
-        if(!project.manifests.contains(server_id)) {
+        if(!project_index.manifests.contains(server_id)) {
             continue;
         }
         LOG_INFO("Compile command changed since the last session; reindexing {}", entry.file);
@@ -1681,7 +1680,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         auto& old = *it->second;
-        auto server_id = workspace.file_table.intern(entry.file);
+        auto server_id = project.file_table.intern(entry.file);
         if(!old.hashes.empty()) {
             // Its entries vanished. A default command that still claims it
             // is a command change; otherwise the retirement pass below
@@ -1701,8 +1700,8 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         std::string host_selected = entry.host_selected;
         if(entry.host.empty() && !old.host.empty()) {
             llvm::StringRef paths[] = {old.host, entry.file};
-            rules = workspace.build.edit_hash(paths);
-            host_selected = selected_hash(workspace, workspace.file_table.intern(old.host));
+            rules = project.build.edit_hash(paths);
+            host_selected = selected_hash(project, project.file_table.intern(old.host));
         }
         if(old.rules != rules || old.selected != entry.selected) {
             // The default command that claimed it is gone and no host
@@ -1724,8 +1723,8 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         if(old.host.empty()) {
             continue;
         }
-        auto host_id = workspace.file_table.intern(old.host);
-        if(workspace.build.commands(host_id).empty() || llvm::is_contained(changed_ids, host_id) ||
+        auto host_id = project.file_table.intern(old.host);
+        if(project.build.commands(host_id).empty() || llvm::is_contained(changed_ids, host_id) ||
            old.host_selected != host_selected) {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
                      entry.file);
@@ -1744,7 +1743,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         // overwrites it — an empty host persisted after a Fallback or
         // failed rebuild would hit the `old.host.empty()` gate next session
         // and never retry.
-        auto current = default_host(workspace, server_id);
+        auto current = default_host(project, server_id);
         if(!current || current->file != host_id) {
             LOG_INFO("Default host of {} changed since the last session; reindexing", entry.file);
             header_hosts[server_id] = host_id;
@@ -1761,24 +1760,24 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     // that failed to load keeps its last-known entries serving. One the
     // configuration stopped declaring is gone on purpose; one discovery no
     // longer finds may come back.
-    bool declared = workspace.build.declares_sources();
+    bool declared = project.build.declares_sources();
     // Under discovery a database that is no longer registered was either
     // replaced by one that loaded, or merely vanished and may come back.
     bool replaced = false;
-    for(std::uint32_t i = 0; !declared && i < workspace.cdb.source_count(); i += 1) {
-        replaced |= workspace.cdb.loaded(SourceID(i));
+    for(std::uint32_t i = 0; !declared && i < project.cdb.source_count(); i += 1) {
+        replaced |= project.cdb.loaded(SourceID(i));
     }
     for(auto& old: persisted.entries) {
         if(old.hashes.empty() || old.sources.empty()) {
             continue;
         }
-        auto server_id = workspace.file_table.intern(old.file);
-        if(!workspace.build.commands(server_id).empty()) {
+        auto server_id = project.file_table.intern(old.file);
+        if(!project.build.commands(server_id).empty()) {
             continue;
         }
         bool healthy = llvm::all_of(old.sources, [&](const std::string& source) {
-            auto id = workspace.cdb.find_source(absolute_path(workspace, source));
-            return id ? workspace.cdb.loaded(*id) : declared || replaced;
+            auto id = project.cdb.find_source(absolute_path(project, source));
+            return id ? project.cdb.loaded(*id) : declared || replaced;
         });
         if(!healthy) {
             continue;
@@ -1794,11 +1793,11 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     // a vanished file's debt dies with its entry at the next save.
     for(auto& old: persisted.entries) {
         if(!old.hashes.empty() ||
-           !workspace.build.entries(workspace.file_table.intern(old.file)).empty()) {
+           !project.build.entries(project.file_table.intern(old.file)).empty()) {
             continue;
         }
-        auto server_id = workspace.file_table.intern(old.file);
-        if(retired.contains(server_id) || project.manifests.contains(server_id) ||
+        auto server_id = project.file_table.intern(old.file);
+        if(retired.contains(server_id) || project_index.manifests.contains(server_id) ||
            !fs::exists(old.file)) {
             continue;
         }
@@ -1810,19 +1809,19 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     }
 
     llvm::SmallVector<Fid> hosted;
-    for(auto tu: llvm::make_first_range(project.manifests)) {
+    for(auto tu: llvm::make_first_range(project_index.manifests)) {
         if(cdb_ids.contains(tu) || pinned_fresh.contains(tu)) {
             continue;
         }
         if(llvm::any_of(changed_ids, [&](Fid host) {
-               return !workspace.dep_graph.find_include_chain(host, tu).empty();
+               return !project.dep_graph.find_include_chain(host, tu).empty();
            })) {
             hosted.push_back(tu);
         }
     }
     for(auto header_id: hosted) {
         LOG_INFO("Host compile command changed since the last session; reindexing {}",
-                 workspace.file_table.resolve(header_id));
+                 project.file_table.resolve(header_id));
         drop_index_into(header_id, report);
         report.add_reindex(header_id);
     }
@@ -1838,9 +1837,9 @@ bool IndexStore::file_version_stale(VersionID fv_id) {
     // reindex re-observes. A repair of the version's stat fast path must
     // reach the persisted global blob, or the next session re-earns it by
     // hash for every repaired version at once.
-    auto generation = workspace.file_table.stamp_generation;
-    bool stale = workspace.file_table.check_version(fv_id) != FileTable::Verdict::Fresh;
-    if(workspace.file_table.stamp_generation != generation) {
+    auto generation = project.file_table.stamp_generation;
+    bool stale = project.file_table.check_version(fv_id) != FileTable::Verdict::Fresh;
+    if(project.file_table.stamp_generation != generation) {
         global_dirty = true;
     }
     fv_verdicts[fv_id] = stale;
@@ -1848,10 +1847,10 @@ bool IndexStore::file_version_stale(VersionID fv_id) {
 }
 
 bool IndexStore::need_update(llvm::StringRef file_path) {
-    auto wave = workspace.file_table.wave();
-    auto& project = workspace.project_index;
-    auto manifest_it = project.manifests.find(workspace.file_table.intern(file_path));
-    if(manifest_it == project.manifests.end())
+    auto wave = project.file_table.wave();
+    auto& project_index = project.project_index;
+    auto manifest_it = project_index.manifests.find(project.file_table.intern(file_path));
+    if(manifest_it == project_index.manifests.end())
         return true;
 
     // Every referenced version must be validated: whichever a partial

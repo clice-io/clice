@@ -56,11 +56,11 @@ public:
     Features(ASTFamily& ast,
              Dispatcher& dispatcher,
              index::IndexQuery& query,
-             Workspace& workspace,
+             Project& project,
              EditorContext& contexts,
              IndexPump& pump,
              SessionStore& sessions) :
-        ast(ast), dispatcher(dispatcher), query(query), workspace(workspace), contexts(contexts),
+        ast(ast), dispatcher(dispatcher), query(query), project(project), contexts(contexts),
         pump(pump), sessions(sessions) {}
 
     using RawResult = Dispatcher::RawResult;
@@ -274,7 +274,7 @@ private:
     ASTFamily& ast;
     Dispatcher& dispatcher;
     index::IndexQuery& query;
-    Workspace& workspace;
+    Project& project;
     EditorContext& contexts;
     IndexPump& pump;
     SessionStore& sessions;

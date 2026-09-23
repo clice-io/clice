@@ -27,10 +27,10 @@ namespace clice {
 /// currentContext, switchContext) live in ContextService and drive this
 /// state through its public surface.
 struct EditorContext final : ContextsOwner {
-    EditorContext(Workspace& workspace, CommandResolver& commands) :
-        workspace(workspace), commands(commands) {}
+    EditorContext(Project& project, CommandResolver& commands) :
+        project(project), commands(commands) {}
 
-    Workspace& workspace;
+    Project& project;
     CommandResolver& commands;
 
     /// User context choices (clice/switchContext), persisted in the

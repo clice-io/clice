@@ -139,21 +139,21 @@ struct CommandLang {
     std::string standard;
 };
 
-static std::optional<CommandLang> command_lang(Workspace& workspace, llvm::StringRef path) {
-    auto file = workspace.file_table.intern(path);
-    auto commands = workspace.build.commands(file);
+static std::optional<CommandLang> command_lang(Project& project, llvm::StringRef path) {
+    auto file = project.file_table.intern(path);
+    auto commands = project.build.commands(file);
     if(commands.empty()) {
         return std::nullopt;
     }
     auto& command = commands.front();
-    auto applied = workspace.build.resolve(file, command.config, command.source, path, path).config;
+    auto applied = project.build.resolve(file, command.config, command.source, path, path).config;
 
     CommandLang result{.source = command.source};
-    auto language = workspace.cdb.forced_language(applied);
+    auto language = project.cdb.forced_language(applied);
     if(!language.empty()) {
         result.forces_c = language == "c" || language == "c-header";
     }
-    for(auto& arg: workspace.cdb.config(applied).args) {
+    for(auto& arg: project.cdb.config(applied).args) {
         if(arg.opt_id == option::OPT_std_EQ && arg.values.size() == 1) {
             result.standard = arg.values[0];
         }
@@ -172,13 +172,13 @@ Fid Features::host_of(Fid path_id) const {
     }
     // A header compiled under its own entry resolves no context; its
     // includers still name the source its definitions belong in.
-    auto hosts = ranked_hosts(workspace, path_id);
+    auto hosts = ranked_hosts(project, path_id);
     return hosts.empty() ? Fid{} : hosts.front();
 }
 
 const clang::LangOptions& Features::index_lang_options(const Session& session) {
-    auto path = workspace.file_table.resolve(session.path_id);
-    auto own = command_lang(workspace, path);
+    auto path = project.file_table.resolve(session.path_id);
+    auto own = command_lang(project, path);
     // A file's entry is its command; a default command yields to the host
     // a header borrows from, in resolve_command's order.
     if(own && own->forces_c && own->source == CommandSource::CDBExact) {
@@ -190,8 +190,8 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
     // contributor union the way it does for the AST after an escalation.
     Fid host = host_of(session.path_id);
     if(host.valid()) {
-        auto host_path = workspace.file_table.resolve(host);
-        auto host_lang = command_lang(workspace, host_path);
+        auto host_path = project.file_table.resolve(host);
+        auto host_lang = command_lang(project, host_path);
         if(host_lang && host_lang->forces_c) {
             return feature::index_lang_options("", *host_lang->forces_c, host_lang->standard);
         }
@@ -205,11 +205,11 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
         return feature::index_lang_options("", *own->forces_c, own->standard);
     }
 
-    auto& contributions = workspace.project_index.contributions;
+    auto& contributions = project.project_index.contributions;
     auto it = contributions.find(session.path_id);
     bool c_rows = it != contributions.end() && !it->second.empty() &&
                   llvm::all_of(llvm::make_first_range(it->second), [&](Fid tu) {
-                      return workspace.file_table.resolve(tu).ends_with(".c");
+                      return project.file_table.resolve(tu).ends_with(".c");
                   });
     return feature::index_lang_options(path,
                                        c_rows,
@@ -300,7 +300,7 @@ std::optional<protocol::Hover>
         info.definition = link.target;
         info.symbol_range = link.range;
 
-        auto hover = feature::to_protocol_hover(info, workspace.config.hover, map);
+        auto hover = feature::to_protocol_hover(info, project.config.hover, map);
         if(!hover.range)
             return std::nullopt;
         return hover;
@@ -478,7 +478,7 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
     auto index_card = [&]() -> std::optional<serde_raw> {
         if(auto info = index_hover_card(*session, position)) {
             return to_raw(
-                feature::to_protocol_hover(*info, workspace.config.hover, session->line_map()));
+                feature::to_protocol_hover(*info, project.config.hover, session->line_map()));
         }
         return std::nullopt;
     };
@@ -512,8 +512,8 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
         // must not hover, and the index would happily name it `auto:1`).
         auto projection = ast.projections.projection(path_id);
         if(projection && projection->pch_key) {
-            if(auto it = workspace.pch_cache.find(*projection->pch_key);
-               it != workspace.pch_cache.end()) {
+            if(auto it = project.pch_cache.find(*projection->pch_key);
+               it != project.pch_cache.end()) {
                 auto offset = session->line_map().to_offset(position);
                 if(offset && *offset < it->second.bound) {
                     if(auto card = index_card()) {
@@ -681,7 +681,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
     auto ticket = Ticket::take(session);
 
     auto path_id = session->path_id;
-    auto path = std::string(workspace.file_table.resolve(path_id));
+    auto path = std::string(project.file_table.resolve(path_id));
 
     auto map = session->line_map();
     auto offset = map.to_offset(position);
@@ -717,9 +717,9 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
             // choice, chosen CDB entry) the open buffer compiles under.
             auto ref = contexts.resolve_command(path, directory, arguments).ref;
 
-            auto search_config = workspace.cdb.search_config(ref);
+            auto search_config = project.cdb.search_config(ref);
             DirListingCache dir_cache;
-            dir_cache.shared = &workspace.file_table;
+            dir_cache.shared = &project.file_table;
             auto resolved = resolve_search_config(search_config, dir_cache);
             bool angled = (pctx.kind == CompletionContext::IncludeAngled);
             auto candidates = complete_include_path(resolved, pctx.prefix, angled, dir_cache);
@@ -736,7 +736,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
             co_return serde_raw{json ? std::move(*json) : "[]"};
         }
         if(pctx.kind == CompletionContext::Import) {
-            auto module_names = complete_module_import(workspace.dep_graph, pctx.prefix);
+            auto module_names = complete_module_import(project.dep_graph, pctx.prefix);
 
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());

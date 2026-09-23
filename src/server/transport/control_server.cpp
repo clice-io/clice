@@ -23,14 +23,14 @@ using RequestContext = kota::ipc::JsonPeer::RequestContext;
 void register_control(MasterServer& srv, kota::ipc::JsonPeer& peer) {
     peer.on_request([&srv](RequestContext&, const control::IndexParams& params)
                         -> RequestResult<control::IndexParams> {
-        auto active = srv.workspace.build.active_configuration();
+        auto active = srv.project.build.active_configuration();
         if(params.configuration != active) {
             co_return kota::outcome_error(kota::ipc::Error{
                 std::format("the running clice server indexes configuration '{}', not '{}'",
                             std::string_view(active),
                             params.configuration)});
         }
-        if(!srv.workspace.config.project.enable_indexing.value) {
+        if(!srv.project.config.project.enable_indexing.value) {
             co_return kota::outcome_error(
                 kota::ipc::Error{"the running clice server has background indexing disabled"});
         }
@@ -42,7 +42,7 @@ void register_control(MasterServer& srv, kota::ipc::JsonPeer& peer) {
                 srv.dispatch(events);
             }
         }
-        auto members = srv.workspace.build.members();
+        auto members = srv.project.build.members();
         if(members.empty()) {
             co_return kota::outcome_error(kota::ipc::Error{
                 "nothing to index: the running clice server's build has no translation units"});
@@ -73,12 +73,12 @@ void register_control(MasterServer& srv, kota::ipc::JsonPeer& peer) {
         // side vetoed it (an open buffer diverged from the disk) and the
         // shard still describes older bytes.
         for(auto file: files) {
-            auto shard = srv.workspace.project_index.shards.find(file);
-            auto disk = srv.workspace.file_table.current(file);
-            bool current = shard != srv.workspace.project_index.shards.end() && disk &&
+            auto shard = srv.project.project_index.shards.find(file);
+            auto disk = srv.project.file_table.current(file);
+            bool current = shard != srv.project.project_index.shards.end() && disk &&
                            shard->second.matches_content(disk->size, disk->hash);
             if(!current) {
-                result.failed.emplace_back(srv.workspace.file_table.resolve(file));
+                result.failed.emplace_back(srv.project.file_table.resolve(file));
             }
         }
         co_return result;

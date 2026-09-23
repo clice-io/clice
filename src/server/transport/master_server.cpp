@@ -43,10 +43,10 @@ MasterServer::MasterServer(kota::event_loop& loop,
                            std::string self_path,
                            std::string requested_configuration) :
     loop(loop), pool(loop),
-    index_query(workspace.project_index, workspace.file_table, &freshness, &live_sources),
-    features(ast, dispatcher, index_query, workspace, contexts, pump, sessions),
-    invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
-    self_path(std::move(self_path)), requested_configuration(std::move(requested_configuration)) {
+    index_query(project.project_index, project.file_table, &freshness, &live_sources),
+    features(ast, dispatcher, index_query, project, contexts, pump, sessions),
+    invalidator(project, sessions, contexts, pcm), bg_tasks(loop), self_path(std::move(self_path)),
+    requested_configuration(std::move(requested_configuration)) {
     index_store.attach_contexts(contexts);
     pcm.register_runner();
     pch.register_runner();
@@ -64,7 +64,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
     };
     // Metadata marks (a PCH landing, a context switch) flush through the
     // next save; the wiring schedules one soon after the first mark.
-    workspace.request_flush = [this] {
+    project.request_flush = [this] {
         schedule_metadata_flush();
     };
 
@@ -88,10 +88,10 @@ void MasterServer::initialize() {
     // Load clice.toml raw and overlay initializationOptions BEFORE computing
     // defaults: derived fields (logging_dir, index_dir, ...) must follow the
     // final merged values (e.g. a cache_dir overridden by the client).
-    workspace.config = Config::load_from_workspace(workspace_root,
-                                                   &config_issues,
-                                                   &config_path,
-                                                   /*finalized=*/false);
+    project.config = Config::load_from_workspace(workspace_root,
+                                                 &config_issues,
+                                                 &config_path,
+                                                 /*finalized=*/false);
     // Capture the raw sources now: the configuration dump below can only run
     // once the merged config has named the log directory.
     std::string raw_toml;
@@ -103,16 +103,16 @@ void MasterServer::initialize() {
     std::string raw_init_options = init_options_json;
 
     if(!init_options_json.empty()) {
-        if(auto ov = kota::codec::json::from_string(init_options_json, workspace.config); !ov) {
+        if(auto ov = kota::codec::json::from_string(init_options_json, project.config); !ov) {
             LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
         } else {
             LOG_INFO("Applied initializationOptions overlay");
         }
         init_options_json.clear();
     }
-    workspace.config.finalize(workspace_root);
+    project.config.finalize(workspace_root);
 
-    auto& cfg = workspace.config.project;
+    auto& cfg = project.config.project;
 
     if(cfg.readonly == "on") {
         ast.readonly = ReadonlyMode::On;
@@ -152,7 +152,7 @@ void MasterServer::initialize() {
         auto pretty = kota::codec::json::prettify(raw_init_options);
         LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : raw_init_options);
     }
-    if(auto json = kota::codec::json::to_string(workspace.config)) {
+    if(auto json = kota::codec::json::to_string(project.config)) {
         auto pretty = kota::codec::json::prettify(*json);
         LOG_INFO("Effective configuration:\n{}", pretty ? *pretty : *json);
     }
@@ -178,13 +178,13 @@ void MasterServer::initialize() {
 
     wire();
 
-    load_workspace();
+    load_root_project();
 
     // Documents opened before the server became ready were validated
     // against an empty resolver and created under the default mode;
     // re-check their persisted context choices and re-derive their
     // serving mode now that the configuration governs. Settlement waits
-    // until here — after load_workspace — so divergence detection sees
+    // until here — after load_root_project — so divergence detection sees
     // the persisted shards it just loaded (a restored unsaved buffer must
     // escalate, not read as merely unindexed).
     for(auto& [path_id, session]: sessions.sessions) {
@@ -199,13 +199,13 @@ void MasterServer::initialize() {
     if(!workspace_root.empty()) {
         // Construct after the workspace load so the tracker's baseline CDB
         // stamp matches the database that was just loaded.
-        tracker = std::make_unique<FileTracker>(workspace, sessions, workspace_root);
+        tracker = std::make_unique<FileTracker>(project, sessions, workspace_root);
         // Documents opened before the workspace loaded missed their
         // didOpen-time discovery.
         for(auto& [path_id, session]: sessions.sessions) {
             discover_around(path_id);
         }
-        auto& tracker_cfg = workspace.config.tracker;
+        auto& tracker_cfg = project.config.tracker;
         if(tracker_cfg.cdb_poll_seconds.value > 0) {
             bg_tasks.spawn(cdb_poll_task());
         }
@@ -216,7 +216,7 @@ void MasterServer::initialize() {
 }
 
 kota::task<> MasterServer::cdb_poll_task() {
-    auto interval = std::chrono::seconds(workspace.config.tracker.cdb_poll_seconds.value);
+    auto interval = std::chrono::seconds(project.config.tracker.cdb_poll_seconds.value);
     while(true) {
         co_await kota::sleep(interval);
         auto events = tracker->tick_cdb();
@@ -227,7 +227,7 @@ kota::task<> MasterServer::cdb_poll_task() {
 }
 
 kota::task<> MasterServer::workspace_poll_task() {
-    auto interval = std::chrono::seconds(workspace.config.tracker.workspace_poll_seconds.value);
+    auto interval = std::chrono::seconds(project.config.tracker.workspace_poll_seconds.value);
     while(true) {
         co_await kota::sleep(interval);
         auto events = co_await tracker->tick_workspace();
@@ -251,7 +251,7 @@ void MasterServer::wire() {
     };
 
     pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
-        auto id = workspace.file_table.find(path);
+        auto id = project.file_table.find(path);
         if(!id) {
             LOG_WARN("Evicted path not in pool: {}", path);
             return;
@@ -336,8 +336,8 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
     if(session->serving == ServingMode::Escalated) {
         return;
     }
-    auto it = workspace.project_index.shards.find(session->path_id);
-    if(it != workspace.project_index.shards.end()) {
+    auto it = project.project_index.shards.find(session->path_id);
+    if(it != project.project_index.shards.end()) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: escalate
         // now instead of answering empty until the first edit.
@@ -351,7 +351,7 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
     // ever arrive and only an AST can serve the document. A boost the
     // pump cannot fulfill escalates through the adapter's attempt-settled
     // check.
-    if(workspace.config.project.enable_indexing.value) {
+    if(project.config.project.enable_indexing.value) {
         pump.boost(session->path_id);
     } else {
         ast.escalate(*session);
@@ -359,7 +359,7 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
 }
 
 void MasterServer::close_session(Fid path_id) {
-    auto path = workspace.file_table.resolve(path_id);
+    auto path = project.file_table.resolve(path_id);
     // Route the eviction notification before dropping ownership:
     // notify_stateful uses the owner table to find the worker.
     pool.notify_stateful(path_id.raw, worker::EvictParams{std::string(path)});
@@ -416,7 +416,7 @@ Admission MasterServer::index_admission(Fid server_path_id) {
                    ? Admission::Admit
                    : Admission::SkipAndSettle;
     }
-    auto disk = workspace.file_table.current(server_path_id);
+    auto disk = project.file_table.current(server_path_id);
     if(!disk || disk->size != session->text.size() ||
        disk->hash != llvm::xxh3_64bits(session->text)) {
         return Admission::SkipAndSettle;
@@ -433,8 +433,8 @@ void MasterServer::index_attempt_settled(Fid server_path_id) {
     if(!session || session->serving != ServingMode::IndexOnly) {
         return;
     }
-    auto it = workspace.project_index.shards.find(server_path_id);
-    if(it == workspace.project_index.shards.end() || !it->second.matches_content(session->text)) {
+    auto it = project.project_index.shards.find(server_path_id);
+    if(it == project.project_index.shards.end() || !it->second.matches_content(session->text)) {
         ast.escalate(*session);
     }
 }
@@ -488,7 +488,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // dropping the snapshot's fast paths forces deps_changed() to re-validate
     // every chain file by content hash; open sessions also recompile and
     // re-trial.
-    auto stamps = workspace.file_table.stamp_generation;
+    auto stamps = project.file_table.stamp_generation;
     for(auto path_id: dirty.force_revalidate) {
         contexts.invalidate_header_deps(path_id);
         if(auto session = sessions.find(path_id)) {
@@ -500,9 +500,9 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // artifacts blob's dep records; both must rewrite, or a restart after
     // a same-stat dependency edit re-adopts the dropped fast paths and
     // judges the edited file fresh without a read.
-    if(workspace.file_table.stamp_generation != stamps) {
+    if(project.file_table.stamp_generation != stamps) {
         index_store.mark_global_dirty();
-        workspace.mark_artifacts_dirty();
+        project.mark_artifacts_dirty();
     }
 
     // The header's borrowed compile command changed: its resolved context
@@ -553,7 +553,7 @@ void MasterServer::schedule_shutdown() {
 
 kota::task<> MasterServer::shutdown_and_cleanup() {
     if(endpoint_recorded) {
-        index::remove_endpoint(workspace.config.project.cache_dir);
+        index::remove_endpoint(project.config.project.cache_dir);
         endpoint_recorded = false;
     }
     bg_tasks.cancel();
@@ -564,7 +564,7 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     // Requests have unwound and released their interest; the shared tail
     // winds down the graph's rounds before the persistence pass and the
     // pool stop.
-    co_await shutdown_indexing(graph, pump, index_store, pool, workspace);
+    co_await shutdown_indexing(graph, pump, index_store, pool, project);
     lifecycle = ServerLifecycle::Exited;
 }
 
@@ -586,7 +586,7 @@ kota::task<> MasterServer::metadata_flush_task() {
     co_await kota::sleep(std::chrono::milliseconds(50));
     metadata_flush_scheduled = false;
     pump.claim_report(co_await index_store.save(pump.save_debt()));
-    if(workspace.artifacts_dirty || contexts.dirty) {
+    if(project.artifacts_dirty || contexts.dirty) {
         co_await kota::sleep(std::chrono::seconds(5));
         schedule_metadata_flush();
     }
@@ -596,9 +596,9 @@ kota::task<> MasterServer::cache_checkpoint_task() {
     constexpr auto interval = std::chrono::minutes(5);
     while(true) {
         co_await kota::sleep(interval);
-        if(workspace.store) {
+        if(project.store) {
             // Offload to the thread pool: checkpoint writes the manifest.
-            co_await kota::queue([this] { workspace.store->checkpoint(); });
+            co_await kota::queue([this] { project.store->checkpoint(); });
             drain_store_evictions();
         }
     }
@@ -612,7 +612,7 @@ void MasterServer::drain_store_evictions() {
     // keeps its slot — its commit republishes fresh blobs over the
     // eviction.
     bool artifacts_evicted = false;
-    for(auto& evicted: workspace.store->take_evictions()) {
+    for(auto& evicted: project.store->take_evictions()) {
         if(evicted.ns == header_context_ns) {
             artifacts_evicted = true;
             continue;
@@ -624,12 +624,12 @@ void MasterServer::drain_store_evictions() {
         // again — the record is stale, not the entry. Erase only when the
         // store still lacks the blob, and never mid-rebuild (the commit
         // republishes over the eviction).
-        if(workspace.store->lookup("pch", evicted.key)) {
+        if(project.store->lookup("pch", evicted.key)) {
             continue;
         }
-        if(auto it = workspace.pch_cache.find(evicted.key);
-           it != workspace.pch_cache.end() && !pch.building(evicted.key)) {
-            workspace.pch_cache.erase(it);
+        if(auto it = project.pch_cache.find(evicted.key);
+           it != project.pch_cache.end() && !pch.building(evicted.key)) {
+            project.pch_cache.erase(it);
         }
     }
     if(artifacts_evicted) {
@@ -637,16 +637,16 @@ void MasterServer::drain_store_evictions() {
     }
 }
 
-void MasterServer::load_workspace() {
+void MasterServer::load_root_project() {
     if(workspace_root.empty())
         return;
 
     auto report =
-        bootstrap_workspace(workspace, index_store, pump, workspace_root, requested_configuration);
+        bootstrap_project(project, index_store, pump, workspace_root, requested_configuration);
     if(report.opened_store) {
         bg_tasks.spawn(cache_checkpoint_task());
     }
-    if(workspace.index_db && !workspace.index_db->read_only()) {
+    if(project.index_db && !project.index_db->read_only()) {
         start_control_listener();
     }
     if(!report.has_commands) {
@@ -670,7 +670,7 @@ void MasterServer::start_control_listener() {
         LOG_WARN("Failed to start the control listener; `clice index` cannot ask this server");
         return;
     }
-    auto& cache_dir = workspace.config.project.cache_dir;
+    auto& cache_dir = project.config.project.cache_dir;
     if(!index::write_endpoint(
            cache_dir,
            {.pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId()),
@@ -750,7 +750,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     auto host = opts.host.value_or("127.0.0.1");
     auto port = opts.port.value_or(0);
     auto record = opts.record.value_or("");
-    auto ws = opts.workspace.value_or("");
+    auto ws = opts.project.value_or("");
 
     LOG_INFO("clice master starting: version={}, target={}, pid={}, mode={}, workspace={}",
              clice::version,
@@ -783,19 +783,18 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
         kota::ipc::JsonPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
 
-        loop.schedule([](MasterServer& server,
-                         kota::ipc::JsonPeer& peer,
-                         std::string workspace) -> kota::task<> {
-            // Pre-initialize for standalone (no-editor) use; LSP initialize
-            // will be rejected. Runs inside the loop — before the peer
-            // reads its first message — because initialize() spawns
-            // background tasks that need the running loop context.
-            if(!workspace.empty()) {
-                server.initialize(workspace);
-            }
-            co_await kota::with_token(peer.run(), server.shutdown_token());
-            co_await server.shutdown_and_cleanup();
-        }(server, lsp_peer, ws));
+        loop.schedule(
+            [](MasterServer& server, kota::ipc::JsonPeer& peer, std::string root) -> kota::task<> {
+                // Pre-initialize for standalone (no-editor) use; LSP initialize
+                // will be rejected. Runs inside the loop — before the peer
+                // reads its first message — because initialize() spawns
+                // background tasks that need the running loop context.
+                if(!root.empty()) {
+                    server.initialize(root);
+                }
+                co_await kota::with_token(peer.run(), server.shutdown_token());
+                co_await server.shutdown_and_cleanup();
+            }(server, lsp_peer, ws));
         loop.run();
         return 0;
     }
@@ -812,11 +811,11 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
         loop.schedule([](MasterServer& server,
                          kota::tcp::acceptor acceptor,
                          std::list<Connection>& connections,
-                         std::string workspace) -> kota::task<> {
+                         std::string root) -> kota::task<> {
             // See the pipe-mode comment: pre-initialization must run
             // inside the loop.
-            if(!workspace.empty()) {
-                server.initialize(workspace);
+            if(!root.empty()) {
+                server.initialize(root);
             }
             co_await kota::with_token(accept_connections(server, std::move(acceptor), connections),
                                       server.shutdown_token());

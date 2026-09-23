@@ -44,7 +44,7 @@ struct ContextsData {
 Resolution EditorContext::resolve_command(llvm::StringRef path,
                                           std::string& directory,
                                           std::vector<std::string>& arguments) {
-    auto path_id = workspace.file_table.intern(path);
+    auto path_id = project.file_table.intern(path);
     auto resolution = commands.resolve_command(path,
                                                directory,
                                                arguments,
@@ -73,7 +73,7 @@ void EditorContext::invalidate_header_deps(Fid path_id) {
     if(context->deps.empty()) {
         drop_header_context(path_id);
     } else {
-        force_revalidate_deps(workspace.file_table, context->deps);
+        force_revalidate_deps(project.file_table, context->deps);
     }
 }
 
@@ -90,8 +90,8 @@ llvm::SmallVector<Fid> EditorContext::chain_dependents(Fid path_id) const {
 void EditorContext::mark_dirty() {
     dirty = true;
     epoch += 1;
-    if(workspace.request_flush) {
-        workspace.request_flush();
+    if(project.request_flush) {
+        project.request_flush();
     }
 }
 
@@ -107,7 +107,7 @@ std::string EditorContext::serialize() const {
         return it->second;
     };
     auto intern = [&](Fid fid) -> std::uint32_t {
-        return intern_path(workspace.file_table.resolve(fid));
+        return intern_path(project.file_table.resolve(fid));
     };
 
     for(auto& entry: synthesized_hosts) {
@@ -150,14 +150,14 @@ void EditorContext::load(llvm::StringRef bytes) {
             auto host = resolve(entry.host);
             if(host.empty())
                 continue;
-            saved.host_path_id = workspace.file_table.intern(host);
+            saved.host_path_id = project.file_table.intern(host);
         }
         if(entry.occurrence != ~0u) {
             saved.occurrence = entry.occurrence;
         }
         saved.command_hash = entry.command_hash;
         saved.base_hash = entry.base_hash;
-        selections[workspace.file_table.intern(file)] = std::move(saved);
+        selections[project.file_table.intern(file)] = std::move(saved);
     }
 
     for(auto& entry: data.artifacts) {
@@ -172,7 +172,7 @@ void EditorContext::load(llvm::StringRef bytes) {
             mark_dirty();
             continue;
         }
-        synthesized_hosts[file] = workspace.file_table.intern(host);
+        synthesized_hosts[file] = project.file_table.intern(host);
     }
 }
 
@@ -223,15 +223,14 @@ void EditorContext::append_suffix_include(Fid path_id, std::string& text) const 
 bool EditorContext::pin_alive(Fid entry_file,
                               llvm::ArrayRef<llvm::StringRef> paths,
                               const Selection& saved) const {
-    auto entry_path = workspace.file_table.resolve(entry_file);
-    for(auto& entry: workspace.build.commands(entry_file)) {
+    auto entry_path = project.file_table.resolve(entry_file);
+    for(auto& entry: project.build.commands(entry_file)) {
         if(!saved.base_hash.empty() &&
-           workspace.cdb.entry_hash_hex(entry.config) == saved.base_hash) {
+           project.cdb.entry_hash_hex(entry.config) == saved.base_hash) {
             return true;
         }
-        auto ref =
-            workspace.build.resolve(entry_file, entry.config, entry.source, paths, entry_path);
-        if(workspace.cdb.entry_hash_hex(ref.config) == saved.command_hash) {
+        auto ref = project.build.resolve(entry_file, entry.config, entry.source, paths, entry_path);
+        if(project.cdb.entry_hash_hex(ref.config) == saved.command_hash) {
             return true;
         }
     }
@@ -239,14 +238,14 @@ bool EditorContext::pin_alive(Fid entry_file,
 }
 
 void EditorContext::validate_saved_context(Fid path_id) {
-    auto path = workspace.file_table.resolve(path_id);
+    auto path = project.file_table.resolve(path_id);
 
     // A context choice persisted from an earlier session stays authoritative
     // only if it still holds: the CDB or include graph may have changed
     // while the server was down, and a stale choice suppresses automatic
     // host resolution and strands the file on the fallback command.
     if(auto it = selections.find(path_id); it != selections.end()) {
-        auto& ws = workspace;
+        auto& ws = project;
         auto& saved = it->second;
 
         bool valid = false;

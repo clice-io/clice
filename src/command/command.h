@@ -491,7 +491,7 @@ private:
 
     ObjectSet<CompileConfig> configs{allocator.get()};
 
-    /// The workspace-wide file table (owned by Workspace, or by the
+    /// The workspace-wide file table (owned by Project, or by the
     /// driver in multi-CDB tools — nested databases share one id space).
     FileTable& file_table;
 

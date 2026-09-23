@@ -33,7 +33,7 @@ class FileTracker {
 public:
     /// Records the stamp every registered database source corresponds to.
     /// Construct after the workspace is loaded.
-    FileTracker(Workspace& workspace, const SessionStore& store, std::string workspace_root);
+    FileTracker(Project& project, const SessionStore& store, std::string workspace_root);
 
     /// One CDB poll tick. When no rule declares a source, registers every
     /// database discovery finds that is not watched yet, at the root and
@@ -151,13 +151,13 @@ private:
         bool missing = false;
     };
 
-    Workspace& workspace;
+    Project& project;
     const SessionStore& store;
     std::string workspace_root;
 
     llvm::SmallVector<TrackedSource> sources;
 
-    /// Workspace sweep baseline.
+    /// Project sweep baseline.
     llvm::DenseMap<Fid, FileState> baseline;
 
     /// True while a sweep is in flight (it suspends between batches);

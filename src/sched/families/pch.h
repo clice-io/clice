@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
+#include "project/project.h"
 #include "sched/crash_budget.h"
 #include "sched/graph.h"
-#include "project/project.h"
 #include "worker/pool.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -30,7 +30,7 @@ namespace clice {
 /// dispatch owner's probe (see acquire).
 class PCHFamily {
 public:
-    PCHFamily(TaskGraph& graph, Workspace& workspace, WorkerPool& pool);
+    PCHFamily(TaskGraph& graph, Project& project, WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic build register their own runner under
@@ -156,7 +156,7 @@ private:
     };
 
     TaskGraph& graph;
-    Workspace& workspace;
+    Project& project;
     WorkerPool& pool;
 
     /// Move a pch key to the front of the loaded-state LRU. Called

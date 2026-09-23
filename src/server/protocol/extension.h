@@ -36,7 +36,7 @@ struct QueryContextResult {
     std::vector<ContextItem> contexts;
     int total = 0;
 
-    /// Workspace state generation these results were computed against.
+    /// Project state generation these results were computed against.
     /// Pass it back in switchContext to detect stale listings.
     std::uint64_t epoch = 0;
 };

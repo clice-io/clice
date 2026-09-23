@@ -46,7 +46,7 @@ static void log_command_decision(llvm::StringRef path,
 /// Pick the candidate matching a pinned command (multi-configuration files
 /// and hosts), defaulting to the build's first command. `paths` are the
 /// files whose edits the published hash was computed with.
-static Candidate pick_pinned_config(Workspace& workspace,
+static Candidate pick_pinned_config(Project& project,
                                     Fid file,
                                     llvm::ArrayRef<Candidate> candidates,
                                     llvm::ArrayRef<llvm::StringRef> paths,
@@ -58,7 +58,7 @@ static Candidate pick_pinned_config(Workspace& workspace,
     // (and cannot distinguish candidates the rules collapse together).
     if(!pinned_base.empty()) {
         for(auto& entry: candidates) {
-            if(workspace.cdb.entry_hash_hex(entry.config) == pinned_base) {
+            if(project.cdb.entry_hash_hex(entry.config) == pinned_base) {
                 return entry;
             }
         }
@@ -66,8 +66,8 @@ static Candidate pick_pinned_config(Workspace& workspace,
     if(!pinned_hash.empty()) {
         for(auto& entry: candidates) {
             auto ref =
-                workspace.build.resolve(file, entry.config, entry.source, paths, language_path);
-            if(workspace.cdb.entry_hash_hex(ref.config) == pinned_hash) {
+                project.build.resolve(file, entry.config, entry.source, paths, language_path);
+            if(project.cdb.entry_hash_hex(ref.config) == pinned_hash) {
                 return entry;
             }
         }
@@ -107,13 +107,13 @@ void CommandResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint
         .content_hash = mode == HeaderMode::NeedsContext ? content_hash : 0,
     };
     if(persisted_mode_hash(path_id) != persisted) {
-        workspace.mark_artifacts_dirty();
+        project.mark_artifacts_dirty();
     }
 }
 
 void CommandResolver::reset_header_mode(Fid path_id) {
     if(persisted_mode_hash(path_id) != 0) {
-        workspace.mark_artifacts_dirty();
+        project.mark_artifacts_dirty();
     }
     header_verdicts.erase(path_id);
 }
@@ -141,10 +141,10 @@ void CommandResolver::load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
         if(file.empty() || entry.content_hash == 0 ||
            static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
             continue;
-        auto id = workspace.file_table.intern(file);
+        auto id = project.file_table.intern(file);
         // The verdict is tied to the header's contents — a file edited
         // while the server was down must re-earn its trial.
-        auto disk = workspace.file_table.current(id);
+        auto disk = project.file_table.current(id);
         if(!disk || disk->hash != entry.content_hash)
             continue;
         header_verdicts[id] = {.mode = HeaderMode::NeedsContext,
@@ -156,18 +156,18 @@ void CommandResolver::load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
 /// evicted, or a directory wiped from outside, must not reach a compile
 /// command. The lookup also refreshes the blob's last use, so a context
 /// in service never ages out under the budget.
-static bool artifact_alive(Workspace& workspace, llvm::StringRef path) {
+static bool artifact_alive(Project& project, llvm::StringRef path) {
     if(path.empty()) {
         return true;
     }
-    auto served = workspace.store->lookup(header_context_ns, llvm::sys::path::stem(path));
+    auto served = project.store->lookup(header_context_ns, llvm::sys::path::stem(path));
     return served && llvm::sys::fs::exists(*served);
 }
 
-static bool artifacts_alive(Workspace& workspace, const HeaderContext& context) {
-    return artifact_alive(workspace, context.preamble_path) &&
-           artifact_alive(workspace, context.suffix_path) &&
-           artifact_alive(workspace, context.snapshot_path);
+static bool artifacts_alive(Project& project, const HeaderContext& context) {
+    return artifact_alive(project, context.preamble_path) &&
+           artifact_alive(project, context.suffix_path) &&
+           artifact_alive(project, context.snapshot_path);
 }
 
 bool CommandResolver::fill_header_context_args(llvm::StringRef path,
@@ -182,7 +182,7 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
     // derive context from other synthesized state; without a recorded
     // host (e.g. a stale artifact from a wiped cache), fall through to
     // the default command.
-    if(workspace.is_synthesized_artifact(path)) {
+    if(project.is_synthesized_artifact(path)) {
         if(!request.synthesized_hosts) {
             return false;
         }
@@ -190,21 +190,21 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
         if(it == request.synthesized_hosts->end()) {
             return false;
         }
-        auto host_path = workspace.file_table.resolve(it->second);
-        auto commands = workspace.build.commands(it->second);
+        auto host_path = project.file_table.resolve(it->second);
+        auto commands = project.build.commands(it->second);
         if(commands.empty()) {
             return false;
         }
         // The artifact is a fragment of the host TU: it compiles as the
         // host's language, under the host's effective command, with the
         // artifact path injected as the input.
-        auto ref = workspace.build.resolve(path_id,
-                                           commands.front().config,
-                                           CommandSource::IncludeGraph,
-                                           host_path,
-                                           host_path);
-        directory = workspace.cdb.config(ref.config).directory;
-        arguments = to_strings(workspace.cdb.render(ref));
+        auto ref = project.build.resolve(path_id,
+                                         commands.front().config,
+                                         CommandSource::IncludeGraph,
+                                         host_path,
+                                         host_path);
+        directory = project.cdb.config(ref.config).directory;
+        arguments = to_strings(project.cdb.render(ref));
         resolution.host = it->second;
         resolution.ref = ref;
         return true;
@@ -220,7 +220,7 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
     bool has_host_choice = choice && choice->host_path_id.valid();
     // A synthesized context is a store artifact; a read-only reader (the
     // query command) compiles the header under its host's command instead.
-    bool can_synthesize = workspace.store && !workspace.store->read_only();
+    bool can_synthesize = project.store && !project.store->read_only();
     bool synthesize = can_synthesize && (header_mode(path, path_id) == HeaderMode::NeedsContext ||
                                          (has_host_choice && choice->occurrence.has_value()));
 
@@ -241,9 +241,9 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
                                     context.host_command_hash != choice->command_hash ||
                                     context.host_base_hash != choice->base_hash);
             bool mode_mismatch = context.preamble_path.empty() == synthesize;
-            auto wave = workspace.file_table.wave();
-            if(override_mismatch || mode_mismatch || !artifacts_alive(workspace, context) ||
-               deps_changed(workspace.file_table, context.deps)) {
+            auto wave = project.file_table.wave();
+            if(override_mismatch || mode_mismatch || !artifacts_alive(project, context) ||
+               deps_changed(project.file_table, context.deps)) {
                 cache->erase(cached);
             }
         }
@@ -270,8 +270,8 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
         }
     }
 
-    auto host_path = workspace.file_table.resolve(ctx_ptr->host_path_id);
-    auto commands = host_commands(workspace, path_id, ctx_ptr->host_path_id);
+    auto host_path = project.file_table.resolve(ctx_ptr->host_path_id);
+    auto commands = host_commands(project, path_id, ctx_ptr->host_path_id);
     if(commands.empty()) {
         LOG_WARN("fill_header_context_args: host {} has no compile command", host_path);
         return false;
@@ -281,7 +281,7 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
     // and the rules matching the header both edit the borrowed command,
     // each once, in declaration order.
     llvm::StringRef edit_paths[] = {host_path, path};
-    auto base = pick_pinned_config(workspace,
+    auto base = pick_pinned_config(project,
                                    path_id,
                                    commands,
                                    edit_paths,
@@ -294,13 +294,13 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
     // as the input; the synthesized preamble lands after the host's own
     // user-content flags (its -include runs first).
     auto ref =
-        workspace.build.resolve(path_id, base, CommandSource::IncludeGraph, edit_paths, host_path);
+        project.build.resolve(path_id, base, CommandSource::IncludeGraph, edit_paths, host_path);
     RenderOptions opts;
     if(!ctx_ptr->preamble_path.empty()) {
         opts.preamble = ctx_ptr->preamble_path.c_str();
     }
-    directory = workspace.cdb.config(ref.config).directory;
-    arguments = to_strings(workspace.cdb.render(ref, opts));
+    directory = project.cdb.config(ref.config).directory;
+    arguments = to_strings(project.cdb.render(ref, opts));
     resolution.host = ctx_ptr->host_path_id;
     resolution.ref = ref;
 
@@ -315,7 +315,7 @@ Resolution CommandResolver::resolve_command(llvm::StringRef path,
                                             std::string& directory,
                                             std::vector<std::string>& arguments,
                                             const CommandRequest& request) {
-    auto path_id = workspace.file_table.intern(path);
+    auto path_id = project.file_table.intern(path);
     llvm::SmallVector<llvm::StringRef, 4> tried;
     Resolution resolution;
 
@@ -325,15 +325,15 @@ Resolution CommandResolver::resolve_command(llvm::StringRef path,
                     CommandSource source,
                     llvm::ArrayRef<llvm::StringRef> paths,
                     llvm::StringRef language_path) {
-        auto ref = workspace.build.resolve(path_id,
-                                           base,
-                                           source,
-                                           paths,
-                                           language_path,
-                                           request.extra_prepend,
-                                           request.extra_append);
-        directory = workspace.cdb.config(ref.config).directory;
-        arguments = to_strings(workspace.cdb.render(ref));
+        auto ref = project.build.resolve(path_id,
+                                         base,
+                                         source,
+                                         paths,
+                                         language_path,
+                                         request.extra_prepend,
+                                         request.extra_append);
+        directory = project.cdb.config(ref.config).directory;
+        arguments = to_strings(project.cdb.render(ref));
         resolution.ref = ref;
     };
 
@@ -361,15 +361,15 @@ Resolution CommandResolver::resolve_command(llvm::StringRef path,
     //    Multi-config projects honor the user's chosen entry, matched by
     //    entry hash so the choice survives reordering.
     tried.push_back("cdb");
-    auto commands = workspace.build.commands(path_id);
-    if(workspace.build.unit(path_id)) {
+    auto commands = project.build.commands(path_id);
+    if(project.build.unit(path_id)) {
         llvm::StringRef pinned_hash, pinned_base;
         if(choice && !has_host_choice) {
             pinned_hash = choice->command_hash;
             pinned_base = choice->base_hash;
         }
         auto picked =
-            pick_pinned_config(workspace, path_id, commands, path, path, pinned_hash, pinned_base);
+            pick_pinned_config(project, path_id, commands, path, path, pinned_hash, pinned_base);
         fill(picked.config, picked.source, path, path);
         return settle(picked.source);
     }
@@ -393,8 +393,8 @@ Resolution CommandResolver::resolve_command(llvm::StringRef path,
     // 5. A nearby unit's command: the file compiles as that unit's
     //    language, under its command edited for both files.
     tried.push_back("inferred");
-    if(auto lender = command_lender(workspace, path_id)) {
-        auto lender_path = workspace.file_table.resolve(lender->unit);
+    if(auto lender = command_lender(project, path_id)) {
+        auto lender_path = project.file_table.resolve(lender->unit);
         llvm::StringRef edit_paths[] = {path, lender_path};
         fill(lender->config, CommandSource::Inferred, edit_paths, lender_path);
         LOG_INFO("resolve_command: {} borrows the command of {}", path, lender_path);
@@ -404,7 +404,7 @@ Resolution CommandResolver::resolve_command(llvm::StringRef path,
     // 6. The builtin fallback, so the file still compiles and produces
     //    diagnostics instead of failing silently.
     tried.push_back("fallback");
-    fill(workspace.build.builtin(path), CommandSource::Fallback, path, path);
+    fill(project.build.builtin(path), CommandSource::Fallback, path, path);
     return settle(CommandSource::Fallback);
 }
 
@@ -422,8 +422,8 @@ std::optional<HeaderContext>
     bool has_host_choice = choice && choice->host_path_id.valid();
     if(has_host_choice) {
         auto preferred = choice->host_path_id;
-        if(!workspace.build.commands(preferred).empty()) {
-            auto c = workspace.dep_graph.find_include_chain(preferred, header_path_id);
+        if(!project.build.commands(preferred).empty()) {
+            auto c = project.dep_graph.find_include_chain(preferred, header_path_id);
             if(!c.empty()) {
                 host_path_id = preferred;
                 occurrence = choice->occurrence;
@@ -432,7 +432,7 @@ std::optional<HeaderContext>
         }
     }
     if(chain.empty()) {
-        auto host = default_host(workspace, header_path_id);
+        auto host = default_host(project, header_path_id);
         if(!host) {
             LOG_DEBUG("resolve_header_context: no host for path_id={}", header_path_id);
             return std::nullopt;
@@ -467,14 +467,14 @@ std::optional<HeaderContext>
     // Include directives along the chain are resolved with the host's real
     // search configuration, so same-named headers in different directories
     // cannot be confused.
-    auto host_path = workspace.file_table.resolve(host_path_id);
-    auto commands = host_commands(workspace, chain.back(), host_path_id);
+    auto host_path = project.file_table.resolve(host_path_id);
+    auto commands = host_commands(project, chain.back(), host_path_id);
     if(commands.empty()) {
         return std::nullopt;
     }
-    auto target_path = workspace.file_table.resolve(chain.back());
+    auto target_path = project.file_table.resolve(chain.back());
     llvm::StringRef edit_paths[] = {host_path, target_path};
-    auto picked = pick_pinned_config(workspace,
+    auto picked = pick_pinned_config(project,
                                      host_path_id,
                                      commands,
                                      edit_paths,
@@ -482,11 +482,11 @@ std::optional<HeaderContext>
                                      host_command_hash,
                                      host_base_hash);
     auto host_ref =
-        workspace.build.resolve(host_path_id, picked.config, picked.source, edit_paths, host_path);
+        project.build.resolve(host_path_id, picked.config, picked.source, edit_paths, host_path);
 
-    auto search_config = workspace.cdb.search_config(host_ref);
+    auto search_config = project.cdb.search_config(host_ref);
     DirListingCache dir_cache;
-    dir_cache.shared = &workspace.file_table;
+    dir_cache.shared = &project.file_table;
     auto resolved_config = resolve_search_config(search_config, dir_cache);
 
     auto resolver = [&](llvm::StringRef filename,
@@ -507,7 +507,7 @@ std::optional<HeaderContext>
         }
         // Normalize through the file table: resolve_include builds native
         // separators, but chain paths compared against it are table-normalized.
-        return std::string(workspace.file_table.resolve(workspace.file_table.intern(result->path)));
+        return std::string(project.file_table.resolve(project.file_table.intern(result->path)));
     };
 
     // Read the chain files (all but the target) from disk. The synthesized
@@ -524,7 +524,7 @@ std::optional<HeaderContext>
     chain_entries.reserve(chain.size() - 1);
     deps.reserve(chain.size());
     for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
-        auto cur_path = workspace.file_table.resolve(chain[i]);
+        auto cur_path = project.file_table.resolve(chain[i]);
         auto observed = read_file_observed(cur_path.data());
         if(!observed) {
             LOG_WARN("resolve_header_context: cannot read {}", cur_path);
@@ -532,19 +532,19 @@ std::optional<HeaderContext>
         }
         chain_contents.emplace_back(observed->content->getBuffer());
         chain_entries.push_back({cur_path, chain_contents.back()});
-        workspace.file_table.observe(chain[i], observed->obs);
-        auto vid = workspace.file_table.intern_version(chain[i], observed->obs.hash);
+        project.file_table.observe(chain[i], observed->obs);
+        auto vid = project.file_table.intern_version(chain[i], observed->obs.hash);
         deps.push_back({.path_id = chain[i], .version = vid});
-        workspace.file_table.try_stamp(vid,
-                                       observed->obs.size,
-                                       observed->obs.mtime_ns,
-                                       observed->obs.uid_device,
-                                       observed->obs.uid_file);
+        project.file_table.try_stamp(vid,
+                                     observed->obs.size,
+                                     observed->obs.mtime_ns,
+                                     observed->obs.uid_device,
+                                     observed->obs.uid_file);
     }
 
-    if(!workspace.store) {
+    if(!project.store) {
         LOG_WARN("resolve_header_context: no cache store to hold the preamble of {}",
-                 workspace.file_table.resolve(chain.back()));
+                 project.file_table.resolve(chain.back()));
         return std::nullopt;
     }
     // Every synthesized file is a content-addressed blob of the store: the
@@ -555,18 +555,18 @@ std::optional<HeaderContext>
         // A hit is the manifest's word; the file may have been wiped from
         // outside (the store survives that), so a missing one is
         // republished under its key.
-        if(auto hit = workspace.store->lookup(header_context_ns, key);
+        if(auto hit = project.store->lookup(header_context_ns, key);
            hit && llvm::sys::fs::exists(*hit)) {
             return hit;
         }
-        auto pending = workspace.store->begin_store(header_context_ns, key);
+        auto pending = project.store->begin_store(header_context_ns, key);
         if(auto result = fs::write(pending.tmp_path, content); !result) {
             LOG_WARN("resolve_header_context: cannot write {}: {}",
                      pending.tmp_path,
                      result.error().message());
             return std::nullopt;
         }
-        auto published = workspace.store->commit(std::move(pending));
+        auto published = project.store->commit(std::move(pending));
         if(!published) {
             LOG_WARN("resolve_header_context: cannot publish {}: {}",
                      key,
@@ -586,7 +586,7 @@ std::optional<HeaderContext>
     std::optional<ObservedFile> target_observed;
     if((target_observed = read_file_observed(target_path.data()))) {
         auto content = target_observed->content->getBuffer();
-        workspace.file_table.observe(chain.back(), target_observed->obs);
+        project.file_table.observe(chain.back(), target_observed->obs);
         auto stored = store_blob(std::format("{:016x}.self", target_observed->obs.hash), content);
         if(!stored) {
             return std::nullopt;
@@ -634,13 +634,13 @@ std::optional<HeaderContext>
     if(!self_snapshot_path.empty()) {
         // The self-snapshot mirrors the header's disk state; re-synthesize
         // when it changes so other-occurrence expansions stay current.
-        auto vid = workspace.file_table.intern_version(chain.back(), target_observed->obs.hash);
+        auto vid = project.file_table.intern_version(chain.back(), target_observed->obs.hash);
         deps.push_back({.path_id = chain.back(), .version = vid});
-        workspace.file_table.try_stamp(vid,
-                                       target_observed->obs.size,
-                                       target_observed->obs.mtime_ns,
-                                       target_observed->obs.uid_device,
-                                       target_observed->obs.uid_file);
+        project.file_table.try_stamp(vid,
+                                     target_observed->obs.size,
+                                     target_observed->obs.mtime_ns,
+                                     target_observed->obs.uid_device,
+                                     target_observed->obs.uid_file);
     }
 
     return HeaderContext{host_path_id,

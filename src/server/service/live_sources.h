@@ -14,11 +14,11 @@ namespace clice {
 /// were compiled into, and the preamble regions those overlays indexed.
 class ServerLiveSources final : public index::LiveSources {
 public:
-    ServerLiveSources(Workspace& workspace,
+    ServerLiveSources(Project& project,
                       PCHFamily& pch,
                       const SessionStore& sessions,
                       const ASTProjectionTable& projections) :
-        workspace(workspace), pch(pch), sessions(sessions), projections(projections) {}
+        project(project), pch(pch), sessions(sessions), projections(projections) {}
 
     bool is_open(Fid file) const override;
     std::optional<index::RowSource> claim(Fid file) const override;
@@ -39,7 +39,7 @@ private:
                                    const Session& session,
                                    const index::Shard& rows) const;
 
-    Workspace& workspace;
+    Project& project;
     PCHFamily& pch;
     const SessionStore& sessions;
     const ASTProjectionTable& projections;

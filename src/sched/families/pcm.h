@@ -30,7 +30,7 @@ namespace clice {
 /// identity, edges, rounds and interest.
 class PCMFamily {
 public:
-    PCMFamily(TaskGraph& graph, Workspace& workspace, CommandResolver& commands, WorkerPool& pool);
+    PCMFamily(TaskGraph& graph, Project& project, CommandResolver& commands, WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic topology register their own runner under
@@ -140,7 +140,7 @@ private:
     }
 
     TaskGraph& graph;
-    Workspace& workspace;
+    Project& project;
     CommandResolver& commands;
     WorkerPool& pool;
 

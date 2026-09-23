@@ -55,7 +55,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        llvm::StringRef text,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments) {
-    auto path = workspace.file_table.resolve(path_id);
+    auto path = project.file_table.resolve(path_id);
     auto bound = compute_preamble_bound(text);
     auto* header_context = contexts.header_context(path_id);
     bool has_prefix = header_context && !header_context->preamble_path.empty();
@@ -86,7 +86,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // stamps still vouched for the old content.
     auto preamble_text = text.substr(0, bound);
     auto pch_key = cache_key({clang::getClangFullVersion(),
-                              workspace.build.active_configuration(),
+                              project.build.active_configuration(),
                               directory,
                               path::parent_path(path),
                               preamble_text,
@@ -98,8 +98,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
         LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
         PCHPlan plan{.verdict = PCHPlan::Verdict::Defer};
         if(auto previous = projections.projection(path_id); previous && previous->pch_key) {
-            auto it = workspace.pch_cache.find(*previous->pch_key);
-            if(it != workspace.pch_cache.end() && !it->second.path.empty()) {
+            auto it = project.pch_cache.find(*previous->pch_key);
+            if(it != project.pch_cache.end() && !it->second.path.empty()) {
                 plan.previous = previous->pch_key;
             }
         }
@@ -119,7 +119,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     };
 }
 
-ASTFamily::ASTFamily(Workspace& workspace,
+ASTFamily::ASTFamily(Project& project,
                      EditorContext& contexts,
                      TaskGraph& graph,
                      PCMFamily& pcm,
@@ -127,7 +127,7 @@ ASTFamily::ASTFamily(Workspace& workspace,
                      WorkerPool& pool,
                      SessionStore& sessions,
                      kota::event_loop& loop) :
-    workspace(workspace), contexts(contexts), graph(graph), pcm(pcm), pch(pch), pool(pool),
+    project(project), contexts(contexts), graph(graph), pcm(pcm), pch(pch), pool(pool),
     sessions(sessions), kicks(loop) {}
 
 void ASTFamily::register_runner() {
@@ -173,26 +173,26 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
 }
 
 bool ASTFamily::is_stale(const Session& session) {
-    auto wave = workspace.file_table.wave();
+    auto wave = project.file_table.wave();
     auto it = projections.entries.find(session.path_id);
     if(it != projections.entries.end() && it->second.deps.has_value() &&
-       deps_changed(workspace.file_table, *it->second.deps)) {
+       deps_changed(project.file_table, *it->second.deps)) {
         return true;
     }
 
     // Chain files of a header context are embedded in the synthesized
     // preamble, invisible to the deps snapshot — check them explicitly.
     if(auto* header_context = contexts.header_context(session.path_id);
-       header_context && deps_changed(workspace.file_table, header_context->deps)) {
+       header_context && deps_changed(project.file_table, header_context->deps)) {
         return true;
     }
 
     // Check PCH staleness via the projection's pch_key.
     auto projection = projections.projection(session.path_id);
     if(projection && projection->pch_key.has_value()) {
-        auto pch_it = workspace.pch_cache.find(*projection->pch_key);
-        if(pch_it != workspace.pch_cache.end() &&
-           deps_changed(workspace.file_table, pch_it->second.deps)) {
+        auto pch_it = project.pch_cache.find(*projection->pch_key);
+        if(pch_it != project.pch_cache.end() &&
+           deps_changed(project.file_table, pch_it->second.deps)) {
             return true;
         }
     }
@@ -217,7 +217,7 @@ void ASTFamily::supersede(Fid path_id) {
     if(graph.is_compiling(node(path_id))) {
         pool.notify_stateful(
             path_id.raw,
-            worker::CancelCompileParams{std::string(workspace.file_table.resolve(path_id))});
+            worker::CancelCompileParams{std::string(project.file_table.resolve(path_id))});
     }
 }
 
@@ -277,7 +277,7 @@ kota::task<> ASTFamily::stop() {
         if(graph.is_compiling(node(path_id))) {
             pool.notify_stateful(
                 path_id.raw,
-                worker::CancelCompileParams{std::string(workspace.file_table.resolve(path_id))});
+                worker::CancelCompileParams{std::string(project.file_table.resolve(path_id))});
         }
         return true;
     });
@@ -299,7 +299,7 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
     // burning slot after slot. A content change grants one probe attempt.
     if(session->quarantine.blocked()) {
         LOG_WARN("ensure_compiled: {} quarantined after {} worker crashes",
-                 workspace.file_table.resolve(path_id),
+                 project.file_table.resolve(path_id),
                  session->quarantine.crashes());
         // A quarantine reached outside the compile-failure landing (a
         // completion or PCH build tipped the streak, or the crash landed on
@@ -356,8 +356,8 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     // buffer's own unsaved import, a header context's suffix, a forced
     // include. The scan's sentinel edges are what let the name's first
     // provider re-dirty this document.
-    bool scan_worth = workspace.dep_graph.has_modules() ||
-                      !workspace.dep_graph.import_candidate_files().empty() ||
+    bool scan_worth = project.dep_graph.has_modules() ||
+                      !project.dep_graph.import_candidate_files().empty() ||
                       contexts.header_context(path_id) != nullptr ||
                       llvm::any_of(arguments, [](const std::string& arg) {
                           return llvm::StringRef(arg).starts_with("-include");
@@ -454,7 +454,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     }
 
     ScopedTimer timer;
-    auto file_path = std::string(workspace.file_table.resolve(path_id));
+    auto file_path = std::string(project.file_table.resolve(path_id));
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
@@ -564,8 +564,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             }
         }
         if(adopted_pch.has_value()) {
-            if(auto pch_it = workspace.pch_cache.find(*adopted_pch);
-               pch_it != workspace.pch_cache.end() && !pch_it->second.path.empty()) {
+            if(auto pch_it = project.pch_cache.find(*adopted_pch);
+               pch_it != project.pch_cache.end() && !pch_it->second.path.empty()) {
                 params.pch = {pch_it->second.path, pch_it->second.bound};
             } else {
                 adopted_pch.reset();
@@ -574,7 +574,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         // Fill all available PCM paths, excluding the file's own PCM
         // to avoid "multiple module declarations".
-        workspace.fill_pcm_deps(params.pcms, path_id);
+        project.fill_pcm_deps(params.pcms, path_id);
 
         if(session->generation != gen) {
             LOG_INFO("compile round: superseded before send for {}", uri_str);
@@ -788,7 +788,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
             if(indicates_missing_context(diagnostics)) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
-                auto disk = workspace.file_table.current(path_id);
+                auto disk = project.file_table.current(path_id);
                 contexts.commands.record_header_mode(path_id,
                                                      HeaderMode::NeedsContext,
                                                      disk ? disk->hash : 0);
@@ -842,9 +842,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         auto& entry = projections.entries[path_id];
         entry.projection = std::move(next);
-        entry.deps = capture_deps_snapshot(workspace.file_table,
-                                           result.value().deps,
-                                           result.value().build_at);
+        entry.deps =
+            capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
         entry.current = current;
         session->quarantine.land(flight);
         on_output.emit(session);
@@ -945,8 +944,8 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
             co_await ensure_pch(session, ticket.generation, license_epoch, directory, arguments);
         auto projection = projections.projection(path_id);
         if(pch_ok && projection && projection->pch_key.has_value()) {
-            if(auto pch_it = workspace.pch_cache.find(*projection->pch_key);
-               pch_it != workspace.pch_cache.end()) {
+            if(auto pch_it = project.pch_cache.find(*projection->pch_key);
+               pch_it != project.pch_cache.end()) {
                 inputs.pch = {pch_it->second.path, pch_it->second.bound};
             }
         }
@@ -954,7 +953,7 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
 
     // Fill all available PCM paths, excluding the file's own PCM
     // to avoid "multiple module declarations".
-    workspace.fill_pcm_deps(inputs.pcms, path_id);
+    project.fill_pcm_deps(inputs.pcms, path_id);
 
     co_return true;
 }

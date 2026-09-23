@@ -12,12 +12,12 @@
 namespace clice {
 
 TURunFamily::TURunFamily(TaskGraph& graph,
-                         Workspace& workspace,
+                         Project& project,
                          CommandResolver& commands,
                          PCMFamily& pcm,
                          IndexStore& store,
                          WorkerPool& pool) :
-    graph(graph), workspace(workspace), commands(commands), pcm(pcm), store(store), pool(pool) {}
+    graph(graph), project(project), commands(commands), pcm(pcm), store(store), pool(pool) {}
 
 void TURunFamily::register_runner() {
     graph.register_family(Family::TURun, [this](RoundContext& ctx, NodeId id) {
@@ -51,7 +51,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // file while this round is suspended.
     auto [plan, guards] = it->second;
 
-    auto file_path = std::string(workspace.file_table.resolve(path_id));
+    auto file_path = std::string(project.file_table.resolve(path_id));
 
     worker::TURunParams params;
     params.file = file_path;
@@ -84,7 +84,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         // so skipping it loses nothing. One without a manifest (dropped or
         // never built) stays uncovered — count that as a failure so a batch
         // run reports the debt instead of exiting clean.
-        if(!workspace.project_index.manifests.contains(path_id)) {
+        if(!project.project_index.manifests.contains(path_id)) {
             landed[path_id] = {.verdict = Verdict::Failed,
                                .error = "no compile command found; the file stays uncovered"};
             co_return RoundOutcome::Failed;
@@ -105,9 +105,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // gates the cost. A failed PCM build is not terminal on either
     // shape — the parse consumes whatever artifacts landed and the
     // worker reports its own failure if they are not enough.
-    bool own_module = !workspace.dep_graph.module_of(path_id).empty();
-    if(own_module || workspace.dep_graph.has_modules() ||
-       !workspace.dep_graph.import_candidate_files().empty() ||
+    bool own_module = !project.dep_graph.module_of(path_id).empty();
+    if(own_module || project.dep_graph.has_modules() ||
+       !project.dep_graph.import_candidate_files().empty() ||
        llvm::any_of(params.arguments, [](const std::string& arg) {
            return llvm::StringRef(arg).starts_with("-include");
        })) {
@@ -163,7 +163,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         }
     }
 
-    workspace.fill_pcm_deps(params.pcms, path_id);
+    project.fill_pcm_deps(params.pcms, path_id);
 
     ScopedTimer timer;
     auto result = co_await pool.send_stateless(params, worker::Priority::Low, {}, ctx.token());

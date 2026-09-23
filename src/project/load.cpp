@@ -14,17 +14,17 @@
 
 namespace clice {
 
-ProjectLoad load_project(Workspace& workspace,
+ProjectLoad load_project(Project& project,
                          IndexStore& store,
                          llvm::StringRef root,
                          llvm::StringRef requested_configuration,
                          bool read_only_index,
                          bool scan_tree) {
     ProjectLoad report;
-    auto& cfg = workspace.config.project;
-    auto configuration = resolve_configuration(workspace.config, requested_configuration);
+    auto& cfg = project.config.project;
+    auto configuration = resolve_configuration(project.config, requested_configuration);
 
-    if(!workspace.store && !cfg.cache_dir.empty()) {
+    if(!project.store && !cfg.cache_dir.empty()) {
         auto cache = CacheStore::open(cfg.cache_dir, cache_format_version);
         if(!cache) {
             LOG_WARN("Failed to open cache store at {}: {}",
@@ -53,35 +53,35 @@ ProjectLoad load_project(Workspace& workspace,
             // otherwise stay navigable through the metadata that names
             // them.
             fs::remove_all(path::join(cfg.cache_dir, header_context_ns));
-            workspace.store.emplace(std::move(*cache));
+            project.store.emplace(std::move(*cache));
             // A read-only bootstrap opens the index database read-only:
             // no writer lock (a concurrent server or index run keeps
             // owning it), while the persisted version stamps and artifact
             // metadata still seed this session's fast paths. Its own
             // metadata stays in memory and exits with it.
             if(read_only_index) {
-                workspace.index_db = index::open_database(*workspace.store, configuration, true);
-            } else if((workspace.writer_lock = index::WriterLock::acquire(cfg.cache_dir))) {
-                workspace.index_db = index::open_database(*workspace.store, configuration);
-                if(!workspace.index_db) {
-                    workspace.writer_lock.reset();
+                project.index_db = index::open_database(*project.store, configuration, true);
+            } else if((project.writer_lock = index::WriterLock::acquire(cfg.cache_dir))) {
+                project.index_db = index::open_database(*project.store, configuration);
+                if(!project.index_db) {
+                    project.writer_lock.reset();
                 }
             }
-            LOG_INFO("Cache store: {}", workspace.store->base_dir());
+            LOG_INFO("Cache store: {}", project.store->base_dir());
             report.opened_store = true;
         }
     }
 
     auto nearby = store.remembered_sources();
     if(scan_tree) {
-        workspace.build.reset_active(configuration);
-        if(!workspace.build.declares_sources()) {
+        project.build.reset_active(configuration);
+        if(!project.build.declares_sources()) {
             auto below = compile_commands_below(root, cfg.cache_dir);
             nearby.insert(nearby.end(), below.begin(), below.end());
         }
     }
-    auto load = load_build(workspace, root, configuration, nearby);
-    report.has_commands = !load.members.empty() || workspace.build.declares_sources();
+    auto load = load_build(project, root, configuration, nearby);
+    report.has_commands = !load.members.empty() || project.build.declares_sources();
     report.members = std::move(load.members);
     // Persisted index shards are CDB-independent; they load even with no
     // member yet, so a database generated later (picked up by the CDB
@@ -90,21 +90,21 @@ ProjectLoad load_project(Workspace& workspace,
     return report;
 }
 
-BuildLoad load_build(Workspace& workspace,
+BuildLoad load_build(Project& project,
                      llvm::StringRef root,
                      llvm::StringRef configuration,
                      llvm::ArrayRef<std::string> nearby) {
     BuildLoad load;
-    workspace.cdb.set_workspace_root(root);
-    workspace.build.reset_active(configuration);
+    project.cdb.set_workspace_root(root);
+    project.build.reset_active(configuration);
 
     ScopedTimer cdb_timer;
     std::size_t entries = 0;
     llvm::SmallVector<std::string> paths;
-    for(auto declared: workspace.build.declared_sources()) {
+    for(auto declared: project.build.declared_sources()) {
         paths.push_back(declared.str());
     }
-    if(!workspace.build.declares_sources()) {
+    if(!project.build.declares_sources()) {
         paths = discover_compile_commands(root);
         // Registered whether still there or not, like a declared one: the
         // tracker watches for its return, and the index it built keeps
@@ -133,25 +133,24 @@ BuildLoad load_build(Workspace& workspace,
         }
     }
     for(auto& path: paths) {
-        auto id = workspace.cdb.add_source(path);
-        if(auto loaded = workspace.cdb.load_source(id)) {
-            LOG_INFO("Loaded CDB from {} with {} entries", workspace.cdb.source_path(id), *loaded);
+        auto id = project.cdb.add_source(path);
+        if(auto loaded = project.cdb.load_source(id)) {
+            LOG_INFO("Loaded CDB from {} with {} entries", project.cdb.source_path(id), *loaded);
             entries += *loaded;
         } else {
-            LOG_WARN("Compilation database {} is not readable yet", workspace.cdb.source_path(id));
+            LOG_WARN("Compilation database {} is not readable yet", project.cdb.source_path(id));
         }
     }
     LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", entries, cdb_timer.ms());
 
-    load.members = workspace.build.members();
+    load.members = project.build.members();
     if(load.members.empty()) {
         return load;
     }
 
-    auto scan = scan_dependency_graph(workspace.cdb,
-                                      workspace.dep_graph,
-                                      workspace.build.units(load.members));
-    workspace.dep_graph.build_reverse_map();
+    auto scan =
+        scan_dependency_graph(project.cdb, project.dep_graph, project.build.units(load.members));
+    project.dep_graph.build_reverse_map();
 
     auto unresolved = scan.includes_found - scan.includes_resolved;
     double accuracy =

@@ -6,19 +6,19 @@
 
 namespace clice {
 
-ProjectLoad bootstrap_workspace(Workspace& workspace,
-                                IndexStore& store,
-                                IndexPump& pump,
-                                llvm::StringRef root,
-                                llvm::StringRef requested_configuration,
-                                bool read_only_index,
-                                bool scan_tree) {
+ProjectLoad bootstrap_project(Project& project,
+                              IndexStore& store,
+                              IndexPump& pump,
+                              llvm::StringRef root,
+                              llvm::StringRef requested_configuration,
+                              bool read_only_index,
+                              bool scan_tree) {
     auto load =
-        load_project(workspace, store, root, requested_configuration, read_only_index, scan_tree);
+        load_project(project, store, root, requested_configuration, read_only_index, scan_tree);
     bool owed = !load.index.report.reindex().empty();
     pump.claim_report(load.index.report);
 
-    if(workspace.config.project.enable_indexing.value && (!load.members.empty() || owed)) {
+    if(project.config.project.enable_indexing.value && (!load.members.empty() || owed)) {
         for(auto member: load.members) {
             // Bulk sweep of unknown staleness: the hash gate decides per
             // file. DepsOnly — a cold start with a warm index cache must

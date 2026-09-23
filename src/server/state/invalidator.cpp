@@ -12,11 +12,11 @@
 
 namespace clice {
 
-Invalidator::Invalidator(Workspace& workspace,
+Invalidator::Invalidator(Project& project,
                          const SessionStore& store,
                          const EditorContext& contexts,
                          PCMFamily& pcm) :
-    workspace(workspace), store(store), contexts(contexts), pcm(pcm) {}
+    project(project), store(store), contexts(contexts), pcm(pcm) {}
 
 /// Batch effects may name the same file twice (two saves in one batch);
 /// execution must see each id once.
@@ -81,9 +81,9 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
 }
 
 void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
-    std::string old_module(workspace.dep_graph.module_of(path_id));
-    workspace.rescan_after_save(path_id);
-    auto new_module = workspace.dep_graph.module_of(path_id);
+    std::string old_module(project.dep_graph.module_of(path_id));
+    project.rescan_after_save(path_id);
+    auto new_module = project.dep_graph.module_of(path_id);
     if(new_module == old_module) {
         return;
     }
@@ -92,7 +92,7 @@ void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
     // name its first provider: consumers that scanned it unresolved hold
     // edges to its sentinel, not to any real node a module-graph cascade
     // could reach.
-    if(!new_module.empty() && workspace.dep_graph.lookup_module(new_module).size() == 1) {
+    if(!new_module.empty() && project.dep_graph.lookup_module(new_module).size() == 1) {
         provider_appeared(new_module, dirty);
     }
 
@@ -116,7 +116,7 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     // the file's own outgoing edges, so this set normally equals the
     // post-rescan one — the pre-rescan snapshot is a cheap safety net for
     // a reverse map that was stale when the change landed.
-    auto old_dependents = workspace.dep_graph.find_host_sources(path_id);
+    auto old_dependents = project.dep_graph.find_host_sources(path_id);
 
     // Rescan disk state (include edges, module declaration); then cascade
     // through the module graph — importers' build products went stale, and
@@ -137,7 +137,7 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
         }
     };
     split_dependents(old_dependents);
-    split_dependents(workspace.dep_graph.find_host_sources(path_id));
+    split_dependents(project.dep_graph.find_host_sources(path_id));
 
     // Headers whose resolved context embeds the file through its include
     // chain must re-synthesize their preamble: it copies the chain files'
@@ -177,7 +177,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     // resolve differently now — which no delta can tell, so all of them
     // recompile.
     auto lenders_changed = [&] {
-        workspace.commands_epoch += 1;
+        project.commands_epoch += 1;
         for(auto guessed: contexts.guessed_commands) {
             if(store.find(guessed)) {
                 dirty.mark_ast_dirty.push_back(guessed);
@@ -226,7 +226,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the pull-side staleness check alone can miss when the
                 // rewrite lands within mtime granularity of the compile.
                 if(auto session = store.find(path_id)) {
-                    auto disk = workspace.file_table.current(path_id);
+                    auto disk = project.file_table.current(path_id);
                     if(!disk || disk->size != session->text.size() ||
                        disk->hash != llvm::xxh3_64bits(session->text)) {
                         dirty.mark_ast_dirty.push_back(path_id);
@@ -245,7 +245,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the queue's latency, while a close after saved edits must
                 // not serve rows for text that no longer exists. One disk
                 // read settles it; an unreadable file counts as changed.
-                auto disk = workspace.file_table.current(event.path_id);
+                auto disk = project.file_table.current(event.path_id);
                 if(!disk) {
                     // Deleted while it was open: the tracker skips open
                     // files, so this close is the first observation of the
@@ -257,8 +257,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     dirty.add_clear_reindex(event.path_id);
                     break;
                 }
-                auto shard_it = workspace.project_index.shards.find(event.path_id);
-                bool has_shard = shard_it != workspace.project_index.shards.end();
+                auto shard_it = project.project_index.shards.find(event.path_id);
+                bool has_shard = shard_it != project.project_index.shards.end();
                 bool shard_current =
                     has_shard && shard_it->second.matches_content(disk->size, disk->hash);
                 // A module unit's PCM can be staler than the shard: the open
@@ -268,10 +268,10 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // erases the entry.
                 bool pcm_stale = false;
                 {
-                    auto wave = workspace.file_table.wave();
-                    auto pcm_it = workspace.pcm_cache.find(event.path_id);
-                    pcm_stale = pcm_it != workspace.pcm_cache.end() &&
-                                deps_changed(workspace.file_table, pcm_it->second.deps);
+                    auto wave = project.file_table.wave();
+                    auto pcm_it = project.pcm_cache.find(event.path_id);
+                    pcm_stale = pcm_it != project.pcm_cache.end() &&
+                                deps_changed(project.file_table, pcm_it->second.deps);
                 }
                 // Disk is the truth again, and this close is the last
                 // chance to act on it: the DiskChanged path deliberately
@@ -338,7 +338,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // ones recompile (the missing-file diagnostic is the truth),
                 // closed ones reindex — nothing else would ever queue them.
                 // Snapshot before the scrub below rewrites the graph.
-                for(auto root: workspace.dep_graph.find_host_sources(path_id)) {
+                for(auto root: project.dep_graph.find_host_sources(path_id)) {
                     mark_dependent(root, dirty);
                 }
                 // A removed module unit takes its PCM with it: importers'
@@ -358,11 +358,11 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // The provider leaves the module map too, or a later
                 // replacement provider would sit behind the deleted one in
                 // the candidate list and never be selected.
-                workspace.dep_graph.update_module_decl(path_id, {});
+                project.dep_graph.update_module_decl(path_id, {});
                 // The file's import syntax is gone with it: deleting the
                 // last import-bearing file must release the project-wide
                 // scan gate.
-                workspace.dep_graph.set_import_candidate(path_id, false);
+                project.dep_graph.set_import_candidate(path_id, false);
                 // Scrub the includer role: the file's outgoing edges vanished
                 // with it, so it stops being a host-source candidate.
                 // Incoming edges stay — includers' text still names it, and
@@ -371,9 +371,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // checkout) would otherwise rebuild it once per file, and
                 // within-batch cascades tolerate a stale reverse map by
                 // design (they union the pre/post snapshots).
-                workspace.dep_graph.clear_includes(path_id);
+                project.dep_graph.clear_includes(path_id);
                 rebuild_reverse_map = true;
-                workspace.context_epoch += 1;
+                project.context_epoch += 1;
                 // Contexts hosted by (or chained through) the removed file
                 // are cleaned by the resolver's orphan pass.
                 dirty.recheck_contexts = true;
@@ -406,18 +406,18 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // a reload can move the selection to another provider
                 // while the old one's own entry stays unchanged.
                 llvm::StringMap<Fid> selected_provider;
-                for(auto& entry: workspace.dep_graph.modules()) {
+                for(auto& entry: project.dep_graph.modules()) {
                     if(!entry.getValue().empty()) {
                         selected_provider[entry.getKey()] = entry.getValue().front();
                     }
                 }
 
-                workspace.dep_graph = DependencyGraph();
-                scan_dependency_graph(workspace.cdb,
-                                      workspace.dep_graph,
-                                      workspace.build.units(workspace.build.members()));
-                workspace.dep_graph.build_reverse_map();
-                workspace.context_epoch += 1;
+                project.dep_graph = DependencyGraph();
+                scan_dependency_graph(project.cdb,
+                                      project.dep_graph,
+                                      project.build.units(project.build.members()));
+                project.dep_graph.build_reverse_map();
+                project.context_epoch += 1;
 
                 // A module name that just gained its first provider: its
                 // sentinel's dependents are the TUs that scanned it
@@ -427,7 +427,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // edges to the old selected node, and when its own entry
                 // is unchanged the delta walk cannot reach them either —
                 // cascade from that node so their next rounds re-resolve.
-                for(auto& entry: workspace.dep_graph.modules()) {
+                for(auto& entry: project.dep_graph.modules()) {
                     if(entry.getValue().empty()) {
                         continue;
                     }
@@ -518,7 +518,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // dropped a retired file's source role, and the
                     // orphan recheck cleans choices through it.
                     invalidate_entry(path_id,
-                                     /*retired=*/workspace.build.commands(path_id).empty());
+                                     /*retired=*/project.build.commands(path_id).empty());
                 }
 
                 dirty.recheck_contexts = true;
@@ -545,7 +545,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     }
 
     if(rebuild_reverse_map) {
-        workspace.dep_graph.build_reverse_map();
+        project.dep_graph.build_reverse_map();
     }
 
     dedup(dirty.mark_ast_dirty);

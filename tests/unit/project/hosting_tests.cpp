@@ -29,28 +29,30 @@ TEST_CASE(SourcePriorityBeatsProximity) {
                   {tmp.root, tmp.path("src/far.cpp"), {}}
     }));
 
-    Workspace workspace;
-    workspace.config.rules.push_back(
+    FileTable files;
+
+    Project project{files};
+    project.config.rules.push_back(
         ConfigRule{.patterns = {"lib/**"}, .compile_commands = {"lib/cmake"}});
-    workspace.config.rules.push_back(ConfigRule{.compile_commands = {"cmake"}});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    for(auto source: workspace.build.declared_sources()) {
-        workspace.cdb.load(source);
+    project.config.rules.push_back(ConfigRule{.compile_commands = {"cmake"}});
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+    for(auto source: project.build.declared_sources()) {
+        project.cdb.load(source);
     }
 
-    auto header = workspace.file_table.intern(tmp.path("lib/x.h"));
-    auto near = workspace.file_table.intern(tmp.path("lib/near.cpp"));
-    auto far = workspace.file_table.intern(tmp.path("src/far.cpp"));
-    workspace.dep_graph.set_includes(near, 0, {{header}});
-    workspace.dep_graph.set_includes(far, 0, {{header}});
-    workspace.dep_graph.build_reverse_map();
+    auto header = project.file_table.intern(tmp.path("lib/x.h"));
+    auto near = project.file_table.intern(tmp.path("lib/near.cpp"));
+    auto far = project.file_table.intern(tmp.path("src/far.cpp"));
+    project.dep_graph.set_includes(near, 0, {{header}});
+    project.dep_graph.set_includes(far, 0, {{header}});
+    project.dep_graph.build_reverse_map();
 
-    auto ranked = ranked_hosts(workspace, header);
+    auto ranked = ranked_hosts(project, header);
     ASSERT_EQ(ranked.size(), 2u);
     EXPECT_EQ(ranked[0], far);
     EXPECT_EQ(ranked[1], near);
-    auto host = default_host(workspace, header);
+    auto host = default_host(project, header);
     ASSERT_TRUE(host.has_value());
     EXPECT_EQ(host->file, far);
     EXPECT_EQ(host->chain.back(), header);
@@ -61,37 +63,38 @@ TEST_CASE(ProximityWithinSource) {
     /// in its directory; a unit the build does not compile is no host.
     TempDir tmp;
     tmp.touch("src/x.h", "");
-    Workspace workspace;
-    workspace.config.rules.push_back(ConfigRule{
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(ConfigRule{
         .patterns = {"src/**", "other/**"},
         .default_command = std::string("clang++")
     });
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
 
-    auto header = workspace.file_table.intern(tmp.path("src/x.h"));
-    auto same_stem = workspace.file_table.intern(tmp.path("other/x.cpp"));
-    auto same_dir = workspace.file_table.intern(tmp.path("src/y.cpp"));
-    auto elsewhere = workspace.file_table.intern(tmp.path("other/z.cpp"));
-    auto not_compiled = workspace.file_table.intern(tmp.path("skip/w.cpp"));
+    auto header = project.file_table.intern(tmp.path("src/x.h"));
+    auto same_stem = project.file_table.intern(tmp.path("other/x.cpp"));
+    auto same_dir = project.file_table.intern(tmp.path("src/y.cpp"));
+    auto elsewhere = project.file_table.intern(tmp.path("other/z.cpp"));
+    auto not_compiled = project.file_table.intern(tmp.path("skip/w.cpp"));
     for(auto host: {same_stem, same_dir, elsewhere, not_compiled}) {
-        workspace.dep_graph.set_includes(host, 0, {{header}});
+        project.dep_graph.set_includes(host, 0, {{header}});
     }
-    workspace.dep_graph.build_reverse_map();
+    project.dep_graph.build_reverse_map();
 
-    auto ranked = ranked_hosts(workspace, header);
+    auto ranked = ranked_hosts(project, header);
     ASSERT_EQ(ranked.size(), 3u);
     EXPECT_EQ(ranked[0], same_stem);
     EXPECT_EQ(ranked[1], same_dir);
     EXPECT_EQ(ranked[2], elsewhere);
 
     /// Equal scores fall back to path order, so the ranking is stable.
-    auto first = workspace.file_table.intern(tmp.path("other/aaa.cpp"));
-    auto second = workspace.file_table.intern(tmp.path("other/bbb.cpp"));
-    workspace.dep_graph.set_includes(second, 0, {{header}});
-    workspace.dep_graph.set_includes(first, 0, {{header}});
-    workspace.dep_graph.build_reverse_map();
-    ranked = ranked_hosts(workspace, header);
+    auto first = project.file_table.intern(tmp.path("other/aaa.cpp"));
+    auto second = project.file_table.intern(tmp.path("other/bbb.cpp"));
+    project.dep_graph.set_includes(second, 0, {{header}});
+    project.dep_graph.set_includes(first, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    ranked = ranked_hosts(project, header);
     ASSERT_EQ(ranked.size(), 5u);
     EXPECT_EQ(ranked[2], first);
     EXPECT_EQ(ranked[3], second);
@@ -103,76 +106,77 @@ TEST_CASE(HostsMatchLanguage) {
     TempDir tmp;
     tmp.touch("shared/types.hpp", "");
     tmp.touch("shared/plain.h", "");
-    Workspace workspace;
-    workspace.config.rules.push_back(
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
         ConfigRule{.patterns = {"c/**"}, .default_command = std::string("clang")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
 
-    auto hpp = workspace.file_table.intern(tmp.path("shared/types.hpp"));
-    auto plain = workspace.file_table.intern(tmp.path("shared/plain.h"));
-    auto impl = workspace.file_table.intern(tmp.path("c/impl.c"));
-    workspace.dep_graph.set_includes(impl, 0, {{hpp}, {plain}});
-    workspace.dep_graph.build_reverse_map();
+    auto hpp = project.file_table.intern(tmp.path("shared/types.hpp"));
+    auto plain = project.file_table.intern(tmp.path("shared/plain.h"));
+    auto impl = project.file_table.intern(tmp.path("c/impl.c"));
+    project.dep_graph.set_includes(impl, 0, {{hpp}, {plain}});
+    project.dep_graph.build_reverse_map();
 
-    EXPECT_TRUE(ranked_hosts(workspace, hpp).empty());
-    EXPECT_EQ(ranked_hosts(workspace, plain), llvm::SmallVector<Fid>{impl});
+    EXPECT_TRUE(ranked_hosts(project, hpp).empty());
+    EXPECT_EQ(ranked_hosts(project, plain), llvm::SmallVector<Fid>{impl});
 
     /// A source borrows only its own language: a `.cl` or a `.m` next to
     /// the C unit would compile as C under its command.
-    auto kernel_cl = workspace.file_table.intern(tmp.path("c/kernel.cl"));
-    auto objc = workspace.file_table.intern(tmp.path("c/new.m"));
-    EXPECT_FALSE(command_lender(workspace, kernel_cl).has_value());
-    EXPECT_FALSE(command_lender(workspace, objc).has_value());
+    auto kernel_cl = project.file_table.intern(tmp.path("c/kernel.cl"));
+    auto objc = project.file_table.intern(tmp.path("c/new.m"));
+    EXPECT_FALSE(command_lender(project, kernel_cl).has_value());
+    EXPECT_FALSE(command_lender(project, objc).has_value());
 
     /// An Objective-C++ unit is C++ with more: it hosts a C++ header.
     tmp.touch("mac/impl.mm", "");
-    workspace.config.rules.push_back(
+    project.config.rules.push_back(
         ConfigRule{.patterns = {"mac/**"}, .default_command = std::string("clang++")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    workspace.commands_epoch += 1;
-    auto impl_mm = workspace.file_table.intern(tmp.path("mac/impl.mm"));
-    workspace.dep_graph.set_includes(impl_mm, 0, {{hpp}});
-    workspace.dep_graph.build_reverse_map();
-    EXPECT_EQ(ranked_hosts(workspace, hpp), llvm::SmallVector<Fid>{impl_mm});
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+    project.commands_epoch += 1;
+    auto impl_mm = project.file_table.intern(tmp.path("mac/impl.mm"));
+    project.dep_graph.set_includes(impl_mm, 0, {{hpp}});
+    project.dep_graph.build_reverse_map();
+    EXPECT_EQ(ranked_hosts(project, hpp), llvm::SmallVector<Fid>{impl_mm});
 
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
     tmp.touch("gpu/kernel.cu", "");
-    workspace.config.rules.push_back(
+    project.config.rules.push_back(
         ConfigRule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    workspace.commands_epoch += 1;
-    auto kernel = workspace.file_table.intern(tmp.path("gpu/kernel.cu"));
-    workspace.dep_graph.set_includes(kernel, 0, {{hpp}});
-    workspace.dep_graph.build_reverse_map();
-    EXPECT_EQ(ranked_hosts(workspace, hpp), (llvm::SmallVector<Fid>{kernel, impl_mm}));
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+    project.commands_epoch += 1;
+    auto kernel = project.file_table.intern(tmp.path("gpu/kernel.cu"));
+    project.dep_graph.set_includes(kernel, 0, {{hpp}});
+    project.dep_graph.build_reverse_map();
+    EXPECT_EQ(ranked_hosts(project, hpp), (llvm::SmallVector<Fid>{kernel, impl_mm}));
 
     /// Only headers get that latitude: a C++ source borrowing the CUDA
     /// command would compile as CUDA.
-    auto gpu_header = workspace.file_table.intern(tmp.path("gpu/new.hpp"));
-    auto gpu_source = workspace.file_table.intern(tmp.path("gpu/new.cpp"));
-    EXPECT_EQ(command_lender(workspace, gpu_header)->unit, kernel);
-    EXPECT_FALSE(command_lender(workspace, gpu_source).has_value());
+    auto gpu_header = project.file_table.intern(tmp.path("gpu/new.hpp"));
+    auto gpu_source = project.file_table.intern(tmp.path("gpu/new.cpp"));
+    EXPECT_EQ(command_lender(project, gpu_header)->unit, kernel);
+    EXPECT_FALSE(command_lender(project, gpu_source).has_value());
 
     /// A host offers only the commands that fit the header: with a C entry
     /// first and a C++ one second, a `.hpp` sees the second alone.
     tmp.touch("dual/impl.c", "");
-    auto dual = workspace.file_table.intern(tmp.path("dual/impl.c"));
-    auto dual_hpp = workspace.file_table.intern(tmp.path("dual/x.hpp"));
+    auto dual = project.file_table.intern(tmp.path("dual/impl.c"));
+    auto dual_hpp = project.file_table.intern(tmp.path("dual/x.hpp"));
     auto c_command = std::format("clang -x c {}", tmp.path("dual/impl.c"));
     auto cxx_command = std::format("clang++ -x c++ {}", tmp.path("dual/impl.c"));
-    workspace.cdb.add_command(tmp.root.str(), tmp.path("dual/impl.c"), llvm::StringRef(c_command));
-    auto cxx = *workspace.cdb.add_command(tmp.root.str(),
-                                          tmp.path("dual/impl.c"),
-                                          llvm::StringRef(cxx_command));
-    workspace.dep_graph.set_includes(dual, 0, {{dual_hpp}});
-    workspace.dep_graph.build_reverse_map();
-    auto fitting = host_commands(workspace, dual_hpp, dual);
+    project.cdb.add_command(tmp.root.str(), tmp.path("dual/impl.c"), llvm::StringRef(c_command));
+    auto cxx = *project.cdb.add_command(tmp.root.str(),
+                                        tmp.path("dual/impl.c"),
+                                        llvm::StringRef(cxx_command));
+    project.dep_graph.set_includes(dual, 0, {{dual_hpp}});
+    project.dep_graph.build_reverse_map();
+    auto fitting = host_commands(project, dual_hpp, dual);
     ASSERT_EQ(fitting.size(), 1u);
     EXPECT_EQ(fitting.front().config, cxx.config);
-    EXPECT_EQ(ranked_hosts(workspace, dual_hpp), llvm::SmallVector<Fid>{dual});
+    EXPECT_EQ(ranked_hosts(project, dual_hpp), llvm::SmallVector<Fid>{dual});
 };
 
 TEST_CASE(LenderSibling) {
@@ -185,20 +189,21 @@ TEST_CASE(LenderSibling) {
     tmp.touch("src/x.h", "");
     tmp.touch("src/new.cpp", "");
     tmp.touch("src/plain.c", "");
-    Workspace workspace;
-    workspace.config.rules.push_back(
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
         ConfigRule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
 
-    auto header = workspace.file_table.intern(tmp.path("src/x.h"));
-    auto same_stem = workspace.file_table.intern(tmp.path("src/x.cpp"));
-    auto first = workspace.file_table.intern(tmp.path("src/aaa.cpp"));
-    auto other = workspace.file_table.intern(tmp.path("src/other.cpp"));
-    auto plain = workspace.file_table.intern(tmp.path("src/plain.c"));
-    EXPECT_EQ(command_lender(workspace, header)->unit, same_stem);
-    EXPECT_EQ(command_lender(workspace, other)->unit, first);
-    EXPECT_FALSE(command_lender(workspace, plain).has_value());
+    auto header = project.file_table.intern(tmp.path("src/x.h"));
+    auto same_stem = project.file_table.intern(tmp.path("src/x.cpp"));
+    auto first = project.file_table.intern(tmp.path("src/aaa.cpp"));
+    auto other = project.file_table.intern(tmp.path("src/other.cpp"));
+    auto plain = project.file_table.intern(tmp.path("src/plain.c"));
+    EXPECT_EQ(command_lender(project, header)->unit, same_stem);
+    EXPECT_EQ(command_lender(project, other)->unit, first);
+    EXPECT_FALSE(command_lender(project, plain).has_value());
 };
 
 TEST_CASE(LenderSearchDir) {
@@ -207,26 +212,27 @@ TEST_CASE(LenderSearchDir) {
     /// over the unit closest by path; a source there borrows the closest.
     TempDir tmp;
     tmp.touch("include/api/new.h", "");
-    Workspace workspace;
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
+    FileTable files;
+    Project project{files};
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
         auto command = std::format("clang++ {} {}", flags, tmp.path(file));
-        return *workspace.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+        return *project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
     };
     add("zzz/lib.cpp", "");
     auto searching = add("zzz/lib.cpp", "-Iinclude");
     auto near = add("include/near.cpp", "");
 
-    auto header = workspace.file_table.intern(tmp.path("include/api/new.h"));
-    auto lender = command_lender(workspace, header);
+    auto header = project.file_table.intern(tmp.path("include/api/new.h"));
+    auto lender = command_lender(project, header);
     ASSERT_TRUE(lender.has_value());
     EXPECT_EQ(lender->unit, searching.file);
     EXPECT_EQ(lender->config, searching.config);
 
-    auto source = workspace.file_table.intern(tmp.path("include/api/new.cpp"));
-    EXPECT_EQ(command_lender(workspace, source)->unit, near.file);
+    auto source = project.file_table.intern(tmp.path("include/api/new.cpp"));
+    EXPECT_EQ(command_lender(project, source)->unit, near.file);
 };
 
 TEST_CASE(LenderIgnoresCommandless) {
@@ -235,13 +241,14 @@ TEST_CASE(LenderIgnoresCommandless) {
     TempDir tmp;
     tmp.touch("src/a.cpp", "");
     tmp.touch("src/b.cpp", "");
-    Workspace workspace;
-    workspace.config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
-    ASSERT_EQ(workspace.build.members().size(), 2u);
-    auto header = workspace.file_table.intern(tmp.path("src/new.h"));
-    EXPECT_FALSE(command_lender(workspace, header).has_value());
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+    ASSERT_EQ(project.build.members().size(), 2u);
+    auto header = project.file_table.intern(tmp.path("src/new.h"));
+    EXPECT_FALSE(command_lender(project, header).has_value());
 };
 
 };  // TEST_SUITE(Hosting)

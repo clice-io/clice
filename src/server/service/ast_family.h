@@ -9,10 +9,10 @@
 #include <utility>
 #include <vector>
 
+#include "project/project.h"
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
-#include "project/project.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
@@ -52,7 +52,7 @@ struct EditorContext;
 /// and reports Stale, a content supersede discards wholesale.
 class ASTFamily {
 public:
-    ASTFamily(Workspace& workspace,
+    ASTFamily(Project& project,
               EditorContext& contexts,
               TaskGraph& graph,
               PCMFamily& pcm,
@@ -241,7 +241,7 @@ private:
     /// invalidation flavor.
     void touch(Fid path_id);
 
-    Workspace& workspace;
+    Project& project;
     EditorContext& contexts;
     TaskGraph& graph;
     PCMFamily& pcm;

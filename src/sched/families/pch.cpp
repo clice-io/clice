@@ -9,8 +9,8 @@
 
 namespace clice {
 
-PCHFamily::PCHFamily(TaskGraph& graph, Workspace& workspace, WorkerPool& pool) :
-    graph(graph), workspace(workspace), pool(pool) {}
+PCHFamily::PCHFamily(TaskGraph& graph, Project& project, WorkerPool& pool) :
+    graph(graph), project(project), pool(pool) {}
 
 void PCHFamily::register_runner() {
     graph.register_family(Family::PCH,
@@ -90,11 +90,11 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // store lookup refreshes the blob's LRU position.
     llvm::StringRef pch_miss = "no_entry";
     {
-        auto wave = workspace.file_table.wave();
-        if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
+        auto wave = project.file_table.wave();
+        if(auto it = project.pch_cache.find(pch_key); it != project.pch_cache.end()) {
             auto& st = it->second;
-            bool in_store = workspace.store && workspace.store->lookup("pch", pch_key) &&
-                            workspace.store->lookup_aux("pch", pch_key);
+            bool in_store = project.store && project.store->lookup("pch", pch_key) &&
+                            project.store->lookup_aux("pch", pch_key);
             if(st.path.empty()) {
                 pch_miss = "incomplete_entry";
             } else if(!in_store) {
@@ -103,7 +103,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
                 // load_state() found the blob unreadable earlier; republish
                 // the pair rather than serving a PCH with no index forever.
                 pch_miss = "idx_unreadable";
-            } else if(deps_changed(workspace.file_table, st.deps)) {
+            } else if(deps_changed(project.file_table, st.deps)) {
                 // FIXME: deps are the only revalidation — the blobs
                 // themselves are not pinned, so metadata surviving a
                 // crashed flush or a concurrent writer's republish is
@@ -117,7 +117,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
             // Blob evicted by the store's LRU: drop the metadata too, or
             // the content-keyed map grows for the server's lifetime.
             if(!in_store) {
-                workspace.pch_cache.erase(pch_key);
+                project.pch_cache.erase(pch_key);
             }
         }
     }
@@ -127,7 +127,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
              pch_key,
              request.file);
 
-    if(!workspace.store) {
+    if(!project.store) {
         LOG_WARN("PCH build skipped: cache store is unavailable");
         co_return RoundOutcome::Failed;
     }
@@ -153,8 +153,8 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // Build a new pair via a stateless worker: it writes the PCH and its
     // pch.idx envelope to the tmp paths allocated here; the store commits
     // (fsync + rename) both on success, primary first.
-    auto pending = workspace.store->begin_store("pch", pch_key);
-    auto pending_idx = workspace.store->begin_store_aux("pch", pch_key);
+    auto pending = project.store->begin_store("pch", pch_key);
+    auto pending_idx = project.store->begin_store_aux("pch", pch_key);
 
     worker::BuildPCHParams bp;
     bp.file = std::move(request.file);
@@ -216,7 +216,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
 
     auto committed = co_await kota::queue([&]() -> PairCommit {
         PairCommit outcome;
-        auto pch_path = workspace.store->commit(std::move(pending));
+        auto pch_path = project.store->commit(std::move(pending));
         if(!pch_path) {
             // pending_idx cleans its own tmp blob when the frame unwinds.
             return outcome;
@@ -225,9 +225,9 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
 
         // The pair is only usable complete: when the index blob cannot be
         // published, retract the PCH too — the next round rebuilds both.
-        auto index_path = workspace.store->commit(std::move(pending_idx));
+        auto index_path = project.store->commit(std::move(pending_idx));
         if(!index_path) {
-            workspace.store->invalidate("pch", pch_key);
+            project.store->invalidate("pch", pch_key);
             return outcome;
         }
         outcome.index_path = std::move(*index_path);
@@ -236,7 +236,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         // an uncommitted one: retract the pair rather than publish a PCH
         // whose preamble state every consumer would fail to load.
         if(!outcome.state) {
-            workspace.store->invalidate("pch", pch_key);
+            project.store->invalidate("pch", pch_key);
         }
         return outcome;
     });
@@ -249,14 +249,14 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         // A rebuild of an existing key just had its blobs retracted from
         // the store; the entry's paths now dangle and a settled entry
         // would revalidate as a hit against deleted blobs. Drop it.
-        workspace.pch_cache.erase(pch_key);
+        project.pch_cache.erase(pch_key);
         co_return RoundOutcome::Failed;
     }
     if(!committed.value().state) {
         LOG_WARN("Freshly committed pch.idx envelope for {} is unreadable", bp.file);
         // The commit job retracted the pair; drop the entry for the same
         // dangling-paths reason as above.
-        workspace.pch_cache.erase(pch_key);
+        project.pch_cache.erase(pch_key);
         co_return RoundOutcome::Failed;
     }
 
@@ -265,11 +265,11 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // adoption side, each joiner for itself, gated on its own validity.
     build_crashes.on_land(pch_key);
 
-    auto& st = workspace.pch_cache[pch_key];
+    auto& st = project.pch_cache[pch_key];
     st.path = *committed.value().pch_path;
     st.bound = request.preamble_bound;
     st.deps =
-        capture_deps_snapshot(workspace.file_table, result.value().deps, result.value().build_at);
+        capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
     st.index_path = *committed.value().index_path;
     // Replace the previous blob's mapping (same key, rebuilt content);
     // in-flight holders of the old shared_ptr stay valid.
@@ -279,24 +279,23 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
 
     LOG_INFO("PCH built for {}: {}", bp.file, st.path);
 
-    workspace.mark_artifacts_dirty();
+    project.mark_artifacts_dirty();
 
     co_return RoundOutcome::Success;
 }
 
 bool PCHFamily::fresh(llvm::StringRef pch_key) {
-    auto it = workspace.pch_cache.find(pch_key);
-    if(it == workspace.pch_cache.end() || it->second.path.empty() ||
-       it->second.index_path.empty()) {
+    auto it = project.pch_cache.find(pch_key);
+    if(it == project.pch_cache.end() || it->second.path.empty() || it->second.index_path.empty()) {
         return false;
     }
-    if(!workspace.store || !workspace.store->lookup("pch", pch_key) ||
-       !workspace.store->lookup_aux("pch", pch_key)) {
+    if(!project.store || !project.store->lookup("pch", pch_key) ||
+       !project.store->lookup_aux("pch", pch_key)) {
         return false;
     }
     auto& st = it->second;
-    auto wave = workspace.file_table.wave();
-    return !deps_changed(workspace.file_table, st.deps);
+    auto wave = project.file_table.wave();
+    return !deps_changed(project.file_table, st.deps);
 }
 
 bool PCHFamily::building(llvm::StringRef pch_key) const {
@@ -305,14 +304,14 @@ bool PCHFamily::building(llvm::StringRef pch_key) const {
 }
 
 void PCHFamily::invalidate(llvm::StringRef pch_key) {
-    if(workspace.store) {
-        workspace.store->invalidate("pch", pch_key);
+    if(project.store) {
+        project.store->invalidate("pch", pch_key);
     }
     // An in-flight rebuild owns the entry; its commit republishes fresh
     // blobs over the retracted pair, so only a settled entry is dropped.
-    if(auto it = workspace.pch_cache.find(pch_key);
-       it != workspace.pch_cache.end() && !building(pch_key)) {
-        workspace.pch_cache.erase(it);
+    if(auto it = project.pch_cache.find(pch_key);
+       it != project.pch_cache.end() && !building(pch_key)) {
+        project.pch_cache.erase(it);
     }
 }
 
@@ -322,22 +321,22 @@ void PCHFamily::blame(llvm::StringRef pch_key) {
 }
 
 std::shared_ptr<index::TUIndex> PCHFamily::preamble_state(llvm::StringRef pch_key) {
-    auto it = workspace.pch_cache.find(pch_key);
-    if(it == workspace.pch_cache.end()) {
+    auto it = project.pch_cache.find(pch_key);
+    if(it == project.pch_cache.end()) {
         return nullptr;
     }
 
     auto& st = it->second;
     bool had_blob = !st.index_path.empty();
     auto state = st.load_state();
-    if(!state && had_blob && workspace.store) {
+    if(!state && had_blob && project.store) {
         // The blob was just found unreadable (load_state cleared the
         // path): a pair that looks complete on disk but cannot be opened
         // would be served to every session for the rest of the store's
         // life. Retract it now; the entry itself stays until ensure_pch
         // re-checks the store and rebuilds the pair.
         LOG_WARN("Retracting PCH pair {} with unreadable pch.idx envelope", pch_key);
-        workspace.store->invalidate("pch", pch_key);
+        project.store->invalidate("pch", pch_key);
     }
     if(state) {
         touch_loaded_state(pch_key);
@@ -369,10 +368,10 @@ void PCHFamily::enforce_loaded_budget() {
     std::size_t kept = 0;
     std::size_t i = 0;
     while(i < loaded_state_lru.size()) {
-        auto it = workspace.pch_cache.find(loaded_state_lru[i]);
+        auto it = project.pch_cache.find(loaded_state_lru[i]);
         // Erased entries and already-unloaded keys just fall out of the
         // list (invalidation and store eviction bypass the LRU).
-        if(it == workspace.pch_cache.end() || !it->second.state) {
+        if(it == project.pch_cache.end() || !it->second.state) {
             loaded_state_lru.erase(loaded_state_lru.begin() + i);
             continue;
         }

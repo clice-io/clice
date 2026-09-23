@@ -29,7 +29,7 @@ bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics)
 /// types and session knowledge, which the editor context deliberately
 /// knows nothing about.
 struct ContextService {
-    Workspace& workspace;
+    Project& project;
     EditorContext& editor;
     ASTFamily& ast;
 

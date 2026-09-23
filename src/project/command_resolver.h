@@ -80,7 +80,7 @@ struct Resolution {
 /// the artifacts blob.
 class CommandResolver {
 public:
-    explicit CommandResolver(Workspace& workspace) : workspace(workspace) {}
+    explicit CommandResolver(Project& project) : project(project) {}
 
     /// A header's self-containment verdict. NeedsContext carries the
     /// content hash it was scored on — persisted so a stale verdict is
@@ -165,7 +165,7 @@ private:
     /// change deliberately reset the verdict.
     std::uint64_t persisted_mode_hash(Fid path_id) const;
 
-    Workspace& workspace;
+    Project& project;
 };
 
 }  // namespace clice

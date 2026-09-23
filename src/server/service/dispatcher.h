@@ -44,7 +44,7 @@ kota::ipc::Error content_modified();
 /// longer exists.
 class Dispatcher {
 public:
-    Dispatcher(Workspace& workspace, EditorContext& contexts, ASTFamily& ast, WorkerPool& pool);
+    Dispatcher(Project& project, EditorContext& contexts, ASTFamily& ast, WorkerPool& pool);
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
@@ -122,7 +122,7 @@ private:
     template <typename Outcome>
     Outcome land(const Ticket& ticket, std::uint8_t kind, llvm::StringRef label, Outcome result);
 
-    Workspace& workspace;
+    Project& project;
     EditorContext& contexts;
     ASTFamily& ast;
     WorkerPool& pool;

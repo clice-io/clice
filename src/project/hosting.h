@@ -13,7 +13,7 @@
 
 namespace clice {
 
-struct Workspace;
+struct Project;
 
 /// A translation unit standing in for a header, with the include chain
 /// from it to the header.
@@ -28,12 +28,12 @@ struct Host {
 /// in CUDA) — best first: units whose entries come from the databases
 /// the header's own rules name, then the unit sharing the header's stem,
 /// its directory, and path proximity.
-llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header);
+llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header);
 
 /// The commands of `host` that compile `header` in a language it can be
 /// part of, in the host's order: what the header may compile under, its
 /// first the default. Empty when the host cannot stand in for it.
-llvm::SmallVector<Candidate, 2> host_commands(Workspace& workspace, Fid header, Fid host);
+llvm::SmallVector<Candidate, 2> host_commands(Project& project, Fid header, Fid host);
 
 /// A unit and the one of its base commands that another file borrows.
 struct Lender {
@@ -43,7 +43,7 @@ struct Lender {
 
 /// The commands the build's units can lend — every command of every
 /// member, by unit path — and the header search directories they cover,
-/// as indexes into `commands`. Rebuilt when Workspace::commands_epoch
+/// as indexes into `commands`. Rebuilt when Project::commands_epoch
 /// moves, so a resolution scans no unit.
 struct LenderIndex {
     struct Command {
@@ -65,10 +65,10 @@ struct LenderIndex {
 /// search directories contain it, nearest directory first, with that
 /// command; else the unit closest by path. Nullopt when the build has no
 /// such unit.
-std::optional<Lender> command_lender(Workspace& workspace, Fid file);
+std::optional<Lender> command_lender(Project& project, Fid file);
 
 /// The host a header compiles under when nothing is pinned: the first
 /// ranked one with an include chain to it.
-std::optional<Host> default_host(Workspace& workspace, Fid header);
+std::optional<Host> default_host(Project& project, Fid header);
 
 }  // namespace clice

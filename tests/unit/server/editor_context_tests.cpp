@@ -12,8 +12,9 @@ namespace {
 /// header's synthesized context.
 struct HostedHeader {
     TempDir tmp;
-    Workspace workspace;
-    CommandResolver commands{workspace};
+    FileTable files;
+    Project project{files};
+    CommandResolver commands{project};
     Fid host;
     Fid header;
     std::string header_path;
@@ -22,15 +23,15 @@ struct HostedHeader {
         tmp.touch("host.cpp", "struct S {\n#include \"h.h\"\n};\n");
         tmp.touch("h.h", "int member;\n");
         write_cdb(tmp,
-                  workspace.cdb,
+                  project.cdb,
                   build_cdb_json({
                       {tmp.root, tmp.path("host.cpp"), {"-DHOSTED"}}
         }));
-        host = workspace.file_table.intern(tmp.path("host.cpp"));
+        host = project.file_table.intern(tmp.path("host.cpp"));
         header_path = tmp.path("h.h");
-        header = workspace.file_table.intern(header_path);
-        workspace.dep_graph.set_includes(host, 0, {{header}});
-        workspace.dep_graph.build_reverse_map();
+        header = project.file_table.intern(header_path);
+        project.dep_graph.set_includes(host, 0, {{header}});
+        project.dep_graph.build_reverse_map();
 
         auto store = CacheStore::open(tmp.path("cache"), 1);
         ASSERT_TRUE(store.has_value());
@@ -38,9 +39,9 @@ struct HostedHeader {
                                    .extension = ".h",
                                    .policy = CachePolicy::LRU,
                                    .max_bytes = 1ull << 30});
-        workspace.store.emplace(std::move(*store));
+        project.store.emplace(std::move(*store));
 
-        auto disk = workspace.file_table.current(header);
+        auto disk = project.file_table.current(header);
         ASSERT_TRUE(disk.has_value());
         commands.record_header_mode(header, HeaderMode::NeedsContext, disk->hash);
     }
@@ -52,7 +53,7 @@ TEST_CASE(SynthesisRecordsEditorHosts) {
     // Only an editor resolution attributes the files it synthesized; a
     // background one leaves the editor's state (and its blob) alone.
     HostedHeader fx;
-    EditorContext editor{fx.workspace, fx.commands};
+    EditorContext editor{fx.project, fx.commands};
     std::string directory;
     std::vector<std::string> arguments;
 
@@ -86,12 +87,12 @@ TEST_CASE(ArtifactNeedsEditorHost) {
     // An opened artifact compiles under the host the editor recorded for
     // it; background resolution has no such record and never borrows.
     HostedHeader fx;
-    EditorContext editor{fx.workspace, fx.commands};
+    EditorContext editor{fx.project, fx.commands};
     std::string directory;
     std::vector<std::string> arguments;
     editor.resolve_command(fx.header_path, directory, arguments);
     auto preamble = editor.header_context(fx.header)->preamble_path;
-    ASSERT_TRUE(fx.workspace.is_synthesized_artifact(preamble));
+    ASSERT_TRUE(fx.project.is_synthesized_artifact(preamble));
 
     auto opened = editor.resolve_command(preamble, directory, arguments);
     ASSERT_EQ(opened.source, CommandSource::IncludeGraph);
@@ -109,11 +110,12 @@ TEST_CASE(GuessedTracksEditorOnly) {
     TempDir tmp;
     tmp.touch("lonely.cpp", "");
     tmp.touch("main.cpp", "");
-    Workspace workspace;
-    CommandResolver commands(workspace);
-    EditorContext editor(workspace, commands);
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    EditorContext editor(project, commands);
     auto path = tmp.path("lonely.cpp");
-    auto file = workspace.file_table.intern(path);
+    auto file = project.file_table.intern(path);
     std::string directory;
     std::vector<std::string> arguments;
 
@@ -124,7 +126,7 @@ TEST_CASE(GuessedTracksEditorOnly) {
     ASSERT_TRUE(editor.guessed_commands.contains(file));
 
     write_cdb(tmp,
-              workspace.cdb,
+              project.cdb,
               build_cdb_json({
                   {tmp.root, path, {}}
     }));
@@ -136,30 +138,30 @@ TEST_CASE(GuessedTracksEditorOnly) {
 
 TEST_CASE(PinSteersEditorOnly) {
     TempDir tmp;
-    Workspace workspace;
-    CommandResolver commands(workspace);
-    EditorContext resolver(workspace, commands);
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
     tmp.touch("main.cpp");
     auto path = tmp.path("main.cpp");
     write_cdb(tmp,
-              workspace.cdb,
+              project.cdb,
               build_cdb_json({
                   {tmp.root, path, {"-DFIRST"} },
                   {tmp.root, path, {"-DSECOND"}}
     }));
 
-    auto file = workspace.file_table.intern(path);
-    auto candidates = workspace.cdb.candidate_entries(path);
+    auto file = project.file_table.intern(path);
+    auto candidates = project.cdb.candidate_entries(path);
     ASSERT_EQ(candidates.size(), 2u);
     // Pin the non-default candidate (candidate order is content-decided,
     // so the defines are read back rather than assumed).
     auto define_of = [&](ConfigID config) -> llvm::StringRef {
-        auto argv = print_argv(workspace.cdb.render_full(config));
+        auto argv = print_argv(project.cdb.render_full(config));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
     auto pinned = candidates.back().config;
-    resolver.selections[file] =
-        Selection{Fid{}, std::nullopt, workspace.cdb.entry_hash_hex(pinned)};
+    resolver.selections[file] = Selection{Fid{}, std::nullopt, project.cdb.entry_hash_hex(pinned)};
 
     // An editor resolution honors the pinned CDB entry...
     std::string directory;
@@ -175,23 +177,24 @@ TEST_CASE(PinSteersEditorOnly) {
 
 TEST_CASE(PinBaseSurvivesRules) {
     TempDir tmp;
-    Workspace workspace;
-    CommandResolver commands(workspace);
-    EditorContext resolver(workspace, commands);
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
     tmp.touch("main.cpp");
     auto path = tmp.path("main.cpp");
     write_cdb(tmp,
-              workspace.cdb,
+              project.cdb,
               build_cdb_json({
                   {tmp.root, path, {"-DFIRST"} },
                   {tmp.root, path, {"-DSECOND"}}
     }));
 
-    auto file = workspace.file_table.intern(path);
-    auto candidates = workspace.cdb.candidate_entries(path);
+    auto file = project.file_table.intern(path);
+    auto candidates = project.cdb.candidate_entries(path);
     ASSERT_EQ(candidates.size(), 2u);
     auto define_of = [&](ConfigID config) -> llvm::StringRef {
-        auto argv = print_argv(workspace.cdb.render_full(config));
+        auto argv = print_argv(project.cdb.render_full(config));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
     auto pinned = candidates.back().config;
@@ -199,7 +202,7 @@ TEST_CASE(PinBaseSurvivesRules) {
     // A pin whose applied hash went stale (a rule edit since it was saved)
     // but whose base identity is recorded still selects its candidate...
     resolver.selections[file] =
-        Selection{Fid{}, std::nullopt, "0123456789abcdef", workspace.cdb.entry_hash_hex(pinned)};
+        Selection{Fid{}, std::nullopt, "0123456789abcdef", project.cdb.entry_hash_hex(pinned)};
     std::string directory;
     std::vector<std::string> arguments;
     resolver.resolve_command(path, directory, arguments);
@@ -214,21 +217,22 @@ TEST_CASE(PinBaseSurvivesRules) {
 
 TEST_CASE(ValidateKeepsValidChoice) {
     TempDir tmp;
-    Workspace workspace;
-    CommandResolver commands(workspace);
-    EditorContext resolver(workspace, commands);
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
     tmp.touch("host.cpp", R"(#include "h.h")");
     tmp.touch("h.h");
     write_cdb(tmp,
-              workspace.cdb,
+              project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("host.cpp"), {}}
     }));
 
-    auto host = workspace.file_table.intern(tmp.path("host.cpp"));
-    auto header = workspace.file_table.intern(tmp.path("h.h"));
-    workspace.dep_graph.set_includes(host, 0, {{header}});
-    workspace.dep_graph.build_reverse_map();
+    auto host = project.file_table.intern(tmp.path("host.cpp"));
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
     resolver.selections[header] = Selection{host, std::nullopt, ""};
 
     resolver.validate_saved_context(header);
@@ -237,21 +241,22 @@ TEST_CASE(ValidateKeepsValidChoice) {
 
 TEST_CASE(ValidateDropsStaleChoice) {
     TempDir tmp;
-    Workspace workspace;
-    CommandResolver commands(workspace);
-    EditorContext resolver(workspace, commands);
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
     tmp.touch("host.cpp");
     tmp.touch("h.h");
     tmp.touch("main.cpp");
     write_cdb(tmp,
-              workspace.cdb,
+              project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
 
-    auto host = workspace.file_table.intern(tmp.path("host.cpp"));
-    auto header = workspace.file_table.intern(tmp.path("h.h"));
-    auto main_file = workspace.file_table.intern(tmp.path("main.cpp"));
+    auto host = project.file_table.intern(tmp.path("host.cpp"));
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto main_file = project.file_table.intern(tmp.path("main.cpp"));
 
     // A host pin whose CDB entry disappeared while the server was down.
     // The drop must dirty the contexts blob, or the stale choice
@@ -268,11 +273,12 @@ TEST_CASE(ValidateDropsStaleChoice) {
 }
 
 TEST_CASE(InvalidateDropsBorrowed) {
-    Workspace workspace;
-    CommandResolver commands(workspace);
-    EditorContext resolver(workspace, commands);
-    auto borrowed = workspace.file_table.intern("/proj/borrowed.h");
-    auto synthesized = workspace.file_table.intern("/proj/synthesized.h");
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    EditorContext resolver(project, commands);
+    auto borrowed = project.file_table.intern("/proj/borrowed.h");
+    auto synthesized = project.file_table.intern("/proj/synthesized.h");
 
     // A self-contained borrow tracks no chain deps: forcing re-validation
     // could never trigger anything, so invalidation drops it outright.
@@ -283,18 +289,18 @@ TEST_CASE(InvalidateDropsBorrowed) {
     // A synthesized context re-validates its chain by content hash: the
     // shared version's fast path is dropped, the consumed version stays.
     auto& context = resolver.header_contexts[synthesized];
-    auto vid = workspace.file_table.intern_version(borrowed, 7);
+    auto vid = project.file_table.intern_version(borrowed, 7);
     context.deps.push_back({.path_id = borrowed, .version = vid});
-    workspace.file_table.adopt_stamp(vid, 42, 123);
-    ASSERT_EQ(workspace.file_table.version(vid).mtime_ns, 123);
-    auto stamps = workspace.file_table.stamp_generation;
+    project.file_table.adopt_stamp(vid, 42, 123);
+    ASSERT_EQ(project.file_table.version(vid).mtime_ns, 123);
+    auto stamps = project.file_table.stamp_generation;
     resolver.invalidate_header_deps(synthesized);
     ASSERT_TRUE(resolver.header_contexts.contains(synthesized));
-    ASSERT_EQ(workspace.file_table.version(vid).mtime_ns, 0);
+    ASSERT_EQ(project.file_table.version(vid).mtime_ns, 0);
     ASSERT_EQ(resolver.header_contexts[synthesized].deps[0].version, vid);
     // The revocation is stamp movement — what tells persistence the
     // dropped fast path must not survive in the global blob.
-    ASSERT_TRUE(workspace.file_table.stamp_generation != stamps);
+    ASSERT_TRUE(project.file_table.stamp_generation != stamps);
 }
 
 };  // TEST_SUITE(EditorContext)

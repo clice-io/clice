@@ -136,7 +136,7 @@ struct Selection {
     std::string base_hash;
 };
 
-/// Cached PCH state.  Stored in Workspace.pch_cache keyed by the content
+/// Cached PCH state.  Stored in Project.pch_cache keyed by the content
 /// key (hex of xxh3_128bits over preamble text + directories + canonical
 /// flags), so files with identical preambles share one PCH.
 ///
@@ -183,31 +183,35 @@ struct PCMState {
 /// Design principle: open files are never depended upon by other files.
 /// Dependencies always point to disk files.  This enforces a clean two-layer
 /// architecture:
-///   - Global layer (Workspace): tracks disk truth, shared by all files
+///   - Global layer (Project): tracks disk truth, shared by all files
 ///   - Per-file layer (Session): tracks buffer truth, isolated per TU
 ///
-/// Workspace is the single source of truth for:
+/// Project is the single source of truth for:
 ///   - dependency relationships (include graph, module DAG)
 ///   - compilation artifacts shared across files (PCH/PCM caches)
 ///   - symbol index (ProjectIndex + per-file Shard blobs)
 ///   - compilation database and configuration
 ///
-/// Workspace is NEVER modified by unsaved buffer content.  The only mutation
+/// Project is NEVER modified by unsaved buffer content.  The only mutation
 /// paths are:
-///   - Initialization  (load_workspace at startup)
+///   - Initialization  (load_root_project at startup)
 ///   - didSave         (rescan_after_save: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
-struct Workspace {
+struct Project {
+    explicit Project(FileTable& file_table) : file_table(file_table) {}
+
     /// A default-constructed Config is born valid (every option holds its
-    /// real default), so a directly-built Workspace (unit tests, tools)
+    /// real default), so a directly-built Project (unit tests, tools)
     /// needs no init step. The server replaces this wholesale with the
     /// loaded user config and finalizes it after the initializationOptions
     /// overlay.
     Config config;
 
-    /// The single fid space, shared by everything below — CDB entry file
-    /// ids and workspace fids are the same ids.
-    FileTable file_table;
+    /// The process's fid space, shared with everything else keyed by file
+    /// (sessions, the task graph, the pool) — CDB entry file ids and
+    /// project fids are the same ids. Persisted state never stores fids:
+    /// it names files by path and re-interns them at load.
+    FileTable& file_table;
 
     CompilationDatabase cdb{file_table};
 
@@ -216,7 +220,7 @@ struct Workspace {
     Build build{config, cdb, file_table};
 
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
-    /// load_workspace() when cache_dir is configured; absent means caching
+    /// load_root_project() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
     /// recovery); validity metadata (deps snapshots) lives in the index
     /// database, written by IndexStore::save.

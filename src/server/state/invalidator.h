@@ -240,7 +240,7 @@ public:
 ///
 /// Ownership charter:
 ///   - reads the session store and the editor context, never mutates them;
-///   - directly updates the derived graphs Workspace owns (include graph,
+///   - directly updates the derived graphs Project owns (include graph,
 ///     module map, ...);
 ///   - anything touching Sessions, context-domain state (verdicts, choices,
 ///     header contexts), the index queue, or cache persistence is returned
@@ -258,7 +258,7 @@ public:
 /// not add ceremonial event kinds for exempt logic.
 class Invalidator {
 public:
-    Invalidator(Workspace& workspace,
+    Invalidator(Project& project,
                 const SessionStore& store,
                 const EditorContext& contexts,
                 PCMFamily& pcm);
@@ -294,7 +294,7 @@ private:
     /// dependency invalidation.
     void mark_dependent(Fid path_id, DirtySet& dirty);
 
-    Workspace& workspace;
+    Project& project;
     const SessionStore& store;
     const EditorContext& contexts;
     PCMFamily& pcm;

@@ -8,13 +8,13 @@
 
 #include "config/config.h"
 #include "project/command_resolver.h"
+#include "project/index_store.h"
+#include "project/project.h"
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "sched/index/pump.h"
-#include "project/index_store.h"
-#include "project/project.h"
 #include "server/service/ast_family.h"
 #include "server/service/context_service.h"
 #include "server/service/dispatcher.h"
@@ -68,7 +68,7 @@ struct ServerOptions {
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (optional, skips LSP initialize)",
            required = false)
-    <std::string> workspace;
+    <std::string> project;
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help =
@@ -100,7 +100,7 @@ struct NotifyMessage {
     std::string text;
 };
 
-/// Core server state — owns the two-layer state model (Workspace + Sessions),
+/// Core server state — owns the two-layer state model (Project + Sessions),
 /// the worker pool, compilation engine, index query, and background indexer.
 ///
 /// Does NOT own any transport or peer.  Protocol-specific handler registration
@@ -160,31 +160,32 @@ public:
     /// constructed) in dependency order. Transports and features drive the
     /// server through these directly; the wiring between them lives in wire().
     kota::event_loop& loop;
-    Workspace workspace;
+    FileTable files;
+    Project project{files};
     WorkerPool pool;
-    CommandResolver commands{workspace};
-    EditorContext contexts{workspace, commands};
+    CommandResolver commands{project};
+    EditorContext contexts{project, commands};
 
     /// The scheduling core and its resident families, registered at
     /// construction — nodes materialize on demand, so a module-free
     /// project pays nothing. The AST family is assembled here in the
     /// server: its rounds capture sessions, quarantine and publishing.
     TaskGraph graph{loop};
-    PCMFamily pcm{graph, workspace, commands, pool};
-    PCHFamily pch{graph, workspace, pool};
-    ASTFamily ast{workspace, contexts, graph, pcm, pch, pool, sessions, loop};
+    PCMFamily pcm{graph, project, commands, pool};
+    PCHFamily pch{graph, project, pool};
+    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions, loop};
 
-    Dispatcher dispatcher{workspace, contexts, ast, pool};
-    ContextService context_service{workspace, contexts, ast};
+    Dispatcher dispatcher{project, contexts, ast, pool};
+    ContextService context_service{project, contexts, ast};
 
     /// Index scheduling, split along the serving boundary: the store and
     /// the pump are serving-neutral sched machinery (the batch driver
     /// reuses them); the session-side policy — admission vetoes,
     /// unservable escalation, serving-row refresh — lives on this class
     /// and is installed into the pump's hooks by wire().
-    IndexStore index_store{loop, workspace, commands};
-    TURunFamily turun{graph, workspace, commands, pcm, index_store, pool};
-    IndexPump pump{loop, workspace, turun, index_store, pool};
+    IndexStore index_store{loop, project, commands};
+    TURunFamily turun{graph, project, commands, pcm, index_store, pool};
+    IndexPump pump{loop, project, turun, index_store, pool};
 
     /// Emitted when rows an open index-served session is serving changed:
     /// results the client already pulled describe the old rows, and only a
@@ -193,8 +194,8 @@ public:
     /// cannot cover them.
     Signal<> on_serving_rows_changed;
 
-    ServerLiveSources live_sources{workspace, pch, sessions, ast.projections};
-    PumpGate freshness{pump, workspace.config};
+    ServerLiveSources live_sources{project, pch, sessions, ast.projections};
+    PumpGate freshness{pump, project.config};
     index::IndexQuery index_query;
 
     Features features;
@@ -269,7 +270,7 @@ private:
 
     Signal<llvm::ArrayRef<Fid>>::Connection index_rows_conn;
 
-    void load_workspace();
+    void load_root_project();
 
     /// When this server holds the cache directory's writer lock, the
     /// commands that find it taken ask this server to index for them:

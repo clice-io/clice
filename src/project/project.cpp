@@ -25,14 +25,14 @@
 
 namespace clice {
 
-bool Workspace::is_synthesized_artifact(llvm::StringRef path) const {
+bool Project::is_synthesized_artifact(llvm::StringRef path) const {
     if(!store) {
         return false;
     }
     return path.starts_with(path::join(store->base_dir(), header_context_ns));
 }
 
-std::uint32_t Workspace::count_occurrences(Fid host_id, Fid target_id) const {
+std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
     auto chain = dep_graph.find_include_chain(host_id, target_id);
     if(chain.size() < 2) {
         return 0;
@@ -53,7 +53,7 @@ std::uint32_t Workspace::count_occurrences(Fid host_id, Fid target_id) const {
                                      null_resolver);
 }
 
-void Workspace::rescan_after_save(Fid path_id) {
+void Project::rescan_after_save(Fid path_id) {
     auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
 
@@ -380,8 +380,8 @@ const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
     return state;
 }
 
-void Workspace::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
-                              Fid exclude_path_id) const {
+void Project::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
+                            Fid exclude_path_id) const {
     for(auto& [pid, st]: pcm_cache) {
         if(pid == exclude_path_id)
             continue;

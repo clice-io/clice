@@ -19,18 +19,19 @@ TEST_CASE(DefaultSourceKeepsOwnCommand) {
 #include "part.h")");
     tmp.touch("src/part.cpp", "");
     tmp.touch("src/part.h", "");
-    Workspace workspace;
-    CommandResolver resolver(workspace);
-    workspace.config.rules.push_back(
+    FileTable files;
+    Project project{files};
+    CommandResolver resolver(project);
+    project.config.rules.push_back(
         ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
-    workspace.config.finalize(tmp.root.str());
-    workspace.build.reset_active("");
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
 
-    auto main = workspace.file_table.intern(tmp.path("src/main.cpp"));
-    auto part = workspace.file_table.intern(tmp.path("src/part.cpp"));
-    auto header = workspace.file_table.intern(tmp.path("src/part.h"));
-    workspace.dep_graph.set_includes(main, 0, {{part}, {header}});
-    workspace.dep_graph.build_reverse_map();
+    auto main = project.file_table.intern(tmp.path("src/main.cpp"));
+    auto part = project.file_table.intern(tmp.path("src/part.cpp"));
+    auto header = project.file_table.intern(tmp.path("src/part.h"));
+    project.dep_graph.set_includes(main, 0, {{part}, {header}});
+    project.dep_graph.build_reverse_map();
 
     std::string directory;
     std::vector<std::string> arguments;
@@ -49,11 +50,12 @@ TEST_CASE(UnboundVerdictStaysLocal) {
     // persist nor, if found in a blob, bypass the content gate — the next
     // session's bytes never earned it.
     TempDir tmp;
-    Workspace workspace;
-    CommandResolver resolver(workspace);
+    FileTable files;
+    Project project{files};
+    CommandResolver resolver(project);
     tmp.touch("h.h", "int x;\n");
     auto path = tmp.path("h.h");
-    auto id = workspace.file_table.intern(path);
+    auto id = project.file_table.intern(path);
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext);
     ASSERT_TRUE(resolver.header_mode(path, id) == HeaderMode::NeedsContext);
@@ -62,7 +64,7 @@ TEST_CASE(UnboundVerdictStaysLocal) {
     resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
     ASSERT_TRUE(slices.empty());
 
-    CommandResolver restarted(workspace);
+    CommandResolver restarted(project);
     slices.push_back({id.raw, static_cast<std::uint32_t>(HeaderMode::NeedsContext), 0});
     restarted.load_mode_slices(slices, [&](std::uint32_t) -> llvm::StringRef { return path; });
     ASSERT_TRUE(restarted.header_mode(path, id) == HeaderMode::Unknown);
@@ -72,12 +74,13 @@ TEST_CASE(ModeSliceContentGate) {
     // A content-bound verdict survives a restart only while the disk
     // still holds the bytes it was scored on.
     TempDir tmp;
-    Workspace workspace;
-    CommandResolver resolver(workspace);
+    FileTable files;
+    Project project{files};
+    CommandResolver resolver(project);
     tmp.touch("h.h", "int x;\n");
     auto path = tmp.path("h.h");
-    auto id = workspace.file_table.intern(path);
-    auto disk = workspace.file_table.current(id);
+    auto id = project.file_table.intern(path);
+    auto disk = project.file_table.current(id);
     ASSERT_TRUE(disk.has_value());
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
@@ -88,12 +91,12 @@ TEST_CASE(ModeSliceContentGate) {
     auto resolve = [&](std::uint32_t) -> llvm::StringRef {
         return path;
     };
-    CommandResolver same_disk(workspace);
+    CommandResolver same_disk(project);
     same_disk.load_mode_slices(slices, resolve);
     ASSERT_TRUE(same_disk.header_mode(path, id) == HeaderMode::NeedsContext);
 
     tmp.touch("h.h", "int y;\n");
-    CommandResolver edited(workspace);
+    CommandResolver edited(project);
     edited.load_mode_slices(slices, resolve);
     ASSERT_TRUE(edited.header_mode(path, id) == HeaderMode::Unknown);
 }
@@ -104,29 +107,30 @@ TEST_CASE(VerdictPersistenceMarksDirty) {
     // a trial, or reset by a dependency change — must rewrite the blob,
     // or a restart resurrects the dropped verdict (the header's own hash
     // still matches). Session-local transitions must not thrash it.
-    Workspace workspace;
-    CommandResolver resolver(workspace);
-    auto id = workspace.file_table.intern("/proj/h.h");
+    FileTable files;
+    Project project{files};
+    CommandResolver resolver(project);
+    auto id = project.file_table.intern("/proj/h.h");
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
-    ASSERT_TRUE(workspace.artifacts_dirty);
+    ASSERT_TRUE(project.artifacts_dirty);
 
-    workspace.artifacts_dirty = false;
+    project.artifacts_dirty = false;
     resolver.reset_header_mode(id);
-    ASSERT_TRUE(workspace.artifacts_dirty);
+    ASSERT_TRUE(project.artifacts_dirty);
 
     // Unbound verdicts and self-contained impressions are never persisted.
-    workspace.artifacts_dirty = false;
+    project.artifacts_dirty = false;
     resolver.record_header_mode(id, HeaderMode::NeedsContext);
     resolver.record_header_mode(id, HeaderMode::SelfContained);
     resolver.reset_header_mode(id);
-    ASSERT_FALSE(workspace.artifacts_dirty);
+    ASSERT_FALSE(project.artifacts_dirty);
 
     // A trial downgrading a persisted verdict drops it from the blob.
     resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
-    workspace.artifacts_dirty = false;
+    project.artifacts_dirty = false;
     resolver.record_header_mode(id, HeaderMode::SelfContained);
-    ASSERT_TRUE(workspace.artifacts_dirty);
+    ASSERT_TRUE(project.artifacts_dirty);
 }
 
 };  // TEST_SUITE(CommandResolver)

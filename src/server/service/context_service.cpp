@@ -40,7 +40,7 @@ bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics)
 }
 
 /// Human-readable summary of the distinguishing flags of a command.
-static std::string flags_label(Workspace& ws, ConfigID config) {
+static std::string flags_label(Project& ws, ConfigID config) {
     auto argv = ws.cdb.render_full(config);
     std::string desc;
     for(std::size_t j = 0; j < argv.size(); ++j) {
@@ -61,7 +61,7 @@ static std::string flags_label(Workspace& ws, ConfigID config) {
 ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
                                                        Fid path_id,
                                                        const ext::QueryContextParams& params) {
-    auto& ws = workspace;
+    auto& ws = project;
     int offset_val = std::max(0, params.offset.value_or(0));
     constexpr int page_size = 10;
 
@@ -171,7 +171,7 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
     ext::CurrentContextResult result;
     const Selection* choice = session ? editor.selection(session->path_id) : nullptr;
     if(choice && choice->host_path_id.valid()) {
-        auto ctx_path = workspace.file_table.resolve(choice->host_path_id);
+        auto ctx_path = project.file_table.resolve(choice->host_path_id);
         auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
         if(ctx_uri_opt) {
             ext::ContextItem item;
@@ -188,7 +188,7 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
             result.context = std::move(item);
         }
     } else if(choice && !choice->command_hash.empty()) {
-        auto& ws = workspace;
+        auto& ws = project;
         ext::ContextItem item;
         item.uri = params.uri;
         item.command_hash = choice->command_hash;
@@ -219,7 +219,7 @@ kota::task<ext::SwitchContextResult>
                                    llvm::StringRef context_path,
                                    Fid context_path_id,
                                    const ext::SwitchContextParams& params) {
-    auto& ws = workspace;
+    auto& ws = project;
 
     ext::SwitchContextResult result;
 
@@ -328,28 +328,28 @@ kota::task<ext::SwitchContextResult>
 
 ext::ListConfigurationsResult ContextService::list_configurations() const {
     ext::ListConfigurationsResult result;
-    for(auto tag: workspace.config.configurations()) {
+    for(auto tag: project.config.configurations()) {
         result.configurations.push_back(tag.str());
     }
-    result.active = workspace.build.active_configuration().str();
-    result.selected = read_selection(workspace.config.project.cache_dir);
-    result.default_configuration = fallback_configuration(workspace.config).str();
+    result.active = project.build.active_configuration().str();
+    result.selected = read_selection(project.config.project.cache_dir);
+    result.default_configuration = fallback_configuration(project.config).str();
     return result;
 }
 
 ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::StringRef name,
                                                                     llvm::StringRef pinned) {
-    if(!declares_configuration(workspace.config, name)) {
+    if(!declares_configuration(project.config, name)) {
         LOG_WARN("Cannot select configuration {}: no rule declares it", name);
         return {};
     }
-    if(declares_configuration(workspace.config, pinned)) {
+    if(declares_configuration(project.config, pinned)) {
         LOG_WARN("Cannot select configuration {}: --configuration {} pins this session's",
                  name,
                  pinned);
         return {};
     }
-    if(auto written = write_selection(workspace.config.project.cache_dir, name); !written) {
+    if(auto written = write_selection(project.config.project.cache_dir, name); !written) {
         LOG_WARN("Cannot persist the selected configuration {}: {}",
                  name,
                  written.error().message());
@@ -371,28 +371,27 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
         auto& occurrence = saved.occurrence;
         bool orphaned = false;
         if(host_id.valid()) {
-            orphaned = workspace.dep_graph.find_include_chain(host_id, session_id).empty();
+            orphaned = project.dep_graph.find_include_chain(host_id, session_id).empty();
             // A pinned occurrence can vanish while other inclusions of the
             // header survive (the chain stays non-empty) — recount it.
             if(!orphaned && occurrence.has_value()) {
-                auto count = workspace.count_occurrences(host_id, session_id);
+                auto count = project.count_occurrences(host_id, session_id);
                 orphaned = count > 0 && *occurrence >= count;
             }
             // The pinned host command itself can vanish (a CDB reload
             // changed the entry's flags): same validation didOpen applies.
             if(!orphaned && !saved.command_hash.empty()) {
-                llvm::StringRef edit_paths[] = {workspace.file_table.resolve(host_id),
-                                                workspace.file_table.resolve(session_id)};
+                llvm::StringRef edit_paths[] = {project.file_table.resolve(host_id),
+                                                project.file_table.resolve(session_id)};
                 orphaned = !editor.pin_alive(host_id, edit_paths, saved);
             }
         } else if(!saved.command_hash.empty()) {
             // Own-entry pin: the pinned command must still exist in the CDB.
-            orphaned =
-                !editor.pin_alive(session_id, workspace.file_table.resolve(session_id), saved);
+            orphaned = !editor.pin_alive(session_id, project.file_table.resolve(session_id), saved);
         }
         if(orphaned) {
             LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
-                     workspace.file_table.resolve(session_id));
+                     project.file_table.resolve(session_id));
             editor.drop_header_context(session_id);
             ast.switch_identity(*session);
             editor.selections.erase(it);

@@ -11,7 +11,7 @@
 
 namespace clice {
 
-struct Workspace;
+struct Project;
 
 /// What loading the build found.
 struct BuildLoad {
@@ -29,7 +29,7 @@ struct BuildLoad {
 /// then enumerate the build's members and scan the dependency graph from
 /// them. The workspace's configuration is final. The one loading path of
 /// the server, the batch driver and `clice inspect`.
-BuildLoad load_build(Workspace& workspace,
+BuildLoad load_build(Project& project,
                      llvm::StringRef root,
                      llvm::StringRef configuration,
                      llvm::ArrayRef<std::string> nearby = {});
@@ -72,7 +72,7 @@ struct ProjectLoad {
 /// `scan_tree` makes discovery search the whole tree once
 /// (compile_commands_below) instead of waiting for a didOpen: for the
 /// batch commands, which open no file.
-ProjectLoad load_project(Workspace& workspace,
+ProjectLoad load_project(Project& project,
                          IndexStore& store,
                          llvm::StringRef root,
                          llvm::StringRef requested_configuration,

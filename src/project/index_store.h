@@ -131,7 +131,7 @@ public:
         Report report;
     };
 
-    IndexStore(kota::event_loop& loop, Workspace& workspace, CommandResolver& commands);
+    IndexStore(kota::event_loop& loop, Project& project, CommandResolver& commands);
 
     /// Hand the contexts blob to its owner. Must precede load(): a process
     /// that attaches none (the batch commands) keeps the bytes as loaded
@@ -237,7 +237,7 @@ private:
     friend struct testing::IndexerFixture;
 
     kota::event_loop& loop;
-    Workspace& workspace;
+    Project& project;
 
     /// Header-mode verdicts, persisted in the artifacts blob.
     CommandResolver& commands;

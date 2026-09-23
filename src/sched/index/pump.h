@@ -7,9 +7,9 @@
 #include <optional>
 #include <vector>
 
-#include "sched/index/ledger.h"
 #include "project/index_store.h"
 #include "project/project.h"
+#include "sched/index/ledger.h"
 #include "support/signal.h"
 
 #include "kota/async/async.h"
@@ -42,7 +42,7 @@ struct IndexerFixture;
 class IndexPump {
 public:
     IndexPump(kota::event_loop& loop,
-              Workspace& workspace,
+              Project& project,
               TURunFamily& turun,
               IndexStore& store,
               WorkerPool& pool);
@@ -208,7 +208,7 @@ private:
 
     kota::event_loop& loop;
     kota::task_group<> bg_tasks;
-    Workspace& workspace;
+    Project& project;
     TURunFamily& turun;
     IndexStore& store;
     WorkerPool& pool;
@@ -315,6 +315,6 @@ kota::task<> shutdown_indexing(TaskGraph& graph,
                                IndexPump& pump,
                                IndexStore& store,
                                WorkerPool& pool,
-                               Workspace& workspace);
+                               Project& project);
 
 }  // namespace clice

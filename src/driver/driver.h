@@ -54,14 +54,14 @@ inline bool apply_log_level(const std::string& level_str) {
 /// made absolute, or the current directory when it is empty,
 /// canonicalized either way.
 inline std::string workspace_root(llvm::StringRef argument) {
-    llvm::SmallString<256> workspace(argument);
-    if(workspace.empty()) {
-        llvm::sys::fs::current_path(workspace);
+    llvm::SmallString<256> directory(argument);
+    if(directory.empty()) {
+        llvm::sys::fs::current_path(directory);
     } else {
-        llvm::sys::fs::make_absolute(workspace);
-        path::remove_dots(workspace, /*remove_dot_dot=*/true);
+        llvm::sys::fs::make_absolute(directory);
+        path::remove_dots(directory, /*remove_dot_dot=*/true);
     }
-    std::string root(workspace.str());
+    std::string root(directory.str());
     path::canonicalize(root);
     return root;
 }

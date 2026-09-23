@@ -51,8 +51,8 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, llvm::StringRef path) {
     }
     // Interning only names the file; whether the index holds rows for
     // it is the shard fetch's answer.
-    auto file = ctx.workspace.file_table.intern(path);
-    if(!ctx.workspace.project_index.shard(file)) {
+    auto file = ctx.project.file_table.intern(path);
+    if(!ctx.project.project_index.shard(file)) {
         ctx.unindexed.emplace_back(path);
         return std::nullopt;
     }
@@ -69,9 +69,8 @@ Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
     }
     auto& place = *query.position;
     llvm::SmallString<256> absolute(
-        path::is_absolute(place.path)
-            ? place.path
-            : path::join(ctx.workspace.config.workspace_root, place.path));
+        path::is_absolute(place.path) ? place.path
+                                      : path::join(ctx.project.config.workspace_root, place.path));
     path::remove_dots(absolute, /*remove_dot_dot=*/true);
     place.path = absolute.str();
     path::canonicalize(place.path);
@@ -115,7 +114,7 @@ Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQu
 /// The files reachable from `root` along `adjacent`, breadth first and
 /// each once: direct neighbours at depth 1, `max_depth` levels at most,
 /// 0 meaning unbounded.
-std::vector<DepEntry> collect_deps(Workspace& ws,
+std::vector<DepEntry> collect_deps(Project& ws,
                                    Fid root,
                                    int max_depth,
                                    llvm::function_ref<llvm::SmallVector<Fid>(Fid)> adjacent) {
@@ -183,7 +182,7 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path
         return ctx.contexts.commands.header_mode(path, file) == HeaderMode::NeedsContext ||
                (choice && choice->host_path_id.valid() && choice->occurrence.has_value());
     };
-    if(auto file = ctx.workspace.file_table.find(path); file && needs_context(*file)) {
+    if(auto file = ctx.project.file_table.find(path); file && needs_context(*file)) {
         return std::unexpected(std::format(
             "{} compiles only under a synthesized header context, which needs an editor session",
             std::string_view(path)));
@@ -206,7 +205,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
             std::format("invalid filter '{}': expected all, source, header or module",
                         std::string_view(filter)));
     }
-    auto& ws = ctx.workspace;
+    auto& ws = ctx.project;
     ProjectFilesResult result;
     llvm::DenseSet<Fid> seen;
     for(auto member: ws.build.members()) {
@@ -253,7 +252,7 @@ Outcome<FileDepsResult>
     if(!llvm::sys::fs::is_regular_file(path)) {
         return std::unexpected(std::format("no such file: {}", std::string_view(path)));
     }
-    auto& ws = ctx.workspace;
+    auto& ws = ctx.project;
     FileDepsResult result{.file = std::string(path)};
     auto file = ws.file_table.find(path);
     if(!file) {
@@ -276,7 +275,7 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, llvm::StringRef path
     if(!llvm::sys::fs::is_regular_file(path)) {
         return std::unexpected(std::format("no such file: {}", std::string_view(path)));
     }
-    auto& ws = ctx.workspace;
+    auto& ws = ctx.project;
     ImpactAnalysisResult result;
     auto file = ws.file_table.find(path);
     if(!file) {

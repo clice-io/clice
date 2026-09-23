@@ -46,15 +46,15 @@ struct CompileOutput {
 /// over the cheap members), so a reader that copied the shared_ptr may
 /// keep using it across suspension points.
 struct ASTProjection {
-    /// Content key into Workspace.pch_cache for the document's PCH, if
-    /// any. The PCH itself is owned by Workspace (shared,
+    /// Content key into Project.pch_cache for the document's PCH, if
+    /// any. The PCH itself is owned by Project (shared,
     /// content-addressed); whether its preamble-derived state still
     /// describes the buffer is checked against the blob's stored preamble
     /// text at the point of use.
     std::optional<std::string> pch_key;
 
     /// The latest compilation's index envelope; null until a compile
-    /// lands index data. NOT merged into Workspace.project_index — that
+    /// lands index data. NOT merged into Project.project_index — that
     /// only gets disk-derived data from background indexing.
     std::shared_ptr<index::TUIndex> index;
 

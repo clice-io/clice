@@ -19,7 +19,7 @@ namespace clice::query {
 /// set, include dependencies), the loaded build. Paths in and out are
 /// absolute filesystem paths, not URIs.
 struct Context {
-    Workspace& workspace;
+    Project& project;
     EditorContext& contexts;
     const index::IndexQuery& query;
 

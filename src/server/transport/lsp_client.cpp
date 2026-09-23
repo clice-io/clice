@@ -117,7 +117,7 @@ static void unversion(protocol::WorkspaceEdit& edit) {
 
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = uri_to_path(uri);
-    auto path_id = this->server.workspace.file_table.intern(path);
+    auto path_id = this->server.project.file_table.intern(path);
     return ResolvedDoc{std::move(path), path_id, this->server.find_session(path_id)};
 }
 
@@ -733,7 +733,7 @@ void LSPClient::register_extensions() {
                         // Load-generating hook: a stray client must not be able to
                         // bloat the file log, so it only exists when the harness asked
                         // for it at initialize time.
-                        if(!this->server.workspace.config.project.test_hooks.value) {
+                        if(!this->server.project.config.project.test_hooks.value) {
                             co_return kota::outcome_error(
                                 kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
                                                  "test hooks are not enabled"});
@@ -757,25 +757,25 @@ void LSPClient::register_extensions() {
             auto& srv = this->server;
             ext::StatsResult stats;
 
-            for(auto& entry: srv.workspace.pch_cache) {
+            for(auto& entry: srv.project.pch_cache) {
                 auto& st = entry.second;
                 if(st.state) {
                     stats.pch_loaded_states += 1;
                     stats.pch_state_bytes += st.state->bytes().size();
                 }
             }
-            stats.pch_cache_entries = static_cast<std::uint32_t>(srv.workspace.pch_cache.size());
+            stats.pch_cache_entries = static_cast<std::uint32_t>(srv.project.pch_cache.size());
 
             stats.index_inmemory_shards =
                 static_cast<std::uint32_t>(srv.index_store.pending_shard_writes());
-            for(auto& [path_id, shard]: srv.workspace.project_index.shards) {
+            for(auto& [path_id, shard]: srv.project.project_index.shards) {
                 stats.index_shard_content_bytes += shard.bytes().size();
             }
             stats.last_save_shards = static_cast<std::uint32_t>(srv.index_store.last_save_shards());
 
-            if(srv.workspace.store) {
+            if(srv.project.store) {
                 stats.pending_tmp_files =
-                    static_cast<std::uint32_t>(srv.workspace.store->pending_tmp_files());
+                    static_cast<std::uint32_t>(srv.project.store->pending_tmp_files());
             }
 
             stats.header_contexts = static_cast<std::uint32_t>(srv.contexts.header_contexts.size());
@@ -850,7 +850,7 @@ void LSPClient::push_output(const Session& session) {
     }
     auto& output = *projection->output;
 
-    auto file_path = std::string(server.workspace.file_table.resolve(session.path_id));
+    auto file_path = std::string(server.project.file_table.resolve(session.path_id));
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 

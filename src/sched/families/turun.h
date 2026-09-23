@@ -7,10 +7,10 @@
 
 #include "compile/compilation.h"
 #include "project/command_resolver.h"
-#include "sched/graph.h"
-#include "sched/index/ledger.h"
 #include "project/index_store.h"
 #include "project/project.h"
+#include "sched/graph.h"
+#include "sched/index/ledger.h"
 #include "worker/pool.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -36,7 +36,7 @@ class PCMFamily;
 class TURunFamily {
 public:
     TURunFamily(TaskGraph& graph,
-                Workspace& workspace,
+                Project& project,
                 CommandResolver& commands,
                 PCMFamily& pcm,
                 IndexStore& store,
@@ -126,7 +126,7 @@ private:
     }
 
     TaskGraph& graph;
-    Workspace& workspace;
+    Project& project;
     CommandResolver& commands;
     PCMFamily& pcm;
     IndexStore& store;
