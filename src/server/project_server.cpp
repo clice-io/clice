@@ -11,6 +11,7 @@
 #include "server/file_tracker.h"
 #include "server/master_server.h"
 #include "support/cache_store.h"
+#include "support/filesystem.h"
 #include "support/logging.h"
 #include "worker/protocol.h"
 
@@ -99,17 +100,20 @@ void ProjectServer::configure(llvm::StringRef init_options,
     // process's, so a second project would take it too. Fall back to the
     // project's own, then the default, then none.
     auto& cache_dir = project.config.project.cache_dir;
-    if(!root.empty() && llvm::is_contained(taken_cache_dirs, cache_dir)) {
+    auto taken = [&] {
+        return llvm::is_contained(taken_cache_dirs, path::resolved(cache_dir));
+    };
+    if(!root.empty() && taken()) {
         std::string requested = cache_dir;
         for(auto& fallback: {own_cache_dir, std::string()}) {
             project.config = overlaid;
             project.config.project.cache_dir = fallback;
             project.config.finalize(root);
-            if(!llvm::is_contained(taken_cache_dirs, cache_dir)) {
+            if(!taken()) {
                 break;
             }
         }
-        if(llvm::is_contained(taken_cache_dirs, cache_dir)) {
+        if(taken()) {
             cache_dir.clear();
             project.config.project.cache_dir_defaulted = false;
         }
@@ -211,6 +215,7 @@ kota::task<> ProjectServer::shutdown() {
 
 void ProjectServer::close() {
     sched.close();
+    closed = true;
 }
 
 void ProjectServer::discover_around(Fid path_id) {
@@ -416,12 +421,12 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         }
     }
     // Revoked stamps live on in the global blob's version table and the
-    // artifacts blob's dep records; both must rewrite, or a restart after
-    // a same-stat dependency edit re-adopts the dropped fast paths and
-    // judges the edited file fresh without a read.
+    // artifacts blob's dep records — of every project sharing the table;
+    // all must rewrite, or a restart after a same-stat dependency edit
+    // re-adopts the dropped fast paths and judges the edited file fresh
+    // without a read.
     if(project.file_table.stamp_generation != stamps) {
-        sched.store.mark_global_dirty();
-        project.mark_artifacts_dirty();
+        server.stamps_revoked();
     }
 
     // The header's borrowed compile command changed: its resolved context

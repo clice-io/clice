@@ -16,7 +16,6 @@
 #include "kota/async/async.h"
 #include "kota/deco/deco.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -138,6 +137,10 @@ public:
     /// into index_progress and wake the transports.
     void index_progress_changed(ProjectServer& project);
 
+    /// A project revoked stamps of the shared file table: every project's
+    /// persisted stamps rewrite at its next save.
+    void stamps_revoked();
+
     /// workspace/symbol over every project: each project's ranked matches,
     /// interleaved rank by rank, a symbol two projects index listed once.
     std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);
@@ -226,8 +229,9 @@ private:
     /// Shut a project that stopped serving down in the background.
     void retire(std::shared_ptr<ProjectServer> project);
 
-    /// The cache directories served now, projects still shutting down
-    /// included: a cache directory belongs to one project at a time.
+    /// The cache directories in use, resolved (path::resolved): a cache
+    /// directory belongs to one project at a time, a removed one's until
+    /// it is gone.
     std::vector<std::string> taken_cache_dirs() const;
 
     /// Before a file's first compile: every project whose root holds the
@@ -251,8 +255,12 @@ private:
     /// The project each open document was routed to.
     llvm::DenseMap<Fid, ProjectServer*> owners;
 
-    /// The projects taking part in the current index_progress round.
-    llvm::SmallPtrSet<ProjectServer*, 4> indexing;
+    /// The last progress of each project taking part in the current
+    /// index_progress round, and the counts of the rounds that ended within
+    /// it and were followed by another (or whose project was removed).
+    llvm::DenseMap<ProjectServer*, IndexPump::Progress> round;
+    IndexPump::Progress carried;
+    void carry(const IndexPump::Progress& progress);
     void fold_index_progress();
 
     /// The pool's callbacks, routed to the projects owning the documents.
@@ -267,8 +275,13 @@ private:
     /// Shutdowns of removed projects; joined in shutdown_and_cleanup().
     kota::task_group<> bg_tasks;
 
-    /// Removed projects until their shutdown completes.
-    std::vector<std::shared_ptr<ProjectServer>> retiring;
+    /// Removed projects, shutting down or kept alive after by the requests
+    /// still running in them.
+    std::vector<std::weak_ptr<ProjectServer>> retired;
+
+    /// Folders added back while their previous project was still shutting
+    /// down; they serve again once it closed.
+    std::vector<std::string> readded;
 
     std::string self_path;
     std::string session_log_dir;

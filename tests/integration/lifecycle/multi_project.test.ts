@@ -204,6 +204,34 @@ test("removed folder releases its files", async ({ session }) => {
     client.assertNoErrors(beta, "the re-added folder serves it again");
 });
 
+test("folder re-added at once keeps its cache", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    twoProjects(workspace);
+    await client.initialize(workspace, { folders: ["alpha", "beta"] });
+    await waitForDefinitionOf(client, "beta_fn");
+
+    // The control endpoint record appears only while a project holds the
+    // cache directory's writer lock.
+    const record = workspace.path("beta/.clice/server.json");
+    const endpoint = () => (fs.existsSync(record) ? fs.readFileSync(record, "utf8") : null);
+    const before = endpoint();
+    expect(before).not.toBeNull();
+
+    await client.changeWorkspaceFolders({ removed: ["beta"] });
+    await client.changeWorkspaceFolders({ added: ["beta"] });
+    await waitUntil(
+        () => {
+            const now = endpoint();
+            return now !== null && now !== before;
+        },
+        {
+            timeout: INDEX_TIMEOUT,
+            interval: SETTLE_TIME,
+            description: "the re-added folder to take its cache directory back",
+        },
+    );
+});
+
 test("removed first folder hands over", async ({ session }) => {
     const { client, workspace } = session.tmp();
     twoProjects(workspace);

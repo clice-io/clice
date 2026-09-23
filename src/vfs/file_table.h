@@ -442,10 +442,14 @@ struct FileTable {
     /// try_stamp's corroboration discipline back then, which is what makes
     /// it trustworthy without a live pair now. Only fills a hole: a stamp
     /// earned this session describes the same bytes at least as recently.
+    /// Refused once the table revoked any stamp: a hole may then be a
+    /// revocation, which a project loading later must not refill from its
+    /// own blobs.
     void adopt_stamp(VersionID vid, std::uint64_t size, std::int64_t mtime_ns) {
         assert(vid.raw < versions.size());
         auto& version = versions[vid.raw];
-        if(version.mtime_ns == 0 && version.content_hash != 0 && mtime_ns != 0) {
+        if(revocation_generation == 0 && version.mtime_ns == 0 && version.content_hash != 0 &&
+           mtime_ns != 0) {
             version.size = size;
             version.mtime_ns = mtime_ns;
         }

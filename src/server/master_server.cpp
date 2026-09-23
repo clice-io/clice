@@ -141,17 +141,14 @@ void MasterServer::initialize() {
              pool_opts.stateless_count);
 
     pool_opts.log_dir = session_log_dir;
-    if(!pool.start(pool_opts)) {
+    if(pool.start(pool_opts)) {
+        lifecycle = ServerLifecycle::Ready;
+        wire();
+        for(auto& project: projects) {
+            project->start();
+        }
+    } else {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
-        return;
-    }
-
-    lifecycle = ServerLifecycle::Ready;
-
-    wire();
-
-    for(auto& project: projects) {
-        project->start();
     }
     if(placeholder) {
         rehome_sessions(*placeholder);
@@ -271,13 +268,29 @@ void MasterServer::start_project(ProjectServer& project) {
 
 std::vector<std::string> MasterServer::taken_cache_dirs() const {
     std::vector<std::string> dirs;
-    for(auto& project: llvm::concat<const std::shared_ptr<ProjectServer>>(projects, retiring)) {
+    auto take = [&](const ProjectServer& project) {
         // The rootless project opens no store.
-        if(!project->root.empty()) {
-            dirs.push_back(project->project.config.project.cache_dir);
+        auto& cache_dir = project.project.config.project.cache_dir;
+        if(!project.root.empty() && !cache_dir.empty()) {
+            dirs.push_back(path::resolved(cache_dir));
+        }
+    };
+    for(auto& project: projects) {
+        take(*project);
+    }
+    for(auto& weak: retired) {
+        if(auto project = weak.lock()) {
+            take(*project);
         }
     }
     return dirs;
+}
+
+void MasterServer::stamps_revoked() {
+    for(auto& project: projects) {
+        project->sched.store.mark_global_dirty();
+        project->project.mark_artifacts_dirty();
+    }
 }
 
 void MasterServer::open_session(Fid path_id, std::string text, int version) {
@@ -286,9 +299,11 @@ void MasterServer::open_session(Fid path_id, std::string text, int version) {
         // A database a served project loads already (a build directory
         // above a generated file) stays that project's.
         auto root = project_root_above(path::parent_path(files.resolve(path_id)));
-        if(!root.empty() && llvm::none_of(projects, [&](auto& project) {
-               return project->project.cdb.find_source(root).has_value();
-           })) {
+        auto loaded = [&](auto& project) {
+            auto& cdb = project->project.cdb;
+            return cdb.find_source(root) || cdb.find_source(path::join(root, "build"));
+        };
+        if(!root.empty() && llvm::none_of(projects, loaded)) {
             add_folder(std::move(root));
         }
     }
@@ -365,6 +380,17 @@ void MasterServer::add_folder(std::string root) {
     if(llvm::any_of(projects, [&](auto& project) { return project->root == root; })) {
         return;
     }
+    // A removed folder's project holds its cache directory until it
+    // closed; serving the folder again waits for that.
+    if(llvm::any_of(retired, [&](auto& weak) {
+           auto project = weak.lock();
+           return project && !project->closed && project->root == root;
+       })) {
+        if(!llvm::is_contained(readded, root)) {
+            readded.push_back(std::move(root));
+        }
+        return;
+    }
     LOG_INFO("Serving folder {}", root);
     auto& added = *projects.emplace_back(make_project(std::move(root)));
     start_project(added);
@@ -378,6 +404,7 @@ void MasterServer::add_folder(std::string root) {
 }
 
 void MasterServer::remove_folder(llvm::StringRef root) {
+    llvm::erase(readded, root);
     auto it = llvm::find_if(projects, [&](auto& project) { return project->root == root; });
     if(it == projects.end()) {
         return;
@@ -389,7 +416,9 @@ void MasterServer::remove_folder(llvm::StringRef root) {
         start_project(*projects.emplace_back(make_project(std::string())));
     }
     rehome_sessions(*removed);
-    if(indexing.erase(removed.get())) {
+    if(auto it = round.find(removed.get()); it != round.end()) {
+        carry(it->second);
+        round.erase(it);
         fold_index_progress();
     }
     retire(std::move(removed));
@@ -397,35 +426,55 @@ void MasterServer::remove_folder(llvm::StringRef root) {
 }
 
 void MasterServer::retire(std::shared_ptr<ProjectServer> project) {
-    retiring.push_back(project);
+    llvm::erase_if(retired, [](auto& weak) { return weak.expired(); });
+    retired.push_back(project);
     bg_tasks.spawn(
         [](MasterServer& server, std::shared_ptr<ProjectServer> project) -> kota::task<> {
             co_await project->shutdown();
             project->close();
-            llvm::erase(server.retiring, project);
+            auto it = llvm::find(server.readded, project->root);
+            if(it != server.readded.end()) {
+                auto root = std::move(*it);
+                server.readded.erase(it);
+                if(server.lifecycle == ServerLifecycle::Ready) {
+                    server.add_folder(std::move(root));
+                }
+            }
         }(*this, std::move(project)));
 }
 
+void MasterServer::carry(const IndexPump::Progress& progress) {
+    carried.total += progress.total;
+    carried.completed += progress.completed;
+    carried.dispatched += progress.dispatched;
+}
+
 void MasterServer::index_progress_changed(ProjectServer& changed) {
+    using Stage = IndexPump::Progress::Stage;
     // A retiring project's pump winds down outside the round.
     if(llvm::none_of(projects, [&](auto& project) { return project.get() == &changed; })) {
         return;
     }
-    if(changed.sched.pump.progress().stage != IndexPump::Progress::Stage::End) {
-        indexing.insert(&changed);
+    auto& now = changed.sched.pump.progress();
+    auto it = round.find(&changed);
+    if(it == round.end()) {
+        if(now.stage == Stage::End) {
+            return;
+        }
+        it = round.try_emplace(&changed).first;
+    } else if(it->second.stage == Stage::End && now.stage != Stage::End) {
+        // Another round of a project whose last one ended within this one.
+        carry(it->second);
     }
+    it->second = now;
     fold_index_progress();
 }
 
 void MasterServer::fold_index_progress() {
     using Stage = IndexPump::Progress::Stage;
-    IndexPump::Progress all{.stage = Stage::End};
+    IndexPump::Progress all = carried;
     bool active = false;
-    for(auto& project: projects) {
-        if(!indexing.contains(project.get())) {
-            continue;
-        }
-        auto& one = project->sched.pump.progress();
+    for(auto& one: llvm::make_second_range(round)) {
         active = active || one.stage != Stage::End;
         all.total += one.total;
         all.completed += one.completed;
@@ -434,7 +483,9 @@ void MasterServer::fold_index_progress() {
     if(active) {
         all.stage = index_progress.stage == Stage::End ? Stage::Begin : Stage::Report;
     } else {
-        indexing.clear();
+        all.stage = Stage::End;
+        round.clear();
+        carried = {};
     }
     index_progress = all;
     on_index_progress.emit();

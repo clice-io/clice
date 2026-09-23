@@ -138,6 +138,21 @@ TEST_CASE(RevalidateClearsAliasStamps) {
     ASSERT_EQ(pool.version(vid).mtime_ns, 0);
 }
 
+TEST_CASE(RevocationStopsAdoption) {
+    // A hole left by a revocation looks like one never stamped; stamps a
+    // project persisted before must not refill it.
+    FileTable pool;
+    auto file = pool.intern("/proj/a.h");
+    auto vid = pool.intern_version(file, 0x1);
+    pool.adopt_stamp(vid, 10, 100);
+    ASSERT_EQ(pool.version(vid).mtime_ns, 100);
+
+    pool.force_revalidate(file);
+    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
+    pool.adopt_stamp(vid, 10, 100);
+    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
+}
+
 TEST_CASE(StampNeedsLiveIdentity) {
     // A stamp corroborates only through the identity the pair was earned
     // under: a stat carrying a different UniqueID (same-stat replace)

@@ -47,8 +47,9 @@ public:
     /// the client's initializationOptions (`init_options`, JSON), then
     /// finalized — and apply its serving mode. A cache directory belongs
     /// to one project: when the one configured is among
-    /// `taken_cache_dirs`, this project falls back to its clice.toml's,
-    /// then the default, then runs without one.
+    /// `taken_cache_dirs` (resolved, see path::resolved), this project
+    /// falls back to its clice.toml's, then the default, then runs without
+    /// one.
     void configure(llvm::StringRef init_options, llvm::ArrayRef<std::string> taken_cache_dirs);
 
     /// Load the project from disk (see bootstrap_project), restore the
@@ -64,6 +65,9 @@ public:
     /// write).
     kota::task<> shutdown();
     void close();
+
+    /// close() ran; a request still running keeps the project alive.
+    bool closed = false;
 
     /// Open a document routed here with its buffer — an editor's didOpen,
     /// or one another project released. Its saved context choice is

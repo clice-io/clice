@@ -458,6 +458,20 @@ TEST_CASE(ProjectRootAbove) {
     EXPECT_EQ(project_root_above(tmp.path("none/src")), "");
 };
 
+#ifndef _WIN32
+TEST_CASE(ResolvedSpelling) {
+    /// Two spellings of one directory resolve alike, created or not: the
+    /// cache directories of two projects compare by it.
+    TempDir tmp;
+    tmp.touch("real/file", "");
+    [[maybe_unused]] auto linked = ::symlink(tmp.path("real").c_str(), tmp.path("link").c_str());
+    auto real = path::resolved(tmp.path("real"));
+    EXPECT_EQ(path::resolved(tmp.path("link")), real);
+    EXPECT_EQ(path::resolved(tmp.path("link/.clice")), path::join(real, ".clice"));
+    EXPECT_EQ(path::resolved(tmp.path("real/.clice")), path::join(real, ".clice"));
+};
+#endif
+
 TEST_CASE(RefreshDefaultSources) {
     /// A file created under a default-command rule's patterns appears at
     /// the next refresh, once; a deleted one leaves the members.

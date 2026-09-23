@@ -109,6 +109,25 @@ inline void canonicalize([[maybe_unused]] std::string& p) {
 #endif
 }
 
+/// `p` with the symlinks of its longest existing prefix resolved and the
+/// rest appended as spelled: two spellings of one directory compare equal
+/// whether it exists yet or not.
+inline std::string resolved(llvm::StringRef p) {
+    llvm::SmallString<256> real;
+    llvm::StringRef existing = p;
+    while(llvm::sys::fs::real_path(existing, real)) {
+        auto parent = parent_path(existing);
+        if(parent.empty() || parent.size() == existing.size()) {
+            return p.str();
+        }
+        existing = parent;
+    }
+    real += p.drop_front(existing.size());
+    std::string result(real);
+    canonicalize(result);
+    return result;
+}
+
 }  // namespace path
 
 namespace fs {
