@@ -82,16 +82,8 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
 }
 
 void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
-    // A header resolves its includes under a host the reverse map ranks:
-    // edges an earlier event of the batch moved must be visible to it.
-    if(reverse_map_stale && !project.build.unit(path_id)) {
-        project.dep_graph.build_reverse_map();
-        reverse_map_stale = false;
-    }
     std::string old_module(project.dep_graph.module_of(path_id));
-    if(project.rescan_after_save(path_id)) {
-        reverse_map_stale = true;
-    }
+    project.rescan_after_save(path_id);
     auto new_module = project.dep_graph.module_of(path_id);
     if(new_module == old_module) {
         return;
@@ -121,10 +113,7 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     dirty.reset_trial.push_back(path_id);
 
     // Root TUs transitively including the file. The rescan below rewrites
-    // only the file's own outgoing edges, never the includers this walks;
-    // an includer an earlier event of the batch added is still missing
-    // from the reverse map, but that event's own cascade reaches its
-    // roots.
+    // only the file's own outgoing edges, never the includers this walks.
     auto dependents = project.dep_graph.find_host_sources(path_id);
 
     // Rescan disk state (include edges, module declaration); then cascade
@@ -173,7 +162,6 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
 
 DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     DirtySet dirty;
-    reverse_map_stale = false;
 
     // The lender set changed: every borrowed or synthesized command may
     // resolve differently now — which no delta can tell, so all of them
@@ -387,7 +375,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // event's final word for the file itself.
                 dirty.add_clear_reindex(path_id);
                 project.forget_file(path_id);
-                reverse_map_stale = true;
                 // Contexts hosted by (or chained through) the removed file
                 // are cleaned by ContextService::drop_orphaned_choices.
                 dirty.recheck_contexts = true;
@@ -532,13 +519,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 break;
             }
         }
-    }
-
-    // Rescans and removals rewrite forward edges only; the batch pays for
-    // one reverse-map rebuild, not one per file. Cascades walk includers,
-    // which a file's own rescan or removal never changes.
-    if(reverse_map_stale) {
-        project.dep_graph.build_reverse_map();
     }
 
     dedup(dirty.mark_ast_dirty);

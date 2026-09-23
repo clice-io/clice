@@ -67,10 +67,51 @@ llvm::ArrayRef<Fid> DependencyGraph::lookup_module(llvm::StringRef module_name) 
     return {};
 }
 
+void DependencyGraph::link(Fid includer, Fid target) {
+    auto& includers = reverse_includes[target];
+    auto it = llvm::lower_bound(includers, includer);
+    if(it == includers.end() || *it != includer) {
+        includers.insert(it, includer);
+    }
+}
+
+void DependencyGraph::unlink(Fid includer, Fid target) {
+    auto found = reverse_includes.find(target);
+    if(found == reverse_includes.end()) {
+        return;
+    }
+    auto& includers = found->second;
+    auto it = llvm::lower_bound(includers, includer);
+    if(it != includers.end() && *it == includer) {
+        includers.erase(it);
+    }
+    if(includers.empty()) {
+        reverse_includes.erase(found);
+    }
+}
+
 void DependencyGraph::set_includes(Fid path_id,
                                    std::uint32_t config_id,
                                    llvm::SmallVector<IncludeEdge> included) {
     IncludeKey key{path_id, config_id};
+    if(reverse_built) {
+        auto old = includes.find(key);
+        if(old != includes.end()) {
+            auto dropped = std::move(old->second);
+            includes.erase(old);
+            auto still_included = get_all_includes(path_id);
+            for(auto edge: dropped) {
+                if(!llvm::is_contained(still_included, edge.fid) &&
+                   llvm::none_of(included,
+                                 [&](IncludeEdge kept) { return kept.fid == edge.fid; })) {
+                    unlink(path_id, edge.fid);
+                }
+            }
+        }
+        for(auto edge: included) {
+            link(path_id, edge.fid);
+        }
+    }
     includes[key] = std::move(included);
     auto& configs = file_configs[path_id];
     if(std::find(configs.begin(), configs.end(), config_id) == configs.end()) {
@@ -146,12 +187,22 @@ void DependencyGraph::clear_includes(Fid path_id) {
         return;
     }
     for(auto config_id: it->second) {
-        includes.erase(IncludeKey{path_id, config_id});
+        auto key = includes.find(IncludeKey{path_id, config_id});
+        if(key == includes.end()) {
+            continue;
+        }
+        if(reverse_built) {
+            for(auto edge: key->second) {
+                unlink(path_id, edge.fid);
+            }
+        }
+        includes.erase(key);
     }
     file_configs.erase(it);
 }
 
 void DependencyGraph::build_reverse_map() {
+    reverse_built = true;
     reverse_includes.clear();
     for(auto& [key, ids]: includes) {
         for(auto edge: ids) {

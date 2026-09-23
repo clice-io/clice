@@ -284,19 +284,15 @@ struct Project {
     /// its include edges (so host lookups and context queries see includes
     /// the save added or removed), its scanned hash and its module
     /// declaration. The module-graph cascade is the invalidator's job
-    /// (PCMFamily::invalidate), and so is rebuilding the reverse include
-    /// map — once per event batch, not once per rescanned file. Returns
-    /// whether the file's include edges moved, which leaves the reverse
-    /// map stale.
-    bool rescan_after_save(Fid path_id);
+    /// (PCMFamily::invalidate).
+    void rescan_after_save(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a
     /// replacement provider would otherwise sit behind it and never be
     /// selected) and its import syntax (the last import-bearing file must
     /// release the project-wide scan gate), and its outgoing edges go, so
     /// it stops being a host candidate. Incoming edges stay — includers'
-    /// text still names it, and their own rescans own those edges. The
-    /// reverse include map is left to the caller's batch, as for rescans.
+    /// text still names it, and their own rescans own those edges.
     void forget_file(Fid path_id);
 
     /// What rebuilding the dependency graph did to module providers, per

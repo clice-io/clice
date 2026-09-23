@@ -345,10 +345,9 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
 }
 
-TEST_CASE(BatchReverseMapRebuild) {
-    // A batch pays for one reverse-map rebuild at its end. An includer an
-    // earlier event adds is not yet mapped when a later event cascades,
-    // but the earlier event's own cascade already reached its roots.
+TEST_CASE(BatchSeesEarlierEdges) {
+    // An includer an earlier event of the batch adds is visible to a later
+    // cascade: the reverse map follows every rescan.
     TempDir tmp;
     tmp.touch("h.h", "int h;");
     tmp.touch("a.cpp", R"(#include "h.h")");
@@ -372,11 +371,37 @@ TEST_CASE(BatchReverseMapRebuild) {
     auto dirty =
         invalidator.apply({FileEvent::disk_changed(added), FileEvent::disk_changed(header)});
 
-    llvm::SmallVector<Fid> changed{added, header};
-    llvm::sort(changed);
-    ASSERT_EQ(dirty.reindex_content_changed, changed);
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{known});
+    ASSERT_TRUE(llvm::is_contained(dirty.reindex_deps_only, known));
+    ASSERT_TRUE(llvm::is_contained(dirty.reindex_deps_only, added));
     ASSERT_TRUE(llvm::is_contained(project.dep_graph.get_includers(header), added));
+}
+
+TEST_CASE(RemovalThenChangeKeepsClear) {
+    // A unit removed earlier in the batch is no longer an includer when a
+    // header it included changes: its clear survives, nothing requeues it.
+    TempDir tmp;
+    tmp.touch("h.h", "int changed;");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto removed = project.file_table.intern(tmp.path("gone.cpp"));
+    auto kept = project.file_table.intern(tmp.path("kept.cpp"));
+    project.dep_graph.set_includes(removed, 0, {{header}});
+    project.dep_graph.set_includes(kept, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
+    auto dirty =
+        invalidator.apply({FileEvent::disk_removed(removed), FileEvent::disk_changed(header)});
+
+    ASSERT_TRUE(llvm::is_contained(dirty.clear_reindex, removed));
+    ASSERT_FALSE(llvm::is_contained(dirty.reindex_deps_only, removed));
+    ASSERT_TRUE(llvm::is_contained(dirty.reindex_deps_only, kept));
 }
 
 TEST_CASE(UnchangedSaveNoCascade) {

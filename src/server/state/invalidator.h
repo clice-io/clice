@@ -303,11 +303,6 @@ private:
     PCMFamily& pcm;
     const IndexStore& index;
 
-    /// Set when a rescan of the batch in flight moved include edges, or a
-    /// removal dropped them: apply() rebuilds the reverse include map once
-    /// at its end, or before a header's rescan needs it.
-    bool reverse_map_stale = false;
-
     /// Files whose disk content changed while their buffer was open. The
     /// DiskChanged case defers the dependent cascade (the buffer is the
     /// truth until close) and the tracker has already consumed the event,
