@@ -352,23 +352,14 @@ struct FileTable {
         std::int64_t mtime_ns = 0;
     };
 
-    /// Version table, indexed by VersionID. Ids are monotonic and never
-    /// reused — persisted index manifests stay resolvable against any
-    /// later table (or are detected as stale). Within a session the table
-    /// is append-only: persistence garbage-collects unreferenced versions
-    /// from the blob it writes, never from memory, so a version one
-    /// consumer stops referencing can still anchor another consumer's
-    /// staleness check. Adopting a persisted table (load_global) leaves
-    /// the garbage-collected ids as holes — records with an invalid fid
-    /// that nothing references; knows_version tells them apart.
+    /// Version table, indexed by VersionID. The table is append-only:
+    /// persistence garbage-collects unreferenced versions from the blob it
+    /// writes, never from memory, so a version one consumer stops
+    /// referencing can still anchor another consumer's staleness check.
+    /// Persisted indexes name versions by ids of their own
+    /// (index::ProjectIndex maps them), so these ids live one session.
     llvm::SmallVector<FileVersion> versions;
     llvm::DenseMap<std::pair<Fid, std::uint64_t>, VersionID> version_ids;
-
-    /// Whether the id names a live version (in range and not a hole left
-    /// by adopting a garbage-collected persisted table).
-    bool knows_version(VersionID vid) const {
-        return vid.raw < versions.size() && versions[vid.raw].fid.valid();
-    }
 
     /// Bumped whenever a version's stat fast path is written (stamped at
     /// capture or repaired by a check) or revoked (force_revalidate).
@@ -376,14 +367,16 @@ struct FileTable {
     /// table changed under it.
     std::uint64_t stamp_generation = 0;
 
-    /// Bumped only when force_revalidate revokes stamps, and persisted in
-    /// both metadata blobs that carry them (the global blob's version
-    /// table, the artifacts blob's dep records). The blobs commit
-    /// non-atomically, so a crash can land a global recording a revocation
-    /// next to an artifacts blob that predates it — whose stamps
-    /// adopt_stamp would then restore into the revoked holes. Adoption is
-    /// gated on the artifacts blob being at least as revocation-current as
-    /// the loaded global.
+    /// Bumped only when force_revalidate revokes stamps, and persisted —
+    /// offset by each index lineage's own count
+    /// (index::ProjectIndex::revocation_generation) — in both metadata
+    /// blobs that carry them (the global blob's version table, the
+    /// artifacts blob's dep records). The blobs commit non-atomically, so
+    /// a crash can land a global recording a revocation next to an
+    /// artifacts blob that predates it — whose stamps adopt_stamp would
+    /// then restore into the revoked holes. Adoption is gated on the
+    /// artifacts blob being at least as revocation-current as the loaded
+    /// global.
     std::uint64_t revocation_generation = 0;
 
     const FileVersion& version(VersionID vid) const {
@@ -476,9 +469,6 @@ struct FileTable {
         bool revoked = false;
         for(std::uint32_t i = 0; i < versions.size(); i += 1) {
             auto& version = versions[i];
-            if(!version.fid.valid()) {
-                continue;
-            }
             bool same_file = version.fid == fid;
             if(!same_file && entity != ~0u) {
                 auto alias = bindings.find(version.fid);

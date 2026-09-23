@@ -749,16 +749,14 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
         return 1;
     }
     auto& manifest = manifest_it->second;
-    auto version_path = [&](VersionID fv) -> llvm::StringRef {
-        return files.knows_version(fv) ? files.resolve(files.version(fv).fid) : "<unknown>";
+    auto version_path = [&](VersionID fv) {
+        return files.resolve(files.version(fv).fid);
     };
     std::println("translation unit {}", path);
     std::println("  built at {}  generation={}  content hash={}",
                  format_time(manifest.built_at),
                  manifest.global_gen,
-                 format_hash(files.knows_version(manifest.tu_fv)
-                                 ? files.version(manifest.tu_fv).content_hash
-                                 : 0));
+                 format_hash(files.version(manifest.tu_fv).content_hash));
 
     std::println("  contributions={}", manifest.contributions.size());
     for(auto& [fv, hash]: manifest.contributions) {

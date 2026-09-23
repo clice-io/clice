@@ -995,12 +995,9 @@ std::vector<IncludeEdge> IndexQuery::include_edges(Fid file) const {
     }
     auto generation = shard->content_hash();
 
-    auto version_of = [&](VersionID fv) -> const FileTable::FileVersion* {
-        return files.knows_version(fv) ? &files.version(fv) : nullptr;
-    };
     auto is_document = [&](VersionID fv) {
-        const auto* version = version_of(fv);
-        return version && version->fid == file && version->content_hash == generation;
+        auto& version = files.version(fv);
+        return version.fid == file && version.content_hash == generation;
     };
 
     // A directive line of the document is a node whose parent node entered
@@ -1019,13 +1016,9 @@ std::vector<IncludeEdge> IndexQuery::include_edges(Fid file) const {
             if(node.parent == no_node ? !root_is_document : !document_nodes[node.parent]) {
                 continue;
             }
-            const auto* target = version_of(VersionID{node.file});
-            if(!target) {
-                continue;
-            }
             edges.push_back({
                 .line = node.line,
-                .target = std::string(files.resolve(target->fid)),
+                .target = std::string(files.resolve(files.version(VersionID{node.file}).fid)),
             });
         }
     };

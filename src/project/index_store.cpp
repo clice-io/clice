@@ -240,7 +240,7 @@ IndexStore::IndexStore(kota::event_loop& loop, Project& project, CommandResolver
 std::string IndexStore::serialize_artifacts() {
     ArtifactsData data;
     data.pch_index_format = index::index_format_version;
-    data.revocation_generation = project.file_table.revocation_generation;
+    data.revocation_generation = project.project_index.revocation_generation(project.file_table);
     llvm::StringMap<std::uint32_t> index_map;
 
     auto intern = [&](Fid fid) -> std::uint32_t {
@@ -322,7 +322,8 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
     // stamps that revocation dropped; adopting them would undo it (a crash
     // between the two non-atomic blob writes leaves exactly this pair on
     // disk). The dep records themselves stay: they self-validate by hash.
-    bool adopt_stamps = data.revocation_generation >= project.file_table.revocation_generation;
+    bool adopt_stamps = data.revocation_generation >=
+                        project.project_index.revocation_generation(project.file_table);
     auto load_deps = [&](const std::vector<CacheDepEntry>& dep_entries) -> DepsSnapshot {
         DepsSnapshot deps;
         for(auto& dep: dep_entries) {
@@ -780,7 +781,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         it->second.global_gen = project_index.global_generation;
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
-        index::serialize_manifest(it->second, os);
+        index::serialize_manifest(project_index.export_manifest(it->second), os);
         batch.push_back({index::IndexBlobKind::Manifest, std::move(key), std::move(bytes)});
         manifest_ids.push_back(tu_path_id);
     }
@@ -1295,8 +1296,8 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
 
     // Artifact metadata and context choices are index-independent: they
     // load (and self-validate) whatever happened to the global blob. Must
-    // run after load_global though — the deps they intern would otherwise
-    // occupy version ids the blob restores id-for-id.
+    // run after load_global though — the artifacts' stamps are gated on the
+    // revocations the loaded global recorded.
     auto load_metadata = [&] {
         if(auto artifacts = db.read(index::IndexBlobKind::Artifacts, "artifacts")) {
             load_artifacts(artifacts.buffer->getBuffer());
@@ -1380,18 +1381,21 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     db.for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
         auto blob = db.read(index::IndexBlobKind::Manifest, key);
         auto manifest = blob ? index::deserialize_manifest(blob.buffer->getBuffer()) : std::nullopt;
-        auto pin = manifest ? manifest_pins.find(manifest->tu_fv) : manifest_pins.end();
-        if(!manifest || pin == manifest_pins.end() || pin->second != manifest->global_gen ||
-           !project_index.knows_file_versions(project.file_table, *manifest)) {
+        if(!manifest) {
+            dead_manifests.push_back(key.str());
+            return;
+        }
+        auto tu_fv = project_index.runtime_version(manifest->tu_fv.raw);
+        bool imported = project_index.import_manifest(*manifest);
+        auto pin = imported ? manifest_pins.find(manifest->tu_fv) : manifest_pins.end();
+        if(pin == manifest_pins.end() || pin->second != manifest->global_gen) {
             dead_manifests.push_back(key.str());
             // The manifest raced a crash ahead of the global blob (its own
             // pin never landed). When the TU's version is still resolvable,
             // re-enqueue it: the CDB sweep never covers standalone-indexed
             // headers.
-            if(manifest) {
-                if(project.file_table.knows_version(manifest->tu_fv)) {
-                    report.add_reindex(project.file_table.version(manifest->tu_fv).fid);
-                }
+            if(tu_fv) {
+                report.add_reindex(project.file_table.version(*tu_fv).fid);
             }
             return;
         }
