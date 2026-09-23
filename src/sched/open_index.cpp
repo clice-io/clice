@@ -79,7 +79,8 @@ bool open_index(Workspace& workspace,
 }
 
 std::optional<LoadedIndex> load_index(Workspace& workspace,
-                                      ContextResolver& contexts,
+                                      CommandResolver& commands,
+                                      ContextsOwner* contexts,
                                       llvm::StringRef root,
                                       llvm::StringRef requested_configuration,
                                       bool with_build) {
@@ -89,7 +90,10 @@ std::optional<LoadedIndex> load_index(Workspace& workspace,
     // The store is the writer's engine; its load is the only reader of
     // manifests, and never saves on a read-only database.
     kota::event_loop loop;
-    IndexStore store{loop, workspace, contexts};
+    IndexStore store{loop, workspace, commands};
+    if(contexts) {
+        store.attach_contexts(*contexts);
+    }
     auto loaded = store.load({.read_only = true, .borrow = true});
     if(!loaded.decoded) {
         LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",

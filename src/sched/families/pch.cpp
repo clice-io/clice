@@ -9,11 +9,8 @@
 
 namespace clice {
 
-PCHFamily::PCHFamily(TaskGraph& graph,
-                     Workspace& workspace,
-                     ContextResolver& contexts,
-                     WorkerPool& pool) :
-    graph(graph), workspace(workspace), contexts(contexts), pool(pool) {}
+PCHFamily::PCHFamily(TaskGraph& graph, Workspace& workspace, WorkerPool& pool) :
+    graph(graph), workspace(workspace), pool(pool) {}
 
 void PCHFamily::register_runner() {
     graph.register_family(Family::PCH,

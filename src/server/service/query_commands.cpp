@@ -179,8 +179,8 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path
     // cache artifact a read-only reader cannot produce; the host's bare
     // command would be a different compile.
     auto needs_context = [&](Fid file) {
-        auto* choice = ctx.contexts.selection(ContextUse::Editor, file);
-        return ctx.contexts.header_mode(path, file) == HeaderMode::NeedsContext ||
+        auto* choice = ctx.contexts.selection(file);
+        return ctx.contexts.commands.header_mode(path, file) == HeaderMode::NeedsContext ||
                (choice && choice->host_path_id.valid() && choice->occurrence.has_value());
     };
     if(auto file = ctx.workspace.file_table.find(path); file && needs_context(*file)) {
@@ -189,8 +189,7 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path
             std::string_view(path)));
     }
     CompileCommandResult result{.file = std::string(path)};
-    auto source =
-        ctx.contexts.resolve_command(path, result.directory, result.arguments, ContextUse::Editor);
+    auto source = ctx.contexts.resolve_command(path, result.directory, result.arguments).source;
     switch(source) {
         case CommandSource::CDBExact: result.source = "database"; break;
         case CommandSource::IncludeGraph: result.source = "host"; break;

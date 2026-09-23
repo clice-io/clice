@@ -75,7 +75,7 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
     // host, and an un-trialed header may turn out the same way, so
     // every host stays a distinct context for both.
     llvm::StringSet<> seen_configs;
-    bool dedup_hosts = resolver.header_mode(path, path_id) == HeaderMode::SelfContained;
+    bool dedup_hosts = editor.commands.header_mode(path, path_id) == HeaderMode::SelfContained;
 
     for(auto host_id: ranked_hosts(ws, path_id)) {
         auto commands = host_commands(ws, path_id, host_id);
@@ -169,8 +169,7 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
                                                           const Session* session,
                                                           const ext::CurrentContextParams& params) {
     ext::CurrentContextResult result;
-    const Selection* choice =
-        session ? resolver.selection(ContextUse::Editor, session->path_id) : nullptr;
+    const Selection* choice = session ? editor.selection(session->path_id) : nullptr;
     if(choice && choice->host_path_id.valid()) {
         auto ctx_path = workspace.file_table.resolve(choice->host_path_id);
         auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
@@ -292,13 +291,13 @@ kota::task<ext::SwitchContextResult>
         saved.base_hash = base.value_or("");
     }
 
-    resolver.drop_header_context(path_id);
+    editor.drop_header_context(path_id);
     // The new context is a different compilation identity: supersede any
     // in-flight compile and drop the state earned under the old one. It
     // also needs its own self-containment trial — a different host can
     // change the macro environment.
     ast.switch_identity(*session);
-    resolver.forget_self_contained(path_id);
+    editor.commands.forget_self_contained(path_id);
 
     // The table entry is the active choice; persist it across sessions:
     // the ticket resolves once a write batch whose snapshot covers this
@@ -307,15 +306,15 @@ kota::task<ext::SwitchContextResult>
     // the event without advancing the epoch; after a few such wakeups the
     // request reports failure instead of parking forever on a disk that
     // cannot take the metadata (the choice stays active in memory).
-    resolver.selections[path_id] = std::move(saved);
-    ws.mark_contexts_dirty();
-    auto ticket = ws.contexts_epoch;
+    editor.selections[path_id] = std::move(saved);
+    editor.mark_dirty();
+    auto ticket = editor.epoch;
     int failed_saves = 0;
     while(ws.request_flush && ws.index_db && !ws.index_db->read_only() &&
-          ws.committed_contexts_epoch < ticket) {
-        auto seen = ws.committed_contexts_epoch;
-        co_await ws.contexts_committed.wait();
-        if(ws.committed_contexts_epoch == seen) {
+          editor.committed_epoch < ticket) {
+        auto seen = editor.committed_epoch;
+        co_await editor.committed.wait();
+        if(editor.committed_epoch == seen) {
             failed_saves += 1;
             if(failed_saves >= 3) {
                 co_return result;
@@ -363,8 +362,8 @@ ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::String
 bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
     bool dropped_saved = false;
     for(auto& [session_id, session]: sessions.sessions) {
-        auto it = resolver.selections.find(session_id);
-        if(it == resolver.selections.end()) {
+        auto it = editor.selections.find(session_id);
+        if(it == editor.selections.end()) {
             continue;
         }
         auto& saved = it->second;
@@ -384,19 +383,19 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
             if(!orphaned && !saved.command_hash.empty()) {
                 llvm::StringRef edit_paths[] = {workspace.file_table.resolve(host_id),
                                                 workspace.file_table.resolve(session_id)};
-                orphaned = !resolver.pin_alive(host_id, edit_paths, saved);
+                orphaned = !editor.pin_alive(host_id, edit_paths, saved);
             }
         } else if(!saved.command_hash.empty()) {
             // Own-entry pin: the pinned command must still exist in the CDB.
             orphaned =
-                !resolver.pin_alive(session_id, workspace.file_table.resolve(session_id), saved);
+                !editor.pin_alive(session_id, workspace.file_table.resolve(session_id), saved);
         }
         if(orphaned) {
             LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
                      workspace.file_table.resolve(session_id));
-            resolver.drop_header_context(session_id);
+            editor.drop_header_context(session_id);
             ast.switch_identity(*session);
-            resolver.selections.erase(it);
+            editor.selections.erase(it);
             dropped_saved = true;
         }
     }

@@ -1,7 +1,5 @@
-#include "sched/context.h"
+#include "sched/command_resolver.h"
 
-#include <algorithm>
-#include <chrono>
 #include <format>
 #include <optional>
 #include <string>
@@ -18,7 +16,6 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -78,7 +75,7 @@ static Candidate pick_pinned_config(Workspace& workspace,
     return candidates.front();
 }
 
-HeaderMode ContextResolver::header_mode(llvm::StringRef path, Fid path_id) const {
+HeaderMode CommandResolver::header_mode(llvm::StringRef path, Fid path_id) const {
     if(is_context_header_path(path)) {
         return HeaderMode::NeedsContext;
     }
@@ -88,14 +85,14 @@ HeaderMode ContextResolver::header_mode(llvm::StringRef path, Fid path_id) const
     return HeaderMode::Unknown;
 }
 
-void ContextResolver::forget_self_contained(Fid path_id) {
+void CommandResolver::forget_self_contained(Fid path_id) {
     if(auto it = header_verdicts.find(path_id);
        it != header_verdicts.end() && it->second.mode == HeaderMode::SelfContained) {
         header_verdicts.erase(it);
     }
 }
 
-std::uint64_t ContextResolver::persisted_mode_hash(Fid path_id) const {
+std::uint64_t CommandResolver::persisted_mode_hash(Fid path_id) const {
     auto it = header_verdicts.find(path_id);
     if(it == header_verdicts.end() || it->second.mode != HeaderMode::NeedsContext) {
         return 0;
@@ -103,7 +100,7 @@ std::uint64_t ContextResolver::persisted_mode_hash(Fid path_id) const {
     return it->second.content_hash;
 }
 
-void ContextResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint64_t content_hash) {
+void CommandResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint64_t content_hash) {
     auto persisted = persisted_mode_hash(path_id);
     header_verdicts[path_id] = {
         .mode = mode,
@@ -114,14 +111,14 @@ void ContextResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint
     }
 }
 
-void ContextResolver::reset_header_mode(Fid path_id) {
+void CommandResolver::reset_header_mode(Fid path_id) {
     if(persisted_mode_hash(path_id) != 0) {
         workspace.mark_artifacts_dirty();
     }
     header_verdicts.erase(path_id);
 }
 
-void ContextResolver::dump_mode_slices(std::vector<CacheModeEntry>& modes,
+void CommandResolver::dump_mode_slices(std::vector<CacheModeEntry>& modes,
                                        llvm::function_ref<std::uint32_t(Fid)> intern_id) const {
     for(auto& [path_id, verdict]: header_verdicts) {
         // A verdict scored with no disk observation (hash 0) cannot be
@@ -135,27 +132,7 @@ void ContextResolver::dump_mode_slices(std::vector<CacheModeEntry>& modes,
     }
 }
 
-void ContextResolver::dump_choice_slices(
-    std::vector<CacheContextEntry>& contexts,
-    std::vector<CacheArtifactEntry>& artifacts,
-    llvm::function_ref<std::uint32_t(Fid)> intern_id,
-    llvm::function_ref<std::uint32_t(llvm::StringRef)> intern_path) const {
-    for(auto& entry: synthesized_hosts) {
-        artifacts.push_back({intern_path(entry.getKey()), intern_id(entry.second)});
-    }
-
-    for(auto& [path_id, saved]: selections) {
-        CacheContextEntry entry;
-        entry.file = intern_id(path_id);
-        entry.host = saved.host_path_id.valid() ? intern_id(saved.host_path_id) : ~0u;
-        entry.occurrence = saved.occurrence.value_or(~0u);
-        entry.command_hash = saved.command_hash;
-        entry.base_hash = saved.base_hash;
-        contexts.push_back(std::move(entry));
-    }
-}
-
-void ContextResolver::load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
+void CommandResolver::load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
                                        llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
     for(auto& entry: modes) {
         auto file = resolve(entry.file);
@@ -172,45 +149,6 @@ void ContextResolver::load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
             continue;
         header_verdicts[id] = {.mode = HeaderMode::NeedsContext,
                                .content_hash = entry.content_hash};
-    }
-}
-
-void ContextResolver::load_choice_slices(
-    llvm::ArrayRef<CacheContextEntry> contexts,
-    llvm::ArrayRef<CacheArtifactEntry> artifacts,
-    llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
-    for(auto& entry: contexts) {
-        auto file = resolve(entry.file);
-        if(file.empty())
-            continue;
-        Selection saved;
-        if(entry.host != ~0u) {
-            auto host = resolve(entry.host);
-            if(host.empty())
-                continue;
-            saved.host_path_id = workspace.file_table.intern(host);
-        }
-        if(entry.occurrence != ~0u) {
-            saved.occurrence = entry.occurrence;
-        }
-        saved.command_hash = entry.command_hash;
-        saved.base_hash = entry.base_hash;
-        selections[workspace.file_table.intern(file)] = std::move(saved);
-    }
-
-    for(auto& entry: artifacts) {
-        auto file = resolve(entry.file);
-        auto host = resolve(entry.host);
-        if(file.empty() || host.empty())
-            continue;
-        // A file the store evicted since (or a wiped cache) has nothing
-        // left to open under the host's command; the record leaves the
-        // blob with the next save.
-        if(!llvm::sys::fs::exists(file)) {
-            workspace.mark_contexts_dirty();
-            continue;
-        }
-        synthesized_hosts[file] = workspace.file_table.intern(host);
     }
 }
 
@@ -232,37 +170,12 @@ static bool artifacts_alive(Workspace& workspace, const HeaderContext& context) 
            artifact_alive(workspace, context.snapshot_path);
 }
 
-void ContextResolver::drop_evicted_artifacts() {
-    llvm::SmallVector<std::string> gone;
-    for(auto& entry: synthesized_hosts) {
-        if(!llvm::sys::fs::exists(entry.getKey())) {
-            gone.push_back(entry.getKey().str());
-        }
-    }
-    for(auto& path: gone) {
-        synthesized_hosts.erase(path);
-    }
-    if(!gone.empty()) {
-        workspace.mark_contexts_dirty();
-    }
-}
-
-void ContextResolver::record_synthesized_host(llvm::StringRef path, Fid host_path_id) {
-    auto [it, inserted] = synthesized_hosts.try_emplace(path, host_path_id);
-    if(!inserted && it->second == host_path_id) {
-        return;
-    }
-    it->second = host_path_id;
-    workspace.mark_contexts_dirty();
-}
-
-bool ContextResolver::fill_header_context_args(llvm::StringRef path,
+bool CommandResolver::fill_header_context_args(llvm::StringRef path,
                                                Fid path_id,
                                                std::string& directory,
                                                std::vector<std::string>& arguments,
-                                               ContextUse use,
-                                               Fid* host_path_id,
-                                               CommandRef* out_ref) {
+                                               const CommandRequest& request,
+                                               Resolution& resolution) {
     // Opening one of our own synthesized files (prefix/suffix/snapshot):
     // it is a fragment of the host TU it was synthesized for, so compile
     // it with that host's command, treated as self-contained. It must not
@@ -270,8 +183,11 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     // host (e.g. a stale artifact from a wiped cache), fall through to
     // the default command.
     if(workspace.is_synthesized_artifact(path)) {
-        auto it = synthesized_hosts.find(path);
-        if(it == synthesized_hosts.end()) {
+        if(!request.synthesized_hosts) {
+            return false;
+        }
+        auto it = request.synthesized_hosts->find(path);
+        if(it == request.synthesized_hosts->end()) {
             return false;
         }
         auto host_path = workspace.file_table.resolve(it->second);
@@ -289,12 +205,8 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
                                            host_path);
         directory = workspace.cdb.config(ref.config).directory;
         arguments = to_strings(workspace.cdb.render(ref));
-        if(host_path_id) {
-            *host_path_id = it->second;
-        }
-        if(out_ref) {
-            *out_ref = ref;
-        }
+        resolution.host = it->second;
+        resolution.ref = ref;
         return true;
     }
 
@@ -304,7 +216,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     // diagnostics indicate missing includer state. An explicitly chosen
     // occurrence — even #0 — only has meaning under includer-context
     // semantics, so it forces synthesis regardless of the verdict.
-    const Selection* choice = selection(use, path_id);
+    const Selection* choice = request.selection;
     bool has_host_choice = choice && choice->host_path_id.valid();
     // A synthesized context is a store artifact; a read-only reader (the
     // query command) compiles the header under its host's command instead.
@@ -319,35 +231,40 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     // content, so it must be rebuilt). Only editor-facing compiles consult
     // the cache; background indexing must stay independent of per-editor
     // context state, so it resolves fresh every time.
-    if(use == ContextUse::Editor) {
-        if(auto* cached = header_context(path_id)) {
+    auto* cache = request.header_contexts;
+    if(cache) {
+        if(auto cached = cache->find(path_id); cached != cache->end()) {
+            auto& context = cached->second;
             bool override_mismatch =
-                has_host_choice && (cached->host_path_id != choice->host_path_id ||
-                                    cached->occurrence != choice->occurrence.value_or(0) ||
-                                    cached->host_command_hash != choice->command_hash ||
-                                    cached->host_base_hash != choice->base_hash);
-            bool mode_mismatch = cached->preamble_path.empty() == synthesize;
+                has_host_choice && (context.host_path_id != choice->host_path_id ||
+                                    context.occurrence != choice->occurrence.value_or(0) ||
+                                    context.host_command_hash != choice->command_hash ||
+                                    context.host_base_hash != choice->base_hash);
+            bool mode_mismatch = context.preamble_path.empty() == synthesize;
             auto wave = workspace.file_table.wave();
-            if(override_mismatch || mode_mismatch || !artifacts_alive(workspace, *cached) ||
-               deps_changed(workspace.file_table, cached->deps)) {
-                drop_header_context(path_id);
+            if(override_mismatch || mode_mismatch || !artifacts_alive(workspace, context) ||
+               deps_changed(workspace.file_table, context.deps)) {
+                cache->erase(cached);
             }
         }
     }
 
     std::optional<HeaderContext> local_ctx;
-    const HeaderContext* ctx_ptr = use == ContextUse::Editor ? header_context(path_id) : nullptr;
+    const HeaderContext* ctx_ptr = nullptr;
+    if(cache) {
+        if(auto cached = cache->find(path_id); cached != cache->end()) {
+            ctx_ptr = &cached->second;
+        }
+    }
     if(!ctx_ptr) {
-        auto resolved = resolve_header_context(path_id, use, synthesize);
+        auto resolved = resolve_header_context(path_id, choice, synthesize, resolution.synthesized);
         if(!resolved) {
             LOG_WARN("No CDB entry and no header context for {}", path);
             return false;
         }
-        if(use == ContextUse::Editor) {
-            ctx_ptr = &(header_contexts[path_id] = std::move(*resolved));
+        if(cache) {
+            ctx_ptr = &((*cache)[path_id] = std::move(*resolved));
         } else {
-            // Background indexing stays independent of per-editor context
-            // state: resolve fresh, cache nothing.
             local_ctx = std::move(*resolved);
             ctx_ptr = &*local_ctx;
         }
@@ -384,12 +301,8 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     }
     directory = workspace.cdb.config(ref.config).directory;
     arguments = to_strings(workspace.cdb.render(ref, opts));
-    if(host_path_id) {
-        *host_path_id = ctx_ptr->host_path_id;
-    }
-    if(out_ref) {
-        *out_ref = ref;
-    }
+    resolution.host = ctx_ptr->host_path_id;
+    resolution.ref = ref;
 
     LOG_INFO("resolve_command: header context for {} (host={}, preamble={})",
              path,
@@ -398,16 +311,13 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     return true;
 }
 
-CommandSource ContextResolver::resolve_command(llvm::StringRef path,
-                                               std::string& directory,
-                                               std::vector<std::string>& arguments,
-                                               ContextUse use,
-                                               Fid* host_path_id,
-                                               llvm::ArrayRef<std::string> extra_prepend,
-                                               llvm::ArrayRef<std::string> extra_append,
-                                               CommandRef* out_ref) {
+Resolution CommandResolver::resolve_command(llvm::StringRef path,
+                                            std::string& directory,
+                                            std::vector<std::string>& arguments,
+                                            const CommandRequest& request) {
     auto path_id = workspace.file_table.intern(path);
     llvm::SmallVector<llvm::StringRef, 4> tried;
+    Resolution resolution;
 
     // Render `base` with the rule edits of `paths` applied: an entry, a
     // default command, a borrowed or the builtin one alike.
@@ -415,79 +325,60 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
                     CommandSource source,
                     llvm::ArrayRef<llvm::StringRef> paths,
                     llvm::StringRef language_path) {
-        auto ref =
-            workspace.build
-                .resolve(path_id, base, source, paths, language_path, extra_prepend, extra_append);
+        auto ref = workspace.build.resolve(path_id,
+                                           base,
+                                           source,
+                                           paths,
+                                           language_path,
+                                           request.extra_prepend,
+                                           request.extra_append);
         directory = workspace.cdb.config(ref.config).directory;
         arguments = to_strings(workspace.cdb.render(ref));
-        if(out_ref) {
-            *out_ref = ref;
-        }
+        resolution.ref = ref;
     };
 
-    auto fill_from_cdb = [&](llvm::ArrayRef<Candidate> candidates) -> CommandSource {
-        // Multi-config projects: honor the user's chosen entry, matched by
-        // entry hash so the choice survives reordering.
-        llvm::StringRef pinned_hash, pinned_base;
-        const Selection* choice = selection(use, path_id);
-        if(choice && !choice->host_path_id.valid()) {
-            pinned_hash = choice->command_hash;
-            pinned_base = choice->base_hash;
-        }
-        auto picked = pick_pinned_config(workspace,
-                                         path_id,
-                                         candidates,
-                                         path,
-                                         path,
-                                         pinned_hash,
-                                         pinned_base);
-        fill(picked.config, picked.source, path, path);
-        return picked.source;
+    auto settle = [&](CommandSource source) {
+        resolution.source = source;
+        log_command_decision(path, tried, source, arguments);
+        return std::move(resolution);
     };
 
-    const Selection* choice = selection(use, path_id);
+    const Selection* choice = request.selection;
     bool has_host_choice = choice && choice->host_path_id.valid();
-    guessed_commands.erase(path_id);
 
     // 1. If the file has an active header context via switchContext, use the
     //    host source's CDB entry with file path replaced and preamble injected.
     if(has_host_choice) {
         tried.push_back("switch_context");
-        if(fill_header_context_args(path,
-                                    path_id,
-                                    directory,
-                                    arguments,
-                                    use,
-                                    host_path_id,
-                                    out_ref)) {
-            log_command_decision(path, tried, CommandSource::IncludeGraph, arguments);
-            return CommandSource::IncludeGraph;
+        if(fill_header_context_args(path, path_id, directory, arguments, request, resolution)) {
+            return settle(CommandSource::IncludeGraph);
         }
     }
 
     // 2. The file's own command: a database entry, or the default command
     //    of a source the build compiles as a unit. A header's default
     //    command is only the last resort below, after host inference.
+    //    Multi-config projects honor the user's chosen entry, matched by
+    //    entry hash so the choice survives reordering.
     tried.push_back("cdb");
     auto commands = workspace.build.commands(path_id);
     if(workspace.build.unit(path_id)) {
-        auto source = fill_from_cdb(commands);
-        log_command_decision(path, tried, source, arguments);
-        return source;
+        llvm::StringRef pinned_hash, pinned_base;
+        if(choice && !has_host_choice) {
+            pinned_hash = choice->command_hash;
+            pinned_base = choice->base_hash;
+        }
+        auto picked =
+            pick_pinned_config(workspace, path_id, commands, path, path, pinned_hash, pinned_base);
+        fill(picked.config, picked.source, path, path);
+        return settle(picked.source);
     }
 
     // 3. No CDB entry — try automatic header context resolution.
     if(!has_host_choice) {
         tried.push_back("include_graph");
-        if(fill_header_context_args(path,
-                                    path_id,
-                                    directory,
-                                    arguments,
-                                    use,
-                                    host_path_id,
-                                    out_ref)) {
-            log_command_decision(path, tried, CommandSource::IncludeGraph, arguments);
-            return CommandSource::IncludeGraph;
+        if(fill_header_context_args(path, path_id, directory, arguments, request, resolution)) {
+            return settle(CommandSource::IncludeGraph);
         }
     }
 
@@ -496,61 +387,38 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     if(!commands.empty()) {
         tried.push_back("default");
         fill(commands.front().config, CommandSource::Default, path, path);
-        log_command_decision(path, tried, CommandSource::Default, arguments);
-        return CommandSource::Default;
+        return settle(CommandSource::Default);
     }
 
     // 5. A nearby unit's command: the file compiles as that unit's
     //    language, under its command edited for both files.
     tried.push_back("inferred");
-    guessed_commands.insert(path_id);
     if(auto lender = command_lender(workspace, path_id)) {
         auto lender_path = workspace.file_table.resolve(lender->unit);
         llvm::StringRef edit_paths[] = {path, lender_path};
         fill(lender->config, CommandSource::Inferred, edit_paths, lender_path);
         LOG_INFO("resolve_command: {} borrows the command of {}", path, lender_path);
-        log_command_decision(path, tried, CommandSource::Inferred, arguments);
-        return CommandSource::Inferred;
+        return settle(CommandSource::Inferred);
     }
 
     // 6. The builtin fallback, so the file still compiles and produces
     //    diagnostics instead of failing silently.
     tried.push_back("fallback");
     fill(workspace.build.builtin(path), CommandSource::Fallback, path, path);
-    log_command_decision(path, tried, CommandSource::Fallback, arguments);
-    return CommandSource::Fallback;
+    return settle(CommandSource::Fallback);
 }
 
-void ContextResolver::append_suffix_include(Fid path_id, std::string& text) {
-    auto* context = header_context(path_id);
-    if(!context || context->suffix_path.empty()) {
-        return;
-    }
-    if(!text.ends_with('\n')) {
-        text += '\n';
-    }
-    text += "#include \"";
-    // Escape like preamble_synthesis's line markers: Windows separators
-    // must survive the preprocessor's string literal parsing.
-    for(char c: context->suffix_path) {
-        if(c == '\\' || c == '"') {
-            text += '\\';
-        }
-        text += c;
-    }
-    text += "\"\n";
-}
-
-std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_path_id,
-                                                                     ContextUse use,
-                                                                     bool synthesize) {
+std::optional<HeaderContext>
+    CommandResolver::resolve_header_context(Fid header_path_id,
+                                            const Selection* choice,
+                                            bool synthesize,
+                                            llvm::SmallVectorImpl<std::string>& synthesized_files) {
     // A pinned host (and its chosen include occurrence) wins while it
     // still compiles and still includes the header; otherwise the build's
     // default host.
     Fid host_path_id;
     std::optional<std::uint32_t> occurrence;
     std::vector<Fid> chain;
-    const Selection* choice = selection(use, header_path_id);
     bool has_host_choice = choice && choice->host_path_id.valid();
     if(has_host_choice) {
         auto preferred = choice->host_path_id;
@@ -724,7 +592,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
             return std::nullopt;
         }
         self_snapshot_path = std::move(*stored);
-        record_synthesized_host(self_snapshot_path, host_path_id);
+        synthesized_files.push_back(self_snapshot_path);
     }
 
     auto synthesized =
@@ -743,7 +611,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
         return std::nullopt;
     }
     auto preamble_path = std::move(*stored_preamble);
-    record_synthesized_host(preamble_path, host_path_id);
+    synthesized_files.push_back(preamble_path);
 
     // The suffix restores everything after the include position (closing
     // braces of enums/functions the fragment is embedded in). Injected by
@@ -756,7 +624,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
             return std::nullopt;
         }
         suffix_path = std::move(*stored);
-        record_synthesized_host(suffix_path, host_path_id);
+        synthesized_files.push_back(suffix_path);
     }
 
     // The chain files' snapshot (`deps`) was recorded as they were read:
@@ -785,56 +653,6 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
                          std::move(host_base_hash),
                          std::move(chain_ids),
                          std::move(deps)};
-}
-
-bool ContextResolver::pin_alive(Fid entry_file,
-                                llvm::ArrayRef<llvm::StringRef> paths,
-                                const Selection& saved) const {
-    auto entry_path = workspace.file_table.resolve(entry_file);
-    for(auto& entry: workspace.build.commands(entry_file)) {
-        if(!saved.base_hash.empty() &&
-           workspace.cdb.entry_hash_hex(entry.config) == saved.base_hash) {
-            return true;
-        }
-        auto ref =
-            workspace.build.resolve(entry_file, entry.config, entry.source, paths, entry_path);
-        if(workspace.cdb.entry_hash_hex(ref.config) == saved.command_hash) {
-            return true;
-        }
-    }
-    return false;
-}
-
-void ContextResolver::validate_saved_context(Fid path_id) {
-    auto path = workspace.file_table.resolve(path_id);
-
-    // A context choice persisted from an earlier session stays authoritative
-    // only if it still holds: the CDB or include graph may have changed
-    // while the server was down, and a stale choice suppresses automatic
-    // host resolution and strands the file on the fallback command.
-    if(auto it = selections.find(path_id); it != selections.end()) {
-        auto& ws = workspace;
-        auto& saved = it->second;
-
-        bool valid = false;
-        if(saved.host_path_id.valid()) {
-            auto host_path = ws.file_table.resolve(saved.host_path_id);
-            llvm::StringRef edit_paths[] = {host_path, path};
-            valid =
-                !ws.build.commands(saved.host_path_id).empty() &&
-                !ws.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
-                (saved.command_hash.empty() || pin_alive(saved.host_path_id, edit_paths, saved));
-        } else if(!saved.command_hash.empty()) {
-            valid = !ws.build.commands(path_id).empty() && pin_alive(path_id, path, saved);
-        }
-        if(!valid) {
-            LOG_INFO("didOpen: dropping stale saved context for {}", path);
-            selections.erase(it);
-            // The drop must reach the contexts blob, or the stale choice
-            // resurrects from disk at the next start.
-            workspace.mark_contexts_dirty();
-        }
-    }
 }
 
 }  // namespace clice

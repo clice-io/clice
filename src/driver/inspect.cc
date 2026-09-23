@@ -12,8 +12,8 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/bootstrap.h"
+#include "sched/command_resolver.h"
 #include "sched/configuration.h"
-#include "sched/context.h"
 #include "sched/workspace.h"
 #include "semantic/content.h"
 #include "support/filesystem.h"
@@ -564,7 +564,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
                                         const std::string& file,
                                         llvm::ArrayRef<std::string> flags,
                                         llvm::StringRef flags_directory,
-                                        ContextResolver* contexts) {
+                                        CommandResolver* commands) {
     namespace types = clang::driver::types;
     auto type = suffix_type(file);
     bool is_header = is_header_type(type);
@@ -605,7 +605,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         return command;
     }
 
-    contexts->resolve_command(file, command.directory, command.arguments, ContextUse::Background);
+    commands->resolve_command(file, command.directory, command.arguments);
     return command;
 }
 
@@ -866,7 +866,7 @@ int run_inspect(const InspectOptions& opts) {
     llvm::StringRef unit_directory =
         is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
     Workspace workspace;
-    ContextResolver contexts(workspace);
+    CommandResolver commands(workspace);
     if(!flags.empty() && opts.configuration.has_value()) {
         LOG_ERROR("--configuration selects among the workspace's rules; --flags replaces them");
         return 1;
@@ -945,7 +945,7 @@ int run_inspect(const InspectOptions& opts) {
                             file.abs,
                             flags,
                             unit_directory,
-                            flags.empty() ? &contexts : nullptr);
+                            flags.empty() ? &commands : nullptr);
     };
 
     // Serial module builder (directory mode): scan for module declarations

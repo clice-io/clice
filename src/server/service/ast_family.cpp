@@ -8,10 +8,10 @@
 
 #include "command/argument_parser.h"
 #include "index/tu_index.h"
-#include "sched/context.h"
 #include "sched/families/build_common.h"
 #include "server/protocol/position.h"
 #include "server/service/context_service.h"
+#include "server/state/editor_context.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -120,7 +120,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
 }
 
 ASTFamily::ASTFamily(Workspace& workspace,
-                     ContextResolver& contexts,
+                     EditorContext& contexts,
                      TaskGraph& graph,
                      PCMFamily& pcm,
                      PCHFamily& pch,
@@ -476,10 +476,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.path = file_path;
         params.version = session->version;
         params.text = session->text;
-        auto source = contexts.resolve_command(file_path,
-                                               params.directory,
-                                               params.arguments,
-                                               ContextUse::Editor);
+        auto source =
+            contexts.resolve_command(file_path, params.directory, params.arguments).source;
 
         // The line the appended suffix #include lands on — anything at or
         // past it is phantom text the user cannot see.
@@ -498,7 +496,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // the prefix; the landing gates what the probe may write.
         bool trial_round = attempt == 0 && !session->trial_done && header_context &&
                            header_context->preamble_path.empty() &&
-                           contexts.header_mode(file_path, path_id) == HeaderMode::Unknown;
+                           contexts.commands.header_mode(file_path, path_id) == HeaderMode::Unknown;
 
         switch(co_await depend_modules(ctx,
                                        path_id,
@@ -786,14 +784,14 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                     kota::codec::json::from_string(result.value().diagnostics.data, diagnostics);
             }
             session->trial_done = true;
-            contexts.record_header_mode(path_id, HeaderMode::SelfContained);
+            contexts.commands.record_header_mode(path_id, HeaderMode::SelfContained);
 
             if(indicates_missing_context(diagnostics)) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
                 auto disk = workspace.file_table.current(path_id);
-                contexts.record_header_mode(path_id,
-                                            HeaderMode::NeedsContext,
-                                            disk ? disk->hash : 0);
+                contexts.commands.record_header_mode(path_id,
+                                                     HeaderMode::NeedsContext,
+                                                     disk ? disk->hash : 0);
                 contexts.drop_header_context(path_id);
                 adopted_pch.reset();
                 continue;

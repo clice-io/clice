@@ -14,7 +14,7 @@
 
 namespace clice {
 
-/// Defined in sched/context.h — the resolver reports where
+/// Defined in sched/command_resolver.h — the resolver reports where
 /// the compile command came from; the projection only stores the verdict.
 enum class CommandSource : std::uint8_t;
 

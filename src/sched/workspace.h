@@ -25,7 +25,6 @@
 #include "syntax/dependency_graph.h"
 #include "vfs/file_table.h"
 
-#include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -34,8 +33,6 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
-
-class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
@@ -329,22 +326,11 @@ struct Workspace {
     /// reopens the blob from disk.
     void enforce_loaded_budget();
 
-    /// Persistence signals for the metadata the index database carries
-    /// beyond the index itself: artifact validity (PCH/PCM records, header
-    /// modes) and user context choices. Producers mark; the single write
-    /// pipeline (IndexStore::save) flushes both on its next run. Only the
-    /// contexts blob has a durability waiter (switchContext), so only it
-    /// carries an epoch: the ticket resolves once a save whose snapshot
-    /// covers the mark commits that blob — independent of the artifacts
-    /// blob, whose failures retry through the dirty flag alone and must
-    /// not hold a context ack hostage. `contexts_committed` pulses after
-    /// every attempt, failed ones included, so waiters can give up on a
-    /// disk that cannot take the write.
+    /// Persistence signal for the artifact validity metadata (PCH/PCM
+    /// records, header modes) the index database carries beyond the index
+    /// itself: producers mark, the single write pipeline (IndexStore::save)
+    /// flushes it on its next run.
     bool artifacts_dirty = false;
-    bool contexts_dirty = false;
-    std::uint64_t contexts_epoch = 0;
-    std::uint64_t committed_contexts_epoch = 0;
-    kota::event contexts_committed;
 
     /// Wired by the master to schedule a flush soon after a mark; unset
     /// (tests, batch tools) means the owner saves on its own cadence.
@@ -352,14 +338,6 @@ struct Workspace {
 
     void mark_artifacts_dirty() {
         artifacts_dirty = true;
-        if(request_flush) {
-            request_flush();
-        }
-    }
-
-    void mark_contexts_dirty() {
-        contexts_dirty = true;
-        contexts_epoch += 1;
         if(request_flush) {
             request_flush();
         }

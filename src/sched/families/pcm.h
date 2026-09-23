@@ -4,7 +4,7 @@
 #include <functional>
 #include <optional>
 
-#include "sched/context.h"
+#include "sched/command_resolver.h"
 #include "sched/graph.h"
 #include "sched/workspace.h"
 #include "worker/pool.h"
@@ -29,7 +29,7 @@ namespace clice {
 /// identity, edges, rounds and interest.
 class PCMFamily {
 public:
-    PCMFamily(TaskGraph& graph, Workspace& workspace, ContextResolver& contexts, WorkerPool& pool);
+    PCMFamily(TaskGraph& graph, Workspace& workspace, CommandResolver& commands, WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic topology register their own runner under
@@ -140,7 +140,7 @@ private:
 
     TaskGraph& graph;
     Workspace& workspace;
-    ContextResolver& contexts;
+    CommandResolver& commands;
     WorkerPool& pool;
 };
 

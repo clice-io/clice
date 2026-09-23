@@ -42,11 +42,12 @@ constexpr static std::size_t notify_log_limit = 128;
 MasterServer::MasterServer(kota::event_loop& loop,
                            std::string self_path,
                            std::string requested_configuration) :
-    loop(loop), pool(loop), contexts(workspace),
+    loop(loop), pool(loop),
     index_query(workspace.project_index, workspace.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, workspace, contexts, pump, sessions),
     invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
     self_path(std::move(self_path)), requested_configuration(std::move(requested_configuration)) {
+    index_store.attach_contexts(contexts);
     pcm.register_runner();
     pch.register_runner();
     ast.register_runner();
@@ -458,7 +459,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     for(auto path_id: dirty.reset_header_mode) {
-        contexts.reset_header_mode(path_id);
+        commands.reset_header_mode(path_id);
     }
 
     // The Lost invalidation voids the projection's currency (and any
@@ -470,7 +471,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
             ast.invalidate(path_id);
             session->trial_done = false;
         }
-        contexts.forget_self_contained(path_id);
+        commands.forget_self_contained(path_id);
     }
 
     for(auto path_id: dirty.mark_lost) {
@@ -526,7 +527,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     if(dirty.recheck_contexts && context_service.drop_orphaned_choices(sessions)) {
-        workspace.mark_contexts_dirty();
+        contexts.mark_dirty();
     }
 
     // Not before the server is ready: document-sync events are accepted
@@ -581,7 +582,7 @@ kota::task<> MasterServer::metadata_flush_task() {
     co_await kota::sleep(std::chrono::milliseconds(50));
     metadata_flush_scheduled = false;
     pump.claim_report(co_await index_store.save(pump.save_debt()));
-    if(workspace.artifacts_dirty || workspace.contexts_dirty) {
+    if(workspace.artifacts_dirty || contexts.dirty) {
         co_await kota::sleep(std::chrono::seconds(5));
         schedule_metadata_flush();
     }

@@ -20,7 +20,6 @@ std::optional<TempDir> tmp;
 std::string src;
 std::optional<kota::event_loop> loop;
 std::optional<Workspace> workspace;
-std::optional<ContextResolver> contexts;
 std::optional<WorkerPool> pool;
 std::optional<TaskGraph> graph;
 std::optional<PCHFamily> pch;
@@ -41,10 +40,9 @@ void setup() {
                                .max_bytes = 1ull << 30});
     workspace->store.emplace(std::move(*store));
 
-    contexts.emplace(*workspace);
     pool.emplace(*loop);
     graph.emplace(*loop);
-    pch.emplace(*graph, *workspace, *contexts, *pool);
+    pch.emplace(*graph, *workspace, *pool);
     pch->register_runner();
 }
 

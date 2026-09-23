@@ -14,13 +14,14 @@
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/context.h"
+#include "sched/command_resolver.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "sched/index/pump.h"
 #include "sched/index/store.h"
 #include "sched/workspace.h"
+#include "server/state/editor_context.h"
 #include "server/worker_test_helpers.h"
 #include "support/cache_store.h"
 #include "syntax/dependency_graph.h"
@@ -45,11 +46,11 @@ struct IndexerFixture {
     kota::event_loop loop;
     Workspace workspace;
     WorkerPool pool{loop};
-    ContextResolver contexts{workspace};
+    CommandResolver commands{workspace};
     TaskGraph graph{loop};
-    PCMFamily pcm{graph, workspace, contexts, pool};
-    IndexStore index_store{loop, workspace, contexts};
-    TURunFamily turun{graph, workspace, contexts, pcm, index_store, pool};
+    PCMFamily pcm{graph, workspace, commands, pool};
+    IndexStore index_store{loop, workspace, commands};
+    TURunFamily turun{graph, workspace, commands, pcm, index_store, pool};
     IndexPump pump{loop, workspace, turun, index_store, pool};
 
     IndexerFixture() {
@@ -81,6 +82,11 @@ struct IndexerFixture {
 
     void drop_index(Fid id) {
         pump.claim_report(index_store.drop_index(id));
+    }
+
+    /// Replace the database with a fresh one, as corruption recovery does.
+    void reopen_database() {
+        index_store.reopen_fresh_database();
     }
 
     /// Record a terminally failed attempt, as run_index_task's failure
@@ -2970,7 +2976,7 @@ TEST_CASE(HeaderModePersisted) {
         auto id = f.workspace.file_table.intern(path);
         auto disk = f.workspace.file_table.current(id);
         ASSERT_TRUE(disk.has_value());
-        f.contexts.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
+        f.commands.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
         f.workspace.mark_artifacts_dirty();
         f.save();
     }
@@ -2979,7 +2985,119 @@ TEST_CASE(HeaderModePersisted) {
     open_store(tmp, f.workspace);
     f.load();
     auto id = f.workspace.file_table.intern(path);
-    ASSERT_TRUE(f.contexts.header_mode(path, id) == HeaderMode::NeedsContext);
+    ASSERT_TRUE(f.commands.header_mode(path, id) == HeaderMode::NeedsContext);
+}
+
+TEST_CASE(ContextsBlobRoundTrip) {
+    // The editor's choices and artifact hosts ride the contexts blob: a
+    // restart attaching an editor gets them back, and the save that
+    // committed them resolves the durability ticket taken before it.
+    TempDir tmp;
+    tmp.touch("host.cpp", "#include \"h.h\"\n");
+    tmp.touch("h.h", "int x;\n");
+    tmp.touch("artifact.h", "");
+    auto host_path = tmp.path("host.cpp");
+    auto header_path = tmp.path("h.h");
+    auto artifact_path = tmp.path("artifact.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        EditorContext editor{f.workspace, f.commands};
+        f.index_store.attach_contexts(editor);
+        f.load();
+        auto host = f.workspace.file_table.intern(host_path);
+        auto header = f.workspace.file_table.intern(header_path);
+        editor.selections[header] = Selection{host, 1, "applied", "base"};
+        editor.synthesized_hosts[artifact_path] = host;
+        editor.mark_dirty();
+        auto ticket = editor.epoch;
+        f.save();
+        ASSERT_FALSE(editor.dirty);
+        ASSERT_EQ(editor.committed_epoch, ticket);
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    EditorContext editor{f.workspace, f.commands};
+    f.index_store.attach_contexts(editor);
+    f.load();
+    auto host = f.workspace.file_table.intern(host_path);
+    auto header = f.workspace.file_table.intern(header_path);
+    auto* saved = editor.selection(header);
+    ASSERT_TRUE(saved != nullptr);
+    ASSERT_EQ(saved->host_path_id, host);
+    ASSERT_EQ(saved->occurrence, std::optional<std::uint32_t>(1));
+    ASSERT_EQ(saved->command_hash, "applied");
+    ASSERT_EQ(saved->base_hash, "base");
+    ASSERT_EQ(editor.synthesized_hosts.lookup(artifact_path), host);
+    ASSERT_FALSE(editor.dirty);
+}
+
+TEST_CASE(EvictedArtifactHostDropped) {
+    // An artifact the store evicted while no server ran has nothing left
+    // to open under its host: the record leaves, and the blob with it.
+    TempDir tmp;
+    tmp.touch("host.cpp", "");
+    auto gone_path = tmp.path("gone.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        EditorContext editor{f.workspace, f.commands};
+        f.index_store.attach_contexts(editor);
+        f.load();
+        editor.synthesized_hosts[gone_path] = f.workspace.file_table.intern(tmp.path("host.cpp"));
+        editor.mark_dirty();
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    EditorContext editor{f.workspace, f.commands};
+    f.index_store.attach_contexts(editor);
+    f.load();
+    ASSERT_TRUE(editor.synthesized_hosts.empty());
+    ASSERT_TRUE(editor.dirty);
+}
+
+TEST_CASE(UnownedContextsPassThrough) {
+    // A process with no editor (the batch commands) never rewrites the
+    // contexts blob, yet carries its bytes into a database replacing a
+    // corrupt one — the user's choices must not die with the old one.
+    TempDir tmp;
+    std::string bytes =
+        R"({"paths":["/a.h"],"contexts":[{"file":0,"host":4294967295,"occurrence":4294967295,"command_hash":"c","base_hash":"b"}],"artifacts":[]})";
+    inject_blob(tmp, index::IndexBlobKind::Contexts, "contexts", bytes);
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.load();
+    f.workspace.mark_artifacts_dirty();
+    f.save();
+    auto kept = f.workspace.index_db->read(index::IndexBlobKind::Contexts, "contexts");
+    ASSERT_TRUE(bool(kept));
+    ASSERT_EQ(kept.buffer->getBuffer(), bytes);
+
+    f.reopen_database();
+    ASSERT_TRUE(f.workspace.index_db != nullptr);
+    ASSERT_FALSE(bool(f.workspace.index_db->read(index::IndexBlobKind::Contexts, "contexts")));
+    f.save();
+    auto rewritten = f.workspace.index_db->read(index::IndexBlobKind::Contexts, "contexts");
+    ASSERT_TRUE(bool(rewritten));
+    ASSERT_EQ(rewritten.buffer->getBuffer(), bytes);
+}
+
+TEST_CASE(NoContextsNoRewrite) {
+    // Nothing loaded, nothing to carry: a replaced database gets no empty
+    // contexts blob, and no save keeps retrying one.
+    TempDir tmp;
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.load();
+    f.reopen_database();
+    f.save();
+    ASSERT_FALSE(bool(f.workspace.index_db->read(index::IndexBlobKind::Contexts, "contexts")));
 }
 
 };  // TEST_SUITE(IndexerLoad)

@@ -10,10 +10,10 @@
 
 #include "version.h"
 #include "command/argument_parser.h"
-#include "sched/context.h"
 #include "semantic/symbol.h"
 #include "server/protocol/extension.h"
 #include "server/service/format.h"
+#include "server/state/editor_context.h"
 #include "server/state/file_tracker.h"
 #include "server/transport/master_server.h"
 #include "server/transport/uri.h"

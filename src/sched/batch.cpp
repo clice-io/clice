@@ -10,8 +10,8 @@
 #include "command/command.h"
 #include "config/config.h"
 #include "sched/bootstrap.h"
+#include "sched/command_resolver.h"
 #include "sched/configuration.h"
-#include "sched/context.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
 #include "sched/graph.h"
@@ -42,11 +42,11 @@ struct BatchStack {
     kota::event_loop& loop;
     Workspace workspace;
     WorkerPool pool;
-    ContextResolver contexts{workspace};
+    CommandResolver commands{workspace};
     TaskGraph graph;
-    PCMFamily pcm{graph, workspace, contexts, pool};
-    IndexStore store{loop, workspace, contexts};
-    TURunFamily turun{graph, workspace, contexts, pcm, store, pool};
+    PCMFamily pcm{graph, workspace, commands, pool};
+    IndexStore store{loop, workspace, commands};
+    TURunFamily turun{graph, workspace, commands, pcm, store, pool};
     IndexPump pump{loop, workspace, turun, store, pool};
 
     /// The session log directory start_batch created; empty when file

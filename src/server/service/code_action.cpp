@@ -8,9 +8,9 @@
 #include "command/command.h"
 #include "index/shard.h"
 #include "index/symbol_query.h"
-#include "sched/context.h"
 #include "server/protocol/position.h"
 #include "server/service/features.h"
+#include "server/state/editor_context.h"
 #include "support/filesystem.h"
 #include "syntax/include_resolver.h"
 
@@ -281,9 +281,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         }
         std::string directory;
         std::vector<std::string> arguments;
-        CommandRef ref;
-        contexts
-            .resolve_command(path, directory, arguments, ContextUse::Editor, nullptr, {}, {}, &ref);
+        auto ref = contexts.resolve_command(path, directory, arguments).ref;
         auto search = workspace.cdb.search_config(ref);
         DirListingCache dir_cache;
         dir_cache.shared = &workspace.file_table;

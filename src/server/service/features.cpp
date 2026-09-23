@@ -8,12 +8,12 @@
 #include <vector>
 
 #include "command/search_config.h"
-#include "sched/context.h"
 #include "sched/hosting.h"
 #include "sched/index/pump.h"
 #include "semantic/symbol.h"
 #include "server/protocol/lsp_projection.h"
 #include "server/service/ast_family.h"
+#include "server/state/editor_context.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
 #include "worker/protocol.h"
@@ -715,15 +715,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
             std::vector<std::string> arguments;
             // Editor use: candidates must come from the same command (host
             // choice, chosen CDB entry) the open buffer compiles under.
-            CommandRef ref;
-            contexts.resolve_command(path,
-                                     directory,
-                                     arguments,
-                                     ContextUse::Editor,
-                                     /*host_path_id=*/nullptr,
-                                     /*extra_prepend=*/{},
-                                     /*extra_append=*/{},
-                                     &ref);
+            auto ref = contexts.resolve_command(path, directory, arguments).ref;
 
             auto search_config = workspace.cdb.search_config(ref);
             DirListingCache dir_cache;

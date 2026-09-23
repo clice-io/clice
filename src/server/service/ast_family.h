@@ -29,7 +29,7 @@ struct ASTFamilyFixture;
 
 }
 
-class ContextResolver;
+struct EditorContext;
 
 /// Open documents' ASTs as a task-graph family: one node per document,
 /// candidate/durable edges to the PCM and PCH nodes its rounds wait on,
@@ -53,7 +53,7 @@ class ContextResolver;
 class ASTFamily {
 public:
     ASTFamily(Workspace& workspace,
-              ContextResolver& contexts,
+              EditorContext& contexts,
               TaskGraph& graph,
               PCMFamily& pcm,
               PCHFamily& pch,
@@ -242,7 +242,7 @@ private:
     void touch(Fid path_id);
 
     Workspace& workspace;
-    ContextResolver& contexts;
+    EditorContext& contexts;
     TaskGraph& graph;
     PCMFamily& pcm;
     PCHFamily& pch;

@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "sched/context.h"
 #include "sched/crash_budget.h"
 #include "sched/graph.h"
 #include "sched/workspace.h"
@@ -29,7 +28,7 @@ namespace clice {
 /// dispatch owner's probe (see acquire).
 class PCHFamily {
 public:
-    PCHFamily(TaskGraph& graph, Workspace& workspace, ContextResolver& contexts, WorkerPool& pool);
+    PCHFamily(TaskGraph& graph, Workspace& workspace, WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic build register their own runner under
@@ -133,7 +132,6 @@ private:
 
     TaskGraph& graph;
     Workspace& workspace;
-    ContextResolver& contexts;
     WorkerPool& pool;
 
     /// Consumption strikes per key (see blame); separate from the

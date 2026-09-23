@@ -14,7 +14,7 @@ namespace clice {
 
 Invalidator::Invalidator(Workspace& workspace,
                          const SessionStore& store,
-                         const ContextResolver& contexts,
+                         const EditorContext& contexts,
                          PCMFamily& pcm) :
     workspace(workspace), store(store), contexts(contexts), pcm(pcm) {}
 

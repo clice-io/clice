@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "index/query.h"
-#include "sched/context.h"
+#include "server/state/editor_context.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -20,7 +20,7 @@ namespace clice::query {
 /// absolute filesystem paths, not URIs.
 struct Context {
     Workspace& workspace;
-    ContextResolver& contexts;
+    EditorContext& contexts;
     const index::IndexQuery& query;
 
     /// Files a command was asked about that the index holds no rows for;

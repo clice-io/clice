@@ -208,7 +208,7 @@ struct Reply {
 /// index: their rows are as absent as a withheld file's. `dropped` are
 /// the units the load found unservable.
 Reply answer(Workspace& workspace,
-             ContextResolver& contexts,
+             EditorContext& contexts,
              const QueryOptions& opts,
              llvm::ArrayRef<std::string> failed,
              llvm::ArrayRef<Fid> dropped) {
@@ -372,12 +372,17 @@ int run_query(const QueryOptions& opts, const char* self_path) {
     // writer's load restores; the index questions bind the tables in
     // place and touch nothing else.
     Workspace workspace;
-    ContextResolver contexts{workspace};
+    CommandResolver commands{workspace};
+    EditorContext contexts{workspace, commands};
     llvm::SmallVector<Fid> dropped;
     bool opened = false;
     if(with_build) {
-        if(auto loaded =
-               load_index(workspace, contexts, root, configuration, /*with_build=*/true)) {
+        if(auto loaded = load_index(workspace,
+                                    commands,
+                                    &contexts,
+                                    root,
+                                    configuration,
+                                    /*with_build=*/true)) {
             dropped = std::move(loaded->dropped);
             opened = true;
         }

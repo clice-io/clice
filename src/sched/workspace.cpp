@@ -7,7 +7,7 @@
 
 #include "command/search_config.h"
 #include "index/serialization.h"
-#include "sched/context.h"
+#include "sched/command_resolver.h"
 #include "sched/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"

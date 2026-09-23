@@ -2,8 +2,8 @@
 
 #include <cstdint>
 
-#include "sched/context.h"
 #include "server/protocol/extension.h"
+#include "server/state/editor_context.h"
 #include "server/state/session.h"
 
 #include "kota/async/async.h"
@@ -25,12 +25,12 @@ bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics)
 
 /// The editor-facing context protocol (clice/queryContext, currentContext,
 /// switchContext) and session-coupled maintenance of context choices. The
-/// domain state lives in ContextResolver; this service drives it with LSP
-/// types and session knowledge, which the resolver deliberately knows
-/// nothing about.
+/// domain state lives in EditorContext; this service drives it with LSP
+/// types and session knowledge, which the editor context deliberately
+/// knows nothing about.
 struct ContextService {
     Workspace& workspace;
-    ContextResolver& resolver;
+    EditorContext& editor;
     ASTFamily& ast;
 
     /// clice/queryContext: list the compilation contexts (host sources and

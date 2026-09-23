@@ -11,7 +11,7 @@
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/context.h"
+#include "sched/command_resolver.h"
 #include "sched/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -184,9 +184,9 @@ std::string serialize_cdb_snapshot(Workspace& workspace,
     return json ? std::move(*json) : std::string();
 }
 
-/// The artifacts and contexts blobs: JSON envelopes in the index
-/// database, the persisted form of PCH/PCM validity metadata, header-mode
-/// verdicts and user context choices (the cache.json successor). Paths are
+/// The artifacts blob: a JSON envelope in the index database, the
+/// persisted form of PCH/PCM validity metadata and header-mode verdicts
+/// (the cache.json successor). Paths are
 /// persisted as spellings and re-interned at load — runtime fids are not
 /// stable across sessions. Per-dep stamps are the shared versions',
 /// written at save and adopted back at load, so the fast paths survive a
@@ -232,16 +232,10 @@ struct ArtifactsData {
     std::vector<CacheModeEntry> header_modes;
 };
 
-struct ContextsData {
-    std::vector<std::string> paths;
-    std::vector<CacheContextEntry> contexts;
-    std::vector<CacheArtifactEntry> artifacts;
-};
-
 }  // namespace
 
-IndexStore::IndexStore(kota::event_loop& loop, Workspace& workspace, ContextResolver& contexts) :
-    loop(loop), workspace(workspace), contexts(contexts) {}
+IndexStore::IndexStore(kota::event_loop& loop, Workspace& workspace, CommandResolver& commands) :
+    loop(loop), workspace(workspace), commands(commands) {}
 
 std::string IndexStore::serialize_artifacts() {
     ArtifactsData data;
@@ -301,37 +295,11 @@ std::string IndexStore::serialize_artifacts() {
         data.pcm.push_back(std::move(entry));
     }
 
-    contexts.dump_mode_slices(data.header_modes, intern);
+    commands.dump_mode_slices(data.header_modes, intern);
 
     auto json = kota::codec::json::to_string(data);
     if(!json) {
         LOG_WARN("Failed to serialize the artifacts blob");
-        return {};
-    }
-    return std::move(*json);
-}
-
-std::string IndexStore::serialize_contexts() {
-    ContextsData data;
-    llvm::StringMap<std::uint32_t> index_map;
-
-    auto intern_path = [&](llvm::StringRef path) -> std::uint32_t {
-        auto [it, inserted] =
-            index_map.try_emplace(path.str(), static_cast<std::uint32_t>(data.paths.size()));
-        if(inserted) {
-            data.paths.push_back(path.str());
-        }
-        return it->second;
-    };
-    auto intern = [&](Fid fid) -> std::uint32_t {
-        return intern_path(workspace.file_table.resolve(fid));
-    };
-
-    contexts.dump_choice_slices(data.contexts, data.artifacts, intern, intern_path);
-
-    auto json = kota::codec::json::to_string(data);
-    if(!json) {
-        LOG_WARN("Failed to serialize the contexts blob");
         return {};
     }
     return std::move(*json);
@@ -417,26 +385,11 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
     auto intern_resolve = [&](std::uint32_t idx) -> llvm::StringRef {
         return resolve(idx);
     };
-    contexts.load_mode_slices(data.header_modes, intern_resolve);
+    commands.load_mode_slices(data.header_modes, intern_resolve);
 
     LOG_INFO("Loaded artifact metadata: {} PCH entries, {} PCM entries",
              workspace.pch_cache.size(),
              workspace.pcm_cache.size());
-}
-
-void IndexStore::load_contexts(llvm::StringRef bytes) {
-    if(bytes.empty()) {
-        return;
-    }
-    ContextsData data;
-    if(!kota::codec::json::from_string(bytes, data)) {
-        LOG_WARN("Failed to parse the contexts blob");
-        return;
-    }
-    auto resolve = [&](std::uint32_t idx) -> llvm::StringRef {
-        return idx < data.paths.size() ? llvm::StringRef(data.paths[idx]) : "";
-    };
-    contexts.load_choice_slices(data.contexts, data.artifacts, resolve);
 }
 
 std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, std::size_t size) {
@@ -883,10 +836,10 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     // choices flush on whatever save runs next. The contexts epoch is
     // snapshotted here — marks landing past this point are not covered by
     // these bytes and wait for the next save (a durability waiter's ticket
-    // compares against committed_contexts_epoch). The contexts blob's fate
+    // compares against the owner's committed epoch). The contexts blob's fate
     // is tracked on its own: a failing artifacts blob must not park a
     // switchContext ack whose choice is already durable.
-    auto flush_epoch = workspace.contexts_epoch;
+    auto flush_epoch = contexts->epoch;
     std::optional<std::size_t> artifacts_index;
     std::optional<std::size_t> contexts_index;
     bool contexts_ok = true;
@@ -896,8 +849,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
             batch.push_back({index::IndexBlobKind::Artifacts, "artifacts", std::move(bytes)});
         }
     }
-    if(workspace.contexts_dirty) {
-        if(auto bytes = serialize_contexts(); !bytes.empty()) {
+    if(contexts->dirty) {
+        if(auto bytes = contexts->serialize(); !bytes.empty()) {
             contexts_index = batch.size();
             batch.push_back({index::IndexBlobKind::Contexts, "contexts", std::move(bytes)});
         } else {
@@ -914,7 +867,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         workspace.artifacts_dirty = false;
     }
     if(contexts_index) {
-        workspace.contexts_dirty = false;
+        contexts->dirty = false;
     }
 
     // A deferred load-time sweep can name a key this very save re-writes:
@@ -937,8 +890,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         // the failed attempt (see the failure pulse below), or a request
         // bounded on failed saves never counts one.
         if(!contexts_ok) {
-            workspace.contexts_committed.set();
-            workspace.contexts_committed.reset();
+            contexts->committed.set();
+            contexts->committed.reset();
         }
         co_return report;
     }
@@ -967,7 +920,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         }
         cdb_dirty = cdb_dirty || cdb_index.has_value();
         workspace.artifacts_dirty = workspace.artifacts_dirty || artifacts_index.has_value();
-        workspace.contexts_dirty = workspace.contexts_dirty || contexts_index.has_value();
+        contexts->dirty = contexts->dirty || contexts_index.has_value();
         startup_removes.append(std::make_move_iterator(removals.begin()),
                                std::make_move_iterator(removals.end()));
         saving_shards = 0;
@@ -994,7 +947,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         } else if(artifacts_index && i == *artifacts_index) {
             workspace.artifacts_dirty = true;
         } else if(contexts_index && i == *contexts_index) {
-            workspace.contexts_dirty = true;
+            contexts->dirty = true;
             contexts_ok = false;
         } else if(search_slot && i == *search_slot) {
             search_bytes = std::move(batch[i].bytes);
@@ -1024,11 +977,10 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     // unserializable path) parks every durability wait forever; they give
     // up after a few of these.
     if(contexts_ok) {
-        workspace.committed_contexts_epoch =
-            std::max(workspace.committed_contexts_epoch, flush_epoch);
+        contexts->committed_epoch = std::max(contexts->committed_epoch, flush_epoch);
     }
-    workspace.contexts_committed.set();
-    workspace.contexts_committed.reset();
+    contexts->committed.set();
+    contexts->committed.reset();
 
     // Corruption can surface first at write time (a damaged page only the
     // write's tree descent reaches): heal like load-time corruption instead
@@ -1300,13 +1252,13 @@ void IndexStore::reopen_fresh_database() {
     // skips them and a restart loses the user's context choices and every
     // rebuildable artifact record.
     workspace.mark_artifacts_dirty();
-    workspace.mark_contexts_dirty();
+    contexts->rewrite();
     // Durability waiters re-evaluate against the new database: a failed
     // reopen disables persistence for the session, and a parked
     // switchContext would otherwise sleep forever — no later save pulses,
     // they all early-return on the null database.
-    workspace.contexts_committed.set();
-    workspace.contexts_committed.reset();
+    contexts->committed.set();
+    contexts->committed.reset();
 }
 
 IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
@@ -1351,8 +1303,9 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         if(auto artifacts = db.read(index::IndexBlobKind::Artifacts, "artifacts")) {
             load_artifacts(artifacts.buffer->getBuffer());
         }
-        if(auto choices = db.read(index::IndexBlobKind::Contexts, "contexts")) {
-            load_contexts(choices.buffer->getBuffer());
+        if(auto choices = db.read(index::IndexBlobKind::Contexts, "contexts");
+           choices && !choices.buffer->getBuffer().empty()) {
+            contexts->load(choices.buffer->getBuffer());
         }
     };
 

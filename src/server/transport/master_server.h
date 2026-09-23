@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "config/config.h"
-#include "sched/context.h"
+#include "sched/command_resolver.h"
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
@@ -20,6 +20,7 @@
 #include "server/service/dispatcher.h"
 #include "server/service/features.h"
 #include "server/service/live_sources.h"
+#include "server/state/editor_context.h"
 #include "server/state/invalidator.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
@@ -140,7 +141,7 @@ public:
 
     /// The single entry point for file events: fold the batch through the
     /// Invalidator, then execute the resulting effects against the mutable
-    /// services (sessions, context resolver, background indexer).
+    /// services (sessions, editor context, background indexer).
     void dispatch(llvm::ArrayRef<FileEvent> events);
 
     void schedule_shutdown();
@@ -161,15 +162,16 @@ public:
     kota::event_loop& loop;
     Workspace workspace;
     WorkerPool pool;
-    ContextResolver contexts;
+    CommandResolver commands{workspace};
+    EditorContext contexts{workspace, commands};
 
     /// The scheduling core and its resident families, registered at
     /// construction — nodes materialize on demand, so a module-free
     /// project pays nothing. The AST family is assembled here in the
     /// server: its rounds capture sessions, quarantine and publishing.
     TaskGraph graph{loop};
-    PCMFamily pcm{graph, workspace, contexts, pool};
-    PCHFamily pch{graph, workspace, contexts, pool};
+    PCMFamily pcm{graph, workspace, commands, pool};
+    PCHFamily pch{graph, workspace, pool};
     ASTFamily ast{workspace, contexts, graph, pcm, pch, pool, sessions, loop};
 
     Dispatcher dispatcher{workspace, contexts, ast, pool};
@@ -180,8 +182,8 @@ public:
     /// reuses them); the session-side policy — admission vetoes,
     /// unservable escalation, serving-row refresh — lives on this class
     /// and is installed into the pump's hooks by wire().
-    IndexStore index_store{loop, workspace, contexts};
-    TURunFamily turun{graph, workspace, contexts, pcm, index_store, pool};
+    IndexStore index_store{loop, workspace, commands};
+    TURunFamily turun{graph, workspace, commands, pcm, index_store, pool};
     IndexPump pump{loop, workspace, turun, index_store, pool};
 
     /// Emitted when rows an open index-served session is serving changed:

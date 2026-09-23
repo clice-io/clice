@@ -13,11 +13,11 @@ namespace clice {
 
 TURunFamily::TURunFamily(TaskGraph& graph,
                          Workspace& workspace,
-                         ContextResolver& contexts,
+                         CommandResolver& commands,
                          PCMFamily& pcm,
                          IndexStore& store,
                          WorkerPool& pool) :
-    graph(graph), workspace(workspace), contexts(contexts), pcm(pcm), store(store), pool(pool) {}
+    graph(graph), workspace(workspace), commands(commands), pcm(pcm), store(store), pool(pool) {}
 
 void TURunFamily::register_runner() {
     graph.register_family(Family::TURun, [this](RoundContext& ctx, NodeId id) {
@@ -72,14 +72,13 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // when it produces the resolved line, and every later consumer of
     // params.arguments (dependency scan, worker parse) sees one truth.
     auto extras = tidy::command_extra_args(params.tidy_extra_args, params.tidy_extra_args_before);
-    Fid host_path_id;
-    auto source = contexts.resolve_command(file_path,
-                                           params.directory,
-                                           params.arguments,
-                                           ContextUse::Background,
-                                           &host_path_id,
-                                           extras.prepend,
-                                           extras.append);
+    auto resolved =
+        commands.resolve_command(file_path,
+                                 params.directory,
+                                 params.arguments,
+                                 {.extra_prepend = extras.prepend, .extra_append = extras.append});
+    auto source = resolved.source;
+    auto host_path_id = resolved.host;
     if(source == CommandSource::Fallback || source == CommandSource::Inferred) {
         // A file whose manifest survives keeps serving its last-known rows,
         // so skipping it loses nothing. One without a manifest (dropped or

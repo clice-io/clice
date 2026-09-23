@@ -3,13 +3,15 @@
 #include <optional>
 #include <string>
 
-#include "sched/context.h"
+#include "sched/command_resolver.h"
 #include "sched/workspace.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
+
+struct ContextsOwner;
 
 /// Open a workspace's persisted index for reading: the configuration
 /// resolved, the cache store and the blob database opened read-only, the
@@ -29,12 +31,14 @@ struct LoadedIndex {
 };
 
 /// Open the index as the writer loads it — every manifest adopted, every
-/// shard fetched and verified, the persisted context choices restored into
-/// `contexts` — for the commands that walk the whole index or need the
-/// build (loaded when `with_build`). Nullopt, with the cause logged, when
-/// there is no usable index.
+/// shard fetched and verified, the header-mode verdicts restored into
+/// `commands` and the persisted context choices into `contexts` when
+/// given — for the commands that walk the whole index or need the build
+/// (loaded when `with_build`). Nullopt, with the cause logged, when there
+/// is no usable index.
 std::optional<LoadedIndex> load_index(Workspace& workspace,
-                                      ContextResolver& contexts,
+                                      CommandResolver& commands,
+                                      ContextsOwner* contexts,
                                       llvm::StringRef root,
                                       llvm::StringRef requested_configuration,
                                       bool with_build);

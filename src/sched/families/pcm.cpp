@@ -22,9 +22,9 @@ namespace clice {
 
 PCMFamily::PCMFamily(TaskGraph& graph,
                      Workspace& workspace,
-                     ContextResolver& contexts,
+                     CommandResolver& commands,
                      WorkerPool& pool) :
-    graph(graph), workspace(workspace), contexts(contexts), pool(pool) {}
+    graph(graph), workspace(workspace), commands(commands), pool(pool) {}
 
 void PCMFamily::register_runner() {
     graph.register_family(Family::PCM, [this](RoundContext& ctx, NodeId id) {
@@ -39,7 +39,7 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id, std::optional<llvm::St
     auto file_path = workspace.file_table.resolve(path_id);
     std::string directory;
     std::vector<std::string> arguments;
-    contexts.resolve_command(file_path, directory, arguments);
+    commands.resolve_command(file_path, directory, arguments);
 
     std::vector<const char*> argv;
     argv.reserve(arguments.size());
@@ -140,7 +140,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     worker::BuildPCMParams bp;
     bp.file = file_path;
-    contexts.resolve_command(file_path, bp.directory, bp.arguments);
+    commands.resolve_command(file_path, bp.directory, bp.arguments);
 
     if(!workspace.store) {
         LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", module_name);

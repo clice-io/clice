@@ -17,7 +17,7 @@
 
 namespace clice {
 
-class ContextResolver;
+struct EditorContext;
 
 namespace protocol = kota::ipc::protocol;
 
@@ -44,7 +44,7 @@ kota::ipc::Error content_modified();
 /// longer exists.
 class Dispatcher {
 public:
-    Dispatcher(Workspace& workspace, ContextResolver& contexts, ASTFamily& ast, WorkerPool& pool);
+    Dispatcher(Workspace& workspace, EditorContext& contexts, ASTFamily& ast, WorkerPool& pool);
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
@@ -123,7 +123,7 @@ private:
     Outcome land(const Ticket& ticket, std::uint8_t kind, llvm::StringRef label, Outcome result);
 
     Workspace& workspace;
-    ContextResolver& contexts;
+    EditorContext& contexts;
     ASTFamily& ast;
     WorkerPool& pool;
 };

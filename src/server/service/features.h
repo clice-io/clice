@@ -19,7 +19,7 @@
 namespace clice {
 
 class ASTFamily;
-class ContextResolver;
+struct EditorContext;
 class IndexPump;
 
 namespace protocol = kota::ipc::protocol;
@@ -57,7 +57,7 @@ public:
              Dispatcher& dispatcher,
              index::IndexQuery& query,
              Workspace& workspace,
-             ContextResolver& contexts,
+             EditorContext& contexts,
              IndexPump& pump,
              SessionStore& sessions) :
         ast(ast), dispatcher(dispatcher), query(query), workspace(workspace), contexts(contexts),
@@ -275,7 +275,7 @@ private:
     Dispatcher& dispatcher;
     index::IndexQuery& query;
     Workspace& workspace;
-    ContextResolver& contexts;
+    EditorContext& contexts;
     IndexPump& pump;
     SessionStore& sessions;
 };

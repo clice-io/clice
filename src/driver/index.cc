@@ -834,9 +834,13 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
            }
            if(opts.show_symbol || opts.show_file || opts.show_tu || opts.stats || opts.variants) {
                Workspace workspace;
-               ContextResolver contexts{workspace};
-               auto loaded =
-                   load_index(workspace, contexts, ws, configuration, /*with_build=*/false);
+               CommandResolver commands{workspace};
+               auto loaded = load_index(workspace,
+                                        commands,
+                                        /*contexts=*/nullptr,
+                                        ws,
+                                        configuration,
+                                        /*with_build=*/false);
                if(!loaded) {
                    exit_code = 1;
                } else if(opts.show_symbol) {

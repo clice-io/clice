@@ -5,12 +5,12 @@
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "sched/context.h"
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
 #include "server/service/ast_family.h"
 #include "server/service/dispatcher.h"
+#include "server/state/editor_context.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
 #include "support/cache_store.h"
@@ -38,11 +38,12 @@ namespace {
 struct Stack {
     kota::event_loop loop;
     Workspace workspace;
-    ContextResolver contexts{workspace};
+    CommandResolver commands{workspace};
+    EditorContext contexts{workspace, commands};
     WorkerPool pool{loop};
     TaskGraph graph{loop};
-    PCMFamily pcm{graph, workspace, contexts, pool};
-    PCHFamily pch{graph, workspace, contexts, pool};
+    PCMFamily pcm{graph, workspace, commands, pool};
+    PCHFamily pch{graph, workspace, pool};
     SessionStore sessions;
     ASTFamily ast{workspace, contexts, graph, pcm, pch, pool, sessions, loop};
     Dispatcher dispatcher{workspace, contexts, ast, pool};

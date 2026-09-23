@@ -2,8 +2,8 @@
 
 #include <utility>
 
-#include "sched/context.h"
 #include "server/protocol/position.h"
+#include "server/state/editor_context.h"
 #include "support/anomaly.h"
 #include "support/logging.h"
 #include "support/timer.h"
@@ -95,7 +95,7 @@ private:
 }  // namespace
 
 Dispatcher::Dispatcher(Workspace& workspace,
-                       ContextResolver& contexts,
+                       EditorContext& contexts,
                        ASTFamily& ast,
                        WorkerPool& pool) :
     workspace(workspace), contexts(contexts), ast(ast), pool(pool) {}
@@ -305,7 +305,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     Params wp;
     wp.file = path;
     wp.text = session.text;
-    contexts.resolve_command(path, wp.directory, wp.arguments, ContextUse::Editor);
+    contexts.resolve_command(path, wp.directory, wp.arguments);
     contexts.append_suffix_include(path_id, wp.text);
     wp.config = workspace.config;
 

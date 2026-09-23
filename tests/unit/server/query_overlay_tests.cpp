@@ -9,7 +9,7 @@
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/context.h"
+#include "sched/command_resolver.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
 #include "sched/graph.h"
@@ -37,7 +37,7 @@ kota::event_loop loop;
 Workspace workspace;
 SessionStore session_store;
 WorkerPool pool{loop};
-ContextResolver resolver{workspace};
+CommandResolver resolver{workspace};
 TaskGraph graph{loop};
 PCMFamily pcm{graph, workspace, resolver, pool};
 ASTProjectionTable projections;

@@ -16,7 +16,7 @@
 
 namespace clice {
 
-class ContextResolver;
+class CommandResolver;
 
 namespace testing {
 
@@ -37,6 +37,35 @@ struct IndexLoadOptions {
     /// (batch lint) copies so a concurrent writer can reclaim its pages
     /// meanwhile.
     bool borrow = false;
+};
+
+/// The owner of the contexts blob — the editor's context choices, which
+/// IndexStore::save persists beside the index. Only this blob has a
+/// durability waiter (switchContext), so only it carries an epoch: the
+/// ticket resolves once a save whose snapshot covers the mark commits it —
+/// independent of the artifacts blob, whose failures retry through the
+/// dirty flag alone and must not hold a context ack hostage. `committed`
+/// pulses after every attempt, failed ones included, so waiters can give
+/// up on a disk that cannot take the write.
+struct ContextsOwner {
+    bool dirty = false;
+    std::uint64_t epoch = 0;
+    std::uint64_t committed_epoch = 0;
+    kota::event committed;
+
+    /// The blob's bytes; empty on serialization failure (stays dirty,
+    /// retried).
+    virtual std::string serialize() const = 0;
+
+    /// Restore the blob read at load.
+    virtual void load(llvm::StringRef bytes) = 0;
+
+    /// The database was replaced by a fresh one: the blob died with the
+    /// old one while its state lives on, so it owes a rewrite.
+    virtual void rewrite() = 0;
+
+protected:
+    ~ContextsOwner() = default;
 };
 
 /// The project index's storage engine: merging TUIndex results into the
@@ -102,7 +131,14 @@ public:
         Report report;
     };
 
-    IndexStore(kota::event_loop& loop, Workspace& workspace, ContextResolver& contexts);
+    IndexStore(kota::event_loop& loop, Workspace& workspace, CommandResolver& commands);
+
+    /// Hand the contexts blob to its owner. Must precede load(): a process
+    /// that attaches none (the batch commands) keeps the bytes as loaded
+    /// and writes them back only into a database replacing a corrupt one.
+    void attach_contexts(ContextsOwner& owner) {
+        contexts = &owner;
+    }
 
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write row blobs only for variants no shard stores yet
@@ -203,9 +239,29 @@ private:
     kota::event_loop& loop;
     Workspace& workspace;
 
-    /// Context-domain state the contexts and artifacts blobs persist
-    /// (header modes, saved choices, synthesized hosts).
-    ContextResolver& contexts;
+    /// Header-mode verdicts, persisted in the artifacts blob.
+    CommandResolver& commands;
+
+    /// The contexts blob as loaded, standing in for an owner nobody
+    /// attached.
+    struct LoadedContexts final : ContextsOwner {
+        std::string bytes;
+
+        std::string serialize() const override {
+            return bytes;
+        }
+
+        void load(llvm::StringRef data) override {
+            bytes = data.str();
+        }
+
+        void rewrite() override {
+            dirty = !bytes.empty();
+        }
+    };
+
+    LoadedContexts loaded_contexts;
+    ContextsOwner* contexts = &loaded_contexts;
 
     /// Serializes concurrent save() calls: the pump's round-end save, the
     /// master's metadata flush and the shutdown save may overlap on the
@@ -213,14 +269,12 @@ private:
     /// assumes one save at a time.
     kota::semaphore save_gate{1};
 
-    /// Serialize the artifact-validity / user-context blob from live
-    /// state; empty on serialization failure (stays dirty, retried).
+    /// Serialize the artifact-validity blob from live state; empty on
+    /// serialization failure (stays dirty, retried).
     std::string serialize_artifacts();
-    std::string serialize_contexts();
 
-    /// Restore the blobs read at load; a null blob is a first run.
+    /// Restore the blob read at load; a null blob is a first run.
     void load_artifacts(llvm::StringRef data);
-    void load_contexts(llvm::StringRef data);
 
     /// Whether the search index is worth rebuilding now: the symbols
     /// merged since its build outgrew what a direct scan should carry,

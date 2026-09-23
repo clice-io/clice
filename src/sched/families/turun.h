@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "compile/compilation.h"
-#include "sched/context.h"
+#include "sched/command_resolver.h"
 #include "sched/graph.h"
 #include "sched/index/ledger.h"
 #include "sched/index/store.h"
@@ -37,7 +37,7 @@ class TURunFamily {
 public:
     TURunFamily(TaskGraph& graph,
                 Workspace& workspace,
-                ContextResolver& contexts,
+                CommandResolver& commands,
                 PCMFamily& pcm,
                 IndexStore& store,
                 WorkerPool& pool);
@@ -127,7 +127,7 @@ private:
 
     TaskGraph& graph;
     Workspace& workspace;
-    ContextResolver& contexts;
+    CommandResolver& commands;
     PCMFamily& pcm;
     IndexStore& store;
     WorkerPool& pool;
