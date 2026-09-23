@@ -346,7 +346,11 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions(
     // manifests resolvable; it requires an untouched table — ids already
     // handed out by this session could collide with the blob's. Ids the
     // writer garbage-collected stay behind as holes (see knows_version).
-    assert(files.versions.empty() && "the global blob must load before any version interning");
+    // A server running several projects shares one table: the first
+    // project to load adopts its ids, and the others rebuild their index.
+    if(!files.versions.empty()) {
+        return std::unexpected("the file table already holds another project's versions");
+    }
     files.revocation_generation = blob.revocation_generation;
     files.versions.resize(blob.next_fv_id);
     for(std::size_t i = 0; i < count; i += 1) {

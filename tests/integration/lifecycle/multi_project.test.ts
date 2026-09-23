@@ -171,3 +171,28 @@ test("references cross folders", async ({ session }) => {
     expect(await client.waitForIndex(lib, "main")).toBe(true);
     expect(await client.waitForReference(lib, 1, 5, workspace.uri("app/main.cpp"))).toBe(true);
 });
+
+test("restart serves every folder", async ({ session }) => {
+    const workspace = session.tmpdir();
+    twoProjects(workspace);
+    workspace.write("alpha/clice.toml", '[project]\ncache_dir = "${workspace}/.clice"\n');
+    workspace.write("beta/clice.toml", '[project]\ncache_dir = "${workspace}/.clice"\n');
+
+    const first = await session
+        .spawn(workspace)
+        .initialize(workspace, { folders: ["alpha", "beta"] });
+    const [alpha] = await first.openAndWait("alpha/main.cpp");
+    expect(await first.waitForIndex(alpha, "alpha_fn")).toBe(true);
+    expect(await first.waitForIndex(alpha, "beta_fn")).toBe(true);
+    await first.shutdown();
+
+    // Both folders persisted an index; the second to load finds the shared
+    // file table taken and rebuilds its own.
+    const second = await session
+        .spawn(workspace)
+        .initialize(workspace, { folders: ["alpha", "beta"] });
+    const [again] = await second.openAndWait("alpha/main.cpp");
+    expect(await second.waitForIndex(again, "alpha_fn")).toBe(true);
+    expect(await second.waitForIndex(again, "beta_fn")).toBe(true);
+    second.assertNoAnomaly();
+});

@@ -92,7 +92,7 @@ Includes: code completion, hover information, signature help, semantic highlight
 
 ### `src/project/` — Projects on Disk
 
-A project is what one set of compilation databases and one cache directory describe: the state derived from files on disk, independent of editors and of scheduling. The command line and the server each run one project today; the server adds the open buffers on top.
+A project is what one set of compilation databases and one cache directory describe: the state derived from files on disk, independent of editors and of scheduling. The command line runs one project. The server runs one per workspace folder, plus one for any file opened outside them whose directory or an ancestor holds a `clice.toml` or a `compile_commands.json`, and routes each file to the project that compiles it.
 
 - `Project`: The disk-truth aggregate — configuration, compilation database, build view, dependency graph, artifact records, persisted index. Core invariant: unsaved buffer contents of open files never modify a `Project`; it only reflects the state on disk
 - `CommandResolver`: Resolves the compile command a file is compiled under from the project alone — own entry, a host's command for a header, a default or borrowed command — and synthesizes the includer context a header needs, owning the header-context verdicts
