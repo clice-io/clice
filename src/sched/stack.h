@@ -15,16 +15,19 @@
 namespace clice {
 
 /// The scheduling stack of one project, shared by the server and the batch
-/// driver so the two assemble it the same way: the worker pool, the task
-/// graph with its artifact families (runners registered), and the
-/// project's index store and pump, which a PCM landing that unblocks
-/// indexing kicks. The server layers its serving side — the AST family,
-/// the pump's admission hooks — on top.
+/// driver so the two assemble it the same way: the task graph with its
+/// artifact families (runners registered) over the process's worker pool,
+/// and the project's index store and pump, which a PCM landing that
+/// unblocks indexing kicks. The server layers its serving side — the AST
+/// family, the pump's admission hooks — on top.
 struct SchedulingStack {
-    SchedulingStack(kota::event_loop& loop, Project& project, CommandResolver& commands);
+    SchedulingStack(kota::event_loop& loop,
+                    Project& project,
+                    CommandResolver& commands,
+                    WorkerPool& pool);
 
     Project& project;
-    WorkerPool pool;
+    WorkerPool& pool;
     TaskGraph graph;
     PCMFamily pcm;
     PCHFamily pch;
@@ -33,10 +36,14 @@ struct SchedulingStack {
     IndexPump pump;
 
     /// The shutdown tail once compile and index work is quiesced
-    /// (contract 11): wind down the graph's rounds, the final save with
-    /// the one metadata retry late debt may owe, then the pool and the
-    /// cache store.
+    /// (contract 11): wind down the graph's rounds, then the final save
+    /// with the one metadata retry late debt may owe. The owner stops the
+    /// pool next, and only then closes the cache store (see close).
     kota::task<> shutdown();
+
+    /// Close the cache store, after the pool stopped: no worker writes
+    /// into it any more.
+    void close();
 };
 
 }  // namespace clice

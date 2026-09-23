@@ -964,11 +964,11 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
     co_return to_raw(type_items(query.type_hierarchy(*symbol, {.supertypes = false}).subtypes));
 }
 
-Features::RawResult Features::workspace_symbol(llvm::StringRef text) {
+std::vector<protocol::SymbolInformation> Features::workspace_symbol(llvm::StringRef text) {
     std::vector<protocol::SymbolInformation> results;
     auto parsed = index::SymbolQuery::parse(text);
     if(!parsed) {
-        co_return to_raw(results);
+        return results;
     }
     // Some clients (VS Code) filter the replies against the query text
     // again, where a bare name would fail a qualified query: those
@@ -982,7 +982,7 @@ Features::RawResult Features::workspace_symbol(llvm::StringRef text) {
         }
         results.push_back(std::move(info));
     }
-    co_return to_raw(results);
+    return results;
 }
 
 }  // namespace clice

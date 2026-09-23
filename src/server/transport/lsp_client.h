@@ -17,6 +17,7 @@
 namespace clice {
 
 class MasterServer;
+class ProjectServer;
 struct Session;
 
 class LSPClient {
@@ -28,11 +29,13 @@ private:
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
     /// Shared front half of every document-addressed handler: URI → path →
-    /// interned path_id → open session (null when the document is not open).
+    /// interned path_id → open session (null when the document is not open)
+    /// → the project serving it.
     struct ResolvedDoc {
         std::string path;
         Fid path_id;
         std::shared_ptr<Session> session;
+        ProjectServer* project;
     };
 
     ResolvedDoc resolve_uri(const std::string& uri);

@@ -4,8 +4,9 @@ namespace clice {
 
 SchedulingStack::SchedulingStack(kota::event_loop& loop,
                                  Project& project,
-                                 CommandResolver& commands) :
-    project(project), pool(loop), graph(loop), pcm(graph, project, commands, pool),
+                                 CommandResolver& commands,
+                                 WorkerPool& pool) :
+    project(project), pool(pool), graph(loop), pcm(graph, project, commands, pool),
     pch(graph, project, pool), store(loop, project, commands),
     turun(graph, project, commands, pcm, store, pool), pump(loop, project, turun, store, pool) {
     pcm.register_runner();
@@ -26,7 +27,9 @@ kota::task<> SchedulingStack::shutdown() {
         // standalone header's repair debt dies with this process.
         pump.claim_report(co_await store.save(pump.save_debt(), /*settle=*/true));
     }
-    co_await pool.stop();
+}
+
+void SchedulingStack::close() {
     if(project.store) {
         project.store->shutdown();
     }

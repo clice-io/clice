@@ -174,6 +174,9 @@ export interface InitializeOptions {
     /// Client capabilities to advertise; empty by default so servers see
     /// the most conservative client unless a test opts in.
     capabilities?: proto.ClientCapabilities | undefined;
+    /// The workspace folders to announce, workspace-relative; the
+    /// workspace root alone when omitted.
+    folders?: string[] | undefined;
 }
 
 interface Transport {
@@ -442,7 +445,12 @@ export class CliceClient {
                 workspace: { workspaceEdit: { documentChanges: true } },
             },
             rootUri: wsUri,
-            workspaceFolders: [{ uri: wsUri, name: "test" }],
+            workspaceFolders: options.folders
+                ? options.folders.map((folder) => ({
+                      uri: URI.file(ws.path(folder)).toString(),
+                      name: folder,
+                  }))
+                : [{ uri: wsUri, name: "test" }],
             initializationOptions,
         };
         this.initResult = await this.sendRequest(proto.InitializeRequest.type, params);

@@ -41,7 +41,8 @@ struct BatchStack {
     FileTable files;
     Project project{files};
     CommandResolver commands{project};
-    SchedulingStack sched{loop, project, commands};
+    WorkerPool pool{loop};
+    SchedulingStack sched{loop, project, commands, pool};
 
     /// The session log directory start_batch created; empty when file
     /// logging is off.
@@ -120,6 +121,8 @@ kota::task<> progress_ticker(BatchStack& stack, const BatchOptions& options) {
 kota::task<> shutdown(BatchStack& stack) {
     co_await stack.sched.pump.stop();
     co_await stack.sched.shutdown();
+    co_await stack.pool.stop();
+    stack.sched.close();
 }
 
 /// A batch run's signal handling and the order of its ending. Interruption
@@ -191,7 +194,7 @@ bool start_batch(BatchStack& stack,
     pool_opts.min_stateless = cfg.min_stateless_worker_count;
     pool_opts.max_stateless = cfg.max_stateless_worker_count;
     pool_opts.log_dir = session_log_dir;
-    if(!stack.sched.pool.start(pool_opts)) {
+    if(!stack.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
         return false;
     }
@@ -209,12 +212,12 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         // A failed later spawn leaves earlier workers and their I/O tasks
         // live; unstopped they keep the batch event loop spinning and the
         // command hangs instead of exiting.
-        co_await stack.sched.pool.stop();
+        co_await stack.pool.stop();
         co_return;
     }
     if(!check_requested_configuration(project.config, options.configuration)) {
         result.exit_code = 1;
-        co_await stack.sched.pool.stop();
+        co_await stack.pool.stop();
         co_return;
     }
     project.config.project.enable_indexing.value = true;
@@ -393,7 +396,7 @@ kota::task<> run_lint_sweep(BatchStack& stack,
             // The pump feeder's window: deep enough that workers never
             // idle, shallow enough that a wind-down drains fast.
             while(sweep.inflight >=
-                  std::max<std::size_t>(2 * stack.sched.pool.effective_low_limit(), 2)) {
+                  std::max<std::size_t>(2 * stack.pool.effective_low_limit(), 2)) {
                 sweep.task_done.reset();
                 co_await sweep.task_done.wait();
             }
@@ -413,7 +416,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         result.exit_code = 2;
         // See run(): stop the partially started pool or the loop never
         // drains.
-        co_await stack.sched.pool.stop();
+        co_await stack.pool.stop();
         co_return;
     }
     // The command's product is the lint report: the background sweep must
@@ -422,7 +425,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     // or sweep writes, so the shutdown save commits nothing.
     if(!check_requested_configuration(project.config, options.configuration)) {
         result.exit_code = 2;
-        co_await stack.sched.pool.stop();
+        co_await stack.pool.stop();
         co_return;
     }
     project.config.project.enable_indexing.value = false;

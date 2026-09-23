@@ -165,7 +165,9 @@ public:
     RawResult type_hierarchy_supertypes(Fid path_id, const protocol::TypeHierarchyItem& item);
     RawResult type_hierarchy_subtypes(Fid path_id, const protocol::TypeHierarchyItem& item);
 
-    RawResult workspace_symbol(llvm::StringRef query);
+    /// The project's symbols matching `query`, best first; the master
+    /// merges every project's list.
+    std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);
 
 private:
     /// Whether the worker's AST can answer for this session right now:

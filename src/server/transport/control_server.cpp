@@ -6,7 +6,7 @@
 
 #include "server/protocol/control.h"
 #include "server/state/file_tracker.h"
-#include "server/transport/master_server.h"
+#include "server/transport/project_server.h"
 #include "support/logging.h"
 
 #include "kota/ipc/codec/json.h"
@@ -20,7 +20,7 @@ namespace {
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::JsonPeer::RequestContext;
 
-void register_control(MasterServer& srv, kota::ipc::JsonPeer& peer) {
+void register_control(ProjectServer& srv, kota::ipc::JsonPeer& peer) {
     peer.on_request([&srv](RequestContext&, const control::IndexParams& params)
                         -> RequestResult<control::IndexParams> {
         auto active = srv.project.build.active_configuration();
@@ -97,11 +97,11 @@ kota::task<> run_connection(kota::ipc::JsonPeer* peer,
 
 }  // namespace
 
-kota::task<> serve_control(MasterServer& server, kota::tcp::acceptor acceptor) {
+kota::task<> serve_control(ProjectServer& server, kota::tcp::acceptor acceptor) {
     auto& loop = kota::event_loop::current();
     kota::task_group<> group(loop);
     Connections connections;
-    group.spawn([](MasterServer& server,
+    group.spawn([](ProjectServer& server,
                    kota::tcp::acceptor& acceptor,
                    Connections& connections,
                    kota::task_group<>& group) -> kota::task<> {

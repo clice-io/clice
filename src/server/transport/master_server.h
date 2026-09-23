@@ -7,19 +7,9 @@
 #include <vector>
 
 #include "config/config.h"
-#include "project/command_resolver.h"
-#include "project/index_store.h"
-#include "project/project.h"
-#include "sched/stack.h"
-#include "server/service/ast_family.h"
-#include "server/service/context_service.h"
-#include "server/service/dispatcher.h"
-#include "server/service/features.h"
-#include "server/service/live_sources.h"
-#include "server/state/editor_context.h"
-#include "server/state/invalidator.h"
+#include "sched/index/pump.h"
 #include "server/state/session.h"
-#include "server/state/session_store.h"
+#include "server/transport/project_server.h"
 #include "support/anomaly.h"
 #include "support/signal.h"
 #include "worker/pool.h"
@@ -30,8 +20,6 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
-
-class FileTracker;
 
 namespace deco = kota::deco;
 
@@ -96,13 +84,16 @@ struct NotifyMessage {
     std::string text;
 };
 
-/// Core server state — owns the two-layer state model (Project + Sessions),
-/// the worker pool, compilation engine, index query, and background indexer.
+/// The server process: the worker pool, the file table and the projects it
+/// serves, with every file routed to one of them.
 ///
-/// Does NOT own any transport or peer.  Protocol-specific handler registration
-/// is done by LSPClient and the control channel (serve_control), which drive
-/// the server through its public members; the composition itself lives
-/// entirely here.
+/// A project (ProjectServer) owns everything that is per project — the
+/// project on disk, its scheduling stack, the open documents routed to it
+/// and the services over them. What stays here is process-wide: the pool
+/// the projects share, the routing of files to projects, the lifecycle,
+/// and the signals transports subscribe to. Does NOT own any transport or
+/// peer: LSPClient and the control channel drive the server through its
+/// public members.
 class MasterServer {
 public:
     MasterServer(kota::event_loop& loop,
@@ -110,35 +101,45 @@ public:
                  std::string requested_configuration);
     ~MasterServer();
 
+    /// Start serving `workspace_roots` (the client's folders, or the
+    /// command line's --workspace; none serves a single rootless project):
+    /// load each project's configuration, start the pool sized for all of
+    /// them, and load the projects.
     void initialize();
     void initialize(llvm::StringRef root);
 
     kota::task<> shutdown_and_cleanup();
 
+    /// The project serving a file: the one its open document was routed
+    /// to, else the one routing picks now.
+    ProjectServer& owner_of(Fid path_id);
+
     std::shared_ptr<Session> find_session(Fid path_id);
+
+    /// Route the file to its project and open its session there.
     std::shared_ptr<Session> open_session(Fid path_id);
 
-    /// Before a file's first compile: register the databases discovery
-    /// finds between its directory and the workspace root (see
-    /// FileTracker::discover_around) so the compile finds its entry.
-    void discover_around(Fid path_id);
-
-    /// Settle a freshly opened index-only buffer: escalate one that
-    /// already diverged from its shard, or boost the file's background
-    /// indexing when nothing can serve it. Escalated sessions need no
-    /// settlement — builds are pull-driven.
-    void settle_open_serving(std::shared_ptr<Session> session);
-
-    /// Close the session. The diagnostics clear travels through the
-    /// session's output + on_output signal; a transport whose client has
-    /// not completed the handshake drops it (nothing was ever pushed, so
-    /// there is nothing to clear).
+    /// Close the file's session in the project it was routed to.
     void close_session(Fid path_id);
 
-    /// The single entry point for file events: fold the batch through the
-    /// Invalidator, then execute the resulting effects against the mutable
-    /// services (sessions, editor context, background indexer).
-    void dispatch(llvm::ArrayRef<FileEvent> events);
+    /// Before a file's first compile: every project whose root holds the
+    /// file registers the databases between it and the root (see
+    /// FileTracker::discover_around), so routing finds its entry.
+    void discover_around(Fid path_id);
+
+    /// Serve another folder / stop serving one (didChangeWorkspaceFolders).
+    /// Open documents of a removed project move to the project routing
+    /// picks for them now.
+    void add_folder(std::string root);
+    void remove_folder(llvm::StringRef root);
+
+    /// The indexing progress of every project, as one round: the counts
+    /// add up, and it ends when the last project's round ends.
+    IndexPump::Progress index_progress() const;
+
+    /// workspace/symbol over every project: each project's ranked matches,
+    /// interleaved rank by rank, a symbol two projects index listed once.
+    std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);
 
     void schedule_shutdown();
 
@@ -146,34 +147,23 @@ public:
         return shutdown_source.token();
     }
 
-    /// The table of open documents and the buffer-sync logic. Public so
-    /// transports and features can reach open sessions directly (e.g.
-    /// sessions.find(path_id)); MasterServer's open/close methods layer the
-    /// non-map orchestration (pool eviction, diagnostics, indexing) on top.
-    SessionStore sessions;
-
-    /// The composed services that make up the server, declared (and thus
-    /// constructed) in dependency order. Transports and features drive the
-    /// server through these directly; the wiring between them lives in wire().
     kota::event_loop& loop;
+
+    /// The process's fid space, shared by every project.
     FileTable files;
-    Project project{files};
-    CommandResolver commands{project};
 
-    /// The scheduling core the batch driver runs too, its families
-    /// registered at construction — nodes materialize on demand, so a
-    /// module-free project pays nothing. The store and the pump are
-    /// serving-neutral; the session-side policy — admission vetoes,
-    /// unservable escalation, serving-row refresh — lives on this class
-    /// and is installed into the pump's hooks by wire(). The AST family is
-    /// assembled here in the server: its rounds capture sessions,
-    /// quarantine and publishing.
-    SchedulingStack sched{loop, project, commands};
-    EditorContext contexts{project, commands, sched.store.contexts};
-    ASTFamily ast{project, contexts, sched.graph, sched.pcm, sched.pch, sched.pool, sessions, loop};
+    /// The workers every project compiles and indexes on.
+    WorkerPool pool;
 
-    Dispatcher dispatcher{project, contexts, ast, sched.pool};
-    ContextService context_service{project, contexts, ast};
+    /// The projects served, in folder order; never empty. The first also
+    /// serves files no project claims.
+    std::vector<std::unique_ptr<ProjectServer>> projects;
+
+    /// A project published a document's compile output.
+    Signal<std::shared_ptr<Session>> on_output;
+
+    /// A project's indexing progress moved; read index_progress().
+    Signal<> on_index_progress;
 
     /// Emitted when rows an open index-served session is serving changed:
     /// results the client already pulled describe the old rows, and only a
@@ -181,19 +171,6 @@ public:
     /// compile, so the compile-driven refresh in the output push path
     /// cannot cover them.
     Signal<> on_serving_rows_changed;
-
-    ServerLiveSources live_sources{project, sched.pch, sessions, ast.projections};
-    PumpGate freshness{sched.pump, project.config};
-    index::IndexQuery index_query;
-
-    Features features;
-    Invalidator invalidator;
-
-    /// Stat-polling discovery of CDB and on-disk file changes. Created by
-    /// initialize() once the workspace is loaded (null before that and in
-    /// workspace-less sessions); its polling loops run in bg_tasks, and the
-    /// clice/internal/poll test hook drives ticks directly.
-    std::unique_ptr<FileTracker> tracker;
 
     /// Wakes subscribers after a new message landed in notify_log. Pure
     /// wake-up per the Signal contract: subscribers keep a sequence cursor
@@ -216,77 +193,31 @@ public:
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
 
     /// Initialization parameters captured from the LSP initialize request (or
-    /// serve-mode options), consumed when loading the workspace and publishing
-    /// config diagnostics.
-    std::string workspace_root;
+    /// serve-mode options), consumed when loading the projects.
+    std::vector<std::string> workspace_roots;
     std::string init_options_json;
+
     /// The `--configuration` argument: the build configuration this
     /// session runs, over the persisted selection; empty takes the
     /// selection, else the default.
     std::string requested_configuration;
-    /// Problems found while loading clice.toml during initialize(), kept so
-    /// LSPClient can publish them as diagnostics on the config file's URI.
-    std::vector<ConfigIssue> config_issues;
-    /// Path of the config file that was found (empty when none).
-    std::string config_path;
 
 private:
-    /// The server's wiring diagram: every domain→domain callback hook
-    /// (pool crash/eviction, indexing scheduling, ...) is assigned here
-    /// and nowhere else, so the composition root shows all cross-component
-    /// plumbing in one place. domain→transport communication does not go
-    /// through here — it uses Signal members that transports subscribe to.
+    /// The project a file belongs to: the one whose build compiles it (its
+    /// own entry or a rule's default command), else one whose include graph
+    /// reaches it (it borrows a host there), else the deepest root holding
+    /// it, else the first project.
+    ProjectServer& route(Fid path_id);
+
+    /// Move the open documents of `from` routing now sends elsewhere,
+    /// buffer and version intact.
+    void rehome_sessions(ProjectServer& from);
+
+    /// The project each open document was routed to.
+    llvm::DenseMap<Fid, ProjectServer*> owners;
+
+    /// The pool's callbacks, routed to the projects owning the documents.
     void wire();
-
-    /// Dispatch- and landing-time admission on one claimed pump file: the
-    /// serving side's veto (open sessions, index-only disk divergence).
-    Admission index_admission(Fid server_path_id);
-
-    /// An index attempt settled with no retry pending; a session waiting
-    /// on the index with nothing servable will never be served by it —
-    /// escalate instead of letting it answer empty forever.
-    void index_attempt_settled(Fid server_path_id);
-
-    /// Whether an open session serves this file's project rows (freshness
-    /// clause 4) and a client already pulled some of them — the emit
-    /// condition of on_serving_rows_changed.
-    bool serves_session_rows(Fid path_id) const;
-
-    /// Filter a store row-change report down to the sessions actually
-    /// serving those rows and wake the transports.
-    void index_rows_changed(llvm::ArrayRef<Fid> path_ids);
-
-    Signal<llvm::ArrayRef<Fid>>::Connection index_rows_conn;
-
-    void load_root_project();
-
-    /// When this server holds the cache directory's writer lock, the
-    /// commands that find it taken ask this server to index for them:
-    /// listen on a loopback port and record it next to the lock (see
-    /// index/writer_lock.h). The record is removed at shutdown.
-    void start_control_listener();
-    bool endpoint_recorded = false;
-
-    /// Periodically checkpoint the cache store manifest so last-accessed
-    /// times survive crashes (the store itself is passive by design).
-    /// Schedule a save carrying dirty artifact/context metadata; no-op
-    /// when one is already scheduled or the server is shutting down (the
-    /// final shutdown save covers it).
-    void schedule_metadata_flush();
-    kota::task<> metadata_flush_task();
-    bool metadata_flush_scheduled = false;
-
-    kota::task<> cache_checkpoint_task();
-
-    /// Drop pch_cache metadata for blobs the store's LRU evicted from
-    /// disk (see cache_checkpoint_task).
-    void drain_store_evictions();
-
-    /// The file tracker's polling loops: each tick hands the tracker's
-    /// event batch to dispatch(). Spawned by initialize() when the
-    /// configured interval is non-zero.
-    kota::task<> cdb_poll_task();
-    kota::task<> workspace_poll_task();
 
     /// Cancellation scope of the serving phase. run_serve_mode bounds its
     /// transport tasks with with_token(..., shutdown_token());
@@ -294,8 +225,7 @@ private:
     /// task proceeds to shutdown_and_cleanup().
     kota::cancellation_source shutdown_source;
 
-    /// Server-owned background tasks (cache checkpoint); cancelled and
-    /// joined in shutdown_and_cleanup().
+    /// Shutdowns of removed projects; joined in shutdown_and_cleanup().
     kota::task_group<> bg_tasks;
 
     std::string self_path;

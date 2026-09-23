@@ -63,10 +63,9 @@ static void fire_refresh(kota::event_loop& loop, kota::ipc::JsonPeer& peer, Para
 }
 
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
-    output_conn = server.ast.on_output.connect(
+    output_conn = server.on_output.connect(
         [this](const std::shared_ptr<Session>& session) { push_output(*session); });
-    progress_conn =
-        server.sched.pump.on_progress_changed.connect([this]() { report_index_progress(); });
+    progress_conn = server.on_index_progress.connect([this]() { report_index_progress(); });
     serving_conn = server.on_serving_rows_changed.connect([this]() { refresh_index_served(); });
 
     // Guidance/anomaly messages travel as window/logMessage, which the LSP
@@ -118,8 +117,11 @@ static void unversion(protocol::WorkspaceEdit& edit) {
 
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = uri_to_path(uri);
-    auto path_id = this->server.project.file_table.intern(path);
-    return ResolvedDoc{std::move(path), path_id, this->server.find_session(path_id)};
+    auto path_id = this->server.files.intern(path);
+    return ResolvedDoc{std::move(path),
+                       path_id,
+                       this->server.find_session(path_id),
+                       &this->server.owner_of(path_id)};
 }
 
 void LSPClient::register_lifecycle() {
@@ -127,19 +129,29 @@ void LSPClient::register_lifecycle() {
 
     peer.on_request([this](RequestContext& ctx, const protocol::InitializeParams& params)
                         -> RequestResult<protocol::InitializeParams> {
-        this->server.sched.pool.foreground_pulse();
+        this->server.pool.foreground_pulse();
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Uninitialized) {
             co_return kota::outcome_error(protocol::Error{"Server already initialized"});
         }
 
+        // Every workspace folder is a project; a client without folder
+        // support names its one root through rootUri. Canonicalize so
+        // downstream prefix checks (cache_dir, ${workspace} expansion,
+        // artifact detection) compare against the same spelling the file
+        // table stores.
         auto& init = params.lsp__initialize_params;
-        if(init.root_uri.has_value()) {
-            // Canonicalize so downstream prefix checks (cache_dir,
-            // ${workspace} expansion, artifact detection) compare against
-            // the same spelling the file table stores.
-            srv.workspace_root = uri_to_path(*init.root_uri);
-            path::canonicalize(srv.workspace_root);
+        auto& folders = params.workspace_folders_initialize_params.workspace_folders;
+        if(folders.has_value() && folders->has_value() && !(*folders)->empty()) {
+            for(auto& folder: **folders) {
+                auto root = uri_to_path(folder.uri);
+                path::canonicalize(root);
+                srv.workspace_roots.push_back(std::move(root));
+            }
+        } else if(init.root_uri.has_value()) {
+            auto root = uri_to_path(*init.root_uri);
+            path::canonicalize(root);
+            srv.workspace_roots.push_back(std::move(root));
         }
 
         if(init.capabilities.workspace.has_value()) {
@@ -162,7 +174,7 @@ void LSPClient::register_lifecycle() {
         }
 
         srv.lifecycle = ServerLifecycle::Initialized;
-        LOG_INFO("Initialized with workspace: {}", srv.workspace_root);
+        LOG_INFO("Initialized with folders: {}", llvm::join(srv.workspace_roots, ", "));
 
         protocol::InitializeResult result;
         auto& caps = result.capabilities;
@@ -209,6 +221,11 @@ void LSPClient::register_lifecycle() {
                 std::vector<protocol::CodeActionKind>(feature::code_action_kinds.begin(),
                                                       feature::code_action_kinds.end()),
         };
+
+        protocol::WorkspaceFoldersServerCapabilities folder_caps;
+        folder_caps.supported = true;
+        folder_caps.change_notifications = true;
+        caps.workspace = protocol::WorkspaceOptions{.workspace_folders = std::move(folder_caps)};
 
         protocol::SemanticTokensOptions sem_opts;
         {
@@ -259,21 +276,53 @@ void LSPClient::register_lifecycle() {
         // still describe the current buffer are replayed: an edit during
         // the handshake marks the session dirty, and the next compile
         // pushes fresh results instead.
-        srv.sessions.for_each([this](Fid path_id, const Session& session) {
-            auto projection = this->server.ast.projections.projection(path_id);
-            if(projection && projection->output.has_value() &&
-               this->server.ast.projections.current(path_id) &&
-               projection->output->version == session.version) {
-                this->push_output(session);
+        for(auto& project: srv.projects) {
+            project->sessions.for_each([&](Fid path_id, const Session& session) {
+                auto& projections = project->ast.projections;
+                auto projection = projections.projection(path_id);
+                if(projection && projection->output.has_value() && projections.current(path_id) &&
+                   projection->output->version == session.version) {
+                    this->push_output(session);
+                }
+                return true;
+            });
+        }
+    });
+
+    // Each folder is a project: an added one starts serving, a removed
+    // one hands its open documents to the projects routing picks now.
+    peer.on_notification([this](const protocol::DidChangeWorkspaceFoldersParams& params) {
+        auto& srv = this->server;
+        if(past_shutdown(srv.lifecycle)) {
+            return;
+        }
+        for(auto& folder: params.event.removed) {
+            auto root = uri_to_path(folder.uri);
+            path::canonicalize(root);
+            if(srv.lifecycle == ServerLifecycle::Ready) {
+                srv.remove_folder(root);
+            } else {
+                llvm::erase(srv.workspace_roots, root);
             }
-            return true;
-        });
+        }
+        for(auto& folder: params.event.added) {
+            auto root = uri_to_path(folder.uri);
+            path::canonicalize(root);
+            if(srv.lifecycle == ServerLifecycle::Ready) {
+                srv.add_folder(std::move(root));
+            } else if(!llvm::is_contained(srv.workspace_roots, root)) {
+                srv.workspace_roots.push_back(std::move(root));
+            }
+        }
+        if(this->client_ready) {
+            this->publish_config_diagnostics();
+        }
     });
 
     peer.on_request(
         [this](RequestContext& ctx,
                const protocol::ShutdownParams& params) -> RequestResult<protocol::ShutdownParams> {
-            this->server.sched.pool.foreground_pulse();
+            this->server.pool.foreground_pulse();
             this->server.lifecycle = ServerLifecycle::ShuttingDown;
             LOG_INFO("Shutdown requested");
             co_return nullptr;
@@ -290,9 +339,9 @@ void LSPClient::register_document_sync() {
         auto& srv = this->server;
         if(past_shutdown(srv.lifecycle))
             return;
-        srv.sched.pool.foreground_pulse();
+        srv.pool.foreground_pulse();
 
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+        auto [path, path_id, session, routed] = resolve_uri(params.text_document.uri);
 
         // A didOpen racing ahead of the initialize handshake is a client
         // protocol violation, but sessions are plain state with no worker
@@ -304,16 +353,21 @@ void LSPClient::register_document_sync() {
             LOG_WARN("didOpen before the server is ready, accepting: {}", path);
         }
 
+        // Discovery first: a database found above the file decides which
+        // project it is routed to.
         srv.discover_around(path_id);
         session = srv.open_session(path_id);
-        srv.sessions.apply_open(*session, params.text_document.text, params.text_document.version);
+        auto& project = srv.owner_of(path_id);
+        project.sessions.apply_open(*session,
+                                    params.text_document.text,
+                                    params.text_document.version);
 
         // A context choice persisted from an earlier session stays
         // authoritative only if it still holds.
-        srv.contexts.validate_saved_context(session->path_id);
+        project.contexts.validate_saved_context(session->path_id);
 
-        srv.dispatch(FileEvent::buffer_opened(path_id));
-        srv.settle_open_serving(session);
+        project.dispatch(FileEvent::buffer_opened(path_id));
+        project.settle_open_serving(session);
 
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
     });
@@ -322,9 +376,9 @@ void LSPClient::register_document_sync() {
         auto& srv = this->server;
         if(past_shutdown(srv.lifecycle))
             return;
-        srv.sched.pool.foreground_pulse();
+        srv.pool.foreground_pulse();
 
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session) {
             // Dropping is the only safe move: without the didOpen baseline
             // there is no buffer to fold the edits into.
@@ -339,20 +393,22 @@ void LSPClient::register_document_sync() {
                      params.text_document.version);
         }
 
-        srv.sessions.apply_change(*session, params.content_changes, params.text_document.version);
+        project->sessions.apply_change(*session,
+                                       params.content_changes,
+                                       params.text_document.version);
 
         // The edit just made any in-flight compile stale. Supersede it now
         // instead of waiting for the next AST-backed request to observe
         // it: the round's advisory token releases its dependency waits,
         // and the CancelCompile interrupt keeps a stale parse from
         // holding up its waiters.
-        srv.ast.supersede(path_id);
+        project->ast.supersede(path_id);
 
         // Editing is the canonical escalation trigger: from here on the
         // session invests in PCH/AST.
-        srv.ast.escalate(*session);
+        project->ast.escalate(*session);
 
-        srv.dispatch(FileEvent::buffer_edited(path_id));
+        project->dispatch(FileEvent::buffer_edited(path_id));
 
         LOG_DEBUG("didChange: path={} version={} gen={}",
                   path,
@@ -371,7 +427,7 @@ void LSPClient::register_document_sync() {
         // clear is suppressed until the handshake completes — nothing was
         // pushed, and publishDiagnostics may not flow yet (push_output
         // drops the clear while !client_ready).
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+        auto path_id = srv.files.intern(uri_to_path(params.text_document.uri));
         // LSP versions are scoped to an open document: a reopen restarts
         // them, so a stale entry would misread the fresh document's first
         // compile as an unchanged-text recompile.
@@ -387,10 +443,10 @@ void LSPClient::register_document_sync() {
         // ready reads the saved disk content anyway.
         if(srv.lifecycle != ServerLifecycle::Ready)
             return;
-        srv.sched.pool.foreground_pulse();
+        srv.pool.foreground_pulse();
 
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-        srv.dispatch(FileEvent::buffer_saved(path_id));
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        project->dispatch(FileEvent::buffer_saved(path_id));
 
         LOG_DEBUG("didSave: {}", path);
     });
@@ -398,64 +454,64 @@ void LSPClient::register_document_sync() {
 
 void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
-        this->server.sched.pool.foreground_pulse();
+        this->server.pool.foreground_pulse();
         auto& srv = this->server;
-        auto [path, path_id, session] =
+        auto [path, path_id, session, project] =
             resolve_uri(params.text_document_position_params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
-        co_return co_await srv.features.hover(session,
-                                              params.text_document_position_params.position,
-                                              ctx.cancellation);
+        co_return co_await project->features.hover(session,
+                                                   params.text_document_position_params.position,
+                                                   ctx.cancellation);
     });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
-            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.semantic_tokens(session, ctx.cancellation);
+            co_return co_await project->features.semantic_tokens(session, ctx.cancellation);
         });
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
-            auto& srv = this->server;
-            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-            if(!session)
-                co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.inlay_hints(session, params.range, ctx.cancellation);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::InlayHintParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto& srv = this->server;
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        if(!session)
+            co_return kota::outcome_error(document_not_open());
+        co_return co_await project->features.inlay_hints(session, params.range, ctx.cancellation);
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
-            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.folding_range(session, ctx.cancellation);
+            co_return co_await project->features.folding_range(session, ctx.cancellation);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
-            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.document_symbol(session, ctx.cancellation);
+            co_return co_await project->features.document_symbol(session, ctx.cancellation);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
-            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            auto links = co_await this->server.features.document_links(session, ctx.cancellation);
+            auto links = co_await project->features.document_links(session, ctx.cancellation);
             if(!links.has_value())
                 co_return kota::outcome_error(std::move(links.error()));
             co_return to_raw(links.value());
@@ -463,12 +519,12 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
-            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            auto actions = co_await srv.features.code_action(
+            auto actions = co_await project->features.code_action(
                 session,
                 params.range,
                 params.context.only.value_or(std::vector<protocol::CodeActionKind>{}),
@@ -483,87 +539,85 @@ void LSPClient::register_language_features() {
             co_return to_raw(actions.value());
         });
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session] = resolve_uri(uri);
-            co_return co_await this->server.features.definition(session,
-                                                                path_id,
-                                                                pos,
-                                                                ctx.cancellation);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DefinitionParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto& uri = params.text_document_position_params.text_document.uri;
+        auto& pos = params.text_document_position_params.position;
+        auto [path, path_id, session, project] = resolve_uri(uri);
+        co_return co_await project->features.definition(session, path_id, pos, ctx.cancellation);
+    });
 
     // The navigation handlers below are index-only: closed documents are
     // fully serveable from the index, and an empty result is a real answer,
     // returned as [] — never an error.
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
+            this->server.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session] = resolve_uri(uri);
-            co_return co_await this->server.features.references(session,
-                                                                path_id,
-                                                                pos,
-                                                                params.context.include_declaration);
+            auto [path, path_id, session, project] = resolve_uri(uri);
+            co_return co_await project->features.references(session,
+                                                            path_id,
+                                                            pos,
+                                                            params.context.include_declaration);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
+            this->server.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session] = resolve_uri(uri);
-            co_return co_await this->server.features.type_definition(session, path_id, pos);
+            auto [path, path_id, session, project] = resolve_uri(uri);
+            co_return co_await project->features.type_definition(session, path_id, pos);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ImplementationParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
+            this->server.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session] = resolve_uri(uri);
-            co_return co_await this->server.features.implementation(session, path_id, pos);
+            auto [path, path_id, session, project] = resolve_uri(uri);
+            co_return co_await project->features.implementation(session, path_id, pos);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DeclarationParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
+            this->server.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session] = resolve_uri(uri);
-            co_return co_await this->server.features.declaration(session, path_id, pos);
+            auto [path, path_id, session, project] = resolve_uri(uri);
+            co_return co_await project->features.declaration(session, path_id, pos);
         });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::CompletionParams& params) -> RawResult {
-        this->server.sched.pool.foreground_pulse();
-        auto& srv = this->server;
-        auto [path, path_id, session] =
-            resolve_uri(params.text_document_position_params.text_document.uri);
-        if(!session)
-            co_return kota::outcome_error(document_not_open());
-        llvm::StringRef trigger;
-        if(params.context && params.context->trigger_character) {
-            trigger = *params.context->trigger_character;
-        }
-        co_return co_await srv.features.completion(session,
-                                                   params.text_document_position_params.position,
-                                                   trigger,
-                                                   ctx.cancellation);
-    });
-
     peer.on_request(
-        [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
+        [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
-            auto [path, path_id, session] =
+            auto [path, path_id, session, project] =
                 resolve_uri(params.text_document_position_params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.signature_help(
+            llvm::StringRef trigger;
+            if(params.context && params.context->trigger_character) {
+                trigger = *params.context->trigger_character;
+            }
+            co_return co_await project->features.completion(
+                session,
+                params.text_document_position_params.position,
+                trigger,
+                ctx.cancellation);
+        });
+
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto& srv = this->server;
+            auto [path, path_id, session, project] =
+                resolve_uri(params.text_document_position_params.text_document.uri);
+            if(!session)
+                co_return kota::outcome_error(document_not_open());
+            co_return co_await project->features.signature_help(
                 session,
                 params.text_document_position_params.position,
                 ctx.cancellation);
@@ -571,74 +625,76 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentFormattingParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
-            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.formatting(session, ctx.cancellation);
+            co_return co_await project->features.formatting(session, ctx.cancellation);
         });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::DocumentRangeFormattingParams& params) -> RawResult {
-        this->server.sched.pool.foreground_pulse();
+        this->server.pool.foreground_pulse();
         auto& srv = this->server;
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
-        co_return co_await srv.features.range_formatting(session, params.range, ctx.cancellation);
+        co_return co_await project->features.range_formatting(session,
+                                                              params.range,
+                                                              ctx.cancellation);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyPrepareParams& params) -> RawResult {
-        this->server.sched.pool.foreground_pulse();
+        this->server.pool.foreground_pulse();
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
-        auto [path, path_id, session] = resolve_uri(uri);
-        co_return co_await this->server.features.call_hierarchy_prepare(session, path_id, pos);
+        auto [path, path_id, session, project] = resolve_uri(uri);
+        co_return co_await project->features.call_hierarchy_prepare(session, path_id, pos);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
-        this->server.sched.pool.foreground_pulse();
-        auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.call_hierarchy_incoming(path_id, params.item);
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.item.uri);
+        co_return co_await project->features.call_hierarchy_incoming(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
-        this->server.sched.pool.foreground_pulse();
-        auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.call_hierarchy_outgoing(path_id, params.item);
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.item.uri);
+        co_return co_await project->features.call_hierarchy_outgoing(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
-        this->server.sched.pool.foreground_pulse();
+        this->server.pool.foreground_pulse();
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
-        auto [path, path_id, session] = resolve_uri(uri);
-        co_return co_await this->server.features.type_hierarchy_prepare(session, path_id, pos);
+        auto [path, path_id, session, project] = resolve_uri(uri);
+        co_return co_await project->features.type_hierarchy_prepare(session, path_id, pos);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
-        this->server.sched.pool.foreground_pulse();
-        auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.type_hierarchy_supertypes(path_id, params.item);
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.item.uri);
+        co_return co_await project->features.type_hierarchy_supertypes(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
-        this->server.sched.pool.foreground_pulse();
-        auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.type_hierarchy_subtypes(path_id, params.item);
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.item.uri);
+        co_return co_await project->features.type_hierarchy_subtypes(path_id, params.item);
     });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::WorkspaceSymbolParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
-            co_return co_await this->server.features.workspace_symbol(params.query);
+            this->server.pool.foreground_pulse();
+            co_return to_raw(this->server.workspace_symbol(params.query));
         });
 }
 
@@ -648,53 +704,55 @@ void LSPClient::register_extensions() {
     peer.on_request(
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
-            auto [path, path_id, session] = resolve_uri(params.uri);
-            co_return to_raw(this->server.context_service.query_contexts(path, path_id, params));
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.uri);
+            co_return to_raw(project->context_service.query_contexts(path, path_id, params));
         });
 
     peer.on_request(
         "clice/currentContext",
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
-            auto [path, path_id, session] = resolve_uri(params.uri);
-            co_return to_raw(
-                this->server.context_service.current_context(path, session.get(), params));
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.uri);
+            co_return to_raw(project->context_service.current_context(path, session.get(), params));
         });
 
     peer.on_request(
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
-            this->server.sched.pool.foreground_pulse();
-            auto [path, path_id, session] = resolve_uri(params.uri);
-            auto [context_path, context_path_id, context_session] = resolve_uri(params.context_uri);
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.uri);
+            auto context_path = uri_to_path(params.context_uri);
+            auto context_path_id = this->server.files.intern(context_path);
             // The session reset lives inside switch_context (single owner,
             // synchronous, no cross-file cascade — exempt from the event
             // pipeline; see the Invalidator charter).
-            auto result = co_await this->server.context_service.switch_context(path,
-                                                                               path_id,
-                                                                               session.get(),
-                                                                               context_path,
-                                                                               context_path_id,
-                                                                               params);
+            auto result = co_await project->context_service.switch_context(path,
+                                                                           path_id,
+                                                                           session.get(),
+                                                                           context_path,
+                                                                           context_path_id,
+                                                                           params);
             // A context choice asks for the context-pure AST view; the
             // merged index cannot give it (union rows). A rejected switch
             // (stale epoch, bad host) changed no context and owes none.
             if(result.success) {
-                this->server.ast.escalate(*session);
+                project->ast.escalate(*session);
             }
             co_return to_raw(result);
         });
 
     peer.on_request("clice/listConfigurations",
                     [this](RequestContext& ctx, const ext::ListConfigurationsParams&) -> RawResult {
-                        co_return to_raw(this->server.context_service.list_configurations());
+                        // The protocol names no file: the first project answers.
+                        co_return to_raw(
+                            this->server.projects.front()->context_service.list_configurations());
                     });
 
     peer.on_request(
         "clice/switchConfiguration",
         [this](RequestContext& ctx, const ext::SwitchConfigurationParams& params) -> RawResult {
-            co_return to_raw(this->server.context_service.switch_configuration(
+            co_return to_raw(this->server.projects.front()->context_service.switch_configuration(
                 params.name,
                 this->server.requested_configuration));
         });
@@ -703,50 +761,60 @@ void LSPClient::register_extensions() {
 
     // Runs one file-tracker tick synchronously (see ext::PollParams).
     // Test-only and not a stable API.
-    peer.on_request(
-        "clice/internal/poll",
-        [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
-            auto& srv = this->server;
-            if(!srv.tracker) {
-                co_return kota::outcome_error(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
-                                                               "No workspace is loaded"});
-            }
-
-            llvm::SmallVector<FileEvent> events;
-            if(params.loop == "cdb") {
-                events = srv.tracker->tick_cdb(params.force.value_or(true));
-            } else if(params.loop == "workspace") {
-                events = co_await srv.tracker->tick_workspace();
-            } else {
-                co_return kota::outcome_error(
-                    kota::ipc::Error{protocol::ErrorCode::InvalidParams,
-                                     R"(loop must be "cdb" or "workspace")"});
-            }
-
-            if(!events.empty()) {
-                srv.dispatch(events);
-            }
-            co_return to_raw(ext::PollResult{static_cast<std::uint32_t>(events.size())});
-        });
-
-    peer.on_request("clice/internal/logFlood",
-                    [this](RequestContext& ctx, const ext::LogFloodParams& params) -> RawResult {
-                        // Load-generating hook: a stray client must not be able to
-                        // bloat the file log, so it only exists when the harness asked
-                        // for it at initialize time.
-                        if(!this->server.project.config.project.test_hooks.value) {
+    peer.on_request("clice/internal/poll",
+                    [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
+                        auto& srv = this->server;
+                        if(params.loop != "cdb" && params.loop != "workspace") {
+                            co_return kota::outcome_error(
+                                kota::ipc::Error{protocol::ErrorCode::InvalidParams,
+                                                 R"(loop must be "cdb" or "workspace")"});
+                        }
+                        // Every project ticks; the reply counts the events of all.
+                        std::uint32_t count = 0;
+                        bool loaded = false;
+                        for(std::size_t i = 0; i < srv.projects.size(); i += 1) {
+                            auto* project = srv.projects[i].get();
+                            if(!project->tracker) {
+                                continue;
+                            }
+                            loaded = true;
+                            llvm::SmallVector<FileEvent> events;
+                            if(params.loop == "cdb") {
+                                events = project->tracker->tick_cdb(params.force.value_or(true));
+                            } else {
+                                events = co_await project->tracker->tick_workspace();
+                            }
+                            count += static_cast<std::uint32_t>(events.size());
+                            if(!events.empty()) {
+                                project->dispatch(events);
+                            }
+                        }
+                        if(!loaded) {
                             co_return kota::outcome_error(
                                 kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
-                                                 "test hooks are not enabled"});
+                                                 "No workspace is loaded"});
                         }
-                        auto count = std::min<std::uint32_t>(params.count, 100'000);
-                        auto size = std::clamp<std::uint32_t>(params.size, 16, 4096);
-                        std::string padding(size, 'f');
-                        for(std::uint32_t i = 0; i < count; ++i) {
-                            LOG_INFO("[stderr-flood {}] {}", i, padding);
-                        }
-                        co_return to_raw(ext::LogFloodResult{count});
+                        co_return to_raw(ext::PollResult{count});
                     });
+
+    peer.on_request(
+        "clice/internal/logFlood",
+        [this](RequestContext& ctx, const ext::LogFloodParams& params) -> RawResult {
+            // Load-generating hook: a stray client must not be able to
+            // bloat the file log, so it only exists when the harness asked
+            // for it at initialize time.
+            if(!this->server.projects.front()->project.config.project.test_hooks.value) {
+                co_return kota::outcome_error(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                                                               "test hooks are not enabled"});
+            }
+            auto count = std::min<std::uint32_t>(params.count, 100'000);
+            auto size = std::clamp<std::uint32_t>(params.size, 16, 4096);
+            std::string padding(size, 'f');
+            for(std::uint32_t i = 0; i < count; ++i) {
+                LOG_INFO("[stderr-flood {}] {}", i, padding);
+            }
+            co_return to_raw(ext::LogFloodResult{count});
+        });
 
     // Ownership gauges for memory-lifecycle tests (see ext::StatsParams).
     // Read-only and synchronous: every counter is computed from live
@@ -755,36 +823,35 @@ void LSPClient::register_extensions() {
     peer.on_request(
         "clice/internal/stats",
         [this](RequestContext& ctx, const ext::StatsParams&) -> RawResult {
-            auto& srv = this->server;
             ext::StatsResult stats;
-
-            for(auto& entry: srv.project.pch_cache) {
-                auto& st = entry.second;
-                if(st.state) {
-                    stats.pch_loaded_states += 1;
-                    stats.pch_state_bytes += st.state->bytes().size();
+            for(auto& served: this->server.projects) {
+                auto& project = served->project;
+                for(auto& entry: project.pch_cache) {
+                    auto& st = entry.second;
+                    if(st.state) {
+                        stats.pch_loaded_states += 1;
+                        stats.pch_state_bytes += st.state->bytes().size();
+                    }
                 }
+                stats.pch_cache_entries += static_cast<std::uint32_t>(project.pch_cache.size());
+
+                auto& store = served->sched.store;
+                stats.index_inmemory_shards +=
+                    static_cast<std::uint32_t>(store.pending_shard_writes());
+                for(auto& [path_id, shard]: project.project_index.shards) {
+                    stats.index_shard_content_bytes += shard.bytes().size();
+                }
+                stats.last_save_shards += static_cast<std::uint32_t>(store.last_save_shards());
+
+                if(project.store) {
+                    stats.pending_tmp_files +=
+                        static_cast<std::uint32_t>(project.store->pending_tmp_files());
+                }
+
+                stats.header_contexts +=
+                    static_cast<std::uint32_t>(served->contexts.header_contexts.size());
+                stats.sessions += static_cast<std::uint32_t>(served->sessions.sessions.size());
             }
-            stats.pch_cache_entries = static_cast<std::uint32_t>(srv.project.pch_cache.size());
-
-            stats.index_inmemory_shards =
-                static_cast<std::uint32_t>(srv.sched.store.pending_shard_writes());
-            for(auto& [path_id, shard]: srv.project.project_index.shards) {
-                stats.index_shard_content_bytes += shard.bytes().size();
-            }
-            stats.last_save_shards = static_cast<std::uint32_t>(srv.sched.store.last_save_shards());
-
-            if(srv.project.store) {
-                stats.pending_tmp_files =
-                    static_cast<std::uint32_t>(srv.project.store->pending_tmp_files());
-            }
-
-            stats.header_contexts = static_cast<std::uint32_t>(srv.contexts.header_contexts.size());
-            srv.sessions.for_each([&](Fid, const Session&) -> bool {
-                stats.sessions += 1;
-                return true;
-            });
-
             co_return to_raw(stats);
         });
 }
@@ -796,33 +863,35 @@ void LSPClient::register_extensions() {
 /// the problems panel. The loaded file always gets a publish, so a clean
 /// load clears diagnostics from a previous (broken) state.
 void LSPClient::publish_config_diagnostics() {
-    if(server.config_path.empty())
-        return;
-
     llvm::StringMap<std::vector<protocol::Diagnostic>> by_file;
-    // The loaded file always gets a publish (even with zero issues), so a
-    // clean load clears diagnostics from a previous broken state.
-    by_file.try_emplace(server.config_path);
-    for(auto& issue: server.config_issues) {
-        // rich_error positions are 1-based; LSP wants 0-based. An unknown
-        // position (0) maps to the file top. The range spans a single
-        // character — clients render it as the whole token anyway.
-        auto line = issue.line > 0 ? issue.line - 1 : 0;
-        auto character = issue.column > 0 ? issue.column - 1 : 0;
+    for(auto& project: server.projects) {
+        if(project->config_path.empty()) {
+            continue;
+        }
+        // The loaded file always gets a publish (even with zero issues), so
+        // a clean load clears diagnostics from a previous broken state.
+        by_file.try_emplace(project->config_path);
+        for(auto& issue: project->config_issues) {
+            // rich_error positions are 1-based; LSP wants 0-based. An unknown
+            // position (0) maps to the file top. The range spans a single
+            // character — clients render it as the whole token anyway.
+            auto line = issue.line > 0 ? issue.line - 1 : 0;
+            auto character = issue.column > 0 ? issue.column - 1 : 0;
 
-        protocol::Diagnostic diagnostic;
-        diagnostic.range = protocol::Range{
-            .start = protocol::Position{.line = line, .character = character    },
-            .end = protocol::Position{.line = line, .character = character + 1},
-        };
-        diagnostic.severity = issue.severity == ConfigIssue::Severity::Error
-                                  ? protocol::DiagnosticSeverity::Error
-                                  : protocol::DiagnosticSeverity::Warning;
-        diagnostic.source = "clice";
-        diagnostic.message = issue.message;
-        by_file[issue.file].push_back(std::move(diagnostic));
+            protocol::Diagnostic diagnostic;
+            diagnostic.range = protocol::Range{
+                .start = protocol::Position{.line = line, .character = character    },
+                .end = protocol::Position{.line = line, .character = character + 1},
+            };
+            diagnostic.severity = issue.severity == ConfigIssue::Severity::Error
+                                      ? protocol::DiagnosticSeverity::Error
+                                      : protocol::DiagnosticSeverity::Warning;
+            diagnostic.source = "clice";
+            diagnostic.message = issue.message;
+            by_file[issue.file].push_back(std::move(diagnostic));
 
-        LOG_GUIDANCE("Configuration problem in {}: {}", issue.file, issue.message);
+            LOG_GUIDANCE("Configuration problem in {}: {}", issue.file, issue.message);
+        }
     }
 
     for(auto& [file, diagnostics]: by_file) {
@@ -845,13 +914,13 @@ void LSPClient::push_output(const Session& session) {
     if(!client_ready) {
         return;
     }
-    auto projection = server.ast.projections.projection(session.path_id);
+    auto projection = server.owner_of(session.path_id).ast.projections.projection(session.path_id);
     if(!projection || !projection->output.has_value()) {
         return;
     }
     auto& output = *projection->output;
 
-    auto file_path = std::string(server.project.file_table.resolve(session.path_id));
+    auto file_path = std::string(server.files.resolve(session.path_id));
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
@@ -902,7 +971,7 @@ void LSPClient::refresh_index_served() {
 }
 
 void LSPClient::report_index_progress() {
-    const auto& p = server.sched.pump.progress();
+    auto p = server.index_progress();
     using Stage = IndexPump::Progress::Stage;
     auto& st = *index_progress;
     switch(p.stage) {

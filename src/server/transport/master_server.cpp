@@ -2,7 +2,9 @@
 
 #include <list>
 #include <memory>
+#include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "version.h"
@@ -42,27 +44,16 @@ constexpr static std::size_t notify_log_limit = 128;
 MasterServer::MasterServer(kota::event_loop& loop,
                            std::string self_path,
                            std::string requested_configuration) :
-    loop(loop), index_query(project.project_index, project.file_table, &freshness, &live_sources),
-    features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
-    invalidator(project, sessions, contexts, sched.pcm, sched.store), bg_tasks(loop),
-    self_path(std::move(self_path)), requested_configuration(std::move(requested_configuration)) {
-    ast.register_runner();
+    loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)),
+    bg_tasks(loop), self_path(std::move(self_path)) {
+    // Documents opened before initialize land in this project: sessions
+    // are plain state, and initialize re-routes them once folders exist.
+    projects.push_back(std::make_unique<ProjectServer>(*this, std::string()));
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) plus a wake-up
     // signal. Master-side reports only ever fire on the event-loop thread
     // (see support/anomaly.h), so no synchronization is needed here.
-    // The loaded-state budget follows the open-document count; the PCH
-    // family cannot see SessionStore, so the master wires the provider.
-    sched.pch.open_documents = [this] {
-        return sessions.sessions.size();
-    };
-    // Metadata marks (a PCH landing, a context switch) flush through the
-    // next save; the wiring schedules one soon after the first mark.
-    project.request_flush = [this] {
-        schedule_metadata_flush();
-    };
-
     logging::set_notify_hook([this](logging::NotifyLevel level, std::string_view message) {
         notify_log.push_back(NotifyMessage{level, std::string(message)});
         if(notify_log.size() > notify_log_limit) {
@@ -77,94 +68,87 @@ MasterServer::~MasterServer() {
     logging::set_notify_hook(nullptr);
 }
 
-void MasterServer::initialize() {
-    config_issues.clear();
-    config_path.clear();
-    // Load clice.toml raw and overlay initializationOptions BEFORE computing
-    // defaults: derived fields (logging_dir, index_dir, ...) must follow the
-    // final merged values (e.g. a cache_dir overridden by the client).
-    project.config = Config::load_from_workspace(workspace_root,
-                                                 &config_issues,
-                                                 &config_path,
-                                                 /*finalized=*/false);
-    // Capture the raw sources now: the configuration dump below can only run
-    // once the merged config has named the log directory.
-    std::string raw_toml;
-    if(!config_path.empty()) {
-        if(auto content = fs::read(config_path)) {
-            raw_toml = std::move(*content);
-        }
-    }
-    std::string raw_init_options = init_options_json;
-
-    if(!init_options_json.empty()) {
-        if(auto ov = kota::codec::json::from_string(init_options_json, project.config); !ov) {
-            LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
-        } else {
-            LOG_INFO("Applied initializationOptions overlay");
-        }
-        init_options_json.clear();
-    }
-    project.config.finalize(workspace_root);
-
-    auto& cfg = project.config.project;
-
-    if(cfg.readonly == "on") {
-        ast.readonly = ReadonlyMode::On;
-    } else if(cfg.readonly == "auto") {
-        ast.readonly = ReadonlyMode::Auto;
+/// Dump every configuration layer of a project — the config file verbatim,
+/// the client's initializationOptions overlay, and the merged result after
+/// defaults. Absence is stated explicitly so "was my config even read?"
+/// never needs a support round-trip; the stderr mirror puts all of it in
+/// the editor's output panel.
+static void log_configuration(const ProjectServer& project, llvm::StringRef init_options) {
+    if(project.config_path.empty()) {
+        LOG_INFO("Configuration file: Missing (project {})", project.root);
     } else {
-        if(cfg.readonly != "off") {
-            LOG_WARN("Unknown readonly '{}'; using off", std::string(cfg.readonly));
+        auto raw = fs::read(project.config_path);
+        LOG_INFO("Configuration file {}:\n{}",
+                 project.config_path,
+                 raw ? *raw : std::string("<unreadable>"));
+    }
+    if(init_options.empty()) {
+        LOG_INFO("initializationOptions: Missing");
+    } else {
+        auto pretty = kota::codec::json::prettify(init_options);
+        LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : init_options.str());
+    }
+    if(auto json = kota::codec::json::to_string(project.project.config)) {
+        auto pretty = kota::codec::json::prettify(*json);
+        LOG_INFO("Effective configuration:\n{}", pretty ? *pretty : *json);
+    }
+}
+
+void MasterServer::initialize() {
+    if(!workspace_roots.empty()) {
+        projects.front()->root = workspace_roots.front();
+        for(auto& root: llvm::drop_begin(workspace_roots)) {
+            projects.push_back(std::make_unique<ProjectServer>(*this, root));
         }
-        ast.readonly = ReadonlyMode::Off;
+    }
+    std::vector<std::string> cache_dirs;
+    for(auto& project: projects) {
+        project->configure(init_options_json, cache_dirs);
+        cache_dirs.push_back(project->project.config.project.cache_dir);
     }
 
-    if(cfg.cache_dir_defaulted.value) {
-        CacheStore::write_ignore_markers(cfg.cache_dir);
+    // One pool serves every project, sized for the most demanding one;
+    // the first project names the log directory, as the root did before
+    // there were several.
+    auto& first = projects.front()->project.config.project;
+    WorkerPoolOptions pool_opts;
+    pool_opts.self_path = self_path;
+    pool_opts.stateful_count = first.stateful_worker_count;
+    pool_opts.stateless_count = first.stateless_worker_count;
+    pool_opts.min_stateless = first.min_stateless_worker_count;
+    pool_opts.max_stateless = first.max_stateless_worker_count;
+    for(auto& project: llvm::drop_begin(projects)) {
+        auto& cfg = project->project.config.project;
+        pool_opts.stateful_count =
+            std::max<std::uint32_t>(pool_opts.stateful_count, cfg.stateful_worker_count.value);
+        pool_opts.stateless_count =
+            std::max<std::uint32_t>(pool_opts.stateless_count, cfg.stateless_worker_count.value);
+        pool_opts.min_stateless =
+            std::max<std::uint32_t>(pool_opts.min_stateless, cfg.min_stateless_worker_count.value);
+        // 0 leaves the ceiling to the core count, the largest one.
+        std::uint32_t ceiling = cfg.max_stateless_worker_count.value;
+        pool_opts.max_stateless = pool_opts.max_stateless == 0 || ceiling == 0
+                                      ? 0
+                                      : std::max(pool_opts.max_stateless, ceiling);
     }
 
-    if(!cfg.logging_dir.empty()) {
-        session_log_dir = logging::session_log_directory(cfg.logging_dir);
+    if(!first.logging_dir.empty()) {
+        session_log_dir = logging::session_log_directory(first.logging_dir);
         if(logging::file_logger("master", session_log_dir, logging::options)) {
             LOG_INFO("Session log directory: {}", session_log_dir);
         }
     }
-
-    // Dump every configuration layer — the config file verbatim, the
-    // client's initializationOptions overlay, and the merged result after
-    // defaults. Absence is stated explicitly so "was my config even read?"
-    // never needs a support round-trip; the stderr mirror puts all of it in
-    // the editor's output panel.
-    if(config_path.empty()) {
-        LOG_INFO("Configuration file: Missing");
-    } else {
-        LOG_INFO("Configuration file {}:\n{}", config_path, raw_toml);
-    }
-    if(raw_init_options.empty()) {
-        LOG_INFO("initializationOptions: Missing");
-    } else {
-        auto pretty = kota::codec::json::prettify(raw_init_options);
-        LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : raw_init_options);
-    }
-    if(auto json = kota::codec::json::to_string(project.config)) {
-        auto pretty = kota::codec::json::prettify(*json);
-        LOG_INFO("Effective configuration:\n{}", pretty ? *pretty : *json);
+    for(auto& project: projects) {
+        log_configuration(*project, init_options_json);
     }
 
-    LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
-             cfg.stateful_worker_count.value,
-             cfg.stateless_worker_count.value,
-             cfg.idle_timeout_ms.value);
+    LOG_INFO("Server ready (projects={}, stateful={}, stateless={})",
+             projects.size(),
+             pool_opts.stateful_count,
+             pool_opts.stateless_count);
 
-    WorkerPoolOptions pool_opts;
-    pool_opts.self_path = self_path;
-    pool_opts.stateful_count = cfg.stateful_worker_count;
-    pool_opts.stateless_count = cfg.stateless_worker_count;
-    pool_opts.min_stateless = cfg.min_stateless_worker_count;
-    pool_opts.max_stateless = cfg.max_stateless_worker_count;
     pool_opts.log_dir = session_log_dir;
-    if(!sched.pool.start(pool_opts)) {
+    if(!pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
         return;
     }
@@ -173,67 +157,19 @@ void MasterServer::initialize() {
 
     wire();
 
-    load_root_project();
-
-    // Documents opened before the server became ready were validated
-    // before any choice was loaded and created under the default mode;
-    // re-check their persisted context choices and re-derive their
-    // serving mode now that the configuration governs. Settlement waits
-    // until here — after load_root_project — so divergence detection sees
-    // the persisted shards it just loaded (a restored unsaved buffer must
-    // escalate, not read as merely unindexed).
-    for(auto& [path_id, session]: sessions.sessions) {
-        if(session) {
-            contexts.validate_saved_context(session->path_id);
-            session->serving =
-                ast.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
-            settle_open_serving(session);
-        }
-    }
-
-    if(!workspace_root.empty()) {
-        // Construct after the project load: the tracker baselines each
-        // database at the read its entries came from.
-        tracker = std::make_unique<FileTracker>(project, sessions, workspace_root);
-        // Documents opened before the workspace loaded missed their
-        // didOpen-time discovery.
-        for(auto& [path_id, session]: sessions.sessions) {
-            discover_around(path_id);
-        }
-        auto& tracker_cfg = project.config.tracker;
-        if(tracker_cfg.cdb_poll_seconds.value > 0) {
-            bg_tasks.spawn(cdb_poll_task());
-        }
-        if(tracker_cfg.workspace_poll_seconds.value > 0) {
-            bg_tasks.spawn(workspace_poll_task());
-        }
+    rehome_sessions(*projects.front());
+    for(auto& project: projects) {
+        project->start();
     }
 }
 
-kota::task<> MasterServer::cdb_poll_task() {
-    auto interval = std::chrono::seconds(project.config.tracker.cdb_poll_seconds.value);
-    while(true) {
-        co_await kota::sleep(interval);
-        auto events = tracker->tick_cdb();
-        if(!events.empty()) {
-            dispatch(events);
-        }
-    }
-}
-
-kota::task<> MasterServer::workspace_poll_task() {
-    auto interval = std::chrono::seconds(project.config.tracker.workspace_poll_seconds.value);
-    while(true) {
-        co_await kota::sleep(interval);
-        auto events = co_await tracker->tick_workspace();
-        if(!events.empty()) {
-            dispatch(events);
-        }
-    }
+void MasterServer::initialize(llvm::StringRef root) {
+    workspace_roots = {root.str()};
+    initialize();
 }
 
 void MasterServer::wire() {
-    sched.pool.on_crash = [this](const WorkerCrashInfo& info) {
+    pool.on_crash = [this](const WorkerCrashInfo& info) {
         // A stateless crash loses only in-flight requests, which fail back
         // to their callers with dispatch_errc::worker_crashed — the families
         // resend idempotent builds, the pump requeues the file. No state
@@ -241,12 +177,17 @@ void MasterServer::wire() {
         // event to dispatch.
         if(!info.stateful)
             return;
-        dispatch(FileEvent::worker_crashed(llvm::to_vector(
-            llvm::map_range(info.lost_documents, [](std::uint32_t id) { return Fid{id}; }))));
+        llvm::DenseMap<ProjectServer*, llvm::SmallVector<Fid>> lost;
+        for(auto id: info.lost_documents) {
+            lost[&owner_of(Fid{id})].push_back(Fid{id});
+        }
+        for(auto& [project, documents]: lost) {
+            project->dispatch(FileEvent::worker_crashed(documents));
+        }
     };
 
-    sched.pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
-        auto id = project.file_table.find(path);
+    pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
+        auto id = files.find(path);
         if(!id) {
             LOG_WARN("Evicted path not in pool: {}", path);
             return;
@@ -257,283 +198,179 @@ void MasterServer::wire() {
         // Only the current owner's eviction counts: a stale copy left
         // behind by a probe reassignment says nothing about the document
         // the new owner still holds.
-        if(sched.pool.remove_owner_from(id->raw, worker_index)) {
-            dispatch(FileEvent::document_evicted(*id));
+        if(pool.remove_owner_from(id->raw, worker_index)) {
+            owner_of(*id).dispatch(FileEvent::document_evicted(*id));
         } else {
             LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
         }
     };
-
-    ast.on_indexing_needed = [this]() {
-        sched.pump.schedule();
-    };
-
-    // The pump is serving-neutral; the session-side policy hooks live on
-    // this class and are installed here.
-    sched.pump.admission = [this](Fid path_id) {
-        return index_admission(path_id);
-    };
-    sched.pump.on_attempt_settled = [this](Fid path_id) {
-        index_attempt_settled(path_id);
-    };
-    index_rows_conn = sched.pump.on_rows_changed.connect(
-        [this](llvm::ArrayRef<Fid> path_ids) { index_rows_changed(path_ids); });
-
-    // The AST family's pull-side staleness check found a dependency changed
-    // on disk: route it through the same DiskChanged path the file
-    // tracker's polling uses, so lazy detection and polling share one
-    // invalidation cascade.
-    ast.on_stale = [this](Fid path_id) {
-        dispatch(FileEvent::disk_changed(path_id));
-    };
 }
 
-void MasterServer::initialize(llvm::StringRef root) {
-    workspace_root = root.str();
-    initialize();
+ProjectServer& MasterServer::route(Fid path_id) {
+    for(auto& project: projects) {
+        if(!project->project.build.commands(path_id).empty()) {
+            return *project;
+        }
+    }
+    for(auto& project: projects) {
+        if(!project->project.dep_graph.get_includers(path_id).empty()) {
+            return *project;
+        }
+    }
+    auto path = files.resolve(path_id);
+    ProjectServer* deepest = nullptr;
+    for(auto& project: projects) {
+        if(!project->root.empty() && path::under(path, project->root) &&
+           (!deepest || project->root.size() > deepest->root.size())) {
+            deepest = project.get();
+        }
+    }
+    return deepest ? *deepest : *projects.front();
+}
+
+ProjectServer& MasterServer::owner_of(Fid path_id) {
+    if(auto it = owners.find(path_id); it != owners.end()) {
+        return *it->second;
+    }
+    return route(path_id);
 }
 
 std::shared_ptr<Session> MasterServer::find_session(Fid path_id) {
-    return sessions.find(path_id);
-}
-
-void MasterServer::discover_around(Fid path_id) {
-    if(!tracker) {
-        return;
-    }
-    auto events = tracker->discover_around(path_id);
-    if(!events.empty()) {
-        dispatch(events);
-    }
+    auto it = owners.find(path_id);
+    return it != owners.end() ? it->second->sessions.find(path_id) : nullptr;
 }
 
 std::shared_ptr<Session> MasterServer::open_session(Fid path_id) {
-    // A replaced live session (an editor resending didOpen) leaves a
-    // projection describing the old session's compile; the fresh session
-    // starts with none, exactly like the pre-projection world's fresh
-    // Session fields.
-    ast.drop(path_id);
-    auto session = sessions.open(path_id);
-    // The serving mode's creation write point; the only other write is
-    // ASTFamily::escalate.
-    session->serving =
-        ast.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
-    return session;
-}
-
-void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
-    // An escalated session needs no settlement: builds stay pull-driven,
-    // and boosting its file would enqueue work the indexer skips for
-    // open non-IndexOnly documents.
-    if(session->serving == ServingMode::Escalated) {
-        return;
-    }
-    auto it = project.project_index.shards.find(session->path_id);
-    if(it != project.project_index.shards.end()) {
-        // A buffer that already diverges from the indexed content (a
-        // restored unsaved file) can never be served read-only: escalate
-        // now instead of answering empty until the first edit.
-        if(!it->second.matches_content(session->text)) {
-            ast.escalate(*session);
-        }
-        return;
-    }
-    // Nothing indexed yet: reading this file is the reason to index it
-    // first — unless indexing is disabled, in which case no shard will
-    // ever arrive and only an AST can serve the document. A boost the
-    // pump cannot fulfill escalates through the adapter's attempt-settled
-    // check.
-    if(project.config.project.enable_indexing.value) {
-        sched.pump.boost(session->path_id);
-    } else {
-        ast.escalate(*session);
-    }
+    auto& project = owner_of(path_id);
+    owners[path_id] = &project;
+    return project.open_session(path_id);
 }
 
 void MasterServer::close_session(Fid path_id) {
-    auto path = project.file_table.resolve(path_id);
-    // Route the eviction notification before dropping ownership:
-    // notify_stateful uses the owner table to find the worker.
-    sched.pool.notify_stateful(path_id.raw, worker::EvictParams{std::string(path)});
-    sched.pool.remove_owner(path_id.raw);
-
-    // Retract the document's published diagnostics through the standard
-    // output path: materialize an empty output and signal the transports
-    // (MasterServer holds no peer — see the class charter). A transport
-    // whose client has not completed the handshake drops the push: nothing
-    // was ever published for it to clear, and publishDiagnostics may not
-    // flow before the initialize response. CDBExact keeps
-    // format_diagnostics from decorating the empty set with guidance.
-    if(auto session = sessions.find(path_id)) {
-        ast.publish_output(session,
-                           CompileOutput{
-                               .version = std::nullopt,
-                               .source = CommandSource::CDBExact,
-                               .diagnostics = {},
-                               .line_limit = std::nullopt,
-                           });
-    }
-
-    sessions.close(path_id);
-    ast.drop(path_id);
-    // PCH entries are content-keyed and may be shared with other sessions,
-    // so nothing entry-level to clean up — but the loaded-state budget
-    // shrinks with the open count, and this is the moment it does.
-    sched.pch.enforce_loaded_budget();
-
-    dispatch(FileEvent::buffer_closed(path_id));
-
-    LOG_DEBUG("didClose: {}", path);
-}
-
-Admission MasterServer::index_admission(Fid server_path_id) {
-    // An open file's session serves the LSP side; its disk snapshot is
-    // indexed for the command-line readers when the disk itself changed
-    // (a save), not for a dependency sweep — that would compile a file
-    // the user just opened twice over. Skipping loses no debt: the veto
-    // settles the claim, and BufferClosed re-checks the shard against the
-    // disk on close. An index-only session is the other case — its shard
-    // IS what the LSP serves (freshness clause 4), so it indexes only
-    // while its buffer matches the disk this index would read: rows from
-    // a diverged disk fail clause 4's content gate and would replace the
-    // one shard the session can serve from, blanking its features until
-    // an escalation. Keep the last matching rows instead — the close-time
-    // re-check covers the debt here too.
-    auto session = sessions.find(server_path_id);
-    if(!session) {
-        return Admission::Admit;
-    }
-    if(session->serving != ServingMode::IndexOnly) {
-        return sched.pump.pending_reason(server_path_id) == ReindexReason::ContentChanged
-                   ? Admission::Admit
-                   : Admission::SkipAndSettle;
-    }
-    auto disk = project.file_table.current(server_path_id);
-    if(!disk || disk->size != session->text.size() ||
-       disk->hash != llvm::xxh3_64bits(session->text)) {
-        return Admission::SkipAndSettle;
-    }
-    return Admission::Admit;
-}
-
-void MasterServer::index_attempt_settled(Fid server_path_id) {
-    // The boost in settle_open_serving promised the index would serve the
-    // cold session; an attempt that settles without a servable shard ends
-    // that promise — escalate like the disabled-indexing branch, or the
-    // session answers empty until its first edit.
-    auto session = sessions.find(server_path_id);
-    if(!session || session->serving != ServingMode::IndexOnly) {
+    auto it = owners.find(path_id);
+    if(it == owners.end()) {
         return;
     }
-    auto it = project.project_index.shards.find(server_path_id);
-    if(it == project.project_index.shards.end() || !it->second.matches_content(session->text)) {
-        ast.escalate(*session);
+    auto* project = it->second;
+    owners.erase(it);
+    project->close_session(path_id);
+}
+
+void MasterServer::discover_around(Fid path_id) {
+    auto path = files.resolve(path_id);
+    for(auto& project: projects) {
+        if(!project->root.empty() && path::under(path, project->root)) {
+            project->discover_around(path_id);
+        }
     }
 }
 
-bool MasterServer::serves_session_rows(Fid path_id) const {
-    auto session = sessions.find(path_id);
-    return session && !ast.projections.index_current(path_id) && session->index_served;
+void MasterServer::rehome_sessions(ProjectServer& from) {
+    llvm::SmallVector<std::shared_ptr<Session>> leaving;
+    for(auto& [path_id, session]: from.sessions.sessions) {
+        if(session && &route(path_id) != &from) {
+            leaving.push_back(session);
+        }
+    }
+    for(auto& session: leaving) {
+        auto path_id = session->path_id;
+        from.release_session(path_id);
+        auto& to = route(path_id);
+        owners[path_id] = &to;
+        to.adopt_session(path_id, session->text, session->version);
+    }
 }
 
-void MasterServer::index_rows_changed(llvm::ArrayRef<Fid> path_ids) {
-    // Sessions without a current file index serve these very rows
-    // (freshness clause 4); index_served says the client pulled some of
-    // them. Tell subscribers so those results get re-pulled.
-    if(llvm::any_of(path_ids, [&](Fid id) { return serves_session_rows(id); })) {
-        on_serving_rows_changed.emit();
+void MasterServer::add_folder(std::string root) {
+    path::canonicalize(root);
+    if(llvm::any_of(projects, [&](auto& project) { return project->root == root; })) {
+        return;
+    }
+    LOG_INFO("Serving folder {}", root);
+    std::vector<std::string> cache_dirs;
+    for(auto& project: projects) {
+        cache_dirs.push_back(project->project.config.project.cache_dir);
+    }
+    auto& added = *projects.emplace_back(std::make_unique<ProjectServer>(*this, root));
+    added.configure(init_options_json, cache_dirs);
+    added.start();
+    // Documents another project served until now may belong here: a
+    // database under the new root lists them, or they sit inside it.
+    for(auto& project: projects) {
+        if(project.get() != &added) {
+            rehome_sessions(*project);
+        }
     }
 }
 
-void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
-    auto dirty = invalidator.apply(events);
+void MasterServer::remove_folder(llvm::StringRef root) {
+    std::string canonical = root.str();
+    path::canonicalize(canonical);
+    auto it = llvm::find_if(projects, [&](auto& project) { return project->root == canonical; });
+    if(it == projects.end()) {
+        return;
+    }
+    LOG_INFO("No longer serving folder {}", canonical);
+    std::unique_ptr<ProjectServer> removed = std::move(*it);
+    projects.erase(it);
+    if(projects.empty()) {
+        projects.push_back(std::make_unique<ProjectServer>(*this, std::string()));
+        projects.front()->configure(init_options_json, {});
+        projects.front()->start();
+    }
+    for(auto& [path_id, session]: removed->sessions.sessions) {
+        owners.erase(path_id);
+    }
+    rehome_sessions(*removed);
+    bg_tasks.spawn([](std::unique_ptr<ProjectServer> project) -> kota::task<> {
+        co_await project->shutdown();
+        project->close();
+    }(std::move(removed)));
+}
 
-    for(auto path_id: dirty.reset_trial) {
-        if(auto session = sessions.find(path_id)) {
-            session->trial_done = false;
+IndexPump::Progress MasterServer::index_progress() const {
+    using Stage = IndexPump::Progress::Stage;
+    IndexPump::Progress all{.stage = Stage::End};
+    for(auto& project: projects) {
+        auto& one = project->sched.pump.progress();
+        if(one.stage == Stage::End) {
+            continue;
+        }
+        all.total += one.total;
+        all.completed += one.completed;
+        all.dispatched += one.dispatched;
+        all.stage =
+            one.stage == Stage::Begin && all.stage == Stage::End ? Stage::Begin : Stage::Report;
+    }
+    return all;
+}
+
+std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::StringRef query) {
+    constexpr std::size_t limit = 100;
+    llvm::SmallVector<std::vector<protocol::SymbolInformation>> ranked;
+    for(auto& project: projects) {
+        ranked.push_back(project->features.workspace_symbol(query));
+    }
+    std::vector<protocol::SymbolInformation> merged;
+    std::set<std::tuple<std::string, std::uint32_t, std::uint32_t, std::string>> seen;
+    for(std::size_t rank = 0; merged.size() < limit; rank += 1) {
+        bool any = false;
+        for(auto& list: ranked) {
+            if(rank >= list.size() || merged.size() == limit) {
+                continue;
+            }
+            any = true;
+            auto& info = list[rank];
+            auto& start = info.location.range.start;
+            if(seen.emplace(info.location.uri, start.line, start.character, info.name).second) {
+                merged.push_back(std::move(info));
+            }
+        }
+        if(!any) {
+            break;
         }
     }
-
-    for(auto path_id: dirty.reset_header_mode) {
-        commands.reset_header_mode(path_id);
-    }
-
-    // The Lost invalidation voids the projection's currency (and any
-    // in-flight round's landing-as-current) without touching generation —
-    // the buffer is still the same buffer, and the round still publishes
-    // its product as bounded staleness; the next request recompiles.
-    for(auto path_id: dirty.mark_ast_dirty) {
-        if(auto session = sessions.find(path_id)) {
-            ast.invalidate(path_id);
-            session->trial_done = false;
-        }
-        commands.forget_self_contained(path_id);
-    }
-
-    for(auto path_id: dirty.mark_lost) {
-        if(sessions.find(path_id)) {
-            ast.invalidate(path_id);
-        }
-    }
-
-    // Headers whose synthesized preamble embeds changed chain content:
-    // dropping the snapshot's fast paths forces deps_changed() to re-validate
-    // every chain file by content hash; open sessions also recompile and
-    // re-trial.
-    auto stamps = project.file_table.stamp_generation;
-    for(auto path_id: dirty.force_revalidate) {
-        contexts.invalidate_header_deps(path_id);
-        if(auto session = sessions.find(path_id)) {
-            ast.invalidate(path_id);
-            session->trial_done = false;
-        }
-    }
-    // Revoked stamps live on in the global blob's version table and the
-    // artifacts blob's dep records; both must rewrite, or a restart after
-    // a same-stat dependency edit re-adopts the dropped fast paths and
-    // judges the edited file fresh without a read.
-    if(project.file_table.stamp_generation != stamps) {
-        sched.store.mark_global_dirty();
-        project.mark_artifacts_dirty();
-    }
-
-    // The header's borrowed compile command changed: its resolved context
-    // (and synthesized preamble) describes flags that no longer exist, so
-    // the next use must re-resolve. Session dirtying arrives in the same
-    // DirtySet via mark_ast_dirty.
-    for(auto path_id: dirty.drop_context) {
-        contexts.drop_header_context(path_id);
-    }
-
-    for(auto path_id: dirty.drop_index) {
-        sched.pump.claim_report(sched.store.drop_index(path_id));
-    }
-
-    for(auto path_id: dirty.reindex_content_changed) {
-        sched.pump.enqueue(path_id, ReindexReason::ContentChanged);
-    }
-    for(auto path_id: dirty.reindex_deps_only) {
-        sched.pump.enqueue(path_id, ReindexReason::DepsOnly);
-    }
-    // The engine keeps the reindex lists disjoint per file in event order
-    // (see DirtySet's adders), so the clears may run in any order relative
-    // to the enqueues above.
-    for(auto path_id: dirty.clear_reindex) {
-        sched.pump.clear_pending(path_id);
-    }
-
-    if(dirty.recheck_contexts && context_service.drop_orphaned_choices(sessions)) {
-        contexts.mark_dirty();
-    }
-
-    // Not before the server is ready: document-sync events are accepted
-    // early (a pre-ready didClose lands here), but the scheduler reads
-    // configuration that initialize() has not applied yet. The reindex
-    // queue filled above is kept — the post-ready workspace load kicks the
-    // scheduler.
-    if(dirty.reschedule_indexing && lifecycle == ServerLifecycle::Ready) {
-        sched.pump.schedule();
-    }
+    return merged;
 }
 
 void MasterServer::schedule_shutdown() {
@@ -544,140 +381,15 @@ void MasterServer::schedule_shutdown() {
 }
 
 kota::task<> MasterServer::shutdown_and_cleanup() {
-    if(endpoint_recorded) {
-        index::remove_endpoint(project.config.project.cache_dir);
-        endpoint_recorded = false;
-    }
-    bg_tasks.cancel();
     co_await bg_tasks.join();
-    // Quiesce in-flight compilation and indexing first so the persisted
-    // snapshot below covers everything that actually completed.
-    co_await kota::when_all(sched.pump.stop(), ast.stop());
-    // Requests have unwound and released their interest; the shared tail
-    // winds down the graph's rounds before the persistence pass and the
-    // pool stop.
-    co_await sched.shutdown();
+    for(auto& project: projects) {
+        co_await project->shutdown();
+    }
+    co_await pool.stop();
+    for(auto& project: projects) {
+        project->close();
+    }
     lifecycle = ServerLifecycle::Exited;
-}
-
-void MasterServer::schedule_metadata_flush() {
-    if(metadata_flush_scheduled || lifecycle == ServerLifecycle::ShuttingDown ||
-       lifecycle == ServerLifecycle::Exited) {
-        return;
-    }
-    metadata_flush_scheduled = true;
-    bg_tasks.spawn(metadata_flush_task());
-}
-
-kota::task<> MasterServer::metadata_flush_task() {
-    // One loop turn of debounce coalesces a burst of marks into one save;
-    // the save itself batches whatever else is dirty by then. Marks
-    // arriving while the save runs re-schedule through request_flush, and
-    // a save that could not clear the flags (serialization or write
-    // failure) retries on the next spawn with this backoff.
-    co_await kota::sleep(std::chrono::milliseconds(50));
-    metadata_flush_scheduled = false;
-    sched.pump.claim_report(co_await sched.store.save(sched.pump.save_debt()));
-    if(project.artifacts_dirty || sched.store.contexts.dirty) {
-        co_await kota::sleep(std::chrono::seconds(5));
-        schedule_metadata_flush();
-    }
-}
-
-kota::task<> MasterServer::cache_checkpoint_task() {
-    constexpr auto interval = std::chrono::minutes(5);
-    while(true) {
-        co_await kota::sleep(interval);
-        if(project.store) {
-            // Offload to the thread pool: checkpoint writes the manifest.
-            co_await kota::queue([this] { project.store->checkpoint(); });
-            drain_store_evictions();
-        }
-    }
-}
-
-void MasterServer::drain_store_evictions() {
-    // The store's LRU evicted these blobs from disk (inside commit, maybe
-    // on a worker thread); drop the derived pch_cache metadata here on the
-    // event loop, or the content-keyed map grows for the server's
-    // lifetime even for keys never requested again. An entry mid-rebuild
-    // keeps its slot — its commit republishes fresh blobs over the
-    // eviction.
-    bool artifacts_evicted = false;
-    for(auto& evicted: project.store->take_evictions()) {
-        if(evicted.ns == header_context_ns) {
-            artifacts_evicted = true;
-            continue;
-        }
-        if(evicted.ns != "pch") {
-            continue;
-        }
-        // A key rebuilt after the eviction was recorded has live blobs
-        // again — the record is stale, not the entry. Erase only when the
-        // store still lacks the blob, and never mid-rebuild (the commit
-        // republishes over the eviction).
-        if(project.store->lookup("pch", evicted.key)) {
-            continue;
-        }
-        if(auto it = project.pch_cache.find(evicted.key);
-           it != project.pch_cache.end() && !sched.pch.building(evicted.key)) {
-            project.pch_cache.erase(it);
-        }
-    }
-    if(artifacts_evicted) {
-        contexts.drop_evicted_artifacts();
-    }
-}
-
-void MasterServer::load_root_project() {
-    if(workspace_root.empty())
-        return;
-
-    auto report = bootstrap_project(project,
-                                    sched.store,
-                                    sched.pump,
-                                    workspace_root,
-                                    requested_configuration);
-    contexts.load();
-    if(report.opened_store) {
-        bg_tasks.spawn(cache_checkpoint_task());
-    }
-    if(project.index_db && !project.index_db->read_only()) {
-        start_control_listener();
-    }
-    if(!report.has_commands) {
-        LOG_GUIDANCE(
-            "No compile_commands.json found in workspace {}. Compile commands will be "
-            "guessed; see https://clice.io/en/guide/quick-start for setup.",
-            workspace_root);
-    }
-}
-
-void MasterServer::start_control_listener() {
-    constexpr llvm::StringLiteral host = "127.0.0.1";
-    auto acceptor = kota::tcp::listen(host, 0, {}, loop);
-    std::optional<int> port;
-    if(acceptor) {
-        if(auto bound = kota::tcp::local_port(*acceptor)) {
-            port = *bound;
-        }
-    }
-    if(!port) {
-        LOG_WARN("Failed to start the control listener; `clice index` cannot ask this server");
-        return;
-    }
-    auto& cache_dir = project.config.project.cache_dir;
-    if(!index::write_endpoint(
-           cache_dir,
-           {.pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId()),
-            .version = std::string(clice::version),
-            .host = host.str(),
-            .port = *port})) {
-        return;
-    }
-    endpoint_recorded = true;
-    LOG_INFO("Control channel listening on {}:{}", host, *port);
-    bg_tasks.spawn(serve_control(*this, std::move(*acceptor)));
 }
 
 struct Connection {
