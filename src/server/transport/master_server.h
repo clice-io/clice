@@ -64,7 +64,7 @@ struct ServerOptions {
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (optional, skips LSP initialize)",
            required = false)
-    <std::string> project;
+    <std::string> workspace;
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help =

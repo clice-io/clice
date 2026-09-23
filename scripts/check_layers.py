@@ -13,7 +13,9 @@ CORE = ["support", "syntax", "command", "compile", "semantic", "index", "feature
 
 # Directory -> prefixes its sources must never include.
 FORBIDDEN = {
-    **{layer: ["config/", "project/", "worker/", "sched/", "server/"] for layer in CORE},
+    **{
+        layer: ["config/", "project/", "worker/", "sched/", "server/"] for layer in CORE
+    },
     "config": ["project/", "worker/", "sched/", "server/"],
     "project": ["worker/", "sched/", "server/"],
     "worker": ["sched/", "server/"],
