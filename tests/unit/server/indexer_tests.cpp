@@ -2995,25 +2995,25 @@ TEST_CASE(ContextsBlobRoundTrip) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        EditorContext editor{f.project, f.commands};
-        f.index_store.attach_contexts(editor);
+        EditorContext editor{f.project, f.commands, f.index_store.contexts};
         f.load();
+        editor.load();
         auto host = f.project.file_table.intern(host_path);
         auto header = f.project.file_table.intern(header_path);
         editor.selections[header] = Selection{host, 1, "applied", "base"};
         editor.synthesized_hosts[artifact_path] = host;
         editor.mark_dirty();
-        auto ticket = editor.epoch;
+        auto ticket = f.index_store.contexts.ticket;
         f.save();
-        ASSERT_FALSE(editor.dirty);
-        ASSERT_EQ(editor.committed_epoch, ticket);
+        ASSERT_FALSE(f.index_store.contexts.dirty);
+        ASSERT_EQ(f.index_store.contexts.committed_ticket, ticket);
     }
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    EditorContext editor{f.project, f.commands};
-    f.index_store.attach_contexts(editor);
+    EditorContext editor{f.project, f.commands, f.index_store.contexts};
     f.load();
+    editor.load();
     auto host = f.project.file_table.intern(host_path);
     auto header = f.project.file_table.intern(header_path);
     auto* saved = editor.selection(header);
@@ -3023,7 +3023,7 @@ TEST_CASE(ContextsBlobRoundTrip) {
     ASSERT_EQ(saved->command_hash, "applied");
     ASSERT_EQ(saved->base_hash, "base");
     ASSERT_EQ(editor.synthesized_hosts.lookup(artifact_path), host);
-    ASSERT_FALSE(editor.dirty);
+    ASSERT_FALSE(f.index_store.contexts.dirty);
 }
 
 TEST_CASE(EvictedArtifactHostDropped) {
@@ -3036,9 +3036,9 @@ TEST_CASE(EvictedArtifactHostDropped) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        EditorContext editor{f.project, f.commands};
-        f.index_store.attach_contexts(editor);
+        EditorContext editor{f.project, f.commands, f.index_store.contexts};
         f.load();
+        editor.load();
         editor.synthesized_hosts[gone_path] = f.project.file_table.intern(tmp.path("host.cpp"));
         editor.mark_dirty();
         f.save();
@@ -3046,11 +3046,11 @@ TEST_CASE(EvictedArtifactHostDropped) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    EditorContext editor{f.project, f.commands};
-    f.index_store.attach_contexts(editor);
+    EditorContext editor{f.project, f.commands, f.index_store.contexts};
     f.load();
+    editor.load();
     ASSERT_TRUE(editor.synthesized_hosts.empty());
-    ASSERT_TRUE(editor.dirty);
+    ASSERT_TRUE(f.index_store.contexts.dirty);
 }
 
 TEST_CASE(UnownedContextsPassThrough) {

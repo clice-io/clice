@@ -7,7 +7,6 @@
 
 #include "command/search_config.h"
 #include "index/serialization.h"
-#include "project/command_resolver.h"
 #include "project/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -196,7 +195,6 @@ void Project::forget_file(Fid path_id) {
     dep_graph.update_module_decl(path_id, {});
     dep_graph.set_import_candidate(path_id, false);
     dep_graph.clear_includes(path_id);
-    dep_graph.forget_scanned_hash(path_id);
     context_epoch += 1;
 }
 

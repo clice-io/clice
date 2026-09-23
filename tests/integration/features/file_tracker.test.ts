@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import {
     MTIME_GRANULARITY,
+    SETTLE_TIME,
     sleep,
     waitUntil,
     withTimeout,
@@ -160,7 +161,7 @@ test("checkout updates workspace", async ({ session }) => {
         "initial index never resolved the closed TU's alpha call",
     ).toBe(true);
 
-    expect(await eventsOf(client, "workspace")).toBe(0); // seeding sweep
+    expect(await eventsOf(client, "workspace")).toBe(0);
 
     // Simulate git checkout: rewrite files on disk, no didSave.
     await sleep(MTIME_GRANULARITY);
@@ -187,7 +188,7 @@ test("touch emits no events", async ({ session }) => {
     workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    expect(await eventsOf(client, "workspace")).toBe(0); // seeding sweep
+    expect(await eventsOf(client, "workspace")).toBe(0);
 
     // mtime bump, identical bytes: the content-hash check must stay silent.
     await sleep(MTIME_GRANULARITY);
@@ -313,7 +314,7 @@ test("unchanged save no recompile", async ({ session }) => {
     const hoverRecompiles = async (): Promise<boolean> => {
         const arrived = client.armDiagnostics(host);
         await client.hoverAt(host, 1, 21);
-        return withTimeout(arrived, 5_000, "publish").then(
+        return withTimeout(arrived, SETTLE_TIME, "publish").then(
             () => true,
             () => false,
         );

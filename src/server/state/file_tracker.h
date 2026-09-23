@@ -15,7 +15,7 @@
 namespace clice {
 
 /// Stat-based discovery of changes the client never tells us about:
-/// compile_commands.json edits (the project's CDBWatcher) and files
+/// compile_commands.json edits (its CDBWatcher) and files
 /// changing on disk behind the server's back (git checkout, code
 /// generators, save hooks), swept here.
 ///
@@ -52,12 +52,12 @@ public:
     /// known file emits DiskRemoved once; a transient content-read failure
     /// emits nothing and is retried on the next tick.
     ///
-    /// A file seen for the first time is compared against the content its
-    /// include edges were scanned from, so a change landing between the
-    /// startup scan and the first sweep is still reported; a file no scan
-    /// read only seeds the baseline. While a file is open its baseline
-    /// follows the scanned content and keeps its presence, so a file
-    /// deleted while open is reported removed once it closes.
+    /// A file is judged against the content its include edges were scanned
+    /// from when first seen — at construction for the load's scan, so a
+    /// change landing before the first sweep is still reported — and again
+    /// when it closes, so a file deleted or changed while open without a
+    /// cascade is reported then. A file no scan read only seeds the
+    /// baseline.
     ///
     /// Stats run synchronously in batches, yielding to the event loop
     /// between batches; each round's duration is perf-logged.
@@ -81,7 +81,7 @@ private:
     const SessionStore& store;
     CDBWatcher cdb;
 
-    /// Project sweep baseline.
+    /// Workspace sweep baseline.
     llvm::DenseMap<Fid, FileState> baseline;
 
     /// True while a sweep is in flight (it suspends between batches);

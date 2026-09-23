@@ -2,8 +2,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <optional>
-#include <ranges>
 #include <utility>
 
 #include "support/filesystem.h"
@@ -13,14 +11,23 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
 
 namespace clice {
 
 FileTracker::FileTracker(Project& project, const SessionStore& store, std::string root) :
-    project(project), store(store), cdb(project, std::move(root)) {}
+    project(project), store(store), cdb(project, std::move(root)) {
+    // What the load's scan read is the baseline, taken now: a database
+    // reload before the first sweep rescans every file, and must not turn
+    // a change that landed meanwhile into the new baseline. The stats are
+    // unknown, so the first sweep confirms each file by content.
+    for(auto path_id: project.dep_graph.all_files()) {
+        if(auto scanned = project.dep_graph.scanned_hash(path_id)) {
+            baseline.try_emplace(path_id, FileState{.hash = *scanned});
+        }
+    }
+}
 
 /// Diff ids and event ids share the single file table.
 static void push_delta(const CDBDiff& diff, llvm::SmallVectorImpl<FileEvent>& events) {
@@ -92,17 +99,14 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
         auto batch_end = std::min(begin + batch_size, files.size());
         for(std::size_t i = begin; i < batch_end; ++i) {
             auto path_id = files[i];
-            auto scanned = project.dep_graph.scanned_hash(path_id);
             if(store.find(path_id)) {
                 // Open buffers are the truth: didSave and didClose own their
-                // disk sync. The baseline follows what the project derived
-                // from the file (a save rescans it), with its stat forgotten
-                // so the first sweep after the close compares content, and
-                // keeps its presence — a file deleted while open is left to
-                // that sweep by BufferClosed.
-                if(scanned) {
-                    baseline[path_id] = FileState{.hash = *scanned};
-                }
+                // disk sync. The file is seen afresh once it closes, against
+                // what the project then derives from it — a save or the
+                // close's own cascade rescanned it, and a file deleted while
+                // open, which BufferClosed leaves to this sweep, still has
+                // its scanned content and reads as removed.
+                baseline.erase(path_id);
                 continue;
             }
 
@@ -111,6 +115,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
             bool exists = !llvm::sys::fs::status(path, status);
 
             auto it = baseline.find(path_id);
+            auto scanned = project.dep_graph.scanned_hash(path_id);
             if(it == baseline.end() && scanned) {
                 // First sight of a file a scan read: what the project derived
                 // from it is the baseline, so a change landing between that

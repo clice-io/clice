@@ -21,17 +21,19 @@ namespace clice {
 /// the header contexts resolved for open files and the hosts of the
 /// artifacts synthesized for them. Editor-facing compiles resolve through
 /// here, layering this state over the project's CommandResolver;
-/// background compiles never see it. Owns the contexts blob, which the
-/// index store persists beside the index (switchContext waits on its
-/// durability). The protocol handlers (clice/queryContext,
+/// background compiles never see it. The choices and artifact hosts are
+/// what the contexts blob encodes: every change reserializes them into it,
+/// and a load parses them back (switchContext waits on its durability).
+/// The protocol handlers (clice/queryContext,
 /// currentContext, switchContext) live in ContextService and drive this
 /// state through its public surface.
-struct EditorContext final : ContextsOwner {
-    EditorContext(Project& project, CommandResolver& commands) :
-        project(project), commands(commands) {}
+struct EditorContext {
+    EditorContext(Project& project, CommandResolver& commands, ContextsBlob& blob) :
+        project(project), commands(commands), blob(blob) {}
 
     Project& project;
     CommandResolver& commands;
+    ContextsBlob& blob;
 
     /// User context choices (clice/switchContext), persisted in the
     /// contexts blob and validated against the CDB and include graph on
@@ -134,18 +136,17 @@ struct EditorContext final : ContextsOwner {
                    llvm::ArrayRef<llvm::StringRef> paths,
                    const Selection& saved) const;
 
-    /// Mark the choices changed: the next save persists them, and a
-    /// durability ticket taken now resolves once it has.
+    /// Mark the choices changed: they reserialize into the blob, the next
+    /// save persists them, and a durability ticket taken now resolves once
+    /// it has.
     void mark_dirty();
 
-    std::string serialize() const override;
-    void load(llvm::StringRef bytes) override;
-
-    void rewrite() override {
-        mark_dirty();
-    }
+    /// Restore the choices and artifact hosts from the blob as loaded.
+    void load();
 
 private:
+    std::string serialize() const;
+
     /// Record a synthesized artifact's host attribution, marking the
     /// contexts blob dirty when the mapping actually changes — synthesis
     /// re-derives the same content-addressed paths on every resolve, and

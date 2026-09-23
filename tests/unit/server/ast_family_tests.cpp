@@ -40,7 +40,8 @@ struct Stack {
     FileTable files;
     Project project{files};
     CommandResolver commands{project};
-    EditorContext contexts{project, commands};
+    ContextsBlob blob;
+    EditorContext contexts{project, commands, blob};
     WorkerPool pool{loop};
     TaskGraph graph{loop};
     PCMFamily pcm{graph, project, commands, pool};

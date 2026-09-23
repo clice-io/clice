@@ -833,13 +833,12 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     }
 
     // Metadata blobs ride every save: dirty artifact records and context
-    // choices flush on whatever save runs next. The contexts epoch is
+    // choices flush on whatever save runs next. The contexts ticket is
     // snapshotted here — marks landing past this point are not covered by
-    // these bytes and wait for the next save (a durability waiter's ticket
-    // compares against the owner's committed epoch). The contexts blob's fate
+    // these bytes and wait for the next save. The contexts blob's fate
     // is tracked on its own: a failing artifacts blob must not park a
     // switchContext ack whose choice is already durable.
-    auto flush_epoch = contexts->epoch;
+    auto flush_ticket = contexts.ticket;
     std::optional<std::size_t> artifacts_index;
     std::optional<std::size_t> contexts_index;
     bool contexts_ok = true;
@@ -849,10 +848,10 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
             batch.push_back({index::IndexBlobKind::Artifacts, "artifacts", std::move(bytes)});
         }
     }
-    if(contexts->dirty) {
-        if(auto bytes = contexts->serialize(); !bytes.empty()) {
+    if(contexts.dirty) {
+        if(!contexts.bytes.empty()) {
             contexts_index = batch.size();
-            batch.push_back({index::IndexBlobKind::Contexts, "contexts", std::move(bytes)});
+            batch.push_back({index::IndexBlobKind::Contexts, "contexts", contexts.bytes});
         } else {
             contexts_ok = false;
         }
@@ -867,7 +866,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         project.artifacts_dirty = false;
     }
     if(contexts_index) {
-        contexts->dirty = false;
+        contexts.dirty = false;
     }
 
     // A deferred load-time sweep can name a key this very save re-writes:
@@ -890,8 +889,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         // the failed attempt (see the failure pulse below), or a request
         // bounded on failed saves never counts one.
         if(!contexts_ok) {
-            contexts->committed.set();
-            contexts->committed.reset();
+            contexts.committed.set();
+            contexts.committed.reset();
         }
         co_return report;
     }
@@ -920,7 +919,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         }
         cdb_dirty = cdb_dirty || cdb_index.has_value();
         project.artifacts_dirty = project.artifacts_dirty || artifacts_index.has_value();
-        contexts->dirty = contexts->dirty || contexts_index.has_value();
+        contexts.dirty = contexts.dirty || contexts_index.has_value();
         startup_removes.append(std::make_move_iterator(removals.begin()),
                                std::make_move_iterator(removals.end()));
         saving_shards = 0;
@@ -947,7 +946,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
         } else if(artifacts_index && i == *artifacts_index) {
             project.artifacts_dirty = true;
         } else if(contexts_index && i == *contexts_index) {
-            contexts->dirty = true;
+            contexts.dirty = true;
             contexts_ok = false;
         } else if(search_slot && i == *search_slot) {
             search_bytes = std::move(batch[i].bytes);
@@ -972,15 +971,15 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     saving_shards = 0;
 
     // Context choices as of the snapshot point are durable: advance the
-    // epoch and wake durability waiters (switchContext tickets). Failed
+    // committed ticket and wake durability waiters (switchContext). Failed
     // attempts pulse too, or a permanently failing write (full disk,
     // unserializable path) parks every durability wait forever; they give
     // up after a few of these.
     if(contexts_ok) {
-        contexts->committed_epoch = std::max(contexts->committed_epoch, flush_epoch);
+        contexts.committed_ticket = std::max(contexts.committed_ticket, flush_ticket);
     }
-    contexts->committed.set();
-    contexts->committed.reset();
+    contexts.committed.set();
+    contexts.committed.reset();
 
     // Corruption can surface first at write time (a damaged page only the
     // write's tree descent reaches): heal like load-time corruption instead
@@ -1251,13 +1250,13 @@ void IndexStore::reopen_fresh_database() {
     // skips them and a restart loses the user's context choices and every
     // rebuildable artifact record.
     project.mark_artifacts_dirty();
-    contexts->rewrite();
+    contexts.dirty = !contexts.bytes.empty();
     // Durability waiters re-evaluate against the new database: a failed
     // reopen disables persistence for the session, and a parked
     // switchContext would otherwise sleep forever — no later save pulses,
     // they all early-return on the null database.
-    contexts->committed.set();
-    contexts->committed.reset();
+    contexts.committed.set();
+    contexts.committed.reset();
 }
 
 IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
@@ -1302,9 +1301,8 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         if(auto artifacts = db.read(index::IndexBlobKind::Artifacts, "artifacts")) {
             load_artifacts(artifacts.buffer->getBuffer());
         }
-        if(auto choices = db.read(index::IndexBlobKind::Contexts, "contexts");
-           choices && !choices.buffer->getBuffer().empty()) {
-            contexts->load(choices.buffer->getBuffer());
+        if(auto choices = db.read(index::IndexBlobKind::Contexts, "contexts")) {
+            contexts.bytes = choices.buffer->getBuffer().str();
         }
     };
 

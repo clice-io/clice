@@ -240,7 +240,8 @@ public:
 /// derived-state invalidation.
 ///
 /// Ownership charter:
-///   - reads the session store and the editor context, never mutates them;
+///   - reads the session store, the editor context and the index store's
+///     recorded header hosts, never mutates them;
 ///   - directly updates the derived graphs Project owns (include graph,
 ///     module map, ...);
 ///   - anything touching Sessions, context-domain state (verdicts, choices,

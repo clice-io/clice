@@ -308,13 +308,14 @@ kota::task<ext::SwitchContextResult>
     // cannot take the metadata (the choice stays active in memory).
     editor.selections[path_id] = std::move(saved);
     editor.mark_dirty();
-    auto ticket = editor.epoch;
+    auto& blob = editor.blob;
+    auto ticket = blob.ticket;
     int failed_saves = 0;
     while(ws.request_flush && ws.index_db && !ws.index_db->read_only() &&
-          editor.committed_epoch < ticket) {
-        auto seen = editor.committed_epoch;
-        co_await editor.committed.wait();
-        if(editor.committed_epoch == seen) {
+          blob.committed_ticket < ticket) {
+        auto seen = blob.committed_ticket;
+        co_await blob.committed.wait();
+        if(blob.committed_ticket == seen) {
             failed_saves += 1;
             if(failed_saves >= 3) {
                 co_return result;

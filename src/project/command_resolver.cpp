@@ -232,6 +232,7 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
     // the cache; background indexing must stay independent of per-editor
     // context state, so it resolves fresh every time.
     auto* cache = request.header_contexts;
+    const HeaderContext* ctx_ptr = nullptr;
     if(cache) {
         if(auto cached = cache->find(path_id); cached != cache->end()) {
             auto& context = cached->second;
@@ -245,17 +246,13 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
             if(override_mismatch || mode_mismatch || !artifacts_alive(project, context) ||
                deps_changed(project.file_table, context.deps)) {
                 cache->erase(cached);
+            } else {
+                ctx_ptr = &context;
             }
         }
     }
 
     std::optional<HeaderContext> local_ctx;
-    const HeaderContext* ctx_ptr = nullptr;
-    if(cache) {
-        if(auto cached = cache->find(path_id); cached != cache->end()) {
-            ctx_ptr = &cached->second;
-        }
-    }
     if(!ctx_ptr) {
         auto resolved = resolve_header_context(path_id, choice, synthesize, resolution.synthesized);
         if(!resolved) {

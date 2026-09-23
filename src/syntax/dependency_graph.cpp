@@ -140,6 +140,7 @@ std::size_t DependencyGraph::edge_count() const {
 }
 
 void DependencyGraph::clear_includes(Fid path_id) {
+    scanned_hashes.erase(path_id);
     auto it = file_configs.find(path_id);
     if(it == file_configs.end()) {
         return;

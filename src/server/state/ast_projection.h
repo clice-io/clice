@@ -14,10 +14,6 @@
 
 namespace clice {
 
-/// Defined in project/command_resolver.h — the resolver reports where
-/// the compile command came from; the projection only stores the verdict.
-enum class CommandSource : std::uint8_t;
-
 /// The publishable products of the most recent compilation (materialized
 /// whole-document feature results). The data lives in the projection; the
 /// AST family's on_output signal only wakes the push path up — a missed

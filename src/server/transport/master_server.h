@@ -159,7 +159,6 @@ public:
     FileTable files;
     Project project{files};
     CommandResolver commands{project};
-    EditorContext contexts{project, commands};
 
     /// The scheduling core the batch driver runs too, its families
     /// registered at construction — nodes materialize on demand, so a
@@ -170,6 +169,7 @@ public:
     /// assembled here in the server: its rounds capture sessions,
     /// quarantine and publishing.
     SchedulingStack sched{loop, project, commands};
+    EditorContext contexts{project, commands, sched.store.contexts};
     ASTFamily ast{project, contexts, sched.graph, sched.pcm, sched.pch, sched.pool, sessions, loop};
 
     Dispatcher dispatcher{project, contexts, ast, sched.pool};

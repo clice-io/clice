@@ -8,7 +8,7 @@ namespace clice {
 
 class IndexPump;
 
-/// The one workspace loading sequence, shared by the server's initialize
+/// The one project loading sequence, shared by the server's initialize
 /// and the batch driver so the two can never drift apart: load the
 /// project (load_project), claim its index load's report into the pump
 /// and seed the indexing sweep. See load_project for the flags.

@@ -88,8 +88,9 @@ llvm::SmallVector<Fid> EditorContext::chain_dependents(Fid path_id) const {
 }
 
 void EditorContext::mark_dirty() {
-    dirty = true;
-    epoch += 1;
+    blob.bytes = serialize();
+    blob.dirty = true;
+    blob.ticket += 1;
     if(project.request_flush) {
         project.request_flush();
     }
@@ -131,9 +132,12 @@ std::string EditorContext::serialize() const {
     return std::move(*json);
 }
 
-void EditorContext::load(llvm::StringRef bytes) {
+void EditorContext::load() {
+    if(blob.bytes.empty()) {
+        return;
+    }
     ContextsData data;
-    if(!kota::codec::json::from_string(bytes, data)) {
+    if(!kota::codec::json::from_string(blob.bytes, data)) {
         LOG_WARN("Failed to parse the contexts blob");
         return;
     }
@@ -160,6 +164,7 @@ void EditorContext::load(llvm::StringRef bytes) {
         selections[project.file_table.intern(file)] = std::move(saved);
     }
 
+    bool pruned = false;
     for(auto& entry: data.artifacts) {
         auto file = resolve(entry.file);
         auto host = resolve(entry.host);
@@ -169,10 +174,13 @@ void EditorContext::load(llvm::StringRef bytes) {
         // left to open under the host's command; the record leaves the
         // blob with the next save.
         if(!llvm::sys::fs::exists(file)) {
-            mark_dirty();
+            pruned = true;
             continue;
         }
         synthesized_hosts[file] = project.file_table.intern(host);
+    }
+    if(pruned) {
+        mark_dirty();
     }
 }
 
@@ -245,19 +253,18 @@ void EditorContext::validate_saved_context(Fid path_id) {
     // while the server was down, and a stale choice suppresses automatic
     // host resolution and strands the file on the fallback command.
     if(auto it = selections.find(path_id); it != selections.end()) {
-        auto& ws = project;
         auto& saved = it->second;
 
         bool valid = false;
         if(saved.host_path_id.valid()) {
-            auto host_path = ws.file_table.resolve(saved.host_path_id);
+            auto host_path = project.file_table.resolve(saved.host_path_id);
             llvm::StringRef edit_paths[] = {host_path, path};
             valid =
-                !ws.build.commands(saved.host_path_id).empty() &&
-                !ws.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
+                !project.build.commands(saved.host_path_id).empty() &&
+                !project.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
                 (saved.command_hash.empty() || pin_alive(saved.host_path_id, edit_paths, saved));
         } else if(!saved.command_hash.empty()) {
-            valid = !ws.build.commands(path_id).empty() && pin_alive(path_id, path, saved);
+            valid = !project.build.commands(path_id).empty() && pin_alive(path_id, path, saved);
         }
         if(!valid) {
             LOG_INFO("didOpen: dropping stale saved context for {}", path);

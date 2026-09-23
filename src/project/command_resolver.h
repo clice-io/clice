@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -82,19 +83,6 @@ class CommandResolver {
 public:
     explicit CommandResolver(Project& project) : project(project) {}
 
-    /// A header's self-containment verdict. NeedsContext carries the
-    /// content hash it was scored on — persisted so a stale verdict is
-    /// dropped on cache load; 0 means scored with no disk observation,
-    /// which keeps the verdict session-local.
-    struct HeaderVerdict {
-        HeaderMode mode = HeaderMode::Unknown;
-        std::uint64_t content_hash = 0;
-    };
-
-    /// Self-containment verdicts for headers, persisted in the artifacts
-    /// blob. Reset when the header itself is saved.
-    llvm::DenseMap<Fid, HeaderVerdict> header_verdicts;
-
     /// Effective self-containment mode for a header. X-macro style
     /// extensions are non-self-contained by construction; otherwise use
     /// the persisted verdict. Only NeedsContext is ever persisted — a
@@ -140,6 +128,19 @@ public:
                                const CommandRequest& request = {});
 
 private:
+    /// A header's self-containment verdict. NeedsContext carries the
+    /// content hash it was scored on — persisted so a stale verdict is
+    /// dropped on cache load; 0 means scored with no disk observation,
+    /// which keeps the verdict session-local.
+    struct HeaderVerdict {
+        HeaderMode mode = HeaderMode::Unknown;
+        std::uint64_t content_hash = 0;
+    };
+
+    /// Self-containment verdicts for headers, persisted in the artifacts
+    /// blob. Reset when the header itself is saved.
+    llvm::DenseMap<Fid, HeaderVerdict> header_verdicts;
+
     /// Fill compile arguments for a header from a host source's command found
     /// through the include graph, synthesizing a preamble prefix/suffix when
     /// the header needs includer context. Returns false when no usable host

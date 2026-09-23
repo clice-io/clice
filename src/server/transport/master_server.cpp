@@ -46,7 +46,6 @@ MasterServer::MasterServer(kota::event_loop& loop,
     features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
     invalidator(project, sessions, contexts, sched.pcm, sched.store), bg_tasks(loop),
     self_path(std::move(self_path)), requested_configuration(std::move(requested_configuration)) {
-    sched.store.attach_contexts(contexts);
     ast.register_runner();
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
@@ -177,7 +176,7 @@ void MasterServer::initialize() {
     load_root_project();
 
     // Documents opened before the server became ready were validated
-    // against an empty resolver and created under the default mode;
+    // before any choice was loaded and created under the default mode;
     // re-check their persisted context choices and re-derive their
     // serving mode now that the configuration governs. Settlement waits
     // until here — after load_root_project — so divergence detection sees
@@ -193,8 +192,8 @@ void MasterServer::initialize() {
     }
 
     if(!workspace_root.empty()) {
-        // Construct after the workspace load so the tracker's baseline CDB
-        // stamp matches the database that was just loaded.
+        // Construct after the project load: the tracker baselines each
+        // database at the read its entries came from.
         tracker = std::make_unique<FileTracker>(project, sessions, workspace_root);
         // Documents opened before the workspace loaded missed their
         // didOpen-time discovery.
@@ -579,7 +578,7 @@ kota::task<> MasterServer::metadata_flush_task() {
     co_await kota::sleep(std::chrono::milliseconds(50));
     metadata_flush_scheduled = false;
     sched.pump.claim_report(co_await sched.store.save(sched.pump.save_debt()));
-    if(project.artifacts_dirty || contexts.dirty) {
+    if(project.artifacts_dirty || sched.store.contexts.dirty) {
         co_await kota::sleep(std::chrono::seconds(5));
         schedule_metadata_flush();
     }
@@ -639,6 +638,7 @@ void MasterServer::load_root_project() {
                                     sched.pump,
                                     workspace_root,
                                     requested_configuration);
+    contexts.load();
     if(report.opened_store) {
         bg_tasks.spawn(cache_checkpoint_task());
     }

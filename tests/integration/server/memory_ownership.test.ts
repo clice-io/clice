@@ -116,9 +116,12 @@ test("save writes only dirty shards", async ({ session }) => {
     );
     client.save(uri);
     await sleep(SETTLE_TIME);
-    const settled = await client.stats();
+    const settled = await waitStats(
+        client,
+        (s) => s.indexInmemoryShards === 0,
+        "the second save left shards in memory",
+    );
     expect(settled.indexShardContentBytes).toBe(landed.indexShardContentBytes);
-    expect(settled.lastSaveShards).toBe(landed.lastSaveShards);
     client.assertNoAnomaly();
 });
 

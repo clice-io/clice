@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce the src/ include layering: core <- config <- project <- worker <- sched <- server.
+"""Enforce the src/ include layering: core <- config <- {project, worker} <- sched <- server.
 
 Each layer may include downward only. The CMake link DAG catches symbol-level
 violations; this check catches header-only ones, which link happily.
@@ -18,7 +18,7 @@ FORBIDDEN = {
     },
     "config": ["project/", "worker/", "sched/", "server/"],
     "project": ["worker/", "sched/", "server/"],
-    "worker": ["sched/", "server/"],
+    "worker": ["project/", "sched/", "server/"],
     "sched": ["server/"],
 }
 
@@ -50,7 +50,7 @@ def main() -> int:
     if violations:
         print(
             f"\n{len(violations)} layering violation(s): "
-            "core <- config <- project <- worker <- sched <- server, "
+            "core <- config <- {project, worker} <- sched <- server, "
             "includes go downward only."
         )
         return 1

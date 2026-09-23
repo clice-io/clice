@@ -81,8 +81,9 @@ public:
     /// Get the union of included fids across all configs for a file.
     llvm::SmallVector<Fid> get_all_includes(Fid path_id) const;
 
-    /// Erase every config's include list for a file. Incremental didSave
-    /// rescans clear first, then re-add one list per configuration.
+    /// Erase every config's include list for a file, and the scanned hash
+    /// they came from. Incremental didSave rescans clear first, then re-add
+    /// one list per configuration.
     void clear_includes(Fid path_id);
 
     /// The content hash of the bytes the file's include edges were scanned
@@ -96,10 +97,6 @@ public:
 
     void set_scanned_hash(Fid path_id, std::uint64_t hash) {
         scanned_hashes[path_id] = hash;
-    }
-
-    void forget_scanned_hash(Fid path_id) {
-        scanned_hashes.erase(path_id);
     }
 
     /// Build the reverse include map from the forward includes.

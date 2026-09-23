@@ -1,5 +1,6 @@
 #include "sched/families/pch.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "sched/families/build_common.h"

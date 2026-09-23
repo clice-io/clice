@@ -374,17 +374,15 @@ int run_query(const QueryOptions& opts, const char* self_path) {
     FileTable files;
     Project project{files};
     CommandResolver commands{project};
-    EditorContext contexts{project, commands};
+    ContextsBlob saved;
+    EditorContext contexts{project, commands, saved};
     llvm::SmallVector<Fid> dropped;
     bool opened = false;
     if(with_build) {
-        if(auto loaded = load_index(project,
-                                    commands,
-                                    &contexts,
-                                    root,
-                                    configuration,
-                                    /*with_build=*/true)) {
+        if(auto loaded = load_index(project, commands, root, configuration, /*with_build=*/true)) {
             dropped = std::move(loaded->dropped);
+            saved.bytes = std::move(loaded->contexts);
+            contexts.load();
             opened = true;
         }
     } else {

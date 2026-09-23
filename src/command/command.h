@@ -325,7 +325,7 @@ public:
     const DiskObservation& observation(SourceID id) const;
 
     /// Whether the source's file exists on disk as last observed: set by a
-    /// successful load, then maintained by the file tracker's stats. A
+    /// successful load, then maintained by the CDBWatcher's stats. A
     /// discovered source that vanished keeps serving its entries but yields
     /// to the present ones (see Build::source_order).
     bool present(SourceID id) const;
@@ -497,8 +497,8 @@ private:
 
     ObjectSet<CompileConfig> configs{allocator.get()};
 
-    /// The workspace-wide file table (owned by Project, or by the
-    /// driver in multi-CDB tools — nested databases share one id space).
+    /// The process's file table (borrowed by the project that owns this
+    /// database — nested databases share one id space).
     FileTable& file_table;
 
     /// Registered sources: canonical file path and the entries its last

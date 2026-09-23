@@ -382,7 +382,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 project.forget_file(path_id);
                 reverse_map_stale = true;
                 // Contexts hosted by (or chained through) the removed file
-                // are cleaned by the resolver's orphan pass.
+                // are cleaned by ContextService::drop_orphaned_choices.
                 dirty.recheck_contexts = true;
                 dirty.reschedule_indexing = true;
                 // Index shards are deliberately kept: the last-known content

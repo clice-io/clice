@@ -11,8 +11,6 @@
 
 namespace clice {
 
-struct ContextsOwner;
-
 /// Open a project's persisted index for reading: the configuration
 /// resolved, the cache store and the blob database opened read-only, the
 /// global table and the search index bound in place from the database's
@@ -23,20 +21,21 @@ bool open_index(Project& project, llvm::StringRef root, llvm::StringRef requeste
 
 /// What load_index found beyond the tables: the translation units the
 /// load dropped as stale or partially written, whose rows are absent
-/// until a reindex lands.
+/// until a reindex lands, and the persisted context choices.
 struct LoadedIndex {
     llvm::SmallVector<Fid> dropped;
+
+    /// The contexts blob as loaded (see ContextsBlob).
+    std::string contexts;
 };
 
 /// Open the index as the writer loads it — every manifest adopted, every
 /// shard fetched and verified, the header-mode verdicts restored into
-/// `commands` and the persisted context choices into `contexts` when
-/// given — for the commands that walk the whole index or need the build
-/// (loaded when `with_build`). Nullopt, with the cause logged, when there
-/// is no usable index.
+/// `commands` — for the commands that walk the whole index or need the
+/// build (loaded when `with_build`). Nullopt, with the cause logged, when
+/// there is no usable index.
 std::optional<LoadedIndex> load_index(Project& project,
                                       CommandResolver& commands,
-                                      ContextsOwner* contexts,
                                       llvm::StringRef root,
                                       llvm::StringRef requested_configuration,
                                       bool with_build);

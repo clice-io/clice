@@ -836,12 +836,7 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
                FileTable files;
                Project project{files};
                CommandResolver commands{project};
-               auto loaded = load_index(project,
-                                        commands,
-                                        /*contexts=*/nullptr,
-                                        ws,
-                                        configuration,
-                                        /*with_build=*/false);
+               auto loaded = load_index(project, commands, ws, configuration, /*with_build=*/false);
                if(!loaded) {
                    exit_code = 1;
                } else if(opts.show_symbol) {

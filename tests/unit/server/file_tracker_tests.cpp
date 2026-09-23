@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
@@ -609,9 +611,11 @@ TEST_CASE(CDBSameStampRewrite) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
     }));
+    // An mtime not yet safely in the past, however long the load takes.
     auto database = tmp.path("compile_commands.json");
-    llvm::sys::fs::file_status before;
-    ASSERT_FALSE(static_cast<bool>(llvm::sys::fs::status(database, before)));
+    auto stamp = std::chrono::system_clock::now() + std::chrono::hours(1);
+    set_mtime(database, stamp);
+    ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
     FileTracker tracker(project, store, tmp.root.str().str());
     ASSERT_TRUE(tracker.tick_cdb().empty());
 
@@ -619,12 +623,43 @@ TEST_CASE(CDBSameStampRewrite) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
     }));
-    set_mtime(database, before.getLastModificationTime());
+    set_mtime(database, stamp);
 
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
     auto main_id = project.file_table.intern(tmp.path("main.cpp"));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+}
+
+TEST_CASE(CDBTrustedStampQuiet) {
+    /// A stamp safely in the past vouches for the bytes: the watcher reads
+    /// nothing while it holds, so a rewrite forging it goes unseen — the
+    /// stat polling's accepted blind spot.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
+    }));
+    auto database = tmp.path("compile_commands.json");
+    auto stamp = std::chrono::system_clock::now() - std::chrono::hours(1);
+    set_mtime(database, stamp);
+    ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
+    FileTracker tracker(project, store, tmp.root.str().str());
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
+    }));
+    set_mtime(database, stamp);
+    ASSERT_TRUE(tracker.tick_cdb().empty());
     ASSERT_TRUE(tracker.tick_cdb().empty());
 }
 
@@ -661,7 +696,38 @@ TEST_CASE(WorkspaceTickScannedBaseline) {
     loop.run();
 }
 
-TEST_CASE(WorkspaceTickDeletedWhileOpen) {
+TEST_CASE(ReloadKeepsBaseline) {
+    /// A database reload rescans every file before the first sweep: the
+    /// baseline taken at construction still reports the change that landed
+    /// in between.
+    TempDir tmp;
+    tmp.touch("header.h", R"(int x = 1;)");
+
+    kota::event_loop loop;
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(tmp.path("header.h"));
+    project.dep_graph.set_includes(header, 0, {});
+    project.dep_graph.build_reverse_map();
+    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 1;)"));
+    FileTracker tracker(project, store, tmp.root.str().str());
+    tmp.touch("header.h", R"(int x = 2222;)");
+    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 2222;)"));
+
+    auto body = [&]() -> kota::task<> {
+        auto first = co_await tracker.tick_workspace();
+        EXPECT_EQ(first.size(), 1u);
+        if(first.size() == 1) {
+            EXPECT_EQ(first[0].kind, FileEvent::Kind::DiskChanged);
+        }
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+}
+
+TEST_CASE(DeletedWhileOpenReported) {
     /// Deleted while open, then closed: the sweep after the close reports
     /// the removal, which BufferClosed leaves to it.
     TempDir tmp;
@@ -696,7 +762,51 @@ TEST_CASE(WorkspaceTickDeletedWhileOpen) {
     loop.run();
 }
 
-TEST_CASE(WorkspaceTickSavedWhileOpen) {
+TEST_CASE(ChangedWhileOpenOnce) {
+    /// Changed on disk while open and closed without a cascade: the sweep
+    /// after the close reports it once. Had the close cascaded, its rescan
+    /// would have moved the scanned content, and nothing is reported.
+    TempDir tmp;
+    tmp.touch("header.h", R"(int x = 1;)");
+
+    kota::event_loop loop;
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(tmp.path("header.h"));
+    project.dep_graph.set_includes(header, 0, {});
+    project.dep_graph.build_reverse_map();
+    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 1;)"));
+    store.open(header);
+    FileTracker tracker(project, store, tmp.root.str().str());
+
+    auto body = [&]() -> kota::task<> {
+        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
+        tmp.touch("header.h", R"(int x = 2222;)");
+        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
+
+        store.close(header);
+        auto changed = co_await tracker.tick_workspace();
+        EXPECT_EQ(changed.size(), 1u);
+        if(changed.size() == 1) {
+            EXPECT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
+        }
+        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
+
+        // Reopened, changed, closed with a cascade: already accounted for.
+        store.open(header);
+        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
+        tmp.touch("header.h", R"(int x = 3;)");
+        store.close(header);
+        project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 3;)"));
+        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+}
+
+TEST_CASE(SavedWhileOpenQuiet) {
     /// A save rescans the file, which moves the scanned content: the sweep
     /// after the close does not announce the save a second time.
     TempDir tmp;

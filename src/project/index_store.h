@@ -39,33 +39,29 @@ struct IndexLoadOptions {
     bool borrow = false;
 };
 
-/// The owner of the contexts blob — the editor's context choices, which
-/// IndexStore::save persists beside the index. Only this blob has a
-/// durability waiter (switchContext), so only it carries an epoch: the
-/// ticket resolves once a save whose snapshot covers the mark commits it —
-/// independent of the artifacts blob, whose failures retry through the
-/// dirty flag alone and must not hold a context ack hostage. `committed`
-/// pulses after every attempt, failed ones included, so waiters can give
-/// up on a disk that cannot take the write.
-struct ContextsOwner {
+/// The contexts blob — the editor's context choices — as the index
+/// database carries it beside the index. The store moves bytes only: the
+/// editor state they encode serializes into them when it changes and
+/// parses them after a load (see EditorContext), so a process without that
+/// state writes back the bytes it loaded, and only into a database
+/// replacing a corrupt one. Only this blob has a durability waiter
+/// (switchContext), so only it hands out tickets: a ticket resolves once a
+/// save whose snapshot covers it commits the blob — independent of the
+/// artifacts blob, whose failures retry through the dirty flag alone and
+/// must not hold a context ack hostage. `committed` pulses after every
+/// attempt, failed ones included, so waiters can give up on a disk that
+/// cannot take the write.
+struct ContextsBlob {
+    /// The serialized blob; empty when there is none, or when serializing
+    /// failed (it stays dirty then, and a save counts a failed attempt).
+    std::string bytes;
     bool dirty = false;
-    std::uint64_t epoch = 0;
-    std::uint64_t committed_epoch = 0;
+
+    /// The last ticket handed out, and the last one a save committed.
+    std::uint64_t ticket = 0;
+    std::uint64_t committed_ticket = 0;
+
     kota::event committed;
-
-    /// The blob's bytes; empty on serialization failure (stays dirty,
-    /// retried).
-    virtual std::string serialize() const = 0;
-
-    /// Restore the blob read at load.
-    virtual void load(llvm::StringRef bytes) = 0;
-
-    /// The database was replaced by a fresh one: the blob died with the
-    /// old one while its state lives on, so it owes a rewrite.
-    virtual void rewrite() = 0;
-
-protected:
-    ~ContextsOwner() = default;
 };
 
 /// The project index's storage engine: merging TUIndex results into the
@@ -133,12 +129,8 @@ public:
 
     IndexStore(kota::event_loop& loop, Project& project, CommandResolver& commands);
 
-    /// Hand the contexts blob to its owner. Must precede load(): a process
-    /// that attaches none (the batch commands) keeps the bytes as loaded
-    /// and writes them back only into a database replacing a corrupt one.
-    void attach_contexts(ContextsOwner& owner) {
-        contexts = &owner;
-    }
+    /// The contexts blob, filled by load() and written by save().
+    ContextsBlob contexts;
 
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write row blobs only for variants no shard stores yet
@@ -253,27 +245,6 @@ private:
 
     /// Header-mode verdicts, persisted in the artifacts blob.
     CommandResolver& commands;
-
-    /// The contexts blob as loaded, standing in for an owner nobody
-    /// attached.
-    struct LoadedContexts final : ContextsOwner {
-        std::string bytes;
-
-        std::string serialize() const override {
-            return bytes;
-        }
-
-        void load(llvm::StringRef data) override {
-            bytes = data.str();
-        }
-
-        void rewrite() override {
-            dirty = !bytes.empty();
-        }
-    };
-
-    LoadedContexts loaded_contexts;
-    ContextsOwner* contexts = &loaded_contexts;
 
     /// Serializes concurrent save() calls: the pump's round-end save, the
     /// master's metadata flush and the shutdown save may overlap on the

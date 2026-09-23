@@ -53,7 +53,8 @@ TEST_CASE(SynthesisRecordsEditorHosts) {
     // Only an editor resolution attributes the files it synthesized; a
     // background one leaves the editor's state (and its blob) alone.
     HostedHeader fx;
-    EditorContext editor{fx.project, fx.commands};
+    ContextsBlob blob;
+    EditorContext editor{fx.project, fx.commands, blob};
     std::string directory;
     std::vector<std::string> arguments;
 
@@ -63,7 +64,7 @@ TEST_CASE(SynthesisRecordsEditorHosts) {
     ASSERT_FALSE(background.synthesized.empty());
     ASSERT_TRUE(editor.synthesized_hosts.empty());
     ASSERT_TRUE(editor.header_contexts.empty());
-    ASSERT_FALSE(editor.dirty);
+    ASSERT_FALSE(blob.dirty);
 
     auto resolution = editor.resolve_command(fx.header_path, directory, arguments);
     ASSERT_EQ(resolution.source, CommandSource::IncludeGraph);
@@ -71,23 +72,24 @@ TEST_CASE(SynthesisRecordsEditorHosts) {
     for(auto& file: resolution.synthesized) {
         ASSERT_EQ(editor.synthesized_hosts.lookup(file), fx.host);
     }
-    ASSERT_TRUE(editor.dirty);
+    ASSERT_TRUE(blob.dirty);
     auto* context = editor.header_context(fx.header);
     ASSERT_TRUE(context != nullptr);
     ASSERT_FALSE(context->preamble_path.empty());
 
     // A reuse synthesizes nothing and leaves the blob clean.
-    editor.dirty = false;
+    blob.dirty = false;
     auto reused = editor.resolve_command(fx.header_path, directory, arguments);
     ASSERT_TRUE(reused.synthesized.empty());
-    ASSERT_FALSE(editor.dirty);
+    ASSERT_FALSE(blob.dirty);
 }
 
 TEST_CASE(ArtifactNeedsEditorHost) {
     // An opened artifact compiles under the host the editor recorded for
     // it; background resolution has no such record and never borrows.
     HostedHeader fx;
-    EditorContext editor{fx.project, fx.commands};
+    ContextsBlob blob;
+    EditorContext editor{fx.project, fx.commands, blob};
     std::string directory;
     std::vector<std::string> arguments;
     editor.resolve_command(fx.header_path, directory, arguments);
@@ -113,7 +115,8 @@ TEST_CASE(GuessedTracksEditorOnly) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    EditorContext editor(project, commands);
+    ContextsBlob blob;
+    EditorContext editor(project, commands, blob);
     auto path = tmp.path("lonely.cpp");
     auto file = project.file_table.intern(path);
     std::string directory;
@@ -141,7 +144,8 @@ TEST_CASE(PinSteersEditorOnly) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    EditorContext resolver(project, commands);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
     tmp.touch("main.cpp");
     auto path = tmp.path("main.cpp");
     write_cdb(tmp,
@@ -180,7 +184,8 @@ TEST_CASE(PinBaseSurvivesRules) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    EditorContext resolver(project, commands);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
     tmp.touch("main.cpp");
     auto path = tmp.path("main.cpp");
     write_cdb(tmp,
@@ -220,7 +225,8 @@ TEST_CASE(ValidateKeepsValidChoice) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    EditorContext resolver(project, commands);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
     tmp.touch("host.cpp", R"(#include "h.h")");
     tmp.touch("h.h");
     write_cdb(tmp,
@@ -244,7 +250,8 @@ TEST_CASE(ValidateDropsStaleChoice) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    EditorContext resolver(project, commands);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
     tmp.touch("host.cpp");
     tmp.touch("h.h");
     tmp.touch("main.cpp");
@@ -264,7 +271,7 @@ TEST_CASE(ValidateDropsStaleChoice) {
     resolver.selections[header] = Selection{host, std::nullopt, ""};
     resolver.validate_saved_context(header);
     ASSERT_FALSE(resolver.selections.contains(header));
-    ASSERT_TRUE(resolver.dirty);
+    ASSERT_TRUE(blob.dirty);
 
     // A command pin whose hash matches no current CDB entry.
     resolver.selections[main_file] = Selection{Fid{}, std::nullopt, "deadbeef"};
@@ -276,7 +283,8 @@ TEST_CASE(InvalidateDropsBorrowed) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    EditorContext resolver(project, commands);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
     auto borrowed = project.file_table.intern("/proj/borrowed.h");
     auto synthesized = project.file_table.intern("/proj/synthesized.h");
 

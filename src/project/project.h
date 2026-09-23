@@ -194,7 +194,7 @@ struct PCMState {
 ///
 /// Project is NEVER modified by unsaved buffer content.  The only mutation
 /// paths are:
-///   - Initialization  (load_root_project at startup)
+///   - Initialization  (load_project at startup)
 ///   - didSave         (rescan_after_save: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
 struct Project {
@@ -220,7 +220,7 @@ struct Project {
     Build build{config, cdb, file_table};
 
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
-    /// load_root_project() when cache_dir is configured; absent means caching
+    /// load_project() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
     /// recovery); validity metadata (deps snapshots) lives in the index
     /// database, written by IndexStore::save.
@@ -342,7 +342,7 @@ struct Project {
 
 /// The `compile_commands.json` files to load when no rule declares one:
 /// the workspace root's, then those of its direct subdirectories in name
-/// order. Empty when none exists yet — the file tracker keeps looking on
+/// order. Empty when none exists yet — the CDBWatcher keeps looking on
 /// its CDB poll.
 llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspace_root);
 

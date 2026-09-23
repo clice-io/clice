@@ -77,9 +77,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                                  params.directory,
                                  params.arguments,
                                  {.extra_prepend = extras.prepend, .extra_append = extras.append});
-    auto source = resolved.source;
-    auto host_path_id = resolved.host;
-    if(source == CommandSource::Fallback || source == CommandSource::Inferred) {
+    if(resolved.source == CommandSource::Fallback || resolved.source == CommandSource::Inferred) {
         // A file whose manifest survives keeps serving its last-known rows,
         // so skipping it loses nothing. One without a manifest (dropped or
         // never built) stays uncovered — count that as a failure so a batch
@@ -214,8 +212,8 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             // snapshot naming the new host while the retained rows were
             // built through the old one — an unchanged new host then pins
             // those stale rows fresh across restarts.
-            if(source == CommandSource::IncludeGraph) {
-                store.record_header_host(path_id, host_path_id);
+            if(resolved.source == CommandSource::IncludeGraph) {
+                store.record_header_host(path_id, resolved.host);
             }
             outcome.report = std::move(*report);
             outcome.perf.merge_ms = merge_timer.ms();

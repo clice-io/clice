@@ -11,8 +11,6 @@
 
 namespace clice {
 
-struct Project;
-
 /// What loading the build found.
 struct BuildLoad {
     /// The build's translation units, the dependency graph's roots.
