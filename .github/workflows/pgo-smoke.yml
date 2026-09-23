@@ -1,0 +1,102 @@
+name: pgo smoke
+
+# The downstream half of pgo-experiment.yml on the released 23.1.1+r1
+# packages, no LLVM build: instrument clice alone, train, rebuild with the
+# profile, benchmark against the plain build. Also the data point "PGO on
+# clice's own code only".
+
+on:
+  push:
+    branches: [exp/pgo-smoke]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - asset: x86_64-unknown-linux-gnu.releasedbg.tar.xz
+            name: llvm-rel
+          - asset: x86_64-unknown-linux-gnu.releasedbg-lto.tar.xz
+            name: llvm-rel-lto
+    steps:
+      - run: |
+          gh release download 23.1.1+r1 -R clice-io/clice-llvm -p "${{ matrix.asset }}"
+          mkdir llvm && tar -C llvm -xJf "${{ matrix.asset }}"
+          tar -C llvm -cf - . | zstd -T0 -6 -o llvm.tar.zst
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.name }}
+          path: llvm.tar.zst
+          retention-days: 7
+          compression-level: 0
+
+  train:
+    needs: fetch
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: profile-smoke
+      llvm: llvm-rel
+      lto: "OFF"
+      pgo: generate
+      train: true
+
+  final:
+    needs: [fetch, train]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: V0
+            pgo: ""
+          - variant: V4
+            pgo: profile-smoke
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-${{ matrix.variant }}
+      llvm: llvm-rel-lto
+      lto: "ON"
+      pgo: ${{ matrix.pgo }}
+
+  bench:
+    needs: final
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: final-V*
+          path: bundles
+      - name: Unpack
+        run: |
+          nproc; grep -m1 'model name' /proc/cpuinfo
+          for dir in bundles/final-V*; do
+            mkdir -p "variants/${dir##*-}"
+            zstd -dc "$dir/bundle.tar.zst" | tar -C "variants/${dir##*-}" -xf -
+          done
+      - name: Workloads
+        run: pixi run -e package python3 scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads"
+      - name: Benchmark
+        run: |
+          pixi run -e package python3 scripts/pgo_ci.py bench --variant "V0=$PWD/variants/V0" \
+            --variant "V4=$PWD/variants/V4" --rounds 3 --out bench-out \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-results
+          path: bench-out
