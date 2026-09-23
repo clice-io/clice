@@ -6,6 +6,9 @@ name: pgo experiment
 #   V1  LLVM and clice both optimized with the clice-trained profile
 #   V2  LLVM optimized with the clang-trained profile, clice without PGO
 #   V3  LLVM as in V2, clice with a profile trained on its own code only
+#       (fails to link: ThinLTO refuses modules built with different profiles)
+#   V5  the clang-trained and clice-own profiles merged into one, used for
+#       both LLVM and clice
 #
 # .github/pgo-plan.json says per stage "build", "skip", or the id of an
 # earlier run of this workflow whose artifact to reuse.
@@ -41,13 +44,18 @@ jobs:
       final_build: ${{ steps.plan.outputs.final_build }}
       final_run: ${{ steps.plan.outputs.final_run }}
       bench_build: ${{ steps.plan.outputs.bench_build }}
+      profile_merged_build: ${{ steps.plan.outputs.profile_merged_build }}
+      profile_merged_run: ${{ steps.plan.outputs.profile_merged_run }}
+      llvm_pgo_merged_build: ${{ steps.plan.outputs.llvm_pgo_merged_build }}
+      llvm_pgo_merged_run: ${{ steps.plan.outputs.llvm_pgo_merged_run }}
+      final_v5_build: ${{ steps.plan.outputs.final_v5_build }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - id: plan
         run: |
-          for stage in llvm_baseline llvm_instr clang_train clice_train llvm_pgo_clice llvm_pgo_clang clice_train_own final bench; do
+          for stage in llvm_baseline llvm_instr clang_train clice_train llvm_pgo_clice llvm_pgo_clang clice_train_own final bench profile_merged llvm_pgo_merged final_v5; do
             value="$(jq -r --arg k "$stage" '.[$k] // "build"' .github/pgo-plan.json)"
             case "$value" in
               build) echo "${stage}_build=true"; echo "${stage}_run=${GITHUB_RUN_ID}" ;;
@@ -125,6 +133,55 @@ jobs:
       lto: "ON"
       pgo: generate
       train: true
+
+  profile_merged:
+    needs: [plan, clang_train, clice_train_own]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.profile_merged_build == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - name: Merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ needs.plan.outputs.clang_train_run }}" -R "$GITHUB_REPOSITORY" -n profile-clang -D p/clang
+          gh run download "${{ needs.plan.outputs.clice_train_own_run }}" -R "$GITHUB_REPOSITORY" -n profile-clice-own -D p/own
+          mkdir -p pgo-out
+          pixi run -e package llvm-profdata merge --sparse -o pgo-out/profile.profdata \
+            p/clang/profile.profdata p/own/profile.profdata
+          pixi run -e package llvm-profdata show pgo-out/profile.profdata | tail -n 8
+      - uses: actions/upload-artifact@v7
+        with:
+          name: profile-merged
+          path: pgo-out
+          retention-days: 14
+
+  llvm_pgo_merged:
+    needs: [plan, profile_merged]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.llvm_pgo_merged_build == 'true' }}
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: llvm-pgo-merged
+      lto: "ON"
+      profile: profile-merged
+      profile-run: ${{ needs.plan.outputs.profile_merged_run }}
+
+  final_v5:
+    needs: [plan, profile_merged, llvm_pgo_merged]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.final_v5_build == 'true' }}
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-V5
+      llvm: llvm-pgo-merged
+      llvm-run: ${{ needs.plan.outputs.llvm_pgo_merged_run }}
+      lto: "ON"
+      pgo: profile-merged
+      pgo-run: ${{ needs.plan.outputs.profile_merged_run }}
 
   final:
     needs: [plan, llvm_baseline, clice_train, llvm_pgo_clice, llvm_pgo_clang, clice_train_own]
