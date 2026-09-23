@@ -345,6 +345,11 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
         auto& to = route(path_id);
         owners[path_id] = &to;
         to.open_session(path_id, session->text, session->version);
+        // The client still shows what the old project published, and no
+        // request of its own replaces it: compile under the new one.
+        if(auto moved = to.sessions.find(path_id); moved->serving == ServingMode::Escalated) {
+            to.ast.request_compile(moved);
+        }
     }
 }
 
@@ -432,9 +437,12 @@ void MasterServer::retire(std::shared_ptr<ProjectServer> project) {
         [](MasterServer& server, std::shared_ptr<ProjectServer> project) -> kota::task<> {
             co_await project->shutdown();
             project->close();
-            auto it = llvm::find(server.readded, project->root);
+            // Released first: while this frame holds the project, its cache
+            // directory still counts as taken for the folder served again.
+            auto root = project->root;
+            project.reset();
+            auto it = llvm::find(server.readded, root);
             if(it != server.readded.end()) {
-                auto root = std::move(*it);
                 server.readded.erase(it);
                 if(server.lifecycle == ServerLifecycle::Ready) {
                     server.add_folder(std::move(root));

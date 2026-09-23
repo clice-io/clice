@@ -195,13 +195,19 @@ test("removed folder releases its files", async ({ session }) => {
     const [beta] = await client.openAndWait("beta/main.cpp");
     client.assertNoErrors(beta);
 
+    // A moved document recompiles on its own: the client sends nothing
+    // that would replace the diagnostics the old project published.
+    const diagnosed = (errors: boolean, description: string) =>
+        waitUntil(() => client.errors(beta).length > 0 === errors, {
+            timeout: INDEX_TIMEOUT,
+            interval: SETTLE_TIME,
+            description,
+        });
     await client.changeWorkspaceFolders({ removed: ["beta"] });
-    await client.waitForRecompile(beta);
-    client.assertHasErrors(beta, "the remaining project has no command for it");
+    await diagnosed(true, "errors from the remaining project, which has no command for it");
 
     await client.changeWorkspaceFolders({ added: ["beta"] });
-    await client.waitForRecompile(beta);
-    client.assertNoErrors(beta, "the re-added folder serves it again");
+    await diagnosed(false, "the re-added folder to serve it again");
 });
 
 test("folder re-added at once keeps its cache", async ({ session }) => {
