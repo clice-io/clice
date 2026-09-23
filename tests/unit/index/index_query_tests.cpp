@@ -7,12 +7,13 @@
 #include "index/query.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/context.h"
+#include "project/command_resolver.h"
+#include "project/index_store.h"
+#include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "sched/index/pump.h"
-#include "sched/index/store.h"
 #include "server/service/live_sources.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
@@ -29,19 +30,21 @@ namespace {
 TEST_SUITE(IndexQuery, Tester) {
 
 kota::event_loop loop;
-Workspace workspace;
+FileTable files;
+Project project{files};
 SessionStore store;
 WorkerPool pool{loop};
-ContextResolver resolver{workspace};
+CommandResolver resolver{project};
 TaskGraph graph{loop};
-PCMFamily pcm{graph, workspace, resolver, pool};
+PCMFamily pcm{graph, project, resolver, pool};
 ASTProjectionTable projections;
-IndexStore index_store{loop, workspace, resolver};
-TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
-IndexPump indexer{loop, workspace, turun, index_store, pool};
-ServerLiveSources live{workspace, store, projections};
-PumpGate gate{indexer, workspace.config};
-index::IndexQuery query{workspace.project_index, workspace.file_table, &gate, &live};
+IndexStore index_store{loop, project, resolver};
+TURunFamily turun{graph, project, resolver, pcm, index_store, pool};
+IndexPump indexer{loop, project, turun, index_store, pool};
+PCHFamily pch{graph, project, pool};
+ServerLiveSources live{project, pch, store, projections};
+PumpGate gate{indexer, project.config};
+index::IndexQuery query{project.project_index, project.file_table, &gate, &live};
 
 Fid main_id;
 Fid header_id;
@@ -62,14 +65,14 @@ void merge_into_workspace() {
     auto view = index::TUIndex::from_bytes(wire);
     ASSERT_TRUE(view.loaded());
 
-    auto& project = workspace.project_index;
+    auto& project_index = project.project_index;
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(workspace.file_table.intern(view.path(i)));
+        file_ids_map.push_back(project.file_table.intern(view.path(i)));
     }
     llvm::SmallVector<index::SymbolHash> added;
-    ASSERT_TRUE(project.merge(view, file_ids_map, &added));
-    workspace.project_index.search_pending.insert(added.begin(), added.end());
+    ASSERT_TRUE(project_index.merge(view, file_ids_map, &added));
+    project.project_index.search_pending.insert(added.begin(), added.end());
     main_id = file_ids_map[view.path_count() - 1];
 
     // The consumed-content hash per TU-local path: the section's own
@@ -81,9 +84,9 @@ void merge_into_workspace() {
         auto global_id = file_ids_map[local_id];
         // A section blob is already the final shard encoding: install the
         // bytes verbatim, as the indexer's first-variant path does.
-        workspace.project_index.shards[global_id] = index::Shard::from_buffer(
+        project.project_index.shards[global_id] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
-        consumed[local_id] = workspace.project_index.shards[global_id].content_hash();
+        consumed[local_id] = project.project_index.shards[global_id].content_hash();
         if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
             header_id = global_id;
         }
@@ -92,7 +95,7 @@ void merge_into_workspace() {
     llvm::SmallVector<VersionID> fv_of;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         auto hash = consumed[i] != 0 ? consumed[i] : view.path_hash(i);
-        fv_of.push_back(workspace.file_table.intern_version(file_ids_map[i], hash));
+        fv_of.push_back(project.file_table.intern_version(file_ids_map[i], hash));
     }
 
     index::TUManifest manifest;
@@ -109,10 +112,11 @@ void merge_into_workspace() {
                                             view.section_hash(section));
     }
 
-    for(auto path_id: project.apply_manifest(workspace.file_table, main_id, std::move(manifest))) {
-        auto it = workspace.project_index.shards.find(path_id);
-        if(it != workspace.project_index.shards.end()) {
-            it->second.set_live(project.live_variants(path_id));
+    for(auto path_id:
+        project_index.apply_manifest(project.file_table, main_id, std::move(manifest))) {
+        auto it = project.project_index.shards.find(path_id);
+        if(it != project.project_index.shards.end()) {
+            it->second.set_live(project_index.live_variants(path_id));
         }
     }
 }
@@ -130,7 +134,7 @@ TEST_CASE(DefinitionAcrossFiles) {
 
     auto hit_offset = point("use");
     index::SymbolHash symbol = 0;
-    workspace.project_index.shards[main_id].lookup(hit_offset, [&](const index::Occurrence& o) {
+    project.project_index.shards[main_id].lookup(hit_offset, [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -153,7 +157,7 @@ TEST_CASE(ReferencesAcrossFiles) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    project.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -191,11 +195,10 @@ TEST_CASE(QualifiedNames) {
     merge_into_workspace();
 
     index::SymbolHash method = 0;
-    workspace.project_index.shards[main_id].lookup(point("method"),
-                                                   [&](const index::Occurrence& o) {
-                                                       method = o.target;
-                                                       return false;
-                                                   });
+    project.project_index.shards[main_id].lookup(point("method"), [&](const index::Occurrence& o) {
+        method = o.target;
+        return false;
+    });
     ASSERT_TRUE(method != 0);
     ASSERT_EQ(query.qualified_name(method), "outer::inner::Widget::paint");
 
@@ -227,11 +230,10 @@ TEST_CASE(QualifiedNames) {
     ASSERT_EQ(query.container_name(versioned.front().symbol.hash), "outer");
     ASSERT_EQ(query.qualified_name(versioned.front().symbol.hash), "outer::versioned");
     index::SymbolHash hidden = 0;
-    workspace.project_index.shards[main_id].lookup(point("hidden"),
-                                                   [&](const index::Occurrence& o) {
-                                                       hidden = o.target;
-                                                       return false;
-                                                   });
+    project.project_index.shards[main_id].lookup(point("hidden"), [&](const index::Occurrence& o) {
+        hidden = o.target;
+        return false;
+    });
     ASSERT_TRUE(hidden != 0);
     ASSERT_EQ(query.qualified_name(hidden), "outer::hidden");
 
@@ -268,7 +270,7 @@ TEST_CASE(LocalsAndCursors) {
     // A cursor on the file's own static function resolves through the
     // serving source, which the global table knows nothing about.
     index::SymbolQuery at;
-    at.position = {.path = workspace.file_table.resolve(main_id).str(), .line = 3, .column = 21};
+    at.position = {.path = project.file_table.resolve(main_id).str(), .line = 3, .column = 21};
     auto located = query.locate(at);
     ASSERT_EQ(located.size(), std::size_t(1));
     ASSERT_EQ(located.front().symbol.name, "helper");
@@ -289,7 +291,7 @@ TEST_CASE(LocalSymbolName) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.project_index.shards[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
+    project.project_index.shards[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -384,7 +386,7 @@ TEST_CASE(StaleContributionSuppressed) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    project.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });

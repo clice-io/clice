@@ -10,10 +10,10 @@
 
 #include "version.h"
 #include "command/argument_parser.h"
-#include "sched/context.h"
 #include "semantic/symbol.h"
 #include "server/protocol/extension.h"
 #include "server/service/format.h"
+#include "server/state/editor_context.h"
 #include "server/state/file_tracker.h"
 #include "server/transport/master_server.h"
 #include "server/transport/uri.h"
@@ -65,7 +65,8 @@ static void fire_refresh(kota::event_loop& loop, kota::ipc::JsonPeer& peer, Para
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
     output_conn = server.ast.on_output.connect(
         [this](const std::shared_ptr<Session>& session) { push_output(*session); });
-    progress_conn = server.pump.on_progress_changed.connect([this]() { report_index_progress(); });
+    progress_conn =
+        server.sched.pump.on_progress_changed.connect([this]() { report_index_progress(); });
     serving_conn = server.on_serving_rows_changed.connect([this]() { refresh_index_served(); });
 
     // Guidance/anomaly messages travel as window/logMessage, which the LSP
@@ -117,7 +118,7 @@ static void unversion(protocol::WorkspaceEdit& edit) {
 
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = uri_to_path(uri);
-    auto path_id = this->server.workspace.file_table.intern(path);
+    auto path_id = this->server.project.file_table.intern(path);
     return ResolvedDoc{std::move(path), path_id, this->server.find_session(path_id)};
 }
 
@@ -126,7 +127,7 @@ void LSPClient::register_lifecycle() {
 
     peer.on_request([this](RequestContext& ctx, const protocol::InitializeParams& params)
                         -> RequestResult<protocol::InitializeParams> {
-        this->server.pool.foreground_pulse();
+        this->server.sched.pool.foreground_pulse();
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Uninitialized) {
             co_return kota::outcome_error(protocol::Error{"Server already initialized"});
@@ -272,7 +273,7 @@ void LSPClient::register_lifecycle() {
     peer.on_request(
         [this](RequestContext& ctx,
                const protocol::ShutdownParams& params) -> RequestResult<protocol::ShutdownParams> {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             this->server.lifecycle = ServerLifecycle::ShuttingDown;
             LOG_INFO("Shutdown requested");
             co_return nullptr;
@@ -289,7 +290,7 @@ void LSPClient::register_document_sync() {
         auto& srv = this->server;
         if(past_shutdown(srv.lifecycle))
             return;
-        srv.pool.foreground_pulse();
+        srv.sched.pool.foreground_pulse();
 
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
 
@@ -321,7 +322,7 @@ void LSPClient::register_document_sync() {
         auto& srv = this->server;
         if(past_shutdown(srv.lifecycle))
             return;
-        srv.pool.foreground_pulse();
+        srv.sched.pool.foreground_pulse();
 
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         if(!session) {
@@ -386,7 +387,7 @@ void LSPClient::register_document_sync() {
         // ready reads the saved disk content anyway.
         if(srv.lifecycle != ServerLifecycle::Ready)
             return;
-        srv.pool.foreground_pulse();
+        srv.sched.pool.foreground_pulse();
 
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         srv.dispatch(FileEvent::buffer_saved(path_id));
@@ -397,7 +398,7 @@ void LSPClient::register_document_sync() {
 
 void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
+        this->server.sched.pool.foreground_pulse();
         auto& srv = this->server;
         auto [path, path_id, session] =
             resolve_uri(params.text_document_position_params.text_document.uri);
@@ -410,7 +411,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -420,7 +421,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -430,7 +431,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -440,7 +441,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -450,7 +451,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
@@ -462,7 +463,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -484,7 +485,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
@@ -499,7 +500,7 @@ void LSPClient::register_language_features() {
     // returned as [] — never an error.
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
@@ -511,7 +512,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
@@ -520,7 +521,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ImplementationParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
@@ -529,7 +530,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DeclarationParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
@@ -538,7 +539,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CompletionParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
+        this->server.sched.pool.foreground_pulse();
         auto& srv = this->server;
         auto [path, path_id, session] =
             resolve_uri(params.text_document_position_params.text_document.uri);
@@ -556,7 +557,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] =
                 resolve_uri(params.text_document_position_params.text_document.uri);
@@ -570,7 +571,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentFormattingParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -580,7 +581,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::DocumentRangeFormattingParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
+        this->server.sched.pool.foreground_pulse();
         auto& srv = this->server;
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         if(!session)
@@ -590,7 +591,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyPrepareParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
+        this->server.sched.pool.foreground_pulse();
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
         auto [path, path_id, session] = resolve_uri(uri);
@@ -599,21 +600,21 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
+        this->server.sched.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
         co_return co_await this->server.features.call_hierarchy_incoming(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
+        this->server.sched.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
         co_return co_await this->server.features.call_hierarchy_outgoing(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
+        this->server.sched.pool.foreground_pulse();
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
         auto [path, path_id, session] = resolve_uri(uri);
@@ -622,21 +623,21 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
+        this->server.sched.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
         co_return co_await this->server.features.type_hierarchy_supertypes(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
+        this->server.sched.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
         co_return co_await this->server.features.type_hierarchy_subtypes(path_id, params.item);
     });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::WorkspaceSymbolParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             co_return co_await this->server.features.workspace_symbol(params.query);
         });
 }
@@ -647,7 +648,7 @@ void LSPClient::register_extensions() {
     peer.on_request(
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto [path, path_id, session] = resolve_uri(params.uri);
             co_return to_raw(this->server.context_service.query_contexts(path, path_id, params));
         });
@@ -655,7 +656,7 @@ void LSPClient::register_extensions() {
     peer.on_request(
         "clice/currentContext",
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto [path, path_id, session] = resolve_uri(params.uri);
             co_return to_raw(
                 this->server.context_service.current_context(path, session.get(), params));
@@ -664,7 +665,7 @@ void LSPClient::register_extensions() {
     peer.on_request(
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.sched.pool.foreground_pulse();
             auto [path, path_id, session] = resolve_uri(params.uri);
             auto [context_path, context_path_id, context_session] = resolve_uri(params.context_uri);
             // The session reset lives inside switch_context (single owner,
@@ -733,7 +734,7 @@ void LSPClient::register_extensions() {
                         // Load-generating hook: a stray client must not be able to
                         // bloat the file log, so it only exists when the harness asked
                         // for it at initialize time.
-                        if(!this->server.workspace.config.project.test_hooks.value) {
+                        if(!this->server.project.config.project.test_hooks.value) {
                             co_return kota::outcome_error(
                                 kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
                                                  "test hooks are not enabled"});
@@ -757,25 +758,25 @@ void LSPClient::register_extensions() {
             auto& srv = this->server;
             ext::StatsResult stats;
 
-            for(auto& entry: srv.workspace.pch_cache) {
+            for(auto& entry: srv.project.pch_cache) {
                 auto& st = entry.second;
                 if(st.state) {
                     stats.pch_loaded_states += 1;
                     stats.pch_state_bytes += st.state->bytes().size();
                 }
             }
-            stats.pch_cache_entries = static_cast<std::uint32_t>(srv.workspace.pch_cache.size());
+            stats.pch_cache_entries = static_cast<std::uint32_t>(srv.project.pch_cache.size());
 
             stats.index_inmemory_shards =
-                static_cast<std::uint32_t>(srv.index_store.pending_shard_writes());
-            for(auto& [path_id, shard]: srv.workspace.project_index.shards) {
+                static_cast<std::uint32_t>(srv.sched.store.pending_shard_writes());
+            for(auto& [path_id, shard]: srv.project.project_index.shards) {
                 stats.index_shard_content_bytes += shard.bytes().size();
             }
-            stats.last_save_shards = static_cast<std::uint32_t>(srv.index_store.last_save_shards());
+            stats.last_save_shards = static_cast<std::uint32_t>(srv.sched.store.last_save_shards());
 
-            if(srv.workspace.store) {
+            if(srv.project.store) {
                 stats.pending_tmp_files =
-                    static_cast<std::uint32_t>(srv.workspace.store->pending_tmp_files());
+                    static_cast<std::uint32_t>(srv.project.store->pending_tmp_files());
             }
 
             stats.header_contexts = static_cast<std::uint32_t>(srv.contexts.header_contexts.size());
@@ -850,7 +851,7 @@ void LSPClient::push_output(const Session& session) {
     }
     auto& output = *projection->output;
 
-    auto file_path = std::string(server.workspace.file_table.resolve(session.path_id));
+    auto file_path = std::string(server.project.file_table.resolve(session.path_id));
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
@@ -901,7 +902,7 @@ void LSPClient::refresh_index_served() {
 }
 
 void LSPClient::report_index_progress() {
-    const auto& p = server.pump.progress();
+    const auto& p = server.sched.pump.progress();
     using Stage = IndexPump::Progress::Stage;
     auto& st = *index_progress;
     switch(p.stage) {

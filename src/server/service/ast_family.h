@@ -9,10 +9,10 @@
 #include <utility>
 #include <vector>
 
+#include "project/project.h"
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
-#include "sched/workspace.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
@@ -29,7 +29,7 @@ struct ASTFamilyFixture;
 
 }
 
-class ContextResolver;
+struct EditorContext;
 
 /// Open documents' ASTs as a task-graph family: one node per document,
 /// candidate/durable edges to the PCM and PCH nodes its rounds wait on,
@@ -52,8 +52,8 @@ class ContextResolver;
 /// and reports Stale, a content supersede discards wholesale.
 class ASTFamily {
 public:
-    ASTFamily(Workspace& workspace,
-              ContextResolver& contexts,
+    ASTFamily(Project& project,
+              EditorContext& contexts,
               TaskGraph& graph,
               PCMFamily& pcm,
               PCHFamily& pch,
@@ -241,8 +241,8 @@ private:
     /// invalidation flavor.
     void touch(Fid path_id);
 
-    Workspace& workspace;
-    ContextResolver& contexts;
+    Project& project;
+    EditorContext& contexts;
     TaskGraph& graph;
     PCMFamily& pcm;
     PCHFamily& pch;

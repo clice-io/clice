@@ -1,7 +1,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "config/config.h"
-#include "sched/configuration.h"
+#include "project/configuration.h"
 #include "support/filesystem.h"
 
 namespace clice::testing {

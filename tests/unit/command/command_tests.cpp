@@ -4,7 +4,7 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
-#include "sched/build.h"
+#include "project/build.h"
 #include "support/filesystem.h"
 #include "support/shell.h"
 

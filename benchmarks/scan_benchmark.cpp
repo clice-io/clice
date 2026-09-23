@@ -22,7 +22,7 @@
 
 #include "command/command.h"
 #include "config/config.h"
-#include "sched/build.h"
+#include "project/build.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/dependency_graph.h"

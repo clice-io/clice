@@ -5,9 +5,9 @@
 
 #include "driver/driver.h"
 #include "index/writer_lock.h"
+#include "project/configuration.h"
+#include "project/open_index.h"
 #include "sched/batch.h"
-#include "sched/configuration.h"
-#include "sched/open_index.h"
 #include "server/service/query_commands.h"
 #include "server/transport/control_client.h"
 
@@ -207,18 +207,18 @@ struct Reply {
 /// the commands' own. `failed` are the units a --fresh refresh could not
 /// index: their rows are as absent as a withheld file's. `dropped` are
 /// the units the load found unservable.
-Reply answer(Workspace& workspace,
-             ContextResolver& contexts,
+Reply answer(Project& project,
+             EditorContext& contexts,
              const QueryOptions& opts,
              llvm::ArrayRef<std::string> failed,
              llvm::ArrayRef<Fid> dropped) {
-    index::DiskGate gate(workspace.project_index, workspace.file_table);
-    index::IndexQuery index_query(workspace.project_index, workspace.file_table, &gate, nullptr);
-    query::Context ctx{.workspace = workspace, .contexts = contexts, .query = index_query};
+    index::DiskGate gate(project.project_index, project.file_table);
+    index::IndexQuery index_query(project.project_index, project.file_table, &gate, nullptr);
+    query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
 
     auto method = opts.method.value_or("");
     auto path = opts.path.value_or("");
-    auto absolute = path.empty() ? std::string() : inspected_path(workspace, path);
+    auto absolute = path.empty() ? std::string() : inspected_path(project, path);
     auto direction = opts.direction.value_or("both");
     auto kind_list = opts.kind.value_or("");
     llvm::SmallVector<llvm::StringRef> kind_refs;
@@ -230,12 +230,12 @@ Reply answer(Workspace& workspace,
     auto emit = [&](auto outcome) {
         std::vector<std::string> stale;
         for(auto file: gate.withheld()) {
-            stale.emplace_back(workspace.file_table.resolve(file));
+            stale.emplace_back(project.file_table.resolve(file));
         }
         stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
         stale.insert(stale.end(), failed.begin(), failed.end());
         for(auto unit: dropped) {
-            stale.emplace_back(workspace.file_table.resolve(unit));
+            stale.emplace_back(project.file_table.resolve(unit));
         }
         std::ranges::sort(stale);
         auto duplicates = std::ranges::unique(stale);
@@ -254,8 +254,8 @@ Reply answer(Workspace& workspace,
     auto locator = [&]() -> std::expected<index::SymbolQuery, std::string> {
         auto query = locator_of(opts, absolute);
         if(query && opts.path) {
-            auto file = workspace.file_table.intern(absolute);
-            if(!workspace.project_index.shard(file)) {
+            auto file = project.file_table.intern(absolute);
+            if(!project.project_index.shard(file)) {
                 ctx.unindexed.emplace_back(absolute);
                 return std::unexpected("symbol not found");
             }
@@ -371,18 +371,22 @@ int run_query(const QueryOptions& opts, const char* self_path) {
     // The build questions walk manifests and contexts, which only the
     // writer's load restores; the index questions bind the tables in
     // place and touch nothing else.
-    Workspace workspace;
-    ContextResolver contexts{workspace};
+    FileTable files;
+    Project project{files};
+    CommandResolver commands{project};
+    ContextsBlob saved;
+    EditorContext contexts{project, commands, saved};
     llvm::SmallVector<Fid> dropped;
     bool opened = false;
     if(with_build) {
-        if(auto loaded =
-               load_index(workspace, contexts, root, configuration, /*with_build=*/true)) {
+        if(auto loaded = load_index(project, commands, root, configuration, /*with_build=*/true)) {
             dropped = std::move(loaded->dropped);
+            saved.bytes = std::move(loaded->contexts);
+            contexts.load();
             opened = true;
         }
     } else {
-        opened = open_index(workspace, root, configuration);
+        opened = open_index(project, root, configuration);
     }
     if(!opened) {
         print_json(Failure{
@@ -390,7 +394,7 @@ int run_query(const QueryOptions& opts, const char* self_path) {
                 "the index could not be opened (the log above says why); run `clice index` or pass --fresh"});
         return 1;
     }
-    auto reply = answer(workspace, contexts, opts, failed, dropped);
+    auto reply = answer(project, contexts, opts, failed, dropped);
     std::println("{}", reply.json);
     return reply.exit_code;
 }

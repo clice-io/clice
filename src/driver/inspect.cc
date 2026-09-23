@@ -11,10 +11,10 @@
 #include "feature/feature.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/bootstrap.h"
-#include "sched/configuration.h"
-#include "sched/context.h"
-#include "sched/workspace.h"
+#include "project/command_resolver.h"
+#include "project/configuration.h"
+#include "project/load.h"
+#include "project/project.h"
 #include "semantic/content.h"
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
@@ -564,7 +564,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
                                         const std::string& file,
                                         llvm::ArrayRef<std::string> flags,
                                         llvm::StringRef flags_directory,
-                                        ContextResolver* contexts) {
+                                        CommandResolver* commands) {
     namespace types = clang::driver::types;
     auto type = suffix_type(file);
     bool is_header = is_header_type(type);
@@ -605,7 +605,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         return command;
     }
 
-    contexts->resolve_command(file, command.directory, command.arguments, ContextUse::Background);
+    commands->resolve_command(file, command.directory, command.arguments);
     return command;
 }
 
@@ -865,17 +865,18 @@ int run_inspect(const InspectOptions& opts) {
     // project at or above it.
     llvm::StringRef unit_directory =
         is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
-    Workspace workspace;
-    ContextResolver contexts(workspace);
+    FileTable file_table;
+    Project project{file_table};
+    CommandResolver commands(project);
     if(!flags.empty() && opts.configuration.has_value()) {
         LOG_ERROR("--configuration selects among the workspace's rules; --flags replaces them");
         return 1;
     }
     if(flags.empty()) {
         std::string root = workspace_of(unit_directory);
-        workspace.config = Config::load_from_workspace(root);
+        project.config = Config::load_from_workspace(root);
         auto requested = opts.configuration.value_or("");
-        if(!check_requested_configuration(workspace.config, requested)) {
+        if(!check_requested_configuration(project.config, requested)) {
             return 1;
         }
         // What the server discovers when a file is opened: the databases
@@ -888,7 +889,7 @@ int run_inspect(const InspectOptions& opts) {
                 }
             }
         }
-        load_build(workspace, root, resolve_configuration(workspace.config, requested), nearby);
+        load_build(project, root, resolve_configuration(project.config, requested), nearby);
     }
 
     // Directory mode covers what the build compiles under the tree, not only
@@ -902,8 +903,8 @@ int run_inspect(const InspectOptions& opts) {
         }
         llvm::SmallString<256> storage;
         auto root = path::canonical(abs_path, storage);
-        for(auto member: workspace.build.members()) {
-            auto abs = workspace.file_table.resolve(member);
+        for(auto member: project.build.members()) {
+            auto abs = project.file_table.resolve(member);
             if(!abs.starts_with(root) || abs.size() <= root.size() || abs[root.size()] != '/' ||
                listed.contains(abs)) {
                 continue;
@@ -945,7 +946,7 @@ int run_inspect(const InspectOptions& opts) {
                             file.abs,
                             flags,
                             unit_directory,
-                            flags.empty() ? &contexts : nullptr);
+                            flags.empty() ? &commands : nullptr);
     };
 
     // Serial module builder (directory mode): scan for module declarations

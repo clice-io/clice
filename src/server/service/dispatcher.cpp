@@ -2,8 +2,8 @@
 
 #include <utility>
 
-#include "sched/context.h"
 #include "server/protocol/position.h"
+#include "server/state/editor_context.h"
 #include "support/anomaly.h"
 #include "support/logging.h"
 #include "support/timer.h"
@@ -94,11 +94,11 @@ private:
 
 }  // namespace
 
-Dispatcher::Dispatcher(Workspace& workspace,
-                       ContextResolver& contexts,
+Dispatcher::Dispatcher(Project& project,
+                       EditorContext& contexts,
                        ASTFamily& ast,
                        WorkerPool& pool) :
-    workspace(workspace), contexts(contexts), ast(ast), pool(pool) {}
+    project(project), contexts(contexts), ast(ast), pool(pool) {}
 
 kota::ipc::Error Dispatcher::refuse(const std::shared_ptr<Session>& session) {
     if(session->quarantine.needs_announcement()) {
@@ -118,7 +118,7 @@ Outcome Dispatcher::land(const Ticket& ticket,
             LOG_ANOMALY(WorkerRequestFail,
                         "{} failed for {}: {}",
                         label,
-                        workspace.file_table.resolve(session.path_id),
+                        project.file_table.resolve(session.path_id),
                         result.error().message);
         }
         return result;
@@ -146,7 +146,7 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
                                         std::optional<kota::cancellation_token> token) {
     auto& session = *ticket.session;
     auto path_id = session.path_id;
-    auto path = std::string(workspace.file_table.resolve(path_id));
+    auto path = std::string(project.file_table.resolve(path_id));
     auto evidence = evidence_kind(kind);
     auto label = kota::meta::enum_name(kind, "Unknown");
 
@@ -168,7 +168,7 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
     worker::QueryParams wp;
     wp.kind = kind;
     wp.path = path;
-    wp.config = workspace.config;
+    wp.config = project.config;
 
     auto map = session.line_map();
     if(position) {
@@ -248,7 +248,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
                  label,
-                 workspace.file_table.resolve(path_id),
+                 project.file_table.resolve(path_id),
                  wait_ms,
                  timer.ms_f());
     }
@@ -258,7 +258,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
 kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     Dispatcher::document_links(const Ticket& ticket,
                                std::optional<kota::cancellation_token> token) {
-    auto path = std::string(workspace.file_table.resolve(ticket.session->path_id));
+    auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
                              EvidenceKind::DocumentLink,
                              "DocumentLink",
@@ -276,7 +276,7 @@ kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
     if(!selection) {
         co_return kota::outcome_error(invalid_range());
     }
-    auto path = std::string(workspace.file_table.resolve(ticket.session->path_id));
+    auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
                              EvidenceKind::CodeAction,
                              "CodeAction",
@@ -292,7 +292,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
                                               std::optional<kota::cancellation_token> token) {
     auto& session = *ticket.session;
     auto path_id = session.path_id;
-    auto path = std::string(workspace.file_table.resolve(path_id));
+    auto path = std::string(project.file_table.resolve(path_id));
 
     // This build compiles the same content the quarantine watches.
     QuarantineGate entry(session.quarantine, evidence, QuarantineGate::Scope::Content);
@@ -305,9 +305,9 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     Params wp;
     wp.file = path;
     wp.text = session.text;
-    contexts.resolve_command(path, wp.directory, wp.arguments, ContextUse::Editor);
+    contexts.resolve_command(path, wp.directory, wp.arguments);
     contexts.append_suffix_include(path_id, wp.text);
-    wp.config = workspace.config;
+    wp.config = project.config;
 
     ScopedTimer timer;
     ASTFamily::StatelessInputs inputs;
@@ -387,7 +387,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
                                          std::optional<protocol::Range> range,
                                          std::optional<kota::cancellation_token> token) {
     auto& session = *ticket.session;
-    auto path = std::string(workspace.file_table.resolve(session.path_id));
+    auto path = std::string(project.file_table.resolve(session.path_id));
     auto evidence = evidence_kind(EvidenceKind::Format);
 
     QuarantineGate gate(session.quarantine, evidence, QuarantineGate::Scope::Content);

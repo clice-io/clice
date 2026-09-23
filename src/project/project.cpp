@@ -1,4 +1,4 @@
-#include "sched/workspace.h"
+#include "project/project.h"
 
 #include <algorithm>
 #include <chrono>
@@ -7,8 +7,7 @@
 
 #include "command/search_config.h"
 #include "index/serialization.h"
-#include "sched/context.h"
-#include "sched/hosting.h"
+#include "project/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
@@ -25,14 +24,14 @@
 
 namespace clice {
 
-bool Workspace::is_synthesized_artifact(llvm::StringRef path) const {
+bool Project::is_synthesized_artifact(llvm::StringRef path) const {
     if(!store) {
         return false;
     }
     return path.starts_with(path::join(store->base_dir(), header_context_ns));
 }
 
-std::uint32_t Workspace::count_occurrences(Fid host_id, Fid target_id) const {
+std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
     auto chain = dep_graph.find_include_chain(host_id, target_id);
     if(chain.size() < 2) {
         return 0;
@@ -53,7 +52,7 @@ std::uint32_t Workspace::count_occurrences(Fid host_id, Fid target_id) const {
                                      null_resolver);
 }
 
-void Workspace::rescan_after_save(Fid path_id) {
+void Project::rescan_after_save(Fid path_id) {
     auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
 
@@ -64,6 +63,7 @@ void Workspace::rescan_after_save(Fid path_id) {
     auto observed = read_file_observed(path.data());
     if(observed) {
         file_table.observe(path_id, observed->obs);
+        dep_graph.set_scanned_hash(path_id, observed->obs.hash);
         const auto& scan =
             file_table.scan_of(path_id, observed->obs.hash, observed->content->getBuffer());
 
@@ -127,7 +127,6 @@ void Workspace::rescan_after_save(Fid path_id) {
             dep_graph.set_includes(path_id, static_cast<std::uint32_t>(index), std::move(edges));
         }
 
-        dep_graph.build_reverse_map();
         context_epoch += 1;
 
         // The graph's module declaration is what import resolution reads —
@@ -181,15 +180,45 @@ void Workspace::rescan_after_save(Fid path_id) {
         return;
     }
 
-    dep_graph.build_reverse_map();
     context_epoch += 1;
 }
 
-void Workspace::on_file_closed(Fid path_id) {
-    // PCH entries are content-keyed and may be shared with other sessions,
-    // so nothing entry-level to clean up — but the loaded-state budget
-    // shrinks with the open count, and this is the moment it does.
-    enforce_loaded_budget();
+void Project::forget_file(Fid path_id) {
+    dep_graph.update_module_decl(path_id, {});
+    dep_graph.set_import_candidate(path_id, false);
+    dep_graph.clear_includes(path_id);
+    context_epoch += 1;
+}
+
+Project::ProviderChanges Project::rebuild_dependency_graph() {
+    llvm::StringMap<Fid> selected;
+    for(auto& entry: dep_graph.modules()) {
+        if(!entry.getValue().empty()) {
+            selected[entry.getKey()] = entry.getValue().front();
+        }
+    }
+
+    // TODO: this scan runs synchronously on the event loop (same cost as
+    // the startup scan); if it shows up on large projects, move it off the
+    // dispatch path.
+    dep_graph = DependencyGraph();
+    scan_dependency_graph(cdb, dep_graph, build.units(build.members()));
+    dep_graph.build_reverse_map();
+    context_epoch += 1;
+
+    ProviderChanges changes;
+    for(auto& entry: dep_graph.modules()) {
+        if(entry.getValue().empty()) {
+            continue;
+        }
+        auto it = selected.find(entry.getKey());
+        if(it == selected.end()) {
+            changes.appeared.push_back(entry.getKey().str());
+        } else if(it->second != entry.getValue().front()) {
+            changes.replaced.push_back(it->second);
+        }
+    }
+    return changes;
 }
 
 static std::string database_in(llvm::StringRef dir) {
@@ -387,74 +416,8 @@ const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
     return state;
 }
 
-std::shared_ptr<index::TUIndex> Workspace::preamble_state(llvm::StringRef pch_key) {
-    auto it = pch_cache.find(pch_key);
-    if(it == pch_cache.end()) {
-        return nullptr;
-    }
-
-    auto& st = it->second;
-    bool had_blob = !st.index_path.empty();
-    auto state = st.load_state();
-    if(!state && had_blob && store) {
-        // The blob was just found unreadable (load_state cleared the
-        // path): a pair that looks complete on disk but cannot be opened
-        // would be served to every session for the rest of the store's
-        // life. Retract it now; the entry itself stays until ensure_pch
-        // re-checks the store and rebuilds the pair.
-        LOG_WARN("Retracting PCH pair {} with unreadable pch.idx envelope", pch_key);
-        store->invalidate("pch", pch_key);
-    }
-    if(state) {
-        touch_loaded_state(pch_key);
-        enforce_loaded_budget();
-    }
-    return state;
-}
-
-void Workspace::touch_loaded_state(llvm::StringRef pch_key) {
-    auto it = std::ranges::find(loaded_state_lru, pch_key);
-    if(it != loaded_state_lru.end()) {
-        loaded_state_lru.erase(it);
-    }
-    loaded_state_lru.insert(loaded_state_lru.begin(), pch_key.str());
-}
-
-void Workspace::enforce_loaded_budget() {
-    // Two extra slots over the open-document count: a closed file's
-    // recently used state survives a quick close/reopen, and a shared key
-    // serving several documents stays warm while its consumers churn.
-    // Open documents' keys always fit the budget, so an unload can only
-    // hit keys past the working set; the reload an unlucky consumer then
-    // pays (mmap + verification, on the event loop) is the accepted cost
-    // of bounding tens of MB per key.
-    // Unwired (tests, tools) assumes a small editor-like working set.
-    constexpr std::size_t default_open_documents = 6;
-    std::size_t budget = 2 + (open_documents ? open_documents() : default_open_documents);
-
-    std::size_t kept = 0;
-    std::size_t i = 0;
-    while(i < loaded_state_lru.size()) {
-        auto it = pch_cache.find(loaded_state_lru[i]);
-        // Erased entries and already-unloaded keys just fall out of the
-        // list (invalidation and store eviction bypass the LRU).
-        if(it == pch_cache.end() || !it->second.state) {
-            loaded_state_lru.erase(loaded_state_lru.begin() + i);
-            continue;
-        }
-        if(kept < budget) {
-            kept += 1;
-            i += 1;
-            continue;
-        }
-        LOG_DEBUG("Unloading pch.idx envelope of {} (budget {})", loaded_state_lru[i], budget);
-        it->second.state.reset();
-        loaded_state_lru.erase(loaded_state_lru.begin() + i);
-    }
-}
-
-void Workspace::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
-                              Fid exclude_path_id) const {
+void Project::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
+                            Fid exclude_path_id) const {
     for(auto& [pid, st]: pcm_cache) {
         if(pid == exclude_path_id)
             continue;

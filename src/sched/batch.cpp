@@ -9,15 +9,13 @@
 
 #include "command/command.h"
 #include "config/config.h"
+#include "project/command_resolver.h"
+#include "project/configuration.h"
+#include "project/index_store.h"
+#include "project/project.h"
 #include "sched/bootstrap.h"
-#include "sched/configuration.h"
-#include "sched/context.h"
-#include "sched/families/pcm.h"
-#include "sched/families/turun.h"
-#include "sched/graph.h"
 #include "sched/index/pump.h"
-#include "sched/index/store.h"
-#include "sched/workspace.h"
+#include "sched/stack.h"
 #include "support/anomaly.h"
 #include "support/cache_store.h"
 #include "support/filesystem.h"
@@ -40,26 +38,16 @@ namespace {
 /// file.
 struct BatchStack {
     kota::event_loop& loop;
-    Workspace workspace;
-    WorkerPool pool;
-    ContextResolver contexts{workspace};
-    TaskGraph graph;
-    PCMFamily pcm{graph, workspace, contexts, pool};
-    IndexStore store{loop, workspace, contexts};
-    TURunFamily turun{graph, workspace, contexts, pcm, store, pool};
-    IndexPump pump{loop, workspace, turun, store, pool};
+    FileTable files;
+    Project project{files};
+    CommandResolver commands{project};
+    SchedulingStack sched{loop, project, commands};
 
     /// The session log directory start_batch created; empty when file
     /// logging is off.
     std::string log_dir;
 
-    explicit BatchStack(kota::event_loop& loop) : loop(loop), pool(loop), graph(loop) {
-        pcm.register_runner();
-        turun.register_runner();
-        pcm.on_indexing_needed = [this] {
-            pump.schedule();
-        };
-    }
+    explicit BatchStack(kota::event_loop& loop) : loop(loop) {}
 };
 
 /// Poll until the pump has drained every round (requeue rounds included)
@@ -98,22 +86,24 @@ kota::task<> checkpoint_task(BatchStack& stack) {
     constexpr auto interval = std::chrono::minutes(5);
     while(true) {
         co_await kota::sleep(interval);
-        if(stack.workspace.store) {
-            co_await kota::queue([&stack] { stack.workspace.store->checkpoint(); });
+        if(stack.project.store) {
+            co_await kota::queue([&stack] { stack.project.store->checkpoint(); });
         }
-        stack.pump.claim_report(co_await stack.store.save(stack.pump.save_debt()));
+        stack.sched.pump.claim_report(
+            co_await stack.sched.store.save(stack.sched.pump.save_debt()));
     }
 }
 
 /// The current round's progress to the driver's callback; nothing before
 /// the first round has a total.
 void report_progress(BatchStack& stack, const BatchOptions& options) {
-    auto& round = stack.pump.progress();
+    auto& round = stack.sched.pump.progress();
     if(!options.on_progress || round.total == 0) {
         return;
     }
-    options.on_progress(
-        {.completed = round.completed, .total = round.total, .failed = stack.pump.failed().size()});
+    options.on_progress({.completed = round.completed,
+                         .total = round.total,
+                         .failed = stack.sched.pump.failed().size()});
 }
 
 /// A paced report on top of the round boundaries: one unit can take
@@ -128,8 +118,8 @@ kota::task<> progress_ticker(BatchStack& stack, const BatchOptions& options) {
 
 /// Quiesce the pump, then the shared contract-11 tail.
 kota::task<> shutdown(BatchStack& stack) {
-    co_await stack.pump.stop();
-    co_await shutdown_indexing(stack.graph, stack.pump, stack.store, stack.pool, stack.workspace);
+    co_await stack.sched.pump.stop();
+    co_await stack.sched.shutdown();
 }
 
 /// A batch run's signal handling and the order of its ending. Interruption
@@ -170,9 +160,9 @@ bool start_batch(BatchStack& stack,
                  std::uint32_t workers,
                  llvm::StringRef self_path,
                  llvm::StringRef log_tag) {
-    auto& workspace = stack.workspace;
-    workspace.config = Config::load_from_workspace(root);
-    auto& cfg = workspace.config.project;
+    auto& project = stack.project;
+    project.config = Config::load_from_workspace(root);
+    auto& cfg = project.config.project;
     cfg.idle_timeout_ms.value = 0;
     if(workers != 0) {
         cfg.stateless_worker_count.value = workers;
@@ -201,7 +191,7 @@ bool start_batch(BatchStack& stack,
     pool_opts.min_stateless = cfg.min_stateless_worker_count;
     pool_opts.max_stateless = cfg.max_stateless_worker_count;
     pool_opts.log_dir = session_log_dir;
-    if(!stack.pool.start(pool_opts)) {
+    if(!stack.sched.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
         return false;
     }
@@ -210,7 +200,7 @@ bool start_batch(BatchStack& stack,
 
 kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& result) {
     ScopedTimer timer;
-    auto& workspace = stack.workspace;
+    auto& project = stack.project;
 
     bool started = start_batch(stack, options.root, options.workers, options.self_path, "index");
     result.log_dir = stack.log_dir;
@@ -219,32 +209,32 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         // A failed later spawn leaves earlier workers and their I/O tasks
         // live; unstopped they keep the batch event loop spinning and the
         // command hangs instead of exiting.
-        co_await stack.pool.stop();
+        co_await stack.sched.pool.stop();
         co_return;
     }
-    if(!check_requested_configuration(workspace.config, options.configuration)) {
+    if(!check_requested_configuration(project.config, options.configuration)) {
         result.exit_code = 1;
-        co_await stack.pool.stop();
+        co_await stack.sched.pool.stop();
         co_return;
     }
-    workspace.config.project.enable_indexing.value = true;
+    project.config.project.enable_indexing.value = true;
 
-    auto report = bootstrap_workspace(workspace,
-                                      stack.store,
-                                      stack.pump,
-                                      options.root,
-                                      options.configuration,
-                                      /*read_only_index=*/false,
-                                      /*scan_tree=*/true);
+    auto report = bootstrap_project(project,
+                                    stack.sched.store,
+                                    stack.sched.pump,
+                                    options.root,
+                                    options.configuration,
+                                    /*read_only_index=*/false,
+                                    /*scan_tree=*/true);
 
     // The command's whole product is the persisted index: without storage
     // (cache failed to open, another process holds the index writer lock,
     // or an unreadable global blob disabled persistence) the run would
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
-    if(!workspace.index_db) {
+    if(!project.index_db) {
         LOG_ERROR("Cannot persist the index at {}: the warning above says why; fix that and rerun",
-                  std::string_view(workspace.config.project.cache_dir));
+                  std::string_view(project.config.project.cache_dir));
         result.exit_code = 1;
         co_await shutdown(stack);
         co_return;
@@ -256,14 +246,14 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_return;
     }
 
-    auto progress = stack.pump.on_progress_changed.connect([&] {
-        if(stack.pump.progress().stage != IndexPump::Progress::Stage::Report) {
+    auto progress = stack.sched.pump.on_progress_changed.connect([&] {
+        if(stack.sched.pump.progress().stage != IndexPump::Progress::Stage::Report) {
             report_progress(stack, options);
         }
     });
     BatchLifetime lifetime(stack);
     lifetime.aux.spawn(progress_ticker(stack, options));
-    co_await kota::with_token(wait_until_indexed(stack.pump), lifetime.token());
+    co_await kota::with_token(wait_until_indexed(stack.sched.pump), lifetime.token());
     if(co_await lifetime.finish()) {
         result.interrupted = true;
         result.exit_code = 130;
@@ -271,24 +261,24 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
 
     result.completed = true;
-    result.indexed_tus = stack.pump.indexed_files();
-    for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
-        if(!workspace.build.unit(tu)) {
+    result.indexed_tus = stack.sched.pump.indexed_files();
+    for(auto tu: llvm::make_first_range(project.project_index.manifests)) {
+        if(!project.build.unit(tu)) {
             result.standalone_headers += 1;
         }
     }
-    result.shard_count = workspace.project_index.shards.size();
-    for(auto& shard: llvm::make_second_range(workspace.project_index.shards)) {
+    result.shard_count = project.project_index.shards.size();
+    for(auto& shard: llvm::make_second_range(project.project_index.shards)) {
         result.shard_bytes += shard.bytes().size();
     }
-    result.symbol_count = workspace.project_index.symbol_count();
-    for(auto file: stack.pump.failed()) {
-        result.failed.emplace_back(workspace.file_table.resolve(file));
+    result.symbol_count = project.project_index.symbol_count();
+    for(auto file: stack.sched.pump.failed()) {
+        result.failed.emplace_back(project.file_table.resolve(file));
     }
     std::ranges::sort(result.failed);
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
-    result.unsaved = stack.store.has_unsaved_state();
+    result.unsaved = stack.sched.store.has_unsaved_state();
     if(!result.failed.empty() || result.unsaved) {
         result.exit_code = 1;
     }
@@ -323,11 +313,11 @@ void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
 }
 
 kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep& sweep) {
-    auto file = stack.workspace.file_table.resolve(path_id);
+    auto file = stack.project.file_table.resolve(path_id);
     // A TU outside the lint set is here for the index only.
     TURunFamily::Plan plan;
-    plan.tidy = stack.workspace.build.lintable(file);
-    plan.index = with_index && stack.workspace.build.indexed(file);
+    plan.tidy = stack.project.build.lintable(file);
+    plan.index = with_index && stack.project.build.indexed(file);
     if(plan.tidy) {
         plan.tidy_params = tidy::resolve_tidy_params(file);
     }
@@ -335,10 +325,10 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
     // One budget-free retry: a worker crash or preemption says nothing
     // about the TU, and a one-shot sweep has no later round to requeue
     // into.
-    auto outcome = co_await stack.turun.run(path_id, plan);
+    auto outcome = co_await stack.sched.turun.run(path_id, plan);
     if(outcome.verdict == TURunFamily::Verdict::Crashed ||
        outcome.verdict == TURunFamily::Verdict::Preempted) {
-        outcome = co_await stack.turun.run(path_id, std::move(plan));
+        outcome = co_await stack.sched.turun.run(path_id, std::move(plan));
     }
 
     switch(outcome.verdict) {
@@ -347,7 +337,7 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
                 sweep.checked += 1;
             }
             if(with_index) {
-                stack.pump.claim_report(outcome.report);
+                stack.sched.pump.claim_report(outcome.report);
             }
             // The lint set applies to the findings too: a header outside
             // it reports nothing. A compiler error stays wherever it is:
@@ -356,7 +346,7 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
                                  std::back_inserter(sweep.findings),
                                  [&](const worker::TidyDiagnostic& d) {
                                      return d.check == "clang-diagnostic-error" ||
-                                            stack.workspace.build.lintable(d.file);
+                                            stack.project.build.lintable(d.file);
                                  });
             break;
         }
@@ -403,7 +393,7 @@ kota::task<> run_lint_sweep(BatchStack& stack,
             // The pump feeder's window: deep enough that workers never
             // idle, shallow enough that a wind-down drains fast.
             while(sweep.inflight >=
-                  std::max<std::size_t>(2 * stack.pool.effective_low_limit(), 2)) {
+                  std::max<std::size_t>(2 * stack.sched.pool.effective_low_limit(), 2)) {
                 sweep.task_done.reset();
                 co_await sweep.task_done.wait();
             }
@@ -417,33 +407,33 @@ kota::task<> run_lint_sweep(BatchStack& stack,
 
 kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchLintResult& result) {
     ScopedTimer timer;
-    auto& workspace = stack.workspace;
+    auto& project = stack.project;
 
     if(!start_batch(stack, options.root, options.workers, options.self_path, "lint")) {
         result.exit_code = 2;
         // See run(): stop the partially started pool or the loop never
         // drains.
-        co_await stack.pool.stop();
+        co_await stack.sched.pool.stop();
         co_return;
     }
     // The command's product is the lint report: the background sweep must
     // not race the plan's own runs, and without --index nothing may touch
     // the persisted index — the read-only load queues no reconciliation
     // or sweep writes, so the shutdown save commits nothing.
-    if(!check_requested_configuration(workspace.config, options.configuration)) {
+    if(!check_requested_configuration(project.config, options.configuration)) {
         result.exit_code = 2;
-        co_await stack.pool.stop();
+        co_await stack.sched.pool.stop();
         co_return;
     }
-    workspace.config.project.enable_indexing.value = false;
+    project.config.project.enable_indexing.value = false;
 
-    auto report = bootstrap_workspace(workspace,
-                                      stack.store,
-                                      stack.pump,
-                                      options.root,
-                                      options.configuration,
-                                      /*read_only_index=*/!options.with_index,
-                                      /*scan_tree=*/true);
+    auto report = bootstrap_project(project,
+                                    stack.sched.store,
+                                    stack.sched.pump,
+                                    options.root,
+                                    options.configuration,
+                                    /*read_only_index=*/!options.with_index,
+                                    /*scan_tree=*/true);
 
     auto& members = report.members;
     if(members.empty()) {
@@ -452,9 +442,9 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         co_await shutdown(stack);
         co_return;
     }
-    if(options.with_index && !workspace.index_db) {
+    if(options.with_index && !project.index_db) {
         LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
-                  std::string_view(workspace.config.project.cache_dir));
+                  std::string_view(project.config.project.cache_dir));
         result.exit_code = 2;
         co_await shutdown(stack);
         co_return;
@@ -466,9 +456,8 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     // index wants it.
     llvm::SmallVector<Fid> tus;
     for(auto member: members) {
-        auto file = workspace.file_table.resolve(member);
-        if(workspace.build.lintable(file) ||
-           (options.with_index && workspace.build.indexed(file))) {
+        auto file = project.file_table.resolve(member);
+        if(project.build.lintable(file) || (options.with_index && project.build.indexed(file))) {
             tus.push_back(member);
         }
     }
@@ -486,9 +475,9 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         // settled any of it. Drain it through the pump like the index
         // batch does, or an already-linted owner's rows stay missing while
         // the run exits clean.
-        workspace.config.project.enable_indexing.value = true;
-        stack.pump.schedule(/*immediate=*/true);
-        co_await kota::with_token(wait_until_indexed(stack.pump), lifetime.token());
+        project.config.project.enable_indexing.value = true;
+        stack.sched.pump.schedule(/*immediate=*/true);
+        co_await kota::with_token(wait_until_indexed(stack.sched.pump), lifetime.token());
     }
     if(co_await lifetime.finish()) {
         result.interrupted = true;
@@ -498,11 +487,11 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
 
     result.completed = true;
     result.checked_tus = sweep.checked;
-    result.failed_tus = sweep.failed + stack.pump.failed().size();
+    result.failed_tus = sweep.failed + stack.sched.pump.failed().size();
     // The shutdown save was the last retry: with --index the persisted
     // index is part of the product, so unsaved state must fail the run
     // like the index-only batch does.
-    result.unsaved = options.with_index && stack.store.has_unsaved_state();
+    result.unsaved = options.with_index && stack.sched.store.has_unsaved_state();
     if(!result.findings.empty()) {
         result.exit_code = 1;
     }
@@ -526,15 +515,15 @@ bool formats(llvm::StringRef path) {
 /// generates or fetches lives there) and the commands' system include
 /// directories, of a type clang-format formats, no matching rule saying
 /// `format = false`.
-std::vector<std::string> project_files(Workspace& workspace,
+std::vector<std::string> project_files(Project& project,
                                        llvm::ArrayRef<Fid> members,
                                        llvm::ArrayRef<std::string> databases) {
-    auto& build = workspace.build;
-    auto& files = workspace.file_table;
+    auto& build = project.build;
+    auto& files = project.file_table;
 
-    llvm::StringRef root = workspace.config.workspace_root;
+    llvm::StringRef root = project.config.workspace_root;
     llvm::StringSet<> skipped_dirs;
-    skipped_dirs.insert(build.as_configured(workspace.config.project.cache_dir));
+    skipped_dirs.insert(build.as_configured(project.config.project.cache_dir));
     // A database at the workspace root, or above it, is a copy of the
     // build's or the build of a larger tree, not a build tree of its own.
     for(auto& database: databases) {
@@ -548,7 +537,7 @@ std::vector<std::string> project_files(Workspace& workspace,
         for(auto& command: build.commands(member)) {
             auto ref =
                 build.resolve(member, command.config, command.source, llvm::StringRef(path), path);
-            auto search = workspace.cdb.search_config(ref);
+            auto search = project.cdb.search_config(ref);
             for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
                 skipped_dirs.insert(build.as_configured(dir.path));
             }
@@ -559,7 +548,7 @@ std::vector<std::string> project_files(Workspace& workspace,
     // directories keep out only what they include.
     std::vector<std::string> result;
     llvm::DenseSet<Fid> unit(members.begin(), members.end());
-    for(auto fid: workspace.dep_graph.all_files()) {
+    for(auto fid: project.dep_graph.all_files()) {
         auto path = build.as_configured(files.resolve(fid));
         if(!formats(path) || !build.formattable(path) ||
            (!unit.contains(fid) && llvm::any_of(skipped_dirs, [&](auto& dir) {
@@ -707,9 +696,10 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     }
     // A rewriting command does not run on defaults a broken configuration
     // fell back to: the exclusions would be gone with it.
-    Workspace workspace;
+    FileTable file_table;
+    Project project{file_table};
     std::vector<ConfigIssue> issues;
-    workspace.config = Config::load_from_workspace(options.root, &issues);
+    project.config = Config::load_from_workspace(options.root, &issues);
     for(auto& issue: issues) {
         if(issue.severity == ConfigIssue::Severity::Error) {
             result.exit_code = 2;
@@ -717,13 +707,13 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             return result;
         }
     }
-    if(!check_requested_configuration(workspace.config, options.configuration)) {
+    if(!check_requested_configuration(project.config, options.configuration)) {
         result.exit_code = 2;
         result.error = "the requested configuration does not exist";
         return result;
     }
-    auto configuration = resolve_configuration(workspace.config, options.configuration);
-    workspace.build.reset_active(configuration);
+    auto configuration = resolve_configuration(project.config, options.configuration);
+    project.build.reset_active(configuration);
 
     // Explicit files are taken as given; explicit directories narrow the
     // build's own files to those under them, and only they need the build.
@@ -740,12 +730,12 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             result.exit_code = 2;
             result.error = std::format("{}: not a C-family source file", path);
             return result;
-        } else if(workspace.build.formattable(path)) {
+        } else if(project.build.formattable(path)) {
             // Rewritten where its bytes are, which has to be the
             // workspace's too.
             auto target = physical(path);
-            if(!path::under(target, workspace.config.workspace_root) &&
-               !path::under(target, workspace.config.workspace_real_root)) {
+            if(!path::under(target, project.config.workspace_root) &&
+               !path::under(target, project.config.workspace_real_root)) {
                 result.exit_code = 2;
                 result.error = std::format("{}: links outside the workspace", path);
                 return result;
@@ -758,25 +748,25 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         // database under the workspace applies when no rule names one,
         // and one that cannot be loaded makes the file set incomplete.
         llvm::SmallVector<std::string> databases;
-        for(auto declared: workspace.build.declared_sources()) {
+        for(auto declared: project.build.declared_sources()) {
             databases.push_back(declared.str());
         }
         if(databases.empty()) {
-            databases = compile_commands_below(options.root, workspace.config.project.cache_dir);
+            databases = compile_commands_below(options.root, project.config.project.cache_dir);
         }
-        auto load = load_build(workspace, options.root, configuration, databases);
+        auto load = load_build(project, options.root, configuration, databases);
         for(auto& database: databases) {
-            auto id = workspace.cdb.find_source(database);
-            if(!id || !workspace.cdb.loaded(*id)) {
+            auto id = project.cdb.find_source(database);
+            if(!id || !project.cdb.loaded(*id)) {
                 result.exit_code = 2;
                 result.error =
                     std::format("{}: the compilation database could not be loaded", database);
                 return result;
             }
         }
-        llvm::StringRef root = workspace.config.workspace_root;
-        llvm::StringRef real_root = workspace.config.workspace_real_root;
-        for(auto& path: project_files(workspace, load.members, databases)) {
+        llvm::StringRef root = project.config.workspace_root;
+        llvm::StringRef real_root = project.config.workspace_real_root;
+        for(auto& path: project_files(project, load.members, databases)) {
             if(!directories.empty() && llvm::none_of(directories, [&](llvm::StringRef directory) {
                    return path::under(path, directory);
                })) {

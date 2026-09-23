@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -80,12 +81,28 @@ public:
     /// Get the union of included fids across all configs for a file.
     llvm::SmallVector<Fid> get_all_includes(Fid path_id) const;
 
-    /// Erase every config's include list for a file. Incremental didSave
-    /// rescans clear first, then re-add one list per configuration.
+    /// Erase every config's include list for a file, and the scanned hash
+    /// they came from. Incremental didSave rescans clear first, then re-add
+    /// one list per configuration.
     void clear_includes(Fid path_id);
 
-    /// Build the reverse include map from the forward includes.
-    /// Must be called after all set_includes() calls are complete.
+    /// The content hash of the bytes the file's include edges were scanned
+    /// from; nullopt for a file no scan read. What the project last
+    /// derived from the file — the baseline a disk change is judged
+    /// against before anyone else observes the file.
+    std::optional<std::uint64_t> scanned_hash(Fid path_id) const {
+        auto it = scanned_hashes.find(path_id);
+        return it != scanned_hashes.end() ? std::optional(it->second) : std::nullopt;
+    }
+
+    void set_scanned_hash(Fid path_id, std::uint64_t hash) {
+        scanned_hashes[path_id] = hash;
+    }
+
+    /// Build the reverse include map from the forward includes. A bulk
+    /// scan fills the forward edges first and builds once; from then on
+    /// set_includes() and clear_includes() keep the map current edge by
+    /// edge.
     void build_reverse_map();
 
     /// Get the direct includers of a file (files that directly include path_id).
@@ -103,7 +120,7 @@ public:
 
     /// Every file the graph knows: files with include entries plus files
     /// that only appear as include targets. Sorted so callers scan in a
-    /// deterministic order. Requires build_reverse_map() to be current.
+    /// deterministic order. Requires build_reverse_map() to have run.
     llvm::SmallVector<Fid> all_files() const;
 
     /// Number of files with include entries.
@@ -156,6 +173,16 @@ private:
     /// Reverse include map: fid -> files that directly include it.
     /// Populated by build_reverse_map().
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> reverse_includes;
+
+    /// See scanned_hash().
+    llvm::DenseMap<Fid, std::uint64_t> scanned_hashes;
+
+    /// Whether build_reverse_map() ran, so edge updates maintain the map.
+    bool reverse_built = false;
+
+    /// Record `includer` among `target`'s includers, and drop it.
+    void link(Fid includer, Fid target);
+    void unlink(Fid includer, Fid target);
 };
 
 /// A (file, search-config) pair used to track per-wave work items.

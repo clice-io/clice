@@ -52,12 +52,12 @@ enum class ServingMode : std::uint8_t {
 ///
 /// Design principle: open files are never depended upon by other files.
 /// Dependencies always point to disk files.  The only path from Session
-/// to Workspace is didSave, which tells Workspace to rescan the disk file.
+/// to Project is didSave, which tells Project to rescan the disk file.
 ///
 /// Created on didOpen, destroyed on didClose.  The session holds the
 /// buffer and its identity; the document's compilation products live in
 /// the AST family's projection (see server/state/ast_projection.h) and
-/// NEVER leak to Workspace or other Sessions.
+/// NEVER leak to Project or other Sessions.
 struct Session {
     /// Path ID of this file in FileTable.  Set on creation, never changes.
     Fid path_id;

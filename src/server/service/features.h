@@ -6,7 +6,7 @@
 
 #include "feature/feature.h"
 #include "index/query.h"
-#include "sched/workspace.h"
+#include "project/project.h"
 #include "server/service/dispatcher.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
@@ -19,7 +19,7 @@
 namespace clice {
 
 class ASTFamily;
-class ContextResolver;
+struct EditorContext;
 class IndexPump;
 
 namespace protocol = kota::ipc::protocol;
@@ -56,11 +56,11 @@ public:
     Features(ASTFamily& ast,
              Dispatcher& dispatcher,
              index::IndexQuery& query,
-             Workspace& workspace,
-             ContextResolver& contexts,
+             Project& project,
+             EditorContext& contexts,
              IndexPump& pump,
              SessionStore& sessions) :
-        ast(ast), dispatcher(dispatcher), query(query), workspace(workspace), contexts(contexts),
+        ast(ast), dispatcher(dispatcher), query(query), project(project), contexts(contexts),
         pump(pump), sessions(sessions) {}
 
     using RawResult = Dispatcher::RawResult;
@@ -274,8 +274,8 @@ private:
     ASTFamily& ast;
     Dispatcher& dispatcher;
     index::IndexQuery& query;
-    Workspace& workspace;
-    ContextResolver& contexts;
+    Project& project;
+    EditorContext& contexts;
     IndexPump& pump;
     SessionStore& sessions;
 };

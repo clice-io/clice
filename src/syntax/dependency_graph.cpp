@@ -67,10 +67,51 @@ llvm::ArrayRef<Fid> DependencyGraph::lookup_module(llvm::StringRef module_name) 
     return {};
 }
 
+void DependencyGraph::link(Fid includer, Fid target) {
+    auto& includers = reverse_includes[target];
+    auto it = llvm::lower_bound(includers, includer);
+    if(it == includers.end() || *it != includer) {
+        includers.insert(it, includer);
+    }
+}
+
+void DependencyGraph::unlink(Fid includer, Fid target) {
+    auto found = reverse_includes.find(target);
+    if(found == reverse_includes.end()) {
+        return;
+    }
+    auto& includers = found->second;
+    auto it = llvm::lower_bound(includers, includer);
+    if(it != includers.end() && *it == includer) {
+        includers.erase(it);
+    }
+    if(includers.empty()) {
+        reverse_includes.erase(found);
+    }
+}
+
 void DependencyGraph::set_includes(Fid path_id,
                                    std::uint32_t config_id,
                                    llvm::SmallVector<IncludeEdge> included) {
     IncludeKey key{path_id, config_id};
+    if(reverse_built) {
+        auto old = includes.find(key);
+        if(old != includes.end()) {
+            auto dropped = std::move(old->second);
+            includes.erase(old);
+            auto still_included = get_all_includes(path_id);
+            for(auto edge: dropped) {
+                if(!llvm::is_contained(still_included, edge.fid) &&
+                   llvm::none_of(included,
+                                 [&](IncludeEdge kept) { return kept.fid == edge.fid; })) {
+                    unlink(path_id, edge.fid);
+                }
+            }
+        }
+        for(auto edge: included) {
+            link(path_id, edge.fid);
+        }
+    }
     includes[key] = std::move(included);
     auto& configs = file_configs[path_id];
     if(std::find(configs.begin(), configs.end(), config_id) == configs.end()) {
@@ -140,27 +181,40 @@ std::size_t DependencyGraph::edge_count() const {
 }
 
 void DependencyGraph::clear_includes(Fid path_id) {
-    llvm::SmallVector<IncludeKey> stale;
-    for(auto& [key, ids]: includes) {
-        if(key.path_id == path_id) {
-            stale.push_back(key);
-        }
+    scanned_hashes.erase(path_id);
+    auto it = file_configs.find(path_id);
+    if(it == file_configs.end()) {
+        return;
     }
-    for(auto& key: stale) {
+    for(auto config_id: it->second) {
+        auto key = includes.find(IncludeKey{path_id, config_id});
+        if(key == includes.end()) {
+            continue;
+        }
+        if(reverse_built) {
+            for(auto edge: key->second) {
+                unlink(path_id, edge.fid);
+            }
+        }
         includes.erase(key);
     }
-    file_configs.erase(path_id);
+    file_configs.erase(it);
 }
 
 void DependencyGraph::build_reverse_map() {
+    reverse_built = true;
     reverse_includes.clear();
     for(auto& [key, ids]: includes) {
         for(auto edge: ids) {
-            auto& vec = reverse_includes[edge.fid];
-            if(llvm::find(vec, key.path_id) == vec.end()) {
-                vec.push_back(key.path_id);
-            }
+            reverse_includes[edge.fid].push_back(key.path_id);
         }
+    }
+    // One includer appears once per configuration including the file, and
+    // a widely included header has thousands of includers: deduplicate by
+    // sorting, not by a linear search per edge.
+    for(auto& [path_id, includers]: reverse_includes) {
+        llvm::sort(includers);
+        includers.erase(llvm::unique(includers), includers.end());
     }
 }
 
@@ -724,6 +778,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
             }
             graph.set_import_candidate(scan_result.path_id, scan_result.scan_result.has_import);
+            graph.set_scanned_hash(scan_result.path_id, scan_result.obs.hash);
 
             report.includes_found += scan_result.scan_result.includes.size();
 

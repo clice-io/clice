@@ -6,11 +6,11 @@
 #include <vector>
 
 #include "compile/compilation.h"
-#include "sched/context.h"
+#include "project/command_resolver.h"
+#include "project/index_store.h"
+#include "project/project.h"
 #include "sched/graph.h"
 #include "sched/index/ledger.h"
-#include "sched/index/store.h"
-#include "sched/workspace.h"
 #include "worker/pool.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -36,8 +36,8 @@ class PCMFamily;
 class TURunFamily {
 public:
     TURunFamily(TaskGraph& graph,
-                Workspace& workspace,
-                ContextResolver& contexts,
+                Project& project,
+                CommandResolver& commands,
                 PCMFamily& pcm,
                 IndexStore& store,
                 WorkerPool& pool);
@@ -126,8 +126,8 @@ private:
     }
 
     TaskGraph& graph;
-    Workspace& workspace;
-    ContextResolver& contexts;
+    Project& project;
+    CommandResolver& commands;
     PCMFamily& pcm;
     IndexStore& store;
     WorkerPool& pool;

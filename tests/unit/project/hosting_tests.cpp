@@ -1,0 +1,258 @@
+#include <format>
+
+#include "test/cdb_helper.h"
+#include "test/temp_dir.h"
+#include "test/test.h"
+#include "project/hosting.h"
+#include "project/project.h"
+
+namespace clice::testing {
+
+namespace {
+
+TEST_SUITE(Hosting) {
+
+TEST_CASE(SourcePriorityBeatsProximity) {
+    /// Two units include the header; the one compiled from the database
+    /// the header's rule names ranks first even though the other sits next
+    /// to the header, and it is the default host.
+    TempDir tmp;
+    tmp.touch("lib/x.h", "");
+    tmp.touch("lib/near.cpp", R"(#include "x.h")");
+    tmp.touch("src/far.cpp", R"(#include "../lib/x.h")");
+    tmp.touch("cmake/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("lib/near.cpp"), {}}
+    }));
+    tmp.touch("lib/cmake/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("src/far.cpp"), {}}
+    }));
+
+    FileTable files;
+
+    Project project{files};
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"lib/**"}, .compile_commands = {"lib/cmake"}});
+    project.config.rules.push_back(ConfigRule{.compile_commands = {"cmake"}});
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+    for(auto source: project.build.declared_sources()) {
+        project.cdb.load(source);
+    }
+
+    auto header = project.file_table.intern(tmp.path("lib/x.h"));
+    auto near = project.file_table.intern(tmp.path("lib/near.cpp"));
+    auto far = project.file_table.intern(tmp.path("src/far.cpp"));
+    project.dep_graph.set_includes(near, 0, {{header}});
+    project.dep_graph.set_includes(far, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+
+    auto ranked = ranked_hosts(project, header);
+    ASSERT_EQ(ranked.size(), 2u);
+    EXPECT_EQ(ranked[0], far);
+    EXPECT_EQ(ranked[1], near);
+    auto host = default_host(project, header);
+    ASSERT_TRUE(host.has_value());
+    EXPECT_EQ(host->file, far);
+    EXPECT_EQ(host->chain.back(), header);
+};
+
+TEST_CASE(ProximityWithinSource) {
+    /// Same database: the unit sharing the header's stem wins, then the one
+    /// in its directory; a unit the build does not compile is no host.
+    TempDir tmp;
+    tmp.touch("src/x.h", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(ConfigRule{
+        .patterns = {"src/**", "other/**"},
+        .default_command = std::string("clang++")
+    });
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+
+    auto header = project.file_table.intern(tmp.path("src/x.h"));
+    auto same_stem = project.file_table.intern(tmp.path("other/x.cpp"));
+    auto same_dir = project.file_table.intern(tmp.path("src/y.cpp"));
+    auto elsewhere = project.file_table.intern(tmp.path("other/z.cpp"));
+    auto not_compiled = project.file_table.intern(tmp.path("skip/w.cpp"));
+    for(auto host: {same_stem, same_dir, elsewhere, not_compiled}) {
+        project.dep_graph.set_includes(host, 0, {{header}});
+    }
+    project.dep_graph.build_reverse_map();
+
+    auto ranked = ranked_hosts(project, header);
+    ASSERT_EQ(ranked.size(), 3u);
+    EXPECT_EQ(ranked[0], same_stem);
+    EXPECT_EQ(ranked[1], same_dir);
+    EXPECT_EQ(ranked[2], elsewhere);
+
+    /// Equal scores fall back to path order, so the ranking is stable.
+    auto first = project.file_table.intern(tmp.path("other/aaa.cpp"));
+    auto second = project.file_table.intern(tmp.path("other/bbb.cpp"));
+    project.dep_graph.set_includes(second, 0, {{header}});
+    project.dep_graph.set_includes(first, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    ranked = ranked_hosts(project, header);
+    ASSERT_EQ(ranked.size(), 5u);
+    EXPECT_EQ(ranked[2], first);
+    EXPECT_EQ(ranked[3], second);
+    EXPECT_EQ(ranked[4], elsewhere);
+};
+
+TEST_CASE(HostsMatchLanguage) {
+    /// A C unit never hosts a C++ header; an ambiguous `.h` takes any host.
+    TempDir tmp;
+    tmp.touch("shared/types.hpp", "");
+    tmp.touch("shared/plain.h", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"c/**"}, .default_command = std::string("clang")});
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+
+    auto hpp = project.file_table.intern(tmp.path("shared/types.hpp"));
+    auto plain = project.file_table.intern(tmp.path("shared/plain.h"));
+    auto impl = project.file_table.intern(tmp.path("c/impl.c"));
+    project.dep_graph.set_includes(impl, 0, {{hpp}, {plain}});
+    project.dep_graph.build_reverse_map();
+
+    EXPECT_TRUE(ranked_hosts(project, hpp).empty());
+    EXPECT_EQ(ranked_hosts(project, plain), llvm::SmallVector<Fid>{impl});
+
+    /// A source borrows only its own language: a `.cl` or a `.m` next to
+    /// the C unit would compile as C under its command.
+    auto kernel_cl = project.file_table.intern(tmp.path("c/kernel.cl"));
+    auto objc = project.file_table.intern(tmp.path("c/new.m"));
+    EXPECT_FALSE(command_lender(project, kernel_cl).has_value());
+    EXPECT_FALSE(command_lender(project, objc).has_value());
+
+    /// An Objective-C++ unit is C++ with more: it hosts a C++ header.
+    tmp.touch("mac/impl.mm", "");
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"mac/**"}, .default_command = std::string("clang++")});
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+    project.commands_epoch += 1;
+    auto impl_mm = project.file_table.intern(tmp.path("mac/impl.mm"));
+    project.dep_graph.set_includes(impl_mm, 0, {{hpp}});
+    project.dep_graph.build_reverse_map();
+    EXPECT_EQ(ranked_hosts(project, hpp), llvm::SmallVector<Fid>{impl_mm});
+
+    /// A CUDA unit is C++ with device code: it hosts a C++ header.
+    tmp.touch("gpu/kernel.cu", "");
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+    project.commands_epoch += 1;
+    auto kernel = project.file_table.intern(tmp.path("gpu/kernel.cu"));
+    project.dep_graph.set_includes(kernel, 0, {{hpp}});
+    project.dep_graph.build_reverse_map();
+    EXPECT_EQ(ranked_hosts(project, hpp), (llvm::SmallVector<Fid>{kernel, impl_mm}));
+
+    /// Only headers get that latitude: a C++ source borrowing the CUDA
+    /// command would compile as CUDA.
+    auto gpu_header = project.file_table.intern(tmp.path("gpu/new.hpp"));
+    auto gpu_source = project.file_table.intern(tmp.path("gpu/new.cpp"));
+    EXPECT_EQ(command_lender(project, gpu_header)->unit, kernel);
+    EXPECT_FALSE(command_lender(project, gpu_source).has_value());
+
+    /// A host offers only the commands that fit the header: with a C entry
+    /// first and a C++ one second, a `.hpp` sees the second alone.
+    tmp.touch("dual/impl.c", "");
+    auto dual = project.file_table.intern(tmp.path("dual/impl.c"));
+    auto dual_hpp = project.file_table.intern(tmp.path("dual/x.hpp"));
+    auto c_command = std::format("clang -x c {}", tmp.path("dual/impl.c"));
+    auto cxx_command = std::format("clang++ -x c++ {}", tmp.path("dual/impl.c"));
+    project.cdb.add_command(tmp.root.str(), tmp.path("dual/impl.c"), llvm::StringRef(c_command));
+    auto cxx = *project.cdb.add_command(tmp.root.str(),
+                                        tmp.path("dual/impl.c"),
+                                        llvm::StringRef(cxx_command));
+    project.dep_graph.set_includes(dual, 0, {{dual_hpp}});
+    project.dep_graph.build_reverse_map();
+    auto fitting = host_commands(project, dual_hpp, dual);
+    ASSERT_EQ(fitting.size(), 1u);
+    EXPECT_EQ(fitting.front().config, cxx.config);
+    EXPECT_EQ(ranked_hosts(project, dual_hpp), llvm::SmallVector<Fid>{dual});
+};
+
+TEST_CASE(LenderSibling) {
+    /// A file without a command borrows from a unit in its directory, the
+    /// one sharing its stem before the first by name; a `.c` only from a C
+    /// unit, and nothing when the build has none.
+    TempDir tmp;
+    tmp.touch("src/aaa.cpp", "");
+    tmp.touch("src/x.cpp", "");
+    tmp.touch("src/x.h", "");
+    tmp.touch("src/new.cpp", "");
+    tmp.touch("src/plain.c", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+
+    auto header = project.file_table.intern(tmp.path("src/x.h"));
+    auto same_stem = project.file_table.intern(tmp.path("src/x.cpp"));
+    auto first = project.file_table.intern(tmp.path("src/aaa.cpp"));
+    auto other = project.file_table.intern(tmp.path("src/other.cpp"));
+    auto plain = project.file_table.intern(tmp.path("src/plain.c"));
+    EXPECT_EQ(command_lender(project, header)->unit, same_stem);
+    EXPECT_EQ(command_lender(project, other)->unit, first);
+    EXPECT_FALSE(command_lender(project, plain).has_value());
+};
+
+TEST_CASE(LenderSearchDir) {
+    /// A header under a command's header search directory borrows that
+    /// command — the entry that searches there, not the unit's first —
+    /// over the unit closest by path; a source there borrows the closest.
+    TempDir tmp;
+    tmp.touch("include/api/new.h", "");
+    FileTable files;
+    Project project{files};
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+    auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
+        tmp.touch(file, "");
+        auto command = std::format("clang++ {} {}", flags, tmp.path(file));
+        return *project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+    };
+    add("zzz/lib.cpp", "");
+    auto searching = add("zzz/lib.cpp", "-Iinclude");
+    auto near = add("include/near.cpp", "");
+
+    auto header = project.file_table.intern(tmp.path("include/api/new.h"));
+    auto lender = command_lender(project, header);
+    ASSERT_TRUE(lender.has_value());
+    EXPECT_EQ(lender->unit, searching.file);
+    EXPECT_EQ(lender->config, searching.config);
+
+    auto source = project.file_table.intern(tmp.path("include/api/new.cpp"));
+    EXPECT_EQ(command_lender(project, source)->unit, near.file);
+};
+
+TEST_CASE(LenderIgnoresCommandless) {
+    /// A member a rule claims with a default command that is no compile
+    /// command lends nothing.
+    TempDir tmp;
+    tmp.touch("src/a.cpp", "");
+    tmp.touch("src/b.cpp", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+    ASSERT_EQ(project.build.members().size(), 2u);
+    auto header = project.file_table.intern(tmp.path("src/new.h"));
+    EXPECT_FALSE(command_lender(project, header).has_value());
+};
+
+};  // TEST_SUITE(Hosting)
+
+}  // namespace
+
+}  // namespace clice::testing

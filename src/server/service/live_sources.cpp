@@ -25,7 +25,7 @@ index::RowSource ServerLiveSources::buffer_source(index::RowSource::Kind kind,
     return {
         .kind = kind,
         .file = file,
-        .path = workspace.file_table.resolve(file),
+        .path = project.file_table.resolve(file),
         .rows = &rows,
         .coords = {session.text,
                    static_cast<std::uint32_t>(session.text.size()),
@@ -44,8 +44,8 @@ std::optional<index::RowSource> ServerLiveSources::claim(Fid file) const {
                              *session,
                              projections.projection(file)->file_rows());
     }
-    auto it = workspace.project_index.shards.find(file);
-    if(it == workspace.project_index.shards.end() || !it->second.matches_content(session->text)) {
+    auto it = project.project_index.shards.find(file);
+    if(it == project.project_index.shards.end() || !it->second.matches_content(session->text)) {
         return std::nullopt;
     }
     return buffer_source(index::RowSource::Kind::Shard, file, *session, it->second);
@@ -81,7 +81,7 @@ std::shared_ptr<index::TUIndex> ServerLiveSources::overlay_of(Fid file) const {
     }
     // Returned by value: a reference into the map value would not survive
     // a rehash.
-    return workspace.preamble_state(*projection->pch_key);
+    return pch.preamble_state(*projection->pch_key);
 }
 
 void ServerLiveSources::each_preamble(
@@ -99,7 +99,7 @@ void ServerLiveSources::each_preamble(
         // gating is needed on top. The blob stores clang's native path
         // (backslashes on Windows) while the table normalizes separators,
         // so compare through the table's lookup, not raw strings.
-        if(workspace.file_table.find(state->path(state->path_count() - 1)) != file ||
+        if(project.file_table.find(state->path(state->path_count() - 1)) != file ||
            !state->matches_prefix(session.text)) {
             return true;
         }
@@ -124,7 +124,7 @@ void ServerLiveSources::each_overlay(llvm::function_ref<bool(const index::TUInde
 }
 
 bool ServerLiveSources::excluded(llvm::StringRef path) const {
-    return workspace.is_synthesized_artifact(path);
+    return project.is_synthesized_artifact(path);
 }
 
 std::shared_ptr<index::TUIndex> ServerLiveSources::preamble_blob(Fid file) const {

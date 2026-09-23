@@ -16,11 +16,11 @@
 namespace clice {
 
 IndexPump::IndexPump(kota::event_loop& loop,
-                     Workspace& workspace,
+                     Project& project,
                      TURunFamily& turun,
                      IndexStore& store,
                      WorkerPool& pool) :
-    loop(loop), bg_tasks(loop), workspace(workspace), turun(turun), store(store), pool(pool) {
+    loop(loop), bg_tasks(loop), project(project), turun(turun), store(store), pool(pool) {
     capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
 }
 
@@ -48,7 +48,7 @@ void IndexPump::boost(Fid server_path_id) {
 bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
     // The one admission point of the background index: a rule's
     // `index = false` keeps its files out here, whichever path asked.
-    if(!workspace.build.indexed(workspace.file_table.resolve(server_path_id))) {
+    if(!project.build.indexed(project.file_table.resolve(server_path_id))) {
         return false;
     }
     // New debt voids the running round's freshness memos: a claim taken
@@ -148,7 +148,7 @@ kota::task<> IndexPump::stop() {
 }
 
 void IndexPump::schedule(bool immediate) {
-    if(!workspace.config.project.enable_indexing.value || indexing_active)
+    if(!project.config.project.enable_indexing.value || indexing_active)
         return;
     if(indexing_scheduled) {
         // An immediate request colliding with an armed idle timer re-arms
@@ -170,7 +170,7 @@ void IndexPump::schedule(bool immediate) {
     // crashed file's retry must not owe an extra idle window on top of the
     // round boundary it already waited out.
     index_idle_timer->start(
-        std::chrono::milliseconds(immediate ? 0 : workspace.config.project.idle_timeout_ms.value));
+        std::chrono::milliseconds(immediate ? 0 : project.config.project.idle_timeout_ms.value));
 
     if(!bg_tasks.spawn(run_background_indexing())) {
         indexing_scheduled = false;
@@ -275,7 +275,7 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
     // later round.
     auto admit = admission ? admission(server_path_id) : Admission::Admit;
     if(admit == Admission::Admit) {
-        auto file_path = std::string(workspace.file_table.resolve(server_path_id));
+        auto file_path = std::string(project.file_table.resolve(server_path_id));
         // The engine's own observation is authoritative for content
         // changes: it saw the event. The dep-hash check cannot be trusted
         // to see a file's own edit (it validates the recorded
@@ -450,7 +450,7 @@ kota::task<> IndexPump::run_background_indexing() {
     store.begin_round();
 
     std::stable_partition(index_queue.begin() + index_queue_pos, index_queue.end(), [this](Fid id) {
-        return !workspace.dep_graph.module_of(id).empty();
+        return !project.dep_graph.module_of(id).empty();
     });
 
     // This round consumes [index_queue_pos, round_end) only. Anything
@@ -519,26 +519,6 @@ kota::task<> IndexPump::run_background_indexing() {
     // stay skipped for that whole wait.
     if(index_queue_pos < index_queue.size()) {
         schedule(/*immediate=*/true);
-    }
-}
-
-kota::task<> shutdown_indexing(TaskGraph& graph,
-                               IndexPump& pump,
-                               IndexStore& store,
-                               WorkerPool& pool,
-                               Workspace& workspace) {
-    co_await graph.shutdown();
-    auto report = co_await store.save(pump.save_debt(), /*settle=*/true);
-    pump.claim_report(report);
-    if(report.snapshot_stale) {
-        // Debt surfaced after the snapshot serialized (write-time
-        // corruption recovery): one metadata retry, or a dropped
-        // standalone header's repair debt dies with this process.
-        pump.claim_report(co_await store.save(pump.save_debt(), /*settle=*/true));
-    }
-    co_await pool.stop();
-    if(workspace.store) {
-        workspace.store->shutdown();
     }
 }
 

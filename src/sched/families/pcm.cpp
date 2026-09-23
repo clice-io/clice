@@ -21,10 +21,10 @@
 namespace clice {
 
 PCMFamily::PCMFamily(TaskGraph& graph,
-                     Workspace& workspace,
-                     ContextResolver& contexts,
+                     Project& project,
+                     CommandResolver& commands,
                      WorkerPool& pool) :
-    graph(graph), workspace(workspace), contexts(contexts), pool(pool) {}
+    graph(graph), project(project), commands(commands), pool(pool) {}
 
 void PCMFamily::register_runner() {
     graph.register_family(Family::PCM, [this](RoundContext& ctx, NodeId id) {
@@ -36,10 +36,10 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id, std::optional<llvm::St
     // The same resolution the real build uses (run() below): a module unit
     // scanned with a different command than it compiles with would edge
     // against a different dependency set.
-    auto file_path = workspace.file_table.resolve(path_id);
+    auto file_path = project.file_table.resolve(path_id);
     std::string directory;
     std::vector<std::string> arguments;
-    contexts.resolve_command(file_path, directory, arguments);
+    commands.resolve_command(file_path, directory, arguments);
 
     std::vector<const char*> argv;
     argv.reserve(arguments.size());
@@ -61,7 +61,7 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id,
     // cascade later — no side bookkeeping of who failed against it.
     ModuleDeps deps;
     auto add = [&](llvm::StringRef name) {
-        auto mod_ids = workspace.dep_graph.lookup_module(name);
+        auto mod_ids = project.dep_graph.lookup_module(name);
         if(mod_ids.empty()) {
             deps.declared.push_back(unresolved_node(name));
         } else {
@@ -90,14 +90,14 @@ llvm::SmallVector<NodeId> PCMFamily::provider_appeared(llvm::StringRef name) {
         // invalidate() does for content changes — a PCM built against
         // the unresolved name embeds the failure.
         if(id.family == Family::PCM && !is_unresolved(id)) {
-            erased |= workspace.pcm_cache.erase(Fid{static_cast<std::uint32_t>(id.key)});
+            erased |= project.pcm_cache.erase(Fid{static_cast<std::uint32_t>(id.key)});
         }
     }
     // The records are persisted, and this drop is invisible to their own
     // validation (the missing provider never entered the dep snapshots) —
     // without a rewrite, a restart resurrects them.
     if(erased) {
-        workspace.mark_artifacts_dirty();
+        project.mark_artifacts_dirty();
     }
     return dirtied;
 }
@@ -132,17 +132,17 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // Copied before any suspension below: while a PCM build is awaited, a
     // concurrent didSave can re-declare the file and drop the graph's
     // string.
-    std::string module_name(workspace.dep_graph.module_of(path_id));
+    std::string module_name(project.dep_graph.module_of(path_id));
     if(module_name.empty())
         co_return RoundOutcome::Failed;
 
-    auto file_path = std::string(workspace.file_table.resolve(path_id));
+    auto file_path = std::string(project.file_table.resolve(path_id));
 
     worker::BuildPCMParams bp;
     bp.file = file_path;
-    contexts.resolve_command(file_path, bp.directory, bp.arguments);
+    commands.resolve_command(file_path, bp.directory, bp.arguments);
 
-    if(!workspace.store) {
+    if(!project.store) {
         LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", module_name);
         co_return RoundOutcome::Failed;
     }
@@ -155,7 +155,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     auto pcm_key = std::format("{}-{}",
                                safe_module_name,
                                cache_key({clang::getClangFullVersion(),
-                                          workspace.build.active_configuration(),
+                                          project.build.active_configuration(),
                                           bp.directory,
                                           file_path,
                                           canonicalize(bp.arguments, ArgsProfile::Frontend)}));
@@ -163,13 +163,13 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // Check if cached PCM is still valid.
     llvm::StringRef pcm_miss = "no_entry";
     {
-        auto wave = workspace.file_table.wave();
-        if(auto pcm_it = workspace.pcm_cache.find(path_id); pcm_it != workspace.pcm_cache.end()) {
+        auto wave = project.file_table.wave();
+        if(auto pcm_it = project.pcm_cache.find(path_id); pcm_it != project.pcm_cache.end()) {
             if(pcm_it->second.key != pcm_key) {
                 pcm_miss = "key_changed";
-            } else if(!workspace.store->lookup("pcm", pcm_key)) {
+            } else if(!project.store->lookup("pcm", pcm_key)) {
                 pcm_miss = "evicted";
-            } else if(deps_changed(workspace.file_table, pcm_it->second.deps)) {
+            } else if(deps_changed(project.file_table, pcm_it->second.deps)) {
                 // FIXME: deps are the only revalidation, and the key is
                 // content-free — metadata surviving a crashed flush or a
                 // concurrent writer's republish is trusted on its deps alone
@@ -195,7 +195,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     auto budget_key = std::format("{}-{:016x}",
                                   pcm_key,
                                   content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0);
-    if(workspace.build_crashes.blocked(budget_key)) {
+    if(build_crashes.blocked(budget_key)) {
         LOG_WARN("PCM build for module {} refused: key {} keeps crashing workers",
                  module_name,
                  budget_key);
@@ -203,13 +203,13 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     }
 
     bp.module_name = module_name;
-    auto pending = workspace.store->begin_store("pcm", pcm_key);
+    auto pending = project.store->begin_store("pcm", pcm_key);
     bp.output_path = pending.tmp_path;
 
     // Clang needs ALL transitive PCM deps, not just direct imports.
     // Exclude the module being built — its old PCM path may still be
     // cached from a previous (now-invalidated) build.
-    workspace.fill_pcm_deps(bp.pcms, path_id);
+    project.fill_pcm_deps(bp.pcms, path_id);
 
     // The interest class is read at dispatch time: a foreground requester
     // may have joined after this round started. The advisory token rides
@@ -221,7 +221,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         pool,
         bp,
         priority,
-        [&](const kota::ipc::protocol::Error&) { workspace.build_crashes.on_crash(budget_key); },
+        [&](const kota::ipc::protocol::Error&) { build_crashes.on_crash(budget_key); },
         {},
         ctx.token());
 
@@ -248,22 +248,22 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     // Commit on the thread pool: it fsyncs the freshly written PCM.
     auto committed =
-        co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
+        co_await kota::queue([&] { return project.store->commit(std::move(pending)); });
     if(!committed.has_value() || !committed.value().has_value()) {
         LOG_WARN("Failed to commit PCM for module {}", module_name);
         co_return RoundOutcome::Failed;
     }
 
-    workspace.build_crashes.on_land(budget_key);
+    build_crashes.on_land(budget_key);
     auto pcm_path = std::move(committed.value().value());
-    workspace.pcm_cache[path_id] = {.path = pcm_path,
-                                    .key = pcm_key,
-                                    .deps = capture_deps_snapshot(workspace.file_table,
-                                                                  result.value().deps,
-                                                                  result.value().build_at)};
+    project.pcm_cache[path_id] = {.path = pcm_path,
+                                  .key = pcm_key,
+                                  .deps = capture_deps_snapshot(project.file_table,
+                                                                result.value().deps,
+                                                                result.value().build_at)};
     LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
 
-    workspace.mark_artifacts_dirty();
+    project.mark_artifacts_dirty();
 
     // Signal that new index data is available for background merge.
     if(on_indexing_needed)
@@ -274,7 +274,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
 bool PCMFamily::revalidate_blobs() {
     llvm::SmallVector<Fid> evicted;
-    for(auto& [pid, st]: workspace.pcm_cache) {
+    for(auto& [pid, st]: project.pcm_cache) {
         if(!llvm::sys::fs::exists(st.path)) {
             evicted.push_back(pid);
         }
@@ -286,7 +286,7 @@ bool PCMFamily::revalidate_blobs() {
         // rebuilding its imports — under a cache budget smaller than the
         // working set, that voids and respawns the waiter forever.
         graph.mark_dirty(node(pid));
-        workspace.pcm_cache.erase(pid);
+        project.pcm_cache.erase(pid);
     }
     return !evicted.empty();
 }
@@ -298,7 +298,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
                                          bool foreground) {
     // A project without module units pays nothing. A CDB reload that
     // introduces modules mid-session takes effect on the next call.
-    if(!workspace.dep_graph.has_modules()) {
+    if(!project.dep_graph.has_modules()) {
         co_return true;
     }
 
@@ -314,7 +314,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
     // (an unsaved removed import would disconnect the cached PCM from
     // the very dependency whose save should invalidate it). Plain TUs'
     // consumer nodes never run rounds; the declaration is theirs alone.
-    if(workspace.dep_graph.module_of(path_id).empty()) {
+    if(project.dep_graph.module_of(path_id).empty()) {
         declare_deps(path_id, deps.declared);
     }
     if(deps.resolved.empty()) {
@@ -352,11 +352,11 @@ llvm::SmallVector<Fid> PCMFamily::invalidate(Fid path_id) {
     bool erased = false;
     for(auto id: graph.update(node(path_id))) {
         auto pid = Fid{static_cast<std::uint32_t>(id.key)};
-        erased |= workspace.pcm_cache.erase(pid);
+        erased |= project.pcm_cache.erase(pid);
         dirtied.push_back(pid);
     }
     if(erased) {
-        workspace.mark_artifacts_dirty();
+        project.mark_artifacts_dirty();
     }
     return dirtied;
 }

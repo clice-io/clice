@@ -4,9 +4,10 @@
 #include <functional>
 #include <optional>
 
-#include "sched/context.h"
+#include "project/command_resolver.h"
+#include "project/project.h"
+#include "sched/crash_budget.h"
 #include "sched/graph.h"
-#include "sched/workspace.h"
 #include "worker/pool.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -29,7 +30,7 @@ namespace clice {
 /// identity, edges, rounds and interest.
 class PCMFamily {
 public:
-    PCMFamily(TaskGraph& graph, Workspace& workspace, ContextResolver& contexts, WorkerPool& pool);
+    PCMFamily(TaskGraph& graph, Project& project, CommandResolver& commands, WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic topology register their own runner under
@@ -139,9 +140,15 @@ private:
     }
 
     TaskGraph& graph;
-    Workspace& workspace;
-    ContextResolver& contexts;
+    Project& project;
+    CommandResolver& commands;
     WorkerPool& pool;
+
+    /// Crash budget of the builds, keyed by the content-derived PCM key:
+    /// a module interface that keeps killing workers is refused until its
+    /// content — and therefore its key — changes. Document quarantine
+    /// cannot contain it: every importer would burn workers of its own.
+    CrashBudget build_crashes;
 };
 
 }  // namespace clice

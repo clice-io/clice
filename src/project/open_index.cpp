@@ -1,9 +1,9 @@
-#include "sched/open_index.h"
+#include "project/open_index.h"
 
 #include "index/database.h"
-#include "sched/bootstrap.h"
-#include "sched/configuration.h"
-#include "sched/index/store.h"
+#include "project/configuration.h"
+#include "project/index_store.h"
+#include "project/load.h"
 #include "support/cache_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -12,10 +12,10 @@
 
 namespace clice {
 
-std::string inspected_path(const Workspace& workspace, llvm::StringRef argument) {
+std::string inspected_path(const Project& project, llvm::StringRef argument) {
     llvm::SmallString<256> absolute(path::is_absolute(argument)
                                         ? argument.str()
-                                        : path::join(workspace.config.workspace_root, argument));
+                                        : path::join(project.config.workspace_root, argument));
     path::remove_dots(absolute, /*remove_dot_dot=*/true);
     std::string result(absolute.str());
     path::canonicalize(result);
@@ -25,7 +25,7 @@ std::string inspected_path(const Workspace& workspace, llvm::StringRef argument)
 namespace {
 
 /// Resolve the configuration and open the store and database read-only.
-bool open_database(Workspace& workspace,
+bool open_database(Project& project,
                    llvm::StringRef root,
                    llvm::StringRef requested_configuration) {
     auto config = Config::load_from_workspace(root);
@@ -50,13 +50,13 @@ bool open_database(Workspace& workspace,
         }
         return false;
     }
-    workspace.config = std::move(config);
-    workspace.store.emplace(std::move(*store));
-    workspace.build.reset_active(configuration);
-    workspace.index_db = index::open_database(*workspace.store, configuration, /*read_only=*/true);
-    if(!workspace.index_db) {
+    project.config = std::move(config);
+    project.store.emplace(std::move(*store));
+    project.build.reset_active(configuration);
+    project.index_db = index::open_database(*project.store, configuration, /*read_only=*/true);
+    if(!project.index_db) {
         LOG_ERROR("No index cache at {}; run `clice index` first",
-                  index::library_directory(*workspace.store, configuration));
+                  index::library_directory(*project.store, configuration));
         return false;
     }
     return true;
@@ -64,64 +64,60 @@ bool open_database(Workspace& workspace,
 
 }  // namespace
 
-bool open_index(Workspace& workspace,
-                llvm::StringRef root,
-                llvm::StringRef requested_configuration) {
-    if(!open_database(workspace, root, requested_configuration)) {
+bool open_index(Project& project, llvm::StringRef root, llvm::StringRef requested_configuration) {
+    if(!open_database(project, root, requested_configuration)) {
         return false;
     }
-    if(!workspace.project_index.open(*workspace.index_db, workspace.file_table)) {
+    if(!project.project_index.open(*project.index_db, project.file_table)) {
         LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
-                  std::string_view(workspace.config.project.cache_dir));
+                  std::string_view(project.config.project.cache_dir));
         return false;
     }
     return true;
 }
 
-std::optional<LoadedIndex> load_index(Workspace& workspace,
-                                      ContextResolver& contexts,
+std::optional<LoadedIndex> load_index(Project& project,
+                                      CommandResolver& commands,
                                       llvm::StringRef root,
                                       llvm::StringRef requested_configuration,
                                       bool with_build) {
-    if(!open_database(workspace, root, requested_configuration)) {
+    if(!open_database(project, root, requested_configuration)) {
         return std::nullopt;
     }
     // The store is the writer's engine; its load is the only reader of
     // manifests, and never saves on a read-only database.
     kota::event_loop loop;
-    IndexStore store{loop, workspace, contexts};
+    IndexStore store{loop, project, commands};
     auto loaded = store.load({.read_only = true, .borrow = true});
     if(!loaded.decoded) {
         LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
-                  std::string_view(workspace.config.project.cache_dir));
+                  std::string_view(project.config.project.cache_dir));
         return std::nullopt;
     }
     // load() detaches the storage when the global blob exists but cannot
     // be read — a transient IO error, not an empty index.
-    if(workspace.index_db == nullptr) {
+    if(project.index_db == nullptr) {
         LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
-                  std::string_view(workspace.config.project.cache_dir));
+                  std::string_view(project.config.project.cache_dir));
         return std::nullopt;
     }
     LoadedIndex result;
     result.dropped.assign(loaded.report.reindex().begin(), loaded.report.reindex().end());
+    result.contexts = std::move(store.contexts.bytes);
     // With no pump attached the load report's debt can only be the
     // recovery drops: every TU's blobs were missing, stale, or corrupt — a
     // damaged cache, not a legitimately empty one.
-    if(workspace.project_index.manifests.empty() && workspace.project_index.shards.empty() &&
+    if(project.project_index.manifests.empty() && project.project_index.shards.empty() &&
        !result.dropped.empty()) {
         LOG_ERROR(
             "Index cache at {} has no servable data ({} translation units need "
             "reindexing); run `clice index` to rebuild",
-            std::string_view(workspace.config.project.cache_dir),
+            std::string_view(project.config.project.cache_dir),
             result.dropped.size());
         return std::nullopt;
     }
     if(with_build) {
-        load_build(workspace,
-                   root,
-                   workspace.build.active_configuration(),
-                   store.remembered_sources());
+        load_build(project, root, project.build.active_configuration(), store.remembered_sources());
     }
     return result;
 }

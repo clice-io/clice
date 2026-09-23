@@ -5,8 +5,9 @@
 #include <optional>
 #include <string>
 
-#include "sched/context.h"
-#include "sched/workspace.h"
+#include "project/index_store.h"
+#include "project/project.h"
+#include "server/state/editor_context.h"
 #include "server/state/session_store.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -110,7 +111,7 @@ struct FileEvent {
 
 /// The effects an event batch demands, deduplicated. The engine computes
 /// these; MasterServer::dispatch() executes them against the mutable
-/// services (sessions, context resolver, background indexer).
+/// services (sessions, editor context, background indexer).
 ///
 /// Effect algebra: the sets are not disjoint, and stronger effects subsume
 /// weaker ones on the same file — mark_ast_dirty implies the trial reset
@@ -134,7 +135,7 @@ struct DirtySet {
     llvm::SmallVector<Fid> reset_trial;
     /// The header's content (or its preamble chain) changed: drop its
     /// persisted self-containment verdict so the next compile re-earns it.
-    /// Executed by the context resolver, which owns the verdicts.
+    /// Executed by the command resolver, which owns the verdicts.
     llvm::SmallVector<Fid> reset_header_mode;
     /// Header sessions whose synthesized preamble embeds changed content:
     /// drop the chain snapshot's fast paths so every chain file is
@@ -218,10 +219,10 @@ public:
     /// longer exists in that form (the host's CDB entry changed): drop the
     /// context so the next use re-resolves. Content validation cannot see
     /// a flag change, so neither force_revalidate nor the deps snapshot
-    /// covers this. Executed by the context resolver.
+    /// covers this. Executed by the editor context.
     llvm::SmallVector<Fid> drop_context;
     /// Include edges changed: context choices may now be orphaned; run the
-    /// context resolver's orphan cleanup.
+    /// editor context's orphan cleanup.
     bool recheck_contexts = false;
     /// Kick the background indexer's scheduler.
     bool reschedule_indexing = false;
@@ -239,8 +240,9 @@ public:
 /// derived-state invalidation.
 ///
 /// Ownership charter:
-///   - reads the session store and the context resolver, never mutates them;
-///   - directly updates the derived graphs Workspace owns (include graph,
+///   - reads the session store, the editor context and the index store's
+///     recorded header hosts, never mutates them;
+///   - directly updates the derived graphs Project owns (include graph,
 ///     module map, ...);
 ///   - anything touching Sessions, context-domain state (verdicts, choices,
 ///     header contexts), the index queue, or cache persistence is returned
@@ -258,10 +260,11 @@ public:
 /// not add ceremonial event kinds for exempt logic.
 class Invalidator {
 public:
-    Invalidator(Workspace& workspace,
+    Invalidator(Project& project,
                 const SessionStore& store,
-                const ContextResolver& contexts,
-                PCMFamily& pcm);
+                const EditorContext& contexts,
+                PCMFamily& pcm,
+                const IndexStore& index);
 
     /// Fold a batch of events into one deduplicated effect set.
     DirtySet apply(llvm::ArrayRef<FileEvent> events);
@@ -294,10 +297,11 @@ private:
     /// dependency invalidation.
     void mark_dependent(Fid path_id, DirtySet& dirty);
 
-    Workspace& workspace;
+    Project& project;
     const SessionStore& store;
-    const ContextResolver& contexts;
+    const EditorContext& contexts;
     PCMFamily& pcm;
+    const IndexStore& index;
 
     /// Files whose disk content changed while their buffer was open. The
     /// DiskChanged case defers the dependent cascade (the buffer is the

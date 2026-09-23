@@ -8,12 +8,13 @@
 #include "index/query.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/context.h"
+#include "project/command_resolver.h"
+#include "project/index_store.h"
+#include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "sched/index/pump.h"
-#include "sched/index/store.h"
 #include "server/service/live_sources.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
@@ -29,20 +30,22 @@ namespace {
 TEST_SUITE(QueryFreshness, Tester) {
 
 kota::event_loop loop;
-Workspace workspace;
+FileTable files;
+Project project{files};
 SessionStore store;
 WorkerPool pool{loop};
-ContextResolver resolver{workspace};
+CommandResolver resolver{project};
 TaskGraph graph{loop};
-PCMFamily pcm{graph, workspace, resolver, pool};
+PCMFamily pcm{graph, project, resolver, pool};
 ASTProjectionTable projections;
-IndexStore index_store{loop, workspace, resolver};
-TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
-IndexPump indexer{loop, workspace, turun, index_store, pool};
-ServerLiveSources live{workspace, store, projections};
-PumpGate gate{indexer, workspace.config};
-index::IndexQuery index_query{workspace.project_index, workspace.file_table, &gate, &live};
-index::IndexQuery disk_query{workspace.project_index, workspace.file_table, &gate, nullptr};
+IndexStore index_store{loop, project, resolver};
+TURunFamily turun{graph, project, resolver, pcm, index_store, pool};
+IndexPump indexer{loop, project, turun, index_store, pool};
+PCHFamily pch{graph, project, pool};
+ServerLiveSources live{project, pch, store, projections};
+PumpGate gate{indexer, project.config};
+index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
+index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
 
 Fid main_id;
 Fid header_id;
@@ -56,14 +59,14 @@ void merge_into_workspace() {
 
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(workspace.file_table.intern(view.path(i)));
+        file_ids_map.push_back(project.file_table.intern(view.path(i)));
     }
-    ASSERT_TRUE(workspace.project_index.merge(view, file_ids_map));
+    ASSERT_TRUE(project.project_index.merge(view, file_ids_map));
     main_id = file_ids_map[view.path_count() - 1];
 
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         auto local_id = view.section_path(section);
-        workspace.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+        project.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
         if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
             header_id = file_ids_map[local_id];
@@ -74,7 +77,7 @@ void merge_into_workspace() {
 /// The symbol hash at an offset in a file's merged shard.
 index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
     index::SymbolHash result = 0;
-    workspace.project_index.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
+    project.project_index.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
         result = o.target;
         return false;
     });
@@ -91,7 +94,7 @@ std::vector<std::string> reference_files(index::SymbolHash hash) {
 }
 
 TEST_CASE(PendingReasonUpgrade) {
-    auto file = workspace.file_table.intern("/proj/upgrade.cpp");
+    auto file = project.file_table.intern("/proj/upgrade.cpp");
     ASSERT_FALSE(indexer.pending_reason(file).has_value());
 
     indexer.enqueue(file, ReindexReason::DepsOnly);
@@ -109,7 +112,7 @@ TEST_CASE(PendingReasonUpgrade) {
 }
 
 TEST_CASE(PendingGateSplitsRows) {
-    workspace.config.project.enable_indexing = true;
+    project.config.project.enable_indexing = true;
 
     add_file("header.h", R"(
         int helper() { return 1; }
@@ -137,7 +140,7 @@ TEST_CASE(PendingGateSplitsRows) {
 
     // Line-based resolution in the file works while its rows are current.
     index::SymbolQuery by_line;
-    by_line.position = {.path = workspace.file_table.resolve(main_id).str(), .line = 3};
+    by_line.position = {.path = project.file_table.resolve(main_id).str(), .line = 3};
     ASSERT_FALSE(disk_query.locate(by_line).empty());
 
     // The file's own content changed: its contribution is skipped until the
@@ -156,7 +159,7 @@ TEST_CASE(PendingGateSplitsRows) {
 
     // With background indexing disabled nothing would ever catch up:
     // last-known rows keep serving instead of leaving a permanent hole.
-    workspace.config.project.enable_indexing = false;
+    project.config.project.enable_indexing = false;
     ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
 }
 

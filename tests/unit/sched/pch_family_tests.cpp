@@ -19,8 +19,8 @@ TEST_SUITE(PCHFamilyAcquisition) {
 std::optional<TempDir> tmp;
 std::string src;
 std::optional<kota::event_loop> loop;
-std::optional<Workspace> workspace;
-std::optional<ContextResolver> contexts;
+FileTable files;
+std::optional<Project> project;
 std::optional<WorkerPool> pool;
 std::optional<TaskGraph> graph;
 std::optional<PCHFamily> pch;
@@ -31,7 +31,7 @@ void setup() {
     src = tmp->path("a.cpp");
 
     loop.emplace();
-    workspace.emplace();
+    project.emplace(files);
     auto store = CacheStore::open(tmp->path("root"), 1);
     ASSERT_TRUE(store.has_value());
     store->register_namespace({.name = "pch",
@@ -39,12 +39,11 @@ void setup() {
                                .aux_extension = ".pch.idx",
                                .policy = CachePolicy::LRU,
                                .max_bytes = 1ull << 30});
-    workspace->store.emplace(std::move(*store));
+    project->store.emplace(std::move(*store));
 
-    contexts.emplace(*workspace);
     pool.emplace(*loop);
     graph.emplace(*loop);
-    pch.emplace(*graph, *workspace, *contexts, *pool);
+    pch.emplace(*graph, *project, *pool);
     pch->register_runner();
 }
 
@@ -178,8 +177,8 @@ TEST_CASE(SharedBuildBothReady) {
     EXPECT_TRUE(b == PCHFamily::Outcome::Ready);
     EXPECT_EQ(owner_deaths, 0);
     EXPECT_EQ(joiner_deaths, 0);
-    auto it = workspace->pch_cache.find("shared-key");
-    ASSERT_TRUE(it != workspace->pch_cache.end());
+    auto it = project->pch_cache.find("shared-key");
+    ASSERT_TRUE(it != project->pch_cache.end());
     EXPECT_FALSE(it->second.path.empty());
     EXPECT_FALSE(it->second.index_path.empty());
 }

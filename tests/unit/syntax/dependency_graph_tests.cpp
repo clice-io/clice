@@ -247,6 +247,53 @@ TEST_CASE(EmptyIncludes) {
     EXPECT_EQ(graph.edge_count(), 0u);
 }
 
+TEST_CASE(IncluderListedOnce) {
+    // One includer through two configurations is one includer.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}});
+    graph.set_includes(Fid{1}, 1, {{Fid{10}}});
+    graph.set_includes(Fid{2}, 0, {{Fid{10}}});
+    graph.build_reverse_map();
+    ASSERT_EQ(graph.get_includers(Fid{10}), (llvm::ArrayRef<Fid>{Fid{1}, Fid{2}}));
+}
+
+TEST_CASE(ClearDropsEveryConfig) {
+    // Clearing a file drops every configuration's edges and the content
+    // they were scanned from, and nothing of other files.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}});
+    graph.set_includes(Fid{1}, 1, {{Fid{20}}});
+    graph.set_includes(Fid{2}, 0, {{Fid{10}}});
+    graph.set_scanned_hash(Fid{1}, 7);
+    graph.set_scanned_hash(Fid{2}, 8);
+
+    graph.clear_includes(Fid{1});
+    ASSERT_TRUE(graph.get_all_includes(Fid{1}).empty());
+    ASSERT_FALSE(graph.scanned_hash(Fid{1}).has_value());
+    ASSERT_EQ(graph.get_all_includes(Fid{2}), llvm::SmallVector<Fid>{Fid{10}});
+    ASSERT_EQ(graph.scanned_hash(Fid{2}), std::optional<std::uint64_t>(8));
+}
+
+TEST_CASE(EdgesKeepReverseMap) {
+    // Once built, the reverse map follows every edge update.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}});
+    graph.build_reverse_map();
+
+    graph.set_includes(Fid{2}, 0, {{Fid{10}}, {Fid{20}}});
+    ASSERT_EQ(graph.get_includers(Fid{10}), (llvm::ArrayRef<Fid>{Fid{1}, Fid{2}}));
+    ASSERT_EQ(graph.get_includers(Fid{20}), llvm::ArrayRef<Fid>{Fid{2}});
+
+    // A second configuration keeps an edge the first one drops.
+    graph.set_includes(Fid{2}, 1, {{Fid{20}}});
+    graph.set_includes(Fid{2}, 0, {{Fid{10}}});
+    ASSERT_EQ(graph.get_includers(Fid{20}), llvm::ArrayRef<Fid>{Fid{2}});
+
+    graph.clear_includes(Fid{2});
+    ASSERT_EQ(graph.get_includers(Fid{10}), llvm::ArrayRef<Fid>{Fid{1}});
+    ASSERT_TRUE(graph.get_includers(Fid{20}).empty());
+}
+
 };  // TEST_SUITE(DependencyGraph)
 
 // ============================================================================

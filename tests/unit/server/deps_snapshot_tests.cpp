@@ -1,6 +1,6 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "sched/workspace.h"
+#include "project/project.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"

@@ -5,12 +5,12 @@
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "sched/context.h"
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
 #include "server/service/ast_family.h"
 #include "server/service/dispatcher.h"
+#include "server/state/editor_context.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
 #include "support/cache_store.h"
@@ -37,15 +37,18 @@ namespace {
 /// resolves them.
 struct Stack {
     kota::event_loop loop;
-    Workspace workspace;
-    ContextResolver contexts{workspace};
+    FileTable files;
+    Project project{files};
+    CommandResolver commands{project};
+    ContextsBlob blob;
+    EditorContext contexts{project, commands, blob};
     WorkerPool pool{loop};
     TaskGraph graph{loop};
-    PCMFamily pcm{graph, workspace, contexts, pool};
-    PCHFamily pch{graph, workspace, contexts, pool};
+    PCMFamily pcm{graph, project, commands, pool};
+    PCHFamily pch{graph, project, pool};
     SessionStore sessions;
-    ASTFamily ast{workspace, contexts, graph, pcm, pch, pool, sessions, loop};
-    Dispatcher dispatcher{workspace, contexts, ast, pool};
+    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions, loop};
+    Dispatcher dispatcher{project, contexts, ast, pool};
 
     Stack() {
         pcm.register_runner();
@@ -54,7 +57,7 @@ struct Stack {
     }
 
     std::shared_ptr<Session> open(llvm::StringRef path, std::string text) {
-        auto session = sessions.open(workspace.file_table.intern(path));
+        auto session = sessions.open(project.file_table.intern(path));
         session->text = std::move(text);
         session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
         return session;
@@ -72,7 +75,7 @@ struct Stack {
                                    .aux_extension = ".pch.idx",
                                    .policy = CachePolicy::LRU,
                                    .max_bytes = 1ull << 30});
-        workspace.store.emplace(std::move(*store));
+        project.store.emplace(std::move(*store));
     }
 };
 
@@ -421,13 +424,13 @@ TEST_CASE(BufferImportBuildsPCM) {
 
     Stack stack;
     write_cdb(tmp,
-              stack.workspace.cdb,
+              stack.project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("m.cppm"), {}},
                   {tmp.root, src,                {}},
     }));
-    scan_all(stack.workspace.cdb, stack.workspace.dep_graph);
-    stack.workspace.dep_graph.build_reverse_map();
+    scan_all(stack.project.cdb, stack.project.dep_graph);
+    stack.project.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ASSERT_TRUE(store.has_value());
@@ -438,7 +441,7 @@ TEST_CASE(BufferImportBuildsPCM) {
                                .max_bytes = 1ull << 30});
     store->register_namespace(
         {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
-    stack.workspace.store.emplace(std::move(*store));
+    stack.project.store.emplace(std::move(*store));
 
     auto session = stack.open(src, "import m;\nint main() { return mv(); }\n");
 
@@ -465,9 +468,9 @@ TEST_CASE(BufferImportBuildsPCM) {
 
     EXPECT_TRUE(ok);
     EXPECT_TRUE(stack.ast.projections.current(session->path_id));
-    auto mod_ids = stack.workspace.dep_graph.lookup_module("m");
+    auto mod_ids = stack.project.dep_graph.lookup_module("m");
     ASSERT_FALSE(mod_ids.empty());
-    EXPECT_TRUE(stack.workspace.pcm_cache.contains(mod_ids[0]));
+    EXPECT_TRUE(stack.project.pcm_cache.contains(mod_ids[0]));
 }
 
 TEST_CASE(BufferImportRecorded) {
@@ -526,7 +529,7 @@ TEST_CASE(IncludeImportRecorded) {
 
     Stack stack;
     write_cdb(tmp,
-              stack.workspace.cdb,
+              stack.project.cdb,
               build_cdb_json({
                   {tmp.root, src, {"-include", tmp.path("deps.h")}}
     }));
@@ -946,7 +949,7 @@ TEST_CASE(PoisonPreambleBudget) {
 
     auto make_session = [&] {
         auto session = std::make_shared<Session>();
-        session->path_id = stack.workspace.file_table.intern(src);
+        session->path_id = stack.project.file_table.intern(src);
         session->text = "#pragma clang __debug crash\n";
         return session;
     };
@@ -1087,7 +1090,7 @@ TEST_CASE(StaleDepsNoAdopt) {
 
     auto make_session = [&] {
         auto session = std::make_shared<Session>();
-        session->path_id = stack.workspace.file_table.intern(src);
+        session->path_id = stack.project.file_table.intern(src);
         session->text = "#include \"dep.h\"\nint x;\n";
         return session;
     };

@@ -12,10 +12,10 @@
 #include "index/query.h"
 #include "index/serialization.h"
 #include "index/writer_lock.h"
+#include "project/configuration.h"
+#include "project/open_index.h"
+#include "project/project.h"
 #include "sched/batch.h"
-#include "sched/configuration.h"
-#include "sched/open_index.h"
-#include "sched/workspace.h"
 #include "server/transport/control_client.h"
 #include "support/timer.h"
 
@@ -367,13 +367,13 @@ struct IndexStats {
     Histogram variants_per_shard;
 };
 
-IndexStats collect_stats(Workspace& workspace) {
+IndexStats collect_stats(Project& project) {
     IndexStats stats;
-    auto& project = workspace.project_index;
+    auto& project_index = project.project_index;
 
-    stats.shards.reserve(workspace.project_index.shards.size());
-    for(auto& [path_id, shard]: workspace.project_index.shards) {
-        ShardStat stat{.path = workspace.file_table.resolve(path_id),
+    stats.shards.reserve(project.project_index.shards.size());
+    for(auto& [path_id, shard]: project.project_index.shards) {
+        ShardStat stat{.path = project.file_table.resolve(path_id),
                        .bytes = shard.bytes().size(),
                        .variants = shard.variants().size()};
         shard.for_each_occurrence([&](const index::Occurrence&) {
@@ -401,31 +401,31 @@ IndexStats collect_stats(Workspace& workspace) {
     }
     std::ranges::sort(stats.shards, std::ranges::greater{}, &ShardStat::bytes);
 
-    auto columns = project.global_columns();
+    auto columns = project_index.global_columns();
     stats.global.names = columns.names;
     stats.global.args = columns.args;
     stats.global.bitmaps = columns.bitmaps;
     stats.global.fixed = columns.fixed;
-    project.for_each_symbol(
+    project_index.for_each_symbol(
         [&](index::SymbolHash, const index::SymbolIdentity& symbol, std::uint32_t references) {
             stats.references_per_symbol.add(references);
             stats.name_lengths.add(symbol.name.size());
             return true;
         });
-    if(auto blob = workspace.index_db->read(index::IndexBlobKind::Global, "global")) {
+    if(auto blob = project.index_db->read(index::IndexBlobKind::Global, "global")) {
         stats.global_bytes = blob.buffer->getBufferSize();
     }
-    if(auto blob = workspace.index_db->read(index::IndexBlobKind::Search, "search")) {
+    if(auto blob = project.index_db->read(index::IndexBlobKind::Search, "search")) {
         stats.search_bytes = blob.buffer->getBufferSize();
     }
     return stats;
 }
 
-void print_stats(const Workspace& workspace,
+void print_stats(const Project& project,
                  llvm::ArrayRef<Fid> dropped,
                  const IndexStats& stats,
                  std::uint32_t top) {
-    auto& project = workspace.project_index;
+    auto& project_index = project.project_index;
     auto share = [](std::uint64_t bytes, std::uint64_t whole) {
         return whole != 0 ? 100.0 * static_cast<double>(bytes) / static_cast<double>(whole) : 0.0;
     };
@@ -433,24 +433,24 @@ void print_stats(const Workspace& workspace,
         std::println("  {:<24} {:>10}  {:>5.1f}%", name, format_size(bytes), share(bytes, whole));
     };
 
-    auto configuration = workspace.build.active_configuration();
-    std::println("Index cache: {}", index::library_directory(*workspace.store, configuration));
+    auto configuration = project.build.active_configuration();
+    std::println("Index cache: {}", index::library_directory(*project.store, configuration));
     if(!configuration.empty()) {
         std::println("Configuration: {}", configuration);
     }
-    std::println("Translation units: {}", project.manifests.size());
+    std::println("Translation units: {}", project_index.manifests.size());
     std::println("File shards: {} ({}), {} occurrences, {} relations",
                  stats.shards.size(),
                  format_size(stats.shard_bytes),
                  stats.occurrences,
                  stats.relations);
     std::println("Global symbols: {}, file versions: {}",
-                 project.symbol_count(),
-                 workspace.file_table.versions.size());
+                 project_index.symbol_count(),
+                 project.file_table.versions.size());
     std::println("Search index: {} symbols ({}), {} merged since its build",
-                 workspace.project_index.search_index.size(),
+                 project.project_index.search_index.size(),
                  format_size(stats.search_bytes),
-                 workspace.project_index.search_pending.size());
+                 project.project_index.search_pending.size());
     if(!dropped.empty()) {
         std::println(
             "Translation units pending reindex (stale or partially written): {}; "
@@ -517,13 +517,13 @@ void print_variants(const IndexStats& stats) {
     }
 }
 
-int run_stats(Workspace& workspace, llvm::ArrayRef<Fid> dropped, std::uint32_t top, bool variants) {
-    if(workspace.project_index.manifests.empty() && workspace.project_index.shards.empty()) {
+int run_stats(Project& project, llvm::ArrayRef<Fid> dropped, std::uint32_t top, bool variants) {
+    if(project.project_index.manifests.empty() && project.project_index.shards.empty()) {
         std::println("Index is empty; run `clice index` to build it.");
         return 0;
     }
-    auto stats = collect_stats(workspace);
-    print_stats(workspace, dropped, stats, top);
+    auto stats = collect_stats(project);
+    print_stats(project, dropped, stats, top);
     if(variants) {
         print_variants(stats);
     }
@@ -559,7 +559,7 @@ llvm::StringRef kind_name(SymbolKind kind) {
 
 /// The symbol a `--show-symbol` argument names: `#<hex>` is a hash, anything
 /// else a display name (`Box<int>`) or a qualified one (`ns::Box<int>`).
-std::vector<index::SymbolHash> matching_symbols(Workspace& workspace,
+std::vector<index::SymbolHash> matching_symbols(Project& project,
                                                 index::IndexQuery& query,
                                                 llvm::StringRef wanted) {
     std::vector<index::SymbolHash> matches;
@@ -571,7 +571,7 @@ std::vector<index::SymbolHash> matching_symbols(Workspace& workspace,
         return matches;
     }
     bool qualified = wanted.contains("::");
-    workspace.project_index.for_each_symbol(
+    project.project_index.for_each_symbol(
         [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, std::uint32_t) {
             if((symbol.name + symbol.args).str() == wanted ||
                (qualified && query.qualified_name(hash) == wanted)) {
@@ -583,9 +583,9 @@ std::vector<index::SymbolHash> matching_symbols(Workspace& workspace,
     return matches;
 }
 
-int run_show_symbol(Workspace& workspace, llvm::StringRef wanted) {
-    index::IndexQuery query(workspace.project_index, workspace.file_table, nullptr, nullptr);
-    auto matches = matching_symbols(workspace, query, wanted);
+int run_show_symbol(Project& project, llvm::StringRef wanted) {
+    index::IndexQuery query(project.project_index, project.file_table, nullptr, nullptr);
+    auto matches = matching_symbols(project, query, wanted);
     if(matches.empty()) {
         std::println(
             "No symbol named {} in the index (names cover the global table; "
@@ -624,13 +624,13 @@ int run_show_symbol(Workspace& workspace, llvm::StringRef wanted) {
                          scope->display_name());
             parent = scope->parent;
         }
-        if(auto symbol = workspace.project_index.identity_of(hash)) {
+        if(auto symbol = project.project_index.identity_of(hash)) {
             std::println("  scope={}  file={}  reference files={}",
                          kota::meta::enum_name(symbol->scope, "External"),
                          symbol->file == index::no_file
                              ? "-"
-                             : workspace.file_table.resolve(Fid{symbol->file}),
-                         workspace.project_index.reference_count(hash));
+                             : project.file_table.resolve(Fid{symbol->file}),
+                         project.project_index.reference_count(hash));
         } else {
             std::println("  scope=local (not in the global table)");
         }
@@ -645,10 +645,10 @@ int run_show_symbol(Workspace& workspace, llvm::StringRef wanted) {
         // table's reference bitmaps, which a file-local symbol has no entry
         // in.
         std::map<std::string, Counts> per_file;
-        for(auto& [path_id, shard]: workspace.project_index.shards) {
+        for(auto& [path_id, shard]: project.project_index.shards) {
             auto count = [&](RelationKind kind, std::size_t Counts::* field) {
                 shard.lookup(hash, kind, [&](const index::Relation&) {
-                    per_file[workspace.file_table.resolve(path_id).str()].*field += 1;
+                    per_file[project.file_table.resolve(path_id).str()].*field += 1;
                     return true;
                 });
             };
@@ -667,12 +667,12 @@ int run_show_symbol(Workspace& workspace, llvm::StringRef wanted) {
     return rc;
 }
 
-int run_show_file(Workspace& workspace, llvm::StringRef argument) {
-    auto path = inspected_path(workspace, argument);
-    auto file = workspace.file_table.find(path);
+int run_show_file(Project& project, llvm::StringRef argument) {
+    auto path = inspected_path(project, argument);
+    auto file = project.file_table.find(path);
     auto shard_it =
-        file ? workspace.project_index.shards.find(*file) : workspace.project_index.shards.end();
-    if(shard_it == workspace.project_index.shards.end()) {
+        file ? project.project_index.shards.find(*file) : project.project_index.shards.end();
+    if(shard_it == project.project_index.shards.end()) {
         std::println("No rows for {} in the index.", path);
         return 1;
     }
@@ -686,10 +686,10 @@ int run_show_file(Workspace& workspace, llvm::StringRef argument) {
 
     // Which unit contributed which variant, from the manifests.
     std::map<std::uint64_t, std::vector<llvm::StringRef>> contributors;
-    if(auto it = workspace.project_index.contributions.find(*file);
-       it != workspace.project_index.contributions.end()) {
+    if(auto it = project.project_index.contributions.find(*file);
+       it != project.project_index.contributions.end()) {
         for(auto& [tu, hash]: it->second) {
-            contributors[hash].push_back(workspace.file_table.resolve(tu));
+            contributors[hash].push_back(project.file_table.resolve(tu));
         }
     }
     auto variants = shard.variants();
@@ -738,13 +738,13 @@ int run_show_file(Workspace& workspace, llvm::StringRef argument) {
     return 0;
 }
 
-int run_show_tu(Workspace& workspace, llvm::StringRef argument) {
-    auto path = inspected_path(workspace, argument);
-    auto& files = workspace.file_table;
+int run_show_tu(Project& project, llvm::StringRef argument) {
+    auto path = inspected_path(project, argument);
+    auto& files = project.file_table;
     auto tu = files.find(path);
-    auto& project = workspace.project_index;
-    auto manifest_it = tu ? project.manifests.find(*tu) : project.manifests.end();
-    if(manifest_it == project.manifests.end()) {
+    auto& project_index = project.project_index;
+    auto manifest_it = tu ? project_index.manifests.find(*tu) : project_index.manifests.end();
+    if(manifest_it == project_index.manifests.end()) {
         std::println("No manifest for {} in the index.", path);
         return 1;
     }
@@ -833,20 +833,20 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
                return;
            }
            if(opts.show_symbol || opts.show_file || opts.show_tu || opts.stats || opts.variants) {
-               Workspace workspace;
-               ContextResolver contexts{workspace};
-               auto loaded =
-                   load_index(workspace, contexts, ws, configuration, /*with_build=*/false);
+               FileTable files;
+               Project project{files};
+               CommandResolver commands{project};
+               auto loaded = load_index(project, commands, ws, configuration, /*with_build=*/false);
                if(!loaded) {
                    exit_code = 1;
                } else if(opts.show_symbol) {
-                   exit_code = run_show_symbol(workspace, *opts.show_symbol);
+                   exit_code = run_show_symbol(project, *opts.show_symbol);
                } else if(opts.show_file) {
-                   exit_code = run_show_file(workspace, *opts.show_file);
+                   exit_code = run_show_file(project, *opts.show_file);
                } else if(opts.show_tu) {
-                   exit_code = run_show_tu(workspace, *opts.show_tu);
+                   exit_code = run_show_tu(project, *opts.show_tu);
                } else {
-                   exit_code = run_stats(workspace,
+                   exit_code = run_stats(project,
                                          loaded->dropped,
                                          opts.top.value_or(20),
                                          static_cast<bool>(opts.variants));

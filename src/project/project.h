@@ -17,15 +17,13 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "index/writer_lock.h"
-#include "sched/build.h"
-#include "sched/crash_budget.h"
-#include "sched/hosting.h"
+#include "project/build.h"
+#include "project/hosting.h"
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
 #include "syntax/dependency_graph.h"
 #include "vfs/file_table.h"
 
-#include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -34,8 +32,6 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
-
-class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
@@ -140,7 +136,7 @@ struct Selection {
     std::string base_hash;
 };
 
-/// Cached PCH state.  Stored in Workspace.pch_cache keyed by the content
+/// Cached PCH state.  Stored in Project.pch_cache keyed by the content
 /// key (hex of xxh3_128bits over preamble text + directories + canonical
 /// flags), so files with identical preambles share one PCH.
 ///
@@ -187,31 +183,35 @@ struct PCMState {
 /// Design principle: open files are never depended upon by other files.
 /// Dependencies always point to disk files.  This enforces a clean two-layer
 /// architecture:
-///   - Global layer (Workspace): tracks disk truth, shared by all files
+///   - Global layer (Project): tracks disk truth, shared by all files
 ///   - Per-file layer (Session): tracks buffer truth, isolated per TU
 ///
-/// Workspace is the single source of truth for:
+/// Project is the single source of truth for:
 ///   - dependency relationships (include graph, module DAG)
 ///   - compilation artifacts shared across files (PCH/PCM caches)
 ///   - symbol index (ProjectIndex + per-file Shard blobs)
 ///   - compilation database and configuration
 ///
-/// Workspace is NEVER modified by unsaved buffer content.  The only mutation
+/// Project is NEVER modified by unsaved buffer content.  The only mutation
 /// paths are:
-///   - Initialization  (load_workspace at startup)
+///   - Initialization  (load_project at startup)
 ///   - didSave         (rescan_after_save: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
-struct Workspace {
+struct Project {
+    explicit Project(FileTable& file_table) : file_table(file_table) {}
+
     /// A default-constructed Config is born valid (every option holds its
-    /// real default), so a directly-built Workspace (unit tests, tools)
+    /// real default), so a directly-built Project (unit tests, tools)
     /// needs no init step. The server replaces this wholesale with the
     /// loaded user config and finalizes it after the initializationOptions
     /// overlay.
     Config config;
 
-    /// The single fid space, shared by everything below — CDB entry file
-    /// ids and workspace fids are the same ids.
-    FileTable file_table;
+    /// The process's fid space, shared with everything else keyed by file
+    /// (sessions, the task graph, the pool) — CDB entry file ids and
+    /// project fids are the same ids. Persisted state never stores fids:
+    /// it names files by path and re-interns them at load.
+    FileTable& file_table;
 
     CompilationDatabase cdb{file_table};
 
@@ -220,14 +220,14 @@ struct Workspace {
     Build build{config, cdb, file_table};
 
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
-    /// load_workspace() when cache_dir is configured; absent means caching
+    /// load_project() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
     /// recovery); validity metadata (deps snapshots) lives in the index
     /// database, written by IndexStore::save.
     std::optional<CacheStore> store;
 
     /// The cache directory's writer lock, taken by a session that persists
-    /// its index and held until the workspace dies — after `index_db`, so
+    /// its index and held until the project dies — after `index_db`, so
     /// a reopened database never races another writer for the directory.
     std::optional<index::WriterLock> writer_lock;
 
@@ -246,22 +246,6 @@ struct Workspace {
     /// of CacheStore state; blob paths come from the store.
     llvm::StringMap<PCHState> pch_cache;
 
-    /// Keys of pch_cache entries whose envelope is currently loaded,
-    /// most recently used first (see enforce_loaded_budget).
-    llvm::SmallVector<std::string, 8> loaded_state_lru;
-
-    /// Open-document count provider, wired by the master. Sizes the
-    /// loaded-state budget; unset (tests, tools) falls back to
-    /// default_open_documents.
-    std::function<std::size_t()> open_documents;
-
-    /// Crash budget for shared build artifacts (PCH/PCM), keyed by the
-    /// same content-derived cache keys: an artifact that keeps killing
-    /// workers is refused until its content — and therefore its key —
-    /// changes. Document quarantine cannot contain these: the artifact is
-    /// shared, so every dependent would burn workers of its own.
-    CrashBudget build_crashes;
-
     /// PCM cache, keyed by module source path_id.
     llvm::DenseMap<Fid, PCMState> pcm_cache;
 
@@ -269,7 +253,7 @@ struct Workspace {
     /// manifests, the per-file row blobs and the name search index.
     index::ProjectIndex project_index;
 
-    /// Monotonic generation of context-affecting workspace state (include
+    /// Monotonic generation of context-affecting project state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext
     /// stamps its results with it and clice/switchContext rejects requests
     /// made against an older epoch, so a client can never apply a context
@@ -298,53 +282,43 @@ struct Workspace {
 
     /// Rescan a file after it was saved to disk, from one read: refresh
     /// its include edges (so host lookups and context queries see includes
-    /// the save added or removed) and its module declaration. The
-    /// module-graph cascade is the invalidator's job
+    /// the save added or removed), its scanned hash and its module
+    /// declaration. The module-graph cascade is the invalidator's job
     /// (PCMFamily::invalidate).
     void rescan_after_save(Fid path_id);
 
-    /// Called when a file is closed.  Notifies compile_graph if this file
-    /// is a module unit so dependents can be re-evaluated on next compile.
-    void on_file_closed(Fid path_id);
+    /// A file vanished from disk: it stops providing its module name (a
+    /// replacement provider would otherwise sit behind it and never be
+    /// selected) and its import syntax (the last import-bearing file must
+    /// release the project-wide scan gate), and its outgoing edges go, so
+    /// it stops being a host candidate. Incoming edges stay — includers'
+    /// text still names it, and their own rescans own those edges.
+    void forget_file(Fid path_id);
 
-    /// Open the pch.idx envelope of a cached PCH. The single consumption
-    /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
-    /// on-disk pair is retracted from the store as well — otherwise every
-    /// later session re-adopts the corrupt pair from the artifacts blob and
-    /// silently degrades again. With the pair gone the next ensure_pch is
-    /// a miss and rebuilds both halves. Loads count against the
-    /// loaded-state budget (see enforce_loaded_budget).
-    std::shared_ptr<index::TUIndex> preamble_state(llvm::StringRef pch_key);
+    /// What rebuilding the dependency graph did to module providers, per
+    /// name: the provider import resolution selects (the candidate list's
+    /// head), not mere existence.
+    struct ProviderChanges {
+        /// Names that gained their first provider.
+        llvm::SmallVector<std::string> appeared;
 
-    /// Move a pch key to the front of the loaded-state LRU. Called
-    /// whenever an entry's envelope is opened or replaced.
-    void touch_loaded_state(llvm::StringRef pch_key);
+        /// The previously selected providers of names whose selection moved
+        /// to another file.
+        llvm::SmallVector<Fid> replaced;
+    };
 
-    /// Unload pch.idx envelopes beyond the budget (open documents + 2),
-    /// least recently used first. Without this every preamble key ever
-    /// touched keeps its blob mapped for the server's lifetime — tens of
-    /// MB per key on real projects, released by neither didClose nor
-    /// store eviction. Unloading only drops the entry's reference:
-    /// consumers holding the shared_ptr finish safely, and the next use
-    /// reopens the blob from disk.
-    void enforce_loaded_budget();
+    /// Rebuild the dependency graph from scratch against the current
+    /// database: entry additions, removals and flag changes all funnel into
+    /// one uniform rescan instead of per-entry graph surgery. Still cheap —
+    /// per-file scan results are content-keyed in the file table, so
+    /// unchanged files re-resolve without a read or lex.
+    ProviderChanges rebuild_dependency_graph();
 
-    /// Persistence signals for the metadata the index database carries
-    /// beyond the index itself: artifact validity (PCH/PCM records, header
-    /// modes) and user context choices. Producers mark; the single write
-    /// pipeline (IndexStore::save) flushes both on its next run. Only the
-    /// contexts blob has a durability waiter (switchContext), so only it
-    /// carries an epoch: the ticket resolves once a save whose snapshot
-    /// covers the mark commits that blob — independent of the artifacts
-    /// blob, whose failures retry through the dirty flag alone and must
-    /// not hold a context ack hostage. `contexts_committed` pulses after
-    /// every attempt, failed ones included, so waiters can give up on a
-    /// disk that cannot take the write.
+    /// Persistence signal for the artifact validity metadata (PCH/PCM
+    /// records, header modes) the index database carries beyond the index
+    /// itself: producers mark, the single write pipeline (IndexStore::save)
+    /// flushes it on its next run.
     bool artifacts_dirty = false;
-    bool contexts_dirty = false;
-    std::uint64_t contexts_epoch = 0;
-    std::uint64_t committed_contexts_epoch = 0;
-    kota::event contexts_committed;
 
     /// Wired by the master to schedule a flush soon after a mark; unset
     /// (tests, batch tools) means the owner saves on its own cadence.
@@ -357,14 +331,6 @@ struct Workspace {
         }
     }
 
-    void mark_contexts_dirty() {
-        contexts_dirty = true;
-        contexts_epoch += 1;
-        if(request_flush) {
-            request_flush();
-        }
-    }
-
     /// Fill PCM paths for all built modules, excluding exclude_path_id.
     void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
                        Fid exclude_path_id = {}) const;
@@ -372,7 +338,7 @@ struct Workspace {
 
 /// The `compile_commands.json` files to load when no rule declares one:
 /// the workspace root's, then those of its direct subdirectories in name
-/// order. Empty when none exists yet — the file tracker keeps looking on
+/// order. Empty when none exists yet — the CDBWatcher keeps looking on
 /// its CDB poll.
 llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspace_root);
 

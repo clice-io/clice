@@ -1,9 +1,9 @@
-#include "sched/hosting.h"
+#include "project/hosting.h"
 
 #include <algorithm>
 #include <tuple>
 
-#include "sched/workspace.h"
+#include "project/project.h"
 #include "support/filesystem.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -29,9 +29,9 @@ types::ID language_of(const CommandRef& command) {
     return types::lookupTypeForTypeSpecifier(command.input.value);
 }
 
-CommandRef effective(Workspace& workspace, Fid unit, const Candidate& command) {
-    auto path = workspace.file_table.resolve(unit);
-    return workspace.build.resolve(unit, command.config, command.source, path, path);
+CommandRef effective(Project& project, Fid unit, const Candidate& command) {
+    auto path = project.file_table.resolve(unit);
+    return project.build.resolve(unit, command.config, command.source, path, path);
 }
 
 /// Whether the file at `path` can be part of a translation unit compiled
@@ -63,45 +63,45 @@ std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {
     return common;
 }
 
-const LenderIndex& lender_index(Workspace& workspace) {
-    auto& index = workspace.lenders;
-    if(index.epoch == workspace.commands_epoch) {
+const LenderIndex& lender_index(Project& project) {
+    auto& index = project.lenders;
+    if(index.epoch == project.commands_epoch) {
         return index;
     }
     index.commands.clear();
     index.search_dirs.clear();
-    auto members = workspace.build.members();
-    std::ranges::sort(members, {}, [&](Fid unit) { return workspace.file_table.resolve(unit); });
+    auto members = project.build.members();
+    std::ranges::sort(members, {}, [&](Fid unit) { return project.file_table.resolve(unit); });
     for(auto member: members) {
         // A member a rule claims with a default command that is no compile
         // command has none.
-        for(auto& command: workspace.build.commands(member)) {
-            auto ref = effective(workspace, member, command);
+        for(auto& command: project.build.commands(member)) {
+            auto ref = effective(project, member, command);
             auto position = static_cast<std::uint32_t>(index.commands.size());
             index.commands.push_back({
                 .lender = {.unit = member, .config = command.config},
                 .language = language_of(ref),
             });
-            for(auto& search_dir: workspace.cdb.search_config(ref).dirs) {
+            for(auto& search_dir: project.cdb.search_config(ref).dirs) {
                 auto canonical = search_dir.path;
                 path::canonicalize(canonical);
                 index.search_dirs[canonical].push_back(position);
             }
         }
     }
-    index.epoch = workspace.commands_epoch;
+    index.epoch = project.commands_epoch;
     return index;
 }
 
 }  // namespace
 
-std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
-    auto& files = workspace.file_table;
+std::optional<Lender> command_lender(Project& project, Fid file) {
+    auto& files = project.file_table;
     auto path = files.resolve(file);
     bool header = header_suffix(path);
     auto dir = path::parent_path(path);
     auto stem = path::stem(path);
-    auto& index = lender_index(workspace);
+    auto& index = lender_index(project);
     auto fits = [&](const LenderIndex::Command& command) {
         return compatible(path, command.language);
     };
@@ -156,27 +156,27 @@ std::optional<Lender> command_lender(Workspace& workspace, Fid file) {
     });
 }
 
-llvm::SmallVector<Candidate, 2> host_commands(Workspace& workspace, Fid header, Fid host) {
-    auto header_path = workspace.file_table.resolve(header);
+llvm::SmallVector<Candidate, 2> host_commands(Project& project, Fid header, Fid host) {
+    auto header_path = project.file_table.resolve(header);
     llvm::SmallVector<Candidate, 2> fitting;
-    for(auto& command: workspace.build.commands(host)) {
-        if(compatible(header_path, language_of(effective(workspace, host, command)))) {
+    for(auto& command: project.build.commands(host)) {
+        if(compatible(header_path, language_of(effective(project, host, command)))) {
             fitting.push_back(command);
         }
     }
     return fitting;
 }
 
-llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header) {
-    auto& files = workspace.file_table;
+llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
+    auto& files = project.file_table;
     auto header_path = files.resolve(header);
     auto header_stem = llvm::sys::path::stem(header_path);
     auto header_dir = llvm::sys::path::parent_path(header_path);
-    auto sources = workspace.build.source_order(header_path);
+    auto sources = project.build.source_order(header_path);
 
     llvm::SmallVector<Fid> hosts;
-    for(auto candidate: workspace.dep_graph.find_host_sources(header)) {
-        if(!host_commands(workspace, header, candidate).empty()) {
+    for(auto candidate: project.dep_graph.find_host_sources(header)) {
+        if(!host_commands(project, header, candidate).empty()) {
             hosts.push_back(candidate);
         }
     }
@@ -187,7 +187,7 @@ llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header) {
         // first; one living on a default command comes after every
         // database.
         std::size_t source_rank = sources.size();
-        if(auto entries = workspace.build.entries(host); !entries.empty()) {
+        if(auto entries = project.build.entries(host); !entries.empty()) {
             source_rank = llvm::find(sources, entries.front().source) - sources.begin();
         }
         int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
@@ -209,9 +209,9 @@ llvm::SmallVector<Fid> ranked_hosts(Workspace& workspace, Fid header) {
     return hosts;
 }
 
-std::optional<Host> default_host(Workspace& workspace, Fid header) {
-    for(auto host: ranked_hosts(workspace, header)) {
-        auto chain = workspace.dep_graph.find_include_chain(host, header);
+std::optional<Host> default_host(Project& project, Fid header) {
+    for(auto host: ranked_hosts(project, header)) {
+        auto chain = project.dep_graph.find_include_chain(host, header);
         if(!chain.empty()) {
             return Host{.file = host, .chain = std::move(chain)};
         }

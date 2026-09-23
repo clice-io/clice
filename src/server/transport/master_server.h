@@ -7,19 +7,16 @@
 #include <vector>
 
 #include "config/config.h"
-#include "sched/context.h"
-#include "sched/families/pch.h"
-#include "sched/families/pcm.h"
-#include "sched/families/turun.h"
-#include "sched/graph.h"
-#include "sched/index/pump.h"
-#include "sched/index/store.h"
-#include "sched/workspace.h"
+#include "project/command_resolver.h"
+#include "project/index_store.h"
+#include "project/project.h"
+#include "sched/stack.h"
 #include "server/service/ast_family.h"
 #include "server/service/context_service.h"
 #include "server/service/dispatcher.h"
 #include "server/service/features.h"
 #include "server/service/live_sources.h"
+#include "server/state/editor_context.h"
 #include "server/state/invalidator.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
@@ -99,7 +96,7 @@ struct NotifyMessage {
     std::string text;
 };
 
-/// Core server state — owns the two-layer state model (Workspace + Sessions),
+/// Core server state — owns the two-layer state model (Project + Sessions),
 /// the worker pool, compilation engine, index query, and background indexer.
 ///
 /// Does NOT own any transport or peer.  Protocol-specific handler registration
@@ -140,7 +137,7 @@ public:
 
     /// The single entry point for file events: fold the batch through the
     /// Invalidator, then execute the resulting effects against the mutable
-    /// services (sessions, context resolver, background indexer).
+    /// services (sessions, editor context, background indexer).
     void dispatch(llvm::ArrayRef<FileEvent> events);
 
     void schedule_shutdown();
@@ -159,30 +156,24 @@ public:
     /// constructed) in dependency order. Transports and features drive the
     /// server through these directly; the wiring between them lives in wire().
     kota::event_loop& loop;
-    Workspace workspace;
-    WorkerPool pool;
-    ContextResolver contexts;
+    FileTable files;
+    Project project{files};
+    CommandResolver commands{project};
 
-    /// The scheduling core and its resident families, registered at
-    /// construction — nodes materialize on demand, so a module-free
-    /// project pays nothing. The AST family is assembled here in the
-    /// server: its rounds capture sessions, quarantine and publishing.
-    TaskGraph graph{loop};
-    PCMFamily pcm{graph, workspace, contexts, pool};
-    PCHFamily pch{graph, workspace, contexts, pool};
-    ASTFamily ast{workspace, contexts, graph, pcm, pch, pool, sessions, loop};
-
-    Dispatcher dispatcher{workspace, contexts, ast, pool};
-    ContextService context_service{workspace, contexts, ast};
-
-    /// Index scheduling, split along the serving boundary: the store and
-    /// the pump are serving-neutral sched machinery (the batch driver
-    /// reuses them); the session-side policy — admission vetoes,
+    /// The scheduling core the batch driver runs too, its families
+    /// registered at construction — nodes materialize on demand, so a
+    /// module-free project pays nothing. The store and the pump are
+    /// serving-neutral; the session-side policy — admission vetoes,
     /// unservable escalation, serving-row refresh — lives on this class
-    /// and is installed into the pump's hooks by wire().
-    IndexStore index_store{loop, workspace, contexts};
-    TURunFamily turun{graph, workspace, contexts, pcm, index_store, pool};
-    IndexPump pump{loop, workspace, turun, index_store, pool};
+    /// and is installed into the pump's hooks by wire(). The AST family is
+    /// assembled here in the server: its rounds capture sessions,
+    /// quarantine and publishing.
+    SchedulingStack sched{loop, project, commands};
+    EditorContext contexts{project, commands, sched.store.contexts};
+    ASTFamily ast{project, contexts, sched.graph, sched.pcm, sched.pch, sched.pool, sessions, loop};
+
+    Dispatcher dispatcher{project, contexts, ast, sched.pool};
+    ContextService context_service{project, contexts, ast};
 
     /// Emitted when rows an open index-served session is serving changed:
     /// results the client already pulled describe the old rows, and only a
@@ -191,8 +182,8 @@ public:
     /// cannot cover them.
     Signal<> on_serving_rows_changed;
 
-    ServerLiveSources live_sources{workspace, sessions, ast.projections};
-    PumpGate freshness{pump, workspace.config};
+    ServerLiveSources live_sources{project, sched.pch, sessions, ast.projections};
+    PumpGate freshness{sched.pump, project.config};
     index::IndexQuery index_query;
 
     Features features;
@@ -267,7 +258,7 @@ private:
 
     Signal<llvm::ArrayRef<Fid>>::Connection index_rows_conn;
 
-    void load_workspace();
+    void load_root_project();
 
     /// When this server holds the cache directory's writer lock, the
     /// commands that find it taken ask this server to index for them:
