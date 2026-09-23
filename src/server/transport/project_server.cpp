@@ -11,7 +11,6 @@
 #include "server/transport/control_server.h"
 #include "server/transport/master_server.h"
 #include "support/cache_store.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "worker/protocol.h"
 
@@ -47,19 +46,11 @@ ProjectServer::ProjectServer(MasterServer& server, std::string root) :
     ast.on_indexing_needed = [this]() {
         sched.pump.schedule();
     };
-    features.peers = [this] {
-        llvm::SmallVector<const index::IndexQuery*> others;
-        for(auto& other: this->server.projects) {
-            if(other.get() != this) {
-                others.push_back(&other->index_query);
-            }
-        }
-        return others;
-    };
-    output_conn = ast.on_output.connect(
-        [this](const std::shared_ptr<Session>& session) { this->server.on_output.emit(session); });
-    progress_conn =
-        sched.pump.on_progress_changed.connect([this]() { this->server.on_index_progress.emit(); });
+    output_conn = ast.on_output.connect([this](const std::shared_ptr<Session>& session) {
+        this->server.on_output.emit(*this, session);
+    });
+    progress_conn = sched.pump.on_progress_changed.connect(
+        [this]() { this->server.index_progress_changed(*this); });
 
     // The pump is serving-neutral; the session-side policy hooks live on
     // this class and are installed here.
@@ -92,21 +83,41 @@ void ProjectServer::configure(llvm::StringRef init_options,
     // final merged values (e.g. a cache_dir overridden by the client).
     project.config =
         Config::load_from_workspace(root, &config_issues, &config_path, /*finalized=*/false);
-    auto own_cache_dir = project.config.project.cache_dir;
+    for(auto& issue: config_issues) {
+        LOG_GUIDANCE("Configuration problem in {}: {}", issue.file, issue.message);
+    }
+    std::string own_cache_dir = project.config.project.cache_dir;
     if(!init_options.empty()) {
         if(auto ov = kota::codec::json::from_string(init_options, project.config); !ov) {
             LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
         }
     }
     auto overlaid = project.config;
-    overlaid.finalize(root);
-    if(llvm::is_contained(taken_cache_dirs, overlaid.project.cache_dir)) {
-        LOG_WARN("Cache directory {} already serves another project; {} keeps its own",
-                 overlaid.project.cache_dir,
-                 root);
-        project.config.project.cache_dir = own_cache_dir;
-    }
     project.config.finalize(root);
+
+    // A cache directory serves one project: its writer lock is the
+    // process's, so a second project would take it too. Fall back to the
+    // project's own, then the default, then none.
+    auto& cache_dir = project.config.project.cache_dir;
+    if(!root.empty() && llvm::is_contained(taken_cache_dirs, cache_dir)) {
+        std::string requested = cache_dir;
+        for(auto& fallback: {own_cache_dir, std::string()}) {
+            project.config = overlaid;
+            project.config.project.cache_dir = fallback;
+            project.config.finalize(root);
+            if(!llvm::is_contained(taken_cache_dirs, cache_dir)) {
+                break;
+            }
+        }
+        if(llvm::is_contained(taken_cache_dirs, cache_dir)) {
+            cache_dir.clear();
+            project.config.project.cache_dir_defaulted = false;
+        }
+        LOG_WARN("Cache directory {} already serves another project; {} uses {}",
+                 requested,
+                 root,
+                 cache_dir.empty() ? std::string("none") : cache_dir);
+    }
 
     auto& cfg = project.config.project;
     if(cfg.readonly == "on") {
@@ -147,10 +158,10 @@ void ProjectServer::start() {
         }
     }
 
-    // Documents opened before the server became ready were validated
-    // before any choice was loaded and created under the default mode;
-    // re-check their persisted context choices and re-derive their
-    // serving mode now that the configuration governs. Settlement waits
+    // Documents opened before the project started were created under the
+    // default mode with no choice loaded; validate their persisted
+    // context choices and derive their serving mode now that the
+    // configuration governs. Settlement waits
     // until here — after the load — so divergence detection sees the
     // persisted shards it just loaded (a restored unsaved buffer must
     // escalate, not read as merely unindexed).
@@ -212,7 +223,7 @@ void ProjectServer::discover_around(Fid path_id) {
     }
 }
 
-std::shared_ptr<Session> ProjectServer::open_session(Fid path_id) {
+std::shared_ptr<Session> ProjectServer::create_session(Fid path_id) {
     // A replaced live session (an editor resending didOpen) leaves a
     // projection describing the old session's compile; the fresh session
     // starts with none, exactly like the pre-projection world's fresh
@@ -291,8 +302,8 @@ void ProjectServer::release_session(Fid path_id) {
     sched.pch.enforce_loaded_budget();
 }
 
-void ProjectServer::adopt_session(Fid path_id, std::string text, int version) {
-    auto session = open_session(path_id);
+void ProjectServer::open_session(Fid path_id, std::string text, int version) {
+    auto session = create_session(path_id);
     sessions.apply_open(*session, std::move(text), version);
     if(!started) {
         return;
@@ -302,7 +313,7 @@ void ProjectServer::adopt_session(Fid path_id, std::string text, int version) {
     settle_open_serving(session);
 }
 
-Admission ProjectServer::index_admission(Fid server_path_id) {
+Admission ProjectServer::index_admission(Fid path_id) {
     // An open file's session serves the LSP side; its disk snapshot is
     // indexed for the command-line readers when the disk itself changed
     // (a save), not for a dependency sweep — that would compile a file
@@ -315,16 +326,16 @@ Admission ProjectServer::index_admission(Fid server_path_id) {
     // one shard the session can serve from, blanking its features until
     // an escalation. Keep the last matching rows instead — the close-time
     // re-check covers the debt here too.
-    auto session = sessions.find(server_path_id);
+    auto session = sessions.find(path_id);
     if(!session) {
         return Admission::Admit;
     }
     if(session->serving != ServingMode::IndexOnly) {
-        return sched.pump.pending_reason(server_path_id) == ReindexReason::ContentChanged
+        return sched.pump.pending_reason(path_id) == ReindexReason::ContentChanged
                    ? Admission::Admit
                    : Admission::SkipAndSettle;
     }
-    auto disk = project.file_table.current(server_path_id);
+    auto disk = project.file_table.current(path_id);
     if(!disk || disk->size != session->text.size() ||
        disk->hash != llvm::xxh3_64bits(session->text)) {
         return Admission::SkipAndSettle;
@@ -332,16 +343,16 @@ Admission ProjectServer::index_admission(Fid server_path_id) {
     return Admission::Admit;
 }
 
-void ProjectServer::index_attempt_settled(Fid server_path_id) {
+void ProjectServer::index_attempt_settled(Fid path_id) {
     // The boost in settle_open_serving promised the index would serve the
     // cold session; an attempt that settles without a servable shard ends
     // that promise — escalate like the disabled-indexing branch, or the
     // session answers empty until its first edit.
-    auto session = sessions.find(server_path_id);
+    auto session = sessions.find(path_id);
     if(!session || session->serving != ServingMode::IndexOnly) {
         return;
     }
-    auto it = project.project_index.shards.find(server_path_id);
+    auto it = project.project_index.shards.find(path_id);
     if(it == project.project_index.shards.end() || !it->second.matches_content(session->text)) {
         ast.escalate(*session);
     }

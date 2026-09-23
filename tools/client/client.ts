@@ -175,9 +175,13 @@ export interface InitializeOptions {
     /// the most conservative client unless a test opts in.
     capabilities?: proto.ClientCapabilities | undefined;
     /// The workspace folders to announce, workspace-relative; the
-    /// workspace root alone when omitted, and no root at all (neither
-    /// folders nor rootUri) when empty.
-    folders?: string[] | undefined;
+    /// workspace root alone when omitted, no root at all (neither folders
+    /// nor rootUri) when empty, and the root through rootUri alone — a
+    /// client without folder support — when null.
+    folders?: string[] | null | undefined;
+    /// Runs between the initialize response and the initialized
+    /// notification.
+    beforeInitialized?: (() => Promise<void>) | undefined;
 }
 
 interface Transport {
@@ -446,18 +450,37 @@ export class CliceClient {
                 workspace: { workspaceEdit: { documentChanges: true } },
             },
             rootUri: options.folders?.length === 0 ? null : wsUri,
-            workspaceFolders: options.folders
-                ? options.folders.map((folder) => ({
-                      uri: URI.file(ws.path(folder)).toString(),
-                      name: folder,
-                  }))
-                : [{ uri: wsUri, name: "test" }],
             initializationOptions,
         };
+        if (options.folders === undefined) {
+            params.workspaceFolders = [{ uri: wsUri, name: "test" }];
+        } else if (options.folders !== null) {
+            params.workspaceFolders = options.folders.map((folder) => ({
+                uri: URI.file(ws.path(folder)).toString(),
+                name: folder,
+            }));
+        }
         this.initResult = await this.sendRequest(proto.InitializeRequest.type, params);
-        await this.sendNotification(proto.InitializedNotification.type, {});
         this.workspace = ws;
+        await options.beforeInitialized?.();
+        await this.sendNotification(proto.InitializedNotification.type, {});
         return this;
+    }
+
+    /// Announce workspace folders coming and going
+    /// (didChangeWorkspaceFolders), workspace-relative like `folders` at
+    /// initialize.
+    changeWorkspaceFolders(change: { added?: string[]; removed?: string[] }): Promise<void> {
+        const folder = (name: string) => ({
+            uri: URI.file(this.resolvePath(name)).toString(),
+            name,
+        });
+        return this.sendNotification(proto.DidChangeWorkspaceFoldersNotification.type, {
+            event: {
+                added: (change.added ?? []).map(folder),
+                removed: (change.removed ?? []).map(folder),
+            },
+        });
     }
 
     /// Gracefully shut down: shutdown request, exit notification, then the
@@ -850,6 +873,30 @@ export class CliceClient {
             includeDeclaration: false,
         });
         return (refs ?? []).map((ref) => ref.uri);
+    }
+
+    /// URIs of the definitions at a position.
+    async definitionUris(uri: string, line: number, character: number): Promise<string[]> {
+        return asLocations(await this.definitionAt(uri, line, character)).map(
+            (location) => location.uri,
+        );
+    }
+
+    /// Poll definitions at a position until expectedUri shows up.
+    async waitForDefinition(
+        uri: string,
+        line: number,
+        character: number,
+        expectedUri: string,
+        timeoutSeconds = 30,
+    ): Promise<boolean> {
+        for (let i = 0; i < timeoutSeconds; i++) {
+            if ((await this.definitionUris(uri, line, character)).includes(expectedUri)) {
+                return true;
+            }
+            await sleep(1_000);
+        }
+        return false;
     }
 
     /// Poll references at a position until expectedUri shows up.

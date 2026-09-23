@@ -64,7 +64,14 @@ static void fire_refresh(kota::event_loop& loop, kota::ipc::JsonPeer& peer, Para
 
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
     output_conn = server.on_output.connect(
-        [this](const std::shared_ptr<Session>& session) { push_output(*session); });
+        [this](ProjectServer& project, const std::shared_ptr<Session>& session) {
+            push_output(project, *session);
+        });
+    projects_conn = server.on_projects_changed.connect([this]() {
+        if(client_ready) {
+            publish_config_diagnostics();
+        }
+    });
     progress_conn = server.on_index_progress.connect([this]() { report_index_progress(); });
     serving_conn = server.on_serving_rows_changed.connect([this]() { refresh_index_served(); });
 
@@ -121,7 +128,7 @@ LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     return ResolvedDoc{std::move(path),
                        path_id,
                        this->server.find_session(path_id),
-                       &this->server.owner_of(path_id)};
+                       this->server.owner_of(path_id).shared_from_this()};
 }
 
 void LSPClient::register_lifecycle() {
@@ -136,23 +143,18 @@ void LSPClient::register_lifecycle() {
         }
 
         // Every workspace folder is a project; a client without folder
-        // support names its one root through rootUri. Canonicalize so
-        // downstream prefix checks (cache_dir, ${workspace} expansion,
-        // artifact detection) compare against the same spelling the file
-        // table stores.
+        // support names its one root through rootUri.
         auto& init = params.lsp__initialize_params;
         auto& folders = params.workspace_folders_initialize_params.workspace_folders;
+        std::vector<std::string> roots;
         if(folders.has_value() && folders->has_value() && !(*folders)->empty()) {
             for(auto& folder: **folders) {
-                auto root = uri_to_path(folder.uri);
-                path::canonicalize(root);
-                srv.workspace_roots.push_back(std::move(root));
+                roots.push_back(uri_to_path(folder.uri));
             }
         } else if(init.root_uri.has_value()) {
-            auto root = uri_to_path(*init.root_uri);
-            path::canonicalize(root);
-            srv.workspace_roots.push_back(std::move(root));
+            roots.push_back(uri_to_path(*init.root_uri));
         }
+        srv.change_folders({}, std::move(roots));
 
         if(init.capabilities.workspace.has_value()) {
             auto& ws_caps = *init.capabilities.workspace;
@@ -282,7 +284,7 @@ void LSPClient::register_lifecycle() {
                 auto projection = projections.projection(path_id);
                 if(projection && projection->output.has_value() && projections.current(path_id) &&
                    projection->output->version == session.version) {
-                    this->push_output(session);
+                    this->push_output(*project, session);
                 }
                 return true;
             });
@@ -296,27 +298,15 @@ void LSPClient::register_lifecycle() {
         if(past_shutdown(srv.lifecycle)) {
             return;
         }
+        std::vector<std::string> removed;
         for(auto& folder: params.event.removed) {
-            auto root = uri_to_path(folder.uri);
-            path::canonicalize(root);
-            if(srv.lifecycle == ServerLifecycle::Ready) {
-                srv.remove_folder(root);
-            } else {
-                llvm::erase(srv.workspace_roots, root);
-            }
+            removed.push_back(uri_to_path(folder.uri));
         }
+        std::vector<std::string> added;
         for(auto& folder: params.event.added) {
-            auto root = uri_to_path(folder.uri);
-            path::canonicalize(root);
-            if(srv.lifecycle == ServerLifecycle::Ready) {
-                srv.add_folder(std::move(root));
-            } else if(!llvm::is_contained(srv.workspace_roots, root)) {
-                srv.workspace_roots.push_back(std::move(root));
-            }
+            added.push_back(uri_to_path(folder.uri));
         }
-        if(this->client_ready) {
-            this->publish_config_diagnostics();
-        }
+        srv.change_folders(std::move(removed), std::move(added));
     });
 
     peer.on_request(
@@ -341,7 +331,7 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.foreground_pulse();
 
-        auto [path, path_id, session, routed] = resolve_uri(params.text_document.uri);
+        auto path = uri_to_path(params.text_document.uri);
 
         // A didOpen racing ahead of the initialize handshake is a client
         // protocol violation, but sessions are plain state with no worker
@@ -353,21 +343,9 @@ void LSPClient::register_document_sync() {
             LOG_WARN("didOpen before the server is ready, accepting: {}", path);
         }
 
-        // Discovery first: a database found above the file decides which
-        // project it is routed to.
-        srv.discover_around(path_id);
-        session = srv.open_session(path_id);
-        auto& project = srv.owner_of(path_id);
-        project.sessions.apply_open(*session,
-                                    params.text_document.text,
-                                    params.text_document.version);
-
-        // A context choice persisted from an earlier session stays
-        // authoritative only if it still holds.
-        project.contexts.validate_saved_context(session->path_id);
-
-        project.dispatch(FileEvent::buffer_opened(path_id));
-        project.settle_open_serving(session);
+        srv.open_session(srv.files.intern(path),
+                         params.text_document.text,
+                         params.text_document.version);
 
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
     });
@@ -455,7 +433,6 @@ void LSPClient::register_document_sync() {
 void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto& srv = this->server;
         auto [path, path_id, session, project] =
             resolve_uri(params.text_document_position_params.text_document.uri);
         if(!session)
@@ -468,7 +445,6 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& srv = this->server;
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
@@ -478,7 +454,6 @@ void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx,
                            const protocol::InlayHintParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto& srv = this->server;
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
@@ -488,7 +463,6 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& srv = this->server;
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
@@ -498,7 +472,6 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& srv = this->server;
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
@@ -520,7 +493,6 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& srv = this->server;
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
@@ -593,7 +565,6 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& srv = this->server;
             auto [path, path_id, session, project] =
                 resolve_uri(params.text_document_position_params.text_document.uri);
             if(!session)
@@ -612,7 +583,6 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& srv = this->server;
             auto [path, path_id, session, project] =
                 resolve_uri(params.text_document_position_params.text_document.uri);
             if(!session)
@@ -626,7 +596,6 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentFormattingParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& srv = this->server;
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
@@ -636,7 +605,6 @@ void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx,
                            const protocol::DocumentRangeFormattingParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto& srv = this->server;
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
@@ -742,17 +710,25 @@ void LSPClient::register_extensions() {
             co_return to_raw(result);
         });
 
+    // The protocol names no file: the first project over a folder
+    // answers, the first one being rootless in a server without folders.
+    auto configured = [this]() -> ProjectServer& {
+        auto& projects = this->server.projects;
+        auto it = llvm::find_if(projects, [](auto& project) { return !project->root.empty(); });
+        return it != projects.end() ? **it : *projects.front();
+    };
+
     peer.on_request("clice/listConfigurations",
-                    [this](RequestContext& ctx, const ext::ListConfigurationsParams&) -> RawResult {
-                        // The protocol names no file: the first project answers.
-                        co_return to_raw(
-                            this->server.projects.front()->context_service.list_configurations());
+                    [configured](RequestContext& ctx,
+                                 const ext::ListConfigurationsParams&) -> RawResult {
+                        co_return to_raw(configured().context_service.list_configurations());
                     });
 
     peer.on_request(
         "clice/switchConfiguration",
-        [this](RequestContext& ctx, const ext::SwitchConfigurationParams& params) -> RawResult {
-            co_return to_raw(this->server.projects.front()->context_service.switch_configuration(
+        [this, configured](RequestContext& ctx,
+                           const ext::SwitchConfigurationParams& params) -> RawResult {
+            co_return to_raw(configured().context_service.switch_configuration(
                 params.name,
                 this->server.requested_configuration));
         });
@@ -773,7 +749,7 @@ void LSPClient::register_extensions() {
                         std::uint32_t count = 0;
                         bool loaded = false;
                         for(std::size_t i = 0; i < srv.projects.size(); i += 1) {
-                            auto* project = srv.projects[i].get();
+                            auto project = srv.projects[i];
                             if(!project->tracker) {
                                 continue;
                             }
@@ -864,6 +840,10 @@ void LSPClient::register_extensions() {
 /// load clears diagnostics from a previous (broken) state.
 void LSPClient::publish_config_diagnostics() {
     llvm::StringMap<std::vector<protocol::Diagnostic>> by_file;
+    for(auto& file: published_configs) {
+        by_file.try_emplace(file.getKey());
+    }
+    published_configs.clear();
     for(auto& project: server.projects) {
         if(project->config_path.empty()) {
             continue;
@@ -889,9 +869,9 @@ void LSPClient::publish_config_diagnostics() {
             diagnostic.source = "clice";
             diagnostic.message = issue.message;
             by_file[issue.file].push_back(std::move(diagnostic));
-
-            LOG_GUIDANCE("Configuration problem in {}: {}", issue.file, issue.message);
+            published_configs.insert(issue.file);
         }
+        published_configs.insert(project->config_path);
     }
 
     for(auto& [file, diagnostics]: by_file) {
@@ -907,14 +887,14 @@ void LSPClient::publish_config_diagnostics() {
     }
 }
 
-void LSPClient::push_output(const Session& session) {
+void LSPClient::push_output(ProjectServer& project, const Session& session) {
     // Held back until the handshake completes (the LSP spec forbids
     // publishDiagnostics before the initialize response); the output stays
     // materialized in the projection and the initialized handler replays it.
     if(!client_ready) {
         return;
     }
-    auto projection = server.owner_of(session.path_id).ast.projections.projection(session.path_id);
+    auto projection = project.ast.projections.projection(session.path_id);
     if(!projection || !projection->output.has_value()) {
         return;
     }
@@ -971,7 +951,7 @@ void LSPClient::refresh_index_served() {
 }
 
 void LSPClient::report_index_progress() {
-    auto p = server.index_progress();
+    auto& p = server.index_progress;
     using Stage = IndexPump::Progress::Stage;
     auto& st = *index_progress;
     switch(p.stage) {

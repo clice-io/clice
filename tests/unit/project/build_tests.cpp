@@ -443,6 +443,21 @@ TEST_CASE(DiscoverEveryNearby) {
     EXPECT_EQ(above[1], path::join(tmp.root, "compile_commands.json"));
 };
 
+TEST_CASE(ProjectRootAbove) {
+    /// A file outside every folder belongs to the nearest ancestor holding
+    /// a clice.toml or a database, directly or in its build directory.
+    TempDir tmp;
+    tmp.touch("lib/clice.toml", "");
+    tmp.touch("app/build/compile_commands.json", "[]");
+    tmp.touch("tool/compile_commands.json", "[]");
+    tmp.touch("tool/sub/clice.toml", "");
+    EXPECT_EQ(project_root_above(tmp.path("lib/src/deep")), path::join(tmp.root, "lib"));
+    EXPECT_EQ(project_root_above(tmp.path("app/src")), path::join(tmp.root, "app"));
+    EXPECT_EQ(project_root_above(tmp.path("tool/src")), path::join(tmp.root, "tool"));
+    EXPECT_EQ(project_root_above(tmp.path("tool/sub/src")), path::join(tmp.root, "tool", "sub"));
+    EXPECT_EQ(project_root_above(tmp.path("none/src")), "");
+};
+
 TEST_CASE(RefreshDefaultSources) {
     /// A file created under a default-command rule's patterns appears at
     /// the next refresh, once; a deleted one leaves the members.

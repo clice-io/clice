@@ -66,6 +66,9 @@ public:
 
     using RawResult = Dispatcher::RawResult;
 
+    /// The most workspace/symbol answers, from one project or all.
+    constexpr static std::size_t workspace_symbol_limit = 100;
+
     /// The other projects' index queries, wired by the master. A symbol's
     /// references and definition are also sought in those whose index
     /// holds a file declaring it: an application and the library beside
@@ -280,12 +283,12 @@ private:
     std::optional<protocol::Hover> resolve_preamble_hover(Session& session,
                                                           const protocol::Position& position);
 
+    /// The peers indexing a file that declares the cursor's symbol.
+    llvm::SmallVector<const index::IndexQuery*> peers_of(const index::IndexQuery::Cursor& cursor);
+
     ASTFamily& ast;
     Dispatcher& dispatcher;
     index::IndexQuery& query;
-
-    /// The peers indexing a file that declares the cursor's symbol.
-    llvm::SmallVector<const index::IndexQuery*> peers_of(const index::IndexQuery::Cursor& cursor);
     Project& project;
     EditorContext& contexts;
     IndexPump& pump;

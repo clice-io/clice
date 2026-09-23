@@ -284,7 +284,8 @@ llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_
 std::string project_root_above(llvm::StringRef start) {
     std::string found;
     path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
-        if(llvm::sys::fs::exists(path::join(dir, "clice.toml")) || !database_in(dir).empty()) {
+        if(llvm::sys::fs::exists(path::join(dir, "clice.toml")) || !database_in(dir).empty() ||
+           !database_in(path::join(dir, "build")).empty()) {
             found = dir.str();
             return false;
         }

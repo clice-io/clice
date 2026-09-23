@@ -37,12 +37,14 @@ struct SchedulingStack {
 
     /// The shutdown tail once compile and index work is quiesced
     /// (contract 11): wind down the graph's rounds, then the final save
-    /// with the one metadata retry late debt may owe. The owner stops the
-    /// pool next, and only then closes the cache store (see close).
+    /// with the one metadata retry late debt may owe. The owner closes the
+    /// cache store next (see close).
     kota::task<> shutdown();
 
-    /// Close the cache store, after the pool stopped: no worker writes
-    /// into it any more.
+    /// Close the cache store once no build of this stack is awaited: after
+    /// the pool stopped, or right after shutdown() while the pool serves
+    /// other projects — a worker still finishing a cancelled build then
+    /// only fails its write.
     void close();
 };
 

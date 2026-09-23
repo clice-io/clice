@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 
-#include "config/config.h"
 #include "sched/index/pump.h"
 #include "server/state/session.h"
 #include "server/transport/project_server.h"
@@ -17,6 +16,7 @@
 #include "kota/async/async.h"
 #include "kota/deco/deco.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -104,7 +104,8 @@ public:
     /// Start serving `workspace_roots` (the client's folders, or the
     /// command line's --workspace; none serves a single rootless project):
     /// load each project's configuration, start the pool sized for all of
-    /// them, and load the projects.
+    /// them, and load the projects. Documents opened before move to the
+    /// projects routing picks for them.
     void initialize();
     void initialize(llvm::StringRef root);
 
@@ -116,28 +117,26 @@ public:
 
     std::shared_ptr<Session> find_session(Fid path_id);
 
-    /// Route the file to its project and open its session there. A file no
-    /// project claims starts serving the project found above it (a
-    /// clice.toml or a compilation database), as if that folder were open.
-    std::shared_ptr<Session> open_session(Fid path_id);
+    /// Open a document with its buffer in the project routing picks, once
+    /// every project holding it discovered the databases above it (see
+    /// FileTracker::discover_around). A file no project claims starts
+    /// serving the project found above it (a clice.toml or a compilation
+    /// database), as if that folder were open.
+    void open_session(Fid path_id, std::string text, int version);
 
     /// Close the file's session in the project it was routed to.
     void close_session(Fid path_id);
 
-    /// Before a file's first compile: every project whose root holds the
-    /// file registers the databases between it and the root (see
-    /// FileTracker::discover_around), so routing finds its entry.
-    void discover_around(Fid path_id);
+    /// Stop serving the `removed` folders and serve the `added` ones
+    /// (didChangeWorkspaceFolders); before initialize, edit the folders it
+    /// will serve. Open documents of a removed project move to the project
+    /// routing picks for them now; a folder both removed and added (a
+    /// rename) keeps serving.
+    void change_folders(std::vector<std::string> removed, std::vector<std::string> added);
 
-    /// Serve another folder / stop serving one (didChangeWorkspaceFolders).
-    /// Open documents of a removed project move to the project routing
-    /// picks for them now.
-    void add_folder(std::string root);
-    void remove_folder(llvm::StringRef root);
-
-    /// The indexing progress of every project, as one round: the counts
-    /// add up, and it ends when the last project's round ends.
-    IndexPump::Progress index_progress() const;
+    /// A project's indexing progress moved: fold every project's round
+    /// into index_progress and wake the transports.
+    void index_progress_changed(ProjectServer& project);
 
     /// workspace/symbol over every project: each project's ranked matches,
     /// interleaved rank by rank, a symbol two projects index listed once.
@@ -158,14 +157,23 @@ public:
     WorkerPool pool;
 
     /// The projects served, in folder order; never empty. The first also
-    /// serves files no project claims.
-    std::vector<std::unique_ptr<ProjectServer>> projects;
+    /// serves files no project claims. Shared with the requests running in
+    /// a project, which keep a removed one alive until they complete.
+    std::vector<std::shared_ptr<ProjectServer>> projects;
 
     /// A project published a document's compile output.
-    Signal<std::shared_ptr<Session>> on_output;
+    Signal<ProjectServer&, std::shared_ptr<Session>> on_output;
 
-    /// A project's indexing progress moved; read index_progress().
+    /// The projects' indexing rounds as one: it begins with the first
+    /// project's round and ends with the last one's, and a project whose
+    /// round ended keeps its counts in it until then.
+    IndexPump::Progress index_progress{.stage = IndexPump::Progress::Stage::End};
+
+    /// index_progress moved.
     Signal<> on_index_progress;
+
+    /// A project started or stopped serving.
+    Signal<> on_projects_changed;
 
     /// Emitted when rows an open index-served session is serving changed:
     /// results the client already pulled describe the old rows, and only a
@@ -205,6 +213,28 @@ public:
     std::string requested_configuration;
 
 private:
+    /// A project over `root`, its cross-project queries wired to the
+    /// others.
+    std::shared_ptr<ProjectServer> make_project(std::string root);
+
+    /// Configure and start a project added to `projects`.
+    void start_project(ProjectServer& project);
+
+    void add_folder(std::string root);
+    void remove_folder(llvm::StringRef root);
+
+    /// Shut a project that stopped serving down in the background.
+    void retire(std::shared_ptr<ProjectServer> project);
+
+    /// The cache directories served now, projects still shutting down
+    /// included: a cache directory belongs to one project at a time.
+    std::vector<std::string> taken_cache_dirs() const;
+
+    /// Before a file's first compile: every project whose root holds the
+    /// file registers the databases between it and the root, so routing
+    /// finds its entry.
+    void discover_around(Fid path_id);
+
     /// The project a file belongs to: the one whose build compiles it (its
     /// own entry or a rule's default command), else one whose include graph
     /// reaches it (it borrows a host there), else the deepest root holding
@@ -221,6 +251,10 @@ private:
     /// The project each open document was routed to.
     llvm::DenseMap<Fid, ProjectServer*> owners;
 
+    /// The projects taking part in the current index_progress round.
+    llvm::SmallPtrSet<ProjectServer*, 4> indexing;
+    void fold_index_progress();
+
     /// The pool's callbacks, routed to the projects owning the documents.
     void wire();
 
@@ -232,6 +266,9 @@ private:
 
     /// Shutdowns of removed projects; joined in shutdown_and_cleanup().
     kota::task_group<> bg_tasks;
+
+    /// Removed projects until their shutdown completes.
+    std::vector<std::shared_ptr<ProjectServer>> retiring;
 
     std::string self_path;
     std::string session_log_dir;

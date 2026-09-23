@@ -33,9 +33,10 @@ class MasterServer;
 /// command resolution and editor context, its scheduling stack over the
 /// process's worker pool, the open documents routed to it with the AST
 /// family compiling them, and the read services answering over both. The
-/// master owns one per project and routes each file to one of them
-/// (MasterServer::owner_of); nothing here knows about the others.
-class ProjectServer {
+/// master holds one per project and routes each file to one of them
+/// (MasterServer::owner_of); nothing here knows about the others. Shared:
+/// a request in flight keeps a removed project alive until it completes.
+class ProjectServer : public std::enable_shared_from_this<ProjectServer> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
     /// server without folders runs, which loads nothing.
@@ -45,8 +46,9 @@ public:
     /// Load the configuration — clice.toml under the root, overlaid with
     /// the client's initializationOptions (`init_options`, JSON), then
     /// finalized — and apply its serving mode. A cache directory belongs
-    /// to one project (its writer lock admits one): when the overlay names
-    /// one of `taken_cache_dirs`, this project keeps its own.
+    /// to one project: when the one configured is among
+    /// `taken_cache_dirs`, this project falls back to its clice.toml's,
+    /// then the default, then runs without one.
     void configure(llvm::StringRef init_options, llvm::ArrayRef<std::string> taken_cache_dirs);
 
     /// Load the project from disk (see bootstrap_project), restore the
@@ -55,18 +57,19 @@ public:
     /// validated and settled against the loaded state.
     void start();
 
-    /// Quiesce compile and index work and persist the final state; the
-    /// master stops the pool next, then close() releases the store.
+    /// Quiesce compile and index work and persist the final state; then
+    /// close() releases the store — once the pool stopped at exit, or
+    /// right away for a project removed while the pool serves others (a
+    /// worker still finishing a cancelled build of it only fails its
+    /// write).
     kota::task<> shutdown();
     void close();
 
-    std::shared_ptr<Session> open_session(Fid path_id);
-
-    /// Settle a freshly opened index-only buffer: escalate one that
-    /// already diverged from its shard, or boost the file's background
-    /// indexing when nothing can serve it. Escalated sessions need no
-    /// settlement — builds are pull-driven.
-    void settle_open_serving(std::shared_ptr<Session> session);
+    /// Open a document routed here with its buffer — an editor's didOpen,
+    /// or one another project released. Its saved context choice is
+    /// validated and its serving settled now, or by start() when the
+    /// project has not started yet.
+    void open_session(Fid path_id, std::string text, int version);
 
     /// Close the session. The diagnostics clear travels through the
     /// session's output + on_output signal; a transport whose client has
@@ -76,12 +79,8 @@ public:
 
     /// Hand an open document over to another project: drop its session
     /// and compile state here without closing it — the buffer lives on in
-    /// the project that adopts it.
+    /// the project that opens it next.
     void release_session(Fid path_id);
-
-    /// Take over an open document another project released, with its
-    /// buffer; once started, validate and settle it as a fresh open.
-    void adopt_session(Fid path_id, std::string text, int version);
 
     /// Before a file's first compile: register the databases discovery
     /// finds between its directory and the root (see
@@ -110,8 +109,8 @@ public:
     /// serving-neutral; the session-side policy — admission vetoes,
     /// unservable escalation, serving-row refresh — lives on this class
     /// and is installed into the pump's hooks at construction. The AST
-    /// family is assembled here in the server: its rounds capture
-    /// sessions, quarantine and publishing.
+    /// family is assembled here in the project's server: its rounds
+    /// capture sessions, quarantine and publishing.
     SchedulingStack sched;
     EditorContext contexts{project, commands, sched.store.contexts};
     ASTFamily ast;
@@ -132,9 +131,6 @@ public:
     /// clice/internal/poll test hook drives ticks directly.
     std::unique_ptr<FileTracker> tracker;
 
-    /// start() ran: documents adopted from now on are settled at once.
-    bool started = false;
-
     /// Problems found while loading clice.toml, kept so LSPClient can
     /// publish them as diagnostics on the config file's URI, and the path
     /// of the file found (empty when none).
@@ -142,6 +138,18 @@ public:
     std::string config_path;
 
 private:
+    /// A fresh session for the document, replacing a live one.
+    std::shared_ptr<Session> create_session(Fid path_id);
+
+    /// Settle a freshly opened index-only buffer: escalate one that
+    /// already diverged from its shard, or boost the file's background
+    /// indexing when nothing can serve it. Escalated sessions need no
+    /// settlement — builds are pull-driven.
+    void settle_open_serving(std::shared_ptr<Session> session);
+
+    /// start() ran: documents opened from now on are settled at once.
+    bool started = false;
+
     /// Dispatch- and landing-time admission on one claimed pump file: the
     /// serving side's veto (open sessions, index-only disk divergence).
     Admission index_admission(Fid path_id);

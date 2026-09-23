@@ -400,17 +400,15 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
         // A definition another project compiles (a library's source beside
         // the application including its header) outranks the declarations
         // this project alone can offer.
-        std::vector<index::Site> defined;
-        for(auto* peer: peers_of(*cursor)) {
-            auto more = peer->sites(cursor->symbol, RelationKind::Definition);
-            defined.insert(defined.end(),
-                           std::make_move_iterator(more.begin()),
-                           std::make_move_iterator(more.end()));
-        }
-        auto own = query.sites(cursor->symbol, RelationKind::Definition);
-        if(!defined.empty() && own.empty()) {
-            index::dedup_sites(defined);
-            return to_lsp::locations(defined);
+        if(query.sites(cursor->symbol, RelationKind::Definition).empty()) {
+            std::vector<index::Site> defined;
+            for(auto* peer: peers_of(*cursor)) {
+                llvm::append_range(defined, peer->sites(cursor->symbol, RelationKind::Definition));
+            }
+            if(!defined.empty()) {
+                index::dedup_sites(defined);
+                return to_lsp::locations(defined);
+            }
         }
         return to_lsp::locations(query.definition(*cursor));
     };
@@ -808,10 +806,7 @@ Features::RawResult Features::references(std::shared_ptr<Session> session,
     }
     auto sites = query.references(*cursor, include_declaration);
     for(auto* peer: peers_of(*cursor)) {
-        auto more = peer->references(*cursor, include_declaration);
-        sites.insert(sites.end(),
-                     std::make_move_iterator(more.begin()),
-                     std::make_move_iterator(more.end()));
+        llvm::append_range(sites, peer->references(*cursor, include_declaration));
     }
     index::dedup_sites(sites);
     co_return to_raw(to_lsp::locations(sites));
@@ -820,14 +815,15 @@ Features::RawResult Features::references(std::shared_ptr<Session> session,
 llvm::SmallVector<const index::IndexQuery*>
     Features::peers_of(const index::IndexQuery::Cursor& cursor) {
     llvm::SmallVector<const index::IndexQuery*> relevant;
-    if(!peers) {
+    auto others = peers();
+    if(others.empty()) {
         return relevant;
     }
     llvm::SmallVector<Fid> declaring{cursor.site.file};
     for(auto& site: query.declaration(cursor)) {
         declaring.push_back(site.file);
     }
-    for(auto* peer: peers()) {
+    for(auto* peer: others) {
         if(llvm::any_of(declaring, [&](Fid file) { return peer->indexes(file); })) {
             relevant.push_back(peer);
         }
@@ -1017,7 +1013,7 @@ std::vector<protocol::SymbolInformation> Features::workspace_symbol(llvm::String
     // again, where a bare name would fail a qualified query: those
     // replies carry the qualified name.
     bool qualified = parsed->absolute || !parsed->scope.empty();
-    for(auto& located: query.search(*parsed, 100)) {
+    for(auto& located: query.search(*parsed, workspace_symbol_limit)) {
         auto container = query.container_name(located.symbol.hash);
         auto info = to_lsp::symbol_information(located.symbol, located.site, container);
         if(qualified && !container.empty()) {

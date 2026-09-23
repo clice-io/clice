@@ -13,6 +13,7 @@
 #include "kota/ipc/codec/json.h"
 #include "kota/ipc/lsp/progress.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace clice {
 
@@ -30,12 +31,13 @@ private:
 
     /// Shared front half of every document-addressed handler: URI → path →
     /// interned path_id → open session (null when the document is not open)
-    /// → the project serving it.
+    /// → the project serving it, held for the request: a folder removed
+    /// while the request runs keeps its project alive until it completes.
     struct ResolvedDoc {
         std::string path;
         Fid path_id;
         std::shared_ptr<Session> session;
-        ProjectServer* project;
+        std::shared_ptr<ProjectServer> project;
     };
 
     ResolvedDoc resolve_uri(const std::string& uri);
@@ -47,7 +49,9 @@ private:
     void register_language_features();
     void register_extensions();
 
-    /// Push clice.toml load problems as diagnostics on the config file URI.
+    /// Push every served project's clice.toml load problems as
+    /// diagnostics on the config file URI, and clear the ones of a
+    /// configuration no project loads any more.
     void publish_config_diagnostics();
 
     /// Push a session's materialized compile output (diagnostics, plus
@@ -55,12 +59,12 @@ private:
     /// the compiler's on_output signal, and by the initialized handler to
     /// replay outputs that materialized before the client was ready.
     /// No-op until client_ready.
-    void push_output(const Session& session);
+    void push_output(ProjectServer& project, const Session& session);
 
     /// React to a background-indexing progress change: drive the LSP
     /// work-done progress token through its begin/report/end lifecycle,
-    /// reading the counts from the pump. Invoked by the
-    /// background indexer's on_progress_changed signal.
+    /// reading the counts from MasterServer::index_progress. Invoked by
+    /// the server's on_index_progress signal.
     void report_index_progress();
 
     /// Ask the client to re-pull semantic tokens and folding ranges after
@@ -105,8 +109,15 @@ private:
     /// didChange to make it re-pull — the push path sends refreshes.
     llvm::DenseMap<Fid, int> published_versions;
 
+    /// The configuration files publish_config_diagnostics published last.
+    llvm::StringSet<> published_configs;
+
     /// Subscription to compile outputs; disconnects on destruction.
-    Signal<std::shared_ptr<Session>>::Connection output_conn;
+    Signal<ProjectServer&, std::shared_ptr<Session>>::Connection output_conn;
+
+    /// Subscription to the served projects changing; disconnects on
+    /// destruction.
+    Signal<>::Connection projects_conn;
 
     /// Subscription to background-index progress; disconnects on destruction.
     Signal<>::Connection progress_conn;
