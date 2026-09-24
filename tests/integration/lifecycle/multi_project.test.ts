@@ -521,9 +521,7 @@ test("context from another folder", async ({ session }) => {
     await client.hoverAt(header, 1, 0);
     await compiled;
     client.assertNoErrors(header, "the application's host defines IN_APP");
-    expect((await client.currentContext(header)).context?.uri).toBe(
-        workspace.uri("app/main.cpp"),
-    );
+    expect((await client.currentContext(header)).context?.uri).toBe(workspace.uri("app/main.cpp"));
 });
 
 test("unrelated folders keep references apart", async ({ session }) => {

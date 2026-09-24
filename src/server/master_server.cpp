@@ -596,10 +596,10 @@ ext::QueryContextResult MasterServer::query_contexts(llvm::StringRef path,
 }
 
 kota::task<ext::SwitchContextResult> MasterServer::switch_context(llvm::StringRef path,
-                                                                 Fid path_id,
-                                                                 llvm::StringRef context_path,
-                                                                 Fid context_path_id,
-                                                                 ext::SwitchContextParams params) {
+                                                                  Fid path_id,
+                                                                  llvm::StringRef context_path,
+                                                                  Fid context_path_id,
+                                                                  ext::SwitchContextParams params) {
     ext::SwitchContextResult result;
     // A choice made against an outdated listing may reference contexts
     // that no longer exist — make the client re-query.
@@ -630,8 +630,12 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(llvm::StringRe
         target->open_session(path_id, session->text, session->version);
         session = find_session(path_id);
     }
-    result = co_await target->context_service
-                 .switch_context(path, path_id, session.get(), context_path, context_path_id, params);
+    result = co_await target->context_service.switch_context(path,
+                                                             path_id,
+                                                             session.get(),
+                                                             context_path,
+                                                             context_path_id,
+                                                             params);
     // A context choice asks for the context-pure AST view; the merged
     // index cannot give it (union rows). A rejected switch changed no
     // context and owes none.
