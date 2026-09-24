@@ -4,13 +4,11 @@
     {"name": "V0", "run": "35912428380", "artifact": "final-V0"},
     {"name": "V1", "run": "35912428380", "artifact": "final-V1"},
     {"name": "V2", "run": "35912428380", "artifact": "final-V2"},
-    {"name": "V0-rel", "run": "35912427164", "artifact": "final-V0"},
-    {"name": "V4", "run": "35912427164", "artifact": "final-V4"}
+    {"name": "V5", "run": "35925497552", "artifact": "final-V5"}
   ],
   "profiles": [
     {"name": "clice", "run": "35912428380", "artifact": "profile-clice"},
     {"name": "clang", "run": "35906099298", "artifact": "profile-clang"},
-    {"name": "clice-own", "run": "35912428380", "artifact": "profile-clice-own"},
-    {"name": "smoke", "run": "35912427164", "artifact": "profile-smoke"}
+    {"name": "merged", "run": "35925497552", "artifact": "profile-merged"}
   ]
 }
