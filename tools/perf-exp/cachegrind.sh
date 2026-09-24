@@ -1,24 +1,17 @@
 #!/usr/bin/env bash
-# Deterministic instruction counts (cachegrind Ir) of `clice index` on two
-# corpus files; three runs of NEW (A/A) and one of OLD.
+# Deterministic instruction counts (cachegrind Ir) of in-process `clice inspect
+# tu_index`: three runs of NEW (A/A) and one of OLD per file.
 set -uo pipefail
-CORPUS="$1"; OLD="$2"; NEW="$3"
-ws=cg-ws; rm -rf $ws; mkdir -p $ws
-cp "$CORPUS/sqlite3.c" "$CORPUS/reflection.cpp" $ws/
-python3 - "$PWD/$ws" <<'PY'
-import json,sys
-d=sys.argv[1]
-json.dump([{"directory":d,"file":f"{d}/sqlite3.c","arguments":["clang","--target=x86_64-unknown-linux-gnu","-std=c11","-w","-c","sqlite3.c"]},
-           {"directory":d,"file":f"{d}/reflection.cpp","arguments":["clang++","--target=x86_64-unknown-linux-gnu","-std=c++17","-w","-c","reflection.cpp"]}],
-          open(f"{d}/compile_commands.json","w"))
-PY
-for run in NEW1 NEW2 NEW3 OLD1; do
-  bin=$NEW; [ "${run#OLD}" != "$run" ] && bin=$OLD
-  rm -rf $ws/.clice cg.out.*
-  s=$(date +%s)
-  valgrind --tool=cachegrind --cache-sim=no --trace-children=yes --cachegrind-out-file=cg.out.%p \
-    "$bin" index --workers 1 --workspace "$PWD/$ws" >/dev/null 2>cg.err || { tail -20 cg.err; }
-  e=$(date +%s)
-  echo "$run seconds=$((e-s))"
-  for f in cg.out.*; do echo "  $f $(grep -E '^(summary|cmd):' $f | tr '\n' ' ' | cut -c1-160)"; done
+CORPUS="$1"; OLD="$2"; NEW="$3"; REF="$4"
+cd "$CORPUS"
+for spec in reflection.cpp:c++17:clang++ sqlite3.c:c11:clang; do
+  IFS=: read -r f std drv <<< "$spec"
+  flags="[\"$REF/bin/$drv\",\"--target=x86_64-unknown-linux-gnu\",\"-std=$std\",\"-w\"]"
+  for run in NEW NEW NEW OLD; do
+    bin=$NEW; [ $run = OLD ] && bin=$OLD
+    s=$(date +%s)
+    ir=$(valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=/dev/null \
+      "$bin" inspect tu_index "$f" --flags "$flags" 2>&1 >/dev/null | grep "I *refs" | awk '{print $NF}')
+    echo "CG $f $run Ir=$ir secs=$(( $(date +%s)-s ))"
+  done
 done

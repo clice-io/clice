@@ -34,8 +34,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025, macos-15, ubuntu-24.04-arm, windows-11-arm]
-        replica: [1, 2, 3]
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+        replica: [1, 2, 3, 4, 5, 6]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     defaults:
@@ -84,12 +84,13 @@ jobs:
             --clice A="$ROOT/bin/$OLD/clice/bin/clice$EXE" \
             --clice B="$ROOT/bin/$NEW/clice/bin/clice$EXE" \
             --clice B2="$ROOT/bin/$NEW/clice/bin/clice$EXE" \
-            --rounds 15 --out result.json
+            --rounds 5 --out result.json
       - name: Cachegrind
-        if: matrix.os == 'ubuntu-24.04'
+        if: matrix.os == 'ubuntu-24.04' || matrix.os == 'ubuntu-24.04-arm'
         run: |
-          sudo apt-get install -y -q valgrind >/dev/null
-          bash tools/perf-exp/cachegrind.sh corpus "$PWD/bin/$OLD/clice/bin/clice" "$PWD/bin/$NEW/clice/bin/clice"
+          sudo apt-get update -q >/dev/null && sudo apt-get install -y -q valgrind >/dev/null
+          grep -m1 "model name" /proc/cpuinfo
+          bash tools/perf-exp/cachegrind.sh "$PWD/corpus" "$PWD/bin/$OLD/clice/bin/clice" "$PWD/bin/$NEW/clice/bin/clice" "$PWD/ref"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
