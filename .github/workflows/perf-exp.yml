@@ -1,0 +1,95 @@
+name: perf-exp
+
+on:
+  push:
+    branches: [exp/perf-baseline]
+
+permissions:
+  contents: read
+
+env:
+  REF_TAG: "20260908"
+  OLD: "2026092007"
+  NEW: "2026092407"
+
+jobs:
+  corpus:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Reference clang
+        run: |
+          curl -fsSL https://github.com/mstorsjo/llvm-mingw/releases/download/$REF_TAG/llvm-mingw-$REF_TAG-ucrt-ubuntu-22.04-x86_64.tar.xz | tar xJ
+          mv llvm-mingw-* ref
+      - run: bash tools/perf-exp/make_corpus.sh "$PWD/ref/bin/clang" "$PWD/corpus"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: corpus
+          path: corpus/
+
+  bench:
+    needs: corpus
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+        replica: [1, 2, 3, 4]
+        include:
+          - os: blacksmith-4vcpu-ubuntu-2404
+            replica: 1
+          - os: blacksmith-4vcpu-ubuntu-2404
+            replica: 2
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: corpus
+          path: corpus
+      - name: Fetch binaries
+        run: |
+          case "$RUNNER_OS" in
+            Linux)   TRIPLE=x86_64-unknown-linux-gnu; EXT=tar.gz; REF=ucrt-ubuntu-22.04-x86_64.tar.xz ;;
+            macOS)   TRIPLE=aarch64-apple-darwin;     EXT=tar.gz; REF=ucrt-macos-universal.tar.xz ;;
+            Windows) TRIPLE=x86_64-pc-windows-msvc;   EXT=zip;    REF=ucrt-x86_64.zip ;;
+          esac
+          for T in $OLD $NEW; do
+            mkdir -p bin/$T
+            gh release download v0.1.$T -R clice-io/clice -p "clice-0.1.$T.$TRIPLE.$EXT" -D bin/$T
+            if [ "$EXT" = zip ]; then (cd bin/$T && unzip -q *.zip); else tar xzf bin/$T/*.tar.gz -C bin/$T; fi
+          done
+          curl -fsSL -o ref.pkg https://github.com/mstorsjo/llvm-mingw/releases/download/$REF_TAG/llvm-mingw-$REF_TAG-$REF
+          if [ "$RUNNER_OS" = Windows ]; then unzip -q ref.pkg; else tar xJf ref.pkg; fi
+          mv llvm-mingw-$REF_TAG-* ref
+          find bin -maxdepth 4 -name 'clice*' -type f
+      - name: Try perf
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y -q linux-tools-common "linux-tools-$(uname -r)" >/dev/null 2>&1 || sudo apt-get install -y -q linux-tools-azure linux-tools-generic >/dev/null 2>&1 || true
+          sudo sysctl -w kernel.perf_event_paranoid=-1 || true
+          perf stat -e instructions:u,cycles:u -- true 2>&1 | tail -5 || echo "perf unavailable"
+          cat /proc/sys/kernel/perf_event_paranoid || true
+      - name: Run
+        run: |
+          EXE=""; PY=python3; ROOT="$PWD"
+          if [ "$RUNNER_OS" = Windows ]; then EXE=.exe; PY=python; ROOT="$(pwd -W)"; fi
+          $PY tools/perf-exp/perf_exp.py --corpus corpus --ref "$ROOT/ref/bin/clang$EXE" \
+            --clice A="$ROOT/bin/$OLD/clice/bin/clice$EXE" \
+            --clice B="$ROOT/bin/$NEW/clice/bin/clice$EXE" \
+            --clice B2="$ROOT/bin/$NEW/clice/bin/clice$EXE" \
+            --rounds 7 --out result.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: result-${{ matrix.os }}-${{ matrix.replica }}
+          path: result.json
