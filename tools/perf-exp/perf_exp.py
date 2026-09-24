@@ -109,6 +109,41 @@ def run_clice(binary, ws, use_perf):
     return {"wall": wall, "instr": instr, "files": per_file}
 
 
+def run_clice_async(binary, ws):
+    shutil.rmtree(ws / ".clice", ignore_errors=True)
+    t0 = time.perf_counter()
+    proc = subprocess.Popen(
+        [binary, "index", "--workers", "1", "--workspace", ws.as_posix()],
+        cwd=ws, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return proc, t0
+
+
+def collect(ws, proc, t0):
+    proc.wait()
+    wall = time.perf_counter() - t0
+    if proc.returncode != 0:
+        raise RuntimeError(f"clice index failed in {ws}")
+    per_file = {}
+    for log in (ws / ".clice" / "logs").rglob("*.log"):
+        for m in BUILD_RE.finditer(log.read_text(errors="replace")):
+            per_file[Path(m.group(1)).name] = {
+                "compile_ms": int(m.group(2)),
+                "index_ms": int(m.group(3)),
+            }
+    return {"wall": wall, "instr": None, "files": per_file}
+
+
+def run_duet(clices, workspaces, x, y):
+    """Run two clice binaries at the same time on the same machine."""
+    first, second = (x, y) if random.random() < 0.5 else (y, x)
+    wx = workspaces[first + "#duet"]
+    wy = workspaces[second + "#duet"]
+    px = run_clice_async(clices[first], wx)
+    py = run_clice_async(clices[second], wy)
+    return {first: collect(wx, *px), second: collect(wy, *py)}
+
+
 def run_ref(ref, corpus, manifest, use_perf):
     per_file = {}
     for name, std in manifest.items():
@@ -132,6 +167,8 @@ def main():
     root.mkdir(exist_ok=True)
     clices = dict(item.split("=", 1) for item in args.clice)
     workspaces = {label: make_workspace(root, corpus, manifest, label) for label in clices}
+    for label in clices:
+        workspaces[label + "#duet"] = make_workspace(root, corpus, manifest, label + "_duet")
     use_perf = perf_available()
 
     result = {"host": host_info(), "perf": use_perf, "rounds": []}
@@ -151,7 +188,11 @@ def main():
                 samples[label] = run_ref(args.ref, corpus, manifest, use_perf)
             else:
                 samples[label] = run_clice(clices[label], workspaces[label], use_perf)
-        result["rounds"].append({"order": order, "samples": samples})
+        duet_aa = run_duet(clices, workspaces, "B", "B2")
+        duet_ab = run_duet(clices, workspaces, "A", "B")
+        result["rounds"].append(
+            {"order": order, "samples": samples, "duet_aa": duet_aa, "duet_ab": duet_ab}
+        )
         brief = {
             k: round(v["wall"], 2) if "wall" in v else round(sum(f["wall"] for f in v["files"].values()), 2)
             for k, v in samples.items()
