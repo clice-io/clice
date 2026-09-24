@@ -124,10 +124,10 @@ jobs:
         if: ${{ !inputs.train }}
         run: |
           cd build/RelWithDebInfo
-          # Windows runners have no zstd; gzip unpacks everywhere. The cross
-          # bundle carries what the Windows job runs, not clice.exe.
+          # Windows runners have no zstd; gzip unpacks everywhere. The unit
+          # tests spawn clice.exe as their worker.
           if [[ -n "${{ inputs.target-triple }}" ]]; then
-            tar -cf - bin/pipeline_benchmark.exe bin/unit_tests.exe lib/clang | gzip -1 > ../../bundle.tar.gz
+            tar -cf - bin/pipeline_benchmark.exe bin/unit_tests.exe bin/clice.exe lib/clang | gzip -1 > ../../bundle.tar.gz
           else
             tar -cf - bin/pipeline_benchmark bin/clice lib/clang | zstd -T0 -3 -o ../../bundle.tar.zst
           fi

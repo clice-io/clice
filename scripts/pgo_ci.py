@@ -116,7 +116,9 @@ def bench(args) -> None:
     variants = dict(v.split("=", 1) for v in args.variant)
     loads = []
     for spec in args.workload:
-        name, cdb, flt, limit = spec.split(":")
+        # CDB may be a Windows path with a drive colon.
+        name, rest = spec.split(":", 1)
+        cdb, flt, limit = rest.rsplit(":", 2)
         loads.append((name, Path(cdb).resolve(), flt, limit))
 
     # results[variant][workload] = list of per-round {stage: total ms}

@@ -1,0 +1,54 @@
+name: pgo mingw bench
+
+# Benchmark only, on the mingw bundles of run 35953128835.
+
+on:
+  push:
+    branches: [exp/pgo-mingw-bench]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: default
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: final-W*
+          path: bundles
+          run-id: "35953128835"
+          github-token: ${{ github.token }}
+      - name: Unpack
+        run: |
+          echo "cores: $NUMBER_OF_PROCESSORS"
+          for dir in bundles/final-W*; do
+            mkdir -p "variants/${dir##*-}"
+            tar -C "variants/${dir##*-}" -xzf "$dir/bundle.tar.gz"
+          done
+      - name: Workloads
+        run: pixi run -e default python scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads"
+      - name: Benchmark
+        run: |
+          W="$(cygpath -m "$PWD")"
+          pixi run -e default python scripts/pgo_ci.py bench --rounds 2 --out bench-out \
+            --variant "W0=$W/variants/W0" --variant "W1=$W/variants/W1" --variant "W2=$W/variants/W2" \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-results-mingw
+          path: bench-out

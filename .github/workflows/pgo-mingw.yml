@@ -103,9 +103,14 @@ jobs:
       - name: Unit tests
         continue-on-error: true
         run: |
+          set +e +o pipefail
           for v in variants/W*; do
-            echo "== ${v##*/}" | tee -a "$GITHUB_STEP_SUMMARY"
-            CLICE_TEST_DATA_DIR="$(cygpath -m "$PWD/tests/data")" "$v/bin/unit_tests.exe" 2>&1 | tail -n 4 | tee -a "$GITHUB_STEP_SUMMARY"
+            CLICE_TEST_DATA_DIR="$(cygpath -m "$PWD/tests/data")" "$v/bin/unit_tests.exe" > "${v##*/}-tests.log" 2>&1
+            {
+              echo "== ${v##*/} (exit $?)"
+              grep -E 'tests from .* ran|PASSED|FAILED TESTS' "${v##*/}-tests.log"
+              grep -E 'FAILED  \]' "${v##*/}-tests.log" | head -n 80
+            } | sed 's/\x1b\[[0-9;]*m//g' | tee -a "$GITHUB_STEP_SUMMARY"
           done
       - name: Workloads
         run: pixi run -e default python scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads"
