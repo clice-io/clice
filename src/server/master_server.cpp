@@ -256,6 +256,10 @@ std::shared_ptr<ProjectServer> MasterServer::make_project(std::string root) {
         }
         return others;
     };
+    made->features.open_in = [this](Fid file) -> const index::IndexQuery* {
+        auto it = owners.find(file);
+        return it != owners.end() ? &it->second->index_query : nullptr;
+    };
     return made;
 }
 

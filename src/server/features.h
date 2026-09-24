@@ -69,11 +69,14 @@ public:
     /// The most workspace/symbol answers, from one project or all.
     constexpr static std::size_t workspace_symbol_limit = 100;
 
-    /// The other projects' index queries, wired by the master. A symbol's
-    /// references and definition are also sought in those whose index
-    /// holds a file declaring it: an application and the library beside
-    /// it see each other's uses.
+    /// The other projects' index queries, and the query of the project a
+    /// file open in the editor is routed to (null for a closed file), both
+    /// wired by the master. A symbol's navigation answers are also sought
+    /// in the peers declaring it in the same file — an application and the
+    /// library beside it see each other's uses — and an open file answers
+    /// only through the project serving its buffer (see gather).
     std::function<llvm::SmallVector<const index::IndexQuery*>()> peers;
+    std::function<const index::IndexQuery*(Fid)> open_in;
 
     /// Full document-link result for a session: the worker's main-file links
     /// merged behind the PCH's cached preamble links.
@@ -283,8 +286,24 @@ private:
     std::optional<protocol::Hover> resolve_preamble_hover(Session& session,
                                                           const protocol::Position& position);
 
-    /// The peers indexing a file that declares the cursor's symbol.
-    llvm::SmallVector<const index::IndexQuery*> peers_of(const index::IndexQuery::Cursor& cursor);
+    /// The peers declaring `symbol` in a file this project declares it in,
+    /// or in `anchor`, the file it was found in.
+    llvm::SmallVector<const index::IndexQuery*> peers_of(index::SymbolHash symbol, Fid anchor);
+
+    /// This project's query, then the peers of `symbol` (peers_of).
+    llvm::SmallVector<const index::IndexQuery*> sources(index::SymbolHash symbol, Fid anchor);
+
+    /// Whether `from` answers for `file`: any project for a closed file,
+    /// only the one serving its buffer for an open one — the others hold
+    /// its disk rows, which the buffer superseded.
+    bool answers_for(const index::IndexQuery& from, Fid file) const;
+
+    /// `ask`'s sites from every source of `symbol` (sources), in the files
+    /// each may answer for (answers_for), deduplicated.
+    std::vector<index::Site>
+        gather(index::SymbolHash symbol,
+               Fid anchor,
+               llvm::function_ref<std::vector<index::Site>(const index::IndexQuery&)> ask);
 
     ASTFamily& ast;
     Dispatcher& dispatcher;

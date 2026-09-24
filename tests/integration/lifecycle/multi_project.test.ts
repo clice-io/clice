@@ -4,7 +4,7 @@
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import { SETTLE_TIME, waitUntil, type CliceClient } from "@clice/tools/client";
+import { SETTLE_TIME, asLocations, waitUntil, type CliceClient } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
@@ -316,6 +316,67 @@ test("references cross folders", async ({ session }) => {
     const [lib] = await client.openAndWait("lib/src/lib.cpp");
     expect(await client.waitForIndex(lib, "main")).toBe(true);
     expect(await client.waitForReference(lib, 1, 5, workspace.uri("app/main.cpp"))).toBe(true);
+});
+
+test("hierarchies cross folders", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    libraryAndApp(workspace);
+    workspace.write(
+        "lib/include/shape.h",
+        "#pragma once\nstruct Shape {\n    virtual int area() const = 0;\n};\n",
+    );
+    workspace.write(
+        "lib/src/lib.cpp",
+        '#include "lib.h"\n#include "shape.h"\nint lib_fn() { return shared_fn(); }\n',
+    );
+    workspace.write(
+        "app/main.cpp",
+        '#include "lib.h"\n#include "shape.h"\n' +
+            "struct Square : Shape {\n    int area() const override { return 4; }\n};\n" +
+            "int main() { return lib_fn(); }\n",
+    );
+    await client.initialize(workspace, { folders: ["app", "lib"] });
+    await waitForDefinitionOf(client, "main");
+    await waitForDefinitionOf(client, "lib_fn", workspace.uri("lib/src/lib.cpp"));
+
+    // The library's function is called from the application only.
+    const [lib] = await client.openAndWait("lib/src/lib.cpp");
+    const [fn] = (await client.prepareCallHierarchy(lib, 2, 5)) ?? [];
+    expect(fn?.name).toBe("lib_fn");
+    const callers = (await client.callHierarchyIncoming(fn!)) ?? [];
+    expect(callers.map((call) => call.from.name)).toEqual(["main"]);
+
+    // The library's interface is implemented in the application only.
+    const [shape] = await client.openAndWait("lib/include/shape.h");
+    const [base] = (await client.prepareTypeHierarchy(shape, 1, 8)) ?? [];
+    expect(base?.name).toBe("Shape");
+    const subtypes = (await client.typeHierarchySubtypes(base!)) ?? [];
+    expect(subtypes.map((type) => type.name)).toEqual(["Square"]);
+    const implementations = asLocations(await client.implementationAt(shape, 1, 8));
+    expect(implementations.map((location) => location.uri)).toEqual([
+        workspace.uri("app/main.cpp"),
+    ]);
+});
+
+test("an open file answers through its project", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    libraryAndApp(workspace);
+    await client.initialize(workspace, { folders: ["app", "lib"] });
+    await waitForDefinitionOf(client, "main");
+    await waitForDefinitionOf(client, "lib_fn", workspace.uri("lib/src/lib.cpp"));
+
+    // Both projects index the header; the library serves it once open, and
+    // its unsaved buffer moved the declaration a line down.
+    const [header, text] = await client.openAndWait("lib/include/lib.h");
+    const edited = client.armDiagnostics(header);
+    client.change(header, 2, `// moved\n${text}`);
+    await client.hoverAt(header, 2, 4);
+    await edited;
+
+    const [main] = await client.openAndWait("app/main.cpp");
+    const references = (await client.referencesAt(main, 1, 21)) ?? [];
+    const inHeader = references.filter((location) => location.uri === header);
+    expect(inHeader.map((location) => location.range.start.line)).toEqual([2]);
 });
 
 test("unrelated folders keep references apart", async ({ session }) => {

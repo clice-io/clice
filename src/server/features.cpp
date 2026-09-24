@@ -401,12 +401,10 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
         // the application including its header) outranks the declarations
         // this project alone can offer.
         if(query.sites(cursor->symbol, RelationKind::Definition).empty()) {
-            std::vector<index::Site> defined;
-            for(auto* peer: peers_of(*cursor)) {
-                llvm::append_range(defined, peer->sites(cursor->symbol, RelationKind::Definition));
-            }
+            auto defined = gather(cursor->symbol, path_id, [&](const index::IndexQuery& from) {
+                return from.sites(cursor->symbol, RelationKind::Definition);
+            });
             if(!defined.empty()) {
-                index::dedup_sites(defined);
                 return to_lsp::locations(defined);
             }
         }
@@ -804,31 +802,104 @@ Features::RawResult Features::references(std::shared_ptr<Session> session,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    auto sites = query.references(*cursor, include_declaration);
-    for(auto* peer: peers_of(*cursor)) {
-        llvm::append_range(sites, peer->references(*cursor, include_declaration));
-    }
-    index::dedup_sites(sites);
-    co_return to_raw(to_lsp::locations(sites));
+    co_return to_raw(
+        to_lsp::locations(gather(cursor->symbol, path_id, [&](const index::IndexQuery& from) {
+            return from.references(*cursor, include_declaration);
+        })));
 }
 
-llvm::SmallVector<const index::IndexQuery*>
-    Features::peers_of(const index::IndexQuery::Cursor& cursor) {
+llvm::SmallVector<const index::IndexQuery*> Features::peers_of(index::SymbolHash symbol,
+                                                               Fid anchor) {
     llvm::SmallVector<const index::IndexQuery*> relevant;
     auto others = peers();
     if(others.empty()) {
         return relevant;
     }
-    llvm::SmallVector<Fid> declaring{cursor.site.file};
-    for(auto& site: query.declaration(cursor)) {
-        declaring.push_back(site.file);
-    }
+    // A peer knows the same entity when it declares the symbol in a file
+    // this project declares it in: an unrelated project reusing the name
+    // (the same symbol id) declares it elsewhere.
+    auto declaring = [&](const index::IndexQuery& from) {
+        llvm::SmallVector<Fid> files;
+        for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+            for(auto& site: from.sites(symbol, kind)) {
+                files.push_back(site.file);
+            }
+        }
+        return files;
+    };
+    auto own = declaring(query);
+    own.push_back(anchor);
     for(auto* peer: others) {
-        if(llvm::any_of(declaring, [&](Fid file) { return peer->indexes(file); })) {
+        if(llvm::any_of(declaring(*peer),
+                        [&](Fid file) { return llvm::is_contained(own, file); })) {
             relevant.push_back(peer);
         }
     }
     return relevant;
+}
+
+llvm::SmallVector<const index::IndexQuery*> Features::sources(index::SymbolHash symbol,
+                                                              Fid anchor) {
+    llvm::SmallVector<const index::IndexQuery*> all{&query};
+    llvm::append_range(all, peers_of(symbol, anchor));
+    return all;
+}
+
+bool Features::answers_for(const index::IndexQuery& from, Fid file) const {
+    auto* serving = open_in(file);
+    return !serving || serving == &from;
+}
+
+std::vector<index::Site>
+    Features::gather(index::SymbolHash symbol,
+                     Fid anchor,
+                     llvm::function_ref<std::vector<index::Site>(const index::IndexQuery&)> ask) {
+    std::vector<index::Site> sites;
+    for(auto* from: sources(symbol, anchor)) {
+        for(auto& site: ask(*from)) {
+            if(answers_for(*from, site.file)) {
+                sites.push_back(std::move(site));
+            }
+        }
+    }
+    index::dedup_sites(sites);
+    return sites;
+}
+
+/// Fold one project's graph neighbours into `into`: the sites it may
+/// answer for (`keep`), one neighbour per symbol, a neighbour left with
+/// no site dropped.
+static void merge_edges(std::vector<index::IndexQuery::Edge>& into,
+                        std::vector<index::IndexQuery::Edge> edges,
+                        llvm::function_ref<bool(Fid)> keep) {
+    for(auto& edge: edges) {
+        llvm::erase_if(edge.sites, [&](const index::Site& site) { return !keep(site.file); });
+        if(edge.sites.empty()) {
+            continue;
+        }
+        auto known = llvm::find_if(into, [&](const index::IndexQuery::Edge& other) {
+            return other.symbol.symbol.hash == edge.symbol.symbol.hash;
+        });
+        if(known == into.end()) {
+            into.push_back(std::move(edge));
+        } else {
+            llvm::append_range(known->sites, edge.sites);
+            index::dedup_sites(known->sites);
+        }
+    }
+}
+
+/// The same for a type hierarchy's neighbours, placed at one site each.
+static void merge_located(std::vector<index::IndexQuery::Located>& into,
+                          std::vector<index::IndexQuery::Located> located,
+                          llvm::function_ref<bool(Fid)> keep) {
+    for(auto& one: located) {
+        if(keep(one.site.file) && llvm::none_of(into, [&](const index::IndexQuery::Located& other) {
+               return other.symbol.hash == one.symbol.hash;
+           })) {
+            into.push_back(std::move(one));
+        }
+    }
 }
 
 Features::RawResult Features::declaration(std::shared_ptr<Session> session,
@@ -843,7 +914,10 @@ Features::RawResult Features::declaration(std::shared_ptr<Session> session,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::locations(query.declaration(*cursor)));
+    co_return to_raw(
+        to_lsp::locations(gather(cursor->symbol, path_id, [&](const index::IndexQuery& from) {
+            return from.declaration(*cursor);
+        })));
 }
 
 Features::RawResult Features::type_definition(std::shared_ptr<Session> session,
@@ -859,7 +933,9 @@ Features::RawResult Features::type_definition(std::shared_ptr<Session> session,
         co_return serde_raw{"[]"};
     }
     co_return to_raw(
-        to_lsp::locations(query.target_sites(cursor->symbol, RelationKind::TypeDefinition)));
+        to_lsp::locations(gather(cursor->symbol, path_id, [&](const index::IndexQuery& from) {
+            return from.target_sites(cursor->symbol, RelationKind::TypeDefinition);
+        })));
 }
 
 Features::RawResult Features::implementation(std::shared_ptr<Session> session,
@@ -874,7 +950,10 @@ Features::RawResult Features::implementation(std::shared_ptr<Session> session,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::locations(query.implementation(cursor->symbol)));
+    co_return to_raw(
+        to_lsp::locations(gather(cursor->symbol, path_id, [&](const index::IndexQuery& from) {
+            return from.implementation(cursor->symbol);
+        })));
 }
 
 /// The prepared item stands for the symbol, not the cursor: anchor it at
@@ -933,8 +1012,14 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("call hierarchy"));
 
+    std::vector<index::IndexQuery::Edge> callers;
+    for(auto* from: sources(*symbol, path_id)) {
+        merge_edges(callers, from->call_graph(*symbol, {.callees = false}).callers, [&](Fid file) {
+            return answers_for(*from, file);
+        });
+    }
     std::vector<protocol::CallHierarchyIncomingCall> results;
-    for(auto& edge: query.call_graph(*symbol, {.callees = false}).callers) {
+    for(auto& edge: callers) {
         results.push_back({to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site),
                            to_lsp::ranges(edge.sites)});
     }
@@ -947,8 +1032,14 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("call hierarchy"));
 
+    std::vector<index::IndexQuery::Edge> callees;
+    for(auto* from: sources(*symbol, path_id)) {
+        merge_edges(callees, from->call_graph(*symbol, {.callers = false}).callees, [&](Fid file) {
+            return answers_for(*from, file);
+        });
+    }
     std::vector<protocol::CallHierarchyOutgoingCall> results;
-    for(auto& edge: query.call_graph(*symbol, {.callers = false}).callees) {
+    for(auto& edge: callees) {
         results.push_back({to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site),
                            to_lsp::ranges(edge.sites)});
     }
@@ -992,7 +1083,13 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
     auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("type hierarchy"));
-    co_return to_raw(type_items(query.type_hierarchy(*symbol, {.subtypes = false}).supertypes));
+    std::vector<index::IndexQuery::Located> supertypes;
+    for(auto* from: sources(*symbol, path_id)) {
+        merge_located(supertypes,
+                      from->type_hierarchy(*symbol, {.subtypes = false}).supertypes,
+                      [&](Fid file) { return answers_for(*from, file); });
+    }
+    co_return to_raw(type_items(supertypes));
 }
 
 Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
@@ -1000,7 +1097,13 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
     auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("type hierarchy"));
-    co_return to_raw(type_items(query.type_hierarchy(*symbol, {.supertypes = false}).subtypes));
+    std::vector<index::IndexQuery::Located> subtypes;
+    for(auto* from: sources(*symbol, path_id)) {
+        merge_located(subtypes,
+                      from->type_hierarchy(*symbol, {.supertypes = false}).subtypes,
+                      [&](Fid file) { return answers_for(*from, file); });
+    }
+    co_return to_raw(type_items(subtypes));
 }
 
 std::vector<protocol::SymbolInformation> Features::workspace_symbol(llvm::StringRef text) {
@@ -1014,6 +1117,9 @@ std::vector<protocol::SymbolInformation> Features::workspace_symbol(llvm::String
     // replies carry the qualified name.
     bool qualified = parsed->absolute || !parsed->scope.empty();
     for(auto& located: query.search(*parsed, workspace_symbol_limit)) {
+        if(!answers_for(query, located.site.file)) {
+            continue;
+        }
         auto container = query.container_name(located.symbol.hash);
         auto info = to_lsp::symbol_information(located.symbol, located.site, container);
         if(qualified && !container.empty()) {
