@@ -1,0 +1,43 @@
+name: pgo clang bench
+
+# The clangs of a pgo-clang.yml run timed on a project their profile never
+# saw (abseil with its tests), against the conda clang.
+
+on:
+  push:
+    branches: [exp/pgo-clang-bench]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: clang-*
+          path: clangs
+          run-id: "35945332592"
+          github-token: ${{ github.token }}
+      - name: Benchmark
+        run: |
+          nproc; grep -m1 'model name' /proc/cpuinfo
+          git clone --depth 1 --branch 20250814.1 https://github.com/abseil/abseil-cpp.git "$RUNNER_TEMP/abseil"
+          pixi run -e package python3 scripts/pgo_ci.py clang-bench --rounds 2 --out clang-bench \
+            --project "$RUNNER_TEMP/abseil" \
+            --variant "lto=$PWD/clangs/clang-lto/clang-23" --variant "pgo-lto=$PWD/clangs/clang-pgo-lto/clang-23"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: clang-bench-abseil
+          path: clang-bench/summary.md
