@@ -132,6 +132,36 @@ test("configured cache directory serves once", async ({ session }) => {
     expect(fs.existsSync(workspace.path("gamma/.clice"))).toBe(true);
 });
 
+test("nested folder joins its project", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("outer/inner/main.cpp", gated("IN_OUTER", "inner_fn"));
+    workspace.writeCDB(["outer/inner/main.cpp"], {
+        extraArgs: ["-DIN_OUTER"],
+        at: "outer/compile_commands.json",
+    });
+    // Listed first, the nested folder still is no project of its own.
+    await client.initialize(workspace, { folders: ["outer/inner", "outer"] });
+
+    const [inner] = await client.openAndWait("outer/inner/main.cpp");
+    client.assertNoErrors(inner, "the enclosing project compiles it");
+    // One project, holding the client's cache directory: neither folder
+    // fell back to a default one.
+    expect(fs.existsSync(workspace.path("outer/.clice"))).toBe(false);
+    expect(fs.existsSync(workspace.path("outer/inner/.clice"))).toBe(false);
+
+    const diagnosed = (errors: boolean, description: string) =>
+        waitUntil(() => client.errors(inner).length > 0 === errors, {
+            timeout: INDEX_TIMEOUT,
+            interval: SETTLE_TIME,
+            description,
+        });
+    // Alone, the nested folder is a project that knows no command for it.
+    await client.changeWorkspaceFolders({ removed: ["outer"] });
+    await diagnosed(true, "errors once the nested folder serves alone");
+    await client.changeWorkspaceFolders({ added: ["outer"] });
+    await diagnosed(false, "the enclosing project to take the folder back");
+});
+
 test("unclaimed file opens its project", async ({ session }) => {
     const { client, workspace } = session.tmp();
     twoProjects(workspace);

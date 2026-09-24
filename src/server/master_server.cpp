@@ -90,8 +90,8 @@ void MasterServer::initialize() {
     if(!workspace_roots.empty()) {
         placeholder = std::move(projects.front());
         projects.clear();
-        for(auto& root: workspace_roots) {
-            projects.push_back(make_project(root));
+        for(auto& root: project_roots()) {
+            projects.push_back(make_project(std::move(root)));
         }
     }
     for(auto& project: projects) {
@@ -259,13 +259,6 @@ std::shared_ptr<ProjectServer> MasterServer::make_project(std::string root) {
     return made;
 }
 
-void MasterServer::start_project(ProjectServer& project) {
-    project.configure(init_options_json, taken_cache_dirs());
-    log_configuration(project, init_options_json);
-    project.start();
-    on_projects_changed.emit();
-}
-
 std::vector<std::string> MasterServer::taken_cache_dirs() const {
     std::vector<std::string> dirs;
     auto take = [&](const ProjectServer& project) {
@@ -304,7 +297,8 @@ void MasterServer::open_session(Fid path_id, std::string text, int version) {
             return cdb.find_source(root) || cdb.find_source(path::join(root, "build"));
         };
         if(!root.empty() && llvm::none_of(projects, loaded)) {
-            add_folder(std::move(root));
+            workspace_roots.push_back(std::move(root));
+            serve_folders();
         }
     }
     auto& project = owner_of(path_id);
@@ -362,91 +356,120 @@ void MasterServer::change_folders(std::vector<std::string> removed,
     }
     llvm::erase_if(removed,
                    [&](const std::string& root) { return llvm::is_contained(added, root); });
-    if(lifecycle != ServerLifecycle::Ready) {
-        for(auto& root: removed) {
-            llvm::erase(workspace_roots, root);
-        }
-        for(auto& root: added) {
-            if(!llvm::is_contained(workspace_roots, root)) {
-                workspace_roots.push_back(std::move(root));
-            }
-        }
-        return;
-    }
     for(auto& root: removed) {
-        remove_folder(root);
+        llvm::erase(workspace_roots, root);
     }
     for(auto& root: added) {
-        add_folder(std::move(root));
+        if(!llvm::is_contained(workspace_roots, root)) {
+            workspace_roots.push_back(std::move(root));
+        }
+    }
+    if(lifecycle == ServerLifecycle::Ready) {
+        serve_folders();
     }
 }
 
-void MasterServer::add_folder(std::string root) {
-    if(llvm::any_of(projects, [&](auto& project) { return project->root == root; })) {
-        return;
+std::string MasterServer::root_of(llvm::StringRef folder) const {
+    if(defines_project(folder)) {
+        return folder.str();
     }
-    // A removed folder's project holds its cache directory until it
-    // closed; serving the folder again waits for that.
-    if(llvm::any_of(retired, [&](auto& weak) {
-           auto project = weak.lock();
-           return project && !project->closed && project->root == root;
-       })) {
-        if(!llvm::is_contained(readded, root)) {
-            readded.push_back(std::move(root));
+    llvm::StringRef enclosing;
+    for(auto& other: workspace_roots) {
+        if(other.size() < folder.size() && other.size() > enclosing.size() &&
+           path::under(folder, other)) {
+            enclosing = other;
         }
-        return;
     }
-    LOG_INFO("Serving folder {}", root);
-    auto& added = *projects.emplace_back(make_project(std::move(root)));
-    start_project(added);
-    // Documents another project served until now may belong here: a
-    // database under the new root lists them, or they sit inside it.
+    return enclosing.empty() ? folder.str() : root_of(enclosing);
+}
+
+std::vector<std::string> MasterServer::project_roots() const {
+    std::vector<std::string> roots;
+    for(auto& folder: workspace_roots) {
+        auto root = root_of(folder);
+        if(!llvm::is_contained(roots, root)) {
+            roots.push_back(std::move(root));
+        }
+    }
+    if(roots.empty()) {
+        roots.emplace_back();
+    }
+    return roots;
+}
+
+void MasterServer::serve_folders() {
+    llvm::erase_if(retired, [](auto& weak) { return weak.expired(); });
+    std::vector<std::shared_ptr<ProjectServer>> serving;
+    llvm::SmallVector<ProjectServer*> fresh;
+    auto serve = [&](std::string root) {
+        if(auto it = llvm::find_if(projects, [&](auto& project) { return project->root == root; });
+           it != projects.end()) {
+            serving.push_back(*it);
+            return;
+        }
+        LOG_INFO("Serving project {}", root);
+        serving.push_back(make_project(std::move(root)));
+        fresh.push_back(serving.back().get());
+    };
+    for(auto& root: project_roots()) {
+        // A removed project holds its cache directory until it closed.
+        if(llvm::none_of(retired, [&](auto& weak) {
+               auto project = weak.lock();
+               return project && !project->closed && project->root == root;
+           })) {
+            serve(std::move(root));
+        }
+    }
+    if(serving.empty()) {
+        serve(std::string());
+    }
+
+    std::vector<std::shared_ptr<ProjectServer>> leaving;
     for(auto& project: projects) {
-        if(project.get() != &added) {
-            rehome_sessions(*project);
+        if(!llvm::is_contained(serving, project)) {
+            leaving.push_back(project);
         }
     }
-}
-
-void MasterServer::remove_folder(llvm::StringRef root) {
-    llvm::erase(readded, root);
-    auto it = llvm::find_if(projects, [&](auto& project) { return project->root == root; });
-    if(it == projects.end()) {
+    if(fresh.empty() && leaving.empty()) {
         return;
     }
-    LOG_INFO("No longer serving folder {}", root);
-    auto removed = std::move(*it);
-    projects.erase(it);
-    if(projects.empty()) {
-        start_project(*projects.emplace_back(make_project(std::string())));
+    projects = std::move(serving);
+    for(auto& project: leaving) {
+        retired.push_back(project);
     }
-    rehome_sessions(*removed);
-    if(auto it = round.find(removed.get()); it != round.end()) {
-        carry(it->second);
-        round.erase(it);
-        fold_index_progress();
+    for(auto* project: fresh) {
+        project->configure(init_options_json, taken_cache_dirs());
+        log_configuration(*project, init_options_json);
+        project->start();
     }
-    retire(std::move(removed));
+    // Documents may belong elsewhere now: a database under a new root
+    // lists them, they sit inside it, or their project stopped serving.
+    for(auto& project: projects) {
+        rehome_sessions(*project);
+    }
+    for(auto& project: leaving) {
+        LOG_INFO("No longer serving project {}", project->root);
+        rehome_sessions(*project);
+        if(auto it = round.find(project.get()); it != round.end()) {
+            carry(it->second);
+            round.erase(it);
+            fold_index_progress();
+        }
+        retire(std::move(project));
+    }
     on_projects_changed.emit();
 }
 
 void MasterServer::retire(std::shared_ptr<ProjectServer> project) {
-    llvm::erase_if(retired, [](auto& weak) { return weak.expired(); });
-    retired.push_back(project);
     bg_tasks.spawn(
         [](MasterServer& server, std::shared_ptr<ProjectServer> project) -> kota::task<> {
             co_await project->shutdown();
             project->close();
             // Released first: while this frame holds the project, its cache
-            // directory still counts as taken for the folder served again.
-            auto root = project->root;
+            // directory still counts as taken for a root served again.
             project.reset();
-            auto it = llvm::find(server.readded, root);
-            if(it != server.readded.end()) {
-                server.readded.erase(it);
-                if(server.lifecycle == ServerLifecycle::Ready) {
-                    server.add_folder(std::move(root));
-                }
+            if(server.lifecycle == ServerLifecycle::Ready) {
+                server.serve_folders();
             }
         }(*this, std::move(project)));
 }

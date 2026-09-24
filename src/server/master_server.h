@@ -100,11 +100,10 @@ public:
                  std::string requested_configuration);
     ~MasterServer();
 
-    /// Start serving `workspace_roots` (the client's folders, or the
-    /// command line's --workspace; none serves a single rootless project):
-    /// load each project's configuration, start the pool sized for all of
-    /// them, and load the projects. Documents opened before move to the
-    /// projects routing picks for them.
+    /// Start serving the projects of `workspace_roots` (see
+    /// project_roots): load each project's configuration, start the pool
+    /// sized for all of them, and load the projects. Documents opened
+    /// before move to the projects routing picks for them.
     void initialize();
     void initialize(llvm::StringRef root);
 
@@ -128,8 +127,9 @@ public:
 
     /// Stop serving the `removed` folders and serve the `added` ones
     /// (didChangeWorkspaceFolders); before initialize, edit the folders it
-    /// will serve. Open documents of a removed project move to the project
-    /// routing picks for them now; a folder both removed and added (a
+    /// will serve. The projects follow the folders (see project_roots);
+    /// open documents of a project that stops serving move to the project
+    /// routing picks for them now. A folder both removed and added (a
     /// rename) keeps serving.
     void change_folders(std::vector<std::string> removed, std::vector<std::string> added);
 
@@ -205,9 +205,12 @@ public:
     /// Lifecycle state, advanced by the LSP initialize/shutdown handlers.
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
 
-    /// Initialization parameters captured from the LSP initialize request (or
-    /// serve-mode options), consumed when loading the projects.
+    /// The folders served, canonical: the client's workspace folders (or
+    /// the command line's --workspace), and the roots open_session found
+    /// above files no folder claims.
     std::vector<std::string> workspace_roots;
+
+    /// The client's initializationOptions (JSON), applied to every project.
     std::string init_options_json;
 
     /// The `--configuration` argument: the build configuration this
@@ -220,11 +223,21 @@ private:
     /// others.
     std::shared_ptr<ProjectServer> make_project(std::string root);
 
-    /// Configure and start a project added to `projects`.
-    void start_project(ProjectServer& project);
+    /// The root of the project serving a folder: the folder itself when it
+    /// is a project of its own (defines_project), else the project of the
+    /// nearest folder enclosing it, else the folder itself.
+    std::string root_of(llvm::StringRef folder) const;
 
-    void add_folder(std::string root);
-    void remove_folder(llvm::StringRef root);
+    /// The roots of the projects the folders need, in folder order; the
+    /// rootless project's when there is no folder.
+    std::vector<std::string> project_roots() const;
+
+    /// Make the projects served those project_roots names: start the
+    /// missing ones, retire the ones no folder needs, and move the open
+    /// documents to the projects routing picks now. A root whose previous
+    /// project still shuts down starts once that closed (retire runs this
+    /// again).
+    void serve_folders();
 
     /// Shut a project that stopped serving down in the background.
     void retire(std::shared_ptr<ProjectServer> project);
@@ -278,10 +291,6 @@ private:
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.
     std::vector<std::weak_ptr<ProjectServer>> retired;
-
-    /// Folders added back while their previous project was still shutting
-    /// down; they serve again once it closed.
-    std::vector<std::string> readded;
 
     std::string self_path;
     std::string session_log_dir;

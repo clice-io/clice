@@ -458,6 +458,22 @@ TEST_CASE(ProjectRootAbove) {
     EXPECT_EQ(project_root_above(tmp.path("none/src")), "");
 };
 
+TEST_CASE(DefinesProject) {
+    /// A directory is a project of its own when it holds a configuration
+    /// file or a database where startup discovery looks.
+    TempDir tmp;
+    tmp.touch("toml/clice.toml", "");
+    tmp.touch("hidden/.clice/config.toml", "");
+    tmp.touch("db/build/compile_commands.json", "[]");
+    tmp.touch("plain/src/main.cpp", "");
+    tmp.touch("deep/a/b/compile_commands.json", "[]");
+    EXPECT_TRUE(defines_project(tmp.path("toml")));
+    EXPECT_TRUE(defines_project(tmp.path("hidden")));
+    EXPECT_TRUE(defines_project(tmp.path("db")));
+    EXPECT_FALSE(defines_project(tmp.path("plain")));
+    EXPECT_FALSE(defines_project(tmp.path("deep")));
+};
+
 #ifndef _WIN32
 TEST_CASE(ResolvedSpelling) {
     /// Two spellings of one directory resolve alike, created or not: the
