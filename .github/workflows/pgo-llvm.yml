@@ -121,7 +121,9 @@ jobs:
           # The trained clang stands in for the environment's clang-23, so it
           # keeps that clang's triple and with it the conda config files.
           if [[ "${{ inputs.clang-train }}" == true || "${{ inputs.clang-bundle }}" == true ]]; then
-            ARGS+=(--clang-only --default-triple=x86_64-conda-linux-gnu)
+            triple="$(pixi run -e "${{ inputs.pixi-env }}" clang -print-target-triple)"
+            echo "default triple of the environment's clang: $triple"
+            ARGS+=(--clang-only --default-triple="$triple")
           fi
           # shellcheck disable=SC2206
           ARGS+=(${{ inputs.extra-args }})
@@ -174,9 +176,12 @@ jobs:
         if: inputs.clang-train
         run: |
           prefix="$(pixi run -e package printenv CONDA_PREFIX)"
-          # The environment's clang-23 is hard-linked into the pixi cache.
-          rm -f "$prefix/bin/clang-23"
-          cp .llvm/build/llvm/bin/clang-23 "$prefix/bin/clang-23"
+          # Replace the binary the environment's clang resolves to (clang-23
+          # on Linux); it is hard-linked into the pixi cache, so unlink first.
+          real="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$prefix/bin/clang")"
+          echo "replacing $real"
+          rm -f "$real"
+          cp .llvm/build/llvm/bin/clang-23 "$real"
           pixi run -e package clang++ --version
           start=$SECONDS
           pixi run -e package python3 scripts/pgo_ci.py train-clang --raw-dir pgo-raw --out pgo-out/profile.profdata
