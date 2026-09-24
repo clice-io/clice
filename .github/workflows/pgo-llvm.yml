@@ -31,6 +31,10 @@ on:
         description: "Build the clang compiler and upload its binary"
         type: boolean
         default: false
+      extra-args:
+        description: "More arguments for build-llvm.py"
+        type: string
+        default: ""
 
 env:
   LLVM_VERSION: "23.1.1"
@@ -82,6 +86,8 @@ jobs:
           if [[ "${{ inputs.clang-train }}" == true || "${{ inputs.clang-bundle }}" == true ]]; then
             ARGS+=(--clang-only --default-triple=x86_64-conda-linux-gnu)
           fi
+          # shellcheck disable=SC2206
+          ARGS+=(${{ inputs.extra-args }})
           start=$SECONDS
           pixi run -e package python3 scripts/build-llvm.py "${ARGS[@]}"
           echo "LLVM build: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"

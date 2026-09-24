@@ -1,0 +1,75 @@
+name: x86 mc
+
+# What the X86 MC layer (for MS inline asm, issue 09-23#194) costs the LLVM
+# package, and whether it fixes the false "inline assembly is not available".
+
+on:
+  push:
+    branches: [exp/x86-mc]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  plan:
+    strategy:
+      matrix:
+        extra: ["", "--x86-mc"]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - run: git clone --branch llvmorg-23.1.1 --depth 1 https://github.com/llvm/llvm-project.git .llvm
+      - name: Build plan
+        run: |
+          pixi run -e package python3 scripts/build-llvm.py --llvm-src=.llvm --mode=RelWithDebInfo --lto=ON \
+            --build-dir=build --configure-only ${{ matrix.extra }} | tee plan.log
+          echo "extra='${{ matrix.extra }}': $(grep 'install-distribution:' plan.log)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  llvm:
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: llvm-x86mc
+      lto: "ON"
+      extra-args: --x86-mc
+
+  clice:
+    needs: llvm
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-x86mc
+      llvm: llvm-x86mc
+      lto: "ON"
+
+  repro:
+    needs: clice
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: final-x86mc
+          path: new
+      - uses: actions/download-artifact@v8
+        with:
+          name: final-V0
+          path: old
+          run-id: "35912428380"
+          github-token: ${{ github.token }}
+      - name: 09-23#194
+        run: |
+          printf 'int get(int v) {\n    __asm { mov eax, v }\n}\n' > inline.cpp
+          for v in old new; do
+            mkdir -p "$v/x" && zstd -dc "$v/bundle.tar.zst" | tar -C "$v/x" -xf -
+            echo "== $v" | tee -a "$GITHUB_STEP_SUMMARY"
+            "$v/x/bin/clice" inspect semantic_tokens "$PWD/inline.cpp" \
+              --flags '["--target=i686-pc-windows-msvc","-fms-extensions"]' > "$v.json" 2> "$v.err" || true
+            python3 -c 'import json,sys
+          d = next(iter(json.load(open(sys.argv[1]))["files"].values()))
+          print("diagnostics:", d.get("diagnostics") or "none")' "$v.json" | tee -a "$GITHUB_STEP_SUMMARY"
+          done

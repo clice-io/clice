@@ -133,6 +133,16 @@ COMPONENTS = [
     "clang-cmake-exports",
 ]
 
+# The MC layer of X86 only (target info, instruction tables, assembly
+# parser): clang parses MS-style `__asm {}` blocks through it. No CodeGen.
+X86_MC_COMPONENTS = [
+    "LLVMX86Info",
+    "LLVMX86Desc",
+    "LLVMX86AsmParser",
+    "LLVMCodeGenTypes",
+    "LLVMMCDisassembler",
+]
+
 SEMA_PRIVATE_HEADERS = ["CoroutineStmtBuilder.h", "TypeLocBuilder.h", "TreeTransform.h"]
 
 IS_WINDOWS = sys.platform == "win32"
@@ -215,6 +225,7 @@ class Build:
             Path(args.pgo_profile).resolve() if args.pgo_profile else None
         )
         self.clang_only: bool = args.clang_only
+        self.x86_mc: bool = args.x86_mc
         self.default_triple: str = args.default_triple or self.triple
         # A profile only matches code compiled the same way, so the
         # instrumented build takes the release configuration of the final
@@ -403,8 +414,8 @@ class Build:
             # install-distribution never reaches the backends themselves. The
             # clang compiler itself (--clang-only) needs a real backend.
             "-DLLVM_TARGETS_TO_BUILD="
-            + ("X86;AArch64;ARM;RISCV" if self.clang_only else "AArch64;ARM;RISCV"),
-            f"-DLLVM_DISTRIBUTION_COMPONENTS={';'.join(COMPONENTS)}",
+            + ("X86;AArch64;ARM;RISCV" if self.clang_only or self.x86_mc else "AArch64;ARM;RISCV"),
+            f"-DLLVM_DISTRIBUTION_COMPONENTS={';'.join(COMPONENTS + (X86_MC_COMPONENTS if self.x86_mc else []))}",
             f"-DLLVM_ENABLE_ASSERTIONS={'ON' if self.assertions else 'OFF'}",
             "-DBUILD_SHARED_LIBS=OFF",
             "-DLLVM_ENABLE_RTTI=OFF",
@@ -630,6 +641,11 @@ def main() -> None:
         "--clang-only",
         action="store_true",
         help="Build the clang compiler (with the X86 backend) instead of the package",
+    )
+    parser.add_argument(
+        "--x86-mc",
+        action="store_true",
+        help="Also ship the X86 MC layer (info, descriptions, assembly parser) for MS inline asm",
     )
     parser.add_argument(
         "--default-triple",
