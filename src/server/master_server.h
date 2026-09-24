@@ -142,6 +142,10 @@ public:
     /// persisted stamps rewrite at its next save.
     void stamps_revoked();
 
+    /// A project's database gained or lost entries: move the open
+    /// documents routing now sends to another project.
+    void builds_changed();
+
     /// workspace/symbol over every project: each project's ranked matches,
     /// interleaved rank by rank, a symbol two projects index listed once.
     std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);

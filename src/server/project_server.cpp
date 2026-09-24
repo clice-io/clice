@@ -466,6 +466,15 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     if(dirty.reschedule_indexing && server.lifecycle == ServerLifecycle::Ready) {
         sched.pump.schedule();
     }
+
+    // The database gained or lost entries: an open document may belong to
+    // another project now.
+    if(llvm::any_of(events, [](const FileEvent& event) {
+           return event.kind == FileEvent::Kind::CDBChanged &&
+                  (!event.cdb.added.empty() || !event.cdb.removed.empty());
+       })) {
+        server.builds_changed();
+    }
 }
 
 void ProjectServer::schedule_metadata_flush() {

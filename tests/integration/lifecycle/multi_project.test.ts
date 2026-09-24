@@ -290,6 +290,28 @@ test("folder re-added at once keeps its cache", async ({ session }) => {
     );
 });
 
+test("database change moves a document", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    twoProjects(workspace);
+    workspace.write("alpha/shared.cpp", gated("IN_BETA", "shared_fn"));
+    await client.initialize(workspace, { folders: ["alpha", "beta"] });
+
+    const [shared] = await client.openAndWait("alpha/shared.cpp");
+    client.assertHasErrors(shared, "no database lists it yet");
+
+    // Beta's database starts listing the file: it moves there.
+    workspace.writeCDB(["beta/main.cpp", "alpha/shared.cpp"], {
+        extraArgs: ["-DIN_BETA"],
+        at: "beta/compile_commands.json",
+    });
+    await client.poll("cdb");
+    await waitUntil(() => client.errors(shared).length === 0, {
+        timeout: INDEX_TIMEOUT,
+        interval: SETTLE_TIME,
+        description: "beta to compile the file its database lists now",
+    });
+});
+
 test("removed first folder hands over", async ({ session }) => {
     const { client, workspace } = session.tmp();
     twoProjects(workspace);

@@ -292,6 +292,15 @@ std::vector<std::string> MasterServer::taken_cache_dirs() const {
     return dirs;
 }
 
+void MasterServer::builds_changed() {
+    if(lifecycle != ServerLifecycle::Ready) {
+        return;
+    }
+    for(auto& project: projects) {
+        rehome_sessions(*project);
+    }
+}
+
 void MasterServer::stamps_revoked() {
     for(auto& project: projects) {
         project->sched.store.mark_global_dirty();
