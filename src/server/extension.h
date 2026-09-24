@@ -74,8 +74,11 @@ struct SwitchContextResult {
 };
 
 /// clice/listConfigurations: the build configuration menu and the names
-/// the selection layers hold.
-struct ListConfigurationsParams {};
+/// the selection layers hold, of the project serving `uri` — without one,
+/// of the first project over a folder.
+struct ListConfigurationsParams {
+    std::optional<std::string> uri;
+};
 
 struct ListConfigurationsResult {
     /// The distinct `configuration` tags of the rules, in declaration
@@ -95,9 +98,11 @@ struct ListConfigurationsResult {
 
 /// clice/switchConfiguration: persist `name` as the selected
 /// configuration. The running server keeps its configuration; the choice
-/// takes effect when the client restarts it.
+/// takes effect when the client restarts it. `uri` names the project as
+/// in ListConfigurationsParams.
 struct SwitchConfigurationParams {
     std::string name;
+    std::optional<std::string> uri;
 };
 
 struct SwitchConfigurationResult {

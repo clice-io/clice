@@ -710,26 +710,32 @@ void LSPClient::register_extensions() {
             co_return to_raw(result);
         });
 
-    // The protocol names no file: the first project over a folder
-    // answers, the first one being rootless in a server without folders.
-    auto configured = [this]() -> ProjectServer& {
+    // The project serving the named document; without one the first
+    // project over a folder, the first one being rootless in a server
+    // without folders.
+    auto configured = [this](const std::optional<std::string>& uri) {
+        if(uri) {
+            return resolve_uri(*uri).project;
+        }
         auto& projects = this->server.projects;
         auto it = llvm::find_if(projects, [](auto& project) { return !project->root.empty(); });
-        return it != projects.end() ? **it : *projects.front();
+        return it != projects.end() ? *it : projects.front();
     };
 
-    peer.on_request(
-        "clice/listConfigurations",
-        [configured](RequestContext& ctx, const ext::ListConfigurationsParams&) -> RawResult {
-            co_return to_raw(configured().context_service.list_configurations());
-        });
+    peer.on_request("clice/listConfigurations",
+                    [configured](RequestContext& ctx,
+                                 const ext::ListConfigurationsParams& params) -> RawResult {
+                        co_return to_raw(
+                            configured(params.uri)->context_service.list_configurations());
+                    });
 
     peer.on_request("clice/switchConfiguration",
                     [this, configured](RequestContext& ctx,
                                        const ext::SwitchConfigurationParams& params) -> RawResult {
-                        co_return to_raw(configured().context_service.switch_configuration(
-                            params.name,
-                            this->server.requested_configuration));
+                        co_return to_raw(configured(params.uri)
+                                             ->context_service.switch_configuration(
+                                                 params.name,
+                                                 this->server.requested_configuration));
                     });
 
     // ── Test hook ───────────────────────────────────────────────────

@@ -1057,12 +1057,17 @@ export class CliceClient {
         });
     }
 
-    listConfigurations(): Promise<ListConfigurationsResult> {
-        return this.sendRequest(ListConfigurationsRequest);
+    /// The build configuration menu of the project serving `uri`, else of
+    /// the first project over a folder.
+    listConfigurations(uri?: string): Promise<ListConfigurationsResult> {
+        return this.sendRequest(ListConfigurationsRequest, uri === undefined ? {} : { uri });
     }
 
-    switchConfiguration(name: string): Promise<SwitchConfigurationResult> {
-        return this.sendRequest(SwitchConfigurationRequest, { name });
+    switchConfiguration(name: string, uri?: string): Promise<SwitchConfigurationResult> {
+        return this.sendRequest(
+            SwitchConfigurationRequest,
+            uri === undefined ? { name } : { name, uri },
+        );
     }
 
     /// clice/internal/poll (test hook): run one tracker tick and apply its

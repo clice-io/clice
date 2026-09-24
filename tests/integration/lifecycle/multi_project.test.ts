@@ -209,6 +209,36 @@ test("shared cache directory serves one project", ({ session }) => {
     expect(fs.existsSync(workspace.path("b/.clice"))).toBe(true);
 });
 
+test("configuration menu per project", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    twoProjects(workspace);
+    workspace.write(
+        "beta/clice.toml",
+        [
+            'default_configuration = "fast"',
+            "[[rules]]",
+            'configuration = "fast"',
+            'compile_commands = ["compile_commands.json"]',
+            "[[rules]]",
+            'configuration = "slow"',
+            'compile_commands = ["compile_commands.json"]',
+            "",
+        ].join("\n"),
+    );
+    await client.initialize(workspace, { folders: ["alpha", "beta"] });
+
+    const [alpha] = await client.openAndWait("alpha/main.cpp");
+    const [beta] = await client.openAndWait("beta/main.cpp");
+    expect((await client.listConfigurations(alpha)).configurations).toEqual([]);
+    expect(await client.listConfigurations(beta)).toMatchObject({
+        configurations: ["fast", "slow"],
+        active: "fast",
+    });
+    expect(await client.switchConfiguration("slow", beta)).toEqual({ success: true });
+    expect((await client.listConfigurations(beta)).selected).toBe("slow");
+    expect((await client.listConfigurations()).configurations, "the first folder's").toEqual([]);
+});
+
 test("unclaimed file opens its project", async ({ session }) => {
     const { client, workspace } = session.tmp();
     twoProjects(workspace);
@@ -446,6 +476,22 @@ test("an open file answers through its project", async ({ session }) => {
     const references = (await client.referencesAt(main, 1, 21)) ?? [];
     const inHeader = references.filter((location) => location.uri === header);
     expect(inHeader.map((location) => location.range.start.line)).toEqual([2]);
+});
+
+test("dependency folder borrows the application", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("dep/include/dep.h", "#pragma once\n" + gated("IN_APP", "dep_fn"));
+    workspace.write("app/main.cpp", '#include "dep.h"\nint main() { return dep_fn(); }\n');
+    workspace.writeCDB(["app/main.cpp"], {
+        extraArgs: [`-I${workspace.path("dep/include")}`, "-DIN_APP"],
+        at: "app/compile_commands.json",
+    });
+    // The dependency folder has no database: its header compiles in the
+    // context of the application including it.
+    await client.initialize(workspace, { folders: ["app", "dep"] });
+
+    const [header] = await client.openAndWait("dep/include/dep.h");
+    client.assertNoErrors(header, "the application's command reaches the header");
 });
 
 test("unrelated folders keep references apart", async ({ session }) => {

@@ -101,15 +101,25 @@ export interface ListConfigurationsResult {
     defaultConfiguration: string;
 }
 
-export const ListConfigurationsRequest = new RequestType0<ListConfigurationsResult, void>(
-    "clice/listConfigurations",
-);
+/// clice/listConfigurations: the menu of the project serving `uri`;
+/// without one, of the first project over a folder.
+export interface ListConfigurationsParams {
+    uri?: string;
+}
+
+export const ListConfigurationsRequest = new RequestType<
+    ListConfigurationsParams,
+    ListConfigurationsResult,
+    void
+>("clice/listConfigurations");
 
 /// clice/switchConfiguration: persist `name` as the selected configuration.
 /// The running server keeps its configuration; the choice takes effect when
 /// the client restarts it.
 export interface SwitchConfigurationParams {
     name: string;
+    /// The project, as in ListConfigurationsParams.
+    uri?: string;
 }
 
 export interface SwitchConfigurationResult {

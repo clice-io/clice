@@ -7,18 +7,26 @@ import type {
 } from "@clice/tools/protocol" with { "resolution-mode": "import" };
 
 /** The build configuration switcher: a status bar item showing the
- * configuration the server runs (only while the rules declare any) and a
- * quick pick that persists a new choice and restarts the server, since a
- * selection takes effect at the next start. */
+ * configuration the project of the active editor runs (only while its
+ * rules declare any) and a quick pick that persists a new choice for that
+ * project and restarts the server, since a selection takes effect at the
+ * next start. */
 export function registerBuildConfiguration(client: ClientHandle, ext: vscode.ExtensionContext) {
     const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 101);
     status.command = "clice.switchConfiguration";
+
+    /// The document naming the project; without one the server answers
+    /// for its first folder.
+    function project(): { uri?: string } {
+        const document = vscode.window.activeTextEditor?.document;
+        return document?.uri.scheme === "file" ? { uri: document.uri.toString() } : {};
+    }
 
     async function list(): Promise<ListConfigurationsResult | undefined> {
         try {
             return await client.sendRequest<ListConfigurationsResult>(
                 "clice/listConfigurations",
-                {},
+                project(),
             );
         } catch {
             return undefined;
@@ -84,7 +92,7 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
         try {
             switched = await client.sendRequest<SwitchConfigurationResult>(
                 "clice/switchConfiguration",
-                { name: chosen.label },
+                { name: chosen.label, ...project() },
             );
         } catch {
             vscode.window.showWarningMessage(
@@ -113,6 +121,12 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
                 return;
             }
             void refresh();
+        }),
+        // Each project has its own configurations.
+        vscode.window.onDidChangeActiveTextEditor(() => {
+            if (client.isRunning()) {
+                void refresh();
+            }
         }),
     );
 }
