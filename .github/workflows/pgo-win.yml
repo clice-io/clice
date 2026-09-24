@@ -1,0 +1,144 @@
+name: pgo win
+
+# What users get today against what the plan would ship, same machine each:
+# Windows (windows-2025):
+#   Wcur      MSVC releasedbg package (/Ob1, assertions on), clice without LTO: the current release
+#   Wlto      MSVC releasedbg-lto package (/Ob1, no assertions), ThinLTO
+#   Wlto-ob2  the same package rebuilt with /Ob2
+#   W0 / W2   mingw (-O2) ThinLTO without / with the clang-trained profile (run 35956692227)
+# Linux (ubuntu-24.04):
+#   Vcur      releasedbg package (assertions on), no LTO: the current release
+#   V0 / V1 / V2 from run 35912428380
+
+on:
+  push:
+    branches: [exp/pgo-win]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  llvm_ob2:
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: llvm-msvc-ob2
+      os: windows-2025
+      lto: "ON"
+      extra-args: --msvc-ob2
+
+  clice_win_rel:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: Wcur
+            asset: x86_64-pc-windows-msvc.releasedbg.tar.xz
+            lto: "OFF"
+          - variant: Wlto
+            asset: x86_64-pc-windows-msvc.releasedbg-lto.tar.xz
+            lto: "ON"
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-${{ matrix.variant }}
+      llvm-asset: ${{ matrix.asset }}
+      lto: ${{ matrix.lto }}
+      os: windows-2025
+      pixi-env: default
+
+  clice_win_ob2:
+    needs: llvm_ob2
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-Wlto-ob2
+      llvm: llvm-msvc-ob2
+      lto: "ON"
+      os: windows-2025
+      pixi-env: default
+
+  bench_win:
+    needs: [clice_win_rel, clice_win_ob2]
+    if: ${{ !cancelled() }}
+    runs-on: windows-2025
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: default
+      - name: Download bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "cores: $NUMBER_OF_PROCESSORS"
+          for pair in "Wcur:${{ github.run_id }}" "Wlto:${{ github.run_id }}" "Wlto-ob2:${{ github.run_id }}" \
+                      "W0:35956692227" "W2:35956692227"; do
+            name="${pair%%:*}"; run="${pair#*:}"
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -n "final-$name" -D "bundles/$name" || continue
+            mkdir -p "variants/$name" && tar -C "variants/$name" -xzf "bundles/$name/bundle.tar.gz"
+          done
+          ls variants
+      - name: Workloads
+        run: pixi run -e default python scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads"
+      - name: Benchmark
+        run: |
+          W="$(cygpath -m "$PWD")"
+          ARGS=()
+          for v in Wcur Wlto Wlto-ob2 W0 W2; do [[ -d "variants/$v" ]] && ARGS+=(--variant "$v=$W/variants/$v"); done
+          pixi run -e default python scripts/pgo_ci.py bench "${ARGS[@]}" --rounds 2 --out bench-out \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-results-win
+          path: bench-out
+
+  clice_cur_linux:
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-Vcur
+      llvm: llvm-rel
+      llvm-run: "35912427164"
+      lto: "OFF"
+
+  bench_linux:
+    needs: clice_cur_linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - name: Download bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for pair in "Vcur:${{ github.run_id }}" "V0:35912428380" "V1:35912428380" "V2:35912428380"; do
+            name="${pair%%:*}"; run="${pair#*:}"
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -n "final-$name" -D "bundles/$name"
+            mkdir -p "variants/$name" && zstd -dc "bundles/$name/bundle.tar.zst" | tar -C "variants/$name" -xf -
+          done
+      - name: Workloads
+        run: pixi run -e package python3 scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads"
+      - name: Benchmark
+        run: |
+          pixi run -e package python3 scripts/pgo_ci.py bench --rounds 3 --out bench-out \
+            --variant "Vcur=$PWD/variants/Vcur" --variant "V0=$PWD/variants/V0" \
+            --variant "V1=$PWD/variants/V1" --variant "V2=$PWD/variants/V2" \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-results-linux
+          path: bench-out

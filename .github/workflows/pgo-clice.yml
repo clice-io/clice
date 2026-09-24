@@ -12,8 +12,13 @@ on:
         type: string
         required: true
       llvm:
+        description: "LLVM package artifact (llvm.tar.zst or .gz)"
         type: string
-        required: true
+        default: ""
+      llvm-asset:
+        description: "Or an asset of the clice-llvm 23.1.1+r1 release"
+        type: string
+        default: ""
       llvm-run:
         type: string
         default: ""
@@ -45,6 +50,9 @@ jobs:
   build:
     runs-on: ${{ inputs.os }}
     timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -63,6 +71,7 @@ jobs:
           environments: ${{ inputs.pixi-env }}
 
       - name: Download LLVM
+        if: inputs.llvm != ''
         uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.llvm }}
@@ -79,11 +88,21 @@ jobs:
           run-id: ${{ inputs.pgo-run || github.run_id }}
           github-token: ${{ github.token }}
 
+      - name: Download released LLVM
+        if: inputs.llvm-asset != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download 23.1.1+r1 -R clice-io/clice-llvm -p "${{ inputs.llvm-asset }}" -D llvm-artifact
+
       - name: Configure
         run: |
-          mkdir -p "$RUNNER_TEMP/llvm"
-          zstd -dc llvm-artifact/llvm.tar.zst | tar -C "$RUNNER_TEMP/llvm" -xf -
-          cat "$RUNNER_TEMP/llvm/lib/cmake/clice-llvm/config.cmake"
+          LLVM_DIR="$RUNNER_TEMP/llvm"
+          [[ "$RUNNER_OS" == Windows ]] && LLVM_DIR="$(cygpath -m "$LLVM_DIR")"
+          mkdir -p "$LLVM_DIR"
+          if [[ -f llvm-artifact/llvm.tar.zst ]]; then zstd -dc llvm-artifact/llvm.tar.zst | tar -C "$LLVM_DIR" -xf -
+          elif [[ -f llvm-artifact/llvm.tar.gz ]]; then tar -C "$LLVM_DIR" -xzf llvm-artifact/llvm.tar.gz
+          else tar -C "$LLVM_DIR" -xJf llvm-artifact/*.tar.xz; fi
+          cat "$LLVM_DIR/lib/cmake/clice-llvm/config.cmake"
           PGO="${{ inputs.pgo }}"
           if [[ -n "$PGO" && "$PGO" != generate ]]; then PGO="$PWD/pgo-profile/profile.profdata"; fi
           CROSS=()
@@ -94,7 +113,7 @@ jobs:
             -DCLICE_ENABLE_TEST=ON \
             -DCLICE_ENABLE_BENCHMARK=ON \
             -DCLICE_ENABLE_LTO=${{ inputs.lto }} \
-            -DLLVM_INSTALL_PATH="$RUNNER_TEMP/llvm" \
+            -DLLVM_INSTALL_PATH="$LLVM_DIR" \
             -DCLICE_PGO="$PGO"
 
       - name: Build
@@ -125,7 +144,8 @@ jobs:
         if: ${{ !inputs.train && inputs.target-triple == '' }}
         continue-on-error: true
         run: |
-          CLICE_TEST_DATA_DIR="$PWD/tests/data" pixi run -e package ./build/RelWithDebInfo/bin/unit_tests 2>&1 | tail -n 30 | tee -a "$GITHUB_STEP_SUMMARY"
+          DATA="$PWD/tests/data"; [[ "$RUNNER_OS" == Windows ]] && DATA="$(cygpath -m "$DATA")"
+          CLICE_TEST_DATA_DIR="$DATA" pixi run -e "${{ inputs.pixi-env }}" ./build/RelWithDebInfo/bin/unit_tests 2>&1 | tail -n 30 | tee -a "$GITHUB_STEP_SUMMARY"
           exit "${PIPESTATUS[0]}"
 
       - name: Bundle
@@ -134,7 +154,7 @@ jobs:
           cd build/RelWithDebInfo
           # Windows runners have no zstd; gzip unpacks everywhere. The unit
           # tests spawn clice.exe as their worker.
-          if [[ -n "${{ inputs.target-triple }}" ]]; then
+          if [[ -n "${{ inputs.target-triple }}" || "$RUNNER_OS" == Windows ]]; then
             tar -cf - bin/pipeline_benchmark.exe bin/unit_tests.exe bin/clice.exe lib/clang | gzip -1 > ../../bundle.tar.gz
           else
             tar -cf - bin/pipeline_benchmark bin/clice lib/clang | zstd -T0 -3 -o ../../bundle.tar.zst

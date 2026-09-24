@@ -218,6 +218,7 @@ class Build:
         )
         self.clang_only: bool = args.clang_only
         self.pgo_strip: bool = args.pgo_strip_prefix
+        self.msvc_ob2: bool = args.msvc_ob2
         self.default_triple_override: str | None = args.default_triple
         # A profile only matches code compiled the same way, so the
         # instrumented build takes the release configuration of the final
@@ -278,7 +279,10 @@ class Build:
         # Function names and line tables are all the symbolizers need; the
         # type and variable information of a full -g is most of the archive.
         if self.msvc:
-            relwithdebinfo = "/O2 /Ob1 /DNDEBUG -gcodeview -gline-tables-only"
+            # /Ob1 (CMake's MSVC default) inlines only functions declared
+            # inline; --msvc-ob2 lets the inliner decide, like -O2 elsewhere.
+            inline = "/Ob2" if self.msvc_ob2 else "/Ob1"
+            relwithdebinfo = f"/O2 {inline} /DNDEBUG -gcodeview -gline-tables-only"
             debug = "/Ob0 /Od -gcodeview -gline-tables-only"
         else:
             relwithdebinfo = "-O2 -gline-tables-only -DNDEBUG"
@@ -657,6 +661,11 @@ def main() -> None:
         "--clang-only",
         action="store_true",
         help="Build the clang compiler (with the X86 backend) instead of the package",
+    )
+    parser.add_argument(
+        "--msvc-ob2",
+        action="store_true",
+        help="Build the MSVC-target RelWithDebInfo package with /Ob2 instead of /Ob1",
     )
     parser.add_argument(
         "--pgo-strip-prefix",

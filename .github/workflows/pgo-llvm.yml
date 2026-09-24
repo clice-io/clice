@@ -60,6 +60,9 @@ jobs:
   build:
     runs-on: ${{ inputs.os }}
     timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -134,9 +137,14 @@ jobs:
       - name: Pack install
         if: ${{ !inputs.clang-train && !inputs.clang-bundle && inputs.upload }}
         run: |
-          command -v zstd || brew install zstd
-          tar -C .llvm/build-install -cf - . | zstd -T0 -6 -o llvm.tar.zst
-          ls -la llvm.tar.zst
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            # No zstd on Windows runners.
+            tar -C .llvm/build-install -czf llvm.tar.gz .
+          else
+            command -v zstd || brew install zstd
+            tar -C .llvm/build-install -cf - . | zstd -T0 -6 -o llvm.tar.zst
+          fi
+          ls -la llvm.tar.*
           du -sh .llvm/build-install/lib | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload install
@@ -144,7 +152,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.name }}
-          path: llvm.tar.zst
+          path: llvm.tar.*
           retention-days: 14
           compression-level: 0
           if-no-files-found: error
