@@ -88,6 +88,8 @@ def workloads(args) -> None:
         run(["git", "clone", "--depth", "1", "--branch", "20250814.1",
              "https://github.com/abseil/abseil-cpp.git", abseil], check=True)
     compilers = [f"-DCMAKE_C_COMPILER={args.cc}", f"-DCMAKE_CXX_COMPILER={args.cxx}"]
+    if args.flags:
+        compilers += [f"-DCMAKE_C_FLAGS={args.flags}", f"-DCMAKE_CXX_FLAGS={args.flags}"]
     run(["cmake", "-S", abseil, "-B", abseil / "build", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
          "-DCMAKE_CXX_STANDARD=20", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DABSL_BUILD_TESTING=OFF",
          *compilers], check=True)
@@ -252,6 +254,7 @@ def main() -> None:
     p.add_argument("--skip-llvm", action="store_true")
     p.add_argument("--cc", default="clang")
     p.add_argument("--cxx", default="clang++")
+    p.add_argument("--flags", default="", help="CMAKE_C_FLAGS / CMAKE_CXX_FLAGS of the workloads")
     p.set_defaults(func=workloads)
 
     p = sub.add_parser("bench")

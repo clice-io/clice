@@ -1,0 +1,72 @@
+name: pgo mac bench
+
+# The benchmark half of pgo-mac.yml on the bundles of run 35973108478, with
+# the workloads configured by the pixi clang (as clice itself builds on
+# macOS). pipeline_benchmark crashed there on a CDB written by Apple clang;
+# the first step records that crash under lldb.
+
+on:
+  push:
+    branches: [exp/pgo-mac-bench]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bench:
+    runs-on: macos-15
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: final-M*
+          path: bundles
+          run-id: "35973108478"
+          github-token: ${{ github.token }}
+      - name: Unpack
+        run: |
+          command -v zstd || brew install zstd
+          sysctl -n hw.ncpu machdep.cpu.brand_string
+          for dir in bundles/final-M*; do
+            name="${dir#bundles/final-}"
+            mkdir -p "variants/$name"
+            zstd -dc "$dir/bundle.tar.zst" | tar -C "variants/$name" -xf -
+          done
+      - name: Crash under Apple clang CDB
+        continue-on-error: true
+        run: |
+          git clone --depth 1 --branch 20250814.1 https://github.com/abseil/abseil-cpp.git "$RUNNER_TEMP/abseil-apple"
+          cmake -S "$RUNNER_TEMP/abseil-apple" -B "$RUNNER_TEMP/abseil-apple/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_STANDARD=20 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DABSL_BUILD_TESTING=OFF \
+            -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DCMAKE_MAKE_PROGRAM="$(pixi run -e package which ninja)"
+          head -c 1500 "$RUNNER_TEMP/abseil-apple/build/compile_commands.json"; echo
+          {
+            echo '## pipeline_benchmark on an Apple clang CDB'
+            echo '```'
+            lldb --batch -o run -k 'bt 40' -k quit -- variants/M0/bin/pipeline_benchmark --limit 1 --log-level info \
+              "$RUNNER_TEMP/abseil-apple/build/compile_commands.json" 2>&1 | tail -n 80
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Workloads
+        run: |
+          pixi run -e package python3 scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads" \
+            --cc clang --cxx clang++ --flags=--no-default-config
+      - name: Benchmark
+        run: |
+          pixi run -e package python3 scripts/pgo_ci.py bench --rounds 3 --out bench-out \
+            --variant "M0=$PWD/variants/M0" --variant "M2-old=$PWD/variants/M2-old" --variant "M2-strip=$PWD/variants/M2-strip" \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-results-mac
+          path: bench-out
