@@ -1,13 +1,11 @@
-name: pgo mingw arm64
+name: pgo mingw arm64 bench
 
-# Windows arm64 through aarch64-w64-mingw32, cross-compiled on Linux with the
-# pixi clang and llvm-mingw's sysroot and runtimes; no PGO against the
-# path-stripped clang profile of run 35973108478; unit tests and benchmark
-# on windows-11-arm, whose workloads the native llvm-mingw clang configures.
+# Benchmark only, on the aarch64 mingw bundles of run 36024664634 (whose
+# unit tests passed on windows-11-arm).
 
 on:
   push:
-    branches: [exp/pgo-mingw-arm64]
+    branches: [exp/pgo-mingw-arm64-bench]
   workflow_dispatch:
 
 permissions:
@@ -15,42 +13,7 @@ permissions:
   actions: read
 
 jobs:
-  llvm:
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [base, pgo]
-    uses: ./.github/workflows/pgo-llvm.yml
-    with:
-      name: arm64-mingw-${{ matrix.variant }}
-      lto: "ON"
-      target-triple: aarch64-w64-mingw32
-      pixi-env: cross-windows-mingw
-      llvm-mingw: true
-      profile: ${{ matrix.variant == 'pgo' && 'profile-clang-strip' || '' }}
-      profile-run: ${{ matrix.variant == 'pgo' && '35973108478' || '' }}
-      extra-args: ${{ matrix.variant == 'pgo' && '--pgo-strip-prefix' || '' }}
-      match-report: ${{ matrix.variant == 'pgo' }}
-
-  clice:
-    needs: llvm
-    if: ${{ !cancelled() }}
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [base, pgo]
-    uses: ./.github/workflows/pgo-clice.yml
-    with:
-      name: final-arm64-mingw-${{ matrix.variant }}
-      llvm: arm64-mingw-${{ matrix.variant }}
-      lto: "ON"
-      target-triple: aarch64-w64-mingw32
-      pixi-env: cross-windows-mingw
-      llvm-mingw: true
-
   windows:
-    needs: clice
-    if: ${{ !cancelled() }}
     runs-on: windows-11-arm
     timeout-minutes: 360
     defaults:
@@ -67,6 +30,8 @@ jobs:
         with:
           pattern: final-arm64-mingw-*
           path: bundles
+          run-id: "36024664634"
+          github-token: ${{ github.token }}
       - name: Unpack
         run: |
           echo "cores: $NUMBER_OF_PROCESSORS"; uname -m
@@ -74,18 +39,6 @@ jobs:
             mkdir -p "variants/$v" && tar -C "variants/$v" -xzf "bundles/final-arm64-mingw-$v/bundle.tar.gz"
           done
           ls -la variants/*/bin
-      - name: Unit tests
-        continue-on-error: true
-        run: |
-          set +e +o pipefail
-          for v in base pgo; do
-            CLICE_TEST_DATA_DIR="$(cygpath -m "$PWD/tests/data")" "variants/$v/bin/unit_tests.exe" > "$v-tests.log" 2>&1
-            {
-              echo "== $v (exit $?)"
-              grep -E 'tests from .* ran|PASSED|FAILED TESTS' "$v-tests.log"
-              grep -E 'FAILED  \]' "$v-tests.log" | head -n 80
-            } | sed 's/\x1b\[[0-9;]*m//g' | tee -a "$GITHUB_STEP_SUMMARY"
-          done
       - name: Native toolchain for the workloads
         run: |
           curl -sSL -o llvm-mingw.zip https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-aarch64.zip
