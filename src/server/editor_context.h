@@ -77,10 +77,11 @@ struct EditorContext {
         return it != selections.end() ? &it->second : nullptr;
     }
 
-    /// Drop the file's selection, persisting its absence: the choice moved
-    /// to another project.
+    /// Drop the file's selection and the header context resolved under it,
+    /// persisting the absence: the choice moved to another project.
     void forget_selection(Fid path_id) {
         if(selections.erase(path_id)) {
+            drop_header_context(path_id);
             mark_dirty();
         }
     }
@@ -129,9 +130,14 @@ struct EditorContext {
     /// line sits past the editor's EOF and is invisible to the client.
     void append_suffix_include(Fid path_id, std::string& text) const;
 
-    /// Validate a context choice persisted from an earlier run against the
-    /// current CDB and include graph, dropping it when stale. Called on
-    /// didOpen; a surviving entry is the file's active context.
+    /// Whether the file's selection still holds against the current CDB
+    /// and include graph: its host still compiles and includes the file,
+    /// its pinned command still exists.
+    bool holds_choice(Fid path_id) const;
+
+    /// Validate a context choice persisted from an earlier run, dropping it
+    /// when it no longer holds (holds_choice). Called on didOpen; a
+    /// surviving entry is the file's active context.
     void validate_saved_context(Fid path_id);
 
     /// Whether a pinned command choice still has a live basis among

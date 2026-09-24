@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 
@@ -10,9 +11,11 @@ export interface Setting {
 
 /// The directory the server starts in and a relative clice.executable
 /// resolves against: the first workspace folder, not wherever VS Code
-/// happened to be started from.
+/// happened to be started from — when it exists (a .code-workspace may
+/// list a folder missing on this machine).
 export function workspaceDirectory(): string | undefined {
-    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    return folder && fs.existsSync(folder) ? folder : undefined;
 }
 
 /// A path spelled relative to the workspace resolves against `base`; a

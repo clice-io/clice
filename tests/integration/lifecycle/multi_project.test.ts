@@ -455,6 +455,42 @@ test("hierarchies cross folders", async ({ session }) => {
     expect(implementations.map((location) => location.uri)).toEqual([
         workspace.uri("app/main.cpp"),
     ]);
+
+    // The other way round the library knows nothing of the application's
+    // type, yet its base stays reachable though the library serves the
+    // base's open file.
+    const [main] = await client.openAndWait("app/main.cpp");
+    const [square] = (await client.prepareTypeHierarchy(main, 2, 8)) ?? [];
+    expect(square?.name).toBe("Square");
+    const supertypes = (await client.typeHierarchySupertypes(square!)) ?? [];
+    expect(supertypes.map((type) => type.name)).toEqual(["Shape"]);
+});
+
+test("definition follows an open buffer", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    libraryAndApp(workspace);
+    // The application builds the library's source too; the library, listed
+    // first, serves it once open.
+    const include = `-I${workspace.path("lib/include")}`;
+    workspace.writeCDB(["app/main.cpp", "lib/src/lib.cpp"], {
+        extraArgs: [include],
+        at: "app/compile_commands.json",
+    });
+    await client.initialize(workspace, { folders: ["lib", "app"] });
+    await waitForDefinitionOf(client, "main");
+    await waitForDefinitionOf(client, "lib_fn", workspace.uri("lib/src/lib.cpp"));
+
+    const [source, text] = await client.openAndWait("lib/src/lib.cpp");
+    const edited = client.armDiagnostics(source);
+    client.change(source, 2, `// moved\n${text}`);
+    await client.hoverAt(source, 2, 4);
+    await edited;
+
+    const [main] = await client.openAndWait("app/main.cpp");
+    const definitions = asLocations(await client.definitionAt(main, 1, 21));
+    expect(definitions.map((location) => [location.uri, location.range.start.line])).toEqual([
+        [source, 2],
+    ]);
 });
 
 test("an open file answers through its project", async ({ session }) => {
@@ -522,6 +558,32 @@ test("context from another folder", async ({ session }) => {
     await compiled;
     client.assertNoErrors(header, "the application's host defines IN_APP");
     expect((await client.currentContext(header)).context?.uri).toBe(workspace.uri("app/main.cpp"));
+});
+
+test("own configurations come from the owner", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("alpha/shared.cpp", "int shared() { return 0; }\n");
+    workspace.writeCDB(["alpha/shared.cpp"], {
+        extraArgs: ["-DFIRST"],
+        at: "alpha/compile_commands.json",
+    });
+    workspace.writeCDB(["alpha/shared.cpp"], {
+        extraArgs: ["-DSECOND"],
+        at: "beta/compile_commands.json",
+    });
+    await client.initialize(workspace, { folders: ["alpha", "beta"] });
+
+    // Both databases list the file; its owner offers its own entry, and the
+    // other project's cannot be switched to from there.
+    const [shared] = await client.openAndWait("alpha/shared.cpp");
+    const listed = await client.queryContext(shared);
+    const own = listed.contexts.filter((context) => context.uri === shared);
+    expect(own).toHaveLength(1);
+    const switched = await client.switchContext(shared, shared, {
+        commandHash: own[0]!.commandHash!,
+        epoch: listed.epoch,
+    });
+    expect(switched.success).toBe(true);
 });
 
 test("unrelated folders keep references apart", async ({ session }) => {

@@ -402,18 +402,25 @@ std::string cache_dir_owner(llvm::StringRef cache_dir) {
     return owner ? llvm::StringRef(*owner).trim().str() : std::string();
 }
 
+/// A recorded owner that no longer exists (a moved or deleted checkout)
+/// claims nothing.
+static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
+    return !owner.empty() && owner != root && llvm::sys::fs::is_directory(owner);
+}
+
 bool owned_elsewhere(llvm::StringRef cache_dir, llvm::StringRef workspace_root) {
     auto root = path::resolved(workspace_root);
-    if(path::under(path::resolved(cache_dir), root)) {
-        return false;
-    }
-    auto owner = cache_dir_owner(cache_dir);
-    return !owner.empty() && owner != root;
+    return !path::under(path::resolved(cache_dir), root) &&
+           live_owner(cache_dir_owner(cache_dir), root);
 }
 
 void claim_cache_dir(llvm::StringRef cache_dir, llvm::StringRef workspace_root) {
     auto root = path::resolved(workspace_root);
-    if(path::under(path::resolved(cache_dir), root) || !cache_dir_owner(cache_dir).empty()) {
+    auto owner = cache_dir_owner(cache_dir);
+    // One inside the root is the root's, whatever it records — a copied
+    // checkout carries the original's record along.
+    if(owner == root ||
+       (!path::under(path::resolved(cache_dir), root) && live_owner(owner, root))) {
         return;
     }
     if(auto written = fs::write(path::join(cache_dir, cache_owner_file), root + "\n"); !written) {

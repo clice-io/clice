@@ -293,10 +293,13 @@ private:
     /// This project's query, then the peers of `symbol` (peers_of).
     llvm::SmallVector<const index::IndexQuery*> sources(index::SymbolHash symbol, Fid anchor);
 
-    /// Whether `from` answers for `file`: any project for a closed file,
-    /// only the one serving its buffer for an open one — the others hold
-    /// its disk rows, which the buffer superseded.
-    bool answers_for(const index::IndexQuery& from, Fid file) const;
+    /// Whether `from`'s rows for `file` stand among the answers of `asked`:
+    /// any project's for a closed file; for an open one only the project
+    /// serving its buffer — the others hold its disk rows, which the buffer
+    /// superseded — unless that project is not asked.
+    bool answers_for(const index::IndexQuery& from,
+                     Fid file,
+                     llvm::ArrayRef<const index::IndexQuery*> asked) const;
 
     /// `ask`'s sites from every source of `symbol` (sources), in the files
     /// each may answer for (answers_for), deduplicated.

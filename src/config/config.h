@@ -25,16 +25,17 @@ std::uint32_t default_stateless_worker_count();
 std::uint32_t default_max_stateless_worker_count();
 
 /// A cache directory keys its indexes, configuration selection and server
-/// record by configuration alone, so it serves one project. One outside
-/// the workspace root (a shared location) records the root it was first
-/// used for; one inside belongs to the root holding it.
+/// record by configuration alone, so it serves one project, whose root it
+/// records. One inside a workspace root belongs to that root whatever it
+/// records; one outside (a shared location) to the root it records, while
+/// that exists.
 std::string cache_dir_owner(llvm::StringRef cache_dir);
 
 /// Whether `cache_dir` serves another project than `workspace_root`'s.
 bool owned_elsewhere(llvm::StringRef cache_dir, llvm::StringRef workspace_root);
 
-/// Record `workspace_root` as the owner of a cache directory outside it,
-/// unless one is recorded.
+/// Record `workspace_root` as the owner of a cache directory it may use
+/// (owned_elsewhere is false).
 void claim_cache_dir(llvm::StringRef cache_dir, llvm::StringRef workspace_root);
 
 /// The configuration files a workspace root may hold, in lookup order.

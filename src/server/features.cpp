@@ -399,16 +399,20 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
         }
         // A definition another project compiles (a library's source beside
         // the application including its header) outranks the declarations
-        // this project alone can offer.
-        if(query.sites(cursor->symbol, RelationKind::Definition).empty()) {
-            auto defined = gather(cursor->symbol, path_id, [&](const index::IndexQuery& from) {
-                return from.sites(cursor->symbol, RelationKind::Definition);
-            });
-            if(!defined.empty()) {
-                return to_lsp::locations(defined);
-            }
+        // this project alone can offer; standing on a definition, or with
+        // none anywhere, the declarations answer too.
+        auto defined = gather(cursor->symbol, path_id, [&](const index::IndexQuery& from) {
+            return from.sites(cursor->symbol, RelationKind::Definition);
+        });
+        if(!defined.empty() && llvm::none_of(defined, [&](const index::Site& site) {
+               return site.path == cursor->site.path && site.range == cursor->site.range;
+           })) {
+            return to_lsp::locations(defined);
         }
-        return to_lsp::locations(query.definition(*cursor));
+        return to_lsp::locations(
+            gather(cursor->symbol, path_id, [&](const index::IndexQuery& from) {
+                return from.definition(*cursor);
+            }));
     };
     if(auto result = index_definition(); !result.empty()) {
         co_return to_raw(result);
@@ -845,9 +849,11 @@ llvm::SmallVector<const index::IndexQuery*> Features::sources(index::SymbolHash 
     return all;
 }
 
-bool Features::answers_for(const index::IndexQuery& from, Fid file) const {
+bool Features::answers_for(const index::IndexQuery& from,
+                           Fid file,
+                           llvm::ArrayRef<const index::IndexQuery*> asked) const {
     auto* serving = open_in(file);
-    return !serving || serving == &from;
+    return !serving || serving == &from || !llvm::is_contained(asked, serving);
 }
 
 std::vector<index::Site>
@@ -855,9 +861,10 @@ std::vector<index::Site>
                      Fid anchor,
                      llvm::function_ref<std::vector<index::Site>(const index::IndexQuery&)> ask) {
     std::vector<index::Site> sites;
-    for(auto* from: sources(symbol, anchor)) {
+    auto asked = sources(symbol, anchor);
+    for(auto* from: asked) {
         for(auto& site: ask(*from)) {
-            if(answers_for(*from, site.file)) {
+            if(answers_for(*from, site.file, asked)) {
                 sites.push_back(std::move(site));
             }
         }
@@ -1013,9 +1020,10 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
         co_return kota::outcome_error(item_not_resolved("call hierarchy"));
 
     std::vector<index::IndexQuery::Edge> callers;
-    for(auto* from: sources(*symbol, path_id)) {
+    auto asked = sources(*symbol, path_id);
+    for(auto* from: asked) {
         merge_edges(callers, from->call_graph(*symbol, {.callees = false}).callers, [&](Fid file) {
-            return answers_for(*from, file);
+            return answers_for(*from, file, asked);
         });
     }
     std::vector<protocol::CallHierarchyIncomingCall> results;
@@ -1033,9 +1041,10 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
         co_return kota::outcome_error(item_not_resolved("call hierarchy"));
 
     std::vector<index::IndexQuery::Edge> callees;
-    for(auto* from: sources(*symbol, path_id)) {
+    auto asked = sources(*symbol, path_id);
+    for(auto* from: asked) {
         merge_edges(callees, from->call_graph(*symbol, {.callers = false}).callees, [&](Fid file) {
-            return answers_for(*from, file);
+            return answers_for(*from, file, asked);
         });
     }
     std::vector<protocol::CallHierarchyOutgoingCall> results;
@@ -1084,10 +1093,11 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("type hierarchy"));
     std::vector<index::IndexQuery::Located> supertypes;
-    for(auto* from: sources(*symbol, path_id)) {
+    auto asked = sources(*symbol, path_id);
+    for(auto* from: asked) {
         merge_located(supertypes,
                       from->type_hierarchy(*symbol, {.subtypes = false}).supertypes,
-                      [&](Fid file) { return answers_for(*from, file); });
+                      [&](Fid file) { return answers_for(*from, file, asked); });
     }
     co_return to_raw(type_items(supertypes));
 }
@@ -1098,10 +1108,11 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("type hierarchy"));
     std::vector<index::IndexQuery::Located> subtypes;
-    for(auto* from: sources(*symbol, path_id)) {
+    auto asked = sources(*symbol, path_id);
+    for(auto* from: asked) {
         merge_located(subtypes,
                       from->type_hierarchy(*symbol, {.supertypes = false}).subtypes,
-                      [&](Fid file) { return answers_for(*from, file); });
+                      [&](Fid file) { return answers_for(*from, file, asked); });
     }
     co_return to_raw(type_items(subtypes));
 }
@@ -1116,8 +1127,11 @@ std::vector<protocol::SymbolInformation> Features::workspace_symbol(llvm::String
     // again, where a bare name would fail a qualified query: those
     // replies carry the qualified name.
     bool qualified = parsed->absolute || !parsed->scope.empty();
+    auto every = peers();
+    every.push_back(&query);
     for(auto& located: query.search(*parsed, workspace_symbol_limit)) {
-        if(!answers_for(query, located.site.file)) {
+        // Every project answers workspace/symbol (MasterServer).
+        if(!answers_for(query, located.site.file, every)) {
             continue;
         }
         auto container = query.container_name(located.symbol.hash);

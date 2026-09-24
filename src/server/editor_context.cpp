@@ -245,34 +245,35 @@ bool EditorContext::pin_alive(Fid entry_file,
     return false;
 }
 
-void EditorContext::validate_saved_context(Fid path_id) {
+bool EditorContext::holds_choice(Fid path_id) const {
+    auto* saved = selection(path_id);
+    if(!saved) {
+        return false;
+    }
     auto path = project.file_table.resolve(path_id);
+    if(saved->host_path_id.valid()) {
+        auto host_path = project.file_table.resolve(saved->host_path_id);
+        llvm::StringRef edit_paths[] = {host_path, path};
+        return !project.build.commands(saved->host_path_id).empty() &&
+               !project.dep_graph.find_include_chain(saved->host_path_id, path_id).empty() &&
+               (saved->command_hash.empty() || pin_alive(saved->host_path_id, edit_paths, *saved));
+    }
+    return !saved->command_hash.empty() && !project.build.commands(path_id).empty() &&
+           pin_alive(path_id, path, *saved);
+}
 
+void EditorContext::validate_saved_context(Fid path_id) {
     // A context choice persisted from an earlier session stays authoritative
     // only if it still holds: the CDB or include graph may have changed
     // while the server was down, and a stale choice suppresses automatic
     // host resolution and strands the file on the fallback command.
-    if(auto it = selections.find(path_id); it != selections.end()) {
-        auto& saved = it->second;
-
-        bool valid = false;
-        if(saved.host_path_id.valid()) {
-            auto host_path = project.file_table.resolve(saved.host_path_id);
-            llvm::StringRef edit_paths[] = {host_path, path};
-            valid =
-                !project.build.commands(saved.host_path_id).empty() &&
-                !project.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
-                (saved.command_hash.empty() || pin_alive(saved.host_path_id, edit_paths, saved));
-        } else if(!saved.command_hash.empty()) {
-            valid = !project.build.commands(path_id).empty() && pin_alive(path_id, path, saved);
-        }
-        if(!valid) {
-            LOG_INFO("didOpen: dropping stale saved context for {}", path);
-            selections.erase(it);
-            // The drop must reach the contexts blob, or the stale choice
-            // resurrects from disk at the next start.
-            mark_dirty();
-        }
+    if(selection(path_id) && !holds_choice(path_id)) {
+        LOG_INFO("didOpen: dropping stale saved context for {}",
+                 project.file_table.resolve(path_id));
+        selections.erase(path_id);
+        // The drop must reach the contexts blob, or the stale choice
+        // resurrects from disk at the next start.
+        mark_dirty();
     }
 }
 

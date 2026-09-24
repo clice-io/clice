@@ -87,6 +87,7 @@ TEST_CASE(CacheDirServesOneProject) {
     TempDir tmp;
     tmp.touch("shared/keep", "");
     tmp.touch("a/main.cpp", "");
+    tmp.touch("b/main.cpp", "");
     auto shared = tmp.path("shared");
     auto a = tmp.path("a");
     auto b = tmp.path("b");
@@ -95,9 +96,20 @@ TEST_CASE(CacheDirServesOneProject) {
     EXPECT_FALSE(owned_elsewhere(shared, a));
     EXPECT_TRUE(owned_elsewhere(shared, b));
 
-    // One inside its root belongs to that root, whatever it records.
+    // One inside its root belongs to that root, whatever it records, and
+    // a subproject nested there finds it taken once the root claimed it.
     tmp.touch("a/.clice/owner", b + "\n");
-    EXPECT_FALSE(owned_elsewhere(path::join(a, ".clice"), a));
+    auto inner = path::join(a, ".clice");
+    EXPECT_FALSE(owned_elsewhere(inner, a));
+    claim_cache_dir(inner, a);
+    EXPECT_TRUE(owned_elsewhere(inner, path::join(a, "sub")));
+
+    // An owner that no longer exists claims nothing.
+    tmp.touch("moved/owner", tmp.path("gone") + "\n");
+    auto moved = tmp.path("moved");
+    EXPECT_FALSE(owned_elsewhere(moved, b));
+    claim_cache_dir(moved, b);
+    EXPECT_TRUE(owned_elsewhere(moved, a));
 
     tmp.touch("b/clice.toml", std::format("[project]\ncache_dir = '{}'\n", shared));
     auto config = Config::load_from_workspace(b);

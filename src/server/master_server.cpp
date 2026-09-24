@@ -17,6 +17,7 @@
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
+#include "kota/ipc/lsp/uri.h"
 #include "kota/ipc/recording_transport.h"
 #include "kota/ipc/transport.h"
 #include "llvm/ADT/STLExtras.h"
@@ -216,7 +217,7 @@ static ProjectServer* deepest_holding(llvm::ArrayRef<std::shared_ptr<ProjectServ
 
 ProjectServer* MasterServer::compiler(Fid path_id) {
     for(auto& project: projects) {
-        if(project->contexts.selection(path_id)) {
+        if(project->contexts.holds_choice(path_id)) {
             return project.get();
         }
     }
@@ -571,6 +572,8 @@ ext::QueryContextResult MasterServer::query_contexts(llvm::StringRef path,
     constexpr std::size_t page_size = 10;
     auto& owner = owner_of(path_id);
     auto items = owner.context_service.contexts(path, path_id);
+    // Other projects offer hosts: the file's own entries are its owner's.
+    auto own = kota::ipc::lsp::URI::from_file_path(std::string(path));
     for(auto& project: projects) {
         if(project.get() == &owner) {
             continue;
@@ -580,7 +583,7 @@ ext::QueryContextResult MasterServer::query_contexts(llvm::StringRef path,
                 return known.uri == item.uri && known.occurrence == item.occurrence &&
                        known.command_hash == item.command_hash;
             };
-            if(llvm::none_of(items, same)) {
+            if((!own || item.uri != own->str()) && llvm::none_of(items, same)) {
                 items.push_back(std::move(item));
             }
         }
@@ -609,22 +612,33 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(llvm::StringRe
     }
     params.epoch.reset();
 
+    // The project offering the chosen item: the file's own first, then the
+    // others, in the order query_contexts listed them.
     auto owner = owner_of(path_id).shared_from_this();
-    auto target = owner;
-    auto hosts = [&](ProjectServer& project) {
-        return !project.project.build.commands(context_path_id).empty() &&
-               !project.project.dep_graph.find_include_chain(context_path_id, path_id).empty();
+    auto offers = [&](ProjectServer& project) {
+        return llvm::any_of(project.context_service.contexts(path, path_id),
+                            [&](const ext::ContextItem& item) {
+                                return item.uri == params.context_uri &&
+                                       item.occurrence == params.occurrence &&
+                                       item.command_hash == params.command_hash;
+                            });
     };
-    if(context_path_id != path_id && !hosts(*owner)) {
-        auto it = llvm::find_if(projects, [&](auto& project) { return hosts(*project); });
+    auto target = owner;
+    if(context_path_id != path_id && !offers(*owner)) {
+        auto it = llvm::find_if(projects, [&](auto& project) { return offers(*project); });
         if(it == projects.end()) {
             co_return result;
         }
         target = *it;
     }
+    // One project holds the file's choice (compiler routes by it).
+    for(auto& project: projects) {
+        if(project != target) {
+            project->contexts.forget_selection(path_id);
+        }
+    }
     auto session = find_session(path_id);
     if(target != owner && session) {
-        owner->contexts.forget_selection(path_id);
         owner->release_session(path_id);
         owners[path_id] = target.get();
         target->open_session(path_id, session->text, session->version);
