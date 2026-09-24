@@ -217,6 +217,7 @@ class Build:
             Path(args.pgo_profile).resolve() if args.pgo_profile else None
         )
         self.clang_only: bool = args.clang_only
+        self.pgo_strip: bool = args.pgo_strip_prefix
         self.default_triple_override: str | None = args.default_triple
         # A profile only matches code compiled the same way, so the
         # instrumented build takes the release configuration of the final
@@ -288,14 +289,22 @@ class Build:
             args.append(f"-DCMAKE_{lang}_FLAGS_DEBUG={debug}")
         return args
 
+    def pgo_name_flags(self) -> str:
+        """Profile names of static functions carry the TU's absolute path;
+        strip everything up to the llvm-project root so a profile trained
+        in one checkout (host, repository) matches another."""
+        if not self.pgo_strip:
+            return ""
+        return f" -mllvm -static-func-strip-dirname-prefix={len(self.root.parts)}"
+
     def common_args(self, cxx_flags: str) -> list[str]:
         args = [
             "-G",
             "Ninja",
             f"-DCMAKE_BUILD_TYPE={self.mode}",
             f"-DCMAKE_INSTALL_PREFIX={self.install_prefix.as_posix()}",
-            f"-DCMAKE_C_FLAGS=-w{self.driver_flags()}{self.target_flags()}",
-            f"-DCMAKE_CXX_FLAGS={cxx_flags}{self.driver_flags()}{self.target_flags()}",
+            f"-DCMAKE_C_FLAGS=-w{self.driver_flags()}{self.target_flags()}{self.pgo_name_flags()}",
+            f"-DCMAKE_CXX_FLAGS={cxx_flags}{self.driver_flags()}{self.target_flags()}{self.pgo_name_flags()}",
             # The archive triple doubles as the default: without a native
             # backend LLVM would leave it empty, and clang would then have no
             # target for compile commands that do not spell one. The mingw
@@ -648,6 +657,11 @@ def main() -> None:
         "--clang-only",
         action="store_true",
         help="Build the clang compiler (with the X86 backend) instead of the package",
+    )
+    parser.add_argument(
+        "--pgo-strip-prefix",
+        action="store_true",
+        help="Name static functions in profiles relative to the llvm-project root",
     )
     parser.add_argument(
         "--default-triple",

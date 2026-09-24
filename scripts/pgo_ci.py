@@ -36,6 +36,9 @@ def merge_profiles(raw_dir: Path, out: Path) -> None:
     # profiles are skipped rather than failing the merge.
     run(["llvm-profdata", "merge", "--sparse", "--failure-mode=all", "-o", out, *raws], check=True)
     run(["llvm-profdata", "show", out], check=False)
+    listing = run(["llvm-profdata", "show", "--all-functions", out], capture_output=True, text=True).stdout
+    static = [line.strip() for line in listing.splitlines() if ";" in line][:3]
+    print("static function names:", *static, sep="\n  ")
 
 
 def train_clice(args) -> None:
@@ -84,9 +87,10 @@ def workloads(args) -> None:
     if not abseil.exists():
         run(["git", "clone", "--depth", "1", "--branch", "20250814.1",
              "https://github.com/abseil/abseil-cpp.git", abseil], check=True)
+    compilers = [f"-DCMAKE_C_COMPILER={args.cc}", f"-DCMAKE_CXX_COMPILER={args.cxx}"]
     run(["cmake", "-S", abseil, "-B", abseil / "build", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
          "-DCMAKE_CXX_STANDARD=20", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DABSL_BUILD_TESTING=OFF",
-         "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"], check=True)
+         *compilers], check=True)
 
     if args.skip_llvm:
         return
@@ -96,7 +100,7 @@ def workloads(args) -> None:
              "https://github.com/llvm/llvm-project.git", llvm], check=True)
     run(["cmake", "-S", llvm / "llvm", "-B", llvm / "build", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
          "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DLLVM_ENABLE_PROJECTS=clang",
-         "-DLLVM_TARGETS_TO_BUILD=X86", "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"],
+         "-DLLVM_TARGETS_TO_BUILD=X86", *compilers],
         check=True)
     # Sema's TUs include tablegen output: build every tablegen target so no
     # TU stops at a missing generated header.
@@ -246,6 +250,8 @@ def main() -> None:
     p = sub.add_parser("workloads")
     p.add_argument("--dir", required=True)
     p.add_argument("--skip-llvm", action="store_true")
+    p.add_argument("--cc", default="clang")
+    p.add_argument("--cxx", default="clang++")
     p.set_defaults(func=workloads)
 
     p = sub.add_parser("bench")

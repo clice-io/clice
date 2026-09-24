@@ -1,0 +1,116 @@
+name: pgo mac
+
+# macOS arm64 with the Linux-trained clang profile, and the same profile
+# retrained with static function names relative to the llvm-project root
+# (the absolute /home/runner/... prefix cannot match /Users/runner/...).
+#   M0       no PGO
+#   M2-old   LLVM optimized with the clang profile of run 35906099298
+#   M2-strip LLVM optimized with the retrained, path-stripped clang profile
+# clice itself without PGO in all three (the V2 setup), ThinLTO everywhere.
+
+on:
+  push:
+    branches: [exp/pgo-mac]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  train_strip:
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: profile-clang-strip
+      instrument: true
+      clang-train: true
+      extra-args: --pgo-strip-prefix
+
+  llvm:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: mac-llvm-baseline
+            profile: ""
+            profile-run: ""
+          - name: mac-llvm-pgo-old
+            profile: profile-clang
+            profile-run: "35906099298"
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: ${{ matrix.name }}
+      os: macos-15
+      lto: "ON"
+      profile: ${{ matrix.profile }}
+      profile-run: ${{ matrix.profile-run }}
+
+  llvm_strip:
+    needs: train_strip
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: mac-llvm-pgo-strip
+      os: macos-15
+      lto: "ON"
+      profile: profile-clang-strip
+      extra-args: --pgo-strip-prefix
+
+  clice:
+    needs: [llvm, llvm_strip]
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: M0
+            llvm: mac-llvm-baseline
+          - variant: M2-old
+            llvm: mac-llvm-pgo-old
+          - variant: M2-strip
+            llvm: mac-llvm-pgo-strip
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-${{ matrix.variant }}
+      llvm: ${{ matrix.llvm }}
+      lto: "ON"
+      os: macos-15
+
+  bench:
+    needs: clice
+    if: ${{ !cancelled() }}
+    runs-on: macos-15
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: final-M*
+          path: bundles
+      - name: Unpack
+        run: |
+          command -v zstd || brew install zstd
+          sysctl -n hw.ncpu machdep.cpu.brand_string
+          for dir in bundles/final-M*; do
+            name="${dir#bundles/final-}"
+            mkdir -p "variants/$name"
+            zstd -dc "$dir/bundle.tar.zst" | tar -C "variants/$name" -xf -
+          done
+          ls -la variants/*/bin
+      - name: Workloads
+        run: pixi run -e package python3 scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads" --cc /usr/bin/clang --cxx /usr/bin/clang++
+      - name: Benchmark
+        run: |
+          pixi run -e package python3 scripts/pgo_ci.py bench --rounds 3 --out bench-out \
+            --variant "M0=$PWD/variants/M0" --variant "M2-old=$PWD/variants/M2-old" --variant "M2-strip=$PWD/variants/M2-strip" \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-results-mac
+          path: bench-out

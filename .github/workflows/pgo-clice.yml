@@ -37,10 +37,13 @@ on:
       pixi-env:
         type: string
         default: package
+      os:
+        type: string
+        default: ubuntu-24.04
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.os }}
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v7
@@ -48,7 +51,12 @@ jobs:
           persist-credentials: false
 
       - name: Free Disk Space
+        if: runner.os == 'Linux'
         uses: jlumbroso/free-disk-space@main
+
+      - name: zstd (macOS)
+        if: runner.os == 'macOS'
+        run: command -v zstd || brew install zstd
 
       - uses: ./.github/actions/setup-pixi
         with:

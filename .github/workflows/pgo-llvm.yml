@@ -48,6 +48,10 @@ on:
         description: "Upload the result (off when only timing the build)"
         type: boolean
         default: true
+      extra-args:
+        description: "More arguments for build-llvm.py"
+        type: string
+        default: ""
 
 env:
   LLVM_VERSION: "23.1.1"
@@ -112,6 +116,8 @@ jobs:
           if [[ "${{ inputs.clang-train }}" == true || "${{ inputs.clang-bundle }}" == true ]]; then
             ARGS+=(--clang-only --default-triple=x86_64-conda-linux-gnu)
           fi
+          # shellcheck disable=SC2206
+          ARGS+=(${{ inputs.extra-args }})
           start=$SECONDS
           pixi run -e "${{ inputs.pixi-env }}" python3 scripts/build-llvm.py "${ARGS[@]}"
           echo "LLVM build: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -128,6 +134,7 @@ jobs:
       - name: Pack install
         if: ${{ !inputs.clang-train && !inputs.clang-bundle && inputs.upload }}
         run: |
+          command -v zstd || brew install zstd
           tar -C .llvm/build-install -cf - . | zstd -T0 -6 -o llvm.tar.zst
           ls -la llvm.tar.zst
           du -sh .llvm/build-install/lib | tee -a "$GITHUB_STEP_SUMMARY"
