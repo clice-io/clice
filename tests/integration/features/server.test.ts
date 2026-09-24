@@ -37,11 +37,9 @@ test("capabilities", ({ client }) => {
     expect(capabilityEnabled(caps.foldingRangeProvider)).toBe(true);
     expect(capabilityEnabled(caps.inlayHintProvider)).toBe(true);
     expect(capabilityEnabled(caps.codeActionProvider)).toBe(true);
-    // workspace/didChangeWorkspaceFolders is not handled, so workspace
-    // folder support must not be advertised.
-    expect(
-        caps.workspace === undefined || !capabilityEnabled(caps.workspace.workspaceFolders),
-    ).toBe(true);
+    // Every workspace folder is a project, and folders come and go.
+    expect(caps.workspace?.workspaceFolders?.supported).toBe(true);
+    expect(caps.workspace?.workspaceFolders?.changeNotifications).toBe(true);
     expect(caps.documentFormattingProvider).toBe(true);
     expect(caps.documentRangeFormattingProvider).toBe(true);
     expect(caps.semanticTokensProvider).toBeDefined();

@@ -151,8 +151,10 @@ TEST_CASE(GlobalRoundTripRemap) {
     ASSERT_EQ(loaded.global_generation, 9u);
 
     // The blob pins the TU's manifest at the stamp it was saved under.
+    auto tu_fv = fresh.version_ids.find({*fresh.find("/proj/tu.cpp"), std::uint64_t(0x1111)});
+    ASSERT_TRUE(tu_fv != fresh.version_ids.end());
     ASSERT_EQ(pins.size(), std::size_t(1));
-    ASSERT_EQ(pins.find(manifest.tu_fv)->second, 9u);
+    ASSERT_EQ(pins.find(tu_fv->second)->second, 9u);
 
     auto fv_it = fresh.version_ids.find({*id, std::uint64_t(0xabcd)});
     ASSERT_TRUE(fv_it != fresh.version_ids.end());
@@ -398,17 +400,16 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     ASSERT_FALSE(loaded.load_global(bytes_of(*dup_pair), pool, pins).has_value());
 
     // The same path under two content hashes is the legitimate shape: two
-    // observed versions of one file. The table adopts the writer's id
-    // space up to its counter; garbage-collected ids stay behind as
-    // holes, not live versions.
+    // observed versions of one file. Only the ids the blob carries map
+    // into the table; the ones the writer garbage-collected map nowhere.
     mirror.fv_hashes = {0x1, 0x2};
     auto distinct = encode(mirror);
     ASSERT_TRUE(distinct.has_value());
     ASSERT_TRUE(loaded.load_global(bytes_of(*distinct), pool, pins));
-    ASSERT_EQ(pool.versions.size(), std::size_t(9));
-    ASSERT_TRUE(pool.knows_version(VersionID{7}));
-    ASSERT_TRUE(pool.knows_version(VersionID{8}));
-    ASSERT_FALSE(pool.knows_version(VersionID{0}));
+    ASSERT_EQ(pool.versions.size(), std::size_t(2));
+    ASSERT_TRUE(loaded.runtime_version(7).has_value());
+    ASSERT_TRUE(loaded.runtime_version(8).has_value());
+    ASSERT_FALSE(loaded.runtime_version(0).has_value());
 }
 
 TEST_CASE(GlobalBadCounterRejected) {
@@ -445,8 +446,7 @@ TEST_CASE(GlobalBadCounterRejected) {
     ASSERT_TRUE(reserved.has_value());
     ASSERT_FALSE(loaded.load_global(bytes_of(*reserved), pool, pins).has_value());
 
-    // A garbage high-water mark far beyond any real table must reject
-    // before the id-space resize tries to allocate it.
+    // A garbage high-water mark far beyond any real lineage rejects.
     mirror.next_fv_id = 0xf0000000;
     auto oversized = encode(mirror);
     ASSERT_TRUE(oversized.has_value());
@@ -594,19 +594,83 @@ TEST_CASE(GlobalReservedKeysRejected) {
 }
 
 TEST_CASE(UnknownFileVersionsDetected) {
+    GlobalBlobMirror mirror;
+    mirror.next_fv_id = 4;
+    mirror.fv_ids = {3};
+    mirror.fv_paths = {"/proj/a.h"};
+    mirror.fv_hashes = {0x1};
+    mirror.fv_sizes = {1};
+    mirror.fv_mtimes = {1};
+    auto bytes = encode(mirror);
+    ASSERT_TRUE(bytes.has_value());
+
     clice::FileTable pool;
-    index::ProjectIndex project;
-    auto known = pool.intern_version(Fid{0}, 0x1);
+    pool.intern_version(pool.intern("/proj/opened-first.cpp"), 0x9);
+    index::ProjectIndex loaded;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
+    ASSERT_TRUE(loaded.load_global(bytes_of(*bytes), pool, pins));
+    auto known = pool.version_ids.find({*pool.find("/proj/a.h"), std::uint64_t(0x1)})->second;
 
     index::TUManifest manifest;
-    manifest.tu_fv = known;
+    manifest.tu_fv = VersionID{3};
     manifest.nodes = {
-        {known.raw, ~0u, 1}
+        {3, ~0u, 1}
     };
-    ASSERT_TRUE(project.knows_file_versions(pool, manifest));
+    manifest.contributions = {
+        {VersionID{3}, 7}
+    };
+    auto imported = manifest;
+    ASSERT_TRUE(loaded.import_manifest(imported));
+    ASSERT_EQ(imported.tu_fv, known);
+    ASSERT_EQ(imported.nodes[0].file, known.raw);
+    ASSERT_EQ(imported.contributions[0].first, known);
 
-    manifest.nodes.push_back({known.raw + 1, ~0u, 2});
-    ASSERT_FALSE(project.knows_file_versions(pool, manifest));
+    manifest.nodes.push_back({2, ~0u, 2});
+    ASSERT_FALSE(loaded.import_manifest(manifest));
+    manifest.nodes.back().file = ~0u;
+    ASSERT_FALSE(loaded.import_manifest(manifest));
+}
+
+TEST_CASE(SharedTableLineages) {
+    // Two projects' indexes over one file table: each keeps its own
+    // persisted ids, so the second loads beside the first and writes its
+    // manifests back under the ids it read them with.
+    clice::FileTable first_pool;
+    auto first = build_project(first_pool, "/lib/used.h", "/lib/tu.cpp");
+    std::string first_bytes;
+    llvm::raw_string_ostream first_os(first_bytes);
+    first.serialize_global(first_os, first_pool);
+
+    clice::FileTable second_pool;
+    second_pool.intern_version(second_pool.intern("/app/pad.cpp"), 0x5);
+    auto second = build_project(second_pool, "/lib/used.h", "/app/tu.cpp");
+    auto& written = second.manifests.find(second_pool.intern("/app/tu.cpp"))->second;
+    auto persisted = second.export_manifest(written);
+    std::string second_bytes;
+    llvm::raw_string_ostream second_os(second_bytes);
+    second.serialize_global(second_os, second_pool);
+
+    clice::FileTable shared;
+    index::ProjectIndex first_loaded;
+    index::ProjectIndex second_loaded;
+    llvm::DenseMap<VersionID, std::uint64_t> first_pins;
+    llvm::DenseMap<VersionID, std::uint64_t> second_pins;
+    ASSERT_TRUE(first_loaded.load_global(first_bytes, shared, first_pins));
+    ASSERT_TRUE(second_loaded.load_global(second_bytes, shared, second_pins));
+
+    // The header both index is one version of the shared table.
+    ASSERT_EQ(shared.versions.size(), std::size_t(3));
+    auto header = shared.version_ids.find({*shared.find("/lib/used.h"), std::uint64_t(0xabcd)});
+    ASSERT_TRUE(header != shared.version_ids.end());
+    ASSERT_EQ(shared.version(header->second).mtime_ns, 5555);
+
+    auto imported = persisted;
+    ASSERT_TRUE(second_loaded.import_manifest(imported));
+    ASSERT_EQ(shared.version(imported.tu_fv).fid, *shared.find("/app/tu.cpp"));
+    ASSERT_EQ(imported.contributions[0].first, header->second);
+    ASSERT_EQ(second_pins.size(), std::size_t(1));
+    ASSERT_TRUE(second_pins.contains(imported.tu_fv));
+    ASSERT_EQ(second_loaded.export_manifest(imported), persisted);
 }
 
 };  // TEST_SUITE(PersistedIndex)

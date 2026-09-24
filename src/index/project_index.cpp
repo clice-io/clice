@@ -15,14 +15,12 @@ namespace clice::index {
 
 namespace {
 
-/// Upper bound on the FileVersion id space a blob may claim, rejecting
-/// corrupt counters before the id-space resize tries to honor them
-/// (versions are restored id-for-id into a table sized by this counter,
-/// so a garbage high-water mark would allocate gigabytes before anything
-/// could reject it). The cap is far beyond any table a writer accumulates
-/// (ids grow only with newly seen (file, content-hash) pairs), and a
-/// table that ever drifts there is better compacted by the rebuild the
-/// rejection triggers.
+/// Upper bound on the persisted FileVersion id space a blob may claim:
+/// the writer hands ids out from the blob's counter, so a garbage one just
+/// below the reserved keys would soon hand one out. The cap is far beyond
+/// any lineage a writer accumulates (ids grow only with newly persisted
+/// (file, content-hash) pairs), and a lineage that ever drifts there is
+/// better compacted by the rebuild the rejection triggers.
 constexpr inline std::uint32_t max_persisted_versions = 1u << 24;
 
 /// The global layer's persisted form, read in place: the FileVersion table
@@ -283,9 +281,9 @@ bool ProjectIndex::bind_global(std::unique_ptr<llvm::MemoryBuffer> blob, FileTab
     return true;
 }
 
-std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions(
-    FileTable& files,
-    llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) const {
+std::expected<void, llvm::StringRef>
+    ProjectIndex::adopt_file_versions(FileTable& files,
+                                      llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
     if(!base) {
         return {};
     }
@@ -302,11 +300,11 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions(
         }
     }
     // Every id below becomes a DenseMap or DenseSet key, first in the
-    // duplicate checks here and then in the tables themselves — see
-    // reserved_key. The counter is one intern away from becoming a key
-    // itself, and the writer hands ids out from it, so ids must sit below
-    // it — a bound that (with the sentinels at the top of the id space)
-    // also keeps every id non-reserved.
+    // duplicate checks here and then in the id maps — see reserved_key.
+    // The counter is one hand-out away from becoming a key itself, and
+    // the writer hands ids out from it, so ids must sit below it — a
+    // bound that (with the sentinels at the top of the id space) also
+    // keeps every id non-reserved.
     if(reserved_key(blob.next_fv_id) || blob.next_fv_id > max_persisted_versions) {
         return std::unexpected("file version counter out of range");
     }
@@ -322,8 +320,8 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions(
     }
     // Ids and (path, hash) pairs are both map keys in the writer, so a
     // repeat of either marks a corrupt blob: a repeated id in particular
-    // would leave fv_ids interning the earlier pair to an id whose record
-    // names the later path, attributing contributions to the wrong file.
+    // would map to the earlier pair while its record names the later
+    // path, attributing contributions to the wrong file.
     llvm::DenseSet<std::uint32_t> blob_fvs(blob.fv_ids.begin(), blob.fv_ids.end());
     if(blob_fvs.size() != count) {
         return std::unexpected("duplicate file version id");
@@ -342,22 +340,22 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions(
         }
     }
 
-    // Adopting the blob's version ids verbatim is what keeps persisted
-    // manifests resolvable; it requires an untouched table — ids already
-    // handed out by this session could collide with the blob's. Ids the
-    // writer garbage-collected stay behind as holes (see knows_version).
-    assert(files.versions.empty() && "the global blob must load before any version interning");
-    files.revocation_generation = blob.revocation_generation;
-    files.versions.resize(blob.next_fv_id);
+    // A version the table already holds — another project's index, or
+    // artifact records — keeps its stamp: adopt_stamp only fills a hole.
+    // Two spellings of one file intern to the same version; the ids both
+    // stay mapped to it.
+    loaded_revocations = blob.revocation_generation;
+    revocations_at_load = files.revocation_generation;
+    next_persisted_id = blob.next_fv_id;
     for(std::size_t i = 0; i < count; i += 1) {
         auto path_id = files.intern(to_ref(blob.fv_paths[i]));
-        auto id = VersionID{blob.fv_ids[i]};
-        files.versions[id.raw] =
-            FileTable::FileVersion{path_id, blob.fv_hashes[i], blob.fv_sizes[i], blob.fv_mtimes[i]};
-        files.version_ids[{path_id, blob.fv_hashes[i]}] = id;
+        auto id = files.intern_version(path_id, blob.fv_hashes[i]);
+        files.adopt_stamp(id, blob.fv_sizes[i], blob.fv_mtimes[i]);
+        runtime_ids.try_emplace(blob.fv_ids[i], id);
+        persisted_ids.try_emplace(id, blob.fv_ids[i]);
     }
     for(std::size_t k = 0; k < blob.manifest_fvs.size(); k += 1) {
-        manifest_pins[VersionID{blob.manifest_fvs[k]}] = blob.manifest_gens[k];
+        manifest_pins[runtime_ids.find(blob.manifest_fvs[k])->second] = blob.manifest_gens[k];
     }
     return {};
 }
@@ -669,24 +667,28 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     GlobalBlob blob;
     blob.format_version = index_format_version;
     blob.generation = global_generation;
-    blob.revocation_generation = files.revocation_generation;
-    blob.next_fv_id = static_cast<std::uint32_t>(files.versions.size());
+    blob.revocation_generation = revocation_generation(files);
 
-    llvm::SmallVector<VersionID> ids(referenced.begin(), referenced.end());
+    llvm::SmallVector<std::pair<std::uint32_t, VersionID>> ids;
+    ids.reserve(referenced.size());
+    for(auto id: referenced) {
+        ids.emplace_back(persisted_id(id), id);
+    }
     llvm::sort(ids);
-    for(auto id: ids) {
+    for(auto [persisted, id]: ids) {
         auto& record = files.version(id);
-        blob.fv_ids.push_back(id.raw);
+        blob.fv_ids.push_back(persisted);
         blob.fv_paths.emplace_back(files.resolve(record.fid));
         blob.fv_hashes.push_back(record.content_hash);
         blob.fv_sizes.push_back(record.size);
         blob.fv_mtimes.push_back(record.mtime_ns);
     }
+    blob.next_fv_id = next_persisted_id;
 
     blob.manifest_fvs.reserve(manifests.size());
     blob.manifest_gens.reserve(manifests.size());
     for(auto& manifest: llvm::make_second_range(manifests)) {
-        blob.manifest_fvs.push_back(manifest.tu_fv.raw);
+        blob.manifest_fvs.push_back(persisted_ids.find(manifest.tu_fv)->second);
         blob.manifest_gens.push_back(manifest.global_gen);
     }
 
@@ -799,21 +801,64 @@ void ProjectIndex::restore_unwritten() {
     written.clear();
 }
 
-bool ProjectIndex::knows_file_versions(const FileTable& files, const TUManifest& manifest) const {
-    if(!files.knows_version(manifest.tu_fv)) {
+std::optional<VersionID> ProjectIndex::runtime_version(std::uint32_t persisted) const {
+    if(reserved_key(persisted)) {
+        return std::nullopt;
+    }
+    auto it = runtime_ids.find(persisted);
+    if(it == runtime_ids.end()) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
+bool ProjectIndex::import_manifest(TUManifest& manifest) const {
+    auto import = [&](std::uint32_t& id) {
+        auto version = runtime_version(id);
+        if(!version) {
+            return false;
+        }
+        id = version->raw;
+        return true;
+    };
+    if(!import(manifest.tu_fv.raw)) {
         return false;
     }
     for(auto& node: manifest.nodes) {
-        if(!files.knows_version(VersionID{node.file})) {
+        if(!import(node.file)) {
             return false;
         }
     }
-    for(auto& [fv, hash]: manifest.contributions) {
-        if(!files.knows_version(fv)) {
+    for(auto& fv: llvm::make_first_range(manifest.contributions)) {
+        if(!import(fv.raw)) {
             return false;
         }
     }
     return true;
+}
+
+TUManifest ProjectIndex::export_manifest(const TUManifest& manifest) {
+    auto exported = manifest;
+    exported.tu_fv.raw = persisted_id(manifest.tu_fv);
+    for(auto& node: exported.nodes) {
+        node.file = persisted_id(VersionID{node.file});
+    }
+    for(auto& fv: llvm::make_first_range(exported.contributions)) {
+        fv.raw = persisted_id(fv);
+    }
+    return exported;
+}
+
+std::uint32_t ProjectIndex::persisted_id(VersionID version) {
+    auto [it, inserted] = persisted_ids.try_emplace(version, next_persisted_id);
+    if(inserted) {
+        next_persisted_id += 1;
+    }
+    return it->second;
+}
+
+std::uint64_t ProjectIndex::revocation_generation(const FileTable& files) const {
+    return loaded_revocations + (files.revocation_generation - revocations_at_load);
 }
 
 llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,

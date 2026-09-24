@@ -2,7 +2,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
-#include "server/state/editor_context.h"
+#include "server/editor_context.h"
 #include "support/cache_store.h"
 
 namespace clice::testing {

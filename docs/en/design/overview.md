@@ -88,11 +88,11 @@ Concrete implementations of LSP features. Each feature takes a `CompilationUnitR
 
 Includes: code completion, hover information, signature help, semantic highlighting, inlay hints, document symbols, document links, folding ranges, formatting, diagnostics, etc.
 
-> `feature/` only covers single-file, AST-based feature implementations. Cross-file navigation features (go to definition, find references, etc.) are served from index data by the server's `service/` layer (`Features`/`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
+> `feature/` only covers single-file, AST-based feature implementations. Cross-file navigation features (go to definition, find references, etc.) are served from index data by the server's read services (`Features`/`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
 
 ### `src/project/` — Projects on Disk
 
-A project is what one set of compilation databases and one cache directory describe: the state derived from files on disk, independent of editors and of scheduling. The command line and the server each run one project today; the server adds the open buffers on top.
+A project is what one set of compilation databases and one cache directory describe: the state derived from files on disk, independent of editors and of scheduling. The command line runs one project. The server runs one per workspace folder, plus one for any file opened outside them whose directory or an ancestor holds a `clice.toml` or a `compile_commands.json`, and routes each file to the project that compiles it.
 
 - `Project`: The disk-truth aggregate — configuration, compilation database, build view, dependency graph, artifact records, persisted index. Core invariant: unsaved buffer contents of open files never modify a `Project`; it only reflects the state on disk
 - `CommandResolver`: Resolves the compile command a file is compiled under from the project alone — own entry, a host's command for a header, a default or borrowed command — and synthesizes the includer context a header needs, owning the header-context verdicts
@@ -118,11 +118,11 @@ The task-graph engine that decides what gets built, when, and shares the results
 
 ### `src/server/` — Server Runtime
 
-The language server's core runtime, responsible for assembling all the layers above into a runnable service.
+The language server's core runtime, responsible for assembling all the layers above into a runnable service. Its files share one directory and fall into four groups.
 
-**`protocol/`** — Protocol definitions. Describes the message formats for communication between the master process and worker processes, as well as between the server and clients. Includes Worker protocol (compilation/query/build requests), LSP extension protocol (compilation context switching, etc.), and the control protocol through which `clice index` and `clice query --fresh` ask a running server to index.
+**Protocols** — Protocol definitions. Describes the message formats for communication between the master process and worker processes, as well as between the server and clients. Includes Worker protocol (compilation/query/build requests), LSP extension protocol (compilation context switching, etc.), and the control protocol through which `clice index` and `clice query --fresh` ask a running server to index.
 
-**`state/`** — Document state and the invalidation machinery.
+**Document state** — Document state and the invalidation machinery.
 
 - `Session` / `SessionStore`: The open-buffer truth for each open file — content, document version, generation, and serving state — created on didOpen and destroyed on didClose. Compile products do not live here
 - `ASTProjection` / `ASTProjectionTable`: The published products of each document's most recent compilation (feature results, PCH key, dependency snapshot) — an immutable read model replaced wholesale on each publication
@@ -131,7 +131,7 @@ The language server's core runtime, responsible for assembling all the layers ab
 - `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`: the project's database watch plus a sweep of the files on disk, which judges each file against the content its include edges were scanned from
 - `Quarantine`: Per-document crash accounting — documents whose content keeps killing workers are isolated and recover through licensed probe attempts
 
-**`service/`** — Read-side services consuming compilation and index results.
+**Services** — Read-side services consuming compilation and index results.
 
 - `Features`: Assembles each feature's answer from its providers — the worker's AST, the PCH's cached preamble products, or the index — routing each request by readiness: an up-to-date AST answers when available, otherwise index-backed projections answer immediately. Under `readonly = on/auto`, documents serve exclusively from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
 - `ASTFamily`: The document-AST node family in the task graph — schedules compiles for open documents and publishes their results
@@ -139,9 +139,10 @@ The language server's core runtime, responsible for assembling all the layers ab
 - `IndexQuery`: Read-only queries over every index source — the project index, per-file shards, and the live data of open files — under one freshness arbitration, answering in domain values that the transports project onto their protocols
 - `ContextService`: The protocol adapter for compilation-context queries and switching
 
-**`transport/`** — Protocol endpoints driving the server.
+**Endpoints** — Protocol endpoints driving the server.
 
-- `MasterServer`: The composition root. Owns the project, sessions, worker pool, and all services above, and executes the `Invalidator`'s effects through its single dispatch entry point
+- `MasterServer`: The composition root. Owns the file table, the worker pool and the projects served, and routes each open file to the project that compiles it
+- `ProjectServer`: Everything served for one project — its scheduling stack, the open documents routed to it and the services above — executing the `Invalidator`'s effects through its single dispatch entry point
 - `LSPClient`: Request handlers for the LSP protocol
 - The control channel: a loopback listener the server opens while it holds the project's index writer lock, recorded next to the lock for the command-line tools to find
 

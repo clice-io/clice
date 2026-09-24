@@ -81,6 +81,43 @@ void match_rules(const Config& config,
 
 TEST_SUITE(Config) {
 
+TEST_CASE(CacheDirServesOneProject) {
+    /// A shared cache directory keeps the root it was first used for; the
+    /// next project moves off it to its own default.
+    TempDir tmp;
+    tmp.touch("shared/keep", "");
+    tmp.touch("a/main.cpp", "");
+    tmp.touch("b/main.cpp", "");
+    auto shared = tmp.path("shared");
+    auto a = tmp.path("a");
+    auto b = tmp.path("b");
+    EXPECT_FALSE(owned_elsewhere(shared, b));
+    claim_cache_dir(shared, a);
+    EXPECT_FALSE(owned_elsewhere(shared, a));
+    EXPECT_TRUE(owned_elsewhere(shared, b));
+
+    // One inside its root belongs to that root, whatever it records, and
+    // a subproject nested there finds it taken once the root claimed it.
+    tmp.touch("a/.clice/owner", b + "\n");
+    auto inner = path::join(a, ".clice");
+    EXPECT_FALSE(owned_elsewhere(inner, a));
+    claim_cache_dir(inner, a);
+    EXPECT_TRUE(owned_elsewhere(inner, path::join(a, "sub")));
+
+    // An owner that no longer exists claims nothing.
+    tmp.touch("moved/owner", tmp.path("gone") + "\n");
+    auto moved = tmp.path("moved");
+    EXPECT_FALSE(owned_elsewhere(moved, b));
+    claim_cache_dir(moved, b);
+    EXPECT_TRUE(owned_elsewhere(moved, a));
+
+    tmp.touch("b/clice.toml", std::format("[project]\ncache_dir = '{}'\n", shared));
+    auto config = Config::load_from_workspace(b);
+    auto own = path::join(b, ".clice");
+    path::canonicalize(own);
+    EXPECT_EQ(std::string(config.project.cache_dir), own);
+};
+
 TEST_CASE(ParsePartialProject) {
     // A partial decode only touches the fields it names; everything else
     // keeps the field-initializer defaults.

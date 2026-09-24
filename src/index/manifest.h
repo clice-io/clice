@@ -26,7 +26,8 @@ struct IncludeEdge {
 /// path ids remapped, which doubles as the TU's dependency set for
 /// staleness) and the rows each file received, keyed by content-identity
 /// so a re-merge can tell "already stored" from "new variant" without
-/// touching any shard.
+/// touching any shard. In memory its versions are the file table's ids;
+/// persisted, the index's own (ProjectIndex::export_manifest).
 struct TUManifest {
     /// ProjectIndex::global_generation stamped by the save that persisted
     /// this manifest. The global blob pins the stamp it expects per TU and

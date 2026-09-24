@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import * as vscode from "vscode";
 
 export interface Setting {
@@ -5,6 +7,22 @@ export interface Setting {
     mode: "pipe" | "socket";
     host: string;
     port: number;
+}
+
+/// The directory the server starts in and a relative clice.executable
+/// resolves against: the first workspace folder, not wherever VS Code
+/// happened to be started from — when it exists (a .code-workspace may
+/// list a folder missing on this machine).
+export function workspaceDirectory(): string | undefined {
+    const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    return folder && fs.existsSync(folder) ? folder : undefined;
+}
+
+/// A path spelled relative to the workspace resolves against `base`; a
+/// bare command name stays for the PATH lookup.
+export function resolveExecutable(executable: string, base: string | undefined): string {
+    const relative = !path.isAbsolute(executable) && /[\\/]/.test(executable);
+    return relative && base ? path.resolve(base, executable) : executable;
 }
 
 /// Read every launch-relevant setting fresh. Throws on invalid values; the
@@ -26,7 +44,7 @@ export function getSetting(): Setting {
     }
 
     return {
-        executable: executable === "" ? undefined : executable,
+        executable: executable ? resolveExecutable(executable, workspaceDirectory()) : undefined,
         mode,
         host,
         port,

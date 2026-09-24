@@ -149,7 +149,7 @@ enum class Suspect : std::uint8_t {
 ///     slots do. Retry policy is semantic and lives with the caller: the
 ///     compiler resends idempotent builds once, the indexer requeues with
 ///     its own budget, a stateful compile never resends (the crash is
-///     evidence about the content — see state/quarantine.h).
+///     evidence about the content — see server/quarantine.h).
 ///   - The dispatch_errc taxonomy is the contract language. worker_crashed:
 ///     the request died with its worker — the caller may blame its content
 ///     (Error::data carries the dead incarnation's identity so one death is

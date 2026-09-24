@@ -232,10 +232,6 @@ struct RelationKind {
                          Destructor);
     }
 
-    constexpr bool isCall() const {
-        return is_one_of(Caller, Callee);
-    }
-
 private:
     Kind kind_value = Invalid;
 };

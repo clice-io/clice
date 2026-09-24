@@ -127,6 +127,11 @@ private:
     mutable llvm::DenseMap<Fid, bool> verdicts;
 };
 
+/// Cross-source dedup: a row present in both a disk shard and a PCH
+/// overlay (or in two overlays sharing a preamble, or in two projects'
+/// indexes) comes out identical.
+void dedup_sites(std::vector<Site>& sites);
+
 /// Read-only queries over every index source: disk shards, open sessions'
 /// file indexes, PCH overlays and the buffers' own preamble rows. Holds no
 /// index data of its own — ProjectIndex owns the disk-derived index, the
@@ -177,6 +182,11 @@ public:
     /// The freshness contract's single arbitration: the rows serving
     /// `file` right now, with the coordinates they are expressed in.
     std::optional<RowSource> serving(Fid file) const;
+
+    /// Whether the project index holds rows of `file`.
+    bool indexes(Fid file) const {
+        return index.shards.contains(file);
+    }
 
     /// The file's shard when `text` is byte-identical to the content it
     /// indexed (clause 4's content gate alone): disk-truth products such as

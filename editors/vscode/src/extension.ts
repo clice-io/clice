@@ -12,7 +12,7 @@ import {
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
-import { getSetting, Setting } from "./setting";
+import { getSetting, Setting, workspaceDirectory } from "./setting";
 import { registerBuildConfiguration } from "./feature/configuration";
 import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
@@ -120,7 +120,7 @@ function makeServerOptions(
                 });
             }
         }
-        child = cp.spawn(executable, ["serve"]);
+        child = cp.spawn(executable, ["serve"], { cwd: workspaceDirectory() });
         child.on("error", (error) => {
             channel.appendLine(`clice spawn failed: ${error.message}`);
         });

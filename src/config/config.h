@@ -24,6 +24,20 @@ namespace clice {
 std::uint32_t default_stateless_worker_count();
 std::uint32_t default_max_stateless_worker_count();
 
+/// A cache directory keys its indexes, configuration selection and server
+/// record by configuration alone, so it serves one project, whose root it
+/// records. One inside a workspace root belongs to that root whatever it
+/// records; one outside (a shared location) to the root it records, while
+/// that exists.
+std::string cache_dir_owner(llvm::StringRef cache_dir);
+
+/// Whether `cache_dir` serves another project than `workspace_root`'s.
+bool owned_elsewhere(llvm::StringRef cache_dir, llvm::StringRef workspace_root);
+
+/// Record `workspace_root` as the owner of a cache directory it may use
+/// (owned_elsewhere is false); called under the directory's writer lock.
+void claim_cache_dir(llvm::StringRef cache_dir, llvm::StringRef workspace_root);
+
 /// The configuration files a workspace root may hold, in lookup order.
 constexpr inline std::array<llvm::StringRef, 2> config_file_names = {"clice.toml",
                                                                      ".clice/config.toml"};
@@ -382,6 +396,10 @@ struct Config {
     /// canonicalization and anchoring, and rule compilation. Run once per
     /// load, after every source has been overlaid.
     void finalize(llvm::StringRef workspace_root);
+
+    /// After finalize: move off a cache directory another project owns
+    /// (owned_elsewhere) to the default one under the workspace root.
+    void keep_own_cache_dir();
 
     /// The compiled rules applying to `path` (absolute), in declaration
     /// order, restricted to untagged rules and rules tagged

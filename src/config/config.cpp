@@ -363,32 +363,90 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
     if(loaded_path)
         loaded_path->clear();
 
-    bool found = false;
-    if(!workspace_root.empty()) {
-        for(auto name: config_file_names) {
-            auto config_path = path::join(workspace_root, name);
-            if(!llvm::sys::fs::exists(config_path))
-                continue;
-            found = true;
-            if(loaded_path)
-                *loaded_path = config_path;
-            if(auto config = load(config_path, workspace_root, issues, finalized))
-                return std::move(*config);
-            // Present but malformed: fall through to defaults, but surface
-            // the situation clearly so users know their config wasn't applied.
-            LOG_WARN("Falling back to default configuration because {} is invalid", config_path);
+    auto config = [&] {
+        bool found = false;
+        if(!workspace_root.empty()) {
+            for(auto name: config_file_names) {
+                auto config_path = path::join(workspace_root, name);
+                if(!llvm::sys::fs::exists(config_path))
+                    continue;
+                found = true;
+                if(loaded_path)
+                    *loaded_path = config_path;
+                if(auto config = load(config_path, workspace_root, issues, /*finalized=*/false))
+                    return std::move(*config);
+                // Present but malformed: fall through to defaults, but
+                // surface the situation clearly so users know their config
+                // wasn't applied.
+                LOG_WARN("Falling back to default configuration because {} is invalid",
+                         config_path);
+            }
         }
-    }
-
-    if(!found) {
-        LOG_INFO("No clice.toml found in {}, using default configuration", workspace_root);
-    }
-
-    Config config;
+        if(!found) {
+            LOG_INFO("No clice.toml found in {}, using default configuration", workspace_root);
+        }
+        return Config();
+    }();
     if(finalized) {
         config.finalize(workspace_root);
+        config.keep_own_cache_dir();
     }
     return config;
+}
+
+/// Where a cache directory outside its workspace root records its owner.
+constexpr static llvm::StringRef cache_owner_file = "owner";
+
+std::string cache_dir_owner(llvm::StringRef cache_dir) {
+    auto owner = fs::read(path::join(cache_dir, cache_owner_file));
+    return owner ? llvm::StringRef(*owner).trim().str() : std::string();
+}
+
+/// A recorded owner that no longer exists (a moved or deleted checkout)
+/// claims nothing.
+static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
+    return !owner.empty() && owner != root && llvm::sys::fs::is_directory(owner);
+}
+
+bool owned_elsewhere(llvm::StringRef cache_dir, llvm::StringRef workspace_root) {
+    auto root = path::resolved(workspace_root);
+    return !path::under(path::resolved(cache_dir), root) &&
+           live_owner(cache_dir_owner(cache_dir), root);
+}
+
+void claim_cache_dir(llvm::StringRef cache_dir, llvm::StringRef workspace_root) {
+    auto root = path::resolved(workspace_root);
+    auto owner = cache_dir_owner(cache_dir);
+    // One inside the root is the root's, whatever it records — a copied
+    // checkout carries the original's record along.
+    if(owner == root ||
+       (!path::under(path::resolved(cache_dir), root) && live_owner(owner, root))) {
+        return;
+    }
+    if(auto written = fs::write(path::join(cache_dir, cache_owner_file), root + "\n"); !written) {
+        LOG_WARN("Cannot record the owner of cache directory {}: {}",
+                 cache_dir,
+                 written.error().message());
+    }
+}
+
+void Config::keep_own_cache_dir() {
+    auto& p = project;
+    if(p.cache_dir.empty() || !owned_elsewhere(p.cache_dir, workspace_root)) {
+        return;
+    }
+    auto own = path::join(workspace_root, ".clice");
+    path::canonicalize(own);
+    LOG_GUIDANCE("Cache directory {} serves the project at {}; {} keeps its cache in {}",
+                 std::string(p.cache_dir),
+                 cache_dir_owner(p.cache_dir),
+                 workspace_root,
+                 own);
+    if(path::under(p.logging_dir, p.cache_dir)) {
+        p.logging_dir = path::join(own, "logs");
+    }
+    p.cache_dir = std::move(own);
+    p.cache_dir_defaulted = true;
 }
 
 constexpr std::array MACHINE_DERIVED_FIELDS = {"stateless_worker_count",

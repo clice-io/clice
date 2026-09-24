@@ -21,7 +21,7 @@
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "sched/index/pump.h"
-#include "server/state/editor_context.h"
+#include "server/editor_context.h"
 #include "server/worker_test_helpers.h"
 #include "support/cache_store.h"
 #include "syntax/dependency_graph.h"
@@ -1577,7 +1577,7 @@ TEST_CASE(LoadDropsNewerManifest) {
         raced.global_gen = f.project.project_index.global_generation + 1;
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
-        index::serialize_manifest(raced, os);
+        index::serialize_manifest(f.project.project_index.export_manifest(raced), os);
         // Keyed by the interned (canonical) spelling, like save() itself:
         // on Windows the raw TempDir spelling hashes to a different key.
         f.project.index_db->write(
@@ -1623,7 +1623,7 @@ TEST_CASE(LoadDropsLostManifest) {
         lost.global_gen = f.project.project_index.global_generation - 1;
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
-        index::serialize_manifest(lost, os);
+        index::serialize_manifest(f.project.project_index.export_manifest(lost), os);
         f.project.index_db->write(
             {
                 {index::IndexBlobKind::Manifest,
@@ -1673,6 +1673,7 @@ TEST_CASE(LoadRequeuesStaleManifest) {
         ASSERT_TRUE(header_fv.valid());
         index::TUManifest stale;
         stale.tu_fv = header_fv;
+        stale = f.project.project_index.export_manifest(stale);
         stale.nodes.push_back({.file = 9999});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);

@@ -12,6 +12,7 @@ import type {
 
 import { resyncDocument } from "../feature/context";
 import { inactiveRuns } from "../feature/inactive";
+import { resolveExecutable } from "../setting";
 
 // E2E smoke tests against a real clice binary. The binary path comes from
 // CLICE_EXECUTABLE; without it (plain `npm test`) the suite is skipped.
@@ -78,6 +79,24 @@ suite("inactive run decoding", function () {
         assert.deepStrictEqual(inactiveRuns([1, 0, 3, 0, 0], MASK), []);
         assert.deepStrictEqual(inactiveRuns([], MASK), []);
         assert.deepStrictEqual(inactiveRuns([1, 0, 3, 0, MASK], 0), []);
+    });
+});
+
+suite("executable setting", function () {
+    test("a relative path resolves against the workspace", function () {
+        const base = path.resolve("ws", "app");
+        assert.strictEqual(
+            resolveExecutable("../bin/clice", base),
+            path.resolve(base, "../bin/clice"),
+        );
+        assert.strictEqual(resolveExecutable("bin/clice", undefined), "bin/clice");
+    });
+
+    test("a command name and an absolute path stay", function () {
+        const base = path.resolve("ws", "app");
+        const absolute = path.resolve("opt", "clice");
+        assert.strictEqual(resolveExecutable("clice", base), "clice");
+        assert.strictEqual(resolveExecutable(absolute, base), absolute);
     });
 });
 

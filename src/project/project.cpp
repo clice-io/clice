@@ -281,6 +281,29 @@ llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_
     return found;
 }
 
+static bool configured(llvm::StringRef dir) {
+    return llvm::any_of(config_file_names, [&](llvm::StringRef name) {
+        return llvm::sys::fs::exists(path::join(dir, name));
+    });
+}
+
+bool defines_project(llvm::StringRef dir) {
+    return configured(dir) || !discover_compile_commands(dir).empty();
+}
+
+std::string project_root_above(llvm::StringRef start) {
+    std::string found;
+    path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
+        if(configured(dir) || !database_in(dir).empty() ||
+           !database_in(path::join(dir, "build")).empty()) {
+            found = dir.str();
+            return false;
+        }
+        return true;
+    });
+    return found;
+}
+
 llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
                                                       llvm::StringRef workspace_root) {
     llvm::SmallVector<std::string> found;

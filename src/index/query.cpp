@@ -71,18 +71,6 @@ bool same_site(const Site& lhs, const Site& rhs) {
     return lhs.path == rhs.path && lhs.range == rhs.range;
 }
 
-/// Cross-source dedup: a row present in both a disk shard and a PCH
-/// overlay (or in two overlays sharing a preamble) comes out identical.
-void dedup_sites(std::vector<Site>& sites) {
-    std::ranges::sort(sites, [](const Site& lhs, const Site& rhs) {
-        return site_key(lhs) < site_key(rhs);
-    });
-    auto dup = std::ranges::unique(sites, [](const Site& lhs, const Site& rhs) {
-        return site_key(lhs) == site_key(rhs);
-    });
-    sites.erase(dup.begin(), dup.end());
-}
-
 /// Drop the cursor's own site from an answer set — standing on a
 /// declaration or definition navigates to the other sites — unless it is
 /// the only site the symbol has (an inline definition, nowhere else to go).
@@ -95,6 +83,16 @@ void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
 }
 
 }  // namespace
+
+void dedup_sites(std::vector<Site>& sites) {
+    std::ranges::sort(sites, [](const Site& lhs, const Site& rhs) {
+        return site_key(lhs) < site_key(rhs);
+    });
+    auto dup = std::ranges::unique(sites, [](const Site& lhs, const Site& rhs) {
+        return site_key(lhs) == site_key(rhs);
+    });
+    sites.erase(dup.begin(), dup.end());
+}
 
 bool DiskGate::withhold(Fid file) const {
     auto [it, inserted] = verdicts.try_emplace(file, false);
@@ -997,12 +995,9 @@ std::vector<IncludeEdge> IndexQuery::include_edges(Fid file) const {
     }
     auto generation = shard->content_hash();
 
-    auto version_of = [&](VersionID fv) -> const FileTable::FileVersion* {
-        return files.knows_version(fv) ? &files.version(fv) : nullptr;
-    };
     auto is_document = [&](VersionID fv) {
-        const auto* version = version_of(fv);
-        return version && version->fid == file && version->content_hash == generation;
+        auto& version = files.version(fv);
+        return version.fid == file && version.content_hash == generation;
     };
 
     // A directive line of the document is a node whose parent node entered
@@ -1021,13 +1016,9 @@ std::vector<IncludeEdge> IndexQuery::include_edges(Fid file) const {
             if(node.parent == no_node ? !root_is_document : !document_nodes[node.parent]) {
                 continue;
             }
-            const auto* target = version_of(VersionID{node.file});
-            if(!target) {
-                continue;
-            }
             edges.push_back({
                 .line = node.line,
-                .target = std::string(files.resolve(target->fid)),
+                .target = std::string(files.resolve(files.version(VersionID{node.file}).fid)),
             });
         }
     };

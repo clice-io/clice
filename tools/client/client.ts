@@ -118,41 +118,6 @@ export function asLocations(result: unknown): proto.Location[] {
 
 const SANITIZER_MARKER_BUFFERS = SANITIZER_MARKERS.map((m) => Buffer.from(m));
 
-let nextPortOffset = 0;
-
-function tryBind(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-        const server = net.createServer();
-        server.once("error", () => {
-            resolve(false);
-        });
-        server.listen(port, "127.0.0.1", () => {
-            server.close(() => {
-                resolve(true);
-            });
-        });
-    });
-}
-
-/// Pick a port from a per-worker range.
-///
-/// bind(0) draws from the kernel's shared pool: two concurrent workers can
-/// grab the same port in the close-then-rebind gap. Disjoint per-worker
-/// ranges (below the ephemeral range) remove that race; the advancing
-/// offset avoids immediately reusing a just-released port.
-export async function findFreePort(): Promise<number> {
-    const index = Number(process.env["VITEST_POOL_ID"] ?? "0") || 0;
-    const base = 21000 + index * 100;
-    for (let i = 0; i < 100; i++) {
-        const port = base + nextPortOffset;
-        nextPortOffset = (nextPortOffset + 1) % 100;
-        if (await tryBind(port)) {
-            return port;
-        }
-    }
-    throw new Error(`no free port in range ${base}-${base + 99}`);
-}
-
 export interface StartOptions {
     /// The server treats stderr as best-effort, but a client that never
     /// reads it forfeits the full mirror (lines are dropped once the pipe
@@ -174,6 +139,14 @@ export interface InitializeOptions {
     /// Client capabilities to advertise; empty by default so servers see
     /// the most conservative client unless a test opts in.
     capabilities?: proto.ClientCapabilities | undefined;
+    /// The workspace folders to announce, workspace-relative; the
+    /// workspace root alone when omitted, no root at all (neither folders
+    /// nor rootUri) when empty, and the root through rootUri alone — a
+    /// client without folder support — when null.
+    folders?: string[] | null | undefined;
+    /// Runs between the initialize response and the initialized
+    /// notification.
+    beforeInitialized?: (() => Promise<void>) | undefined;
 }
 
 interface Transport {
@@ -441,14 +414,38 @@ export class CliceClient {
             capabilities: options.capabilities ?? {
                 workspace: { workspaceEdit: { documentChanges: true } },
             },
-            rootUri: wsUri,
-            workspaceFolders: [{ uri: wsUri, name: "test" }],
+            rootUri: options.folders?.length === 0 ? null : wsUri,
             initializationOptions,
         };
+        if (options.folders === undefined) {
+            params.workspaceFolders = [{ uri: wsUri, name: "test" }];
+        } else if (options.folders !== null) {
+            params.workspaceFolders = options.folders.map((folder) => ({
+                uri: URI.file(ws.path(folder)).toString(),
+                name: folder,
+            }));
+        }
         this.initResult = await this.sendRequest(proto.InitializeRequest.type, params);
-        await this.sendNotification(proto.InitializedNotification.type, {});
         this.workspace = ws;
+        await options.beforeInitialized?.();
+        await this.sendNotification(proto.InitializedNotification.type, {});
         return this;
+    }
+
+    /// Announce workspace folders coming and going
+    /// (didChangeWorkspaceFolders), workspace-relative like `folders` at
+    /// initialize.
+    changeWorkspaceFolders(change: { added?: string[]; removed?: string[] }): Promise<void> {
+        const folder = (name: string) => ({
+            uri: URI.file(this.resolvePath(name)).toString(),
+            name,
+        });
+        return this.sendNotification(proto.DidChangeWorkspaceFoldersNotification.type, {
+            event: {
+                added: (change.added ?? []).map(folder),
+                removed: (change.removed ?? []).map(folder),
+            },
+        });
     }
 
     /// Gracefully shut down: shutdown request, exit notification, then the
@@ -843,6 +840,30 @@ export class CliceClient {
         return (refs ?? []).map((ref) => ref.uri);
     }
 
+    /// URIs of the definitions at a position.
+    async definitionUris(uri: string, line: number, character: number): Promise<string[]> {
+        return asLocations(await this.definitionAt(uri, line, character)).map(
+            (location) => location.uri,
+        );
+    }
+
+    /// Poll definitions at a position until expectedUri shows up.
+    async waitForDefinition(
+        uri: string,
+        line: number,
+        character: number,
+        expectedUri: string,
+        timeoutSeconds = 30,
+    ): Promise<boolean> {
+        for (let i = 0; i < timeoutSeconds; i++) {
+            if ((await this.definitionUris(uri, line, character)).includes(expectedUri)) {
+                return true;
+            }
+            await sleep(1_000);
+        }
+        return false;
+    }
+
     /// Poll references at a position until expectedUri shows up.
     async waitForReference(
         uri: string,
@@ -1036,12 +1057,17 @@ export class CliceClient {
         });
     }
 
-    listConfigurations(): Promise<ListConfigurationsResult> {
-        return this.sendRequest(ListConfigurationsRequest);
+    /// The build configuration menu of the project serving `uri`, else of
+    /// the first project over a folder.
+    listConfigurations(uri?: string): Promise<ListConfigurationsResult> {
+        return this.sendRequest(ListConfigurationsRequest, uri === undefined ? {} : { uri });
     }
 
-    switchConfiguration(name: string): Promise<SwitchConfigurationResult> {
-        return this.sendRequest(SwitchConfigurationRequest, { name });
+    switchConfiguration(name: string, uri?: string): Promise<SwitchConfigurationResult> {
+        return this.sendRequest(
+            SwitchConfigurationRequest,
+            uri === undefined ? { name } : { name, uri },
+        );
     }
 
     /// clice/internal/poll (test hook): run one tracker tick and apply its

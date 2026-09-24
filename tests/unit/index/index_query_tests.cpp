@@ -14,9 +14,9 @@
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "sched/index/pump.h"
-#include "server/service/live_sources.h"
-#include "server/state/ast_projection.h"
-#include "server/state/session_store.h"
+#include "server/ast_projection.h"
+#include "server/live_sources.h"
+#include "server/session_store.h"
 #include "worker/pool.h"
 
 #include "llvm/ADT/SmallVector.h"

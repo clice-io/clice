@@ -348,6 +348,17 @@ llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspa
 llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_root,
                                                       llvm::StringRef cache_dir);
 
+/// Whether `dir` is a project of its own: it holds a configuration file,
+/// or a compile_commands.json where startup discovery looks
+/// (discover_compile_commands).
+bool defines_project(llvm::StringRef dir);
+
+/// The nearest directory at or above `start` holding a configuration file
+/// or a compile_commands.json, directly or in its build/ directory: the
+/// root of the project a file outside every served folder belongs to.
+/// Empty when no ancestor has either.
+std::string project_root_above(llvm::StringRef start);
+
 /// The `compile_commands.json` files in `start` and its ancestors up to
 /// `workspace_root`, nearest first: the databases a file deeper in the
 /// tree than startup discovery looks may compile from.

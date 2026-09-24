@@ -186,9 +186,4 @@ std::string dump(const Object& object) {
     }
 }
 
-template <typename Object>
-std::string pretty_dump(const Object& object, std::size_t /*indent*/ = 2) {
-    return dump(object);
-}
-
 }  // namespace clice
