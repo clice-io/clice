@@ -120,7 +120,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           command -v zstd || brew install zstd
-          uname -m; (nproc || sysctl -n hw.ncpu) 2>/dev/null; (grep -m1 'model name' /proc/cpuinfo || sysctl -n machdep.cpu.brand_string) 2>/dev/null
+          uname -m; (nproc || sysctl -n hw.ncpu) 2>/dev/null || true
+          # arm64 Linux has no "model name" line.
+          (grep -m1 -E 'model name|CPU part' /proc/cpuinfo || sysctl -n machdep.cpu.brand_string) 2>/dev/null || true
           for spec in ${{ matrix.variants }}; do
             name="${spec%%=*}"; rest="${spec#*=}"; artifact="${rest%@*}"; run="${rest#*@}"
             [[ "$run" == this ]] && run="${{ github.run_id }}"

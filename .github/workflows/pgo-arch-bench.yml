@@ -1,0 +1,70 @@
+name: pgo arch bench
+
+# Re-run benchmark corners of pgo-arch.yml on the bundles of run 36024124933.
+
+on:
+  push:
+    branches: [exp/pgo-arch-bench]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - corner: arm64-linux
+            os: ubuntu-24.04-arm
+            flags: ""
+            variants: "base=final-arm64-linux-base@this pgo=final-arm64-linux-pgo@this"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - name: Unpack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          command -v zstd || brew install zstd
+          uname -m; (nproc || sysctl -n hw.ncpu) 2>/dev/null || true
+          # arm64 Linux has no "model name" line.
+          (grep -m1 -E 'model name|CPU part' /proc/cpuinfo || sysctl -n machdep.cpu.brand_string) 2>/dev/null || true
+          for spec in ${{ matrix.variants }}; do
+            name="${spec%%=*}"; rest="${spec#*=}"; artifact="${rest%@*}"; run="${rest#*@}"
+            [[ "$run" == this ]] && run=36024124933
+            [[ -d "bundles/$artifact-$run" ]] || gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$artifact" -D "bundles/$artifact-$run"
+            mkdir -p "variants/$name"
+            zstd -dc "bundles/$artifact-$run/bundle.tar.zst" | tar -C "variants/$name" -xf -
+          done
+          ls variants
+      - name: mimalloc
+        if: matrix.corner == 'arm64-mac-mimalloc'
+        run: brew install mimalloc && echo "MIMALLOC=$(brew --prefix mimalloc)/lib/libmimalloc.dylib" >> "$GITHUB_ENV"
+      - name: Workloads
+        run: |
+          pixi run -e package python3 scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads" \
+            --cc clang --cxx clang++ ${{ matrix.flags && format('--flags={0}', matrix.flags) || '' }}
+      - name: Benchmark
+        run: |
+          ARGS=()
+          for spec in ${{ matrix.variants }}; do
+            name="${spec%%=*}"; ARGS+=(--variant "$name=$PWD/variants/$name")
+            [[ "$name" == *+mi ]] && ARGS+=(--env "$name=DYLD_INSERT_LIBRARIES=$MIMALLOC")
+          done
+          pixi run -e package python3 scripts/pgo_ci.py bench "${ARGS[@]}" --rounds 3 --out bench-out \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-${{ matrix.corner }}
+          path: bench-out
