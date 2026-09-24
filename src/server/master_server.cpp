@@ -56,6 +56,9 @@ MasterServer::MasterServer(kota::event_loop& loop,
 }
 
 MasterServer::~MasterServer() {
+    // The projects go first, while the members their release reads live.
+    lifecycle = ServerLifecycle::Exited;
+    projects.clear();
     logging::set_notify_hook(nullptr);
 }
 
@@ -389,17 +392,24 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
             leaving.push_back(session);
         }
     }
+    bool index_served = false;
     for(auto& session: leaving) {
         auto path_id = session->path_id;
         from.close_session(path_id);
         auto& to = route(path_id);
         owners[path_id] = &to;
         to.open_session(path_id, session->text, session->version);
-        // The client still shows what the old project published, and no
-        // request of its own replaces it: compile under the new one.
+        // The client still shows what the old project gave it, and no
+        // request of its own replaces it: compile under the new one, or
+        // have an index-served document's features pulled again.
         if(auto moved = to.sessions.find(path_id); moved->serving == ServingMode::Escalated) {
             to.ast.request_compile(moved);
+        } else {
+            index_served = true;
         }
+    }
+    if(index_served) {
+        on_serving_rows_changed.emit();
     }
 }
 
@@ -725,6 +735,10 @@ void MasterServer::schedule_shutdown() {
 }
 
 kota::task<> MasterServer::shutdown_and_cleanup() {
+    // A client that went away skipped the shutdown request; no project may
+    // start from here on (a retirement finishing below would serve the
+    // folders again, see make_project).
+    lifecycle = ServerLifecycle::ShuttingDown;
     co_await bg_tasks.join();
     for(auto& project: projects) {
         co_await project->shutdown();
