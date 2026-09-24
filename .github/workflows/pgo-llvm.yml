@@ -94,7 +94,7 @@ jobs:
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile
           sudo swapon /mnt/swapfile
-          nproc; grep -m1 'model name' /proc/cpuinfo; free -g | sed -n 2p; df -h /
+          nproc; grep -m1 -E 'model name|CPU part' /proc/cpuinfo || true; free -g | sed -n 2p; df -h /
 
       - uses: ./.github/actions/setup-pixi
         with:
