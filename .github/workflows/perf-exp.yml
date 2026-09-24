@@ -34,13 +34,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025, macos-15]
-        replica: [1, 2, 3, 4]
-        include:
-          - os: blacksmith-4vcpu-ubuntu-2404
-            replica: 1
-          - os: blacksmith-4vcpu-ubuntu-2404
-            replica: 2
+        os: [ubuntu-24.04, windows-2025, macos-15, ubuntu-24.04-arm, windows-11-arm]
+        replica: [1, 2, 3]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     defaults:
@@ -58,10 +53,12 @@ jobs:
           path: corpus
       - name: Fetch binaries
         run: |
-          case "$RUNNER_OS" in
-            Linux)   TRIPLE=x86_64-unknown-linux-gnu; EXT=tar.gz; REF=ucrt-ubuntu-22.04-x86_64.tar.xz ;;
-            macOS)   TRIPLE=aarch64-apple-darwin;     EXT=tar.gz; REF=ucrt-macos-universal.tar.xz ;;
-            Windows) TRIPLE=x86_64-pc-windows-msvc;   EXT=zip;    REF=ucrt-x86_64.zip ;;
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-X64)     TRIPLE=x86_64-unknown-linux-gnu;  EXT=tar.gz; REF=ucrt-ubuntu-22.04-x86_64.tar.xz ;;
+            Linux-ARM64)   TRIPLE=aarch64-unknown-linux-gnu; EXT=tar.gz; REF=ucrt-ubuntu-22.04-aarch64.tar.xz ;;
+            macOS-ARM64)   TRIPLE=aarch64-apple-darwin;      EXT=tar.gz; REF=ucrt-macos-universal.tar.xz ;;
+            Windows-X64)   TRIPLE=x86_64-pc-windows-msvc;    EXT=zip;    REF=ucrt-x86_64.zip ;;
+            Windows-ARM64) TRIPLE=aarch64-pc-windows-msvc;   EXT=zip;    REF=ucrt-aarch64.zip ;;
           esac
           for T in $OLD $NEW; do
             mkdir -p bin/$T
@@ -87,7 +84,12 @@ jobs:
             --clice A="$ROOT/bin/$OLD/clice/bin/clice$EXE" \
             --clice B="$ROOT/bin/$NEW/clice/bin/clice$EXE" \
             --clice B2="$ROOT/bin/$NEW/clice/bin/clice$EXE" \
-            --rounds 7 --out result.json
+            --rounds 15 --out result.json
+      - name: Cachegrind
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          sudo apt-get install -y -q valgrind >/dev/null
+          bash tools/perf-exp/cachegrind.sh corpus "$PWD/bin/$OLD/clice/bin/clice" "$PWD/bin/$NEW/clice/bin/clice"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
