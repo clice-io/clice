@@ -1,7 +1,7 @@
 name: pgo clang bench
 
 # The clangs of a pgo-clang.yml run timed on a project their profile never
-# saw (abseil with its tests), against the conda clang.
+# saw (the abseil library), against the conda clang.
 
 on:
   push:

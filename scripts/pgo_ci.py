@@ -199,7 +199,7 @@ def clang_bench(args) -> None:
                 # Another project than the one the profile was trained on.
                 configure = ["cmake", "-S", args.project, "-B", build, "-G", "Ninja",
                              "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_CXX_STANDARD=20",
-                             "-DABSL_BUILD_TESTING=ON", "-DABSL_USE_EXTERNAL_GOOGLETEST=OFF",
+                             "-DABSL_BUILD_TESTING=OFF",
                              "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
                 targets = []
             else:
@@ -214,7 +214,7 @@ def clang_bench(args) -> None:
             print(f"round {round_index} {name}: {times[name][-1]:.1f} s", flush=True)
             shutil.rmtree(build, ignore_errors=True)
     base = statistics.median(times[names[0]])
-    what = f"`ninja` of {args.project} (Release, with tests)" if args.project else "`ninja clice` (RelWithDebInfo)"
+    what = f"`ninja` of {args.project} (Release, library)" if args.project else "`ninja clice` (RelWithDebInfo)"
     lines = [f"{what} from scratch, no ccache; median of {args.rounds} rounds.", "",
              "| clang | seconds | ratio |", "|---|---|---|"]
     for name in names:
