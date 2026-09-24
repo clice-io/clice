@@ -674,7 +674,7 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.uri);
-            co_return to_raw(project->context_service.query_contexts(path, path_id, params));
+            co_return to_raw(this->server.query_contexts(path, path_id, params));
         });
 
     peer.on_request(
@@ -689,25 +689,18 @@ void LSPClient::register_extensions() {
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] = resolve_uri(params.uri);
+            auto path = uri_to_path(params.uri);
+            auto path_id = this->server.files.intern(path);
             auto context_path = uri_to_path(params.context_uri);
             auto context_path_id = this->server.files.intern(context_path);
             // The session reset lives inside switch_context (single owner,
             // synchronous, no cross-file cascade — exempt from the event
             // pipeline; see the Invalidator charter).
-            auto result = co_await project->context_service.switch_context(path,
-                                                                           path_id,
-                                                                           session.get(),
-                                                                           context_path,
-                                                                           context_path_id,
-                                                                           params);
-            // A context choice asks for the context-pure AST view; the
-            // merged index cannot give it (union rows). A rejected switch
-            // (stale epoch, bad host) changed no context and owes none.
-            if(result.success) {
-                project->ast.escalate(*session);
-            }
-            co_return to_raw(result);
+            co_return to_raw(co_await this->server.switch_context(path,
+                                                                  path_id,
+                                                                  context_path,
+                                                                  context_path_id,
+                                                                  params));
         });
 
     // The project serving the named document; without one the first

@@ -77,6 +77,14 @@ struct EditorContext {
         return it != selections.end() ? &it->second : nullptr;
     }
 
+    /// Drop the file's selection, persisting its absence: the choice moved
+    /// to another project.
+    void forget_selection(Fid path_id) {
+        if(selections.erase(path_id)) {
+            mark_dirty();
+        }
+    }
+
     /// The file's resolved header context, or nullptr.
     HeaderContext* header_context(Fid path_id) {
         auto it = header_contexts.find(path_id);

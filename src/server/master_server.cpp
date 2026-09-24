@@ -216,6 +216,11 @@ static ProjectServer* deepest_holding(llvm::ArrayRef<std::shared_ptr<ProjectServ
 
 ProjectServer* MasterServer::compiler(Fid path_id) {
     for(auto& project: projects) {
+        if(project->contexts.selection(path_id)) {
+            return project.get();
+        }
+    }
+    for(auto& project: projects) {
         if(!project->project.build.commands(path_id).empty()) {
             return project.get();
         }
@@ -550,6 +555,90 @@ void MasterServer::fold_index_progress() {
     }
     index_progress = all;
     on_index_progress.emit();
+}
+
+std::uint64_t MasterServer::context_epoch() const {
+    std::uint64_t epoch = 0;
+    for(auto& project: projects) {
+        epoch += project->project.context_epoch;
+    }
+    return epoch;
+}
+
+ext::QueryContextResult MasterServer::query_contexts(llvm::StringRef path,
+                                                     Fid path_id,
+                                                     const ext::QueryContextParams& params) {
+    constexpr std::size_t page_size = 10;
+    auto& owner = owner_of(path_id);
+    auto items = owner.context_service.contexts(path, path_id);
+    for(auto& project: projects) {
+        if(project.get() == &owner) {
+            continue;
+        }
+        for(auto& item: project->context_service.contexts(path, path_id)) {
+            auto same = [&](const ext::ContextItem& known) {
+                return known.uri == item.uri && known.occurrence == item.occurrence &&
+                       known.command_hash == item.command_hash;
+            };
+            if(llvm::none_of(items, same)) {
+                items.push_back(std::move(item));
+            }
+        }
+    }
+    ext::QueryContextResult result;
+    result.epoch = context_epoch();
+    result.total = static_cast<int>(items.size());
+    auto offset = static_cast<std::size_t>(std::max(0, params.offset.value_or(0)));
+    for(auto i = offset; i < std::min(offset + page_size, items.size()); i += 1) {
+        result.contexts.push_back(std::move(items[i]));
+    }
+    return result;
+}
+
+kota::task<ext::SwitchContextResult> MasterServer::switch_context(llvm::StringRef path,
+                                                                 Fid path_id,
+                                                                 llvm::StringRef context_path,
+                                                                 Fid context_path_id,
+                                                                 ext::SwitchContextParams params) {
+    ext::SwitchContextResult result;
+    // A choice made against an outdated listing may reference contexts
+    // that no longer exist — make the client re-query.
+    if(params.epoch && *params.epoch != context_epoch()) {
+        result.stale = true;
+        co_return result;
+    }
+    params.epoch.reset();
+
+    auto owner = owner_of(path_id).shared_from_this();
+    auto target = owner;
+    auto hosts = [&](ProjectServer& project) {
+        return !project.project.build.commands(context_path_id).empty() &&
+               !project.project.dep_graph.find_include_chain(context_path_id, path_id).empty();
+    };
+    if(context_path_id != path_id && !hosts(*owner)) {
+        auto it = llvm::find_if(projects, [&](auto& project) { return hosts(*project); });
+        if(it == projects.end()) {
+            co_return result;
+        }
+        target = *it;
+    }
+    auto session = find_session(path_id);
+    if(target != owner && session) {
+        owner->contexts.forget_selection(path_id);
+        owner->release_session(path_id);
+        owners[path_id] = target.get();
+        target->open_session(path_id, session->text, session->version);
+        session = find_session(path_id);
+    }
+    result = co_await target->context_service
+                 .switch_context(path, path_id, session.get(), context_path, context_path_id, params);
+    // A context choice asks for the context-pure AST view; the merged
+    // index cannot give it (union rows). A rejected switch changed no
+    // context and owes none.
+    if(result.success) {
+        target->ast.escalate(*session);
+    }
+    co_return result;
 }
 
 std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::StringRef query) {

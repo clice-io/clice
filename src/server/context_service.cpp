@@ -58,14 +58,8 @@ static std::string flags_label(Project& ws, ConfigID config) {
     return desc;
 }
 
-ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
-                                                       Fid path_id,
-                                                       const ext::QueryContextParams& params) {
+std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid path_id) {
     auto& ws = project;
-    int offset_val = std::max(0, params.offset.value_or(0));
-    constexpr int page_size = 10;
-
-    ext::QueryContextResult result;
     std::vector<ext::ContextItem> all_items;
 
     // Contexts that would produce identical compilation results are
@@ -156,13 +150,7 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
         }
     }
 
-    result.epoch = ws.context_epoch;
-    result.total = static_cast<int>(all_items.size());
-    int end = std::min(offset_val + page_size, static_cast<int>(all_items.size()));
-    for(int i = offset_val; i < end; ++i) {
-        result.contexts.push_back(std::move(all_items[i]));
-    }
-    return result;
+    return all_items;
 }
 
 ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,

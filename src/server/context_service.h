@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include "server/editor_context.h"
 #include "server/extension.h"
@@ -33,11 +34,9 @@ struct ContextService {
     EditorContext& editor;
     ASTFamily& ast;
 
-    /// clice/queryContext: list the compilation contexts (host sources and
-    /// the file's own CDB configurations) available for a file, paginated.
-    ext::QueryContextResult query_contexts(llvm::StringRef path,
-                                           Fid path_id,
-                                           const ext::QueryContextParams& params);
+    /// The compilation contexts this project offers a file (clice/queryContext):
+    /// its host sources and the file's own CDB configurations.
+    std::vector<ext::ContextItem> contexts(llvm::StringRef path, Fid path_id);
 
     /// clice/currentContext: describe the file's currently active context.
     ext::CurrentContextResult current_context(llvm::StringRef path,

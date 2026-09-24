@@ -494,6 +494,38 @@ test("dependency folder borrows the application", async ({ session }) => {
     client.assertNoErrors(header, "the application's command reaches the header");
 });
 
+test("context from another folder", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    libraryAndApp(workspace);
+    workspace.write("lib/include/lib.h", "#pragma once\n" + gated("IN_APP", "lib_fn"));
+    workspace.writeCDB(["app/main.cpp"], {
+        extraArgs: [`-I${workspace.path("lib/include")}`, "-DIN_APP"],
+        at: "app/compile_commands.json",
+    });
+    await client.initialize(workspace, { folders: ["app", "lib"] });
+
+    // The library's own source is the header's host at first; the
+    // application's is on offer too.
+    const [header] = await client.openAndWait("lib/include/lib.h");
+    client.assertHasErrors(header, "the library does not define IN_APP");
+    const listed = await client.queryContext(header);
+    const hosts = listed.contexts.map((context) => context.uri);
+    expect(hosts).toContain(workspace.uri("lib/src/lib.cpp"));
+    expect(hosts).toContain(workspace.uri("app/main.cpp"));
+
+    const compiled = client.armDiagnostics(header);
+    const switched = await client.switchContext(header, workspace.uri("app/main.cpp"), {
+        epoch: listed.epoch,
+    });
+    expect(switched.success).toBe(true);
+    await client.hoverAt(header, 1, 0);
+    await compiled;
+    client.assertNoErrors(header, "the application's host defines IN_APP");
+    expect((await client.currentContext(header)).context?.uri).toBe(
+        workspace.uri("app/main.cpp"),
+    );
+});
+
 test("unrelated folders keep references apart", async ({ session }) => {
     const { client, workspace } = session.tmp();
     const helper = (user: string) =>

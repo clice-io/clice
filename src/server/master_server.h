@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "sched/index/pump.h"
+#include "server/extension.h"
 #include "server/project_server.h"
 #include "server/session.h"
 #include "support/anomaly.h"
@@ -146,6 +147,24 @@ public:
     /// documents routing now sends to another project.
     void builds_changed();
 
+    /// clice/queryContext over every project, paginated: the contexts the
+    /// file's own project offers, then the ones other projects do —
+    /// choosing one of those moves the file there (switch_context). The
+    /// listing's epoch covers every project.
+    ext::QueryContextResult query_contexts(llvm::StringRef path,
+                                           Fid path_id,
+                                           const ext::QueryContextParams& params);
+
+    /// clice/switchContext: pin the context in the project offering it —
+    /// the file's own, else one whose build compiles the host — moving the
+    /// open document there first. Routing keeps a file with the project
+    /// holding its choice (compiler).
+    kota::task<ext::SwitchContextResult> switch_context(llvm::StringRef path,
+                                                        Fid path_id,
+                                                        llvm::StringRef context_path,
+                                                        Fid context_path_id,
+                                                        ext::SwitchContextParams params);
+
     /// workspace/symbol over every project: each project's ranked matches,
     /// interleaved rank by rank, a symbol two projects index listed once.
     std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);
@@ -257,10 +276,15 @@ private:
     /// finds its entry.
     void discover_around(Fid path_id);
 
-    /// The project that can compile a file: the one whose build lists it
-    /// (its own entry or a rule's default command), else one whose include
-    /// graph reaches it — the deepest whose root holds it, else any — to
-    /// borrow a host there; null when none can.
+    /// The sum of the projects' context epochs: a context listing spans
+    /// every project.
+    std::uint64_t context_epoch() const;
+
+    /// The project that can compile a file: the one holding the user's
+    /// context choice for it, else the one whose build lists it (its own
+    /// entry or a rule's default command), else one whose include graph
+    /// reaches it — the deepest whose root holds it, else any — to borrow
+    /// a host there; null when none can.
     ProjectServer* compiler(Fid path_id);
 
     /// The project a file belongs to: its compiler, else the deepest root
