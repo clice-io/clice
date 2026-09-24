@@ -1,0 +1,89 @@
+name: pgo timing
+
+# How long each leg of a PGO LLVM release takes: every leg three times, for
+# medians. Nothing is uploaded; the numbers are the "Build LLVM" step times.
+
+on:
+  push:
+    branches: [exp/pgo-timing]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  leg:
+    strategy:
+      fail-fast: false
+      matrix:
+        repeat: [1, 2, 3]
+        leg:
+          - train
+          - linux-x64-pgo
+          - linux-arm64-pgo
+          - mingw-x64-pgo
+          - mac-arm64-pgo
+          - mac-x64-pgo
+          - linux-x64-releasedbg
+          - linux-arm64-releasedbg
+          - mingw-x64-releasedbg
+          - mac-arm64-releasedbg
+          - mac-x64-releasedbg
+          - linux-x64-debug
+          - mac-arm64-debug
+        include:
+          - leg: train
+            instrument: true
+            clang-train: true
+          - leg: linux-x64-pgo
+            lto: "ON"
+            profile: profile-clang
+          - leg: linux-arm64-pgo
+            lto: "ON"
+            profile: profile-clang
+            triple: aarch64-unknown-linux-gnu
+            env: cross-linux-arm64
+          - leg: mingw-x64-pgo
+            lto: "ON"
+            profile: profile-clang
+            triple: x86_64-w64-mingw32
+            env: cross-windows-mingw
+          - leg: mac-arm64-pgo
+            os: macos-15
+            lto: "ON"
+            profile: profile-clang
+          - leg: mac-x64-pgo
+            os: macos-15
+            lto: "ON"
+            profile: profile-clang
+            triple: x86_64-apple-darwin
+          - leg: linux-arm64-releasedbg
+            triple: aarch64-unknown-linux-gnu
+            env: cross-linux-arm64
+          - leg: mingw-x64-releasedbg
+            triple: x86_64-w64-mingw32
+            env: cross-windows-mingw
+          - leg: mac-arm64-releasedbg
+            os: macos-15
+          - leg: mac-x64-releasedbg
+            os: macos-15
+            triple: x86_64-apple-darwin
+          - leg: linux-x64-debug
+            mode: Debug
+          - leg: mac-arm64-debug
+            os: macos-15
+            mode: Debug
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: timing-${{ matrix.leg }}-${{ matrix.repeat }}
+      os: ${{ matrix.os || 'ubuntu-24.04' }}
+      mode: ${{ matrix.mode || 'RelWithDebInfo' }}
+      lto: ${{ matrix.lto || 'OFF' }}
+      instrument: ${{ matrix.instrument || false }}
+      clang-train: ${{ matrix.clang-train || false }}
+      profile: ${{ matrix.profile || '' }}
+      profile-run: ${{ matrix.profile && '35906099298' || '' }}
+      target-triple: ${{ matrix.triple || '' }}
+      pixi-env: ${{ matrix.env || 'package' }}
+      upload: false
