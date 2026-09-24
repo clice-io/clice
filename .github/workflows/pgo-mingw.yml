@@ -1,0 +1,120 @@
+name: pgo mingw
+
+# Windows through mingw-w64 with the profiles trained on Linux (Itanium names
+# on both, so the Linux profile applies): LLVM packages and clice
+# cross-compiled on Linux, tested and benchmarked on a Windows runner.
+#   W0  no PGO
+#   W1  LLVM and clice with the clice-trained profile
+#   W2  LLVM with the clang-trained profile, clice without PGO
+
+on:
+  push:
+    branches: [exp/pgo-mingw]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  llvm:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: mingw-llvm-baseline
+            profile: ""
+            profile-run: ""
+          - name: mingw-llvm-pgo-clang
+            profile: profile-clang
+            profile-run: "35906099298"
+          - name: mingw-llvm-pgo-clice
+            profile: profile-clice
+            profile-run: "35912428380"
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: ${{ matrix.name }}
+      lto: "ON"
+      profile: ${{ matrix.profile }}
+      profile-run: ${{ matrix.profile-run }}
+      target-triple: x86_64-w64-mingw32
+      pixi-env: cross-windows-mingw
+
+  clice:
+    needs: llvm
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: W0
+            llvm: mingw-llvm-baseline
+            pgo: ""
+            pgo-run: ""
+          - variant: W1
+            llvm: mingw-llvm-pgo-clice
+            pgo: profile-clice
+            pgo-run: "35912428380"
+          - variant: W2
+            llvm: mingw-llvm-pgo-clang
+            pgo: ""
+            pgo-run: ""
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-${{ matrix.variant }}
+      llvm: ${{ matrix.llvm }}
+      lto: "ON"
+      pgo: ${{ matrix.pgo }}
+      pgo-run: ${{ matrix.pgo-run }}
+      target-triple: x86_64-w64-mingw32
+      pixi-env: cross-windows-mingw
+
+  windows:
+    needs: clice
+    if: ${{ !cancelled() }}
+    runs-on: windows-2025
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: default
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: final-W*
+          path: bundles
+      - name: Unpack
+        run: |
+          echo "cores: $NUMBER_OF_PROCESSORS"
+          for dir in bundles/final-W*; do
+            mkdir -p "variants/${dir##*-}"
+            tar -C "variants/${dir##*-}" -xzf "$dir/bundle.tar.gz"
+          done
+          ls -la variants/*/bin
+      - name: Unit tests
+        continue-on-error: true
+        run: |
+          for v in variants/W*; do
+            echo "== ${v##*/}" | tee -a "$GITHUB_STEP_SUMMARY"
+            CLICE_TEST_DATA_DIR="$(cygpath -m "$PWD/tests/data")" "$v/bin/unit_tests.exe" 2>&1 | tail -n 4 | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Workloads
+        run: pixi run -e default python scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads"
+      - name: Benchmark
+        run: |
+          # Native Windows programs read /d/a/... as a path on the current drive.
+          W="$(cygpath -m "$PWD")"
+          pixi run -e default python scripts/pgo_ci.py bench --rounds 2 --out bench-out \
+            --variant "W0=$W/variants/W0" --variant "W1=$W/variants/W1" --variant "W2=$W/variants/W2" \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-results-mingw
+          path: bench-out

@@ -31,6 +31,13 @@ on:
         description: "Build the clang compiler and upload its binary"
         type: boolean
         default: false
+      target-triple:
+        description: "Cross-compile the package for this triple"
+        type: string
+        default: ""
+      pixi-env:
+        type: string
+        default: package
 
 env:
   LLVM_VERSION: "23.1.1"
@@ -58,7 +65,7 @@ jobs:
 
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: package
+          environments: ${{ inputs.pixi-env }}
 
       - name: Clone llvm-project
         run: git clone --branch "llvmorg-${LLVM_VERSION}" --depth 1 https://github.com/llvm/llvm-project.git .llvm
@@ -77,13 +84,14 @@ jobs:
           ARGS=(--llvm-src=.llvm --mode=RelWithDebInfo --lto="${{ inputs.lto }}" --build-dir=build)
           if [[ "${{ inputs.instrument }}" == true ]]; then ARGS+=(--pgo-instrument); fi
           if [[ -n "${{ inputs.profile }}" ]]; then ARGS+=(--pgo-profile="$PWD/pgo-profile/profile.profdata"); fi
+          if [[ -n "${{ inputs.target-triple }}" ]]; then ARGS+=(--target-triple="${{ inputs.target-triple }}"); fi
           # The trained clang stands in for the environment's clang-23, so it
           # keeps that clang's triple and with it the conda config files.
           if [[ "${{ inputs.clang-train }}" == true || "${{ inputs.clang-bundle }}" == true ]]; then
             ARGS+=(--clang-only --default-triple=x86_64-conda-linux-gnu)
           fi
           start=$SECONDS
-          pixi run -e package python3 scripts/build-llvm.py "${ARGS[@]}"
+          pixi run -e "${{ inputs.pixi-env }}" python3 scripts/build-llvm.py "${ARGS[@]}"
           echo "LLVM build: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload clang

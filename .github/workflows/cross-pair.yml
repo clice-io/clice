@@ -83,7 +83,7 @@ jobs:
             --target clice-pack clice-pack-symbol
 
       - name: Check artifact dependencies
-        if: ${{ !contains(inputs.target_triple, 'windows') }}
+        if: ${{ !contains(inputs.target_triple, 'windows') && !contains(inputs.target_triple, 'mingw') }}
         shell: bash
         run: |
           pixi run -e "${{ inputs.pixi_env }}" -- \

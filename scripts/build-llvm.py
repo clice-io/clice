@@ -209,13 +209,15 @@ class Build:
         self.lto = args.lto == "ON"
         self.target_triple: str | None = args.target_triple
         self.triple = args.target_triple or host_triple()
-        self.asan = self.mode == "Debug" and not IS_WINDOWS
+        self.mingw = self.triple.endswith("-w64-mingw32")
+        self.msvc = IS_WINDOWS and not self.mingw
+        self.asan = self.mode == "Debug" and not IS_WINDOWS and not self.mingw
         self.pgo_instrument: bool = args.pgo_instrument
         self.pgo_profile: Path | None = (
             Path(args.pgo_profile).resolve() if args.pgo_profile else None
         )
         self.clang_only: bool = args.clang_only
-        self.default_triple: str = args.default_triple or self.triple
+        self.default_triple_override: str | None = args.default_triple
         # A profile only matches code compiled the same way, so the
         # instrumented build takes the release configuration of the final
         # (LTO) build it trains: no assertions, no libc++ hardening.
@@ -249,7 +251,7 @@ class Build:
         return " --no-default-config" if IS_DARWIN else ""
 
     def compiler_args(self) -> list[str]:
-        if IS_WINDOWS:
+        if self.msvc:
             return [
                 "-DCMAKE_C_COMPILER=clang-cl",
                 "-DCMAKE_CXX_COMPILER=clang-cl",
@@ -261,15 +263,20 @@ class Build:
                 "-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=",
                 "-DLLVM_USE_LINKER=lld-link",
             ]
-        return [
+        args = [
             f"-DCMAKE_TOOLCHAIN_FILE={self.toolchain_file.as_posix()}",
             "-DLLVM_USE_LINKER=lld",
         ]
+        if self.mingw:
+            # LLVM defaults this to ON for MinGW; clice and its tests expect
+            # the MSVC package's backslash-preferred paths.
+            args.append("-DLLVM_WINDOWS_PREFER_FORWARD_SLASH=OFF")
+        return args
 
     def debug_info_args(self) -> list[str]:
         # Function names and line tables are all the symbolizers need; the
         # type and variable information of a full -g is most of the archive.
-        if IS_WINDOWS:
+        if self.msvc:
             relwithdebinfo = "/O2 /Ob1 /DNDEBUG -gcodeview -gline-tables-only"
             debug = "/Ob0 /Od -gcodeview -gline-tables-only"
         else:
@@ -291,8 +298,10 @@ class Build:
             f"-DCMAKE_CXX_FLAGS={cxx_flags}{self.driver_flags()}{self.target_flags()}",
             # The archive triple doubles as the default: without a native
             # backend LLVM would leave it empty, and clang would then have no
-            # target for compile commands that do not spell one.
-            f"-DLLVM_DEFAULT_TARGET_TRIPLE={self.default_triple}",
+            # target for compile commands that do not spell one. The mingw
+            # package is the Windows package, and what Windows users compile
+            # targets MSVC unless their command says otherwise.
+            f"-DLLVM_DEFAULT_TARGET_TRIPLE={self.default_triple()}",
             f"-DLLVM_ENABLE_LTO={'Thin' if self.lto else 'OFF'}",
             *self.compiler_args(),
             *self.debug_info_args(),
@@ -302,6 +311,13 @@ class Build:
         if self.target_triple:
             args.append(f"-DCLICE_TARGET_TRIPLE={self.target_triple}")
         return args
+
+    def default_triple(self) -> str:
+        if self.default_triple_override:
+            return self.default_triple_override
+        if self.mingw:
+            return self.triple.replace("-w64-mingw32", "-pc-windows-msvc")
+        return self.triple
 
     # --------------------------------------------------------------- runtimes
 
@@ -320,8 +336,7 @@ class Build:
         a patch."""
         build_dir = self.build_dir / "runtimes"
         args = self.common_args("-w") + [
-            "-DLLVM_ENABLE_RUNTIMES="
-            + ("libcxx" if IS_WINDOWS else "libcxxabi;libcxx"),
+            "-DLLVM_ENABLE_RUNTIMES=" + ("libcxx" if self.msvc else "libcxxabi;libcxx"),
             "-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=OFF",
             "-DLLVM_INCLUDE_TESTS=OFF",
             "-DLIBCXX_ENABLE_SHARED=OFF",
@@ -331,7 +346,7 @@ class Build:
             "-DLIBCXX_INCLUDE_BENCHMARKS=OFF",
             "-DLIBCXX_INCLUDE_TESTS=OFF",
         ]
-        if IS_WINDOWS:
+        if self.msvc:
             # Upstream compiles libc++ with _CRT_STDIO_ISO_WIDE_SPECIFIERS, and
             # the UCRT's detect_mismatch then forces that mode on every object
             # linked with it; the ISO mode changes what %s means in the wide
@@ -366,7 +381,7 @@ class Build:
         standard library of the LLVM pass."""
         include = (self.install_prefix / "include/c++/v1").as_posix()
         lib = (self.install_prefix / "lib").as_posix()
-        if IS_WINDOWS:
+        if self.msvc:
             # clang-cl has no -nostdinc++; the MSVC STL headers sit in the
             # INCLUDE directories, which -isystem precedes. libc++.lib is a
             # plain linker input, not a /DEFAULTLIB: lld-link reads the
@@ -384,10 +399,13 @@ class Build:
                 f"{lib}/libc++.lib /DEFAULTLIB:libcpmt.lib",
             )
         # -D on the command line replaces the toolchain file's *_INIT linker
-        # flags, so lld is repeated here.
+        # flags, so lld is repeated here. The archive is named outright: a
+        # -stdlib=libc++ would take any libc++ an earlier -L (LDFLAGS, a
+        # host toolchain) puts in the search path, and lld does not care
+        # where on the command line an archive sits.
         return (
             f"-w -nostdinc++ -isystem {include}",
-            f"-fuse-ld=lld{self.driver_flags()} -stdlib=libc++ -L{lib}",
+            f"-fuse-ld=lld{self.driver_flags()} -nostdlib++ {lib}/libc++.a",
         )
 
     def llvm_args(self) -> list[str]:

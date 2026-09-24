@@ -88,6 +88,8 @@ def workloads(args) -> None:
          "-DCMAKE_CXX_STANDARD=20", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DABSL_BUILD_TESTING=OFF",
          "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"], check=True)
 
+    if args.skip_llvm:
+        return
     llvm = root / "llvm"
     if not llvm.exists():
         run(["git", "clone", "--depth", "1", "--branch", "llvmorg-23.1.1",
@@ -126,6 +128,8 @@ def bench(args) -> None:
         order = names[round_index % len(names):] + names[:round_index % len(names)]
         for variant in order:
             exe = Path(variants[variant]) / "bin/pipeline_benchmark"
+            if not exe.exists():
+                exe = exe.with_suffix(".exe")
             for name, cdb, flt, limit in loads:
                 report = out / f"{variant}-{name}-{round_index}.json"
                 cmd = [exe, "--runs", "1", "--limit", limit, "--json", report]
@@ -239,6 +243,7 @@ def main() -> None:
 
     p = sub.add_parser("workloads")
     p.add_argument("--dir", required=True)
+    p.add_argument("--skip-llvm", action="store_true")
     p.set_defaults(func=workloads)
 
     p = sub.add_parser("bench")

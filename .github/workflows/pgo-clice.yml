@@ -30,6 +30,13 @@ on:
       train:
         type: boolean
         default: false
+      target-triple:
+        description: "Cross-compile clice for this triple (the bundle then holds .exe files, no tests run)"
+        type: string
+        default: ""
+      pixi-env:
+        type: string
+        default: package
 
 jobs:
   build:
@@ -45,7 +52,7 @@ jobs:
 
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: package
+          environments: ${{ inputs.pixi-env }}
 
       - name: Download LLVM
         uses: actions/download-artifact@v8
@@ -71,7 +78,9 @@ jobs:
           cat "$RUNNER_TEMP/llvm/lib/cmake/clice-llvm/config.cmake"
           PGO="${{ inputs.pgo }}"
           if [[ -n "$PGO" && "$PGO" != generate ]]; then PGO="$PWD/pgo-profile/profile.profdata"; fi
-          pixi run -e package cmake -B build/RelWithDebInfo -G Ninja \
+          CROSS=()
+          if [[ -n "${{ inputs.target-triple }}" ]]; then CROSS=(-DCLICE_TARGET_TRIPLE="${{ inputs.target-triple }}"); fi
+          pixi run -e "${{ inputs.pixi-env }}" cmake -B build/RelWithDebInfo -G Ninja "${CROSS[@]}" \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
             -DCLICE_ENABLE_TEST=ON \
@@ -83,7 +92,7 @@ jobs:
       - name: Build
         run: |
           start=$SECONDS
-          pixi run -e package ninja -C build/RelWithDebInfo clice unit_tests pipeline_benchmark
+          pixi run -e "${{ inputs.pixi-env }}" ninja -C build/RelWithDebInfo clice unit_tests pipeline_benchmark
           echo "clice build: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
           ls -la build/RelWithDebInfo/bin | tee -a "$GITHUB_STEP_SUMMARY"
 
@@ -105,7 +114,7 @@ jobs:
           if-no-files-found: error
 
       - name: Unit tests
-        if: ${{ !inputs.train }}
+        if: ${{ !inputs.train && inputs.target-triple == '' }}
         continue-on-error: true
         run: |
           CLICE_TEST_DATA_DIR="$PWD/tests/data" pixi run -e package ./build/RelWithDebInfo/bin/unit_tests 2>&1 | tail -n 30 | tee -a "$GITHUB_STEP_SUMMARY"
@@ -114,14 +123,21 @@ jobs:
       - name: Bundle
         if: ${{ !inputs.train }}
         run: |
-          tar -C build/RelWithDebInfo -cf - bin/pipeline_benchmark bin/clice lib/clang | zstd -T0 -3 -o bundle.tar.zst
+          cd build/RelWithDebInfo
+          FILES=$(ls -d bin/pipeline_benchmark* bin/clice bin/clice.exe bin/unit_tests.exe 2>/dev/null)
+          # Windows runners have no zstd; gzip unpacks everywhere.
+          if [[ -n "${{ inputs.target-triple }}" ]]; then
+            tar -czf ../../bundle.tar.gz $FILES lib/clang
+          else
+            tar -cf - $FILES lib/clang | zstd -T0 -3 -o ../../bundle.tar.zst
+          fi
 
       - name: Upload bundle
         if: ${{ !inputs.train }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.name }}
-          path: bundle.tar.zst
+          path: bundle.tar.*
           retention-days: 14
           compression-level: 0
           if-no-files-found: error

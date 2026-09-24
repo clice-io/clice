@@ -28,9 +28,27 @@ endif()
 # Keyed on the target OS, not the compiler frontend: CI links Windows with
 # GNU-driver clang++ + lld-link, where the frontend variant is "GNU" but the
 # linker still speaks MSVC-style /OPT flags (see the Debug /OPT:NOICF below).
-if(WIN32)
+# The mingw target links through lld's GNU-flavoured driver instead.
+if(WIN32 AND NOT MINGW)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:REF")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,/OPT:REF")
+elseif(MINGW)
+    # CRoaring's headers define C99 `inline` functions that its C sources
+    # emit once more as strong definitions (`extern inline`); a C++ user of
+    # the headers emits the same functions as COMDATs. clang targeting MSVC
+    # puts the C definitions into COMDATs as well and the pair merges, but
+    # on the mingw target the C copy is a plain symbol and lld reports the
+    # duplicate, whichever comes first. Both copies are the same code.
+    # -static: the driver's -unwindlib=libunwind would otherwise pick the
+    # import library of libunwind.dll over libunwind.a. No --gc-sections:
+    # lld's MinGW mode roots only the non-COMDAT .ctors entries, so the
+    # dynamic initializer of an inline or template static variable (its
+    # .ctors entry is a COMDAT tied to the variable) is collected together
+    # with the variable when nothing else references it; zest registers
+    # every test case through such a variable, and a quarter of the suite
+    # silently disappeared.
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -static -Wl,--allow-multiple-definition")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--allow-multiple-definition")
 elseif(APPLE)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-dead_strip")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-dead_strip")
@@ -73,9 +91,11 @@ endif()
 # friendly flags below instead. icf=safe (not =all) so address-taken
 # functions keep C++ pointer identity.
 if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    if(WIN32)
+    if(WIN32 AND NOT MINGW)
         # SAFEICF, not ICF: plain /OPT:ICF folds address-taken functions.
         set(CLICE_LINK_OPT_FLAGS "-Wl,/OPT:SAFEICF")
+    elseif(MINGW)
+        set(CLICE_LINK_OPT_FLAGS "-Wl,--icf=safe")
     elseif(APPLE)
         # --keep-icf-stabs: without it dsymutil cannot see ICF-folded symbols,
         # so they would be missing from the dSYM (and thus from GSYM).
@@ -124,7 +144,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fsanitize=address")
     endif()
 
-    if(WIN32)
+    if(WIN32 AND NOT MINGW)
         # Disable Identical COMDAT Folding in Debug to avoid ASan ODR false positives.
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:NOICF")
         string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,/OPT:NOICF")
