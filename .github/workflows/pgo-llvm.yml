@@ -135,7 +135,8 @@ jobs:
         if: inputs.match-report && inputs.profile != ''
         continue-on-error: true
         run: |
-          pixi run -e "${{ inputs.pixi-env }}" python3 scripts/pgo_ci.py match-report --build .llvm/build/llvm --files \
+          pixi run -e "${{ inputs.pixi-env }}" python3 scripts/pgo_ci.py match-report --build .llvm/build/llvm \
+            --target "${{ inputs.name }}" --profile "use=$PWD/pgo-profile/profile.profdata" --files \
             clang/lib/Sema/SemaExpr.cpp clang/lib/Sema/SemaDecl.cpp clang/lib/Sema/SemaTemplate.cpp \
             clang/lib/Parse/ParseDecl.cpp clang/lib/Lex/Lexer.cpp clang/lib/AST/ExprConstant.cpp \
             clang/lib/Serialization/ASTReader.cpp llvm/lib/Support/StringMap.cpp

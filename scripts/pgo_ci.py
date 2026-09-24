@@ -238,38 +238,111 @@ def clang_bench(args) -> None:
 
 
 def match_report(args) -> None:
-    """Recompile a few TUs of a profile-using LLVM build with the profile
-    diagnostics on and count the functions the profile misses or no longer
-    matches (hash mismatch)."""
+    """Recompile TUs of a configured profile-using LLVM build with the PGO
+    diagnostics on, once per profile, and record every function the profile
+    has no data for or no longer matches (hash mismatch), comdat/weak ones
+    (header templates and inlines, silent by default) included, with the
+    count the mismatch discards."""
+    import re
     import shlex
+    pattern = re.compile(r"(function control flow change detected \(hash mismatch\)|no profile data available for function)"
+                         r" (\S+) Hash = \d+ up to (\d+) count discarded")
     build = Path(args.build).resolve()
     entries = json.loads((build / "compile_commands.json").read_text())
-    lines = ["| TU | no profile data | hash mismatch |", "|---|---|---|"]
-    totals = [0, 0]
-    for want in args.files:
-        entry = next((e for e in entries if e["file"].replace("\\", "/").endswith(want)), None)
-        if entry is None:
-            lines.append(f"| {want} | not in CDB | |")
+    profiles = dict(p.split("=", 1) for p in args.profile)
+    result = {"target": args.target, "profiles": {}}
+    for pname, ppath in profiles.items():
+        ppath = str(Path(ppath).resolve())
+        records = []
+        for want in args.files:
+            entry = next((e for e in entries if e["file"].replace("\\", "/").endswith(want)), None)
+            if entry is None:
+                print(f"{want}: not in the CDB")
+                continue
+            argv = entry.get("arguments") or shlex.split(entry["command"])
+            argv = [f"-fprofile-instr-use={ppath}" if a.startswith("-fprofile-instr-use=") else a
+                    for a in argv if a != "-w"]
+            if "-o" in argv:
+                argv[argv.index("-o") + 1] = os.devnull
+            argv += ["-Wno-everything", "-Wbackend-plugin", "-mllvm", "-pgo-warn-missing-function",
+                     "-mllvm", "-no-pgo-warn-mismatch-comdat-weak=false"]
+            out = subprocess.run(argv, cwd=entry["directory"], capture_output=True, text=True)
+            if out.returncode != 0:
+                print(f"{want}: exit {out.returncode}\n{out.stderr[-1500:]}")
+            for m in pattern.finditer(out.stderr):
+                kind = "mismatch" if "hash mismatch" in m.group(1) else "missing"
+                records.append({"tu": want, "kind": kind, "name": m.group(2), "count": int(m.group(3))})
+        result["profiles"][pname] = records
+        mism = [r for r in records if r["kind"] == "mismatch"]
+        print(f"{args.target} {pname}: {len(mism)} mismatched ({sum(r['count'] for r in mism)} counts), "
+              f"{len(records) - len(mism)} without data")
+    Path(args.json).write_text(json.dumps(result))
+
+
+def category(demangled: str, name: str) -> str:
+    if demangled.startswith(("std::", "void std::", "bool std::")) or "std::__1::" in demangled.split("(")[0]:
+        return "libc++"
+    head = demangled.split("(")[0]
+    for prefix, label in (("clang::", "clang"), ("llvm::", "llvm")):
+        if prefix in head:
+            return label
+    if ";" in name:
+        path = name.split(";")[0]
+        return "clang" if path.startswith("clang/") else "llvm" if path.startswith("llvm/") else "other"
+    return "other"
+
+
+def match_analyze(args) -> None:
+    names = set()
+    data = []
+    for path in sorted(Path(args.dir).rglob("*.json")):
+        d = json.loads(path.read_text())
+        data.append(d)
+        for records in d["profiles"].values():
+            names.update(r["name"].split(";")[-1] for r in records)
+    ordered = sorted(names)
+    demangled = run(["llvm-cxxfilt"], input="\n".join(ordered), capture_output=True, text=True).stdout.splitlines()
+    dm = dict(zip(ordered, demangled))
+    lines = ["Discarded counts: the profile's execution counts of the functions whose CFG no longer matches",
+             "(every function of the TUs, header templates and inlines included). The category columns split",
+             "each row's discarded counts by where the function comes from.", "",
+             "| target | profile | mismatched fns | discarded counts | clang | llvm | libc++ | other |",
+             "|---|---|---|---|---|---|---|---|"]
+    hottest = {}
+    for d in sorted(data, key=lambda d: d["target"]):
+        for pname, records in d["profiles"].items():
+            mism = [r for r in records if r["kind"] == "mismatch"]
+            total = sum(r["count"] for r in mism)
+            by = {"clang": 0, "llvm": 0, "libc++": 0, "other": 0}
+            for r in mism:
+                by[category(dm.get(r["name"].split(";")[-1], r["name"]), r["name"])] += r["count"]
+            share = lambda c: f"{100 * c / total:.0f}%" if total else "-"
+            lines.append(f"| {d['target']} | {pname} | {len(mism)} | {total:.3g} | " +
+                         " | ".join(share(by[k]) for k in ("clang", "llvm", "libc++", "other")) + " |")
+            hottest[(d["target"], pname)] = sorted(mism, key=lambda r: -r["count"])[:8]
+    lines.append("")
+    for (target, pname), recs in hottest.items():
+        if not recs or pname != "x86":
             continue
-        argv = entry.get("arguments") or shlex.split(entry["command"])
-        argv = [a for a in argv if a != "-w"]
-        if "-o" in argv:
-            argv[argv.index("-o") + 1] = os.devnull
-        argv += ["-Wno-everything", "-Wbackend-plugin", "-mllvm", "-pgo-warn-missing-function"]
-        result = subprocess.run(argv, cwd=entry["directory"], capture_output=True, text=True)
-        missing = result.stderr.count("No profile data available for function")
-        mismatch = result.stderr.count("hash mismatch")
-        totals[0] += missing
-        totals[1] += mismatch
-        lines.append(f"| {want} | {missing} | {mismatch} |")
-        if result.returncode != 0:
-            print(result.stderr[-2000:])
-    lines.append(f"| total | {totals[0]} | {totals[1]} |")
+        lines += [f"### hottest mismatches: {target}, x86 profile", ""]
+        for r in recs:
+            name = dm.get(r["name"].split(";")[-1], r["name"])
+            lines.append(f"- {r['count']:.3g}  `{name[:140]}`  ({r['tu']})")
+        lines.append("")
     text = "\n".join(lines)
     print(text)
     if "GITHUB_STEP_SUMMARY" in os.environ:
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
-            f.write("## Profile match\n\n" + text + "\n")
+            f.write(text + "\n")
+
+
+def tablegen(args) -> None:
+    build = Path(args.build)
+    listing = run(["ninja", "-C", build, "-t", "targets", "all"], check=True, capture_output=True, text=True).stdout
+    targets = {line.split(":")[0] for line in listing.splitlines()}
+    gens = sorted(n for n in targets if "/" not in n and not n.startswith("install-")
+                  and n.endswith(("TableGen", "_gen", "tablegen-targets")))
+    run(["ninja", "-C", build, *gens], check=True)
 
 
 def main() -> None:
@@ -309,7 +382,18 @@ def main() -> None:
     p = sub.add_parser("match-report")
     p.add_argument("--build", required=True, help="LLVM build directory (compile_commands.json)")
     p.add_argument("--files", nargs="+", required=True)
+    p.add_argument("--profile", action="append", required=True, help="NAME=PATH")
+    p.add_argument("--target", default="")
+    p.add_argument("--json", default="match.json")
     p.set_defaults(func=match_report)
+
+    p = sub.add_parser("match-analyze")
+    p.add_argument("--dir", required=True)
+    p.set_defaults(func=match_analyze)
+
+    p = sub.add_parser("tablegen")
+    p.add_argument("--build", required=True)
+    p.set_defaults(func=tablegen)
 
     p = sub.add_parser("clang-bench")
     p.add_argument("--variant", action="append", default=[], help="NAME=PATH of a clang-23 binary")
