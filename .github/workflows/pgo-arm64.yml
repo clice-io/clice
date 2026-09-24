@@ -1,0 +1,160 @@
+name: pgo arm64
+
+# Two questions. Does x86 + arm64 Linux training cover macOS arm64 as well
+# (a profile match report of macOS arm64 against that two-way merge)? And
+# what does Linux arm64 gain against today's release configuration
+# (releasedbg package: assertions on, no LTO)?
+
+on:
+  push:
+    branches: [exp/pgo-arm64]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  merge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - name: Merge x86 + arm64 Linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 35973108478 -R "$GITHUB_REPOSITORY" -n profile-clang-strip -D p/x86
+          gh run download 36036050639 -R "$GITHUB_REPOSITORY" -n profile-clang-arm64-linux -D p/arm64-linux
+          mkdir -p pgo-out
+          pixi run -e package llvm-profdata merge --sparse -o pgo-out/profile.profdata \
+            p/x86/profile.profdata p/arm64-linux/profile.profdata
+          pixi run -e package llvm-profdata show pgo-out/profile.profdata | grep -E 'Total functions|Total count'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: profile-merged-2arch
+          path: pgo-out
+          retention-days: 14
+
+  llvm:
+    needs: merge
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: arm64-mac-pgo2a
+            os: macos-15
+          - name: arm64-linux-pgo2a
+            triple: aarch64-unknown-linux-gnu
+            env: cross-linux-arm64
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: ${{ matrix.name }}
+      os: ${{ matrix.os || 'ubuntu-24.04' }}
+      lto: "ON"
+      target-triple: ${{ matrix.triple || '' }}
+      pixi-env: ${{ matrix.env || 'package' }}
+      profile: profile-merged-2arch
+      extra-args: --pgo-strip-prefix
+      match-report: true
+
+  clice_cur:
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-arm64-linux-cur
+      llvm-asset: aarch64-unknown-linux-gnu.releasedbg.tar.xz
+      lto: "OFF"
+      target-triple: aarch64-unknown-linux-gnu
+      pixi-env: cross-linux-arm64
+
+  clice:
+    needs: llvm
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: arm64-mac-pgo2a
+            os: macos-15
+          - name: arm64-linux-pgo2a
+            triple: aarch64-unknown-linux-gnu
+            env: cross-linux-arm64
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-${{ matrix.name }}
+      llvm: ${{ matrix.name }}
+      lto: "ON"
+      os: ${{ matrix.os || 'ubuntu-24.04' }}
+      target-triple: ${{ matrix.triple || '' }}
+      pixi-env: ${{ matrix.env || 'package' }}
+
+  bench:
+    needs: [clice, clice_cur]
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - corner: arm64-linux-release
+            os: ubuntu-24.04-arm
+            flags: ""
+            variants: "cur=final-arm64-linux-cur@this base=final-arm64-linux-base@36024124933"
+          - corner: arm64-linux-pgo
+            os: ubuntu-24.04-arm
+            flags: ""
+            variants: "base=final-arm64-linux-base@36024124933 pgo-x86=final-arm64-linux-pgo@36024124933 pgo-2arch=final-arm64-linux-pgo2a@this"
+          - corner: arm64-mac
+            os: macos-15
+            flags: --no-default-config
+            variants: "base=final-M0@35973108478 pgo-3arch=final-arm64-mac-pgo2@36036050639 pgo-2arch=final-arm64-mac-pgo2a@this"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - name: Unpack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          command -v zstd || brew install zstd
+          uname -m; (nproc || sysctl -n hw.ncpu) 2>/dev/null || true
+          # arm64 Linux has no "model name" line.
+          (grep -m1 -E 'model name|CPU part' /proc/cpuinfo || sysctl -n machdep.cpu.brand_string) 2>/dev/null || true
+          for spec in ${{ matrix.variants }}; do
+            name="${spec%%=*}"; rest="${spec#*=}"; artifact="${rest%@*}"; run="${rest#*@}"
+            [[ "$run" == this ]] && run="${{ github.run_id }}"
+            [[ -d "bundles/$artifact-$run" ]] || gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$artifact" -D "bundles/$artifact-$run"
+            mkdir -p "variants/$name"
+            zstd -dc "bundles/$artifact-$run/bundle.tar.zst" | tar -C "variants/$name" -xf -
+          done
+          ls variants
+      - name: mimalloc
+        if: matrix.corner == 'arm64-mac-mimalloc'
+        run: brew install mimalloc && echo "MIMALLOC=$(brew --prefix mimalloc)/lib/libmimalloc.dylib" >> "$GITHUB_ENV"
+      - name: Workloads
+        run: |
+          pixi run -e package python3 scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads" \
+            --cc clang --cxx clang++ ${{ matrix.flags && format('--flags={0}', matrix.flags) || '' }}
+      - name: Benchmark
+        run: |
+          ARGS=()
+          for spec in ${{ matrix.variants }}; do
+            name="${spec%%=*}"; ARGS+=(--variant "$name=$PWD/variants/$name")
+            [[ "$name" == *+mi ]] && ARGS+=(--env "$name=DYLD_INSERT_LIBRARIES=$MIMALLOC")
+          done
+          pixi run -e package python3 scripts/pgo_ci.py bench "${ARGS[@]}" --rounds 3 --out bench-out \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-${{ matrix.corner }}
+          path: bench-out
