@@ -52,6 +52,10 @@ on:
         description: "More arguments for build-llvm.py"
         type: string
         default: ""
+      match-report:
+        description: "Count profile misses and hash mismatches on a few TUs after the build"
+        type: boolean
+        default: false
 
 env:
   LLVM_VERSION: "23.1.1"
@@ -124,6 +128,15 @@ jobs:
           start=$SECONDS
           pixi run -e "${{ inputs.pixi-env }}" python3 scripts/build-llvm.py "${ARGS[@]}"
           echo "LLVM build: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Profile match report
+        if: inputs.match-report && inputs.profile != ''
+        continue-on-error: true
+        run: |
+          pixi run -e "${{ inputs.pixi-env }}" python3 scripts/pgo_ci.py match-report --build .llvm/build/llvm --files \
+            clang/lib/Sema/SemaExpr.cpp clang/lib/Sema/SemaDecl.cpp clang/lib/Sema/SemaTemplate.cpp \
+            clang/lib/Parse/ParseDecl.cpp clang/lib/Lex/Lexer.cpp clang/lib/AST/ExprConstant.cpp \
+            clang/lib/Serialization/ASTReader.cpp llvm/lib/Support/StringMap.cpp
 
       - name: Upload clang
         if: inputs.clang-bundle && inputs.upload

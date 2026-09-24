@@ -120,6 +120,11 @@ def bench(args) -> None:
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     variants = dict(v.split("=", 1) for v in args.variant)
+    variant_env: dict[str, dict[str, str]] = {}
+    for spec in args.env:
+        name, assignment = spec.split("=", 1)
+        key, value = assignment.split("=", 1)
+        variant_env.setdefault(name, {})[key] = value
     loads = []
     for spec in args.workload:
         # CDB may be a Windows path with a drive colon.
@@ -144,7 +149,8 @@ def bench(args) -> None:
                 if flt:
                     cmd += ["--filter", flt]
                 start = time.time()
-                result = run(cmd + [cdb], stdout=subprocess.DEVNULL)
+                result = run(cmd + [cdb], stdout=subprocess.DEVNULL,
+                             env=dict(os.environ, **variant_env.get(variant, {})))
                 if result.returncode != 0:
                     print(f"warning: {variant} {name} exited {result.returncode}", flush=True)
                 walls[variant][name].append(time.time() - start)
@@ -231,6 +237,41 @@ def clang_bench(args) -> None:
     shutil.copy2(original, target)
 
 
+def match_report(args) -> None:
+    """Recompile a few TUs of a profile-using LLVM build with the profile
+    diagnostics on and count the functions the profile misses or no longer
+    matches (hash mismatch)."""
+    import shlex
+    build = Path(args.build).resolve()
+    entries = json.loads((build / "compile_commands.json").read_text())
+    lines = ["| TU | no profile data | hash mismatch |", "|---|---|---|"]
+    totals = [0, 0]
+    for want in args.files:
+        entry = next((e for e in entries if e["file"].replace("\\", "/").endswith(want)), None)
+        if entry is None:
+            lines.append(f"| {want} | not in CDB | |")
+            continue
+        argv = entry.get("arguments") or shlex.split(entry["command"])
+        argv = [a for a in argv if a != "-w"]
+        if "-o" in argv:
+            argv[argv.index("-o") + 1] = os.devnull
+        argv += ["-Wno-everything", "-Wbackend-plugin", "-mllvm", "-pgo-warn-missing-function"]
+        result = subprocess.run(argv, cwd=entry["directory"], capture_output=True, text=True)
+        missing = result.stderr.count("No profile data available for function")
+        mismatch = result.stderr.count("hash mismatch")
+        totals[0] += missing
+        totals[1] += mismatch
+        lines.append(f"| {want} | {missing} | {mismatch} |")
+        if result.returncode != 0:
+            print(result.stderr[-2000:])
+    lines.append(f"| total | {totals[0]} | {totals[1]} |")
+    text = "\n".join(lines)
+    print(text)
+    if "GITHUB_STEP_SUMMARY" in os.environ:
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+            f.write("## Profile match\n\n" + text + "\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -262,7 +303,13 @@ def main() -> None:
     p.add_argument("--workload", action="append", required=True, help="NAME:CDB:FILTER:LIMIT")
     p.add_argument("--rounds", type=int, default=3)
     p.add_argument("--out", required=True)
+    p.add_argument("--env", action="append", default=[], help="NAME=KEY=VALUE for one variant's runs")
     p.set_defaults(func=bench)
+
+    p = sub.add_parser("match-report")
+    p.add_argument("--build", required=True, help="LLVM build directory (compile_commands.json)")
+    p.add_argument("--files", nargs="+", required=True)
+    p.set_defaults(func=match_report)
 
     p = sub.add_parser("clang-bench")
     p.add_argument("--variant", action="append", default=[], help="NAME=PATH of a clang-23 binary")
