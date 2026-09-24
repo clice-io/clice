@@ -162,6 +162,28 @@ test("nested folder joins its project", async ({ session }) => {
     await diagnosed(false, "the enclosing project to take the folder back");
 });
 
+test("subproject serves what the folder does not build", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("mono/sub/clice.toml", "");
+    workspace.write("mono/sub/tool.cpp", gated("IN_SUB", "tool_fn"));
+    workspace.write("mono/sub/vendored.cpp", gated("IN_MONO", "vendored_fn"));
+    workspace.writeCDB(["mono/sub/vendored.cpp"], {
+        extraArgs: ["-DIN_MONO"],
+        at: "mono/compile_commands.json",
+    });
+    workspace.writeCDB(["mono/sub/tool.cpp"], {
+        extraArgs: ["-DIN_SUB"],
+        at: "mono/sub/build/compile_commands.json",
+    });
+    await client.initialize(workspace, { folders: ["mono"] });
+
+    const [vendored] = await client.openAndWait("mono/sub/vendored.cpp");
+    client.assertNoErrors(vendored, "the folder's build compiles the file it lists");
+    const [tool] = await client.openAndWait("mono/sub/tool.cpp");
+    client.assertNoErrors(tool, "the subproject compiles the rest with its own database");
+    client.assertNoErrors(vendored, "the listed file stays with the folder");
+});
+
 test("unclaimed file opens its project", async ({ session }) => {
     const { client, workspace } = session.tmp();
     twoProjects(workspace);

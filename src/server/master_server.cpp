@@ -200,32 +200,41 @@ void MasterServer::wire() {
     };
 }
 
-ProjectServer* MasterServer::claimant(Fid path_id) {
+/// The deepest of the projects `accept` takes whose root holds `path`.
+static ProjectServer* deepest_holding(llvm::ArrayRef<std::shared_ptr<ProjectServer>> projects,
+                                      llvm::StringRef path,
+                                      llvm::function_ref<bool(ProjectServer&)> accept) {
+    ProjectServer* deepest = nullptr;
+    for(auto& project: projects) {
+        if(!project->root.empty() && path::under(path, project->root) && accept(*project) &&
+           (!deepest || project->root.size() > deepest->root.size())) {
+            deepest = project.get();
+        }
+    }
+    return deepest;
+}
+
+ProjectServer* MasterServer::compiler(Fid path_id) {
     for(auto& project: projects) {
         if(!project->project.build.commands(path_id).empty()) {
             return project.get();
         }
     }
-    auto path = files.resolve(path_id);
-    ProjectServer* deepest = nullptr;
-    ProjectServer* hosting = nullptr;
-    ProjectServer* borrowed = nullptr;
-    for(auto& project: projects) {
-        bool included = !project->project.dep_graph.get_includers(path_id).empty();
-        if(project->root.empty() || !path::under(path, project->root)) {
-            if(included && !borrowed) {
-                borrowed = project.get();
-            }
-            continue;
-        }
-        if(!deepest || project->root.size() > deepest->root.size()) {
-            deepest = project.get();
-        }
-        if(included && (!hosting || project->root.size() > hosting->root.size())) {
-            hosting = project.get();
-        }
+    auto includes = [&](ProjectServer& project) {
+        return !project.project.dep_graph.get_includers(path_id).empty();
+    };
+    if(auto* hosting = deepest_holding(projects, files.resolve(path_id), includes)) {
+        return hosting;
     }
-    return hosting ? hosting : borrowed ? borrowed : deepest;
+    auto borrowed = llvm::find_if(projects, [&](auto& project) { return includes(*project); });
+    return borrowed != projects.end() ? borrowed->get() : nullptr;
+}
+
+ProjectServer* MasterServer::claimant(Fid path_id) {
+    if(auto* compiling = compiler(path_id)) {
+        return compiling;
+    }
+    return deepest_holding(projects, files.resolve(path_id), [](ProjectServer&) { return true; });
 }
 
 ProjectServer& MasterServer::route(Fid path_id) {
@@ -292,15 +301,23 @@ void MasterServer::stamps_revoked() {
 
 void MasterServer::open_session(Fid path_id, std::string text, int version) {
     discover_around(path_id);
-    if(lifecycle == ServerLifecycle::Ready && !owners.contains(path_id) && !claimant(path_id)) {
-        // A database a served project loads already (a build directory
-        // above a generated file) stays that project's.
-        auto root = project_root_above(path::parent_path(files.resolve(path_id)));
-        auto loaded = [&](auto& project) {
+    if(lifecycle == ServerLifecycle::Ready && !owners.contains(path_id) && !compiler(path_id)) {
+        // The project root nearest the file serves it: one no folder
+        // holds, or one nested deeper than the folders holding it (a
+        // subproject's clice.toml or database). A folder's own root, and a
+        // database a served project loads already (a build directory above
+        // a generated file), stay that project's.
+        auto path = files.resolve(path_id);
+        auto root = project_root_above(path::parent_path(path));
+        auto covered = [&](auto& project) {
+            if(!project->root.empty() && path::under(path, project->root) &&
+               path::under(project->root, root)) {
+                return true;
+            }
             auto& cdb = project->project.cdb;
             return cdb.find_source(root) || cdb.find_source(path::join(root, "build"));
         };
-        if(!root.empty() && llvm::none_of(projects, loaded)) {
+        if(!root.empty() && llvm::none_of(projects, covered)) {
             workspace_roots.push_back(std::move(root));
             serve_folders();
         }

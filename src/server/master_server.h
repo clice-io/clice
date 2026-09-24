@@ -117,9 +117,10 @@ public:
 
     /// Open a document with its buffer in the project routing picks, once
     /// every project holding it discovered the databases above it (see
-    /// FileTracker::discover_around). A file no project claims starts
-    /// serving the project found above it (a clice.toml or a compilation
-    /// database), as if that folder were open.
+    /// FileTracker::discover_around). A file no project can compile starts
+    /// serving the project found nearest above it (a clice.toml or a
+    /// compilation database) — when no folder holds the file, or when that
+    /// root sits deeper than the folders that do — as if it were open.
     void open_session(Fid path_id, std::string text, int version);
 
     /// Close the file's session in the project it was routed to.
@@ -252,10 +253,14 @@ private:
     /// finds its entry.
     void discover_around(Fid path_id);
 
-    /// The project a file belongs to: the one whose build compiles it (its
-    /// own entry or a rule's default command), else one whose include graph
-    /// reaches it (it borrows a host there), else the deepest root holding
-    /// it; null when none claims it.
+    /// The project that can compile a file: the one whose build lists it
+    /// (its own entry or a rule's default command), else one whose include
+    /// graph reaches it — the deepest whose root holds it, else any — to
+    /// borrow a host there; null when none can.
+    ProjectServer* compiler(Fid path_id);
+
+    /// The project a file belongs to: its compiler, else the deepest root
+    /// holding it; null when none claims it.
     ProjectServer* claimant(Fid path_id);
 
     /// The claimant, else the first project.
