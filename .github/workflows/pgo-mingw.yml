@@ -17,7 +17,10 @@ permissions:
   actions: read
 
 jobs:
+  # The packages of run 35947836624 are reused (clice's llvm-run); set the
+  # repository variable PGO_BUILD_MINGW_LLVM and clear llvm-run to rebuild.
   llvm:
+    if: vars.PGO_BUILD_MINGW_LLVM == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -42,7 +45,7 @@ jobs:
 
   clice:
     needs: llvm
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && !failure() }}
     strategy:
       fail-fast: false
       matrix:
@@ -63,6 +66,7 @@ jobs:
     with:
       name: final-${{ matrix.variant }}
       llvm: ${{ matrix.llvm }}
+      llvm-run: "35947836624"
       lto: "ON"
       pgo: ${{ matrix.pgo }}
       pgo-run: ${{ matrix.pgo-run }}
