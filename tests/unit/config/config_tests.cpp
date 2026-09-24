@@ -81,6 +81,31 @@ void match_rules(const Config& config,
 
 TEST_SUITE(Config) {
 
+TEST_CASE(CacheDirServesOneProject) {
+    /// A shared cache directory keeps the root it was first used for; the
+    /// next project moves off it to its own default.
+    TempDir tmp;
+    tmp.touch("shared/keep", "");
+    tmp.touch("a/main.cpp", "");
+    auto shared = tmp.path("shared");
+    auto a = tmp.path("a");
+    auto b = tmp.path("b");
+    EXPECT_FALSE(owned_elsewhere(shared, b));
+    claim_cache_dir(shared, a);
+    EXPECT_FALSE(owned_elsewhere(shared, a));
+    EXPECT_TRUE(owned_elsewhere(shared, b));
+
+    // One inside its root belongs to that root, whatever it records.
+    tmp.touch("a/.clice/owner", b + "\n");
+    EXPECT_FALSE(owned_elsewhere(path::join(a, ".clice"), a));
+
+    tmp.touch("b/clice.toml", std::format("[project]\ncache_dir = '{}'\n", shared));
+    auto config = Config::load_from_workspace(b);
+    auto own = path::join(b, ".clice");
+    path::canonicalize(own);
+    EXPECT_EQ(std::string(config.project.cache_dir), own);
+};
+
 TEST_CASE(ParsePartialProject) {
     // A partial decode only touches the fields it names; everything else
     // keeps the field-initializer defaults.

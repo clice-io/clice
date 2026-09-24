@@ -96,12 +96,14 @@ void ProjectServer::configure(llvm::StringRef init_options,
     auto overlaid = project.config;
     project.config.finalize(root);
 
-    // A cache directory serves one project: its writer lock is the
-    // process's, so a second project would take it too. Fall back to the
-    // project's own, then the default, then none.
+    // A cache directory serves one project (see owned_elsewhere), and one
+    // at a time: its writer lock is the process's, so a second project here
+    // would take it too. Fall back to the project's own, then the default,
+    // then none.
     auto& cache_dir = project.config.project.cache_dir;
     auto taken = [&] {
-        return llvm::is_contained(taken_cache_dirs, path::resolved(cache_dir));
+        return llvm::is_contained(taken_cache_dirs, path::resolved(cache_dir)) ||
+               owned_elsewhere(cache_dir, root);
     };
     if(!root.empty() && taken()) {
         std::string requested = cache_dir;

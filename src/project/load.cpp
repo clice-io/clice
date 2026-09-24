@@ -53,6 +53,7 @@ ProjectLoad load_project(Project& project,
             // otherwise stay navigable through the metadata that names
             // them.
             fs::remove_all(path::join(cfg.cache_dir, header_context_ns));
+            claim_cache_dir(cfg.cache_dir, root);
             project.store.emplace(std::move(*cache));
             // A read-only bootstrap opens the index database read-only:
             // no writer lock (a concurrent server or index run keeps
