@@ -1,0 +1,110 @@
+name: pgo mingw arm64
+
+# Windows arm64 through aarch64-w64-mingw32, cross-compiled on Linux with the
+# pixi clang and llvm-mingw's sysroot and runtimes; no PGO against the
+# path-stripped clang profile of run 35973108478; unit tests and benchmark
+# on windows-11-arm, whose workloads the native llvm-mingw clang configures.
+
+on:
+  push:
+    branches: [exp/pgo-mingw-arm64]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  llvm:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [base, pgo]
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: arm64-mingw-${{ matrix.variant }}
+      lto: "ON"
+      target-triple: aarch64-w64-mingw32
+      pixi-env: cross-windows-mingw
+      llvm-mingw: true
+      profile: ${{ matrix.variant == 'pgo' && 'profile-clang-strip' || '' }}
+      profile-run: ${{ matrix.variant == 'pgo' && '35973108478' || '' }}
+      extra-args: ${{ matrix.variant == 'pgo' && '--pgo-strip-prefix' || '' }}
+      match-report: ${{ matrix.variant == 'pgo' }}
+
+  clice:
+    needs: llvm
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [base, pgo]
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-arm64-mingw-${{ matrix.variant }}
+      llvm: arm64-mingw-${{ matrix.variant }}
+      lto: "ON"
+      target-triple: aarch64-w64-mingw32
+      pixi-env: cross-windows-mingw
+      llvm-mingw: true
+
+  windows:
+    needs: clice
+    if: ${{ !cancelled() }}
+    runs-on: windows-11-arm
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: test-run
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: final-arm64-mingw-*
+          path: bundles
+      - name: Unpack
+        run: |
+          echo "cores: $NUMBER_OF_PROCESSORS"; uname -m
+          for v in base pgo; do
+            mkdir -p "variants/$v" && tar -C "variants/$v" -xzf "bundles/final-arm64-mingw-$v/bundle.tar.gz"
+          done
+          ls -la variants/*/bin
+      - name: Unit tests
+        continue-on-error: true
+        run: |
+          set +e +o pipefail
+          for v in base pgo; do
+            CLICE_TEST_DATA_DIR="$(cygpath -m "$PWD/tests/data")" "variants/$v/bin/unit_tests.exe" > "$v-tests.log" 2>&1
+            {
+              echo "== $v (exit $?)"
+              grep -E 'tests from .* ran|PASSED|FAILED TESTS' "$v-tests.log"
+              grep -E 'FAILED  \]' "$v-tests.log" | head -n 80
+            } | sed 's/\x1b\[[0-9;]*m//g' | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Native toolchain for the workloads
+        run: |
+          curl -sSL -o llvm-mingw.zip https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-aarch64.zip
+          unzip -q llvm-mingw.zip -d "$RUNNER_TEMP"
+          echo "LLVM_MINGW=$(cygpath -m "$RUNNER_TEMP/llvm-mingw-20260922-ucrt-aarch64")" >> "$GITHUB_ENV"
+          pixi run -e test-run python -m pip install --quiet cmake ninja
+      - name: Workloads
+        run: |
+          pixi run -e test-run python scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads" \
+            --cc "$LLVM_MINGW/bin/clang.exe" --cxx "$LLVM_MINGW/bin/clang++.exe"
+      - name: Benchmark
+        run: |
+          W="$(cygpath -m "$PWD")"
+          pixi run -e test-run python scripts/pgo_ci.py bench --rounds 3 --out bench-out \
+            --variant "base=$W/variants/base" --variant "pgo=$W/variants/pgo" \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-arm64-mingw
+          path: bench-out
