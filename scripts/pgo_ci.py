@@ -193,7 +193,7 @@ def clang_bench(args) -> None:
             target.unlink()
             shutil.copy2(variants[name], target)
             target.chmod(0o755)
-            build = Path(f"build/clang-bench-{name}-{round_index}")
+            build = Path(f"build/clang-bench-{name}-{round_index}").resolve()
             shutil.rmtree(build, ignore_errors=True)
             if args.project:
                 # Another project than the one the profile was trained on.
