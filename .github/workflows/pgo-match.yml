@@ -21,12 +21,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The other four targets are in run 36069227794; the analysis below merges them.
+          - target: x64-linux
+            os: ubuntu-24.04
+          - target: arm64-linux
+            os: ubuntu-24.04
+            triple: aarch64-unknown-linux-gnu
+            env: cross-linux-arm64
           - target: arm64-mingw
             os: ubuntu-24.04
             triple: aarch64-w64-mingw32
             env: cross-windows-mingw
             llvm-mingw: true
+          - target: arm64-mac
+            os: macos-15
+          - target: x64-mac
+            os: macos-15
+            triple: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     steps:
@@ -93,10 +103,4 @@ jobs:
         with:
           pattern: match-*
           path: matches/new
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: match-*
-          path: matches/earlier
-          run-id: "36069227794"
-          github-token: ${{ github.token }}
       - run: pixi run -e package python3 scripts/pgo_ci.py match-analyze --dir matches

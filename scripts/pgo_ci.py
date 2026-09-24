@@ -262,6 +262,18 @@ def match_report(args) -> None:
             argv = entry.get("arguments") or shlex.split(entry["command"])
             argv = [f"-fprofile-instr-use={ppath}" if a.startswith("-fprofile-instr-use=") else a
                     for a in argv if a != "-w"]
+            # LLVM's precompiled headers are not built here (no full build);
+            # the -include of the PCH's source header that follows stays, so
+            # the TU sees the same declarations textually.
+            kept = []
+            i = 0
+            while i < len(argv):
+                if argv[i] == "-Xclang" and i + 3 < len(argv) and argv[i + 1] == "-include-pch":
+                    i += 4
+                    continue
+                kept.append(argv[i])
+                i += 1
+            argv = kept
             if "-o" in argv:
                 argv[argv.index("-o") + 1] = os.devnull
             argv += ["-Wno-everything", "-Wbackend-plugin", "-mllvm", "-pgo-warn-missing-function",
