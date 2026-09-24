@@ -66,25 +66,18 @@ public:
     kota::task<> shutdown();
     void close();
 
-    /// close() ran; a request still running keeps the project alive.
-    bool closed = false;
-
     /// Open a document routed here with its buffer — an editor's didOpen,
-    /// or one another project released. Its saved context choice is
+    /// or one another project closed as it moved here. Its saved context choice is
     /// validated and its serving settled now, or by start() when the
     /// project has not started yet.
     void open_session(Fid path_id, std::string text, int version);
 
-    /// Close the session. The diagnostics clear travels through the
-    /// session's output + on_output signal; a transport whose client has
-    /// not completed the handshake drops it (nothing was ever pushed, so
-    /// there is nothing to clear).
+    /// Close the session — the editor's didClose, or the document moving
+    /// to another project, which opens it with its buffer next. The
+    /// diagnostics clear travels through the session's output + on_output
+    /// signal; a transport whose client has not completed the handshake
+    /// drops it (nothing was ever pushed, so there is nothing to clear).
     void close_session(Fid path_id);
-
-    /// Hand an open document over to another project: drop its session
-    /// and compile state here without closing it — the buffer lives on in
-    /// the project that opens it next.
-    void release_session(Fid path_id);
 
     /// Before a file's first compile: register the databases discovery
     /// finds between its directory and the root (see

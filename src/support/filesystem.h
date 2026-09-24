@@ -123,6 +123,8 @@ inline std::string resolved(llvm::StringRef p) {
         existing = parent;
     }
     real += p.drop_front(existing.size());
+    // The unresolved tail may still climb (`missing/../cache`).
+    remove_dots(real, /*remove_dot_dot=*/true);
     std::string result(real);
     canonicalize(result);
     return result;

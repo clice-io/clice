@@ -17,7 +17,6 @@
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
-#include "kota/ipc/lsp/uri.h"
 #include "kota/ipc/recording_transport.h"
 #include "kota/ipc/transport.h"
 #include "llvm/ADT/STLExtras.h"
@@ -94,6 +93,7 @@ void MasterServer::initialize() {
         for(auto& root: project_roots()) {
             projects.push_back(make_project(std::move(root)));
         }
+        projects_generation += 1;
     }
     for(auto& project: projects) {
         project->configure(init_options_json, taken_cache_dirs());
@@ -221,15 +221,23 @@ ProjectServer* MasterServer::compiler(Fid path_id) {
             return project.get();
         }
     }
-    for(auto& project: projects) {
-        if(!project->project.build.commands(path_id).empty()) {
-            return project.get();
-        }
+    // Several databases listing the file (an outer folder discovers a
+    // nested one's): the deepest project holding it wins, else the first.
+    auto lists = [&](ProjectServer& project) {
+        return !project.project.build.commands(path_id).empty();
+    };
+    auto path = files.resolve(path_id);
+    if(auto* listing = deepest_holding(projects, path, lists)) {
+        return listing;
+    }
+    if(auto it = llvm::find_if(projects, [&](auto& project) { return lists(*project); });
+       it != projects.end()) {
+        return it->get();
     }
     auto includes = [&](ProjectServer& project) {
         return !project.project.dep_graph.get_includers(path_id).empty();
     };
-    if(auto* hosting = deepest_holding(projects, files.resolve(path_id), includes)) {
+    if(auto* hosting = deepest_holding(projects, path, includes)) {
         return hosting;
     }
     auto borrowed = llvm::find_if(projects, [&](auto& project) { return includes(*project); });
@@ -261,7 +269,19 @@ std::shared_ptr<Session> MasterServer::find_session(Fid path_id) {
 }
 
 std::shared_ptr<ProjectServer> MasterServer::make_project(std::string root) {
-    auto made = std::make_shared<ProjectServer>(*this, std::move(root));
+    // A removed project holds its cache directory (writer lock, database)
+    // until its last reference — the retirement, or a request still
+    // running in it — goes: a root waiting for the directory serves then.
+    auto released = [this](ProjectServer* project) {
+        delete project;
+        if(lifecycle == ServerLifecycle::Ready) {
+            bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
+                server.serve_folders();
+                co_return;
+            }(*this));
+        }
+    };
+    std::shared_ptr<ProjectServer> made(new ProjectServer(*this, std::move(root)), released);
     made->features.peers = [this, project = made.get()] {
         llvm::SmallVector<const index::IndexQuery*> others;
         for(auto& other: projects) {
@@ -371,7 +391,7 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
     }
     for(auto& session: leaving) {
         auto path_id = session->path_id;
-        from.release_session(path_id);
+        from.close_session(path_id);
         auto& to = route(path_id);
         owners[path_id] = &to;
         to.open_session(path_id, session->text, session->version);
@@ -448,10 +468,10 @@ void MasterServer::serve_folders() {
         fresh.push_back(serving.back().get());
     };
     for(auto& root: project_roots()) {
-        // A removed project holds its cache directory until it closed.
+        // A removed project holds its cache directory until it is gone.
         if(llvm::none_of(retired, [&](auto& weak) {
                auto project = weak.lock();
-               return project && !project->closed && project->root == root;
+               return project && project->root == root;
            })) {
             serve(std::move(root));
         }
@@ -470,6 +490,7 @@ void MasterServer::serve_folders() {
         return;
     }
     projects = std::move(serving);
+    projects_generation += 1;
     for(auto& project: leaving) {
         retired.push_back(project);
     }
@@ -497,17 +518,10 @@ void MasterServer::serve_folders() {
 }
 
 void MasterServer::retire(std::shared_ptr<ProjectServer> project) {
-    bg_tasks.spawn(
-        [](MasterServer& server, std::shared_ptr<ProjectServer> project) -> kota::task<> {
-            co_await project->shutdown();
-            project->close();
-            // Released first: while this frame holds the project, its cache
-            // directory still counts as taken for a root served again.
-            project.reset();
-            if(server.lifecycle == ServerLifecycle::Ready) {
-                server.serve_folders();
-            }
-        }(*this, std::move(project)));
+    bg_tasks.spawn([](std::shared_ptr<ProjectServer> project) -> kota::task<> {
+        co_await project->shutdown();
+        project->close();
+    }(std::move(project)));
 }
 
 void MasterServer::carry(const IndexPump::Progress& progress) {
@@ -558,12 +572,30 @@ void MasterServer::fold_index_progress() {
     on_index_progress.emit();
 }
 
-std::uint64_t MasterServer::context_epoch() const {
-    std::uint64_t epoch = 0;
+std::uint64_t MasterServer::context_epoch() {
+    // Each project's epoch only grows, so their sum moves with any of them
+    // while the projects stay the same.
+    std::uint64_t sum = 0;
     for(auto& project: projects) {
-        epoch += project->project.context_epoch;
+        sum += project->project.context_epoch;
     }
-    return epoch;
+    if(std::pair(projects_generation, sum) != context_seen) {
+        context_seen = {projects_generation, sum};
+        context_generation += 1;
+    }
+    return context_generation;
+}
+
+void MasterServer::saved(Fid path_id) {
+    auto& owner = owner_of(path_id);
+    owner.dispatch(FileEvent::buffer_saved(path_id));
+    for(auto& project: projects) {
+        if(project.get() != &owner &&
+           (!project->project.build.commands(path_id).empty() ||
+            !project->project.dep_graph.get_includers(path_id).empty())) {
+            project->dispatch(FileEvent::disk_changed(path_id));
+        }
+    }
 }
 
 ext::QueryContextResult MasterServer::query_contexts(llvm::StringRef path,
@@ -572,8 +604,6 @@ ext::QueryContextResult MasterServer::query_contexts(llvm::StringRef path,
     constexpr std::size_t page_size = 10;
     auto& owner = owner_of(path_id);
     auto items = owner.context_service.contexts(path, path_id);
-    // Other projects offer hosts: the file's own entries are its owner's.
-    auto own = kota::ipc::lsp::URI::from_file_path(std::string(path));
     for(auto& project: projects) {
         if(project.get() == &owner) {
             continue;
@@ -583,7 +613,7 @@ ext::QueryContextResult MasterServer::query_contexts(llvm::StringRef path,
                 return known.uri == item.uri && known.occurrence == item.occurrence &&
                        known.command_hash == item.command_hash;
             };
-            if((!own || item.uri != own->str()) && llvm::none_of(items, same)) {
+            if(llvm::none_of(items, same)) {
                 items.push_back(std::move(item));
             }
         }
@@ -624,7 +654,7 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(llvm::StringRe
                             });
     };
     auto target = owner;
-    if(context_path_id != path_id && !offers(*owner)) {
+    if(!offers(*owner)) {
         auto it = llvm::find_if(projects, [&](auto& project) { return offers(*project); });
         if(it == projects.end()) {
             co_return result;
@@ -639,7 +669,7 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(llvm::StringRe
     }
     auto session = find_session(path_id);
     if(target != owner && session) {
-        owner->release_session(path_id);
+        owner->close_session(path_id);
         owners[path_id] = target.get();
         target->open_session(path_id, session->text, session->version);
         session = find_session(path_id);

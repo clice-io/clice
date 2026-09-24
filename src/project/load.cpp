@@ -53,7 +53,6 @@ ProjectLoad load_project(Project& project,
             // otherwise stay navigable through the metadata that names
             // them.
             fs::remove_all(path::join(cfg.cache_dir, header_context_ns));
-            claim_cache_dir(cfg.cache_dir, root);
             project.store.emplace(std::move(*cache));
             // A read-only bootstrap opens the index database read-only:
             // no writer lock (a concurrent server or index run keeps
@@ -63,9 +62,21 @@ ProjectLoad load_project(Project& project,
             if(read_only_index) {
                 project.index_db = index::open_database(*project.store, configuration, true);
             } else if((project.writer_lock = index::WriterLock::acquire(cfg.cache_dir))) {
-                project.index_db = index::open_database(*project.store, configuration);
-                if(!project.index_db) {
+                // The owner is recorded, and checked again, under the lock:
+                // another project may have claimed the directory since the
+                // configuration chose it.
+                if(owned_elsewhere(cfg.cache_dir, root)) {
+                    LOG_GUIDANCE("Cache directory {} serves the project at {}; {} keeps no index",
+                                 std::string_view(cfg.cache_dir),
+                                 cache_dir_owner(cfg.cache_dir),
+                                 root);
                     project.writer_lock.reset();
+                } else {
+                    claim_cache_dir(cfg.cache_dir, root);
+                    project.index_db = index::open_database(*project.store, configuration);
+                    if(!project.index_db) {
+                        project.writer_lock.reset();
+                    }
                 }
             }
             LOG_INFO("Cache store: {}", project.store->base_dir());

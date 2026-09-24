@@ -217,7 +217,6 @@ kota::task<> ProjectServer::shutdown() {
 
 void ProjectServer::close() {
     sched.close();
-    closed = true;
 }
 
 void ProjectServer::discover_around(Fid path_id) {
@@ -290,12 +289,6 @@ void ProjectServer::close_session(Fid path_id) {
                                .line_limit = std::nullopt,
                            });
     }
-    release_session(path_id);
-    dispatch(FileEvent::buffer_closed(path_id));
-    LOG_DEBUG("didClose: {}", project.file_table.resolve(path_id));
-}
-
-void ProjectServer::release_session(Fid path_id) {
     // Route the eviction notification before dropping ownership:
     // notify_stateful uses the owner table to find the worker.
     auto path = project.file_table.resolve(path_id);
@@ -307,6 +300,8 @@ void ProjectServer::release_session(Fid path_id) {
     // so nothing entry-level to clean up — but the loaded-state budget
     // shrinks with the open count, and this is the moment it does.
     sched.pch.enforce_loaded_budget();
+    dispatch(FileEvent::buffer_closed(path_id));
+    LOG_DEBUG("Closed {}", path);
 }
 
 void ProjectServer::open_session(Fid path_id, std::string text, int version) {

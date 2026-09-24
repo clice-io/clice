@@ -147,18 +147,22 @@ public:
     /// documents routing now sends to another project.
     void builds_changed();
 
+    /// didSave: the file's own project takes the save; the others knowing
+    /// the file (listing or including it) see its disk content change.
+    void saved(Fid path_id);
+
     /// clice/queryContext over every project, paginated: the contexts the
     /// file's own project offers, then the ones other projects do —
     /// choosing one of those moves the file there (switch_context). The
-    /// listing's epoch covers every project.
+    /// listing's epoch covers every project (context_epoch).
     ext::QueryContextResult query_contexts(llvm::StringRef path,
                                            Fid path_id,
                                            const ext::QueryContextParams& params);
 
     /// clice/switchContext: pin the context in the project offering it —
-    /// the file's own, else one whose build compiles the host — moving the
-    /// open document there first. Routing keeps a file with the project
-    /// holding its choice (compiler).
+    /// the file's own first — moving the open document there first. Only
+    /// that project keeps a choice for the file, and routing keeps the file
+    /// with it (compiler).
     kota::task<ext::SwitchContextResult> switch_context(llvm::StringRef path,
                                                         Fid path_id,
                                                         llvm::StringRef context_path,
@@ -259,8 +263,8 @@ private:
     /// Make the projects served those project_roots names: start the
     /// missing ones, retire the ones no folder needs, and move the open
     /// documents to the projects routing picks now. A root whose previous
-    /// project still shuts down starts once that closed (retire runs this
-    /// again).
+    /// project is still alive starts once that is gone (make_project runs
+    /// this again).
     void serve_folders();
 
     /// Shut a project that stopped serving down in the background.
@@ -276,9 +280,14 @@ private:
     /// finds its entry.
     void discover_around(Fid path_id);
 
-    /// The sum of the projects' context epochs: a context listing spans
-    /// every project.
-    std::uint64_t context_epoch() const;
+    /// The generation of the context listings: it advances whenever a
+    /// project's context epoch does or the projects served change.
+    std::uint64_t context_epoch();
+    std::uint64_t context_generation = 0;
+    std::pair<std::uint64_t, std::uint64_t> context_seen;
+
+    /// Advances with every change of the projects served.
+    std::uint64_t projects_generation = 0;
 
     /// The project that can compile a file: the one holding the user's
     /// context choice for it, else the one whose build lists it (its own

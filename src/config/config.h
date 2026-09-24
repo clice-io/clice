@@ -35,7 +35,7 @@ std::string cache_dir_owner(llvm::StringRef cache_dir);
 bool owned_elsewhere(llvm::StringRef cache_dir, llvm::StringRef workspace_root);
 
 /// Record `workspace_root` as the owner of a cache directory it may use
-/// (owned_elsewhere is false).
+/// (owned_elsewhere is false); called under the directory's writer lock.
 void claim_cache_dir(llvm::StringRef cache_dir, llvm::StringRef workspace_root);
 
 /// The configuration files a workspace root may hold, in lookup order.

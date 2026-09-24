@@ -423,8 +423,8 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.foreground_pulse();
 
-        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-        project->dispatch(FileEvent::buffer_saved(path_id));
+        auto path = uri_to_path(params.text_document.uri);
+        srv.saved(srv.files.intern(path));
 
         LOG_DEBUG("didSave: {}", path);
     });

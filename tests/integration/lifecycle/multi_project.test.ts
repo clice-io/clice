@@ -560,7 +560,7 @@ test("context from another folder", async ({ session }) => {
     expect((await client.currentContext(header)).context?.uri).toBe(workspace.uri("app/main.cpp"));
 });
 
-test("own configurations come from the owner", async ({ session }) => {
+test("own configuration of another folder", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("alpha/shared.cpp", "int shared() { return 0; }\n");
     workspace.writeCDB(["alpha/shared.cpp"], {
@@ -573,17 +573,48 @@ test("own configurations come from the owner", async ({ session }) => {
     });
     await client.initialize(workspace, { folders: ["alpha", "beta"] });
 
-    // Both databases list the file; its owner offers its own entry, and the
-    // other project's cannot be switched to from there.
+    // Both databases list the file: its owner's entry comes first, the
+    // other project's can be switched to, moving the file there.
     const [shared] = await client.openAndWait("alpha/shared.cpp");
     const listed = await client.queryContext(shared);
     const own = listed.contexts.filter((context) => context.uri === shared);
-    expect(own).toHaveLength(1);
+    expect(own).toHaveLength(2);
+    const other = own[1]!.commandHash!;
     const switched = await client.switchContext(shared, shared, {
-        commandHash: own[0]!.commandHash!,
+        commandHash: other,
         epoch: listed.epoch,
     });
     expect(switched.success).toBe(true);
+    expect((await client.currentContext(shared)).context?.commandHash).toBe(other);
+});
+
+test("save reaches every folder", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    libraryAndApp(workspace);
+    await client.initialize(workspace, { folders: ["app", "lib"] });
+    await waitForDefinitionOf(client, "main");
+    await waitForDefinitionOf(client, "lib_fn", workspace.uri("lib/src/lib.cpp"));
+
+    // Saved from the library, the header moves its declaration a line down;
+    // the application, which includes it too, reindexes as well.
+    const [header, text] = await client.openAndWait("lib/include/lib.h");
+    const moved = `// moved\n${text}`;
+    client.change(header, 2, moved);
+    workspace.write("lib/include/lib.h", moved);
+    client.save(header);
+    client.close(header);
+
+    const [main] = await client.openAndWait("app/main.cpp");
+    await waitUntil(
+        async () => {
+            const references = (await client.referencesAt(main, 1, 21)) ?? [];
+            const lines = references
+                .filter((location) => location.uri === header)
+                .map((location) => location.range.start.line);
+            return lines.length === 1 && lines[0] === 2;
+        },
+        { timeout: INDEX_TIMEOUT, interval: SETTLE_TIME, description: "both folders reindexed" },
+    );
 });
 
 test("unrelated folders keep references apart", async ({ session }) => {

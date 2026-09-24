@@ -22,11 +22,13 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
         return document?.uri.scheme === "file" ? { uri: document.uri.toString() } : {};
     }
 
-    async function list(): Promise<ListConfigurationsResult | undefined> {
+    async function list(
+        target: { uri?: string } = project(),
+    ): Promise<ListConfigurationsResult | undefined> {
         try {
             return await client.sendRequest<ListConfigurationsResult>(
                 "clice/listConfigurations",
-                project(),
+                target,
             );
         } catch {
             return undefined;
@@ -57,7 +59,10 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
     }
 
     async function select() {
-        const result = await list();
+        // The editor may change while the pick is open; the choice belongs
+        // to the project the menu came from.
+        const target = project();
+        const result = await list(target);
         if (!result) {
             vscode.window.showWarningMessage("clice: server not ready");
             return;
@@ -92,7 +97,7 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
         try {
             switched = await client.sendRequest<SwitchConfigurationResult>(
                 "clice/switchConfiguration",
-                { name: chosen.label, ...project() },
+                { name: chosen.label, ...target },
             );
         } catch {
             vscode.window.showWarningMessage(
