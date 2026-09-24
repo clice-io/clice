@@ -1,0 +1,59 @@
+name: pgo clang
+
+# The compiler half: a ThinLTO clang and a PGO+ThinLTO clang (the profile of
+# pgo-experiment.yml's clang_train), timed building clice against the conda
+# clang they replace.
+
+on:
+  push:
+    branches: [exp/pgo-clang]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: lto
+            profile: ""
+          - variant: pgo-lto
+            profile: profile-clang
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: clang-${{ matrix.variant }}
+      lto: "ON"
+      profile: ${{ matrix.profile }}
+      profile-run: "35906099298"
+      clang-bundle: true
+
+  bench:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: clang-*
+          path: clangs
+      - name: Benchmark
+        run: |
+          nproc; grep -m1 'model name' /proc/cpuinfo
+          ls -la clangs/*/
+          pixi run -e package python3 scripts/pgo_ci.py clang-bench --rounds 2 --out clang-bench \
+            --variant "lto=$PWD/clangs/clang-lto/clang-23" --variant "pgo-lto=$PWD/clangs/clang-pgo-lto/clang-23"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: clang-bench
+          path: clang-bench/summary.md

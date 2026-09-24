@@ -27,6 +27,10 @@ on:
       clang-train:
         type: boolean
         default: false
+      clang-bundle:
+        description: "Build the clang compiler and upload its binary"
+        type: boolean
+        default: false
 
 env:
   LLVM_VERSION: "23.1.1"
@@ -75,20 +79,31 @@ jobs:
           if [[ -n "${{ inputs.profile }}" ]]; then ARGS+=(--pgo-profile="$PWD/pgo-profile/profile.profdata"); fi
           # The trained clang stands in for the environment's clang-23, so it
           # keeps that clang's triple and with it the conda config files.
-          if [[ "${{ inputs.clang-train }}" == true ]]; then ARGS+=(--clang-only --default-triple=x86_64-conda-linux-gnu); fi
+          if [[ "${{ inputs.clang-train }}" == true || "${{ inputs.clang-bundle }}" == true ]]; then
+            ARGS+=(--clang-only --default-triple=x86_64-conda-linux-gnu)
+          fi
           start=$SECONDS
           pixi run -e package python3 scripts/build-llvm.py "${ARGS[@]}"
           echo "LLVM build: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload clang
+        if: inputs.clang-bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.name }}
+          path: .llvm/build/llvm/bin/clang-23
+          retention-days: 14
+          if-no-files-found: error
+
       - name: Pack install
-        if: ${{ !inputs.clang-train }}
+        if: ${{ !inputs.clang-train && !inputs.clang-bundle }}
         run: |
           tar -C .llvm/build-install -cf - . | zstd -T0 -6 -o llvm.tar.zst
           ls -la llvm.tar.zst
           du -sh .llvm/build-install/lib | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload install
-        if: ${{ !inputs.clang-train }}
+        if: ${{ !inputs.clang-train && !inputs.clang-bundle }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.name }}

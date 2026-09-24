@@ -172,6 +172,53 @@ def bench(args) -> None:
             f.write("## pipeline_benchmark\n\n" + text + "\n")
 
 
+def clang_bench(args) -> None:
+    """Time a from-scratch build of clice's `clice` target with each clang.
+    Each variant's binary replaces the environment's clang-23 in turn; the
+    environment's own clang is the variant named "conda"."""
+    prefix = Path(os.environ["CONDA_PREFIX"])
+    target = prefix / "bin/clang-23"
+    original = Path(args.out).resolve() / "clang-23.conda"
+    original.parent.mkdir(parents=True, exist_ok=True)
+    if not original.exists():
+        shutil.copy2(target, original)
+    variants = {"conda": original}
+    variants.update({k: Path(v).resolve() for k, v in (x.split("=", 1) for x in args.variant)})
+    env = dict(os.environ, CCACHE_DISABLE="1")
+    times = {name: [] for name in variants}
+    names = list(variants)
+    for round_index in range(args.rounds):
+        order = names[round_index % len(names):] + names[:round_index % len(names)]
+        for name in order:
+            target.unlink()
+            shutil.copy2(variants[name], target)
+            target.chmod(0o755)
+            build = Path(f"build/clang-bench-{name}-{round_index}")
+            shutil.rmtree(build, ignore_errors=True)
+            run(["cmake", "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+                 "-DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake", "-DCMAKE_C_COMPILER_LAUNCHER=",
+                 "-DCMAKE_CXX_COMPILER_LAUNCHER="], env=env, check=True, stdout=subprocess.DEVNULL)
+            start = time.time()
+            run(["ninja", "-C", build, "clice"], env=env, check=True, stdout=subprocess.DEVNULL)
+            times[name].append(time.time() - start)
+            print(f"round {round_index} {name}: {times[name][-1]:.1f} s", flush=True)
+            shutil.rmtree(build, ignore_errors=True)
+    base = statistics.median(times[names[0]])
+    lines = [f"`ninja clice` from scratch, RelWithDebInfo, no ccache; median of {args.rounds} rounds.", "",
+             "| clang | seconds | ratio |", "|---|---|---|"]
+    for name in names:
+        t = statistics.median(times[name])
+        lines.append(f"| {name} | {t:.1f} ({', '.join(f'{x:.0f}' for x in times[name])}) | {t / base:.3f} |")
+    text = "\n".join(lines)
+    print(text)
+    (Path(args.out) / "summary.md").write_text(text)
+    if "GITHUB_STEP_SUMMARY" in os.environ:
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+            f.write("## clang build speed\n\n" + text + "\n")
+    target.unlink()
+    shutil.copy2(original, target)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -200,6 +247,12 @@ def main() -> None:
     p.add_argument("--rounds", type=int, default=3)
     p.add_argument("--out", required=True)
     p.set_defaults(func=bench)
+
+    p = sub.add_parser("clang-bench")
+    p.add_argument("--variant", action="append", default=[], help="NAME=PATH of a clang-23 binary")
+    p.add_argument("--rounds", type=int, default=2)
+    p.add_argument("--out", required=True)
+    p.set_defaults(func=clang_bench)
 
     args = parser.parse_args()
     args.func(args)
