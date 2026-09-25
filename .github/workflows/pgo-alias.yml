@@ -97,7 +97,6 @@ jobs:
 
   gap:
     needs: fns
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7

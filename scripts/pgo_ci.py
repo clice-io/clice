@@ -49,6 +49,7 @@ def alias_profile(args) -> None:
     import re
     literal = re.compile(r"L([ml])(n?\d+)E")
     text = Path(args.out).with_suffix(".proftext")
+    text.parent.mkdir(parents=True, exist_ok=True)
     run(["llvm-profdata", "merge", "--text", "-o", text, args.profile], check=True)
     records = text.read_text().split("\n\n")
     names = {r.split("\n", 1)[0] for r in records}
