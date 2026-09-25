@@ -258,6 +258,8 @@ def match_report(args) -> None:
     import shlex
     pattern = re.compile(r"(function control flow change detected \(hash mismatch\)|no profile data available for function)"
                          r" (\S+) Hash = \d+ up to (\d+) count discarded")
+    # A frontend profile reports per TU only: "of N functions, M have mismatched data" / "... no data".
+    fe_pattern = re.compile(r"profile data may be (out of date|incomplete): of (\d+) functions?, (\d+) (?:has|have)")
     build = Path(args.build).resolve()
     entries = json.loads((build / "compile_commands.json").read_text())
     profiles = dict(p.split("=", 1) for p in args.profile)
@@ -287,18 +289,22 @@ def match_report(args) -> None:
             argv = kept
             if "-o" in argv:
                 argv[argv.index("-o") + 1] = os.devnull
-            argv += ["-Wno-everything", "-Wbackend-plugin", "-mllvm", "-pgo-warn-missing-function",
-                     "-mllvm", "-no-pgo-warn-mismatch-comdat-weak=false"]
+            argv += ["-Wno-everything", "-Wbackend-plugin", "-Wprofile-instr-out-of-date", "-Wprofile-instr-missing",
+                     "-mllvm", "-pgo-warn-missing-function", "-mllvm", "-no-pgo-warn-mismatch-comdat-weak=false"]
             out = subprocess.run(argv, cwd=entry["directory"], capture_output=True, text=True)
             if out.returncode != 0:
                 print(f"{want}: exit {out.returncode}\n{out.stderr[-1500:]}")
             for m in pattern.finditer(out.stderr):
                 kind = "mismatch" if "hash mismatch" in m.group(1) else "missing"
                 records.append({"tu": want, "kind": kind, "name": m.group(2), "count": int(m.group(3))})
+            for m in fe_pattern.finditer(out.stderr):
+                kind = "fe-mismatch" if m.group(1) == "out of date" else "fe-missing"
+                records.append({"tu": want, "kind": kind, "functions": int(m.group(2)), "count": int(m.group(3))})
         result["profiles"][pname] = records
         mism = [r for r in records if r["kind"] == "mismatch"]
-        print(f"{args.target} {pname}: {len(mism)} mismatched ({sum(r['count'] for r in mism)} counts), "
-              f"{len(records) - len(mism)} without data")
+        fe = [r for r in records if r["kind"] == "fe-mismatch"]
+        print(f"{args.target} {pname}: IR {len(mism)} mismatched ({sum(r['count'] for r in mism)} counts); "
+              f"FE {sum(r['count'] for r in fe)} of {sum(r['functions'] for r in fe)} functions mismatched")
     Path(args.json).write_text(json.dumps(result))
 
 
@@ -322,7 +328,7 @@ def match_analyze(args) -> None:
         d = json.loads(path.read_text())
         data.append(d)
         for records in d["profiles"].values():
-            names.update(r["name"].split(";")[-1] for r in records)
+            names.update(r["name"].split(";")[-1] for r in records if "name" in r)
     ordered = sorted(names)
     demangled = run(["llvm-cxxfilt"], input="\n".join(ordered), capture_output=True, text=True).stdout.splitlines()
     dm = dict(zip(ordered, demangled))
@@ -343,6 +349,17 @@ def match_analyze(args) -> None:
             lines.append(f"| {d['target']} | {pname} | {len(mism)} | {total:.3g} | " +
                          " | ".join(share(by[k]) for k in ("clang", "llvm", "libc++", "other")) + " |")
             hottest[(d["target"], pname)] = sorted(mism, key=lambda r: -r["count"])[:8]
+    lines += ["", "Frontend-PGO profiles (clang reports per TU, no per-function counts):", "",
+              "| target | profile | functions | mismatched | without data |", "|---|---|---|---|---|"]
+    for d in sorted(data, key=lambda d: d["target"]):
+        for pname, records in d["profiles"].items():
+            fe_m = [r for r in records if r["kind"] == "fe-mismatch"]
+            fe_n = [r for r in records if r["kind"] == "fe-missing"]
+            if not fe_m and not fe_n:
+                continue
+            total = max(sum(r["functions"] for r in fe_m), sum(r["functions"] for r in fe_n))
+            lines.append(f"| {d['target']} | {pname} | {total} | {sum(r['count'] for r in fe_m)} | "
+                         f"{sum(r['count'] for r in fe_n)} |")
     lines.append("")
     for (target, pname), recs in hottest.items():
         if not recs or pname != "x86":

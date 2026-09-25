@@ -1,0 +1,267 @@
+name: pgo six
+
+# Train the clang profile on all six release platforms and merge them: the
+# three trained earlier (Linux x64 35973108478; Linux arm64, macOS arm64
+# 36036050639) plus macOS x64 (macos-15-intel), and Windows x64 / arm64,
+# whose instrumented mingw clang is cross-built on Linux and then compiles
+# clice on windows-2025 / windows-11-arm. Also one frontend-PGO profile
+# (Linux x64) to see whether AST-keyed counters match every platform.
+# Then the weighted match report of each target against the x86-only, the
+# six-way and the frontend profile.
+
+on:
+  push:
+    branches: [exp/pgo-six]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  train_mac_x64:
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: profile-clang-x64-mac
+      os: macos-15-intel
+      instrument: true
+      clang-train: true
+      extra-args: --pgo-strip-prefix
+
+  train_fe:
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: profile-clang-fe
+      clang-train: true
+      extra-args: --pgo-strip-prefix --pgo-instrument-fe
+
+  win_clang:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: clang-instr-${{ matrix.arch }}-mingw
+      instrument: true
+      clang-bundle: true
+      target-triple: ${{ matrix.arch }}-w64-mingw32
+      pixi-env: cross-windows-mingw
+      llvm-mingw: true
+      extra-args: --pgo-strip-prefix
+
+  win_train:
+    needs: win_clang
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: windows-2025
+            zip: llvm-mingw-20260922-ucrt-x86_64
+            cmake: cmake-4.1.2-windows-x86_64
+            ninja: ninja-win
+            pkg: mingw-llvm-baseline
+            pkg-run: "35947836624"
+          - arch: aarch64
+            os: windows-11-arm
+            zip: llvm-mingw-20260922-ucrt-aarch64
+            cmake: cmake-4.1.2-windows-arm64
+            ninja: ninja-winarm64
+            pkg: arm64-mingw-base
+            pkg-run: "36024664634"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: clang-instr-${{ matrix.arch }}-mingw
+          path: iclang
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.pkg }}
+          path: llvm-artifact
+          run-id: ${{ matrix.pkg-run }}
+          github-token: ${{ github.token }}
+      - name: Toolchain
+        run: |
+          echo "cores: $NUMBER_OF_PROCESSORS"; ls -la iclang llvm-artifact
+          get() { curl -sSL -o "$RUNNER_TEMP/$2" "$1" && unzip -q "$RUNNER_TEMP/$2" -d "$RUNNER_TEMP/$3"; }
+          get "https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/${{ matrix.zip }}.zip" mingw.zip .
+          get "https://github.com/Kitware/CMake/releases/download/v4.1.2/${{ matrix.cmake }}.zip" cmake.zip .
+          get "https://github.com/ninja-build/ninja/releases/download/v1.13.1/${{ matrix.ninja }}.zip" ninja.zip ninja
+          get "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip" zstd.zip zstd
+          root="$RUNNER_TEMP/${{ matrix.zip }}"
+          # The instrumented clang replaces every driver copy of the toolchain.
+          for exe in clang clang++ clang-23; do
+            [[ -f "$root/bin/$exe.exe" ]] && cp iclang/clang.exe "$root/bin/$exe.exe"
+          done
+          "$root/bin/clang.exe" --version
+          mkdir -p "$RUNNER_TEMP/llvm"
+          "$RUNNER_TEMP/zstd/zstd-v1.5.7-win64/zstd.exe" -dc llvm-artifact/llvm.tar.zst | tar -C "$RUNNER_TEMP/llvm" -xf -
+          {
+            echo "MINGW_ROOT=$(cygpath -m "$root")"
+            echo "LLVM_PKG=$(cygpath -m "$RUNNER_TEMP/llvm")"
+            # A PATH entry, so no drive colon.
+            echo "TOOLS=$(cygpath -u "$RUNNER_TEMP/${{ matrix.cmake }}/bin"):$(cygpath -u "$RUNNER_TEMP/ninja")"
+          } >> "$GITHUB_ENV"
+      - name: Train
+        run: |
+          export PATH="$(cygpath -u "$MINGW_ROOT")/bin:$TOOLS:$PATH"
+          export CLICE_MINGW_ROOT="$MINGW_ROOT" CCACHE_DISABLE=1
+          mkdir -p pgo-raw pgo-out
+          export LLVM_PROFILE_FILE="$(cygpath -m "$PWD/pgo-raw")/clang-%m.profraw"
+          cmake -S . -B build/train -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake -DCLICE_TARGET_TRIPLE=${{ matrix.arch }}-w64-mingw32 \
+            -DCLICE_ENABLE_LTO=ON -DLLVM_INSTALL_PATH="$LLVM_PKG" \
+            -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER=
+          start=$SECONDS
+          ninja -C build/train -k 0 clice || true
+          echo "training build: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
+          ls -la pgo-raw
+          "$MINGW_ROOT/bin/llvm-profdata.exe" merge --sparse --failure-mode=all -o pgo-out/profile.profdata pgo-raw/*.profraw
+          "$MINGW_ROOT/bin/llvm-profdata.exe" show pgo-out/profile.profdata | tail -n 6 | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: profile-clang-${{ matrix.arch }}-mingw
+          path: pgo-out
+          retention-days: 14
+
+  merge_six:
+    needs: [train_mac_x64, win_train]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - name: Merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          get() { gh run download "$1" -R "$GITHUB_REPOSITORY" -n "$2" -D "p/$2"; }
+          get 35973108478 profile-clang-strip
+          get 36036050639 profile-clang-arm64-linux
+          get 36036050639 profile-clang-arm64-mac
+          get "${{ github.run_id }}" profile-clang-x64-mac
+          get "${{ github.run_id }}" profile-clang-x86_64-mingw
+          get "${{ github.run_id }}" profile-clang-aarch64-mingw
+          mkdir -p pgo-out
+          pixi run -e package llvm-profdata merge --sparse -o pgo-out/profile.profdata p/*/profile.profdata
+          for p in p/*/profile.profdata pgo-out/profile.profdata; do
+            echo "== $p $(du -h "$p" | cut -f1)"; pixi run -e package llvm-profdata show "$p" | grep -E 'Total functions'
+          done | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: profile-six
+          path: pgo-out
+          retention-days: 14
+
+  match:
+    needs: [merge_six, train_fe]
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x64-linux
+            os: ubuntu-24.04
+            llvm-mingw: false
+          - target: arm64-linux
+            os: ubuntu-24.04
+            triple: aarch64-unknown-linux-gnu
+            env: cross-linux-arm64
+            llvm-mingw: false
+          - target: x64-mingw
+            os: ubuntu-24.04
+            triple: x86_64-w64-mingw32
+            env: cross-windows-mingw
+            llvm-mingw: false
+          - target: arm64-mingw
+            os: ubuntu-24.04
+            triple: aarch64-w64-mingw32
+            env: cross-windows-mingw
+            llvm-mingw: true
+          - target: arm64-mac
+            os: macos-15
+            llvm-mingw: false
+          - target: x64-mac
+            os: macos-15
+            triple: x86_64-apple-darwin
+            llvm-mingw: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: ${{ matrix.env || 'package' }}
+      - name: llvm-mingw
+        if: matrix.llvm-mingw
+        run: |
+          curl -sSL https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64.tar.xz \
+            | tar -xJ -C "$RUNNER_TEMP"
+          root="$RUNNER_TEMP/llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64"
+          prefix="$(pixi run -e "${{ matrix.env }}" printenv CONDA_PREFIX)"
+          mkdir -p "$prefix/lib/clang/23/lib/windows"
+          cp "$root"/lib/clang/*/lib/windows/libclang_rt.builtins-*.a "$prefix/lib/clang/23/lib/windows/"
+          echo "CLICE_MINGW_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Profiles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 35973108478 -R "$GITHUB_REPOSITORY" -n profile-clang-strip -D profiles/x86
+          gh run download "${{ github.run_id }}" -R "$GITHUB_REPOSITORY" -n profile-six -D profiles/six
+          gh run download "${{ github.run_id }}" -R "$GITHUB_REPOSITORY" -n profile-clang-fe -D profiles/fe
+      - name: Configure
+        run: |
+          git clone --branch llvmorg-23.1.1 --depth 1 https://github.com/llvm/llvm-project.git .llvm
+          ARGS=(--llvm-src=.llvm --mode=RelWithDebInfo --lto=ON --build-dir=build --configure-only
+                --pgo-profile="$PWD/profiles/x86/profile.profdata" --pgo-strip-prefix)
+          [[ -n "${{ matrix.triple }}" ]] && ARGS+=(--target-triple="${{ matrix.triple }}")
+          pixi run -e "${{ matrix.env || 'package' }}" python3 scripts/build-llvm.py "${ARGS[@]}"
+          pixi run -e "${{ matrix.env || 'package' }}" python3 scripts/pgo_ci.py tablegen --build .llvm/build/llvm
+      - name: Match
+        run: |
+          pixi run -e "${{ matrix.env || 'package' }}" python3 scripts/pgo_ci.py match-report --build .llvm/build/llvm \
+            --target "${{ matrix.target }}" --json "match-${{ matrix.target }}.json" \
+            --profile "x86=$PWD/profiles/x86/profile.profdata" \
+            --profile "six=$PWD/profiles/six/profile.profdata" \
+            --profile "fe=$PWD/profiles/fe/profile.profdata" \
+            --files clang/lib/Sema/SemaExpr.cpp clang/lib/Sema/SemaDecl.cpp clang/lib/Sema/SemaTemplate.cpp \
+              clang/lib/Sema/SemaOverload.cpp clang/lib/Sema/SemaLookup.cpp clang/lib/Sema/SemaTemplateInstantiate.cpp \
+              clang/lib/Parse/ParseDecl.cpp clang/lib/Parse/ParseExpr.cpp clang/lib/Lex/Lexer.cpp \
+              clang/lib/Lex/Preprocessor.cpp clang/lib/AST/ExprConstant.cpp clang/lib/AST/Decl.cpp \
+              clang/lib/Serialization/ASTReader.cpp clang/lib/Serialization/ASTWriter.cpp
+      - uses: actions/upload-artifact@v7
+        with:
+          name: match-${{ matrix.target }}
+          path: match-${{ matrix.target }}.json
+
+  analyze:
+    needs: match
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: match-*
+          path: matches/new
+      - run: pixi run -e package python3 scripts/pgo_ci.py match-analyze --dir matches

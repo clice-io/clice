@@ -114,7 +114,8 @@ jobs:
           root="$RUNNER_TEMP/llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64"
           prefix="$(pixi run -e "${{ inputs.pixi-env }}" printenv CONDA_PREFIX)"
           mkdir -p "$prefix/lib/clang/23/lib/windows"
-          cp "$root"/lib/clang/*/lib/windows/libclang_rt.builtins-*.a "$prefix/lib/clang/23/lib/windows/"
+          # The profile runtime too, for instrumented builds of the mingw clang.
+          cp "$root"/lib/clang/*/lib/windows/libclang_rt.{builtins,profile}-*.a "$prefix/lib/clang/23/lib/windows/"
           echo "CLICE_MINGW_ROOT=$root" >> "$GITHUB_ENV"
 
       - name: Clone llvm-project
@@ -138,7 +139,10 @@ jobs:
           # The trained clang stands in for the environment's clang-23, so it
           # keeps that clang's triple and with it the conda config files.
           if [[ "${{ inputs.clang-train }}" == true || "${{ inputs.clang-bundle }}" == true ]]; then
-            triple="$(pixi run -e "${{ inputs.pixi-env }}" clang -print-target-triple)"
+            # A cross-built clang targets what it is built for; a native one
+            # stands in for the environment's clang and keeps its triple.
+            triple="${{ inputs.target-triple }}"
+            [[ -n "$triple" ]] || triple="$(pixi run -e "${{ inputs.pixi-env }}" clang -print-target-triple)"
             echo "default triple of the environment's clang: $triple"
             ARGS+=(--clang-only --default-triple="$triple")
           fi
@@ -163,7 +167,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.name }}
-          path: .llvm/build/llvm/bin/clang-23
+          path: |
+            .llvm/build/llvm/bin/clang-23
+            .llvm/build/llvm/bin/clang.exe
           retention-days: 14
           if-no-files-found: error
 

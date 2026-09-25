@@ -223,6 +223,7 @@ class Build:
         self.msvc = IS_WINDOWS and not self.mingw
         self.asan = self.mode == "Debug" and not IS_WINDOWS and not self.mingw
         self.pgo_instrument: bool = args.pgo_instrument
+        self.pgo_instrument_fe: bool = args.pgo_instrument_fe
         self.pgo_profile: Path | None = (
             Path(args.pgo_profile).resolve() if args.pgo_profile else None
         )
@@ -234,7 +235,9 @@ class Build:
         # A profile only matches code compiled the same way, so the
         # instrumented build takes the release configuration of the final
         # (LTO) build it trains: no assertions, no libc++ hardening.
-        self.release_config = self.lto or self.pgo_instrument or bool(self.pgo_profile)
+        self.release_config = (
+            self.lto or self.pgo_instrument or self.pgo_instrument_fe or bool(self.pgo_profile)
+        )
         self.assertions = self.mode == "Debug" or not self.release_config
 
         if args.build_dir:
@@ -489,6 +492,8 @@ class Build:
         ]
         if self.pgo_instrument:
             args.append("-DLLVM_BUILD_INSTRUMENTED=IR")
+        if self.pgo_instrument_fe:
+            args.append("-DLLVM_BUILD_INSTRUMENTED=Frontend")
         if self.pgo_profile:
             args.append(f"-DLLVM_PROFDATA_FILE={self.pgo_profile.as_posix()}")
         if self.target_triple:
@@ -663,6 +668,11 @@ def main() -> None:
         "--pgo-instrument",
         action="store_true",
         help="Instrument LLVM for IR PGO (LLVM_BUILD_INSTRUMENTED=IR)",
+    )
+    parser.add_argument(
+        "--pgo-instrument-fe",
+        action="store_true",
+        help="Instrument LLVM for frontend (clang AST-based) PGO instead",
     )
     parser.add_argument(
         "--pgo-profile",
