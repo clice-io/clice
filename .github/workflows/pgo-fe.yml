@@ -1,0 +1,208 @@
+name: pgo fe vs ir
+
+# Frontend PGO (one Linux x64 profile, AST-keyed, matches every target) against
+# IR PGO (six platforms trained and merged): no PGO / IR six / FE on Linux
+# x64, Linux arm64, macOS arm64 and Windows x64. Windows x64 goes through
+# llvm-mingw here, as its Windows training did.
+
+on:
+  push:
+    branches: [exp/pgo-fe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SIX_RUN: "36101036836"
+  FE_RUN: "36095618013"
+
+jobs:
+  llvm:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x64-linux, arm64-linux, arm64-mac, x64-mingw]
+        pgo: [ir6, fe]
+        include:
+          - target: arm64-linux
+            triple: aarch64-unknown-linux-gnu
+            env: cross-linux-arm64
+          - target: arm64-mac
+            os: macos-15
+          - target: x64-mingw
+            triple: x86_64-w64-mingw32
+            env: cross-windows-mingw
+            llvm-mingw: true
+          - pgo: ir6
+            profile: profile-six
+            run: "36101036836"
+          - pgo: fe
+            profile: profile-clang-fe
+            run: "36095618013"
+          # the Windows x64 baseline through llvm-mingw
+          - target: x64-mingw
+            pgo: base
+            triple: x86_64-w64-mingw32
+            env: cross-windows-mingw
+            llvm-mingw: true
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: ${{ matrix.target }}-${{ matrix.pgo }}
+      os: ${{ matrix.os || 'ubuntu-24.04' }}
+      lto: "ON"
+      target-triple: ${{ matrix.triple || '' }}
+      pixi-env: ${{ matrix.env || 'package' }}
+      llvm-mingw: ${{ matrix.llvm-mingw || false }}
+      profile: ${{ matrix.profile || '' }}
+      profile-run: ${{ matrix.run || '' }}
+      extra-args: ${{ matrix.profile && '--pgo-strip-prefix' || '' }}
+      match-report: ${{ matrix.profile != '' && matrix.profile != null }}
+
+  clice:
+    needs: llvm
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x64-linux, arm64-linux, arm64-mac, x64-mingw]
+        pgo: [ir6, fe]
+        include:
+          - target: arm64-linux
+            triple: aarch64-unknown-linux-gnu
+            env: cross-linux-arm64
+          - target: arm64-mac
+            os: macos-15
+          - target: x64-mingw
+            triple: x86_64-w64-mingw32
+            env: cross-windows-mingw
+            llvm-mingw: true
+          - target: x64-mingw
+            pgo: base
+            triple: x86_64-w64-mingw32
+            env: cross-windows-mingw
+            llvm-mingw: true
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-${{ matrix.target }}-${{ matrix.pgo }}
+      llvm: ${{ matrix.target }}-${{ matrix.pgo }}
+      lto: "ON"
+      os: ${{ matrix.os || 'ubuntu-24.04' }}
+      target-triple: ${{ matrix.triple || '' }}
+      pixi-env: ${{ matrix.env || 'package' }}
+      llvm-mingw: ${{ matrix.llvm-mingw || false }}
+
+  bench_win:
+    needs: clice
+    if: ${{ !cancelled() }}
+    runs-on: windows-2025
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: default
+      - name: Unpack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "cores: $NUMBER_OF_PROCESSORS"
+          for v in base ir6 fe; do
+            gh run download "${{ github.run_id }}" -R "$GITHUB_REPOSITORY" -n "final-x64-mingw-$v" -D "bundles/$v"
+            mkdir -p "variants/$v" && tar -C "variants/$v" -xzf "bundles/$v/bundle.tar.gz"
+          done
+      - name: Unit tests
+        continue-on-error: true
+        run: |
+          set +e +o pipefail
+          for v in base ir6 fe; do
+            CLICE_TEST_DATA_DIR="$(cygpath -m "$PWD/tests/data")" "variants/$v/bin/unit_tests.exe" > "$v-tests.log" 2>&1
+            echo "== $v (exit $?) $(grep -E 'PASSED|FAILED TESTS' "$v-tests.log" | tr '\n' ' ')" | sed 's/\x1b\[[0-9;]*m//g' | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Workloads
+        run: pixi run -e default python scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads"
+      - name: Benchmark
+        run: |
+          W="$(cygpath -m "$PWD")"
+          pixi run -e default python scripts/pgo_ci.py bench --rounds 3 --out bench-out \
+            --variant "base=$W/variants/base" --variant "ir6=$W/variants/ir6" --variant "fe=$W/variants/fe" \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-x64-mingw
+          path: bench-out
+
+  bench:
+    needs: clice
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - corner: x64-linux
+            os: ubuntu-24.04
+            flags: ""
+            variants: "base=final-V0@35912428380 ir6=final-x64-linux-ir6@this fe=final-x64-linux-fe@this"
+          - corner: arm64-linux
+            os: ubuntu-24.04-arm
+            flags: ""
+            variants: "base=final-arm64-linux-base@36024124933 ir6=final-arm64-linux-ir6@this fe=final-arm64-linux-fe@this"
+          - corner: arm64-mac
+            os: macos-15
+            flags: --no-default-config
+            variants: "base=final-M0@35973108478 ir6=final-arm64-mac-ir6@this fe=final-arm64-mac-fe@this"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - name: Unpack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          command -v zstd || brew install zstd
+          uname -m; (nproc || sysctl -n hw.ncpu) 2>/dev/null || true
+          # arm64 Linux has no "model name" line.
+          (grep -m1 -E 'model name|CPU part' /proc/cpuinfo || sysctl -n machdep.cpu.brand_string) 2>/dev/null || true
+          for spec in ${{ matrix.variants }}; do
+            name="${spec%%=*}"; rest="${spec#*=}"; artifact="${rest%@*}"; run="${rest#*@}"
+            [[ "$run" == this ]] && run="${{ github.run_id }}"
+            [[ -d "bundles/$artifact-$run" ]] || gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$artifact" -D "bundles/$artifact-$run"
+            mkdir -p "variants/$name"
+            zstd -dc "bundles/$artifact-$run/bundle.tar.zst" | tar -C "variants/$name" -xf -
+          done
+          ls variants
+      - name: mimalloc
+        if: matrix.corner == 'arm64-mac-mimalloc'
+        run: brew install mimalloc && echo "MIMALLOC=$(brew --prefix mimalloc)/lib/libmimalloc.dylib" >> "$GITHUB_ENV"
+      - name: Workloads
+        run: |
+          pixi run -e package python3 scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads" \
+            --cc clang --cxx clang++ ${{ matrix.flags && format('--flags={0}', matrix.flags) || '' }}
+      - name: Benchmark
+        run: |
+          ARGS=()
+          for spec in ${{ matrix.variants }}; do
+            name="${spec%%=*}"; ARGS+=(--variant "$name=$PWD/variants/$name")
+            [[ "$name" == *+mi ]] && ARGS+=(--env "$name=DYLD_INSERT_LIBRARIES=$MIMALLOC")
+          done
+          pixi run -e package python3 scripts/pgo_ci.py bench "${ARGS[@]}" --rounds 3 --out bench-out \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-${{ matrix.corner }}
+          path: bench-out
