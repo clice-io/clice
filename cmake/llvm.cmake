@@ -155,6 +155,13 @@ function(setup_llvm LLVM_VERSION)
         clangToolingInclusions clangToolingInclusionsStdlib clangToolingSyntax
     )
 
+    # A package with the X86 MC layer lets clang parse MS-style __asm blocks;
+    # clice registers the target at startup (src/clice.cc).
+    if(TARGET LLVMX86AsmParser)
+        target_link_libraries(llvm-libs INTERFACE LLVMX86AsmParser LLVMX86Desc LLVMX86Info)
+        target_compile_definitions(llvm-libs INTERFACE CLICE_X86_MC=1)
+    endif()
+
     target_include_directories(llvm-libs SYSTEM INTERFACE
         "${LLVM_INSTALL_PATH}/include")
     target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)

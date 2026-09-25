@@ -211,18 +211,29 @@ def clang_bench(args) -> None:
             target.unlink()
             shutil.copy2(variants[name], target)
             target.chmod(0o755)
-            build = Path(f"build/clang-bench-{name}-{round_index}")
+            build = Path(f"build/clang-bench-{name}-{round_index}").resolve()
             shutil.rmtree(build, ignore_errors=True)
-            run(["cmake", "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
-                 "-DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake", "-DCMAKE_C_COMPILER_LAUNCHER=",
-                 "-DCMAKE_CXX_COMPILER_LAUNCHER="], env=env, check=True, stdout=subprocess.DEVNULL)
+            if args.project:
+                # Another project than the one the profile was trained on.
+                configure = ["cmake", "-S", args.project, "-B", build, "-G", "Ninja",
+                             "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_CXX_STANDARD=20",
+                             "-DABSL_BUILD_TESTING=OFF",
+                             "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
+                targets = []
+            else:
+                configure = ["cmake", "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+                             "-DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake", "-DCMAKE_C_COMPILER_LAUNCHER=",
+                             "-DCMAKE_CXX_COMPILER_LAUNCHER="]
+                targets = ["clice"]
+            run(configure, env=env, check=True, stdout=subprocess.DEVNULL)
             start = time.time()
-            run(["ninja", "-C", build, "clice"], env=env, check=True, stdout=subprocess.DEVNULL)
+            run(["ninja", "-C", build, *targets], env=env, check=True, stdout=subprocess.DEVNULL)
             times[name].append(time.time() - start)
             print(f"round {round_index} {name}: {times[name][-1]:.1f} s", flush=True)
             shutil.rmtree(build, ignore_errors=True)
     base = statistics.median(times[names[0]])
-    lines = [f"`ninja clice` from scratch, RelWithDebInfo, no ccache; median of {args.rounds} rounds.", "",
+    what = f"`ninja` of {args.project} (Release, library)" if args.project else "`ninja clice` (RelWithDebInfo)"
+    lines = [f"{what} from scratch, no ccache; median of {args.rounds} rounds.", "",
              "| clang | seconds | ratio |", "|---|---|---|"]
     for name in names:
         t = statistics.median(times[name])
@@ -409,6 +420,7 @@ def main() -> None:
 
     p = sub.add_parser("clang-bench")
     p.add_argument("--variant", action="append", default=[], help="NAME=PATH of a clang-23 binary")
+    p.add_argument("--project", help="Build this CMake project instead of clice")
     p.add_argument("--rounds", type=int, default=2)
     p.add_argument("--out", required=True)
     p.set_defaults(func=clang_bench)

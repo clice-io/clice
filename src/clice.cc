@@ -6,7 +6,20 @@
 
 #include "kota/deco/deco.h"
 
+#ifdef CLICE_X86_MC
+extern "C" void LLVMInitializeX86TargetInfo();
+extern "C" void LLVMInitializeX86TargetMC();
+extern "C" void LLVMInitializeX86AsmParser();
+#endif
+
 int main(int argc, const char** argv) {
+#ifdef CLICE_X86_MC
+    // clang parses MS-style __asm blocks through a registered target's MC layer.
+    LLVMInitializeX86TargetInfo();
+    LLVMInitializeX86TargetMC();
+    LLVMInitializeX86AsmParser();
+#endif
+
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif
