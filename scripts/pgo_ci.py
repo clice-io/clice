@@ -41,6 +41,33 @@ def merge_profiles(raw_dir: Path, out: Path) -> None:
     print("static function names:", *static, sep="\n  ")
 
 
+def alias_profile(args) -> None:
+    """Copy every record whose name holds an unsigned long / long template
+    literal (Lm8E, Ll1E) under the Windows spelling (Ly8E, Lx1E), where
+    size_t / int64_t are long long. The remapping file cannot express this:
+    the demangler keeps a literal's type as text, not as a type node."""
+    import re
+    literal = re.compile(r"L([ml])(n?\d+)E")
+    text = Path(args.out).with_suffix(".proftext")
+    run(["llvm-profdata", "merge", "--text", "-o", text, args.profile], check=True)
+    records = text.read_text().split("\n\n")
+    names = {r.split("\n", 1)[0] for r in records}
+    aliases = []
+    for record in records:
+        name, _, rest = record.partition("\n")
+        # Local functions ("File.cpp:_ZL...") are skipped: the remapper never
+        # parses those names, so they would need every type spelled out too.
+        if not name.startswith("_Z"):
+            continue
+        alias = literal.sub(lambda m: "L" + {"m": "y", "l": "x"}[m[1]] + m[2] + "E", name)
+        if alias != name and alias not in names:
+            aliases.append(f"{alias}\n{rest}")
+    text.write_text("\n\n".join(aliases) + "\n")
+    print(f"{len(aliases)} alias records of {len(records)}")
+    run(["llvm-profdata", "merge", "--sparse", "-o", args.out, args.profile, text], check=True)
+    text.unlink()
+
+
 def train_clice(args) -> None:
     build = Path(args.build).resolve()
     raw_dir = build / "pgo-raw"
@@ -570,6 +597,11 @@ def main() -> None:
     p.add_argument("--flags", default="", help="Extra compiler arguments (profile, remapping)")
     p.add_argument("--json", required=True)
     p.set_defaults(func=fn_list)
+
+    p = sub.add_parser("alias-profile")
+    p.add_argument("--profile", required=True)
+    p.add_argument("--out", required=True)
+    p.set_defaults(func=alias_profile)
 
     p = sub.add_parser("fn-gap")
     p.add_argument("--dir", required=True)

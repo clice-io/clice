@@ -1,0 +1,146 @@
+name: pgo alias
+
+# The Linux x64 frontend profile (run 36095618013) plus alias records under
+# the Windows spelling of unsigned long / long template literals
+# (pgo_ci.py alias-profile), which the remapping file cannot reach: which
+# functions still lack data on x64 mingw, and the Windows benchmark against
+# no PGO and the remapping alone (run 36124223777).
+
+on:
+  push:
+    branches: [exp/pgo-alias]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  alias:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - name: Alias
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 36095618013 -R "$GITHUB_REPOSITORY" -n profile-clang-fe -D fe
+          pixi run -e package python3 scripts/pgo_ci.py alias-profile --profile fe/profile.profdata --out pgo-out/profile.profdata
+          pixi run -e package llvm-profdata show pgo-out/profile.profdata
+      - uses: actions/upload-artifact@v7
+        with:
+          name: profile-clang-fe-alias
+          path: pgo-out
+          retention-days: 14
+
+  fns:
+    needs: alias
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x64-linux
+            llvm-mingw: false
+          - target: x64-mingw
+            triple: x86_64-w64-mingw32
+            env: cross-windows-mingw
+            llvm-mingw: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: ${{ matrix.env || 'package' }}
+      - name: llvm-mingw
+        if: matrix.llvm-mingw
+        run: |
+          curl -sSL https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64.tar.xz \
+            | tar -xJ -C "$RUNNER_TEMP"
+          root="$RUNNER_TEMP/llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64"
+          prefix="$(pixi run -e "${{ matrix.env }}" printenv CONDA_PREFIX)"
+          mkdir -p "$prefix/lib/clang/23/lib/windows"
+          cp "$root"/lib/clang/*/lib/windows/libclang_rt.builtins-*.a "$prefix/lib/clang/23/lib/windows/"
+          echo "CLICE_MINGW_ROOT=$root" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v8
+        with:
+          name: profile-clang-fe-alias
+          path: profiles/alias
+      - name: Configure
+        run: |
+          git clone --branch llvmorg-23.1.1 --depth 1 https://github.com/llvm/llvm-project.git .llvm
+          ARGS=(--llvm-src=.llvm --mode=RelWithDebInfo --lto=ON --build-dir=build --configure-only
+                --pgo-profile="$PWD/profiles/alias/profile.profdata" --pgo-strip-prefix --pgo-remap="$PWD/scripts/pgo/remap.txt")
+          [[ -n "${{ matrix.triple }}" ]] && ARGS+=(--target-triple="${{ matrix.triple }}")
+          pixi run -e "${{ matrix.env || 'package' }}" python3 scripts/build-llvm.py "${ARGS[@]}"
+          pixi run -e "${{ matrix.env || 'package' }}" python3 scripts/pgo_ci.py tablegen --build .llvm/build/llvm
+      - name: Functions
+        run: |
+          pixi run -e "${{ matrix.env || 'package' }}" python3 scripts/pgo_ci.py fn-list --build .llvm/build/llvm \
+            --json "fns-${{ matrix.target }}.json" \
+            --files clang/lib/Sema/SemaExpr.cpp clang/lib/Sema/SemaDecl.cpp clang/lib/Sema/SemaTemplate.cpp \
+              clang/lib/Sema/SemaOverload.cpp clang/lib/Sema/SemaLookup.cpp clang/lib/Sema/SemaTemplateInstantiate.cpp \
+              clang/lib/Parse/ParseDecl.cpp clang/lib/Parse/ParseExpr.cpp clang/lib/Lex/Lexer.cpp \
+              clang/lib/Lex/Preprocessor.cpp clang/lib/AST/ExprConstant.cpp clang/lib/AST/Decl.cpp \
+              clang/lib/Serialization/ASTReader.cpp clang/lib/Serialization/ASTWriter.cpp
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fns-alias-${{ matrix.target }}
+          path: fns-${{ matrix.target }}.json
+
+  gap:
+    needs: fns
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: fns-alias-*
+          path: fns
+      - run: pixi run -e package python3 scripts/pgo_ci.py fn-gap --dir fns --ref x64-linux --examples 40
+
+  llvm:
+    needs: alias
+    uses: ./.github/workflows/pgo-llvm.yml
+    with:
+      name: x64-mingw-fe-remap-alias
+      lto: "ON"
+      target-triple: x86_64-w64-mingw32
+      pixi-env: cross-windows-mingw
+      llvm-mingw: true
+      profile: profile-clang-fe-alias
+      extra-args: --pgo-strip-prefix --pgo-remap=$GITHUB_WORKSPACE/scripts/pgo/remap.txt
+      match-report: true
+
+  clice:
+    needs: llvm
+    uses: ./.github/workflows/pgo-clice.yml
+    with:
+      name: final-x64-mingw-fe-remap-alias
+      llvm: x64-mingw-fe-remap-alias
+      lto: "ON"
+      target-triple: x86_64-w64-mingw32
+      pixi-env: cross-windows-mingw
+      llvm-mingw: true
+
+  bench:
+    needs: clice
+    uses: ./.github/workflows/pgo-bench-par.yml
+    with:
+      name: par-x64-mingw-alias
+      os: windows-2025
+      pixi-env: default
+      variants: "base=final-x64-mingw-base@36104068281 fe-remap=final-x64-mingw-fe-remap@36124223777 fe-remap-alias=final-x64-mingw-fe-remap-alias@${{ github.run_id }}"
