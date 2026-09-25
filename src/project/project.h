@@ -40,8 +40,7 @@ constexpr inline std::uint32_t cache_format_version = 11;
 /// One dependency of a compilation artifact.
 ///
 /// `version` names the FileVersion the build actually consumed (interned
-/// from the worker-reported content hash) — the stat fast path and the
-/// two-layer freshness test live on the shared version, paid once per
+/// from the worker-reported content hash); its check is paid once per
 /// wave for every artifact and TU referencing it (FileTable::
 /// check_version). An invalid version means the build saw no nameable
 /// bytes: `missing` distinguishes "the file was absent" (reappearing is
@@ -56,14 +55,6 @@ struct DepState {
 /// Staleness snapshot for compilation artifacts (PCH, PCM, AST, synthesized
 /// header preambles): the consumed versions, checked via deps_changed.
 using DepsSnapshot = llvm::SmallVector<DepState>;
-
-/// Drop every trust anchor of the snapshot's files so the next check
-/// re-validates each dependency by a real read (the versions stay: they
-/// describe what the artifact was built from). Used when embedded copies
-/// of dependency content may disagree with the files themselves.
-/// Shared-level on purpose: the anchors live on the versions, so other
-/// consumers of a forced file pay one re-read too.
-void force_revalidate_deps(FileTable& files, const DepsSnapshot& snap);
 
 /// Context for compiling a header file that lacks its own CDB entry.
 /// The cache-store namespace of synthesized header-context files
@@ -369,18 +360,14 @@ llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
 ///
 /// `deps` carries the consumed-content hashes the worker computed at build
 /// time; `build_at` is milliseconds since epoch, sampled before the build
-/// started. Each dependency is stat'ed once: a file untouched since
-/// `build_at` offers its stat as the version's fast-path baseline
-/// (recorded only when corroborated, see FileTable::try_stamp), a file
-/// modified during or after the build offers none — the next check must
-/// prove the disk still matches the consumed hash before trusting (and
-/// repairing) the stat.
+/// started. A dependency the worker could not hash takes its hash from
+/// the disk only when the file is untouched since `build_at`.
 DepsSnapshot capture_deps_snapshot(FileTable& files,
                                    llvm::ArrayRef<DepFile> deps,
                                    std::int64_t build_at);
 
 /// Whether any consumed version stopped matching the disk; see
-/// FileTable::check_version for the two-layer test and DepState for the
+/// FileTable::check_version and DepState for the
 /// per-reference missing policy. Callers open the memo wave.
 bool deps_changed(FileTable& files, const DepsSnapshot& snap);
 

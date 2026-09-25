@@ -188,16 +188,13 @@ std::string serialize_cdb_snapshot(Project& project,
 /// persisted form of PCH/PCM validity metadata and header-mode verdicts
 /// (the cache.json successor). Paths are
 /// persisted as spellings and re-interned at load — runtime fids are not
-/// stable across sessions. Per-dep stamps are the shared versions',
-/// written at save and adopted back at load, so the fast paths survive a
-/// restart without the records referencing version ids (they self-heal
-/// against any index state).
+/// stable across sessions; deps persist as (spelling, content hash), so
+/// the records reference no version ids and self-heal against any index
+/// state.
 
 struct CacheDepEntry {
     std::uint32_t path;  // index into the envelope's paths table
     std::uint64_t hash;
-    std::uint64_t size;
-    std::int64_t mtime_ns;
     bool missing;
 };
 
@@ -223,10 +220,6 @@ struct ArtifactsData {
     // lazily on the first overlay query — which cannot trigger a rebuild.
     std::uint32_t pch_index_format = 0;
 
-    // FileTable::revocation_generation at write time; gates adopt_stamp
-    // against a global blob recording revocations these records predate.
-    std::uint64_t revocation_generation = 0;
-
     std::vector<CachePCHEntry> pch;
     std::vector<CachePCMEntry> pcm;
     std::vector<CacheModeEntry> header_modes;
@@ -240,7 +233,6 @@ IndexStore::IndexStore(kota::event_loop& loop, Project& project, CommandResolver
 std::string IndexStore::serialize_artifacts() {
     ArtifactsData data;
     data.pch_index_format = index::index_format_version;
-    data.revocation_generation = project.project_index.revocation_generation(project.file_table);
     llvm::StringMap<std::uint32_t> index_map;
 
     auto intern = [&](Fid fid) -> std::uint32_t {
@@ -254,22 +246,13 @@ std::string IndexStore::serialize_artifacts() {
     };
 
     // Deps persist as (spelling, hash) pairs so they self-heal against any
-    // index state; the per-dep stamp is the shared version's — earned
-    // once, written for every artifact referencing the version. A
-    // version-less dep (missing or unhashable at capture) writes hash 0
-    // and reloads as one.
+    // index state. A version-less dep (missing or unhashable at capture)
+    // writes hash 0 and reloads as one.
     auto dump_deps = [&](const DepsSnapshot& snap, std::vector<CacheDepEntry>& out) {
         for(auto& dep: snap) {
-            if(!dep.version.valid()) {
-                out.push_back({intern(dep.path_id), 0, 0, 0, dep.missing});
-                continue;
-            }
-            auto& version = project.file_table.version(dep.version);
-            out.push_back({intern(dep.path_id),
-                           version.content_hash,
-                           version.size,
-                           version.mtime_ns,
-                           dep.missing});
+            auto hash =
+                dep.version.valid() ? project.file_table.version(dep.version).content_hash : 0;
+            out.push_back({intern(dep.path_id), hash, dep.missing});
         }
     };
 
@@ -318,12 +301,6 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
     auto resolve = [&](std::uint32_t idx) -> llvm::StringRef {
         return idx < data.paths.size() ? llvm::StringRef(data.paths[idx]) : "";
     };
-    // A blob written before the loaded global's last revocation carries
-    // stamps that revocation dropped; adopting them would undo it (a crash
-    // between the two non-atomic blob writes leaves exactly this pair on
-    // disk). The dep records themselves stay: they self-validate by hash.
-    bool adopt_stamps = data.revocation_generation >=
-                        project.project_index.revocation_generation(project.file_table);
     auto load_deps = [&](const std::vector<CacheDepEntry>& dep_entries) -> DepsSnapshot {
         DepsSnapshot deps;
         for(auto& dep: dep_entries) {
@@ -335,9 +312,6 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
             state.missing = dep.missing;
             if(dep.hash != 0) {
                 state.version = project.file_table.intern_version(state.path_id, dep.hash);
-                if(adopt_stamps) {
-                    project.file_table.adopt_stamp(state.version, dep.size, dep.mtime_ns);
-                }
             }
         }
         return deps;
@@ -533,13 +507,9 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     project.project_index.search_pending.insert(added.begin(), added.end());
     merges_since_search_build += 1;
 
-    // Intern a FileVersion per file of the parse. The freshness baseline is
-    // two-part and lives on the version, shared by every TU that consumed
-    // it: the consumed-content hash from the compiler's own buffers, and a
-    // stat fast path recorded only when the disk provably still holds the
-    // consumed bytes — otherwise the stat could describe content the rows
-    // were never built from, so those files re-earn their fast path
-    // through a hash check instead (see file_version_stale).
+    // Intern a FileVersion per file of the parse: the consumed-content hash
+    // from the compiler's own buffers, shared by every TU that consumed it
+    // (see file_version_stale).
     auto baseline_before_ns = fs::stat_baseline_before_ns(view.built_at());
     llvm::SmallVector<VersionID> fv_of;
     fv_of.resize_for_overwrite(view.path_count());
@@ -550,9 +520,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.path_hash(i);
 
         fs::file_status status;
-        bool stat_ok = !fs::status(path, status);
-        bool untouched = stat_ok && fs::mtime_ns(status) <= baseline_before_ns;
-        if(hash == 0 && untouched) {
+        if(hash == 0 && !fs::status(path, status) && fs::mtime_ns(status) <= baseline_before_ns) {
             // The worker had no buffer to hash (e.g. behind a PCM) and no
             // rows recorded one; the unchanged mtime proves the disk still
             // holds the consumed bytes, so take their hash from the shared
@@ -564,25 +532,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
             }
         }
 
-        auto fv = project.file_table.intern_version(file_ids_map[i], hash);
-        if(untouched && hash != 0 && project.file_table.version(fv).mtime_ns == 0) {
-            // The untouched mtime alone is no proof: a rewrite during the
-            // build that preserves the size and backdates the mtime
-            // (rsync -t) would stamp a stat describing bytes the rows were
-            // never built from, and the equality fast path would then judge
-            // them fresh forever. So the stamp must be corroborated by a
-            // read (usually the shared pair, already paid for); an
-            // already-stamped version earned its stamp the same way and
-            // need not re-prove it every merge.
-            if(auto obs = project.file_table.observe_for(file_ids_map[i], status)) {
-                project.file_table.try_stamp(fv,
-                                             obs->size,
-                                             obs->mtime_ns,
-                                             obs->uid_device,
-                                             obs->uid_file);
-            }
-        }
-        fv_of[i] = fv;
+        fv_of[i] = project.file_table.intern_version(file_ids_map[i], hash);
     }
 
     manifest.tu_fv = fv_of[main_local_id];
@@ -1836,14 +1786,8 @@ bool IndexStore::file_version_stale(VersionID fv_id) {
     }
 
     // Missing and unreadable both read as stale — conservative, the
-    // reindex re-observes. A repair of the version's stat fast path must
-    // reach the persisted global blob, or the next session re-earns it by
-    // hash for every repaired version at once.
-    auto generation = project.file_table.stamp_generation;
+    // reindex re-observes.
     bool stale = project.file_table.check_version(fv_id) != FileTable::Verdict::Fresh;
-    if(project.file_table.stamp_generation != generation) {
-        global_dirty = true;
-    }
     fv_verdicts[fv_id] = stale;
     return stale;
 }

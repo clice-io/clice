@@ -113,72 +113,10 @@ TEST_CASE(RenameSaveRebinds) {
             .has_value());
 }
 
-TEST_CASE(RevalidateClearsAliasStamps) {
-    // force_revalidate through one spelling must clear the version stamps
-    // of a hardlinked twin: its stamp would otherwise vouch for a
-    // same-stat edit before the erased entity pair is ever consulted.
-    TempDir tmp;
-    tmp.touch("a.h", "int shared();\n");
-    auto a = tmp.path("a.h");
-    auto b = tmp.path("b.h");
-    ASSERT_FALSE(bool(llvm::sys::fs::create_hard_link(a, b)));
-    age(a);
-
-    FileTable pool;
-    auto a_id = pool.intern(a);
-    auto b_id = pool.intern(b);
-    ASSERT_TRUE(pool.read(a_id).has_value());
-    auto read = pool.read(b_id);
-    ASSERT_TRUE(read.has_value());
-    auto vid = pool.intern_version(b_id, read->hash);
-    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device, read->uid_file);
-    ASSERT_TRUE(pool.version(vid).mtime_ns != 0);
-
-    pool.force_revalidate(a_id);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
-}
-
-TEST_CASE(RevocationStopsAdoption) {
-    // A hole left by a revocation looks like one never stamped; stamps a
-    // project persisted before must not refill it.
-    FileTable pool;
-    auto file = pool.intern("/proj/a.h");
-    auto vid = pool.intern_version(file, 0x1);
-    pool.adopt_stamp(vid, 10, 100);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 100);
-
-    pool.force_revalidate(file);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
-    pool.adopt_stamp(vid, 10, 100);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
-}
-
-TEST_CASE(StampNeedsLiveIdentity) {
-    // A stamp corroborates only through the identity the pair was earned
-    // under: a stat carrying a different UniqueID (same-stat replace)
-    // must decline even when size and mtime match the pair.
-    TempDir tmp;
-    tmp.touch("f.h", "int v1();\n");
-    auto f = tmp.path("f.h");
-    age(f);
-
-    FileTable pool;
-    auto fid = pool.intern(f);
-    auto read = pool.read(fid);
-    ASSERT_TRUE(read.has_value());
-    auto vid = pool.intern_version(fid, read->hash);
-
-    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device + 1, read->uid_file + 1);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
-
-    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device, read->uid_file);
-    ASSERT_TRUE(pool.version(vid).mtime_ns != 0);
-}
-
 TEST_CASE(FastPathChecksIdentity) {
-    // A stamped version's stat fast path must not survive a rename-over
-    // that forges the same size and mtime: the inode changed, and the
-    // session knows this fid's identity.
+    // The file's stat fast path must not survive a rename-over that
+    // forges the same size and mtime: the inode changed, and the session
+    // knows this fid's identity.
     TempDir tmp;
     tmp.touch("f.h", "int v1();\n");
     auto f = tmp.path("f.h");
@@ -189,8 +127,6 @@ TEST_CASE(FastPathChecksIdentity) {
     auto read = pool.read(fid);
     ASSERT_TRUE(read.has_value());
     auto vid = pool.intern_version(fid, read->hash);
-    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device, read->uid_file);
-    ASSERT_TRUE(pool.version(vid).mtime_ns != 0);
 
     tmp.touch("f.h.tmp", "int v2();\n");
     ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
@@ -201,10 +137,10 @@ TEST_CASE(FastPathChecksIdentity) {
 }
 #endif
 
-TEST_CASE(FreshReadCannotStamp) {
+TEST_CASE(FreshReadNotVouched) {
     // A check that reads a just-written file gets the right verdict but
-    // must not stamp the version: on a coarse-mtime filesystem a same-tick
-    // write could later forge the stamped stat.
+    // must not keep the stat as the fast path: on a coarse-mtime
+    // filesystem a same-tick write could later forge it.
     TempDir tmp;
     tmp.touch("f.h", "int fresh();\n");
     auto f = tmp.path("f.h");
@@ -217,7 +153,8 @@ TEST_CASE(FreshReadCannotStamp) {
 
     auto wave = pool.wave();
     ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Fresh);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
+    ASSERT_FALSE(pool.cached_hash(fid, read->size, read->mtime_ns, read->uid_device, read->uid_file)
+                     .has_value());
 }
 
 TEST_CASE(ListingSeesNewFile) {

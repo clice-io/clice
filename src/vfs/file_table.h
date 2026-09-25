@@ -458,17 +458,12 @@ struct FileTable {
 
     /// A content version of a file: `content_hash` names the bytes (for
     /// build artifacts, the bytes the build consumed — reported by the
-    /// worker, never replaced by a later disk read), and the stat is the
-    /// shared fast path proving the disk still holds them. Recorded only
-    /// when the file provably did not change since before the consuming
-    /// build started; mtime_ns == 0 means "no fast path" and a check
-    /// falls through to the hash comparison, which repairs the fast path
-    /// in place — once, for every consumer of the version.
+    /// worker, never replaced by a later disk read). Whether the disk still
+    /// holds them is asked of the file's own observation, never recorded
+    /// on the version.
     struct FileVersion {
         Fid fid;
         std::uint64_t content_hash = 0;
-        std::uint64_t size = 0;
-        std::int64_t mtime_ns = 0;
     };
 
     /// Version table, indexed by VersionID. The table is append-only:
@@ -479,24 +474,6 @@ struct FileTable {
     /// (index::ProjectIndex maps them), so these ids live one session.
     llvm::SmallVector<FileVersion> versions;
     llvm::DenseMap<std::pair<Fid, std::uint64_t>, VersionID> version_ids;
-
-    /// Bumped whenever a version's stat fast path is written (stamped at
-    /// capture or repaired by a check) or revoked (force_revalidate).
-    /// Persistence compares it around an operation to learn whether the
-    /// table changed under it.
-    std::uint64_t stamp_generation = 0;
-
-    /// Bumped only when force_revalidate revokes stamps, and persisted —
-    /// offset by each index lineage's own count
-    /// (index::ProjectIndex::revocation_generation) — in both metadata
-    /// blobs that carry them (the global blob's version table, the
-    /// artifacts blob's dep records). The blobs commit non-atomically, so
-    /// a crash can land a global recording a revocation next to an
-    /// artifacts blob that predates it — whose stamps adopt_stamp would
-    /// then restore into the revoked holes. Adoption is gated on the
-    /// artifacts blob being at least as revocation-current as the loaded
-    /// global.
-    std::uint64_t revocation_generation = 0;
 
     const FileVersion& version(VersionID vid) const {
         assert(vid.raw < versions.size());
@@ -513,104 +490,6 @@ struct FileTable {
             versions.push_back(FileVersion{.fid = fid, .content_hash = content_hash});
         }
         return it->second;
-    }
-
-    /// Give a version its stat fast path, but only corroborated: the shared
-    /// pair must prove the bytes at exactly this stat hash to the version's
-    /// content hash. A caller's own proof (e.g. "mtime predates the build")
-    /// is not enough — a same-stat rewrite forging the mtime would stamp a
-    /// stat describing bytes the consumer never saw, and the equality fast
-    /// path would then judge them fresh forever. An already-stamped version
-    /// keeps its stamp (it was earned the same way; concurrent captures of
-    /// one version must not regress each other).
-    void try_stamp(VersionID vid,
-                   std::uint64_t size,
-                   std::int64_t mtime_ns,
-                   std::uint64_t uid_device,
-                   std::uint64_t uid_file) {
-        assert(vid.raw < versions.size());
-        auto& version = versions[vid.raw];
-        if(version.mtime_ns != 0 || version.content_hash == 0) {
-            return;
-        }
-        // Corroborate through the fid's earned binding; an unverified or
-        // missing binding simply declines the stamp and the first check
-        // earns it by reading.
-        auto binding = bindings.find(version.fid);
-        if(binding == bindings.end() || !binding->second.earned) {
-            return;
-        }
-        // The live stat's identity must be the earned binding's: a
-        // same-stat replace (new inode, forged size and mtime) would
-        // otherwise corroborate through the replaced file's pair.
-        auto entity = entity_ids.find(entity_key(version.fid, uid_device, uid_file));
-        if(entity == entity_ids.end() || entity->second != binding->second.entity) {
-            return;
-        }
-        auto pair = disk_states.find(binding->second.entity);
-        if(pair == disk_states.end() || pair->second.size != size ||
-           pair->second.mtime_ns != mtime_ns || pair->second.hash != version.content_hash) {
-            return;
-        }
-        version.size = size;
-        version.mtime_ns = mtime_ns;
-        stamp_generation += 1;
-    }
-
-    /// Adopt a stamp persisted by an earlier session — it was earned under
-    /// try_stamp's corroboration discipline back then, which is what makes
-    /// it trustworthy without a live pair now. Only fills a hole: a stamp
-    /// earned this session describes the same bytes at least as recently.
-    /// Refused once the table revoked any stamp: a hole may then be a
-    /// revocation, which a project loading later must not refill from its
-    /// own blobs.
-    void adopt_stamp(VersionID vid, std::uint64_t size, std::int64_t mtime_ns) {
-        assert(vid.raw < versions.size());
-        auto& version = versions[vid.raw];
-        if(revocation_generation == 0 && version.mtime_ns == 0 && version.content_hash != 0 &&
-           mtime_ns != 0) {
-            version.size = size;
-            version.mtime_ns = mtime_ns;
-        }
-    }
-
-    /// A save embedded this file's content into artifacts that will not be
-    /// re-read from disk (synthesized preambles): drop every trust anchor
-    /// so the next check of any of its versions performs a real read — the
-    /// stat fast paths, the shared pair a check would consult instead of
-    /// reading, and verdicts already memoized in the current wave, which
-    /// would bypass the forced point entirely.
-    void force_revalidate(Fid fid) {
-        // Entity-level: dropping only fid-scoped anchors would leave the
-        // pair — and the version stamps of a hardlinked spelling of the
-        // same file — vouching for bytes this call says to re-read.
-        auto entity = ~0u;
-        if(auto binding = bindings.find(fid); binding != bindings.end()) {
-            entity = binding->second.entity;
-            disk_states.erase(entity);
-        }
-        bool revoked = false;
-        for(std::uint32_t i = 0; i < versions.size(); i += 1) {
-            auto& version = versions[i];
-            bool same_file = version.fid == fid;
-            if(!same_file && entity != ~0u) {
-                auto alias = bindings.find(version.fid);
-                same_file = alias != bindings.end() && alias->second.entity == entity;
-            }
-            if(same_file) {
-                revoked = revoked || version.mtime_ns != 0;
-                version.size = 0;
-                version.mtime_ns = 0;
-                wave_verdicts.erase(VersionID{i});
-            }
-        }
-        // Revocation is stamp movement like any other: persisted stamps
-        // (the global blob, artifact dep records) must not outlive it, or
-        // the next session re-adopts trust this call just dropped.
-        if(revoked) {
-            stamp_generation += 1;
-            revocation_generation += 1;
-        }
     }
 
     /// How one wave's check of a version came out. Policy-free facts;
@@ -681,10 +560,7 @@ struct FileTable {
 
     /// Wave-scoped verdict memo: one top-level check operation (a
     /// deps_changed chain, an index need_update batch) opens a Wave, and
-    /// every version is settled at most once inside it. Within a wave, a
-    /// version with no fast path is validated by a real read exactly once;
-    /// the repair the read performs is what later waves' fast paths are
-    /// made of.
+    /// every version is settled at most once inside it.
     llvm::DenseMap<VersionID, Verdict> wave_verdicts;
     bool wave_open = false;
 
@@ -716,11 +592,9 @@ struct FileTable {
         return Wave(*this);
     }
 
-    /// The unified two-layer staleness check: stat equality against the
-    /// version's shared fast path, else a read through the disk-state
-    /// compartment (feeding both compartments), comparing the bytes'
-    /// hash against the version's and repairing the fast path on a
-    /// match. Memoized within the current wave.
+    /// Whether the disk still holds a version's bytes: a live stat, the
+    /// file's observation for it (observe_for: the shared pair, else a
+    /// read), and the hash compared. Memoized within the current wave.
     Verdict check_version(VersionID vid) {
         assert(wave_open && "check_version outside a Wave");
         if(auto it = wave_verdicts.find(vid); it != wave_verdicts.end()) {
@@ -746,60 +620,23 @@ private:
         }
     }
 
-    /// Whether a stat-equality fast path may stand for this fid: once the
-    /// session has learned the file's identity (an earned binding), the
-    /// live stat must still carry it — a rename-over with a forged equal
-    /// stat changes the UniqueID and must fall through to a read. A fid
-    /// with no earned binding keeps cross-session trust: adopted stamps
-    /// serve the cold start before any read has happened.
-    bool stamp_identity_holds(Fid fid, const llvm::sys::fs::file_status& status) const {
-        auto binding = bindings.find(fid);
-        if(binding == bindings.end() || !binding->second.earned) {
-            return true;
-        }
-        auto uid = status.getUniqueID();
-        auto entity = entity_ids.find(entity_key(fid, uid.getDevice(), uid.getFile()));
-        return entity != entity_ids.end() && entity->second == binding->second.entity;
-    }
-
     Verdict check_version_uncached(VersionID vid) {
-        assert(vid.raw < versions.size());
-        auto& version = versions[vid.raw];
-
+        auto& version = this->version(vid);
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(resolve(version.fid), status)) {
             saw_missing(version.fid);
             return Verdict::Missing;
         }
-        auto size = status.getSize();
-        auto mtime_ns = fs::mtime_ns(status);
-        if(version.mtime_ns != 0 && version.size == size && version.mtime_ns == mtime_ns &&
-           stamp_identity_holds(version.fid, status)) {
-            return Verdict::Fresh;
-        }
-
-        // No trusted hash to compare against: never fresh (0 is the
-        // consumed-hash sentinel for "the worker had no bytes to hash").
+        // 0 is the consumed-hash sentinel for "the worker had no bytes to
+        // hash": nothing to compare against, never fresh.
         if(version.content_hash == 0) {
             return Verdict::Stale;
         }
-
         auto obs = observe_for(version.fid, status);
         if(!obs) {
             return Verdict::Unreadable;
         }
-        if(obs->hash != version.content_hash) {
-            return Verdict::Stale;
-        }
-        // Touched but not modified — repair the fast path so the next
-        // check is a single stat again, for every consumer at once. An
-        // unpaired or guard-window observation must not become one.
-        if(obs->reliable) {
-            version.size = obs->size;
-            version.mtime_ns = obs->mtime_ns;
-            stamp_generation += 1;
-        }
-        return Verdict::Fresh;
+        return obs->hash == version.content_hash ? Verdict::Fresh : Verdict::Stale;
     }
 };
 

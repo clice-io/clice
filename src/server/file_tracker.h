@@ -51,7 +51,7 @@ public:
     /// file's compile — through the file table, which turns every look
     /// that finds other content than it last saw into a change (see
     /// FileTable::changes); the sweep itself keeps no state. An unchanged
-    /// file costs one stat the shared pair vouches for, a moved stamp one
+    /// file costs one stat the shared pair vouches for, a moved stat one
     /// read, so touch-only changes stay silent. Returns the build's gain of
     /// default-command sources as a CDBChanged event.
     ///

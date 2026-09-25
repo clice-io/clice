@@ -25,12 +25,6 @@ class PCMFamily;
 /// event sourcing), the event batch is just the call's argument.
 struct FileEvent {
     enum class Kind : std::uint8_t {
-        /// didOpen installed a fresh buffer for the file.
-        BufferOpened,
-        /// didChange folded edits into the open buffer.
-        BufferEdited,
-        /// didClose dropped the buffer.
-        BufferClosed,
         /// The file's content on disk changed — open or not: the file table
         /// saw other bytes than it last saw, whoever looked (the workspace
         /// sweep, a didSave, a rescan, a compile's staleness check).
@@ -67,18 +61,6 @@ struct FileEvent {
     /// CDBChanged only: the reload delta.
     CDBDelta cdb;
 
-    static FileEvent buffer_opened(Fid path_id) {
-        return {Kind::BufferOpened, path_id};
-    }
-
-    static FileEvent buffer_edited(Fid path_id) {
-        return {Kind::BufferEdited, path_id};
-    }
-
-    static FileEvent buffer_closed(Fid path_id) {
-        return {Kind::BufferClosed, path_id};
-    }
-
     static FileEvent disk_changed(Fid path_id) {
         return {Kind::DiskChanged, path_id};
     }
@@ -114,8 +96,7 @@ llvm::SmallVector<FileEvent> take_disk_events(FileTable& files);
 ///
 /// Effect algebra: the sets are not disjoint, and stronger effects subsume
 /// weaker ones on the same file — mark_ast_dirty implies the trial reset
-/// that reset_trial asks for, force_revalidate implies mark_ast_dirty's
-/// session treatment, and one event may push a file into several sets
+/// that reset_trial asks for, and one event may push a file into several sets
 /// (DiskChanged emits both reset_trial and reset_header_mode for the
 /// changed file). Execution is idempotent per effect, so the overlap is harmless;
 /// what matters is that each set can also occur ALONE (reset_trial without
@@ -136,10 +117,6 @@ struct DirtySet {
     /// persisted self-containment verdict so the next compile re-earns it.
     /// Executed by the command resolver, which owns the verdicts.
     llvm::SmallVector<Fid> reset_header_mode;
-    /// Header sessions whose synthesized preamble embeds changed content:
-    /// drop the chain snapshot's fast paths so every chain file is
-    /// re-validated by hash, plus the mark_ast_dirty treatment.
-    llvm::SmallVector<Fid> force_revalidate;
     /// Closed files whose own content changed: their index rows describe
     /// text that no longer exists. Enqueue for background reindexing as
     /// ReindexReason::ContentChanged — queries skip these files'
@@ -214,11 +191,10 @@ public:
     /// Follows the later-event rule above: a later removal's clear cancels
     /// the drop, since the deleted file's last-known index keeps serving.
     llvm::SmallVector<Fid> drop_index;
-    /// Headers whose resolved context borrows a compile command that no
-    /// longer exists in that form (the host's CDB entry changed): drop the
-    /// context so the next use re-resolves. Content validation cannot see
-    /// a flag change, so neither force_revalidate nor the deps snapshot
-    /// covers this. Executed by the editor context.
+    /// Headers whose resolved context was derived from something that
+    /// changed — the host's CDB entry, a file along the include chain:
+    /// drop the context so the next use re-resolves. Executed by the
+    /// editor context.
     llvm::SmallVector<Fid> drop_context;
     /// Include edges changed: context choices may now be orphaned; run the
     /// editor context's orphan cleanup.
@@ -228,10 +204,9 @@ public:
 
     bool empty() const {
         return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
-               reset_header_mode.empty() && force_revalidate.empty() &&
-               reindex_content_changed.empty() && reindex_deps_only.empty() &&
-               clear_reindex.empty() && drop_index.empty() && drop_context.empty() &&
-               !recheck_contexts && !reschedule_indexing;
+               reset_header_mode.empty() && reindex_content_changed.empty() &&
+               reindex_deps_only.empty() && clear_reindex.empty() && drop_index.empty() &&
+               drop_context.empty() && !recheck_contexts && !reschedule_indexing;
     }
 };
 
@@ -252,10 +227,9 @@ public:
 /// if it (1) has no cross-file cascade, (2) touches only a single owner's
 /// state, and (3) completes within one synchronous section. SessionStore's
 /// buffer mechanics qualify (apply_open/apply_change own text, version,
-/// ast_dirty, generation; the BufferOpened/BufferEdited/BufferClosed cases
-/// below exist as hooks for a cross-file policy — today a buffer shadows
-/// the disk for its own file's compile only, so no other file reads it —
-/// not as the sync path), and so
+/// ast_dirty, generation — a buffer shadows the disk for its own file's
+/// compile only, so no other file reads it, and there is no event for
+/// opening, editing or closing one), and so
 /// does clice/switchContext's session reset (single owner, synchronous,
 /// no cascade). Anything failing a clause goes through the pipeline — do
 /// not add ceremonial event kinds for exempt logic.

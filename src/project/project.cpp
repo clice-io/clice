@@ -319,8 +319,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
                                    llvm::ArrayRef<DepFile> deps,
                                    std::int64_t build_at) {
     // Files whose mtime falls within the guard of the build start count as
-    // "possibly modified during the build" and offer no fast-path
-    // baseline; one passing hash comparison repairs them (check_version).
+    // "possibly modified during the build".
     auto baseline_before_ns = fs::stat_baseline_before_ns(build_at);
 
     DepsSnapshot snap;
@@ -344,9 +343,8 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
 
         auto size = status.getSize();
         auto mtime_ns = fs::mtime_ns(status);
-        bool untouched = mtime_ns <= baseline_before_ns;
         if(hash == 0) {
-            if(!untouched) {
+            if(mtime_ns > baseline_before_ns) {
                 // The worker could not hash the consumed bytes and the file
                 // may have changed during the build — no version can name
                 // them. The dep stays version-less and reads as changed
@@ -365,13 +363,6 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
         }
 
         dep.version = files.intern_version(dep.path_id, hash);
-        if(untouched) {
-            // Untouched since before the build started — the disk still
-            // holds the consumed bytes, so the stat is a trustworthy fast
-            // path (recorded only when corroborated, see try_stamp).
-            auto uid = status.getUniqueID();
-            files.try_stamp(dep.version, size, mtime_ns, uid.getDevice(), uid.getFile());
-        }
     }
     return snap;
 }
@@ -400,12 +391,6 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         }
     }
     return false;
-}
-
-void force_revalidate_deps(FileTable& files, const DepsSnapshot& snap) {
-    for(auto& dep: snap) {
-        files.force_revalidate(dep.path_id);
-    }
 }
 
 std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path) {

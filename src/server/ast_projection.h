@@ -76,10 +76,8 @@ struct ASTProjectionTable {
         std::shared_ptr<const ASTProjection> projection;
 
         /// Dependency snapshot from the last successful AST compilation,
-        /// used for two-layer staleness detection (mtime + content hash).
-        /// Kept out of the immutable projection: a passing staleness
-        /// check repairs the snapshot's stat fast paths in place, and no
-        /// reader outside the family consumes it.
+        /// used for staleness detection. Kept out of the immutable
+        /// projection: no reader outside the family consumes it.
         std::optional<DepsSnapshot> deps;
 
         /// Whether the projection describes the current buffer: the last

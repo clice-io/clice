@@ -170,10 +170,6 @@ struct ProjectIndex {
     /// persisted ids, handing ids out to versions that have none yet.
     TUManifest export_manifest(const TUManifest& manifest);
 
-    /// FileTable::revocation_generation as this index's lineage counts it:
-    /// what the loaded global blob recorded, plus the revocations since.
-    std::uint64_t revocation_generation(const FileTable& files) const;
-
     /// Install (or replace) a TU's manifest and rederive the affected
     /// contribution entries. Returns the file path_ids whose contribution
     /// set changed — the caller refreshes those shards' live-variant masks.
@@ -260,11 +256,6 @@ private:
     std::uint32_t next_persisted_id = 0;
 
     std::uint32_t persisted_id(VersionID version);
-
-    /// The revocation count the loaded blob recorded, and the file
-    /// table's own count when it loaded.
-    std::uint64_t loaded_revocations = 0;
-    std::uint64_t revocations_at_load = 0;
 };
 
 }  // namespace clice::index

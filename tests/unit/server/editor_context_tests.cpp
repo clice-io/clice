@@ -298,38 +298,6 @@ TEST_CASE(ValidateDropsStaleChoice) {
     ASSERT_FALSE(resolver.selections.contains(main_file));
 }
 
-TEST_CASE(InvalidateDropsBorrowed) {
-    FileTable files;
-    Project project{files};
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    auto borrowed = project.file_table.intern("/proj/borrowed.h");
-    auto synthesized = project.file_table.intern("/proj/synthesized.h");
-
-    // A self-contained borrow tracks no chain deps: forcing re-validation
-    // could never trigger anything, so invalidation drops it outright.
-    resolver.header_contexts[borrowed] = HeaderContext{};
-    resolver.invalidate_header_deps(borrowed);
-    ASSERT_FALSE(resolver.header_contexts.contains(borrowed));
-
-    // A synthesized context re-validates its chain by content hash: the
-    // shared version's fast path is dropped, the consumed version stays.
-    auto& context = resolver.header_contexts[synthesized];
-    auto vid = project.file_table.intern_version(borrowed, 7);
-    context.deps.push_back({.path_id = borrowed, .version = vid});
-    project.file_table.adopt_stamp(vid, 42, 123);
-    ASSERT_EQ(project.file_table.version(vid).mtime_ns, 123);
-    auto stamps = project.file_table.stamp_generation;
-    resolver.invalidate_header_deps(synthesized);
-    ASSERT_TRUE(resolver.header_contexts.contains(synthesized));
-    ASSERT_EQ(project.file_table.version(vid).mtime_ns, 0);
-    ASSERT_EQ(resolver.header_contexts[synthesized].deps[0].version, vid);
-    // The revocation is stamp movement — what tells persistence the
-    // dropped fast path must not survive in the global blob.
-    ASSERT_TRUE(project.file_table.stamp_generation != stamps);
-}
-
 };  // TEST_SUITE(EditorContext)
 
 }  // namespace

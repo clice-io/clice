@@ -164,22 +164,25 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
         mark_dependent(root, dirty);
     }
 
-    // Headers whose resolved context embeds the file through its include
-    // chain must re-synthesize their preamble: it copies the chain files'
-    // content, so neither the dependents cascade above nor clang's own
-    // dependency tracking catches this.
+    // Headers whose resolved context was derived from the file through its
+    // include chain resolve it again: the synthesized preamble copies the
+    // chain files' content, so neither the dependents cascade above nor
+    // clang's own dependency tracking catches this.
     for(auto header_id: contexts.chain_dependents(path_id)) {
-        dirty.force_revalidate.push_back(header_id);
+        dirty.drop_context.push_back(header_id);
         // The chain change may have made the header self-contained (e.g. a
         // dependency now provides the missing declarations); drop the
         // persisted verdict so the trial can downgrade it.
         dirty.reset_header_mode.push_back(header_id);
+        auto session = store.find(header_id);
+        if(session) {
+            dirty.mark_ast_dirty.push_back(header_id);
+        }
         // Contexts outlive their sessions: a closed header's shard rows
         // were indexed under the old chain and only a background reindex
         // can refresh them. The header's own content did not change, so
         // its rows keep serving meanwhile. An open index-only session is
         // in the same boat — its shard is what the LSP serves.
-        auto session = store.find(header_id);
         if(!session || session->serving == ServingMode::IndexOnly) {
             dirty.add_reindex_deps_only(header_id);
         }
@@ -207,23 +210,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     };
     for(auto& event: events) {
         switch(event.kind) {
-            case FileEvent::Kind::BufferOpened: {
-                // Buffer installation itself is SessionStore::apply_open's
-                // job; nothing cross-file to invalidate yet.
-                break;
-            }
-            case FileEvent::Kind::BufferEdited: {
-                // Buffer sync (text/version/ast_dirty/generation) is
-                // SessionStore::apply_change's job; nothing cross-file yet.
-                break;
-            }
-            case FileEvent::Kind::BufferClosed: {
-                // Only the buffer's shadow over the file's own compile goes:
-                // everything else never stopped reading the disk, and every
-                // disk change while the buffer was open was cascaded when it
-                // was seen. The session's own products die with it.
-                break;
-            }
             case FileEvent::Kind::DiskChanged: {
                 // Whether or not a buffer is open: the disk is what every
                 // other file compiles against and what the index describes.
@@ -404,7 +390,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     dedup(dirty.mark_lost);
     dedup(dirty.reset_trial);
     dedup(dirty.reset_header_mode);
-    dedup(dirty.force_revalidate);
     dedup(dirty.reindex_content_changed);
     dedup(dirty.reindex_deps_only);
     dedup(dirty.drop_index);

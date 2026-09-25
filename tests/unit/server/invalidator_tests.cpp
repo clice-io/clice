@@ -172,26 +172,6 @@ TEST_CASE(DiskRemovedDropsProvider) {
     EXPECT_TRUE(project.dep_graph.lookup_module("m").empty());
 }
 
-TEST_CASE(NoOpEventsNoEffects) {
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto file = project.file_table.intern("/proj/a.cpp");
-    store.open(file);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    // Buffer sync stays in SessionStore (exempt from the pipeline); these
-    // events must produce no effects of their own.
-    FileEvent events[] = {FileEvent::buffer_opened(file), FileEvent::buffer_edited(file)};
-    auto dirty = invalidator.apply(events);
-
-    ASSERT_TRUE(dirty.empty());
-}
-
 TEST_CASE(DiskChangeSparesOwnSession) {
     TempDir tmp;
     tmp.touch("a.h", "int x;");
@@ -218,7 +198,7 @@ TEST_CASE(DiskChangeSparesOwnSession) {
     ASSERT_EQ(dirty.reset_header_mode, llvm::SmallVector<Fid>{saved});
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
     ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{saved});
-    ASSERT_TRUE(dirty.force_revalidate.empty());
+    ASSERT_TRUE(dirty.drop_context.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
     ASSERT_TRUE(dirty.reschedule_indexing);
 }
@@ -279,12 +259,13 @@ TEST_CASE(ChainHitAndMiss) {
     Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
-    // Every context embedding the saved file re-validates and drops its
-    // verdict; a closed one additionally reindexes in the background — its
-    // shard rows were built under the old chain.
-    llvm::SmallVector<Fid> revalidated{hit, closed};
-    llvm::sort(revalidated);
-    ASSERT_EQ(dirty.force_revalidate, revalidated);
+    // Every context derived through the saved file resolves again and
+    // drops its verdict; an open one recompiles, a closed one reindexes in
+    // the background — its shard rows were built under the old chain.
+    llvm::SmallVector<Fid> dropped{hit, closed};
+    llvm::sort(dropped);
+    ASSERT_EQ(dirty.drop_context, dropped);
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{hit});
     llvm::SmallVector<Fid> reset{saved, hit, closed};
     llvm::sort(reset);
     ASSERT_EQ(dirty.reset_header_mode, reset);
@@ -578,28 +559,6 @@ TEST_CASE(CompiledIncluderCascades) {
     llvm::SmallVector<Fid> reindexed{scanned, compiled};
     llvm::sort(reindexed);
     ASSERT_EQ(dirty.reindex_deps_only, reindexed);
-}
-
-TEST_CASE(CloseNoEffects) {
-    // Closing drops the buffer's shadow over its own file's compile; what
-    // the disk did meanwhile was cascaded when it was seen.
-    TempDir tmp;
-    tmp.touch("h.h", "int disk;");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto host = project.file_table.intern(tmp.path("a.cpp"));
-    project.dep_graph.set_includes(host, 0, {{header}});
-    project.dep_graph.build_reverse_map();
-    project.project_index.shards[header] = shard_of("int old;");
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    ASSERT_TRUE(invalidator.apply(FileEvent::buffer_closed(header)).empty());
 }
 
 TEST_CASE(DiskRemovedScrubsSourceRole) {

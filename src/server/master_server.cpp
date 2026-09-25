@@ -340,13 +340,6 @@ void MasterServer::builds_changed() {
     }
 }
 
-void MasterServer::stamps_revoked() {
-    for(auto& project: projects) {
-        project->sched.store.mark_global_dirty();
-        project->project.mark_artifacts_dirty();
-    }
-}
-
 void MasterServer::open_session(Fid path_id, std::string text, int version) {
     discover_around(path_id);
     if(lifecycle == ServerLifecycle::Ready && !owners.contains(path_id) && !compiler(path_id)) {

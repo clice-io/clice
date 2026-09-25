@@ -65,18 +65,6 @@ Resolution EditorContext::resolve_command(llvm::StringRef path,
     return resolution;
 }
 
-void EditorContext::invalidate_header_deps(Fid path_id) {
-    auto* context = header_context(path_id);
-    if(!context) {
-        return;
-    }
-    if(context->deps.empty()) {
-        drop_header_context(path_id);
-    } else {
-        force_revalidate_deps(project.file_table, context->deps);
-    }
-}
-
 llvm::SmallVector<Fid> EditorContext::chain_dependents(Fid path_id) const {
     llvm::SmallVector<Fid> result;
     for(auto& [header_id, context]: header_contexts) {

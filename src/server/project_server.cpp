@@ -300,7 +300,6 @@ void ProjectServer::close_session(Fid path_id) {
     // so nothing entry-level to clean up — but the loaded-state budget
     // shrinks with the open count, and this is the moment it does.
     sched.pch.enforce_loaded_budget();
-    dispatch(FileEvent::buffer_closed(path_id));
     LOG_DEBUG("Closed {}", path);
 }
 
@@ -320,7 +319,6 @@ void ProjectServer::open_session(Fid path_id, std::string text, int version) {
         return;
     }
     contexts.validate_saved_context(path_id);
-    dispatch(FileEvent::buffer_opened(path_id));
     settle_open_serving(session);
 }
 
@@ -383,27 +381,6 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         if(sessions.find(path_id)) {
             ast.invalidate(path_id);
         }
-    }
-
-    // Headers whose synthesized preamble embeds changed chain content:
-    // dropping the snapshot's fast paths forces deps_changed() to re-validate
-    // every chain file by content hash; open sessions also recompile and
-    // re-trial.
-    auto stamps = project.file_table.stamp_generation;
-    for(auto path_id: dirty.force_revalidate) {
-        contexts.invalidate_header_deps(path_id);
-        if(auto session = sessions.find(path_id)) {
-            ast.invalidate(path_id);
-            session->trial_done = false;
-        }
-    }
-    // Revoked stamps live on in the global blob's version table and the
-    // artifacts blob's dep records — of every project sharing the table;
-    // all must rewrite, or a restart after a same-stat dependency edit
-    // re-adopts the dropped fast paths and judges the edited file fresh
-    // without a read.
-    if(project.file_table.stamp_generation != stamps) {
-        server.stamps_revoked();
     }
 
     // The header's borrowed compile command changed: its resolved context

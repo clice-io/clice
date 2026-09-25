@@ -81,9 +81,9 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // resolve against them, so equal preamble text in different directories
     // can mean different content.  The clang version guards against reusing
     // blobs a newer bundled clang would reject, and the build configuration
-    // keeps the blob with the library that records its dependency stamps:
+    // keeps the blob with the library that records its dependencies:
     // shared across configurations, one could rebuild it while another's
-    // stamps still vouched for the old content.
+    // records still vouched for the old content.
     auto preamble_text = text.substr(0, bound);
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               project.build.active_configuration(),

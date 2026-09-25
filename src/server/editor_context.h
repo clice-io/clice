@@ -108,19 +108,8 @@ struct EditorContext {
     /// every reuse, so none needs dropping here.
     void drop_evicted_artifacts();
 
-    /// Drop the header context's dependency fast paths so the next use
-    /// re-validates every chain file by a real read. The context itself is
-    /// kept: an in-flight compile can clobber ast_dirty when it finishes,
-    /// and the surviving snapshot is what lets stale_input() recover. A
-    /// self-contained borrow tracks no chain deps, so forcing its
-    /// re-validation could never trigger anything — drop it instead and let
-    /// the next use re-resolve against the updated include graph (cheap: no
-    /// synthesis on that route).
-    void invalidate_header_deps(Fid path_id);
-
-    /// Headers whose resolved context embeds `path_id` through its include
-    /// chain — the synthesized preamble copies the chain files' content, so
-    /// a save along it must force re-validation.
+    /// Headers whose resolved context was derived through `path_id` — a
+    /// file along its include chain.
     llvm::SmallVector<Fid> chain_dependents(Fid path_id) const;
 
     /// Append the header context's suffix as one trailing #include line: the

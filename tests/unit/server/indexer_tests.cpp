@@ -154,8 +154,8 @@ struct IndexerFixture {
         return index_store.global_dirty;
     }
 
-    /// Drop the merge's own dirty mark so a later assertion isolates the
-    /// stamp-repair path.
+    /// Drop the merge's own dirty mark so a later assertion isolates what
+    /// a check alone dirties.
     void reset_global_dirty() {
         index_store.global_dirty = false;
     }
@@ -1243,8 +1243,8 @@ struct Indexed {
         tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
         src = tmp.path("main.cpp");
         header = tmp.path("dep.h");
-        // Age the files out of the mtime guard window so the merge records
-        // stat stamps, the way real project files predate an index run.
+        // Age the files out of the mtime guard window so their stats can
+        // vouch for them, the way real project files predate an index run.
         if(!set_file_mtime(src, file_mtime_ns(src) - 10'000'000'000) ||
            !set_file_mtime(header, file_mtime_ns(header) - 10'000'000'000)) {
             return false;
@@ -1258,19 +1258,18 @@ struct Indexed {
     }
 };
 
-TEST_CASE(TouchRepairsStamp) {
+TEST_CASE(TouchStaysFresh) {
     Indexed x;
     ASSERT_TRUE(x.setup());
     ASSERT_FALSE(x.f.need_update(x.src));
 
-    // Same bytes, new mtime (still outside the guard window): the stat
-    // fast path misses, the hash proves a mere touch, and the stamp is
-    // repaired in place (dirtying the global blob so the repair persists).
+    // Same bytes, new mtime: the stat fast path misses, the hash proves a
+    // mere touch, and nothing persisted needs rewriting.
     ASSERT_TRUE(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
     x.f.reset_global_dirty();
     x.f.clear_verdicts();
     ASSERT_FALSE(x.f.need_update(x.src));
-    ASSERT_TRUE(x.f.global_dirty());
+    ASSERT_FALSE(x.f.global_dirty());
 }
 
 TEST_CASE(PreservedMtimeEditStale) {
@@ -1337,8 +1336,8 @@ TEST_CASE(LoadRestoresIndex) {
     ASSERT_TRUE(f.project.project_index.shards.contains(tu_id));
     ASSERT_TRUE(f.project.project_index.shards.contains(header_id));
     ASSERT_TRUE(f.project.project_index.contributions.lookup(header_id).contains(tu_id));
-    // The persisted FileVersion stamps make the untouched TU judge fresh
-    // without any reindex.
+    // The persisted versions make the untouched TU judge fresh without any
+    // reindex.
     ASSERT_FALSE(f.need_update(src));
 }
 
@@ -2783,73 +2782,6 @@ TEST_CASE(VanishedHeaderDebtDies) {
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
     f.load();
     ASSERT_FALSE(f.pump.pending_reason(f.project.file_table.intern(header)).has_value());
-}
-
-TEST_CASE(RevokedStampStaysRevoked) {
-    // The global and artifacts blobs commit non-atomically; a crash
-    // between the two writes of a revocation save leaves a global
-    // recording the revocation next to an artifacts blob predating it.
-    // Adopting the old blob's dep stamps would undo the revocation.
-    TempDir tmp;
-    tmp.touch("dep.h", "int x;\n");
-    auto dep_path = tmp.path("dep.h");
-    std::string stale_artifacts;
-
-    auto setup = [&](IndexerFixture& f) {
-        open_store(tmp, f.project);
-        f.project.store->register_namespace(
-            {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU});
-    };
-    auto dep_version = [&](IndexerFixture& f) {
-        return f.project.file_table.intern_version(f.project.file_table.intern(dep_path), 7);
-    };
-
-    {
-        IndexerFixture f;
-        setup(f);
-        auto pending = f.project.store->begin_store("pcm", "k");
-        ASSERT_TRUE(fs::write(pending.tmp_path, "pcm-bytes").has_value());
-        ASSERT_TRUE(f.project.store->commit(std::move(pending)).has_value());
-
-        auto dep_id = f.project.file_table.intern(dep_path);
-        auto vid = dep_version(f);
-        f.project.file_table.adopt_stamp(vid, 42, 123);
-        auto& st = f.project.pcm_cache[dep_id];
-        st.path = "dep.pcm";
-        st.key = "k";
-        st.deps.push_back({.path_id = dep_id, .version = vid});
-        f.project.mark_artifacts_dirty();
-        f.index_store.mark_global_dirty();
-        f.save();
-
-        auto blob = f.project.index_db->read(index::IndexBlobKind::Artifacts, "artifacts");
-        ASSERT_TRUE(bool(blob));
-        stale_artifacts = blob.buffer->getBuffer().str();
-    }
-
-    {
-        // Matching revocation generations adopt the persisted stamp...
-        IndexerFixture f;
-        setup(f);
-        f.load();
-        ASSERT_EQ(f.project.file_table.version(dep_version(f)).mtime_ns, std::int64_t(123));
-
-        // ...then revoke, persist both blobs, and put the pre-revocation
-        // artifacts blob back — the on-disk pair a mid-batch crash leaves.
-        f.project.file_table.force_revalidate(f.project.file_table.intern(dep_path));
-        f.project.mark_artifacts_dirty();
-        f.index_store.mark_global_dirty();
-        f.save();
-        index::BlobDatabase::Blob stale{index::IndexBlobKind::Artifacts,
-                                        "artifacts",
-                                        stale_artifacts};
-        ASSERT_TRUE(f.project.index_db->write(stale, {}).empty());
-    }
-
-    IndexerFixture f;
-    setup(f);
-    f.load();
-    ASSERT_EQ(f.project.file_table.version(dep_version(f)).mtime_ns, std::int64_t(0));
 }
 
 TEST_CASE(StaleFormatDropsPch) {

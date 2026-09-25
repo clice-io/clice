@@ -200,8 +200,7 @@ private:
                                             const std::vector<std::string>& arguments,
                                             llvm::StringRef text);
 
-    /// Non-const: a passing staleness check may repair the snapshots'
-    /// stat fast paths in place (see deps_changed).
+    /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);
 
     /// What a buffer state owes the PCH family: nothing (an empty

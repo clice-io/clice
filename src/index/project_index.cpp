@@ -33,16 +33,11 @@ struct GlobalBlob {
     /// See ProjectIndex::global_generation.
     std::uint64_t generation = 0;
 
-    /// See FileTable::revocation_generation.
-    std::uint64_t revocation_generation = 0;
-
     std::uint32_t next_fv_id = 0;
 
     std::vector<std::uint32_t> fv_ids;
     std::vector<std::string> fv_paths;
     std::vector<std::uint64_t> fv_hashes;
-    std::vector<std::uint64_t> fv_sizes;
-    std::vector<std::int64_t> fv_mtimes;
 
     /// Path id -> path for every id the symbol columns reference. Ids
     /// are dense and stable across writes: a path keeps its id for as
@@ -95,13 +90,10 @@ struct ProjectIndex::Base {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
     std::uint64_t generation = 0;
-    std::uint64_t revocation_generation = 0;
     std::uint32_t next_fv_id = 0;
     llvm::ArrayRef<std::uint32_t> fv_ids;
     kota::codec::fbs::array_view<std::string> fv_paths;
     llvm::ArrayRef<std::uint64_t> fv_hashes;
-    llvm::ArrayRef<std::uint64_t> fv_sizes;
-    llvm::ArrayRef<std::int64_t> fv_mtimes;
 
     kota::codec::fbs::array_view<std::string> paths;
     llvm::ArrayRef<std::uint64_t> hashes;
@@ -178,13 +170,10 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
         return std::unexpected("written by another index format version");
     }
     generation = root[&GlobalBlob::generation];
-    revocation_generation = root[&GlobalBlob::revocation_generation];
     next_fv_id = root[&GlobalBlob::next_fv_id];
     fv_ids = to_array_ref(root[&GlobalBlob::fv_ids]);
     fv_paths = root[&GlobalBlob::fv_paths];
     fv_hashes = to_array_ref(root[&GlobalBlob::fv_hashes]);
-    fv_sizes = to_array_ref(root[&GlobalBlob::fv_sizes]);
-    fv_mtimes = to_array_ref(root[&GlobalBlob::fv_mtimes]);
     paths = root[&GlobalBlob::paths];
     hashes = to_array_ref(root[&GlobalBlob::sym_hashes]);
     names = to_ref(root[&GlobalBlob::sym_names]);
@@ -204,8 +193,7 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     search_pending = to_array_ref(root[&GlobalBlob::search_pending]);
 
     auto version_count = fv_ids.size();
-    if(fv_paths.size() != version_count || fv_hashes.size() != version_count ||
-       fv_sizes.size() != version_count || fv_mtimes.size() != version_count) {
+    if(fv_paths.size() != version_count || fv_hashes.size() != version_count) {
         return std::unexpected("file version columns do not line up");
     }
     if(manifest_fvs.size() != manifest_gens.size()) {
@@ -340,17 +328,12 @@ std::expected<void, llvm::StringRef>
         }
     }
 
-    // A version the table already holds — another project's index, or
-    // artifact records — keeps its stamp: adopt_stamp only fills a hole.
     // Two spellings of one file intern to the same version; the ids both
     // stay mapped to it.
-    loaded_revocations = blob.revocation_generation;
-    revocations_at_load = files.revocation_generation;
     next_persisted_id = blob.next_fv_id;
     for(std::size_t i = 0; i < count; i += 1) {
         auto path_id = files.intern(to_ref(blob.fv_paths[i]));
         auto id = files.intern_version(path_id, blob.fv_hashes[i]);
-        files.adopt_stamp(id, blob.fv_sizes[i], blob.fv_mtimes[i]);
         runtime_ids.try_emplace(blob.fv_ids[i], id);
         persisted_ids.try_emplace(id, blob.fv_ids[i]);
     }
@@ -667,7 +650,6 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     GlobalBlob blob;
     blob.format_version = index_format_version;
     blob.generation = global_generation;
-    blob.revocation_generation = revocation_generation(files);
 
     llvm::SmallVector<std::pair<std::uint32_t, VersionID>> ids;
     ids.reserve(referenced.size());
@@ -680,8 +662,6 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         blob.fv_ids.push_back(persisted);
         blob.fv_paths.emplace_back(files.resolve(record.fid));
         blob.fv_hashes.push_back(record.content_hash);
-        blob.fv_sizes.push_back(record.size);
-        blob.fv_mtimes.push_back(record.mtime_ns);
     }
     blob.next_fv_id = next_persisted_id;
 
@@ -855,10 +835,6 @@ std::uint32_t ProjectIndex::persisted_id(VersionID version) {
         next_persisted_id += 1;
     }
     return it->second;
-}
-
-std::uint64_t ProjectIndex::revocation_generation(const FileTable& files) const {
-    return loaded_revocations + (files.revocation_generation - revocations_at_load);
 }
 
 llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,

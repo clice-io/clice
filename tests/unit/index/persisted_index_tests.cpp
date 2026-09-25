@@ -96,8 +96,6 @@ index::ProjectIndex build_project(clice::FileTable& pool,
     index::ProjectIndex project;
     auto path_id = pool.intern(path);
     auto fv = pool.intern_version(path_id, 0xabcd);
-    pool.versions[fv.raw].size = 100;
-    pool.versions[fv.raw].mtime_ns = 5555;
 
     index::TUManifest manifest;
     manifest.tu_fv = pool.intern_version(pool.intern(tu), 0x1111);
@@ -156,11 +154,7 @@ TEST_CASE(GlobalRoundTripRemap) {
     ASSERT_EQ(pins.size(), std::size_t(1));
     ASSERT_EQ(pins.find(tu_fv->second)->second, 9u);
 
-    auto fv_it = fresh.version_ids.find({*id, std::uint64_t(0xabcd)});
-    ASSERT_TRUE(fv_it != fresh.version_ids.end());
-    auto& record = fresh.version(fv_it->second);
-    ASSERT_EQ(record.size, 100u);
-    ASSERT_EQ(record.mtime_ns, 5555);
+    ASSERT_TRUE(fresh.version_ids.contains({*id, std::uint64_t(0xabcd)}));
 }
 
 TEST_CASE(GlobalRebaseKeepsChanges) {
@@ -251,13 +245,10 @@ TEST_CASE(GlobalVersionGate) {
 struct GlobalBlobMirror {
     std::uint32_t format_version = index::index_format_version;
     std::uint64_t generation = 0;
-    std::uint64_t revocation_generation = 0;
     std::uint32_t next_fv_id = 0;
     std::vector<std::uint32_t> fv_ids;
     std::vector<std::string> fv_paths;
     std::vector<std::uint64_t> fv_hashes;
-    std::vector<std::uint64_t> fv_sizes;
-    std::vector<std::int64_t> fv_mtimes;
     std::vector<std::string> paths;
     std::vector<std::uint64_t> sym_hashes;
     std::string sym_names;
@@ -333,8 +324,6 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     mirror.fv_ids = {7};
     mirror.fv_paths = {"/proj/partial.h"};
     mirror.fv_hashes = {0x1};
-    mirror.fv_sizes = {10};
-    mirror.fv_mtimes = {10};
     mirror.add_symbol(43, "other", {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}});
     auto corrupt = encode(mirror);
     ASSERT_TRUE(corrupt.has_value());
@@ -381,8 +370,6 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     mirror.fv_ids = {7, 7};
     mirror.fv_paths = {"/proj/a.h", "/proj/b.h"};
     mirror.fv_hashes = {0x1, 0x2};
-    mirror.fv_sizes = {1, 2};
-    mirror.fv_mtimes = {1, 2};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -421,8 +408,6 @@ TEST_CASE(GlobalBadCounterRejected) {
     mirror.fv_ids = {7};
     mirror.fv_paths = {"/proj/a.h"};
     mirror.fv_hashes = {0x1};
-    mirror.fv_sizes = {1};
-    mirror.fv_mtimes = {1};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -440,8 +425,6 @@ TEST_CASE(GlobalBadCounterRejected) {
     mirror.fv_ids = {};
     mirror.fv_paths = {};
     mirror.fv_hashes = {};
-    mirror.fv_sizes = {};
-    mirror.fv_mtimes = {};
     auto reserved = encode(mirror);
     ASSERT_TRUE(reserved.has_value());
     ASSERT_FALSE(loaded.load_global(bytes_of(*reserved), pool, pins).has_value());
@@ -559,8 +542,6 @@ TEST_CASE(GlobalReservedKeysRejected) {
         mirror.fv_ids = {0xffffffffu};
         mirror.fv_paths = {"/proj/a.h"};
         mirror.fv_hashes = {0x1};
-        mirror.fv_sizes = {1};
-        mirror.fv_mtimes = {1};
         auto bytes = encode(mirror);
         ASSERT_TRUE(bytes.has_value());
         ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
@@ -599,8 +580,6 @@ TEST_CASE(UnknownFileVersionsDetected) {
     mirror.fv_ids = {3};
     mirror.fv_paths = {"/proj/a.h"};
     mirror.fv_hashes = {0x1};
-    mirror.fv_sizes = {1};
-    mirror.fv_mtimes = {1};
     auto bytes = encode(mirror);
     ASSERT_TRUE(bytes.has_value());
 
@@ -662,7 +641,6 @@ TEST_CASE(SharedTableLineages) {
     ASSERT_EQ(shared.versions.size(), std::size_t(3));
     auto header = shared.version_ids.find({*shared.find("/lib/used.h"), std::uint64_t(0xabcd)});
     ASSERT_TRUE(header != shared.version_ids.end());
-    ASSERT_EQ(shared.version(header->second).mtime_ns, 5555);
 
     auto imported = persisted;
     ASSERT_TRUE(second_loaded.import_manifest(imported));

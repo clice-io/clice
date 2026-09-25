@@ -140,10 +140,6 @@ public:
     /// into index_progress and wake the transports.
     void index_progress_changed(ProjectServer& project);
 
-    /// A project revoked stamps of the shared file table: every project's
-    /// persisted stamps rewrite at its next save.
-    void stamps_revoked();
-
     /// A project's database gained or lost entries: move the open
     /// documents routing now sends to another project.
     void builds_changed();

@@ -509,11 +509,8 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(
 
     // Read the chain files (all but the target) from disk. The synthesized
     // preamble deliberately reflects disk state, never open-document buffers:
-    // open files must not be depended upon by other files. The hash covers
-    // the bytes just read — the bytes the synthesized preamble embeds —
-    // and the paired stat becomes the version's fast path only when the
-    // read proved it reliable (see read_file_observed); otherwise the next
-    // check compares the disk against the embedded bytes.
+    // open files must not be depended upon by other files. The versions
+    // name the bytes just read — the bytes the synthesized preamble embeds.
     std::vector<std::string> chain_contents;
     llvm::SmallVector<ChainEntry> chain_entries;
     DepsSnapshot deps;
@@ -530,13 +527,9 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(
         chain_contents.emplace_back(observed->content->getBuffer());
         chain_entries.push_back({cur_path, chain_contents.back()});
         project.file_table.observe(chain[i], observed->obs);
-        auto vid = project.file_table.intern_version(chain[i], observed->obs.hash);
-        deps.push_back({.path_id = chain[i], .version = vid});
-        project.file_table.try_stamp(vid,
-                                     observed->obs.size,
-                                     observed->obs.mtime_ns,
-                                     observed->obs.uid_device,
-                                     observed->obs.uid_file);
+        deps.push_back(
+            {.path_id = chain[i],
+             .version = project.file_table.intern_version(chain[i], observed->obs.hash)});
     }
 
     if(!project.store) {
@@ -631,13 +624,9 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(
     if(!self_snapshot_path.empty()) {
         // The self-snapshot mirrors the header's disk state; re-synthesize
         // when it changes so other-occurrence expansions stay current.
-        auto vid = project.file_table.intern_version(chain.back(), target_observed->obs.hash);
-        deps.push_back({.path_id = chain.back(), .version = vid});
-        project.file_table.try_stamp(vid,
-                                     target_observed->obs.size,
-                                     target_observed->obs.mtime_ns,
-                                     target_observed->obs.uid_device,
-                                     target_observed->obs.uid_file);
+        deps.push_back({.path_id = chain.back(),
+                        .version = project.file_table.intern_version(chain.back(),
+                                                                     target_observed->obs.hash)});
     }
 
     return HeaderContext{host_path_id,

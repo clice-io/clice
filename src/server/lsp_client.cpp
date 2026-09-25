@@ -386,8 +386,6 @@ void LSPClient::register_document_sync() {
         // session invests in PCH/AST.
         project->ast.escalate(*session);
 
-        project->dispatch(FileEvent::buffer_edited(path_id));
-
         LOG_DEBUG("didChange: path={} version={} gen={}",
                   path,
                   session->version,
