@@ -3,7 +3,6 @@
 #include "index/query.h"
 #include "project/project.h"
 #include "sched/families/pch.h"
-#include "sched/index/pump.h"
 #include "server/ast_projection.h"
 #include "server/session_store.h"
 
@@ -34,6 +33,10 @@ private:
     /// no PCH or the envelope is unreadable.
     std::shared_ptr<index::TUIndex> overlay_of(Fid file) const;
 
+    /// The open buffer's own file index when its rows describe the buffer:
+    /// the compile is current, or it compiled these very bytes.
+    const index::Shard* session_rows(Fid file, const Session& session) const;
+
     index::RowSource buffer_source(index::RowSource::Kind kind,
                                    Fid file,
                                    const Session& session,
@@ -45,21 +48,22 @@ private:
     const ASTProjectionTable& projections;
 };
 
-/// Freshness clause 2 as the indexer sees it: a file whose own content
-/// changed contributes nothing until its reindex lands. With background
-/// indexing disabled nothing ever catches up, so the last-known rows keep
-/// serving instead of leaving a permanent hole.
-class PumpGate final : public index::FreshnessGate {
+/// Freshness clause 2 as the server sees it: rows whose content is not what
+/// the file table last saw on disk (a sweep, a save, a staleness check)
+/// point at text that no longer exists. With background indexing disabled
+/// nothing ever catches up, so the last-known rows keep serving instead of
+/// leaving a permanent hole.
+class SeenGate final : public index::FreshnessGate {
 public:
-    PumpGate(const IndexPump& pump, const Config& config) : pump(pump), config(config) {}
+    SeenGate(const FileTable& files, const Config& config) : files(files), config(config) {}
 
-    bool withhold(Fid file) const override {
-        return config.project.enable_indexing.value &&
-               pump.pending_reason(file) == ReindexReason::ContentChanged;
+    bool stale(Fid file, std::uint64_t content_hash) const override {
+        auto seen = files.seen_hash(file);
+        return config.project.enable_indexing.value && seen && *seen != content_hash;
     }
 
 private:
-    const IndexPump& pump;
+    const FileTable& files;
     const Config& config;
 };
 

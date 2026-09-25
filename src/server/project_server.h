@@ -89,6 +89,11 @@ public:
     /// services (sessions, editor context, background indexer).
     void dispatch(llvm::ArrayRef<FileEvent> events);
 
+    /// Whether anything here derives from the file: an open document, a
+    /// command, an include edge, index rows. The disk changes of files it
+    /// does not know are not this project's to cascade.
+    bool knows(Fid path_id);
+
     MasterServer& server;
     kota::event_loop& loop;
     std::string root;
@@ -103,8 +108,8 @@ public:
     /// The scheduling core the batch driver runs too, its families
     /// registered at construction — nodes materialize on demand, so a
     /// module-free project pays nothing. The store and the pump are
-    /// serving-neutral; the session-side policy — admission vetoes,
-    /// unservable escalation, serving-row refresh — lives on this class
+    /// serving-neutral; the session-side policy — unservable escalation,
+    /// serving-row refresh — lives on this class
     /// and is installed into the pump's hooks at construction. The AST
     /// family is assembled here in the project's server: its rounds
     /// capture sessions, quarantine and publishing.
@@ -116,7 +121,7 @@ public:
     ContextService context_service{project, contexts, ast};
 
     ServerLiveSources live_sources;
-    PumpGate freshness{sched.pump, project.config};
+    SeenGate freshness{project.file_table, project.config};
     index::IndexQuery index_query;
 
     Features features;
@@ -146,10 +151,6 @@ private:
 
     /// start() ran: documents opened from now on are settled at once.
     bool started = false;
-
-    /// Dispatch- and landing-time admission on one claimed pump file: the
-    /// serving side's veto (open sessions, index-only disk divergence).
-    Admission index_admission(Fid path_id);
 
     /// An index attempt settled with no retry pending; a session waiting
     /// on the index with nothing servable will never be served by it —

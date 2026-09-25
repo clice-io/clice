@@ -111,7 +111,7 @@ struct EditorContext {
     /// Drop the header context's dependency fast paths so the next use
     /// re-validates every chain file by a real read. The context itself is
     /// kept: an in-flight compile can clobber ast_dirty when it finishes,
-    /// and the surviving snapshot is what lets is_stale() recover. A
+    /// and the surviving snapshot is what lets stale_input() recover. A
     /// self-contained borrow tracks no chain deps, so forcing its
     /// re-validation could never trigger anything — drop it instead and let
     /// the next use re-resolve against the updated include graph (cheap: no

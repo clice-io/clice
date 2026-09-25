@@ -104,24 +104,16 @@ test("save writes only dirty shards", async ({ session }) => {
         `an incremental save must write only the touched shard: ${JSON.stringify(stats)}`,
     ).toBe(1);
 
-    // Saving the open file indexes its disk snapshot: the first save lands
-    // the shard its session never contributed, a second save of the same
-    // bytes queues nothing at all.
-    const before = stats.indexShardContentBytes;
-    client.save(uri);
-    const landed = await waitStats(
-        client,
-        (s) => s.indexShardContentBytes > before && s.indexInmemoryShards === 0,
-        "the open file's shard did not land",
-    );
+    // An open file's disk snapshot is indexed like any other's — the round
+    // above already landed it — so saving the same bytes queues nothing.
     client.save(uri);
     await sleep(SETTLE_TIME);
     const settled = await waitStats(
         client,
         (s) => s.indexInmemoryShards === 0,
-        "the second save left shards in memory",
+        "the save left shards in memory",
     );
-    expect(settled.indexShardContentBytes).toBe(landed.indexShardContentBytes);
+    expect(settled.indexShardContentBytes).toBe(stats.indexShardContentBytes);
     client.assertNoAnomaly();
 });
 

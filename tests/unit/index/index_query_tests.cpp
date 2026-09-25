@@ -43,7 +43,7 @@ TURunFamily turun{graph, project, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 PCHFamily pch{graph, project, pool};
 ServerLiveSources live{project, pch, store, projections};
-PumpGate gate{indexer, project.config};
+SeenGate gate{project.file_table, project.config};
 index::IndexQuery query{project.project_index, project.file_table, &gate, &live};
 
 Fid main_id;
@@ -392,10 +392,10 @@ TEST_CASE(StaleContributionSuppressed) {
     });
     ASSERT_FALSE(query.sites(symbol, RelationKind::Reference).empty());
 
-    // A content-changed pending file's rows describe text that no longer
-    // exists: its contribution disappears from cross-file results until
-    // the reindex lands.
-    indexer.enqueue(main_id, ReindexReason::ContentChanged);
+    // Rows of text the disk no longer holds point nowhere: the file's
+    // contribution disappears from cross-file results until its rows
+    // describe the disk again.
+    project.file_table.observe(main_id, DiskObservation{.hash = 1});
     ASSERT_TRUE(query.sites(symbol, RelationKind::Reference).empty());
 }
 

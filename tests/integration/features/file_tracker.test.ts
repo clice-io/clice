@@ -281,20 +281,21 @@ test("rewrite before first sweep reported", async ({ session }) => {
     ).toBe(true);
 });
 
-test("delete while open reported on close", async ({ session }) => {
+test("delete while open reported", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("header.h", HEADER_V1);
     workspace.write("main.cpp", '#include "header.h"\nint main() { return VALUE; }\n');
     workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
+    // A buffer shadows the disk for its own file's compile only: the
+    // removal is main.cpp's news while the header is still open.
     const [header] = client.open("header.h");
     expect(await eventsOf(client, "workspace")).toBe(0);
     workspace.rm("header.h");
-    expect(await eventsOf(client, "workspace"), "an open file's disk is not reported").toBe(0);
+    expect(await eventsOf(client, "workspace"), "an open file's removal is reported").toBe(1);
     client.close(header);
-    expect(await eventsOf(client, "workspace"), "the close hands the removal to the sweep").toBe(1);
-    expect(await eventsOf(client, "workspace")).toBe(0);
+    expect(await eventsOf(client, "workspace"), "reported once").toBe(0);
 });
 
 test("unchanged save no recompile", async ({ session }) => {

@@ -8,7 +8,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -18,6 +17,15 @@ Invalidator::Invalidator(Project& project,
                          PCMFamily& pcm,
                          const IndexStore& index) :
     project(project), store(store), contexts(contexts), pcm(pcm), index(index) {}
+
+llvm::SmallVector<FileEvent> take_disk_events(FileTable& files) {
+    llvm::SmallVector<FileEvent> events;
+    for(auto path_id: files.take_changes()) {
+        events.push_back(files.seen_hash(path_id) ? FileEvent::disk_changed(path_id)
+                                                  : FileEvent::disk_removed(path_id));
+    }
+    return events;
+}
 
 /// Batch effects may name the same file twice (two saves in one batch);
 /// execution must see each id once.
@@ -186,170 +194,18 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // SessionStore::apply_change's job; nothing cross-file yet.
                 break;
             }
-            case FileEvent::Kind::BufferSaved: {
-                auto path_id = event.path_id;
-                auto disk = project.file_table.current(path_id);
-                // A DiskChanged consumed while the buffer was open still owes
-                // its cascade; the save's own cascade discharges it.
-                bool owed = disk_changed_while_open.erase(path_id);
-                // A save of the very bytes the project last derived from the
-                // file (unmodified text, or a formatter restoring it) changes
-                // nothing built from them. Only the file's own rows may be
-                // owed: an open file enters the index with its save, so a
-                // file never indexed (or indexed from other bytes) still
-                // queues. The buffer can still disagree with the disk when a
-                // save hook rewrote the file as it landed; that recompile is
-                // the file's own business.
-                auto scanned = project.dep_graph.scanned_hash(path_id);
-                if(!owed && disk && scanned == disk->hash) {
-                    auto shard = project.project_index.shards.find(path_id);
-                    if(shard == project.project_index.shards.end() ||
-                       !shard->second.matches_content(disk->size, disk->hash)) {
-                        dirty.add_reindex_content_changed(path_id);
-                        dirty.reschedule_indexing = true;
-                    }
-                    if(auto session = store.find(path_id);
-                       session && (disk->size != session->text.size() ||
-                                   disk->hash != llvm::xxh3_64bits(session->text))) {
-                        dirty.mark_ast_dirty.push_back(path_id);
-                    }
-                    break;
-                }
-                // The disk now holds the buffer's content: the standard
-                // disk-content cascade covers everything a save invalidates.
-                cascade_disk_content_change(path_id, dirty);
-
-                // The file's own shard describes the pre-save disk; the
-                // queued reindex refreshes it from the saved bytes. Saves
-                // only come from open buffers — the session check just
-                // drops synthetic events for files nobody has open.
-                if(store.find(path_id)) {
-                    dirty.add_reindex_content_changed(path_id);
-                }
-
-                // ... unless a save hook or formatter rewrote the file as it
-                // landed, leaving the disk ahead of the buffer. Dependents
-                // already read the rewritten disk through the cascade above;
-                // without this check the saved file itself would keep serving
-                // results whose deps snapshot describes a disk state that no
-                // longer exists ("I see my old buffer, my dependents see the
-                // new disk"). Recompiling does not change what the session
-                // compiles — an open file's own text always comes from its
-                // buffer — but it re-captures the deps snapshot and re-runs
-                // preamble/PCH validation against the rewritten disk, which
-                // the pull-side staleness check alone can miss when the
-                // rewrite lands within mtime granularity of the compile.
-                if(auto session = store.find(path_id)) {
-                    if(!disk || disk->size != session->text.size() ||
-                       disk->hash != llvm::xxh3_64bits(session->text)) {
-                        dirty.mark_ast_dirty.push_back(path_id);
-                    }
-                }
-                break;
-            }
             case FileEvent::Kind::BufferClosed: {
-                // Drained on every close — the deleted-while-open exit below
-                // (whose debt passes to DiskRemoved semantics) must not
-                // leave a stale entry behind.
-                bool changed_while_open = disk_changed_while_open.erase(event.path_id);
-                // Whether the shard's rows still describe the disk decides
-                // how queries treat the file until the reindex lands: a
-                // browse-and-close must not blank the file's references for
-                // the queue's latency, while a close after saved edits must
-                // not serve rows for text that no longer exists. One disk
-                // read settles it; an unreadable file counts as changed.
-                auto disk = project.file_table.current(event.path_id);
-                if(!disk) {
-                    // Deleted while it was open: the tracker skips open
-                    // files, so this close is the first observation of the
-                    // missing file. Keep any shard serving (same deliberate
-                    // choice as DiskRemoved) instead of recording a
-                    // ContentChanged that would suppress it forever; the
-                    // tracker's next sweep observes the removal and delivers
-                    // the full DiskRemoved cascade.
-                    dirty.add_clear_reindex(event.path_id);
-                    break;
-                }
-                auto shard_it = project.project_index.shards.find(event.path_id);
-                bool has_shard = shard_it != project.project_index.shards.end();
-                bool shard_current =
-                    has_shard && shard_it->second.matches_content(disk->size, disk->hash);
-                // A module unit's PCM can be staler than the shard: the open
-                // file's background reindex reads the rewritten disk while
-                // the artifact keeps the pre-change bytes. Its own deps
-                // snapshot is the judge; checked before the cascade below
-                // erases the entry.
-                bool pcm_stale = false;
-                {
-                    auto wave = project.file_table.wave();
-                    auto pcm_it = project.pcm_cache.find(event.path_id);
-                    pcm_stale = pcm_it != project.pcm_cache.end() &&
-                                deps_changed(project.file_table, pcm_it->second.deps);
-                }
-                // Disk is the truth again, and this close is the last
-                // chance to act on it: the DiskChanged path deliberately
-                // skips the rescan and the module/dependent cascades while
-                // a buffer is open, and the tracker has already consumed
-                // the event's mtime, so no later sweep will refire it.
-                // Divergence — rows or artifact built from bytes the disk
-                // no longer holds, or a disk change recorded while the
-                // buffer was open (the open file's background reindex can
-                // refresh the shard from the rewritten disk before the close, blinding
-                // the content probe while dependents still embed the old
-                // bytes) — gets the full disk-content cascade a save would
-                // have delivered. A file with no shard and no recorded
-                // change is no evidence either way: indexing simply never
-                // reached it, and cascading would tax every close.
-                // The disk also moved on when it no longer holds the bytes the
-                // include edges were scanned from: a change nobody observed
-                // while the buffer was open (the sweep skips open files),
-                // which a shard refreshed from the new bytes cannot reveal.
-                auto scanned = project.dep_graph.scanned_hash(event.path_id);
-                bool unscanned_change = scanned && *scanned != disk->hash;
-                if((has_shard && !shard_current) || pcm_stale || changed_while_open ||
-                   unscanned_change) {
-                    cascade_disk_content_change(event.path_id, dirty);
-                } else if(has_shard) {
-                    // The shard can be current while the edges are not:
-                    // the open file's background reindex refreshed the rows
-                    // from the rewritten disk while the include graph kept the
-                    // pre-change edges (open files skip the rescan).
-                    // Refresh the edges alone — the rows are proven
-                    // current, so no content cascade; a module name the
-                    // rewrite introduced still reaches its sentinel-edged
-                    // consumers through the rescan.
-                    rescan_disk_state(event.path_id, dirty);
-                }
-                if(shard_current) {
-                    dirty.add_reindex_deps_only(event.path_id);
-                } else {
-                    dirty.add_reindex_content_changed(event.path_id);
-                }
-                dirty.reschedule_indexing = true;
+                // Only the buffer's shadow over the file's own compile goes:
+                // everything else never stopped reading the disk, and every
+                // disk change while the buffer was open was cascaded when it
+                // was seen. The session's own products die with it.
                 break;
             }
             case FileEvent::Kind::DiskChanged: {
-                auto path_id = event.path_id;
-                if(store.find(path_id)) {
-                    // Open file: the buffer is the truth, so no disk rescan —
-                    // what the disk change means for this file is decided by
-                    // the next compile's deps validation. Recompile so that
-                    // validation actually runs. The shard describes the old
-                    // disk regardless of the buffer; queue its reindex like
-                    // a save. The dependent cascade is deferred to the
-                    // close, and the tracker has consumed the event — record
-                    // the debt, or the reindex that freshens the shard
-                    // before the close would hide it from the close-time
-                    // divergence probe.
-                    dirty.mark_ast_dirty.push_back(path_id);
-                    dirty.add_reindex_content_changed(path_id);
-                    disk_changed_while_open.insert(path_id);
-                    break;
-                }
-                // Closed file: disk is the truth. Run the same cascade a
-                // save does, and refresh the file's own now-stale shard.
-                cascade_disk_content_change(path_id, dirty);
-                dirty.add_reindex_content_changed(path_id);
+                // Whether or not a buffer is open: the disk is what every
+                // other file compiles against and what the index describes.
+                cascade_disk_content_change(event.path_id, dirty);
+                dirty.add_reindex_content_changed(event.path_id);
                 break;
             }
             case FileEvent::Kind::DiskRemoved: {

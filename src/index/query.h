@@ -16,6 +16,7 @@
 #include "vfs/file_table.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -69,13 +70,13 @@ public:
     /// claim() or by nothing at all — never by its shard as a closed file.
     virtual bool is_open(Fid file) const = 0;
 
-    /// The rows serving an open buffer right now: its own file index when
-    /// current (freshness clauses 1 and 3), else its shard while the buffer
-    /// is byte-identical to the text the shard indexed (clause 4), both in
+    /// The rows serving an open buffer right now: its own file index
+    /// (freshness clauses 1 and 3), else its shard while the buffer is
+    /// byte-identical to the text the shard indexed (clause 4), both in
     /// buffer coordinates. Nullopt while the buffer has moved on from both.
     virtual std::optional<RowSource> claim(Fid file) const = 0;
 
-    /// Every open buffer whose file index is current, as its rows.
+    /// Every open buffer whose file index serves it (clause 3), as its rows.
     virtual void each_session(llvm::function_ref<bool(const RowSource&)> visit) const = 0;
 
     /// The same buffers' index envelopes: their symbol tables know every
@@ -99,32 +100,34 @@ public:
     virtual std::shared_ptr<TUIndex> preamble_blob(Fid file) const = 0;
 };
 
-/// Freshness clause 2: whether a closed file's own content moved on from
-/// the rows its shard holds, in which case the shard contributes nothing —
-/// stale rows would point at text that no longer exists.
+/// Freshness clause 2: whether rows built from `content_hash` no longer
+/// describe the file's content on disk — they would point at text that no
+/// longer exists. The one question every disk-side row source is judged by
+/// (persisted shards, PCH overlay entries); the gates differ only in how
+/// they learn what the disk holds.
 class FreshnessGate {
 public:
     virtual ~FreshnessGate() = default;
 
-    virtual bool withhold(Fid file) const = 0;
+    virtual bool stale(Fid file, std::uint64_t content_hash) const = 0;
 };
 
-/// The gate of a reader without an indexer: the disk is hashed against the
-/// shard's content generation, once per file. The verdicts double as the
-/// reader's report of what it withheld.
+/// The gate of a reader without an indexer: the disk is read and hashed,
+/// once per file. The verdicts double as the reader's report of what it
+/// withheld.
 class DiskGate final : public FreshnessGate {
 public:
-    DiskGate(const ProjectIndex& index, FileTable& files) : index(index), files(files) {}
+    explicit DiskGate(FileTable& files) : files(files) {}
 
-    bool withhold(Fid file) const override;
+    bool stale(Fid file, std::uint64_t content_hash) const override;
 
     /// The files whose rows were withheld, in no particular order.
     llvm::SmallVector<Fid> withheld() const;
 
 private:
-    const ProjectIndex& index;
     FileTable& files;
-    mutable llvm::DenseMap<Fid, bool> verdicts;
+    mutable llvm::DenseMap<Fid, std::optional<std::uint64_t>> disk;
+    mutable llvm::DenseSet<Fid> withheld_files;
 };
 
 /// Cross-source dedup: a row present in both a disk shard and a PCH
@@ -148,17 +151,21 @@ void dedup_sites(std::vector<Site>& sites);
 ///      compile first, so the session's file index describes the buffer
 ///      being pointed at. For closed files the merged shard resolves
 ///      against its own stored content snapshot — unless the file's own
-///      content changed and its reindex is still pending, in which case
-///      the cursor is unresolvable (clause 2).
-///   2. Cross-file contributions honor the freshness gate: a file awaiting
-///      reindex only because a dependency changed keeps serving its
-///      previous rows (its own text did not move), while a file whose own
-///      content changed has its contribution skipped until the reindex
-///      lands — stale rows would point at text that no longer exists.
-///   3. Open sessions whose compile has not (re)finished are skipped
-///      entirely: their buffer may have diverged from the last file index,
-///      and unlike closed files their reindex is the next compile, which
-///      the current file's request already awaits.
+///      content moved on from it, in which case the cursor is
+///      unresolvable (clause 2).
+///   2. Every row source carries the hash of the text it indexed, and
+///      serves only while that is the file's current content: disk rows
+///      (shards, PCH overlay entries) while the disk still holds it (the
+///      freshness gate), an open buffer's rows while the buffer does.
+///      Rows whose dependencies changed but whose own text did not keep
+///      serving — positionally intact, at worst semantically behind — and
+///      rows of text that no longer exists never do.
+///   3. An open session's own file index serves under clause 2 against
+///      the buffer: while its compile is current, or when it compiled the
+///      very bytes the buffer holds (a dependency invalidated it, the
+///      buffer did not move). Mid-edit it is skipped: unlike closed files
+///      its reindex is the next compile, which the current file's request
+///      already awaits.
 ///   4. An open session without a current file index is served by the
 ///      file's shard under closed-file rules — but only while the buffer
 ///      is byte-identical to the content the rows were built from. This
@@ -413,7 +420,7 @@ private:
 
     /// The header entries of an overlay that may contribute results:
     /// files that are themselves open serve buffer-true rows through their
-    /// sessions, files whose disk content changed await their reindex
+    /// sessions, entries of text the disk no longer holds point nowhere
     /// (clause 2), and synthesized context artifacts must never send the
     /// user into the cache.
     void visit_overlay_files(const TUIndex& state,

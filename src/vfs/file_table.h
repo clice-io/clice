@@ -3,13 +3,16 @@
 #include <cassert>
 #include <cstdint>
 #include <format>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "support/filesystem.h"
 #include "syntax/scan.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -194,10 +197,9 @@ struct FileTable {
     /// fid's binding to an entity is itself stat-verified: every
     /// observation carries the UniqueID its stat returned, and a mismatch
     /// rebinds (editors save via tmp+rename, so a spelling changes inode
-    /// on every save). Consumer-specific observation state (what a
-    /// consumer has *seen*, e.g. the tracker's last-reported baseline)
-    /// stays with the consumer and per fid — shared, a save through one
-    /// hardlink spelling would swallow the other spelling's change event.
+    /// on every save). What was last seen on disk (`seen`) stays per fid:
+    /// shared per entity, a save through one hardlink spelling would
+    /// swallow the other spelling's change event.
     ///
     /// FIXME: UniqueID reliability on network filesystems is inherited
     /// from clang's known limitation — some report unstable or colliding
@@ -278,7 +280,48 @@ struct FileTable {
         if(pair.size != size || pair.mtime_ns != mtime_ns) {
             return std::nullopt;
         }
+        saw(fid, pair.hash);
         return pair.hash;
+    }
+
+    /// What the disk held at the last look through each fid: the content
+    /// hash, or nullopt when the file was missing. No entry before the
+    /// first look. Every read, every stat the shared pair vouches for and
+    /// every failed stat of a freshness check or sweep writes it — the one
+    /// record of "what is on disk now", lagging the disk by at most the
+    /// time since the last look.
+    llvm::DenseMap<Fid, std::optional<std::uint64_t>> seen;
+
+    /// Files whose seen content moved from one known state to another
+    /// since the last take_changes(), in first-change order: the table is
+    /// the single source of disk change events, whoever happened to look
+    /// (the workspace sweep, a save, a rescan, a compile's staleness
+    /// check). A first look is no change — nothing was derived from an
+    /// unseen state.
+    llvm::SmallVector<Fid> changes;
+    llvm::DenseSet<Fid> changed;
+
+    /// Invoked when `changes` goes from empty to non-empty; the owner
+    /// schedules the drain. Unset (batch tools, tests) leaves the queue to
+    /// whoever takes it.
+    std::function<void()> on_change;
+
+    /// The disk content as last seen through this fid, without I/O;
+    /// nullopt before the first look and while the file is missing.
+    std::optional<std::uint64_t> seen_hash(Fid fid) const {
+        auto it = seen.find(fid);
+        return it != seen.end() ? it->second : std::nullopt;
+    }
+
+    /// A look found the file missing.
+    void saw_missing(Fid fid) {
+        saw(fid, std::nullopt);
+    }
+
+    /// The changed files, in first-change order, emptying the queue.
+    llvm::SmallVector<Fid> take_changes() {
+        changed.clear();
+        return std::exchange(changes, {});
     }
 
     /// Record a same-source read (the scan worker's, or one made through
@@ -288,6 +331,7 @@ struct FileTable {
     void observe(Fid fid, const DiskObservation& obs) {
         auto& binding = bind(fid, obs.uid_device, obs.uid_file);
         binding.earned = true;
+        saw(fid, obs.hash);
         if(obs.reliable) {
             disk_states[binding.entity] = obs;
         }
@@ -310,6 +354,7 @@ struct FileTable {
     std::optional<DiskObservation> current(Fid fid) {
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(resolve(fid), status)) {
+            saw_missing(fid);
             return std::nullopt;
         }
         return observe_for(fid, status);
@@ -613,6 +658,20 @@ struct FileTable {
     }
 
 private:
+    void saw(Fid fid, std::optional<std::uint64_t> hash) {
+        auto [it, first] = seen.try_emplace(fid, hash);
+        if(first || it->second == hash) {
+            return;
+        }
+        it->second = hash;
+        if(changed.insert(fid).second) {
+            changes.push_back(fid);
+            if(changes.size() == 1 && on_change) {
+                on_change();
+            }
+        }
+    }
+
     /// Whether a stat-equality fast path may stand for this fid: once the
     /// session has learned the file's identity (an earned binding), the
     /// live stat must still carry it — a rename-over with a forged equal
@@ -635,6 +694,7 @@ private:
 
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(resolve(version.fid), status)) {
+            saw_missing(version.fid);
             return Verdict::Missing;
         }
         auto size = status.getSize();

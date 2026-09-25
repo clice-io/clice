@@ -212,7 +212,7 @@ Reply answer(Project& project,
              const QueryOptions& opts,
              llvm::ArrayRef<std::string> failed,
              llvm::ArrayRef<Fid> dropped) {
-    index::DiskGate gate(project.project_index, project.file_table);
+    index::DiskGate gate(project.file_table);
     index::IndexQuery index_query(project.project_index, project.file_table, &gate, nullptr);
     query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
 

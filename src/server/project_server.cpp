@@ -55,21 +55,21 @@ ProjectServer::ProjectServer(MasterServer& server, std::string root) :
 
     // The pump is serving-neutral; the session-side policy hooks live on
     // this class and are installed here.
-    sched.pump.admission = [this](Fid path_id) {
-        return index_admission(path_id);
-    };
     sched.pump.on_attempt_settled = [this](Fid path_id) {
         index_attempt_settled(path_id);
     };
     index_rows_conn = sched.pump.on_rows_changed.connect(
         [this](llvm::ArrayRef<Fid> path_ids) { index_rows_changed(path_ids); });
 
-    // The AST family's pull-side staleness check found a dependency changed
-    // on disk: route it through the same DiskChanged path the file
-    // tracker's polling uses, so lazy detection and polling share one
-    // invalidation cascade.
+    // The AST family's pull-side staleness check found an input of an open
+    // document changed on disk: the document gets the treatment the
+    // changed file's cascade gives its dependents.
     ast.on_stale = [this](Fid path_id) {
-        dispatch(FileEvent::disk_changed(path_id));
+        if(auto session = sessions.find(path_id)) {
+            ast.invalidate(path_id);
+            session->trial_done = false;
+        }
+        commands.forget_self_contained(path_id);
     };
 }
 
@@ -255,7 +255,7 @@ void ProjectServer::settle_open_serving(std::shared_ptr<Session> session) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: escalate
         // now instead of answering empty until the first edit.
-        if(!it->second.matches_content(session->text)) {
+        if(!it->second.matches_content(session->text.size(), session->hash)) {
             ast.escalate(*session);
         }
         return;
@@ -304,45 +304,24 @@ void ProjectServer::close_session(Fid path_id) {
     LOG_DEBUG("Closed {}", path);
 }
 
+bool ProjectServer::knows(Fid path_id) {
+    return sessions.find(path_id) != nullptr || !project.build.commands(path_id).empty() ||
+           project.dep_graph.knows(path_id) ||
+           project.project_index.contributions.contains(path_id);
+}
+
 void ProjectServer::open_session(Fid path_id, std::string text, int version) {
     auto session = create_session(path_id);
     sessions.apply_open(*session, std::move(text), version);
+    // What the disk holds under the buffer: a later save or outside
+    // write is then a change from it, even for a file nothing else knew.
+    project.file_table.current(path_id);
     if(!started) {
         return;
     }
     contexts.validate_saved_context(path_id);
     dispatch(FileEvent::buffer_opened(path_id));
     settle_open_serving(session);
-}
-
-Admission ProjectServer::index_admission(Fid path_id) {
-    // An open file's session serves the LSP side; its disk snapshot is
-    // indexed for the command-line readers when the disk itself changed
-    // (a save), not for a dependency sweep — that would compile a file
-    // the user just opened twice over. Skipping loses no debt: the veto
-    // settles the claim, and BufferClosed re-checks the shard against the
-    // disk on close. An index-only session is the other case — its shard
-    // IS what the LSP serves (freshness clause 4), so it indexes only
-    // while its buffer matches the disk this index would read: rows from
-    // a diverged disk fail clause 4's content gate and would replace the
-    // one shard the session can serve from, blanking its features until
-    // an escalation. Keep the last matching rows instead — the close-time
-    // re-check covers the debt here too.
-    auto session = sessions.find(path_id);
-    if(!session) {
-        return Admission::Admit;
-    }
-    if(session->serving != ServingMode::IndexOnly) {
-        return sched.pump.pending_reason(path_id) == ReindexReason::ContentChanged
-                   ? Admission::Admit
-                   : Admission::SkipAndSettle;
-    }
-    auto disk = project.file_table.current(path_id);
-    if(!disk || disk->size != session->text.size() ||
-       disk->hash != llvm::xxh3_64bits(session->text)) {
-        return Admission::SkipAndSettle;
-    }
-    return Admission::Admit;
 }
 
 void ProjectServer::index_attempt_settled(Fid path_id) {
@@ -355,7 +334,8 @@ void ProjectServer::index_attempt_settled(Fid path_id) {
         return;
     }
     auto it = project.project_index.shards.find(path_id);
-    if(it == project.project_index.shards.end() || !it->second.matches_content(session->text)) {
+    if(it == project.project_index.shards.end() ||
+       !it->second.matches_content(session->text.size(), session->hash)) {
         ast.escalate(*session);
     }
 }
@@ -589,6 +569,7 @@ kota::task<> ProjectServer::workspace_poll_task() {
         if(!events.empty()) {
             dispatch(events);
         }
+        server.drain_disk_changes();
     }
 }
 

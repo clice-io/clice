@@ -10,8 +10,6 @@
 #include "server/invalidator.h"
 #include "worker/pool.h"
 
-#include "llvm/Support/xxhash.h"
-
 namespace clice::testing {
 namespace {
 
@@ -194,7 +192,7 @@ TEST_CASE(NoOpEventsNoEffects) {
     ASSERT_TRUE(dirty.empty());
 }
 
-TEST_CASE(SaveResetsTrialOnly) {
+TEST_CASE(DiskChangeSparesOwnSession) {
     TempDir tmp;
     tmp.touch("a.h", "int x;");
 
@@ -209,16 +207,17 @@ TEST_CASE(SaveResetsTrialOnly) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    // A plain save: the disk holds exactly what the buffer holds.
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
+    auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
-    // The saved file itself is not stale — its buffer was already current —
-    // only its self-containment verdict needs re-evaluation.
+    // The open file's own compile reads its buffer, never its disk: it is
+    // not stale — only its self-containment verdict needs re-evaluation —
+    // while its disk rows are.
     ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<Fid>{saved});
     ASSERT_EQ(dirty.reset_header_mode, llvm::SmallVector<Fid>{saved});
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{saved});
     ASSERT_TRUE(dirty.force_revalidate.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
     ASSERT_TRUE(dirty.reschedule_indexing);
@@ -246,7 +245,7 @@ TEST_CASE(CascadeSplitsOpenClosed) {
     store.open(open_user);
     Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(mod));
+    auto dirty = invalidator.apply(FileEvent::disk_changed(mod));
 
     // Cascade-dirtied module units split by session state: open buffers
     // recompile, closed files go back to the background indexer.
@@ -254,7 +253,7 @@ TEST_CASE(CascadeSplitsOpenClosed) {
     llvm::SmallVector<Fid> reindexed{mod, closed_user};
     llvm::sort(reindexed);
     EXPECT_EQ(dirty.reindex_deps_only, reindexed);
-    EXPECT_TRUE(dirty.reindex_content_changed.empty());
+    EXPECT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{mod});
 }
 
 TEST_CASE(ChainHitAndMiss) {
@@ -278,7 +277,7 @@ TEST_CASE(ChainHitAndMiss) {
     resolver.header_contexts[closed].chain = {saved};
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
+    auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
     // Every context embedding the saved file re-validates and drops its
     // verdict; a closed one additionally reindexes in the background — its
@@ -291,7 +290,7 @@ TEST_CASE(ChainHitAndMiss) {
     ASSERT_EQ(dirty.reset_header_mode, reset);
     // The closed header's own content did not change — only its chain did.
     ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{saved});
 }
 
 TEST_CASE(SaveMarksDependents) {
@@ -311,14 +310,14 @@ TEST_CASE(SaveMarksDependents) {
     EditorContext resolver(project, commands, blob);
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // Open dependents recompile, closed ones reindex; the old/new dependent
     // snapshots overlap fully here, so this also proves the dedup. A
     // dependent's own content did not change: deps-only.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open_tu});
     ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed_tu});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{header});
 }
 
 TEST_CASE(TransitiveDependentsEnqueue) {
@@ -337,11 +336,11 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     EditorContext resolver(project, commands, blob);
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // Only root TUs own index shards; the intermediate header is not one.
     ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{root});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{header});
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
 }
 
@@ -404,442 +403,8 @@ TEST_CASE(RemovalThenChangeKeepsClear) {
     ASSERT_TRUE(llvm::is_contained(dirty.reindex_deps_only, kept));
 }
 
-TEST_CASE(UnchangedSaveNoCascade) {
-    // Saving the bytes the project last derived from the file dirties
-    // nothing: no recompile of open dependents, no reindex.
-    TempDir tmp;
-    tmp.touch("h.h", "int h;");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto host = project.file_table.intern(tmp.path("a.cpp"));
-    project.dep_graph.set_includes(host, 0, {{header}});
-    project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
-    project.project_index.shards[header] = shard_of("int h;");
-    store.apply_open(*store.open(header), "int h;", 1);
-    store.open(host);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
-
-    ASSERT_TRUE(dirty.empty());
-}
-
-TEST_CASE(UnchangedSaveIndexesFile) {
-    // An open file enters the index with its save: unchanged bytes still
-    // queue the file's own rows when no shard holds them, and nothing else.
-    TempDir tmp;
-    tmp.touch("h.h", "int h;");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto host = project.file_table.intern(tmp.path("a.cpp"));
-    project.dep_graph.set_includes(host, 0, {{header}});
-    project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
-    store.apply_open(*store.open(header), "int h;", 1);
-    store.open(host);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
-
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{header});
-    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-}
-
-TEST_CASE(EditedSaveCascades) {
-    // New bytes on disk: the save's full cascade, and the scanned content
-    // moves with the rescan so a second identical save leaves the host
-    // alone.
-    TempDir tmp;
-    tmp.touch("h.h", "int edited;");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto host = project.file_table.intern(tmp.path("a.cpp"));
-    project.dep_graph.set_includes(host, 0, {{header}});
-    project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
-    store.apply_open(*store.open(header), "int edited;", 1);
-    store.open(host);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{host});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{header});
-    ASSERT_EQ(project.dep_graph.scanned_hash(header), llvm::xxh3_64bits("int edited;"));
-
-    auto again = invalidator.apply(FileEvent::buffer_saved(header));
-    ASSERT_TRUE(again.mark_ast_dirty.empty());
-    ASSERT_TRUE(again.reindex_deps_only.empty());
-    ASSERT_EQ(again.reindex_content_changed, llvm::SmallVector<Fid>{header});
-}
-
-TEST_CASE(RestoredSaveRecompilesSelf) {
-    // A save hook restoring the bytes the project derived from: the host
-    // is untouched, only the saved buffer now disagrees with its disk.
-    TempDir tmp;
-    tmp.touch("h.h", "int h;");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto host = project.file_table.intern(tmp.path("a.cpp"));
-    project.dep_graph.set_includes(host, 0, {{header}});
-    project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
-    project.project_index.shards[header] = shard_of("int h;");
-    store.apply_open(*store.open(header), "int edited;", 1);
-    store.open(host);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
-
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{header});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-}
-
-TEST_CASE(OwedSaveCascades) {
-    // A disk change observed while the buffer was open owes the cascade
-    // the close would have run; saving the old bytes back still pays it.
-    TempDir tmp;
-    tmp.touch("h.h", "int h;");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto host = project.file_table.intern(tmp.path("a.cpp"));
-    project.dep_graph.set_includes(host, 0, {{header}});
-    project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
-    store.apply_open(*store.open(header), "int h;", 1);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    invalidator.apply(FileEvent::disk_changed(header));
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{host});
-}
-
-TEST_CASE(RemovalForgetsScannedContent) {
-    // A removed file's scanned content leaves with its edges: when it
-    // comes back, nothing is judged against the bytes it once held.
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern("/proj/h.h");
-    project.dep_graph.set_includes(header, 0, {});
-    project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, 7);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    invalidator.apply(FileEvent::disk_removed(header));
-    ASSERT_FALSE(project.dep_graph.scanned_hash(header).has_value());
-}
-
-TEST_CASE(CloseUnscannedChangeCascades) {
-    // Changed on disk while open, unobserved: a shard already refreshed
-    // from the new bytes cannot reveal it, the scanned content still does.
-    TempDir tmp;
-    tmp.touch("h.h", "int changed;");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto host = project.file_table.intern(tmp.path("a.cpp"));
-    project.dep_graph.set_includes(host, 0, {{header}});
-    project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits("int h;"));
-    project.project_index.shards[header] = shard_of("int changed;");
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(header));
-
-    ASSERT_TRUE(llvm::is_contained(dirty.reindex_deps_only, host));
-    ASSERT_TRUE(llvm::is_contained(dirty.reset_header_mode, header));
-    ASSERT_EQ(project.dep_graph.scanned_hash(header), llvm::xxh3_64bits("int changed;"));
-}
-
-TEST_CASE(CloseWithoutShardReindexes) {
-    TempDir tmp;
-    tmp.touch("a.cpp", "int x;");
-
-    FileTable files;
-
-    Project project{files};
-    SessionStore store;
-    auto closed = project.file_table.intern(tmp.path("a.cpp"));
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    // The file exists on disk, it just was never indexed.
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
-
-    // No shard to compare against: nothing serves this file's rows anyway.
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{closed});
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-    ASSERT_TRUE(dirty.reschedule_indexing);
-    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
-}
-
-TEST_CASE(CloseCurrentShardDepsOnly) {
-    TempDir tmp;
-    tmp.touch("a.cpp", "int x;");
-
-    FileTable files;
-
-    Project project{files};
-    SessionStore store;
-    auto closed = project.file_table.intern(tmp.path("a.cpp"));
-    project.project_index.shards[closed] = shard_of("int x;");
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    // Disk matches the content the shard was built from: a browse-and-close
-    // must not blank the file's rows for the reindex queue's latency.
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
-
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
-}
-
-TEST_CASE(CloseDivergentShardContentChanged) {
-    TempDir tmp;
-    tmp.touch("a.cpp", "int edited;");
-
-    FileTable files;
-
-    Project project{files};
-    SessionStore store;
-    auto closed = project.file_table.intern(tmp.path("a.cpp"));
-    project.project_index.shards[closed] = shard_of("int x;");
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    // Disk holds edits the shard never saw (saved while open): the shard's
-    // rows describe text that no longer exists.
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
-
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{closed});
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-}
-
-TEST_CASE(CloseStaleModuleCascades) {
-    // An external rewrite consumed while the interface was open skipped the
-    // module cascade (buffer authoritative) and the tracker will not refire:
-    // the close must deliver it, or importers keep the pre-change PCM.
-    TempDir tmp;
-    tmp.touch("m.cppm", "export module m;\nexport int v2();\n");
-
-    FileTable files;
-
-    Project project{files};
-    SessionStore store;
-    auto mod = project.file_table.intern(tmp.path("m.cppm"));
-    auto user = project.file_table.intern("/proj/user.cpp");
-    project.project_index.shards[mod] = shard_of("export module m;\nexport int v1();\n");
-    project.pcm_cache[mod] = {
-        .path = "/cache/m.pcm",
-        .key = "k",
-        .deps = {DepState{.path_id = mod, .missing = true}},
-    };
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    ph.graph.declare(
-        {
-            Family::TURun,
-            user.raw
-    },
-        {{Family::PCM, mod.raw}});
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
-
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, mod));
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_deps_only, user));
-    EXPECT_TRUE(project.pcm_cache.empty());
-}
-
-TEST_CASE(CloseRefreshesEdges) {
-    // The shard can be current while the include edges are not (an
-    // open-file reindex read the rewritten disk while the file stayed
-    // open): the close refreshes the edges without a cascade.
-    TempDir tmp;
-    tmp.touch("new.h", "#pragma once\n");
-    tmp.touch("a.cpp", "#include \"new.h\"\nint main() { return 0; }\n");
-
-    FileTable files;
-
-    Project project{files};
-    SessionStore store;
-    auto file = project.file_table.intern(tmp.path("a.cpp"));
-    auto old_header = project.file_table.intern("/proj/old.h");
-    auto new_header = project.file_table.intern(tmp.path("new.h"));
-    project.dep_graph.set_includes(file, 0, {{old_header}});
-    project.dep_graph.build_reverse_map();
-
-    auto disk = llvm::MemoryBuffer::getFile(tmp.path("a.cpp"));
-    project.project_index.shards[file] = shard_of((*disk)->getBuffer());
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    invalidator.apply(FileEvent::buffer_closed(file));
-
-    auto includes = project.dep_graph.get_all_includes(file);
-    EXPECT_TRUE(llvm::is_contained(includes, new_header));
-    EXPECT_FALSE(llvm::is_contained(includes, old_header));
-}
-
-TEST_CASE(DeferredDiskChangeCascades) {
-    // A DiskChanged consumed while the header was open defers the
-    // dependent cascade to the close, and an open-file reindex can
-    // refresh the shard from the rewritten disk before then: a current
-    // shard must not hide the recorded debt from the close.
-    TempDir tmp;
-    tmp.touch("h.h", "int rewritten;");
-
-    FileTable files;
-
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto tu = project.file_table.intern("/proj/a.cpp");
-    project.dep_graph.set_includes(tu, 0, {{header}});
-    project.dep_graph.build_reverse_map();
-    project.project_index.shards[header] = shard_of("int rewritten;");
-    store.open(header);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-
-    auto deferred = invalidator.apply(FileEvent::disk_changed(header));
-    ASSERT_TRUE(deferred.reindex_deps_only.empty());
-
-    store.close(header);
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(header));
-
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_deps_only, tu));
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_deps_only, header));
-    EXPECT_TRUE(dirty.recheck_contexts);
-}
-
-TEST_CASE(CloseFirstProviderCascades) {
-    // An external rewrite can make an open file a module's first provider
-    // with the shard already current (an open-file reindex read the
-    // rewritten disk): the close-time edge refresh must reach the name's
-    // sentinel-edged consumers exactly as a save would.
-    TempDir tmp;
-    tmp.touch("m.cppm", "export module m;\n");
-
-    FileTable files;
-
-    Project project{files};
-    SessionStore store;
-    auto iface = project.file_table.intern(tmp.path("m.cppm"));
-    auto importer = project.file_table.intern("/proj/use.cpp");
-
-    auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cppm"));
-    project.project_index.shards[iface] = shard_of((*disk)->getBuffer());
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    ph.graph.declare({Family::TURun, importer.raw}, {PCMFamily::unresolved_node("m")});
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, importer));
-}
-
-TEST_CASE(CloseProviderRenameCascades) {
-    // An external rewrite can rename an open provider's module while an
-    // open-file reindex keeps the shard current and an evicted PCM
-    // leaves no cache entry for the close path's staleness probe: the
-    // rescan's map delta is the only remaining signal, and it must
-    // cascade the old name's consumers through the provider's node.
-    TempDir tmp;
-    tmp.touch("m.cppm", "export module b;\n");
-
-    FileTable files;
-
-    Project project{files};
-    SessionStore store;
-    auto iface = project.file_table.intern(tmp.path("m.cppm"));
-    auto importer = project.file_table.intern("/proj/use.cpp");
-    project.dep_graph.update_module_decl(iface, "a");
-
-    auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cppm"));
-    project.project_index.shards[iface] = shard_of((*disk)->getBuffer());
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    ph.graph.declare(
-        {
-            Family::TURun,
-            importer.raw
-    },
-        {{Family::PCM, iface.raw}});
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_deps_only, importer));
-}
-
-TEST_CASE(CloseKeepsGuardedProvider) {
-    // A close/save rescan meeting a module declaration inside a
+TEST_CASE(RescanKeepsGuardedProvider) {
+    // A disk-change rescan meeting a module declaration inside a
     // preprocessor conditional must resolve it the way the startup scan
     // does (scan_quick alone leaves the name empty) instead of dropping
     // the provider and leaving its importers unresolved.
@@ -862,51 +427,10 @@ TEST_CASE(CloseKeepsGuardedProvider) {
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
 
-    invalidator.apply(FileEvent::buffer_closed(iface));
+    invalidator.apply(FileEvent::disk_changed(iface));
 
     EXPECT_EQ(project.dep_graph.module_of(iface), "m");
     EXPECT_TRUE(llvm::is_contained(project.dep_graph.lookup_module("m"), iface));
-}
-
-TEST_CASE(CloseStalePCMCascades) {
-    // Agent-mode corner: a reindex read the rewritten disk while the file
-    // was open, so the shard is current — but the PCM consumed bytes the
-    // disk no longer holds. The artifact's deps snapshot is the judge, and
-    // the current shard keeps serving (deps-only).
-    TempDir tmp;
-    tmp.touch("m.cppm", "export module m;\nexport int v2();\n");
-
-    FileTable files;
-
-    Project project{files};
-    SessionStore store;
-    auto mod = project.file_table.intern(tmp.path("m.cppm"));
-    auto user = project.file_table.intern("/proj/user.cpp");
-    project.project_index.shards[mod] = shard_of("export module m;\nexport int v2();\n");
-    project.pcm_cache[mod] = {
-        .path = "/cache/m.pcm",
-        .key = "k",
-        .deps = {DepState{.path_id = mod, .version = project.file_table.intern_version(mod, 1234)}},
-    };
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    ph.graph.declare(
-        {
-            Family::TURun,
-            user.raw
-    },
-        {{Family::PCM, mod.raw}});
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
-
-    llvm::SmallVector<Fid> reindexed{mod, user};
-    llvm::sort(reindexed);
-    EXPECT_EQ(dirty.reindex_deps_only, reindexed);
-    EXPECT_TRUE(dirty.reindex_content_changed.empty());
-    EXPECT_TRUE(project.pcm_cache.empty());
 }
 
 TEST_CASE(CrashMarksLostDirty) {
@@ -954,7 +478,7 @@ TEST_CASE(EvictionMarksLost) {
     ASSERT_TRUE(dirty.reset_trial.empty());
 }
 
-TEST_CASE(BatchSavesDeduplicate) {
+TEST_CASE(BatchChangesDeduplicate) {
     FileTable files;
     Project project{files};
     SessionStore store;
@@ -966,82 +490,10 @@ TEST_CASE(BatchSavesDeduplicate) {
     EditorContext resolver(project, commands, blob);
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    FileEvent events[] = {FileEvent::buffer_saved(saved), FileEvent::buffer_saved(saved)};
+    FileEvent events[] = {FileEvent::disk_changed(saved), FileEvent::disk_changed(saved)};
     auto dirty = invalidator.apply(events);
 
     ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<Fid>{saved});
-}
-
-TEST_CASE(SaveDivergentDiskDirties) {
-    TempDir tmp;
-    tmp.touch("a.h", "int disk;");
-
-    FileTable files;
-
-    Project project{files};
-    SessionStore store;
-    auto saved = project.file_table.intern(tmp.path("a.h"));
-    auto session = store.open(saved);
-    store.apply_open(*session, "int buffer;", 1);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    // A save hook rewrote the file as it landed: disk != buffer.
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
-
-    // The session recompiles so its deps snapshot re-validates against the
-    // rewritten disk instead of describing a state that no longer exists.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{saved});
-}
-
-TEST_CASE(SaveUnreadableDiskDirties) {
-    TempDir tmp;
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto saved = project.file_table.intern(tmp.path("a.h"));
-    auto session = store.open(saved);
-    store.apply_open(*session, "int buffer;", 1);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    // The file cannot be read back after the save (missing here; a
-    // present-but-unreadable file lands in the same nullopt): the disk
-    // state is unknown, which is treated as divergent (conservative).
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
-
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{saved});
-}
-
-TEST_CASE(DiskChangeOpenMarksDirty) {
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto open_file = project.file_table.intern("/proj/a.cpp");
-    store.open(open_file);
-
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-    auto dirty = invalidator.apply(FileEvent::disk_changed(open_file));
-
-    // The buffer is the truth for an open file: recompile so the next
-    // compile's deps validation judges the disk change, but no rescan and
-    // no cascade. The file's shard describes the old disk, so its reindex
-    // queues alongside (skipped while open-file indexing is off).
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open_file});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{open_file});
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-    ASSERT_TRUE(dirty.reset_trial.empty());
-    ASSERT_FALSE(dirty.recheck_contexts);
 }
 
 TEST_CASE(DiskChangeClosedCascades) {
@@ -1072,6 +524,56 @@ TEST_CASE(DiskChangeClosedCascades) {
     ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<Fid>{header});
     ASSERT_TRUE(dirty.recheck_contexts);
     ASSERT_TRUE(dirty.reschedule_indexing);
+}
+
+TEST_CASE(DiskChangeOpenCascades) {
+    // Open or not, a disk change reaches every file reading the disk: the
+    // open header's includers cascade now, not at its close, and only the
+    // header's own session — whose compile reads its buffer — is spared.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern("/proj/h.h");
+    auto open_tu = project.file_table.intern("/proj/a.cpp");
+    auto closed_tu = project.file_table.intern("/proj/b.cpp");
+    project.dep_graph.set_includes(open_tu, 0, {{header}});
+    project.dep_graph.set_includes(closed_tu, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    store.open(header);
+    store.open(open_tu);
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
+
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open_tu});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{header});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed_tu});
+}
+
+TEST_CASE(CloseNoEffects) {
+    // Closing drops the buffer's shadow over its own file's compile; what
+    // the disk did meanwhile was cascaded when it was seen.
+    TempDir tmp;
+    tmp.touch("h.h", "int disk;");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(tmp.path("a.cpp"));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    project.project_index.shards[header] = shard_of("int old;");
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
+    ASSERT_TRUE(invalidator.apply(FileEvent::buffer_closed(header)).empty());
 }
 
 TEST_CASE(DiskRemovedScrubsSourceRole) {
@@ -1173,29 +675,6 @@ TEST_CASE(EntryChangeThenRemoval) {
     ASSERT_TRUE(dirty.drop_index.empty());
     ASSERT_TRUE(dirty.reindex_content_changed.empty());
     ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<Fid>{file});
-}
-
-TEST_CASE(CloseOfDeletedFile) {
-    TempDir tmp;
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto file = project.file_table.intern(tmp.path("gone.cpp"));
-    CommandResolver commands(project);
-    ContextsBlob blob;
-    EditorContext resolver(project, commands, blob);
-    // Disk read fails: the file vanished while it was open.
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
-
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(file));
-
-    // The close is the first observation of the removal (the tracker skips
-    // open files): keep any shard serving, do not record ContentChanged,
-    // do not enqueue a nonexistent file.
-    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<Fid>{file});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 
 TEST_CASE(CDBAddedScansAndEnqueues) {

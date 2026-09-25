@@ -81,23 +81,9 @@ public:
     /// Get the union of included fids across all configs for a file.
     llvm::SmallVector<Fid> get_all_includes(Fid path_id) const;
 
-    /// Erase every config's include list for a file, and the scanned hash
-    /// they came from. Incremental didSave rescans clear first, then re-add
-    /// one list per configuration.
+    /// Erase every config's include list for a file. Incremental rescans
+    /// clear first, then re-add one list per configuration.
     void clear_includes(Fid path_id);
-
-    /// The content hash of the bytes the file's include edges were scanned
-    /// from; nullopt for a file no scan read. What the project last
-    /// derived from the file — the baseline a disk change is judged
-    /// against before anyone else observes the file.
-    std::optional<std::uint64_t> scanned_hash(Fid path_id) const {
-        auto it = scanned_hashes.find(path_id);
-        return it != scanned_hashes.end() ? std::optional(it->second) : std::nullopt;
-    }
-
-    void set_scanned_hash(Fid path_id, std::uint64_t hash) {
-        scanned_hashes[path_id] = hash;
-    }
 
     /// Build the reverse include map from the forward includes. A bulk
     /// scan fills the forward edges first and builds once; from then on
@@ -117,6 +103,12 @@ public:
     /// from host_path_id to target_path_id.
     /// Returns [host, intermediate1, ..., target], or empty if no path exists.
     std::vector<Fid> find_include_chain(Fid host_path_id, Fid target_path_id) const;
+
+    /// Whether the graph knows the file: it has include entries or is an
+    /// include target.
+    bool knows(Fid path_id) const {
+        return file_configs.contains(path_id) || reverse_includes.contains(path_id);
+    }
 
     /// Every file the graph knows: files with include entries plus files
     /// that only appear as include targets. Sorted so callers scan in a
@@ -173,9 +165,6 @@ private:
     /// Reverse include map: fid -> files that directly include it.
     /// Populated by build_reverse_map().
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> reverse_includes;
-
-    /// See scanned_hash().
-    llvm::DenseMap<Fid, std::uint64_t> scanned_hashes;
 
     /// Whether build_reverse_map() ran, so edge updates maintain the map.
     bool reverse_built = false;

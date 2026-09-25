@@ -150,10 +150,10 @@ public:
     std::function<void()> on_indexing_needed;
 
     /// Invoked from ensure_compiled's fast path when the pull-side
-    /// staleness check finds a dependency changed on disk. The owner routes
-    /// it into the event pipeline as a DiskChanged (synchronously), so lazy
-    /// detection and the file tracker's polling share one invalidation
-    /// cascade instead of maintaining two.
+    /// staleness check finds an input of the document changed on disk. The
+    /// owner invalidates the document itself (synchronously); the changed
+    /// file's own cascade comes from the file table, whose look during the
+    /// check queued the change like any other.
     std::function<void(Fid path_id)> on_stale;
 
     /// Publish the quarantine diagnostic as the document's current output

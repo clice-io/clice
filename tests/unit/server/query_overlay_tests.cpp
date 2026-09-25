@@ -48,7 +48,7 @@ TURunFamily turun{graph, project, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 PCHFamily pch{graph, project, pool};
 ServerLiveSources live{project, pch, session_store, projections};
-PumpGate gate{indexer, project.config};
+SeenGate gate{project.file_table, project.config};
 index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
 index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
 
@@ -358,10 +358,11 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 
     ASSERT_TRUE(index_query.first_site(hash_of("foo"), RelationKind::Definition).has_value());
 
-    // The header's own disk content changed and awaits reindexing: its
-    // overlay rows describe text that no longer exists (freshness
-    // contract, clause 2), exactly like a shard contribution.
-    indexer.enqueue(project.file_table.intern(header_path("foo.h")), ReindexReason::ContentChanged);
+    // The disk was seen holding other text for the header: its overlay
+    // rows describe text that no longer exists (freshness contract,
+    // clause 2), exactly like a shard contribution.
+    project.file_table.observe(project.file_table.intern(header_path("foo.h")),
+                               DiskObservation{.hash = 1});
     EXPECT_FALSE(index_query.first_site(hash_of("foo"), RelationKind::Definition).has_value());
 }
 

@@ -33,19 +33,33 @@ index::RowSource ServerLiveSources::buffer_source(index::RowSource::Kind kind,
     };
 }
 
+const index::Shard* ServerLiveSources::session_rows(Fid file, const Session& session) const {
+    auto projection = projections.projection(file);
+    if(!projection || !projection->index || !projection->index->loaded()) {
+        return nullptr;
+    }
+    // Rows compiled from exactly the buffer's bytes describe it however
+    // their dependencies moved since (the shard's DepsOnly contract); a
+    // header compiled with an appended suffix line never matches its
+    // buffer's bytes and serves only while its compile is current.
+    auto& rows = projection->file_rows();
+    if(projections.current(file) || rows.matches_content(session.text.size(), session.hash)) {
+        return &rows;
+    }
+    return nullptr;
+}
+
 std::optional<index::RowSource> ServerLiveSources::claim(Fid file) const {
     auto session = sessions.find(file);
     if(!session) {
         return std::nullopt;
     }
-    if(projections.index_current(file)) {
-        return buffer_source(index::RowSource::Kind::SessionRows,
-                             file,
-                             *session,
-                             projections.projection(file)->file_rows());
+    if(auto* rows = session_rows(file, *session)) {
+        return buffer_source(index::RowSource::Kind::SessionRows, file, *session, *rows);
     }
     auto it = project.project_index.shards.find(file);
-    if(it == project.project_index.shards.end() || !it->second.matches_content(session->text)) {
+    if(it == project.project_index.shards.end() ||
+       !it->second.matches_content(session->text.size(), session->hash)) {
         return std::nullopt;
     }
     return buffer_source(index::RowSource::Kind::Shard, file, *session, it->second);
@@ -54,23 +68,16 @@ std::optional<index::RowSource> ServerLiveSources::claim(Fid file) const {
 void
     ServerLiveSources::each_session(llvm::function_ref<bool(const index::RowSource&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
-        if(!projections.index_current(file)) {
-            return true;
-        }
-        return visit(buffer_source(index::RowSource::Kind::SessionRows,
-                                   file,
-                                   session,
-                                   projections.projection(file)->file_rows()));
+        auto* rows = session_rows(file, session);
+        return !rows ||
+               visit(buffer_source(index::RowSource::Kind::SessionRows, file, session, *rows));
     });
 }
 
 void ServerLiveSources::each_session_index(
     llvm::function_ref<bool(const index::TUIndex&)> visit) const {
-    sessions.for_each([&](Fid file, const Session&) -> bool {
-        if(!projections.index_current(file)) {
-            return true;
-        }
-        return visit(*projections.projection(file)->index);
+    sessions.for_each([&](Fid file, const Session& session) -> bool {
+        return !session_rows(file, session) || visit(*projections.projection(file)->index);
     });
 }
 

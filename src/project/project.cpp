@@ -63,7 +63,6 @@ void Project::rescan_after_save(Fid path_id) {
     auto observed = read_file_observed(path.data());
     if(observed) {
         file_table.observe(path_id, observed->obs);
-        dep_graph.set_scanned_hash(path_id, observed->obs.hash);
         const auto& scan =
             file_table.scan_of(path_id, observed->obs.hash, observed->content->getBuffer());
 

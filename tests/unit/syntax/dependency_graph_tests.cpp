@@ -258,20 +258,16 @@ TEST_CASE(IncluderListedOnce) {
 }
 
 TEST_CASE(ClearDropsEveryConfig) {
-    // Clearing a file drops every configuration's edges and the content
-    // they were scanned from, and nothing of other files.
+    // Clearing a file drops every configuration's edges, and nothing of
+    // other files.
     clice::DependencyGraph graph;
     graph.set_includes(Fid{1}, 0, {{Fid{10}}});
     graph.set_includes(Fid{1}, 1, {{Fid{20}}});
     graph.set_includes(Fid{2}, 0, {{Fid{10}}});
-    graph.set_scanned_hash(Fid{1}, 7);
-    graph.set_scanned_hash(Fid{2}, 8);
 
     graph.clear_includes(Fid{1});
     ASSERT_TRUE(graph.get_all_includes(Fid{1}).empty());
-    ASSERT_FALSE(graph.scanned_hash(Fid{1}).has_value());
     ASSERT_EQ(graph.get_all_includes(Fid{2}), llvm::SmallVector<Fid>{Fid{10}});
-    ASSERT_EQ(graph.scanned_hash(Fid{2}), std::optional<std::uint64_t>(8));
 }
 
 TEST_CASE(EdgesKeepReverseMap) {

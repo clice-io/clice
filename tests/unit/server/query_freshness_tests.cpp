@@ -43,7 +43,7 @@ TURunFamily turun{graph, project, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 PCHFamily pch{graph, project, pool};
 ServerLiveSources live{project, pch, store, projections};
-PumpGate gate{indexer, project.config};
+SeenGate gate{project.file_table, project.config};
 index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
 index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
 
@@ -111,7 +111,7 @@ TEST_CASE(PendingReasonUpgrade) {
     ASSERT_TRUE(indexer.pending_reason(file) == ReindexReason::ContentChanged);
 }
 
-TEST_CASE(PendingGateSplitsRows) {
+TEST_CASE(SeenGateSplitsRows) {
     project.config.project.enable_indexing = true;
 
     add_file("header.h", R"(
@@ -134,7 +134,8 @@ TEST_CASE(PendingGateSplitsRows) {
     ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
     ASSERT_TRUE(index_query.first_site(hash, RelationKind::Definition).has_value());
 
-    // Pending for a dependency change only: the previous rows keep serving.
+    // Awaiting a reindex for a dependency change only: the disk still
+    // holds the text the rows indexed, so they keep serving.
     indexer.enqueue(main_id, ReindexReason::DepsOnly);
     ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
 
@@ -143,9 +144,10 @@ TEST_CASE(PendingGateSplitsRows) {
     by_line.position = {.path = project.file_table.resolve(main_id).str(), .line = 3};
     ASSERT_FALSE(disk_query.locate(by_line).empty());
 
-    // The file's own content changed: its contribution is skipped until the
-    // reindex lands; other files' rows are unaffected.
-    indexer.enqueue(main_id, ReindexReason::ContentChanged);
+    // The disk was seen holding other text: the file's contribution is
+    // skipped until its rows describe the disk again; other files' rows
+    // are unaffected.
+    project.file_table.observe(main_id, DiskObservation{.hash = 1});
     ASSERT_FALSE(std::ranges::contains(reference_files(hash), "main.cpp"));
     ASSERT_TRUE(index_query.first_site(hash, RelationKind::Definition).has_value());
 
@@ -153,8 +155,8 @@ TEST_CASE(PendingGateSplitsRows) {
     // line numbers describe text that no longer exists.
     ASSERT_TRUE(disk_query.locate(by_line).empty());
 
-    // A content-changed definition file drops out of definition lookups.
-    indexer.enqueue(header_id, ReindexReason::ContentChanged);
+    // A changed definition file drops out of definition lookups.
+    project.file_table.observe(header_id, DiskObservation{.hash = 1});
     ASSERT_FALSE(index_query.first_site(hash, RelationKind::Definition).has_value());
 
     // With background indexing disabled nothing would ever catch up:

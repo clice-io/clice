@@ -416,7 +416,7 @@ void LSPClient::register_document_sync() {
     peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {
         auto& srv = this->server;
         // Unlike didOpen/didChange, a save arriving before the server is
-        // ready needs no special handling: BufferSaved only invalidates
+        // ready needs no special handling: a disk change only invalidates
         // derived state, none of which exists yet — the workspace load at
         // ready reads the saved disk content anyway.
         if(srv.lifecycle != ServerLifecycle::Ready)
@@ -767,6 +767,9 @@ void LSPClient::register_extensions() {
                             co_return kota::outcome_error(
                                 kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
                                                  "No workspace is loaded"});
+                        }
+                        if(params.loop == "workspace") {
+                            count += static_cast<std::uint32_t>(srv.drain_disk_changes());
                         }
                         co_return to_raw(ext::PollResult{count});
                     });

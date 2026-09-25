@@ -124,7 +124,8 @@ public:
     /// root sits deeper than the folders that do — as if it were open.
     void open_session(Fid path_id, std::string text, int version);
 
-    /// Close the file's session in the project it was routed to.
+    /// Close the file's session in the project it was routed to, and look
+    /// at the file's disk content.
     void close_session(Fid path_id);
 
     /// Stop serving the `removed` folders and serve the `added` ones
@@ -147,9 +148,13 @@ public:
     /// documents routing now sends to another project.
     void builds_changed();
 
-    /// didSave: the file's own project takes the save; the others knowing
-    /// the file (listing or including it) see its disk content change.
+    /// didSave: a look at the file's disk content, which every project
+    /// knowing the file cascades if it changed (drain_disk_changes).
     void saved(Fid path_id);
+
+    /// Hand the disk changes the file table saw to every project knowing
+    /// the file (ProjectServer::knows); how many there were.
+    std::size_t drain_disk_changes();
 
     /// clice/queryContext over every project, paginated: the contexts the
     /// file's own project offers, then the ones other projects do —
@@ -327,7 +332,8 @@ private:
     /// task proceeds to shutdown_and_cleanup().
     kota::cancellation_source shutdown_source;
 
-    /// Shutdowns of removed projects; joined in shutdown_and_cleanup().
+    /// Shutdowns of removed projects and deferred drains of the file
+    /// table's changes; joined in shutdown_and_cleanup().
     kota::task_group<> bg_tasks;
 
     /// Removed projects, shutting down or kept alive after by the requests

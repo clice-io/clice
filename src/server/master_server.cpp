@@ -40,6 +40,15 @@ MasterServer::MasterServer(kota::event_loop& loop,
     // Documents opened before initialize land in this project: sessions
     // are plain state, and initialize re-routes them once folders exist.
     projects.push_back(make_project(std::string()));
+    // A disk change can be seen deep inside any operation — a staleness
+    // check, a rescan inside a cascade: the drain runs on a later loop
+    // turn, outside it.
+    files.on_change = [this] {
+        bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
+            co_await kota::sleep(std::chrono::milliseconds(0));
+            server.drain_disk_changes();
+        }(*this));
+    };
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) plus a wake-up
@@ -374,6 +383,10 @@ void MasterServer::close_session(Fid path_id) {
     // out through this project.
     it->second->close_session(path_id);
     owners.erase(path_id);
+    // Like an open and a save, a close is a moment to look at the disk: the
+    // editor stops showing its buffer in place of the file.
+    files.current(path_id);
+    drain_disk_changes();
 }
 
 void MasterServer::discover_around(Fid path_id) {
@@ -597,15 +610,24 @@ std::uint64_t MasterServer::context_epoch() {
 }
 
 void MasterServer::saved(Fid path_id) {
-    auto& owner = owner_of(path_id);
-    owner.dispatch(FileEvent::buffer_saved(path_id));
+    files.current(path_id);
+    drain_disk_changes();
+}
+
+std::size_t MasterServer::drain_disk_changes() {
+    auto events = take_disk_events(files);
     for(auto& project: projects) {
-        if(project.get() != &owner &&
-           (!project->project.build.commands(path_id).empty() ||
-            !project->project.dep_graph.get_includers(path_id).empty())) {
-            project->dispatch(FileEvent::disk_changed(path_id));
+        llvm::SmallVector<FileEvent> known;
+        for(auto& event: events) {
+            if(project->knows(event.path_id)) {
+                known.push_back(event);
+            }
+        }
+        if(!known.empty()) {
+            project->dispatch(known);
         }
     }
+    return events.size();
 }
 
 ext::QueryContextResult MasterServer::query_contexts(llvm::StringRef path,

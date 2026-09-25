@@ -181,7 +181,6 @@ std::size_t DependencyGraph::edge_count() const {
 }
 
 void DependencyGraph::clear_includes(Fid path_id) {
-    scanned_hashes.erase(path_id);
     auto it = file_configs.find(path_id);
     if(it == file_configs.end()) {
         return;
@@ -778,7 +777,6 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
             }
             graph.set_import_candidate(scan_result.path_id, scan_result.scan_result.has_import);
-            graph.set_scanned_hash(scan_result.path_id, scan_result.obs.hash);
 
             report.includes_found += scan_result.scan_result.includes.size();
 

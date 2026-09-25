@@ -280,11 +280,10 @@ struct Project {
     /// validates the real occurrence anyway.
     std::uint32_t count_occurrences(Fid host_id, Fid target_id) const;
 
-    /// Rescan a file after it was saved to disk, from one read: refresh
+    /// Rescan a file whose disk content changed, from one read: refresh
     /// its include edges (so host lookups and context queries see includes
-    /// the save added or removed), its scanned hash and its module
-    /// declaration. The module-graph cascade is the invalidator's job
-    /// (PCMFamily::invalidate).
+    /// the change added or removed) and its module declaration. The module-graph cascade is the
+    /// invalidator's job (PCMFamily::invalidate).
     void rescan_after_save(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a

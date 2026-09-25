@@ -94,25 +94,22 @@ void dedup_sites(std::vector<Site>& sites) {
     sites.erase(dup.begin(), dup.end());
 }
 
-bool DiskGate::withhold(Fid file) const {
-    auto [it, inserted] = verdicts.try_emplace(file, false);
+bool DiskGate::stale(Fid file, std::uint64_t content_hash) const {
+    auto [it, inserted] = disk.try_emplace(file);
     if(inserted) {
-        if(auto* shard = index.shard(file)) {
-            auto disk = files.current(file);
-            it->second = !disk || !shard->matches_content(disk->size, disk->hash);
+        if(auto observed = files.current(file)) {
+            it->second = observed->hash;
         }
     }
-    return it->second;
+    if(it->second == content_hash) {
+        return false;
+    }
+    withheld_files.insert(file);
+    return true;
 }
 
 llvm::SmallVector<Fid> DiskGate::withheld() const {
-    llvm::SmallVector<Fid> result;
-    for(auto& [file, stale]: verdicts) {
-        if(stale) {
-            result.push_back(file);
-        }
-    }
-    return result;
+    return llvm::to_vector(withheld_files);
 }
 
 IndexQuery::IndexQuery(const ProjectIndex& index,
@@ -125,11 +122,8 @@ std::optional<RowSource> IndexQuery::serving(Fid file) const {
     if(live && live->is_open(file)) {
         return live->claim(file);
     }
-    if(gate && gate->withhold(file)) {
-        return std::nullopt;
-    }
     auto* shard = index.shard(file);
-    if(!shard) {
+    if(!shard || (gate && gate->stale(file, shard->content_hash()))) {
         return std::nullopt;
     }
     return RowSource{.kind = RowSource::Kind::Shard,
@@ -157,9 +151,10 @@ void IndexQuery::visit_overlay_files(const TUIndex& state,
             continue;
         }
         auto path = state.path(local_id);
+        auto& shard = state.shard_of(local_id);
         Fid file;
         if(auto known = files.find(path)) {
-            if(live->is_open(*known) || (gate && gate->withhold(*known))) {
+            if(live->is_open(*known) || (gate && gate->stale(*known, shard.content_hash()))) {
                 continue;
             }
             file = *known;
@@ -168,7 +163,6 @@ void IndexQuery::visit_overlay_files(const TUIndex& state,
         if(live->excluded(path)) {
             continue;
         }
-        auto& shard = state.shard_of(local_id);
         RowSource source{.kind = RowSource::Kind::Overlay,
                          .file = file,
                          .path = path,

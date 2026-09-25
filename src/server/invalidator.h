@@ -29,12 +29,11 @@ struct FileEvent {
         BufferOpened,
         /// didChange folded edits into the open buffer.
         BufferEdited,
-        /// didSave: the on-disk content now matches the buffer.
-        BufferSaved,
-        /// didClose dropped the buffer; disk is the truth again.
+        /// didClose dropped the buffer.
         BufferClosed,
-        /// The file's content changed on disk behind the server's back
-        /// (emitted by the FileTracker's workspace poll).
+        /// The file's content on disk changed — open or not: the file table
+        /// saw other bytes than it last saw, whoever looked (the workspace
+        /// sweep, a didSave, a rescan, a compile's staleness check).
         DiskChanged,
         /// The file disappeared from disk (see DiskChanged).
         DiskRemoved,
@@ -76,10 +75,6 @@ struct FileEvent {
         return {Kind::BufferEdited, path_id};
     }
 
-    static FileEvent buffer_saved(Fid path_id) {
-        return {Kind::BufferSaved, path_id};
-    }
-
     static FileEvent buffer_closed(Fid path_id) {
         return {Kind::BufferClosed, path_id};
     }
@@ -109,6 +104,10 @@ struct FileEvent {
     }
 };
 
+/// The disk changes the file table saw since the last call, as events: a
+/// file seen missing is DiskRemoved, any other change DiskChanged.
+llvm::SmallVector<FileEvent> take_disk_events(FileTable& files);
+
 /// The effects an event batch demands, deduplicated. The engine computes
 /// these; MasterServer::dispatch() executes them against the mutable
 /// services (sessions, editor context, background indexer).
@@ -117,8 +116,8 @@ struct FileEvent {
 /// weaker ones on the same file — mark_ast_dirty implies the trial reset
 /// that reset_trial asks for, force_revalidate implies mark_ast_dirty's
 /// session treatment, and one event may push a file into several sets
-/// (BufferSaved emits both reset_trial and reset_header_mode for the saved
-/// file). Execution is idempotent per effect, so the overlap is harmless;
+/// (DiskChanged emits both reset_trial and reset_header_mode for the
+/// changed file). Execution is idempotent per effect, so the overlap is harmless;
 /// what matters is that each set can also occur ALONE (reset_trial without
 /// mark_ast_dirty re-runs the trial on a clean AST), which is why they are
 /// separate vocabulary rather than severity levels of one list.
@@ -253,8 +252,10 @@ public:
 /// if it (1) has no cross-file cascade, (2) touches only a single owner's
 /// state, and (3) completes within one synchronous section. SessionStore's
 /// buffer mechanics qualify (apply_open/apply_change own text, version,
-/// ast_dirty, generation; the BufferOpened/BufferEdited cases below exist
-/// as hooks for future cross-file policy, not as the sync path), and so
+/// ast_dirty, generation; the BufferOpened/BufferEdited/BufferClosed cases
+/// below exist as hooks for a cross-file policy — today a buffer shadows
+/// the disk for its own file's compile only, so no other file reads it —
+/// not as the sync path), and so
 /// does clice/switchContext's session reset (single owner, synchronous,
 /// no cascade). Anything failing a clause goes through the pipeline — do
 /// not add ceremonial event kinds for exempt logic.
@@ -278,10 +279,7 @@ private:
 
     /// The invalidation cascade for "this file's on-disk content is new":
     /// rescan the file's disk state, then split every affected file into
-    /// open (recompile) and closed (reindex). Shared by BufferSaved (disk
-    /// now holds the buffer) and DiskChanged on closed files (disk changed
-    /// behind the server's back), and used verbatim — the two differ only
-    /// in what the caller adds around it.
+    /// open (recompile) and closed (reindex).
     void cascade_disk_content_change(Fid path_id, DirtySet& dirty);
 
     /// Cascade a module unit's compile-graph invalidation (PCM caches,
@@ -302,14 +300,6 @@ private:
     const EditorContext& contexts;
     PCMFamily& pcm;
     const IndexStore& index;
-
-    /// Files whose disk content changed while their buffer was open. The
-    /// DiskChanged case defers the dependent cascade (the buffer is the
-    /// truth until close) and the tracker has already consumed the event,
-    /// so this set is the only surviving record of the debt. BufferSaved
-    /// discharges it — the save's own cascade covers everything owed —
-    /// and BufferClosed drains it.
-    llvm::DenseSet<Fid> disk_changed_while_open;
 };
 
 }  // namespace clice

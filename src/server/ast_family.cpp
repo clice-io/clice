@@ -320,10 +320,10 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
             co_return true;
         }
         // A dependency changed on disk behind this session's back — the
-        // lazy twin of the file tracker's DiskChanged. Route it through
-        // the event pipeline (synchronous) so both share one cascade; for
-        // an open file that dispatch invalidates the projection and
-        // resets the trial. The dispatch re-resolves the session by
+        // lazy twin of the workspace sweep. The document recompiles now,
+        // whether or not the dependency graph knows the edge (a macro
+        // include); the changed file's cascade follows from the file
+        // table's change queue. The handler re-resolves the session by
         // path_id; no suspension separates it from this frame, so it
         // finds the same open session this coroutine holds.
         on_stale(path_id);
