@@ -438,6 +438,97 @@ def bench_aggregate(args) -> None:
             f.write(text + "\n")
 
 
+def fn_list(args) -> None:
+    """Every function the frontend emits for some TUs of a configured LLVM
+    build, and whether the profile gave it data (a function_entry_count on its
+    definition), with the build's own profile flags plus args.flags."""
+    import re
+    import shlex
+    build = Path(args.build).resolve()
+    entries = json.loads((build / "compile_commands.json").read_text())
+    extra = shlex.split(args.flags)
+    define = re.compile(r"^define [^@]*@(\"[^\"]+\"|[^\s(]+)\(")
+    result = {}
+    for want in args.files:
+        entry = next((e for e in entries if e["file"].replace("\\", "/").endswith(want)), None)
+        if entry is None:
+            continue
+        argv = entry.get("arguments") or shlex.split(entry["command"])
+        kept, i = [], 0
+        while i < len(argv):
+            if argv[i] == "-Xclang" and i + 3 < len(argv) and argv[i + 1] == "-include-pch":
+                i += 4
+                continue
+            kept.append(argv[i])
+            i += 1
+        argv = [a for a in kept if a not in ("-c",)]
+        if "-o" in argv:
+            k = argv.index("-o")
+            del argv[k:k + 2]
+        argv += ["-S", "-emit-llvm", "-Xclang", "-disable-llvm-passes", "-o", "-", *extra]
+        proc = subprocess.Popen(argv, cwd=entry["directory"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        fns = []
+        for line in proc.stdout:
+            if line.startswith("define"):
+                m = define.match(line)
+                if m:
+                    fns.append([m.group(1).strip('"'), "!prof" in line])
+        proc.wait()
+        result[want] = fns
+        print(f"{want}: {len(fns)} functions, {sum(1 for _, d in fns if d)} with data (exit {proc.returncode})", flush=True)
+    Path(args.json).write_text(json.dumps(result))
+
+
+def fn_gap(args) -> None:
+    """Functions with data on the reference target but none on another,
+    matched through their demangled names under growing normalizations."""
+    import re
+    data = {p.stem.removeprefix("fns-"): json.loads(p.read_text()) for p in Path(args.dir).rglob("fns-*.json")}
+    ref = data.pop(args.ref)
+    names = set()
+    for d in [ref, *data.values()]:
+        for fns in d.values():
+            names.update(n for n, _ in fns)
+    ordered = sorted(names)
+    out = run(["llvm-cxxfilt"], input="\n".join(ordered), capture_output=True, text=True).stdout.splitlines()
+    dm = dict(zip(ordered, out))
+    ints = re.compile(r"\b(unsigned (long long|long|int|short|char)|long long|long|int|short|signed char)\b")
+    norms = [
+        ("exact", lambda s: s),
+        ("64-bit ints", lambda s: s.replace("unsigned long long", "unsigned long").replace("long long", "long")),
+        ("any int", lambda s: ints.sub("INT", s)),
+    ]
+    ref_with = {dm[n] for fns in ref.values() for n, d in fns if d}
+    lines = [f"Reference {args.ref}: functions with data there but none here, by the first normalization that finds"
+             " the reference function (demangled names).", ""]
+    for target, tus in sorted(data.items()):
+        missing = {dm[n] for fns in tus.values() for n, d in fns if not d}
+        buckets = {label: [] for label, _ in norms}
+        buckets["no counterpart"] = []
+        refsets = {label: {f(x) for x in ref_with} for label, f in norms}
+        for m in sorted(missing):
+            for label, f in norms:
+                if f(m) in refsets[label]:
+                    buckets[label].append(m)
+                    break
+            else:
+                buckets["no counterpart"].append(m)
+        total_with = sum(1 for fns in tus.values() for _, d in fns if d)
+        lines += [f"### {target}: {total_with} with data, {len(missing)} without", ""]
+        for label, items in buckets.items():
+            if label == "exact":
+                label = "exact (data exists on the reference under the same name: not a naming gap)"
+            lines.append(f"- {label}: {len(items)}")
+            for x in items[:args.examples]:
+                lines.append(f"    - `{x[:160]}`")
+        lines.append("")
+    text = "\n".join(lines)
+    print(text)
+    if "GITHUB_STEP_SUMMARY" in os.environ:
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+            f.write(text + "\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -472,6 +563,19 @@ def main() -> None:
     p.add_argument("--out", required=True)
     p.add_argument("--env", action="append", default=[], help="NAME=KEY=VALUE for one variant's runs")
     p.set_defaults(func=bench)
+
+    p = sub.add_parser("fn-list")
+    p.add_argument("--build", required=True)
+    p.add_argument("--files", nargs="+", required=True)
+    p.add_argument("--flags", default="", help="Extra compiler arguments (profile, remapping)")
+    p.add_argument("--json", required=True)
+    p.set_defaults(func=fn_list)
+
+    p = sub.add_parser("fn-gap")
+    p.add_argument("--dir", required=True)
+    p.add_argument("--ref", required=True)
+    p.add_argument("--examples", type=int, default=25)
+    p.set_defaults(func=fn_gap)
 
     p = sub.add_parser("bench-aggregate")
     p.add_argument("--dir", required=True)
