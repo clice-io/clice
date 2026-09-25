@@ -456,12 +456,13 @@ void LSPClient::register_document_sync() {
         if(srv.files.shown_as(path_id) != path) {
             return;
         }
-        srv.files.unshow(path_id);
         // LSP versions are scoped to an open document: a reopen restarts
         // them, so a stale entry would misread the fresh document's first
         // compile as an unchanged-text recompile.
         published_versions.erase(path_id);
+        // The diagnostics clear goes out under the spelling being closed.
         srv.close_session(path_id);
+        srv.files.unshow(path_id);
         // A document still open under another name takes the file over.
         if(auto it = aliases.find(path_id); it != aliases.end()) {
             auto next = take_alias(path_id, &it->second.front());

@@ -119,7 +119,9 @@ class CanonicalPath;
 /// A path naming a file or directory by its identity, the way the file
 /// table does: the symlinks of its longest existing prefix resolved, the
 /// rest appended as spelled, `.`/`..` removed, canonically spelled. Two
-/// spellings of one file compare equal whether it exists yet or not.
+/// spellings of one file compare equal whether it exists yet or not. On
+/// Windows the canonical spelling alone is the identity: nothing is
+/// resolved, so neither case variants nor links through junctions merge.
 ///
 /// Only resolution (CanonicalPath's constructor), the file table and the
 /// derivations below (parent(), and entry() on its caller's word) make
@@ -272,6 +274,12 @@ inline CanonicalPath CanonicalRef::entry(llvm::StringRef path) const {
 }
 
 inline CanonicalPath::CanonicalPath(llvm::StringRef spelled) {
+#ifdef _WIN32
+    llvm::SmallString<256> dotless(spelled);
+    path::remove_dots(dotless, /*remove_dot_dot=*/true);
+    text = std::string(dotless);
+    path::canonicalize(text);
+#else
     llvm::SmallString<256> real;
     llvm::StringRef existing = spelled;
     while(llvm::sys::fs::real_path(existing, real)) {
@@ -286,7 +294,7 @@ inline CanonicalPath::CanonicalPath(llvm::StringRef spelled) {
     // The unresolved tail may still climb (`missing/../cache`).
     path::remove_dots(real, /*remove_dot_dot=*/true);
     text = std::string(real);
-    path::canonicalize(text);
+#endif
 }
 
 }  // namespace clice

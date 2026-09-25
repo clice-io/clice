@@ -254,16 +254,20 @@ struct FileTable {
 
     /// Files under `root` show under this spelling of it.
     void spell_root(llvm::StringRef root) {
-        CanonicalPath real(root);
-        if(real.str() != root) {
-            spelled_roots.emplace_back(std::move(real), root.str());
+        auto spelled = root.str();
+        path::canonicalize(spelled);
+        CanonicalPath real(spelled);
+        if(real.str() != spelled) {
+            spelled_roots.emplace_back(std::move(real), std::move(spelled));
             root_displays.clear();
         }
     }
 
     /// Stop showing files under a spelling spell_root recorded.
     void unspell_root(llvm::StringRef root) {
-        llvm::erase_if(spelled_roots, [&](auto& entry) { return entry.second == root; });
+        auto spelled = root.str();
+        path::canonicalize(spelled);
+        llvm::erase_if(spelled_roots, [&](auto& entry) { return entry.second == spelled; });
         root_displays.clear();
     }
 

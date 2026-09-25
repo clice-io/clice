@@ -401,9 +401,7 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
                 continue;
             }
             // The iterator spells paths natively, under the root; only an
-            // entry that is itself a symlink names a file elsewhere. LLVM's
-            // Windows iterator reports no symlinks and descends into
-            // junctions, so there an entry below one keeps its spelling.
+            // entry that is itself a symlink names a file elsewhere.
             llvm::SmallString<256> storage;
             auto spelled = path::canonical(it->path(), storage);
             auto type = it->type();

@@ -230,12 +230,12 @@ Reply answer(Project& project,
     auto emit = [&](auto outcome) {
         std::vector<std::string> stale;
         for(auto file: gate.withheld()) {
-            stale.emplace_back(project.file_table.resolve(file));
+            stale.emplace_back(project.file_table.display(file));
         }
         stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
         stale.insert(stale.end(), failed.begin(), failed.end());
         for(auto unit: dropped) {
-            stale.emplace_back(project.file_table.resolve(unit));
+            stale.emplace_back(project.file_table.display(unit));
         }
         std::ranges::sort(stale);
         auto duplicates = std::ranges::unique(stale);
@@ -357,7 +357,8 @@ int run_query(const QueryOptions& opts, const char* self_path) {
                                                    : std::format("unknown method '{}'", method)});
         return 1;
     }
-    auto root = workspace_root(opts.workspace.value_or(""));
+    auto spelling = workspace_spelling(opts.workspace.value_or(""));
+    CanonicalPath root(spelling);
     auto configuration = opts.configuration.value_or("");
     std::vector<std::string> failed;
     if(opts.fresh) {
@@ -372,6 +373,8 @@ int run_query(const QueryOptions& opts, const char* self_path) {
     // writer's load restores; the index questions bind the tables in
     // place and touch nothing else.
     FileTable files;
+    // Answers name files under the workspace as the command line does.
+    files.spell_root(spelling);
     Project project{files};
     CommandResolver commands{project};
     ContextsBlob saved;

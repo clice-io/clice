@@ -376,9 +376,9 @@ std::vector<DepFile> CompilationUnitRef::deps() {
 std::vector<std::string> CompilationUnitRef::absent() {
     std::vector<std::string> result;
     for(auto& entry: self->absent) {
-        // A lookup also fails on a directory of that name: only a place
-        // holding nothing is absent.
-        if(!llvm::sys::fs::exists(entry.getKey())) {
+        // A lookup also fails on a directory of that name; a file there
+        // appeared after the lookup, which the capture then sees as filled.
+        if(!llvm::sys::fs::is_directory(entry.getKey())) {
             result.emplace_back(entry.getKey());
         }
     }
