@@ -113,6 +113,7 @@ public:
     kota::task<bool> prepare_stateless_inputs(const Ticket& ticket,
                                               const std::string& directory,
                                               const std::vector<std::string>& arguments,
+                                              const SynthesizedContext* synthesized,
                                               StatelessInputs& inputs);
 
     /// The edit path's whole supersede (didChange): the buffer moved, so
@@ -220,7 +221,8 @@ private:
     PCHPlan plan_pch(Fid path_id,
                      llvm::StringRef text,
                      const std::string& directory,
-                     const std::vector<std::string>& arguments);
+                     const std::vector<std::string>& arguments,
+                     const SynthesizedContext* synthesized);
 
     /// Revalidate or build the session's preamble PCH through the family
     /// and adopt its key under the request's license (see
@@ -232,7 +234,8 @@ private:
                                 std::uint64_t license_generation,
                                 std::uint64_t license_epoch,
                                 const std::string& directory,
-                                const std::vector<std::string>& arguments);
+                                const std::vector<std::string>& arguments,
+                                const SynthesizedContext* synthesized);
 
     friend struct testing::ASTFamilyFixture;
 

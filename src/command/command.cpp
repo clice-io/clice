@@ -827,10 +827,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         path::remove_dots(file_abs, /*remove_dot_dot=*/true);
         auto path_id = file_table.intern(file_abs);
         llvm::SmallString<256> storage;
-        if(auto spelled = path::canonical(file_abs, storage);
-           spelled != file_table.resolve(path_id)) {
-            spellings[path_id] = strings.save(spelled);
-        }
+        auto spelled = path::canonical(file_abs, storage);
+        llvm::StringRef spelling =
+            spelled != file_table.resolve(path_id) ? strings.save(spelled) : llvm::StringRef();
 
         std::optional<ConfigID> normalized;
 
@@ -868,8 +867,11 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         if(!normalized) {
             continue;
         }
-        new_entries.push_back(
-            {.file = path_id, .config = *normalized, .source = id, .ordinal = index});
+        new_entries.push_back({.file = path_id,
+                               .config = *normalized,
+                               .source = id,
+                               .ordinal = index,
+                               .spelling = spelling});
     }
 
     auto count = new_entries.size();
@@ -1354,8 +1356,12 @@ std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& re
 }
 
 llvm::StringRef CompilationDatabase::input_path(Fid file) const {
-    auto spelled = spellings.find(file);
-    return spelled != spellings.end() ? spelled->second : file_table.resolve(file);
+    for(auto& entry: candidate_entries(file)) {
+        if(!entry.spelling.empty()) {
+            return entry.spelling;
+        }
+    }
+    return file_table.resolve(file);
 }
 
 std::vector<const char*> CompilationDatabase::render(const CommandRef& ref,

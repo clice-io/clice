@@ -856,6 +856,10 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
         contributions[path_id][tu_path_id] = hash;
         affected.push_back(path_id);
     }
+    // Two spellings of one place, or two persisted versions of it, are one
+    // file: remove_manifest erases each place once.
+    llvm::sort(manifest.absent);
+    manifest.absent.erase(llvm::unique(manifest.absent), manifest.absent.end());
     for(auto fv: manifest.absent) {
         probed[files.version(fv).fid].insert(tu_path_id);
     }

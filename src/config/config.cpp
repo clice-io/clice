@@ -60,8 +60,9 @@ static std::string glob_escape(llvm::StringRef literal) {
 }
 
 /// Compile one pattern against absolute paths: the literal directory before
-/// the first wildcard segment is anchored (a relative one at `anchor`),
-/// dot-normalized and canonicalized, and the wildcard tail follows verbatim.
+/// the first wildcard segment is anchored (a relative one at `anchor`) and
+/// resolved like every path the file table names — a symlinked directory
+/// matches the files it holds — and the wildcard tail follows verbatim.
 /// A `**`-led pattern matches anywhere and enumerates from the workspace.
 /// `workspace_root` must be canonical: substituted into glob text, a native
 /// spelling's backslashes would read as escapes.
@@ -90,9 +91,7 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
             }
             dir = anchored;
         }
-        path::remove_dots(dir, /*remove_dot_dot=*/true);
-        root = std::string(dir);
-        path::canonicalize(root);
+        root = path::resolved(dir);
         text = glob_escape(root);
         if(!text.ends_with('/')) {
             text += '/';

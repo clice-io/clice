@@ -179,6 +179,20 @@ TEST_CASE(LintSetSymlinkedRoot) {
     EXPECT_FALSE(build.lintable(path::resolved(tmp.path("link/vendor/lib.cpp"))));
     EXPECT_FALSE(build.lintable(tmp.path("elsewhere/x.cpp")));
 };
+
+TEST_CASE(PatternThroughSymlink) {
+    TempDir tmp;
+    tmp.touch("clice.toml", "[[rules]]\npatterns = [\"vendor/**\"]\nlint = false\n");
+    tmp.touch("third_party/lib.cpp", "int lib() { return 0; }\n");
+    ASSERT_EQ(::symlink(tmp.path("third_party").c_str(), tmp.path("vendor").c_str()), 0);
+
+    Config config = Config::load_from_workspace(tmp.root);
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active(fallback_configuration(config));
+    EXPECT_FALSE(build.lintable(path::resolved(tmp.path("vendor/lib.cpp"))));
+};
 #endif
 
 TEST_CASE(FormatSet) {

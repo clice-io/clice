@@ -50,8 +50,8 @@ test("open before initialize", async ({ session }) => {
 
 test.skipIf(process.platform === "win32")("second name for an open file", async ({ session }) => {
     // One file, one buffer: a document naming an open file through a
-    // symlink gets no buffer of its own, its edits are dropped, and closing
-    // it leaves the first document open.
+    // symlink does not edit the first document's buffer, and closing it
+    // leaves the first document open.
     const { client, workspace } = session.tmp();
     workspace.write("real/main.cpp", "int main() { return 0; }\n");
     fs.symlinkSync(workspace.path("real"), workspace.path("link"));
@@ -66,6 +66,21 @@ test.skipIf(process.platform === "win32")("second name for an open file", async 
     expect(await client.hoverAt(first, 0, 5), "the first document stays open").not.toBeNull();
     await sleep(SETTLE_TIME);
     client.assertNoErrors(first, "the first document's buffer must be untouched");
+});
+
+test.skipIf(process.platform === "win32")("second name takes over on close", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("real/main.cpp", "int main() { return 0; }\n");
+    fs.symlinkSync(workspace.path("real"), workspace.path("link"));
+    workspace.writeCDB(["real/main.cpp"]);
+    await client.initialize(workspace);
+
+    const [first] = await client.openAndWait("real/main.cpp");
+    const [second] = client.open("link/main.cpp");
+    client.change(second, 1, "int main() { return undefined_name; }\n");
+    client.close(first);
+    await client.waitForRecompile(second);
+    client.assertHasErrors(second, "the second document compiles with its own edits");
 });
 
 test("close before initialize", async ({ session }) => {

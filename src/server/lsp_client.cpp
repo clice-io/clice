@@ -131,6 +131,17 @@ LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
                        this->server.owner_of(path_id).shared_from_this()};
 }
 
+LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spelling) {
+    auto it = aliases.find(path_id);
+    if(it == aliases.end()) {
+        return nullptr;
+    }
+    auto alias = llvm::find_if(it->second, [&](const AliasDocument& document) {
+        return document.spelling == spelling;
+    });
+    return alias != it->second.end() ? &*alias : nullptr;
+}
+
 void LSPClient::register_lifecycle() {
     using StringVec = std::vector<std::string>;
 
@@ -346,9 +357,16 @@ void LSPClient::register_document_sync() {
         auto path_id = srv.files.intern(path);
         // One file, one buffer: a second document naming it through another
         // path (a symlink) would fold its own edits into the first one's.
-        // The document opened first keeps it.
+        // The document opened first keeps it; this one waits with its own
+        // text.
         if(auto owner = srv.files.shown_as(path_id); owner && *owner != path) {
             LOG_WARN("didOpen: {} is already open as {}; serving that one", path, *owner);
+            auto& alias = aliases[path_id].emplace_back(
+                AliasDocument{.spelling = path, .buffer = std::make_shared<Session>()});
+            alias.buffer->path_id = path_id;
+            srv.owner_of(path_id).sessions.apply_open(*alias.buffer,
+                                                      params.text_document.text,
+                                                      params.text_document.version);
             return;
         }
         srv.files.show_as(path_id, path);
@@ -364,6 +382,12 @@ void LSPClient::register_document_sync() {
         srv.pool.foreground_pulse();
 
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        if(auto* alias = find_alias(path_id, path)) {
+            project->sessions.apply_change(*alias->buffer,
+                                           params.content_changes,
+                                           params.text_document.version);
+            return;
+        }
         if(!session) {
             // Dropping is the only safe move: without the didOpen baseline
             // there is no buffer to fold the edits into.
@@ -371,7 +395,7 @@ void LSPClient::register_document_sync() {
             return;
         }
         if(srv.files.shown_as(path_id) != path) {
-            LOG_WARN("didChange for {}, open under another name, dropping", path);
+            LOG_WARN("didChange for {}, never opened under that name, dropping", path);
             return;
         }
 
@@ -416,6 +440,14 @@ void LSPClient::register_document_sync() {
         // drops the clear while !client_ready).
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = srv.files.intern(path);
+        if(auto* alias = find_alias(path_id, path)) {
+            auto& waiting = aliases[path_id];
+            waiting.erase(waiting.begin() + (alias - waiting.begin()));
+            if(waiting.empty()) {
+                aliases.erase(path_id);
+            }
+            return;
+        }
         if(srv.files.shown_as(path_id) != path) {
             return;
         }
@@ -425,6 +457,16 @@ void LSPClient::register_document_sync() {
         // compile as an unchanged-text recompile.
         published_versions.erase(path_id);
         srv.close_session(path_id);
+        // A document still open under another name takes the file over.
+        if(auto it = aliases.find(path_id); it != aliases.end()) {
+            auto next = std::move(it->second.front());
+            it->second.erase(it->second.begin());
+            if(it->second.empty()) {
+                aliases.erase(it);
+            }
+            srv.files.show_as(path_id, next.spelling);
+            srv.open_session(path_id, std::move(next.buffer->text), next.buffer->version);
+        }
     });
 
     peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {

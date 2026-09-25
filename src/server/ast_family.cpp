@@ -54,10 +54,10 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
 ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        llvm::StringRef text,
                                        const std::string& directory,
-                                       const std::vector<std::string>& arguments) {
+                                       const std::vector<std::string>& arguments,
+                                       const SynthesizedContext* synthesized) {
     auto path = project.file_table.resolve(path_id);
     auto bound = compute_preamble_bound(text);
-    auto* synthesized = contexts.synthesized(path_id);
     if(bound == 0 && !synthesized) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts land here too: they borrow
@@ -491,8 +491,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // past it is phantom text the user cannot see.
         std::optional<std::uint32_t> suffix_line_limit;
         auto* header_context = contexts.header_context(path_id);
-        if(auto* synthesized = contexts.synthesized(path_id);
-           synthesized && !synthesized->suffix.empty()) {
+        if(resolution.synthesized && !resolution.synthesized->suffix.empty()) {
             auto newlines = std::ranges::count(params.text, '\n');
             suffix_line_limit =
                 static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
@@ -532,7 +531,11 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // degradation: the compile proceeds preamble-less.
         std::optional<std::string> adopted_pch;
         if(readonly != ReadonlyMode::On) {
-            auto plan = plan_pch(path_id, params.text, params.directory, params.arguments);
+            auto plan = plan_pch(path_id,
+                                 params.text,
+                                 params.directory,
+                                 params.arguments,
+                                 resolution.synthesized.get());
             switch(plan.verdict) {
                 case PCHPlan::Verdict::None: break;
                 case PCHPlan::Verdict::Defer: adopted_pch = plan.previous; break;
@@ -874,7 +877,8 @@ kota::task<bool> ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
                                        std::uint64_t license_generation,
                                        std::uint64_t license_epoch,
                                        const std::string& directory,
-                                       const std::vector<std::string>& arguments) {
+                                       const std::vector<std::string>& arguments,
+                                       const SynthesizedContext* synthesized) {
     auto path_id = session->path_id;
     auto license = [&] {
         return session->generation == license_generation &&
@@ -887,7 +891,7 @@ kota::task<bool> ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
         co_return false;
     }
 
-    auto plan = plan_pch(path_id, session->text, directory, arguments);
+    auto plan = plan_pch(path_id, session->text, directory, arguments, synthesized);
     switch(plan.verdict) {
         case PCHPlan::Verdict::None: projections.set_pch_key(path_id, std::nullopt); co_return true;
         case PCHPlan::Verdict::Defer: co_return plan.previous.has_value();
@@ -923,6 +927,7 @@ kota::task<bool> ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
 kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
                                                      const std::string& directory,
                                                      const std::vector<std::string>& arguments,
+                                                     const SynthesizedContext* synthesized,
                                                      StatelessInputs& inputs) {
     auto& session = ticket.session;
     auto path_id = session->path_id;
@@ -945,14 +950,18 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
                                   argv,
                                   directory,
                                   std::optional<llvm::StringRef>(scan_text),
-                                  contexts.synthesized(path_id),
+                                  synthesized,
                                   /*foreground=*/true)) {
         co_return false;
     }
 
     if(readonly != ReadonlyMode::On) {
-        auto pch_ok =
-            co_await ensure_pch(session, ticket.generation, license_epoch, directory, arguments);
+        auto pch_ok = co_await ensure_pch(session,
+                                          ticket.generation,
+                                          license_epoch,
+                                          directory,
+                                          arguments,
+                                          synthesized);
         auto projection = projections.projection(path_id);
         if(pch_ok && projection && projection->pch_key.has_value()) {
             if(auto pch_it = project.pch_cache.find(*projection->pch_key);

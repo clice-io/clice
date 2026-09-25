@@ -376,7 +376,7 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         if(dep.missing) {
             // Gone at build time: reappearing is the change; still-missing
             // stays unchanged (see the capture).
-            if(fs::exists(files.resolve(dep.path_id))) {
+            if(files.current(dep.path_id)) {
                 return true;
             }
             continue;

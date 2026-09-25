@@ -233,6 +233,12 @@ struct CompilationEntry {
     /// entries in configuration order, so this is the default-selection
     /// order within one source.
     std::uint32_t ordinal = 0;
+
+    /// How the database names the file when that is not its identity (a
+    /// symlinked source), empty otherwise: the build compiles it under that
+    /// name, which decides where its quoted includes look and what
+    /// `__FILE__` says.
+    llvm::StringRef spelling;
 };
 
 /// Render one structured argument back into argv fragments. Unknown args
@@ -528,12 +534,8 @@ private:
     /// Every source's entries, sorted by (file, source, ordinal).
     std::vector<CompilationEntry> entry_list;
 
-    /// How a database names a file whose identity is another path (a
-    /// symlinked source): the build compiles it under that name, which
-    /// decides where its quoted includes look and what `__FILE__` says.
-    llvm::DenseMap<Fid, llvm::StringRef> spellings;
-
-    /// The path a command gives its input file as.
+    /// The path a command gives its input file as: a database's spelling
+    /// of it (CompilationEntry::spelling), else its identity.
     llvm::StringRef input_path(Fid file) const;
 
     std::string workspace_root;
