@@ -148,11 +148,11 @@ Multiple feature requests may simultaneously trigger a PCH build for the same co
 
 ### Dependency Snapshot Timing Guarantee
 
-The `DepsSnapshot` build timestamp (`build_at`) is obtained **before** computing file hashes. This ordering ensures there is no time window in which a modification could be missed:
+The content versions in a `DepsSnapshot` are hashes of the bytes the compiler actually consumed, taken from its own buffers, so a file modified during the build is never mistaken for what the build read: its new content fails the hash comparison on the next check. The build timestamp (`build_at`), obtained **before** the build starts, covers the one remaining case -- a dependency whose consumed bytes the worker could not hash:
 
-If a file is modified during hash computation, its mtime will be later than `build_at`. On the next two-layer detection, Layer 1 will flag this file as "possibly modified," and Layer 2 will recompute its hash and discover the change.
+If the file's mtime is no later than `build_at`, the disk still holds the bytes the build consumed, and their hash is taken from the file table. If it is later, the file may have changed during the build: the dependency is recorded without a version, reads as changed, and the next build captures it again.
 
-If the order were reversed -- hashing first, then obtaining the timestamp -- a window could arise: a file modified between hash computation and timestamp acquisition would have an mtime no later than `build_at`, causing the modification to be missed.
+If the order were reversed -- building first, then obtaining the timestamp -- a window could arise: a file modified during the build would have an mtime no later than `build_at`, and its new content would be recorded as the version the build consumed, causing the modification to be missed.
 
 ### Overall Compilation Flow
 

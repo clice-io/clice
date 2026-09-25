@@ -127,8 +127,8 @@ The language server's core runtime, responsible for assembling all the layers ab
 - `Session` / `SessionStore`: The open-buffer truth for each open file — content, document version, generation, and serving state — created on didOpen and destroyed on didClose. Compile products do not live here
 - `ASTProjection` / `ASTProjectionTable`: The published products of each document's most recent compilation (feature results, PCH key, dependency snapshot) — an immutable read model replaced wholesale on each publication
 - `EditorContext`: The editor's side of command resolution — the user's context choices and the header contexts resolved for open files — layered over the project's `CommandResolver` for editor-facing compiles only
-- `Invalidator`: The invalidation engine — folds file events (buffer opens/saves, on-disk changes, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
-- `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`: the project's database watch plus a sweep of the files on disk, which judges each file against the content its include edges were scanned from
+- `Invalidator`: The invalidation engine — folds file events (on-disk changes and removals, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
+- `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`: the project's database watch plus a sweep, through the file table, of the files on disk and of the places a failed include lookup looked
 - `Quarantine`: Per-document crash accounting — documents whose content keeps killing workers are isolated and recover through licensed probe attempts
 
 **Services** — Read-side services consuming compilation and index results.
