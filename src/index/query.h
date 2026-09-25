@@ -97,10 +97,10 @@ public:
 };
 
 struct FreshnessOptions {
-    /// Look at each file once per gate instead of trusting the last
+    /// Check each file on disk once per gate instead of trusting the last
     /// observation: a reader nobody keeps the observations current for
     /// (the command line), whose gate lives one query.
-    bool look = false;
+    bool check_disk = false;
 
     /// Rows no indexer will ever refresh keep serving instead of leaving
     /// a permanent hole: off when background indexing is.
@@ -129,7 +129,7 @@ public:
 
 private:
     FileTable& files;
-    mutable llvm::DenseSet<Fid> looked;
+    mutable llvm::DenseSet<Fid> checked;
     mutable llvm::DenseSet<Fid> withheld_files;
 };
 
@@ -423,9 +423,8 @@ private:
 
     /// The header entries of an overlay that may contribute results:
     /// files that are themselves open serve buffer-true rows through their
-    /// sessions, entries of text the disk no longer holds point nowhere
-    /// (clause 2), and synthesized context artifacts must never send the
-    /// user into the cache.
+    /// sessions, and entries of text the disk no longer holds point nowhere
+    /// (clause 2).
     void visit_overlay_files(const TUIndex& state,
                              llvm::function_ref<bool(const RowSource&)> visitor) const;
 

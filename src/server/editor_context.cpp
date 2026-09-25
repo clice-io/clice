@@ -14,9 +14,9 @@ namespace clice {
 namespace {
 
 /// The contexts blob: user context choices — never invalidated by content,
-/// only by the user or a vanished CDB anchor. Paths persist as spellings and are re-interned at
-/// load. The structs mirror the on-disk JSON layout field for field — changing them changes the
-/// format.
+/// only by the user or a vanished CDB anchor. Paths persist as spellings
+/// and are re-interned at load. The structs mirror the on-disk JSON layout
+/// field for field — changing them changes the format.
 
 struct CacheContextEntry {
     std::uint32_t file;  // index into the paths table
@@ -137,8 +137,8 @@ void EditorContext::load() {
 }
 
 void EditorContext::append_suffix_include(Fid path_id, std::string& text) const {
-    auto* context = header_context(path_id);
-    if(!context || !context->synthesized || context->synthesized->suffix.empty()) {
+    auto* context = synthesized(path_id);
+    if(!context || context->suffix.empty()) {
         return;
     }
     if(!text.ends_with('\n')) {
@@ -147,7 +147,7 @@ void EditorContext::append_suffix_include(Fid path_id, std::string& text) const 
     text += "#include \"";
     // Escape like preamble_synthesis's line markers: Windows separators
     // must survive the preprocessor's string literal parsing.
-    for(char c: context->synthesized->suffix) {
+    for(char c: context->suffix) {
         if(c == '\\' || c == '"') {
             text += '\\';
         }

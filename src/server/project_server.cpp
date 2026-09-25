@@ -307,12 +307,7 @@ void ProjectServer::close_session(Fid path_id) {
 
 bool ProjectServer::knows(Fid path_id) {
     return sessions.find(path_id) != nullptr || !project.build.commands(path_id).empty() ||
-           project.dep_graph.knows(path_id) ||
-           project.project_index.contributions.contains(path_id) ||
-           project.project_index.probed.contains(path_id) ||
-           llvm::any_of(llvm::make_first_range(sessions.sessions), [&](Fid document) {
-               return ast.projections.read(document, path_id, project.pch_cache);
-           });
+           project.dep_graph.knows(path_id) || !invalidator.readers(path_id).empty();
 }
 
 void ProjectServer::open_session(Fid path_id, std::string text, int version) {
@@ -389,9 +384,9 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         }
     }
 
-    // The header's borrowed compile command changed: its resolved context
-    // (and synthesized preamble) describes flags that no longer exist, so
-    // the next use must re-resolve. Session dirtying arrives in the same
+    // The header's resolved context was derived from what changed — its
+    // borrowed compile command, a file along its include chain — so the
+    // next use must re-resolve. Session dirtying arrives in the same
     // DirtySet via mark_ast_dirty.
     for(auto path_id: dirty.drop_context) {
         contexts.drop_header_context(path_id);

@@ -4,7 +4,7 @@
 import * as proto from "vscode-languageserver-protocol";
 import { expect, test } from "../fixtures.ts";
 
-const BOM = "﻿";
+const BOM = "\uFEFF";
 
 function startOf(location: proto.Location | proto.LocationLink | undefined): string | null {
     if (location === undefined) {

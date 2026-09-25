@@ -361,8 +361,7 @@ TEST_CASE(SymlinkedSourceSpelling) {
     /// as the build does; its identity stays the file it points to.
     TempDir tmp;
     tmp.touch("real/main.cpp", "int main() {}\n");
-    [[maybe_unused]] auto linked =
-        ::symlink(tmp.path("real/main.cpp").c_str(), tmp.path("main.cpp").c_str());
+    ASSERT_EQ(::symlink(tmp.path("real/main.cpp").c_str(), tmp.path("main.cpp").c_str()), 0);
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}

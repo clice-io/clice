@@ -1,3 +1,7 @@
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "support/filesystem.h"
@@ -128,6 +132,8 @@ TEST_CASE(FastPathChecksIdentity) {
     auto read = pool.read(fid);
     ASSERT_TRUE(read.has_value());
     auto vid = pool.intern_version(fid, read->hash);
+    ASSERT_TRUE(pool.cached_hash(fid, read->size, read->mtime_ns, read->uid_device, read->uid_file)
+                    .has_value());
 
     tmp.touch("f.h.tmp", "int v2();\n");
     ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
@@ -135,6 +141,48 @@ TEST_CASE(FastPathChecksIdentity) {
 
     auto wave = pool.wave();
     ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Stale);
+}
+
+TEST_CASE(SymlinkShownAsSpelled) {
+    // A file is its resolved path; results name it the way the user does:
+    // the open document's spelling, else the workspace root's.
+    TempDir tmp;
+    tmp.touch("real/a.h", "");
+    ASSERT_EQ(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()), 0);
+    auto real = path::resolved(tmp.path("real/a.h"));
+    auto link = tmp.path("link/a.h");
+
+    FileTable pool;
+    auto fid = pool.intern(link);
+    ASSERT_EQ(pool.intern(real), fid);
+    ASSERT_EQ(pool.resolve(fid), real);
+    ASSERT_EQ(pool.display(fid), real);
+
+    pool.spell_root(tmp.path("link"));
+    ASSERT_EQ(pool.display(fid), link);
+
+    pool.show_as(fid, real);
+    ASSERT_EQ(pool.display(fid), real);
+    pool.unshow(fid);
+    ASSERT_EQ(pool.display(fid), link);
+}
+
+TEST_CASE(PairNeedsLiveIdentity) {
+    // The shared pair answers only through the identity it was earned
+    // under: a stat carrying another UniqueID (a same-stat replace) must
+    // read, even when size and mtime match.
+    TempDir tmp;
+    tmp.touch("f.h", "int v1();\n");
+    auto f = tmp.path("f.h");
+    age(f);
+
+    FileTable pool;
+    auto fid = pool.intern(f);
+    auto read = pool.read(fid);
+    ASSERT_TRUE(read.has_value());
+    ASSERT_FALSE(
+        pool.cached_hash(fid, read->size, read->mtime_ns, read->uid_device + 1, read->uid_file + 1)
+            .has_value());
 }
 #endif
 

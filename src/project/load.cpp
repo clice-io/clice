@@ -46,9 +46,9 @@ ProjectLoad load_project(Project& project,
             project.store.emplace(std::move(*cache));
             // A read-only bootstrap opens the index database read-only:
             // no writer lock (a concurrent server or index run keeps
-            // owning it), while the persisted version stamps and artifact
-            // metadata still seed this session's fast paths. Its own
-            // metadata stays in memory and exits with it.
+            // owning it), while the persisted versions and artifact
+            // metadata still seed this session. Its own metadata stays in
+            // memory and exits with it.
             if(read_only_index) {
                 project.index_db = index::open_database(*project.store, configuration, true);
             } else if((project.writer_lock = index::WriterLock::acquire(cfg.cache_dir))) {

@@ -1289,7 +1289,7 @@ TEST_CASE(AbsentSpellingsOnePlace) {
     TempDir tmp;
     tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
     tmp.mkdir("real");
-    [[maybe_unused]] auto linked = ::symlink(tmp.path("real").c_str(), tmp.path("link").c_str());
+    ASSERT_EQ(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()), 0);
     auto src = tmp.path("main.cpp");
     auto indexed = index_file(tmp, src, {"-I" + tmp.path("real"), "-I" + tmp.path("link")});
     ASSERT_FALSE(indexed.data.empty());

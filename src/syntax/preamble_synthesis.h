@@ -30,6 +30,9 @@ struct ChainEntry {
 using IncludeResolver =
     llvm::function_ref<std::optional<std::string>(llvm::StringRef, bool, bool, llvm::StringRef)>;
 
+/// Files a compile reads from memory instead of disk: (path, content).
+using SynthesizedFiles = std::vector<std::pair<std::string, std::string>>;
+
 /// The includer context of a header, as files the compile reads from
 /// memory: each chain file cut at its include of the next, the part
 /// before the cut and the part after it each becoming one fragment that
@@ -50,9 +53,9 @@ struct SynthesizedContext {
     /// balanced. Empty for an empty chain.
     std::string suffix;
 
-    /// Every synthesized file (path, content): the fragments, and the
-    /// header's snapshot when one was given.
-    std::vector<std::pair<std::string, std::string>> files;
+    /// Every synthesized file: the fragments, and the header's snapshot
+    /// when one was given.
+    SynthesizedFiles files;
 };
 
 /// Synthesize both sides of the includer context of `target_path`.
@@ -86,7 +89,7 @@ std::optional<SynthesizedContext>
                        std::optional<llvm::StringRef> target_content = {});
 
 /// Count how many include directives in `content` bring in `target_path`
-/// (candidates in the sense of synthesize_preamble's matching).
+/// (candidates in the sense of synthesize_context's matching).
 std::uint32_t count_include_occurrences(llvm::StringRef content,
                                         llvm::StringRef includer_path,
                                         llvm::StringRef target_path,

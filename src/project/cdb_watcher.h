@@ -36,10 +36,10 @@ public:
     /// ones that do not exist yet included, which is how a database
     /// generated after startup is picked up — and the response files its
     /// commands name. Once a source's inputs have held the same other
-    /// content for two consecutive ticks, reloads it. A discovered database vanishing
-    /// or returning flips its presence, and the files whose default entry
-    /// moves with it change command (see Build::source_order); its entries
-    /// keep serving meanwhile.
+    /// content for two consecutive ticks, reloads it. A discovered database
+    /// vanishing or returning flips its presence, and the files whose
+    /// default entry moves with it change command (see
+    /// Build::source_order); its entries keep serving meanwhile.
     ///
     /// `force` reloads unconditionally: it skips both the content gate and
     /// the two-tick settling debounce (the half-written-file guard). The

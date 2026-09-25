@@ -205,6 +205,33 @@ TEST_CASE(ValidateKeepsValidChoice) {
     ASSERT_TRUE(resolver.selections.contains(header));
 }
 
+TEST_CASE(ValidateDropsGoneOccurrence) {
+    // Reopened after the host lost the pinned second include of the header:
+    // didOpen judges the choice the way the orphan pass does.
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    tmp.touch("host.cpp", R"(#include "h.h")");
+    tmp.touch("h.h");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"), {}}
+    }));
+
+    auto host = project.file_table.intern(tmp.path("host.cpp"));
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    resolver.selections[header] = Selection{host, 1, ""};
+
+    resolver.validate_saved_context(header);
+    ASSERT_FALSE(resolver.selections.contains(header));
+}
+
 TEST_CASE(ValidateDropsStaleChoice) {
     TempDir tmp;
     FileTable files;

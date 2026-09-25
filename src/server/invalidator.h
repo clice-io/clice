@@ -246,6 +246,12 @@ public:
     /// Fold a batch of events into one deduplicated effect set.
     DirtySet apply(llvm::ArrayRef<FileEvent> events);
 
+    /// The root TUs and open documents whose compiles depend on the file:
+    /// the ones the lexical scan sees including it, and the ones whose
+    /// compiles read it or looked for it — the scan cannot resolve a macro
+    /// include, and never sees a file before it exists.
+    llvm::SmallVector<Fid> readers(Fid path_id) const;
+
 private:
     /// Rescan the file's disk state (include edges, module maps). A module
     /// name the rescan gave its first provider cascades to the consumers
@@ -270,12 +276,6 @@ private:
     /// See the definition: the open/closed/index-only split of a
     /// dependency invalidation.
     void mark_dependent(Fid path_id, DirtySet& dirty);
-
-    /// The root TUs and open documents whose compiles depend on the file:
-    /// the ones the lexical scan sees including it, and the ones whose
-    /// compiles read it or looked for it — the scan cannot resolve a macro
-    /// include, and never sees a file before it exists.
-    llvm::SmallVector<Fid> readers(Fid path_id) const;
 
     Project& project;
     const SessionStore& store;

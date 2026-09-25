@@ -167,7 +167,7 @@ TEST_CASE(LintSetSymlinkedRoot) {
     tmp.touch("real/clice.toml", "[[rules]]\npatterns = [\"vendor/**\"]\nlint = false\n");
     tmp.touch("real/src/main.cpp", "int main() { return 0; }\n");
     tmp.touch("real/vendor/lib.cpp", "int lib() { return 0; }\n");
-    [[maybe_unused]] auto linked = ::symlink(tmp.path("real").c_str(), tmp.path("link").c_str());
+    ASSERT_EQ(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()), 0);
 
     Config config = Config::load_from_workspace(tmp.path("link"));
     EXPECT_EQ(std::string(config.workspace_root), path::resolved(tmp.path("real")));

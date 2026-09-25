@@ -172,7 +172,7 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
     // Use cached context if it is still valid; otherwise resolve. The cache
     // is dropped when an active context override points to a different host
     // or include occurrence, when the routing mode changed, or when any
-    // chain file changed on disk (the synthesized preamble embeds their
+    // chain file changed on disk (the synthesized context embeds their
     // content, so it must be rebuilt). Only editor-facing compiles consult
     // the cache; background indexing must stay independent of per-editor
     // context state, so it resolves fresh every time.

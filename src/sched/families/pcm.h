@@ -41,10 +41,10 @@ public:
     /// a request that compiles under `arguments` with `content` as the
     /// main file and `synthesized` served from memory (the forwarder's
     /// per-request builds — the scan must see the buffer's imports under
-    /// the request's command). Building a
-    /// dependency can itself evict another clean module's PCM under
-    /// budget pressure, which reopens the window the revalidation just
-    /// closed — hence the bounded retry until the set is stable.
+    /// the request's command). Building a dependency can itself evict
+    /// another clean module's PCM under budget pressure, which reopens the
+    /// window the revalidation just closed — hence the bounded retry until
+    /// the set is stable.
     kota::task<bool> prepare_deps(Fid path_id,
                                   llvm::ArrayRef<const char*> arguments,
                                   llvm::StringRef directory,

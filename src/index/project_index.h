@@ -65,7 +65,7 @@ struct ProjectIndex {
     bool bind_global(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files);
 
     /// The writer's half of a bound blob: intern its file versions into
-    /// `files`, adopting their stat stamps, and read the per-TU manifest
+    /// `files` and read the per-TU manifest
     /// pins — `manifest_pins` maps each pinned TU's tu_fv (as the table's
     /// id) to the generation stamp its manifest must carry to be adopted.
     /// Rejects a blob whose version table is inconsistent, leaving `files`

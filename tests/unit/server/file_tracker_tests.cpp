@@ -241,7 +241,7 @@ TEST_CASE(CDBDeletedBeforeWatch) {
     EXPECT_FALSE(project.cdb.present(id));
 }
 
-TEST_CASE(CDBResponseRewriteBeforeWatch) {
+TEST_CASE(ResponseRewriteBeforeWatch) {
     /// A response file rewritten between the startup load and the watch:
     /// the load's own read is the baseline, so the flags in memory catch
     /// up.
@@ -353,7 +353,7 @@ TEST_CASE(CDBTickFollowsRetarget) {
                   {tmp.root, tmp.path("main.cpp"), {"-DRELEASE"}}
     }));
     auto database = tmp.path("compile_commands.json");
-    [[maybe_unused]] auto linked = ::symlink(tmp.path("debug.json").c_str(), database.c_str());
+    ASSERT_EQ(::symlink(tmp.path("debug.json").c_str(), database.c_str()), 0);
     FileTable files;
     Project project{files};
     SessionStore store;
@@ -362,7 +362,7 @@ TEST_CASE(CDBTickFollowsRetarget) {
     FileTracker tracker(project, store, tmp.root.str().str());
 
     fs::remove(database);
-    linked = ::symlink(tmp.path("release.json").c_str(), database.c_str());
+    ASSERT_EQ(::symlink(tmp.path("release.json").c_str(), database.c_str()), 0);
     ASSERT_TRUE(tracker.tick_cdb().empty());
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
@@ -707,6 +707,7 @@ TEST_CASE(WorkspaceTickSeesOpen) {
         EXPECT_EQ(changed.size(), 1u);
         if(changed.size() == 1) {
             EXPECT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
+            EXPECT_EQ(changed[0].path_id, header);
         }
         EXPECT_TRUE((co_await sweep(tracker, files)).empty());
 
@@ -715,6 +716,7 @@ TEST_CASE(WorkspaceTickSeesOpen) {
         EXPECT_EQ(removed.size(), 1u);
         if(removed.size() == 1) {
             EXPECT_EQ(removed[0].kind, FileEvent::Kind::DiskRemoved);
+            EXPECT_EQ(removed[0].path_id, header);
         }
     };
     auto task = body();
@@ -770,7 +772,7 @@ TEST_CASE(AnyLookReportsChange) {
     project.file_table.read(header);
     FileTracker tracker(project, store, tmp.root.str().str());
     tmp.touch("header.h", R"(int x = 2222;)");
-    project.rescan_after_save(header);
+    project.rescan_disk_file(header);
 
     auto body = [&]() -> kota::task<> {
         auto first = co_await sweep(tracker, files);

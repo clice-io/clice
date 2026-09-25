@@ -178,7 +178,7 @@ struct PCMState {
 /// Project is NEVER modified by unsaved buffer content.  The only mutation
 /// paths are:
 ///   - Initialization  (load_project at startup)
-///   - didSave         (rescan_after_save: rescan disk, cascade invalidation)
+///   - A disk change   (rescan_disk_file: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
 struct Project {
     explicit Project(FileTable& file_table) : file_table(file_table) {}
@@ -258,9 +258,10 @@ struct Project {
 
     /// Rescan a file whose disk content changed, from one read: refresh
     /// its include edges (so host lookups and context queries see includes
-    /// the change added or removed) and its module declaration. The module-graph cascade is the
-    /// invalidator's job (PCMFamily::invalidate).
-    void rescan_after_save(Fid path_id);
+    /// the change added or removed) and its module declaration. The
+    /// module-graph cascade is the invalidator's job
+    /// (PCMFamily::invalidate).
+    void rescan_disk_file(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a
     /// replacement provider would otherwise sit behind it and never be

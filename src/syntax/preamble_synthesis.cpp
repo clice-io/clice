@@ -125,7 +125,7 @@ static void emit_fragment(std::string& out,
                           llvm::StringRef target_path,
                           llvm::StringRef snapshot_path) {
     std::uint32_t pos = from;
-    for(std::size_t j = 0; j < includes.size(); ++j) {
+    for(std::size_t j = 0; j < includes.size(); j += 1) {
         auto& include = includes[j];
         if(include.name_offset < from || include.offset >= to) {
             continue;
@@ -192,7 +192,7 @@ std::optional<SynthesizedContext>
     // (reopening them).
     llvm::SmallVector<std::string> before;
     llvm::SmallVector<std::string> after;
-    for(std::size_t i = 0; i < chain.size(); ++i) {
+    for(std::size_t i = 0; i < chain.size(); i += 1) {
         auto& entry = chain[i];
         bool is_last = i + 1 == chain.size();
         auto next_path = is_last ? target_path : chain[i + 1].path;
@@ -235,7 +235,7 @@ std::optional<SynthesizedContext>
                       resolved,
                       target_path,
                       snapshot_path);
-        for(std::uint16_t d = depth; d > 0; --d) {
+        for(std::uint16_t d = depth; d > 0; d -= 1) {
             head += "#endif\n";
         }
 
@@ -247,7 +247,7 @@ std::optional<SynthesizedContext>
                           ? static_cast<std::uint32_t>(entry.content.size())
                           : static_cast<std::uint32_t>(line_end + 1);
         auto& tail = after.emplace_back();
-        for(std::uint16_t d = depth; d > 0; --d) {
+        for(std::uint16_t d = depth; d > 0; d -= 1) {
             tail += "#if 1\n";
         }
         auto resume_line =
@@ -267,7 +267,7 @@ std::optional<SynthesizedContext>
     // including the next — host first before the cut, direct includer
     // first after it — so every fragment is entered from the same place
     // its file would be.
-    for(std::size_t i = chain.size(); i > 0; --i) {
+    for(std::size_t i = chain.size(); i > 0; i -= 1) {
         auto& head = before[i - 1];
         if(!context.prefix.empty()) {
             append_include(head, context.prefix);
@@ -275,7 +275,7 @@ std::optional<SynthesizedContext>
         context.prefix =
             add_file(context, llvm::sys::path::parent_path(chain[i - 1].path), std::move(head));
     }
-    for(std::size_t i = 0; i < chain.size(); ++i) {
+    for(std::size_t i = 0; i < chain.size(); i += 1) {
         auto& tail = after[i];
         if(!context.suffix.empty()) {
             append_include(tail, context.suffix);

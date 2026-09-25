@@ -1259,9 +1259,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     };
 
     // Artifact metadata and context choices are index-independent: they
-    // load (and self-validate) whatever happened to the global blob. Must
-    // run after load_global though — the artifacts' stamps are gated on the
-    // revocations the loaded global recorded.
+    // load (and self-validate) whatever happened to the global blob.
     auto load_metadata = [&] {
         if(auto artifacts = db.read(index::IndexBlobKind::Artifacts, "artifacts")) {
             load_artifacts(artifacts.buffer->getBuffer());

@@ -80,8 +80,6 @@ test("save writes only dirty shards", async ({ session }) => {
     const [uri] = await client.openAndWait("file0.cpp");
     expect(await client.waitForIndex(uri, "func_3"), "background index did not finish").toBe(true);
     await waitStats(client, (s) => s.indexInmemoryShards === 0, "initial round did not settle");
-    // The first workspace tick only seeds the stat baseline.
-    await client.poll("workspace");
 
     // Change one file on disk and tick the tracker: only its shard should
     // be re-merged and re-saved.
@@ -114,6 +112,12 @@ test("save writes only dirty shards", async ({ session }) => {
         "the save left shards in memory",
     );
     expect(settled.indexShardContentBytes).toBe(stats.indexShardContentBytes);
+
+    // Closing reindexes nothing: the closed file's symbols come from the
+    // shard the round wrote while it was open.
+    client.close(uri);
+    const symbols = await client.workspaceSymbols("func_0");
+    expect(symbols?.some((s) => s.name === "func_0")).toBe(true);
     client.assertNoAnomaly();
 });
 

@@ -13,6 +13,7 @@
 #include "compile/compilation_unit.h"
 #include "compile/dep_file.h"
 #include "support/filesystem.h"
+#include "syntax/preamble_synthesis.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
@@ -184,7 +185,7 @@ struct CompilationParams {
 
     /// Serve files the command names from memory: a header context's
     /// synthesized fragments.
-    void add_synthesized(llvm::ArrayRef<std::pair<std::string, std::string>> files) {
+    void add_synthesized(const SynthesizedFiles& files) {
         for(auto& [file, content]: files) {
             add_remapped_file(file, content);
             // Spelled the way CompilationUnitRef::file_path spells a file no

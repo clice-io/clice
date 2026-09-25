@@ -134,6 +134,7 @@ test("header save resets verdict", async ({ session }) => {
 
     await c.waitForRecompile(utilsUri);
     c.assertCleanCompile(utilsUri);
+    expect(await synthesized(c), "the self-contained header drops its prefix").toBe(0);
     await c.shutdown();
 });
 

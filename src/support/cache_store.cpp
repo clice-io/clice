@@ -389,7 +389,7 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
     // doubles as the `.clice/config.toml` location, and user configuration
     // must stay visible. CACHEDIR.TAG (the standard marker backup and
     // scanning tools skip) sits at the root too: it must cover generated
-    // content outside the store (logs, header-context artifacts), and
+    // content outside the store (logs), and
     // root-level files are safe from open()'s layout sweep, which only
     // scans cache/. The known cost is that CACHEDIR-aware backups also
     // skip a config.toml kept here — git, which sees it, is the intended

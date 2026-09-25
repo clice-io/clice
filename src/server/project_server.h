@@ -110,10 +110,10 @@ public:
     /// registered at construction — nodes materialize on demand, so a
     /// module-free project pays nothing. The store and the pump are
     /// serving-neutral; the session-side policy — unservable escalation,
-    /// serving-row refresh — lives on this class
-    /// and is installed into the pump's hooks at construction. The AST
-    /// family is assembled here in the project's server: its rounds
-    /// capture sessions, quarantine and publishing.
+    /// serving-row refresh — lives on this class and is installed into the
+    /// pump's hooks at construction. The AST family is assembled here in
+    /// the project's server: its rounds capture sessions, quarantine and
+    /// publishing.
     SchedulingStack sched;
     EditorContext contexts{project, commands, sched.store.contexts};
     ASTFamily ast;

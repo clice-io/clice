@@ -163,6 +163,22 @@ TEST_CASE(GateSplitsRows) {
     ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
 }
 
+TEST_CASE(DeletedFileKeepsRows) {
+    add_main("main.cpp", R"(
+        int helper() { return 1; }
+        int use() { return §(use)helper(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+    auto hash = symbol_at(main_id, point("use"));
+    ASSERT_NE(hash, 0UL);
+
+    // A file seen gone keeps serving its last rows: they are the only
+    // remaining truth about it.
+    project.file_table.saw_missing(main_id);
+    ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
+}
+
 };  // TEST_SUITE(QueryFreshness)
 
 }  // namespace

@@ -11,6 +11,7 @@
 #include "compile/dep_file.h"
 #include "config/config.h"
 #include "feature/feature.h"
+#include "syntax/preamble_synthesis.h"
 #include "syntax/token.h"
 
 #include "kota/codec/json/json.h"
@@ -118,7 +119,7 @@ struct CompileParams {
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
-    std::vector<std::pair<std::string, std::string>> synthesized;
+    SynthesizedFiles synthesized;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
 
@@ -178,7 +179,7 @@ struct BuildPCHParams {
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
-    std::vector<std::pair<std::string, std::string>> synthesized;
+    SynthesizedFiles synthesized;
 
     /// The preamble content, remapped over the file.
     std::string content;
@@ -217,7 +218,7 @@ struct TURunParams {
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
-    std::vector<std::pair<std::string, std::string>> synthesized;
+    SynthesizedFiles synthesized;
 
     /// PCM dependencies for TUs that import modules.
     std::unordered_map<std::string, std::string> pcms;
@@ -245,7 +246,7 @@ struct CompletionParams {
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
-    std::vector<std::pair<std::string, std::string>> synthesized;
+    SynthesizedFiles synthesized;
 
     std::string text;
     uint32_t offset = 0;
@@ -264,7 +265,7 @@ struct SignatureHelpParams {
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
-    std::vector<std::pair<std::string, std::string>> synthesized;
+    SynthesizedFiles synthesized;
 
     std::string text;
     uint32_t offset = 0;

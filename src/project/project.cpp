@@ -45,7 +45,7 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
                                      null_resolver);
 }
 
-void Project::rescan_after_save(Fid path_id) {
+void Project::rescan_disk_file(Fid path_id) {
     auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
 

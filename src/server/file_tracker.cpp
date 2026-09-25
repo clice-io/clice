@@ -64,10 +64,8 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     // is invisible to the former — and every place last seen empty, where
     // a file appearing changes what some compile would see.
     auto files = project.dep_graph.all_files();
-    for(auto& [file, contributors]: project.project_index.contributions) {
-        files.push_back(file);
-    }
-    llvm::append_range(files, project.file_table.seen_missing());
+    llvm::append_range(files, llvm::make_first_range(project.project_index.contributions));
+    llvm::append_range(files, project.file_table.missing_files());
     llvm::sort(files);
     files.erase(llvm::unique(files), files.end());
     for(std::size_t begin = 0; begin < files.size(); begin += batch_size) {
@@ -78,7 +76,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
         }
 
         auto batch_end = std::min(begin + batch_size, files.size());
-        for(std::size_t i = begin; i < batch_end; ++i) {
+        for(std::size_t i = begin; i < batch_end; i += 1) {
             auto path_id = files[i];
             llvm::sys::fs::file_status status;
             if(llvm::sys::fs::status(project.file_table.resolve(path_id), status)) {

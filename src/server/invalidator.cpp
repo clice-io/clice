@@ -119,7 +119,7 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
 
 void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
     std::string old_module(project.dep_graph.module_of(path_id));
-    project.rescan_after_save(path_id);
+    project.rescan_disk_file(path_id);
     auto new_module = project.dep_graph.module_of(path_id);
     if(new_module == old_module) {
         return;
@@ -167,14 +167,14 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     // Module units whose PCM read the file (a header in a global module
     // fragment): the artifact's own record names them, the module graph
     // knows only imports.
-    llvm::SmallVector<Fid> readers;
+    llvm::SmallVector<Fid> pcm_readers;
     for(auto& [unit, state]: project.pcm_cache) {
         if(unit != path_id &&
            llvm::any_of(state.deps, [&](const DepState& dep) { return dep.path_id == path_id; })) {
-            readers.push_back(unit);
+            pcm_readers.push_back(unit);
         }
     }
-    for(auto unit: readers) {
+    for(auto unit: pcm_readers) {
         cascade_compile_graph(unit, dirty);
     }
 
@@ -190,7 +190,7 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     }
 
     // Headers whose resolved context was derived from the file through its
-    // include chain resolve it again: the synthesized preamble copies the
+    // include chain resolve it again: the synthesized context copies the
     // chain files' content, so neither the dependents cascade above nor
     // clang's own dependency tracking catches this.
     for(auto header_id: contexts.chain_dependents(path_id)) {

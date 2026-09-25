@@ -57,9 +57,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        const std::vector<std::string>& arguments) {
     auto path = project.file_table.resolve(path_id);
     auto bound = compute_preamble_bound(text);
-    auto* header_context = contexts.header_context(path_id);
-    bool has_prefix = header_context && header_context->synthesized;
-    if(bound == 0 && !has_prefix) {
+    auto* synthesized = contexts.synthesized(path_id);
+    if(bound == 0 && !synthesized) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts land here too: they borrow
         // a command but inject nothing.
@@ -116,8 +115,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .arguments = arguments,
                       .content = std::string(text),
                       .preamble_bound = bound,
-                      .synthesized = has_prefix ? header_context->synthesized->files
-                                          : std::vector<std::pair<std::string, std::string>>{},
+                      .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
                       },
     };
 }
@@ -397,12 +395,11 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    auto* header_context = contexts.header_context(path_id);
     auto deps = pcm.direct_deps(path_id,
                                 argv,
                                 directory,
                                 std::optional<llvm::StringRef>(text),
-                                header_context ? header_context->synthesized.get() : nullptr);
+                                contexts.synthesized(path_id));
     graph.declare(node(path_id), deps.declared);
     // Sentinels join the round's candidates too: a successful landing
     // replaces the declaration with them, and a declare-only edge would
@@ -494,8 +491,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // past it is phantom text the user cannot see.
         std::optional<std::uint32_t> suffix_line_limit;
         auto* header_context = contexts.header_context(path_id);
-        if(header_context && header_context->synthesized &&
-           !header_context->synthesized->suffix.empty()) {
+        if(auto* synthesized = contexts.synthesized(path_id);
+           synthesized && !synthesized->suffix.empty()) {
             auto newlines = std::ranges::count(params.text, '\n');
             suffix_line_limit =
                 static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
@@ -944,12 +941,11 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     }
     auto scan_text = session->text;
     contexts.append_suffix_include(path_id, scan_text);
-    auto* header_context = contexts.header_context(path_id);
     if(!co_await pcm.prepare_deps(path_id,
                                   argv,
                                   directory,
                                   std::optional<llvm::StringRef>(scan_text),
-                                  header_context ? header_context->synthesized.get() : nullptr,
+                                  contexts.synthesized(path_id),
                                   /*foreground=*/true)) {
         co_return false;
     }

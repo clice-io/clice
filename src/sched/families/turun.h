@@ -29,8 +29,9 @@ class PCMFamily;
 /// with the first concurrent consumer (in-server background checks).
 ///
 /// The family owns the run policy: command resolution, module-PCM edges,
-/// the worker dispatch, and the store merge with its supersede gate. The pump owns the debt ledger,
-/// the queue and the requeue budget; it reads this family's per-attempt outcome to settle them.
+/// the worker dispatch, and the store merge with its supersede gate. The
+/// pump owns the debt ledger, the queue and the requeue budget; it reads
+/// this family's per-attempt outcome to settle them.
 class TURunFamily {
 public:
     TURunFamily(TaskGraph& graph,

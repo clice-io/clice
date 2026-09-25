@@ -43,7 +43,8 @@ struct EditorContext {
     /// Entries outlive their sessions: closing a header keeps its
     /// synthesized context, so reopening reuses it instead of
     /// re-synthesizing. Entries are re-validated at use (deps_changed) and
-    /// invalidated by saves along their include chain. An automatic (not
+    /// dropped when a file along their include chain changes on disk. An
+    /// automatic (not
     /// user-chosen) host sticks until such an invalidation — reuse
     /// deliberately wins over re-ranking hosts on reopen.
     /// TODO: entries for headers never reopened accumulate for the server's
@@ -86,6 +87,12 @@ struct EditorContext {
     const HeaderContext* header_context(Fid path_id) const {
         auto it = header_contexts.find(path_id);
         return it != header_contexts.end() ? &it->second : nullptr;
+    }
+
+    /// The includer context synthesized for the file, or nullptr.
+    const SynthesizedContext* synthesized(Fid path_id) const {
+        auto* context = header_context(path_id);
+        return context ? context->synthesized.get() : nullptr;
     }
 
     /// Discard the file's resolved header context so the next compile

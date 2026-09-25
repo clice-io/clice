@@ -98,7 +98,7 @@ bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
     if(!options.withhold) {
         return false;
     }
-    if(options.look && looked.insert(file).second) {
+    if(options.check_disk && checked.insert(file).second) {
         files.current(file);
     }
     auto seen = files.seen_hash(file);

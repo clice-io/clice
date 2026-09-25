@@ -173,7 +173,7 @@ TEST_CASE(DiskRemovedDropsProvider) {
     EXPECT_TRUE(project.dep_graph.lookup_module("m").empty());
 }
 
-TEST_CASE(DiskChangeSparesOwnSession) {
+TEST_CASE(DiskChangeSparesSession) {
     TempDir tmp;
     tmp.touch("a.h", "int x;");
 
@@ -560,6 +560,33 @@ TEST_CASE(CompiledIncluderCascades) {
     llvm::SmallVector<Fid> reindexed{scanned, compiled};
     llvm::sort(reindexed);
     ASSERT_EQ(dirty.reindex_deps_only, reindexed);
+}
+
+TEST_CASE(ModuleReadHeaderCascades) {
+    // A header only a module unit's PCM read (its global module fragment):
+    // no include edge names the importers, the unit's recorded inputs do.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern("/proj/gmf.h");
+    auto mod = project.file_table.intern("/proj/m.cppm");
+    auto user = project.file_table.intern("/proj/user.cpp");
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    ph.graph.declare(
+        NodeId{
+            Family::PCM,
+            user.raw
+    },
+        {NodeId{Family::PCM, mod.raw}});
+    project.pcm_cache[mod].deps.push_back({.path_id = header});
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
+
+    ASSERT_TRUE(llvm::is_contained(dirty.reindex_deps_only, user));
 }
 
 TEST_CASE(AppearedHeaderCascades) {
@@ -1110,14 +1137,24 @@ TEST_CASE(SurvivingEdgeKeepsChoice) {
 }
 
 TEST_CASE(RemovedEdgeDropsChoice) {
+    // The host still compiles but no longer includes the header.
+    TempDir tmp;
+    tmp.touch("host.cpp", "int x;\n");
+    tmp.touch("h.h");
     FileTable files;
     Project project{files};
     SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"), {}}
+    }));
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    auto host = project.file_table.intern("/proj/host.cpp");
-    auto header = project.file_table.intern("/proj/h.h");
+    auto host = project.file_table.intern(tmp.path("host.cpp"));
+    auto header = project.file_table.intern(tmp.path("h.h"));
+    project.dep_graph.set_includes(host, 0, {});
     project.dep_graph.build_reverse_map();
 
     auto session = store.open(header);
@@ -1138,16 +1175,21 @@ TEST_CASE(RemovedEdgeDropsChoice) {
 
 TEST_CASE(VanishedOccurrenceDropsChoice) {
     TempDir tmp;
+    // The host still compiles and includes the header, but only once — the
+    // pinned occurrence #1 no longer exists.
+    tmp.touch("host.cpp", R"(#include "h.h")");
+    tmp.touch("h.h");
     FileTable files;
     Project project{files};
     SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"), {}}
+    }));
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    // The host still includes the header, but only once — the pinned
-    // occurrence #1 no longer exists.
-    tmp.touch("host.cpp", R"(#include "h.h")");
-    tmp.touch("h.h");
     auto host = project.file_table.intern(tmp.path("host.cpp"));
     auto header = project.file_table.intern(tmp.path("h.h"));
     project.dep_graph.set_includes(host, 0, {{header}});

@@ -406,7 +406,7 @@ struct FileTable {
 
     /// Every fid the last look found missing: deleted files, and the places
     /// failed lookups looked — where a file appearing is a change.
-    llvm::SmallVector<Fid> seen_missing() const {
+    llvm::SmallVector<Fid> missing_files() const {
         llvm::SmallVector<Fid> result;
         for(auto& [fid, hash]: seen) {
             if(!hash) {
