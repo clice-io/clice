@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { waitUntil, withTimeout, type CliceClient } from "@clice/tools/client";
+import { SETTLE_TIME, sleep, waitUntil, withTimeout, type CliceClient } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test, type SessionFactory } from "../fixtures.ts";
 
@@ -46,6 +46,26 @@ test("open before initialize", async ({ session }) => {
     expect(hover!.contents).not.toBeNull();
     await withTimeout(arrived, 60_000, "diagnostics");
     expect(client.errors(uri)).toEqual([]);
+});
+
+test.skipIf(process.platform === "win32")("second name for an open file", async ({ session }) => {
+    // One file, one buffer: a document naming an open file through a
+    // symlink gets no buffer of its own, its edits are dropped, and closing
+    // it leaves the first document open.
+    const { client, workspace } = session.tmp();
+    workspace.write("real/main.cpp", "int main() { return 0; }\n");
+    fs.symlinkSync(workspace.path("real"), workspace.path("link"));
+    workspace.writeCDB(["real/main.cpp"]);
+    await client.initialize(workspace);
+
+    const [first] = await client.openAndWait("real/main.cpp");
+    const [second] = client.open("link/main.cpp");
+    client.change(second, 1, "int main() { return undefined_name; }\n");
+    client.close(second);
+    // An edit folded into the first buffer would recompile it on this pull.
+    expect(await client.hoverAt(first, 0, 5), "the first document stays open").not.toBeNull();
+    await sleep(SETTLE_TIME);
+    client.assertNoErrors(first, "the first document's buffer must be untouched");
 });
 
 test("close before initialize", async ({ session }) => {

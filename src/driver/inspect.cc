@@ -903,11 +903,9 @@ int run_inspect(const InspectOptions& opts) {
     if(is_dir && flags.empty()) {
         llvm::StringSet<> listed;
         for(auto& [rel, abs]: files) {
-            llvm::SmallString<256> storage;
-            listed.insert(path::canonical(abs, storage));
+            listed.insert(path::resolved(abs));
         }
-        llvm::SmallString<256> storage;
-        auto root = path::canonical(abs_path, storage);
+        auto root = path::resolved(abs_path);
         for(auto member: project.build.members()) {
             auto abs = project.file_table.resolve(member);
             if(!abs.starts_with(root) || abs.size() <= root.size() || abs[root.size()] != '/' ||
@@ -935,10 +933,11 @@ int run_inspect(const InspectOptions& opts) {
         // code may legitimately contain `§` (in strings or comments) and
         // must reach the compiler verbatim.
         AnnotatedSource source;
+        auto text = without_bom((*buffer)->getBuffer());
         if(opts.annotations) {
-            source = AnnotatedSource::from((*buffer)->getBuffer());
+            source = AnnotatedSource::from(text);
         } else {
-            source.content = (*buffer)->getBuffer().str();
+            source.content = text.str();
         }
         FileEntry entry;
         entry.stripped_hash = sha256_hex(source.content);

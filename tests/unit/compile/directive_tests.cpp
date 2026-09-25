@@ -393,6 +393,7 @@ TEST_CASE(FailedIncludeDeps) {
     ASSERT_TRUE(deps[0].hash != 0);
     ASSERT_EQ(deps[1].path, TestVFS::path("missing.h"));
     ASSERT_EQ(deps[1].hash, 0U);
+    ASSERT_TRUE(deps[1].absent);
     ASSERT_EQ(built.absent(), std::vector<std::string>{TestVFS::path("missing.h")});
 };
 

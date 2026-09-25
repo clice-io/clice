@@ -29,8 +29,10 @@ void add_related(protocol::Diagnostic& diagnostic,
                  const Diagnostic& raw,
                  PositionEncoding encoding) {
     /// Related information can point into a synthetic buffer, e.g. a
-    /// macro defined on the command line; there is no file to link to.
-    if(raw.fid.isInvalid() || unit.is_builtin_file(raw.fid) || !raw.range.valid()) {
+    /// macro defined on the command line, or into a header context's
+    /// synthesized fragment; there is no file to link to.
+    if(raw.fid.isInvalid() || unit.is_builtin_file(raw.fid) || unit.synthesized(raw.fid) ||
+       !raw.range.valid()) {
         return;
     }
 

@@ -528,6 +528,14 @@ private:
     /// Every source's entries, sorted by (file, source, ordinal).
     std::vector<CompilationEntry> entry_list;
 
+    /// How a database names a file whose identity is another path (a
+    /// symlinked source): the build compiles it under that name, which
+    /// decides where its quoted includes look and what `__FILE__` says.
+    llvm::DenseMap<Fid, llvm::StringRef> spellings;
+
+    /// The path a command gives its input file as.
+    llvm::StringRef input_path(Fid file) const;
+
     std::string workspace_root;
 
     /// Derivation memos, append-only alongside the pools.

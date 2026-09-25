@@ -237,6 +237,24 @@ TEST_CASE(MissingTransitions) {
     ASSERT_TRUE(changed(pool, snap));
 }
 
+TEST_CASE(AbsentPlaceFilled) {
+    // A place a failed lookup looked holds a file by the capture: the build
+    // never saw it, so the artifact is stale however old the file is.
+    TempDir tmp;
+    tmp.touch("gen.h", "int make();\n");
+    auto place = tmp.path("gen.h");
+    age_file(place);
+
+    FileTable pool;
+    auto snap = capture_deps_snapshot(pool,
+                                      {
+                                          DepFile{.path = place, .absent = true}
+    },
+                                      generous_build_at());
+    ASSERT_TRUE(snap[0].missing);
+    ASSERT_TRUE(changed(pool, snap));
+}
+
 TEST_CASE(RemovedAfterBuild) {
     TempDir tmp;
     tmp.touch("dep.h", "int f();\n");

@@ -2,6 +2,9 @@
 #include <format>
 #include <limits>
 #include <memory>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
@@ -1278,6 +1281,30 @@ TEST_CASE(CreatedHeaderStales) {
     f.clear_verdicts();
     ASSERT_TRUE(f.need_update(src));
 }
+
+#ifndef _WIN32
+TEST_CASE(AbsentSpellingsOnePlace) {
+    // A failed include looked in a directory under two spellings (one a
+    // symlink): one place, recorded once, and a reindex drops it cleanly.
+    TempDir tmp;
+    tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
+    tmp.mkdir("real");
+    [[maybe_unused]] auto linked = ::symlink(tmp.path("real").c_str(), tmp.path("link").c_str());
+    auto src = tmp.path("main.cpp");
+    auto indexed = index_file(tmp, src, {"-I" + tmp.path("real"), "-I" + tmp.path("link")});
+    ASSERT_FALSE(indexed.data.empty());
+    IndexerFixture f;
+    f.merge(indexed.data.data(), indexed.data.size());
+    f.merge(indexed.data.data(), indexed.data.size());
+    auto tu = f.project.file_table.intern(indexed.tu_path);
+    auto& manifest = f.project.project_index.manifests.find(tu)->second;
+    auto place = f.project.file_table.intern(tmp.path("real/gen.h"));
+    ASSERT_EQ(
+        llvm::count_if(manifest.absent,
+                       [&](VersionID fv) { return f.project.file_table.version(fv).fid == place; }),
+        1);
+}
+#endif
 
 TEST_CASE(TouchStaysFresh) {
     Indexed x;

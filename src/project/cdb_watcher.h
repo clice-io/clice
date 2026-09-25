@@ -79,6 +79,10 @@ private:
     /// Look at each of the source's inputs on disk now.
     Hashes look(SourceID id);
 
+    /// The file the source's path names now: a symlinked database may have
+    /// been pointed elsewhere since its load.
+    Fid database(SourceID id);
+
     /// Register `id` for watching, from its last load.
     void track(SourceID id);
 

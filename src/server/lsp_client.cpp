@@ -344,6 +344,13 @@ void LSPClient::register_document_sync() {
         }
 
         auto path_id = srv.files.intern(path);
+        // One file, one buffer: a second document naming it through another
+        // path (a symlink) would fold its own edits into the first one's.
+        // The document opened first keeps it.
+        if(auto owner = srv.files.shown_as(path_id); owner && *owner != path) {
+            LOG_WARN("didOpen: {} is already open as {}; serving that one", path, *owner);
+            return;
+        }
         srv.files.show_as(path_id, path);
         srv.open_session(path_id, params.text_document.text, params.text_document.version);
 
@@ -361,6 +368,10 @@ void LSPClient::register_document_sync() {
             // Dropping is the only safe move: without the didOpen baseline
             // there is no buffer to fold the edits into.
             LOG_ERROR("didChange for a document with no open session, dropping: {}", path);
+            return;
+        }
+        if(srv.files.shown_as(path_id) != path) {
+            LOG_WARN("didChange for {}, open under another name, dropping", path);
             return;
         }
 
@@ -403,7 +414,11 @@ void LSPClient::register_document_sync() {
         // clear is suppressed until the handshake completes — nothing was
         // pushed, and publishDiagnostics may not flow yet (push_output
         // drops the clear while !client_ready).
-        auto path_id = srv.files.intern(uri_to_path(params.text_document.uri));
+        auto path = uri_to_path(params.text_document.uri);
+        auto path_id = srv.files.intern(path);
+        if(srv.files.shown_as(path_id) != path) {
+            return;
+        }
         srv.files.unshow(path_id);
         // LSP versions are scoped to an open document: a reopen restarts
         // them, so a stale entry would misread the fresh document's first

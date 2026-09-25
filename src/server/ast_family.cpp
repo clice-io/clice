@@ -800,10 +800,11 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
             if(indicates_missing_context(diagnostics)) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
-                auto disk = project.file_table.current(path_id);
+                // Scored on the buffer: a restart keeps it only for the
+                // same text on disk.
                 contexts.commands.record_header_mode(path_id,
                                                      HeaderMode::NeedsContext,
-                                                     disk ? disk->hash : 0);
+                                                     session->hash);
                 contexts.drop_header_context(path_id);
                 adopted_pch.reset();
                 continue;

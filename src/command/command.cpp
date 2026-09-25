@@ -752,7 +752,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // entries before the cut still swap in) — the CDB poll's two-tick
     // settle debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
-    auto database = source.inputs.front().file;
+    auto database = file_table.intern(path::resolved(source.path));
     file_table.observe(database, observed->obs);
     source.inputs = {
         {.file = database, .hash = observed->obs.hash}
@@ -826,6 +826,11 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         }
         path::remove_dots(file_abs, /*remove_dot_dot=*/true);
         auto path_id = file_table.intern(file_abs);
+        llvm::SmallString<256> storage;
+        if(auto spelled = path::canonical(file_abs, storage);
+           spelled != file_table.resolve(path_id)) {
+            spellings[path_id] = strings.save(spelled);
+        }
 
         std::optional<ConfigID> normalized;
 
@@ -1271,7 +1276,7 @@ std::optional<ConfigID> CompilationDatabase::intern_command(llvm::StringRef dire
 std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& ref,
                                                             const RenderOptions& opts) {
     auto& cfg = config(ref.config);
-    auto source = file_table.resolve(ref.file);
+    auto source = input_path(ref.file);
 
     std::vector<const char*> argv;
     argv.reserve(cfg.args.size() + 8);
@@ -1348,6 +1353,11 @@ std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& re
     return argv;
 }
 
+llvm::StringRef CompilationDatabase::input_path(Fid file) const {
+    auto spelled = spellings.find(file);
+    return spelled != spellings.end() ? spelled->second : file_table.resolve(file);
+}
+
 std::vector<const char*> CompilationDatabase::render(const CommandRef& ref,
                                                      const RenderOptions& opts) {
     auto resolved = chain->resolve(ref.config, ref.input);
@@ -1359,7 +1369,7 @@ std::vector<const char*> CompilationDatabase::render(const CommandRef& ref,
     }
 
     auto& rc = chain->resolved(*resolved);
-    auto source = file_table.resolve(ref.file);
+    auto source = input_path(ref.file);
 
     std::vector<const char*> argv;
     argv.reserve(rc.args.size() + 8);

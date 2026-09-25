@@ -367,7 +367,7 @@ std::vector<DepFile> CompilationUnitRef::deps() {
         result.emplace_back(dep.getKey().str(), dep.getValue());
     }
     for(auto& path: absent()) {
-        result.emplace_back(std::move(path), 0);
+        result.push_back({.path = std::move(path), .absent = true});
     }
 
     return result;

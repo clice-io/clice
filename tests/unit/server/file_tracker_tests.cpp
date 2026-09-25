@@ -1,4 +1,7 @@
 #include <chrono>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
@@ -334,6 +337,39 @@ TEST_CASE(CDBDiscoverRetriesRegistered) {
     EXPECT_TRUE(project.cdb.loaded(id));
     EXPECT_TRUE(tracker.discover_around(main).empty());
 }
+
+#ifndef _WIN32
+TEST_CASE(CDBTickFollowsRetarget) {
+    /// A database reached through a symlink: pointing the link at another
+    /// file is a change, though neither file was written.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("debug.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DDEBUG"}}
+    }));
+    tmp.touch("release.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DRELEASE"}}
+    }));
+    auto database = tmp.path("compile_commands.json");
+    [[maybe_unused]] auto linked = ::symlink(tmp.path("debug.json").c_str(), database.c_str());
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto id = project.cdb.add_source(database);
+    ASSERT_TRUE(project.cdb.load_source(id).has_value());
+    FileTracker tracker(project, store, tmp.root.str().str());
+
+    fs::remove(database);
+    linked = ::symlink(tmp.path("release.json").c_str(), database.c_str());
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    auto events = tracker.tick_cdb();
+    ASSERT_EQ(events.size(), 1u);
+    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
+}
+#endif
 
 TEST_CASE(CDBTickDiscoversAround) {
     /// Opening a file registers the databases above it up to the root, at

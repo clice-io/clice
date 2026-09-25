@@ -559,6 +559,9 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         }
         manifest.absent.push_back(project.file_table.intern_version(fid, 0));
     }
+    // Two spellings of one place are one file.
+    llvm::sort(manifest.absent);
+    manifest.absent.erase(llvm::unique(manifest.absent), manifest.absent.end());
 
     for(auto& [global_id, replacement]: replacements) {
         project.project_index.shards[global_id] = std::move(replacement);

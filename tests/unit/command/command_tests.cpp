@@ -1,3 +1,7 @@
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "test/cdb_helper.h"
 #include "test/platform.h"
 #include "test/temp_dir.h"
@@ -350,6 +354,27 @@ TEST_CASE(ResponseFileExpansion) {
     EXPECT_CONTAINS(argv, "FROM_RSP=1");
     EXPECT_NOT_CONTAINS(argv, "@");
 };
+
+#ifndef _WIN32
+TEST_CASE(SymlinkedSourceSpelling) {
+    /// A database entry naming a symlinked source compiles under that name,
+    /// as the build does; its identity stays the file it points to.
+    TempDir tmp;
+    tmp.touch("real/main.cpp", "int main() {}\n");
+    [[maybe_unused]] auto linked =
+        ::symlink(tmp.path("real/main.cpp").c_str(), tmp.path("main.cpp").c_str());
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    ASSERT_TRUE(database.load(tmp.path("compile_commands.json")).has_value());
+    auto argv = render_entry(database, tmp.path("real/main.cpp"));
+    ASSERT_FALSE(argv.empty());
+    EXPECT_EQ(llvm::StringRef(argv.back()), tmp.path("main.cpp"));
+};
+#endif
 
 TEST_CASE(ResponseFilesRecorded) {
     /// A load records the response files its commands name among its

@@ -185,9 +185,13 @@ struct CompilationParams {
     /// Serve files the command names from memory: a header context's
     /// synthesized fragments.
     void add_synthesized(llvm::ArrayRef<std::pair<std::string, std::string>> files) {
-        for(auto& [path, content]: files) {
-            add_remapped_file(path, content);
-            synthesized.insert(path);
+        for(auto& [file, content]: files) {
+            add_remapped_file(file, content);
+            // Spelled the way CompilationUnitRef::file_path spells a file no
+            // disk holds: the separators are the native ones.
+            llvm::SmallString<256> key(file);
+            path::remove_dots(key, /*remove_dot_dot=*/true);
+            synthesized.insert(key);
         }
     }
 

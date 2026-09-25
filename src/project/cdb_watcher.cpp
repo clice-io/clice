@@ -24,11 +24,20 @@ CDBWatcher::Hashes CDBWatcher::loaded(SourceID id) const {
         llvm::map_range(project.cdb.inputs(id), [](auto& input) { return input.hash; }));
 }
 
+Fid CDBWatcher::database(SourceID id) {
+    return project.file_table.intern(path::resolved(project.cdb.source_path(id)));
+}
+
 CDBWatcher::Hashes CDBWatcher::look(SourceID id) {
-    return llvm::to_vector(llvm::map_range(project.cdb.inputs(id), [&](auto& input) {
-        auto observed = project.file_table.current(input.file);
+    auto hash = [&](Fid file) {
+        auto observed = project.file_table.current(file);
         return observed ? std::optional(observed->hash) : std::nullopt;
-    }));
+    };
+    Hashes result{hash(database(id))};
+    for(auto& input: project.cdb.inputs(id).drop_front()) {
+        result.push_back(hash(input.file));
+    }
+    return result;
 }
 
 void CDBWatcher::track(SourceID id) {
@@ -99,8 +108,7 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
     // A forced tick reloads unconditionally: a spurious reload just yields
     // an empty diff.
     tracked.pending.reset();
-    auto database = project.cdb.inputs(tracked.id).front().file;
-    bool exists = !project.file_table.seen_missing(database);
+    bool exists = !project.file_table.seen_missing(database(tracked.id));
     // A discovered database's presence ranks it (see Build::source_order):
     // the files whose default entry moves with it change command.
     bool flips = project.cdb.present(tracked.id) != exists && project.build.discovered(tracked.id);

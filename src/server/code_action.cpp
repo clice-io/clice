@@ -60,12 +60,13 @@ protocol::CodeAction render(std::string title, protocol::CodeActionKind kind, Fi
     };
 }
 
-/// How `header` is spelled in an include directive of `file`: its path
-/// below the file's own directory (where a quoted include looks first),
-/// else the shortest path below one of the command's search directories,
-/// angled past the quoted segment — whichever of these the command's
-/// lookup order actually resolves to `header`, since a shorter spelling
-/// can name a same-named file in an earlier directory.
+/// How `header` is spelled in an include directive of `file`, both resolved
+/// paths: its path below the file's own directory (where a quoted include
+/// looks first), else the shortest path below one of the command's search
+/// directories (resolved, however the command spells them), angled past
+/// the quoted segment — whichever of these the command's lookup order
+/// actually resolves to `header`, since a shorter spelling can name a
+/// same-named file in an earlier directory.
 std::optional<std::string> include_spelling(llvm::StringRef header,
                                             const SearchConfig& search,
                                             llvm::StringRef file,
@@ -87,8 +88,12 @@ std::optional<std::string> include_spelling(llvm::StringRef header,
     if(auto relative = below(directory)) {
         candidates.push_back({*relative, false});
     }
-    for(auto [index, dir]: llvm::enumerate(search.dirs)) {
-        if(auto relative = below(dir.path)) {
+    std::vector<std::string> dirs;
+    for(auto& dir: search.dirs) {
+        dirs.push_back(path::resolved(dir.path));
+    }
+    for(auto [index, dir]: llvm::enumerate(dirs)) {
+        if(auto relative = below(dir)) {
             candidates.push_back({*relative, index >= search.angled_start_idx});
         }
     }
@@ -103,8 +108,7 @@ std::optional<std::string> include_spelling(llvm::StringRef header,
                                         0,
                                         search,
                                         dir_cache);
-        llvm::SmallString<256> storage;
-        if(resolved && path::canonical(resolved->path, storage) == header) {
+        if(resolved && path::resolved(resolved->path) == header) {
             return candidate.angled ? std::format("<{}>", candidate.name)
                                     : std::format("\"{}\"", candidate.name);
         }
@@ -269,9 +273,9 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             }
             for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
                 for(const auto& site: query.sites(located.symbol.hash, kind)) {
-                    if(site.file != path_id && is_header_path(site.path) &&
-                       seen.insert(site.path).second) {
-                        headers.push_back(site.path.str());
+                    if(site.file.valid() && site.file != path_id && is_header_path(site.path) &&
+                       seen.insert(project.file_table.resolve(site.file)).second) {
+                        headers.push_back(project.file_table.resolve(site.file).str());
                     }
                 }
             }

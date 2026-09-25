@@ -160,7 +160,9 @@ struct FileTable {
     /// `.`/`..` segments — interns to the fid of its resolved path, which
     /// is also what resolve() gives back. The worker reports the paths its
     /// compiles read resolved the same way, so both sides of the boundary
-    /// name one file by one fid.
+    /// name one file by one fid. A spelling stays bound to the file it first
+    /// resolved to: one that must follow a retargeted symlink (a database
+    /// path) is resolved by its caller.
     Fid intern(llvm::StringRef path) {
         llvm::SmallString<256> storage;
         path = path::canonical(path, storage);
@@ -236,9 +238,13 @@ struct FileTable {
 
     /// An open document names its file this way until it closes.
     void show_as(Fid fid, llvm::StringRef spelling) {
-        if(spelling != resolve(fid)) {
-            shown[fid] = save(spelling);
-        }
+        shown[fid] = save(spelling);
+    }
+
+    /// The spelling the file's open document was opened under, if one is.
+    std::optional<llvm::StringRef> shown_as(Fid fid) const {
+        auto it = shown.find(fid);
+        return it != shown.end() ? std::optional(it->second) : std::nullopt;
     }
 
     void unshow(Fid fid) {

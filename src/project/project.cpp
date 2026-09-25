@@ -322,11 +322,19 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
         dep.path_id = files.intern(file.path);
         auto hash = file.hash;
 
+        // A place a failed lookup looked: the build saw nothing there,
+        // whatever is there by now. The file table watches it from here on;
+        // a file there is a change.
+        if(file.absent) {
+            dep.missing = true;
+            files.current(dep.path_id);
+            continue;
+        }
+
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(file.path, status)) {
-            // A place a failed lookup looked, or a file the build read that
-            // is gone already: record the absence, appearing counts as a
-            // change — the file table watches it from here on. Still-missing
+            // A file the build read that is gone already: record the
+            // absence, reappearing counts as a change. Still-missing
             // deliberately counts as unchanged — flagging it would rebuild
             // on every check without ever converging, while the artifact is
             // the last remaining truth for the file (and dependents'
