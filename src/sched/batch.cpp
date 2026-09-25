@@ -34,8 +34,7 @@ namespace clice {
 namespace {
 
 /// The lean batch assembly: the scheduling stack the server also runs on,
-/// minus everything serving-side. No admission hooks — batch admits every
-/// file.
+/// minus everything serving-side.
 struct BatchStack {
     kota::event_loop& loop;
     FileTable files;

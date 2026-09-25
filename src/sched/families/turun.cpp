@@ -189,15 +189,6 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 landed[path_id] = {.verdict = Verdict::Skipped};
                 co_return RoundOutcome::Stale;
             }
-            // Landing-time admission: the serving side re-arbitrates before
-            // the merge lands — a session opened or diverged mid-flight
-            // vetoes the rows exactly as it would have at dispatch.
-            auto landing = guards.landing ? guards.landing() : Admission::Admit;
-            if(landing != Admission::Admit) {
-                LOG_INFO("Serving side vetoed the index result for {}", file_path);
-                landed[path_id] = {.verdict = Verdict::Skipped, .landing = landing};
-                co_return RoundOutcome::Stale;
-            }
             ScopedTimer merge_timer;
             auto report = store.merge(value.tu_index_data.data(), value.tu_index_data.size());
             if(!report) {

@@ -19,7 +19,7 @@ namespace clice {
 /// artifact families (runners registered) over the process's worker pool,
 /// and the project's index store and pump, which a PCM landing that
 /// unblocks indexing kicks. The server layers its serving side — the AST
-/// family, the pump's admission hooks — on top.
+/// family, the pump's escalation hook — on top.
 struct SchedulingStack {
     SchedulingStack(kota::event_loop& loop,
                     Project& project,

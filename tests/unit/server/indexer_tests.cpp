@@ -3335,7 +3335,7 @@ TEST_CASE(PauseResumesRound) {
 /// The store's neutral change reports and the pump's claim of them — the
 /// contracts the Indexer split introduced: every row-changing source
 /// reports debt and row changes, the save carries the pump's debt
-/// snapshot both ways, and admission is re-judged at landing.
+/// snapshot both ways.
 TEST_SUITE(IndexReports) {
 
 TEST_CASE(MergeReportsRowsChanged) {
@@ -3520,69 +3520,6 @@ TEST_CASE(LateDebtShutdownRetry) {
     auto blob = f.project.index_db->read(index::IndexBlobKind::CDB, "cdb");
     ASSERT_TRUE(bool(blob));
     ASSERT_TRUE(llvm::StringRef(blob.buffer->getBuffer()).contains("dep.h"));
-}
-
-TEST_CASE(DispatchDeferKeepsDebt) {
-    IndexerFixture f;
-    f.project.config.project.enable_indexing.value = false;
-    auto id = f.project.file_table.intern("/fake/a.cpp");
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
-
-    f.pump.admission = [](Fid) {
-        return Admission::Defer;
-    };
-    f.run_round();
-
-    // The claim was consumed but never settled: the debt stands for a
-    // later round, and nothing was counted as failed.
-    ASSERT_TRUE(f.pump.pending_reason(id) == ReindexReason::ContentChanged);
-    ASSERT_EQ(f.pump.failed().size(), 0u);
-    ASSERT_TRUE(f.pump.is_idle());
-}
-
-TEST_CASE(LandingVetoDropsResult) {
-    // Landing-time admission (the S6 behavior decision): a session
-    // arriving while the parse is in flight vetoes the finished result —
-    // the merge is dropped and the claim settles, exactly as a
-    // dispatch-time veto would have skipped the work.
-    IndexerFixture f;
-    TempDir tmp;
-    tmp.touch("main.cpp", "int value() { return 1; }\n");
-    auto src = tmp.path("main.cpp");
-    f.project.config.project.enable_indexing.value = false;
-    f.project.cdb.add_command(
-        tmp.root,
-        src,
-        std::format("clang++ -fsyntax-only -resource-dir {} -c {}", resource_dir(), src));
-
-    auto id = f.project.file_table.intern(src);
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
-
-    int asks = 0;
-    f.pump.admission = [&](Fid) {
-        asks += 1;
-        // First ask = dispatch (admit); second = landing, where the
-        // serving side has changed its mind.
-        return asks == 1 ? Admission::Admit : Admission::SkipAndSettle;
-    };
-
-    auto body = [&]() -> kota::task<> {
-        WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        CO_ASSERT_TRUE(f.pool.start(opts));
-        co_await f.round_task();
-        co_await f.pool.stop();
-    };
-    auto task = body();
-    f.loop.schedule(task);
-    f.loop.run();
-
-    ASSERT_EQ(asks, 2);
-    ASSERT_FALSE(f.project.project_index.shards.contains(id));
-    ASSERT_FALSE(f.pump.pending_reason(id).has_value());
-    ASSERT_EQ(f.pump.failed().size(), 0u);
 }
 
 TEST_CASE(BoostRearmsIdleTimer) {

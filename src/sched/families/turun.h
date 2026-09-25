@@ -29,10 +29,8 @@ class PCMFamily;
 /// with the first concurrent consumer (in-server background checks).
 ///
 /// The family owns the run policy: command resolution, module-PCM edges,
-/// the worker dispatch, and the store merge with its supersede and
-/// landing-admission gates. The pump owns the debt ledger, the queue and
-/// the requeue budget; it reads this family's per-attempt outcome to
-/// settle them.
+/// the worker dispatch, and the store merge with its supersede gate. The pump owns the debt ledger,
+/// the queue and the requeue budget; it reads this family's per-attempt outcome to settle them.
 class TURunFamily {
 public:
     TURunFamily(TaskGraph& graph,
@@ -59,9 +57,8 @@ public:
         /// The run produced its planned products (the index merged into
         /// the store, the tidy findings landed in the outcome).
         Completed,
-        /// Deliberately produced nothing: the result was superseded or
-        /// vetoed at landing, or the TU has no real command but keeps its
-        /// last-known rows.
+        /// Deliberately produced nothing: the result was superseded, or
+        /// the TU has no real command but keeps its last-known rows.
         Skipped,
         /// Terminal failure on current content: the worker rejected the
         /// TU, returned an empty or unverifiable result, the merge was
@@ -80,10 +77,6 @@ public:
     /// the round's recorded detail.
     struct Outcome {
         Verdict verdict = Verdict::Shutdown;
-
-        /// The landing-time admission verdict; Defer keeps the claimed
-        /// debt for a later round.
-        Admission landing = Admission::Admit;
 
         /// Merge debt and serving-row changes — the pump claims these
         /// before the attempt settles and its waiters wake.
@@ -104,11 +97,9 @@ public:
 
     /// Attempt context the pump threads through one run — work-input
     /// ownership (the debt-claim contract), not staleness snapshots: the
-    /// supersede check asks the live ledger, and the landing admission
-    /// asks the serving side, both at merge time.
+    /// supersede check asks the live ledger at merge time.
     struct Guards {
         std::function<bool()> superseded;
-        std::function<Admission()> landing;
     };
 
     /// Run one attempt of the plan for the TU through its graph node and

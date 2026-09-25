@@ -36,9 +36,8 @@ struct IndexerFixture;
 /// produces (the TURun family) or where results live (the IndexStore).
 ///
 /// The pump is serving-neutral: it never sees a SessionStore. The serving
-/// side injects its vetoes through `admission` and its escalation through
-/// `on_attempt_settled`; a batch driver installs neither and everything is
-/// admitted.
+/// side injects its escalation through `on_attempt_settled`; a batch
+/// driver installs none.
 class IndexPump {
 public:
     IndexPump(kota::event_loop& loop,
@@ -46,13 +45,6 @@ public:
               TURunFamily& turun,
               IndexStore& store,
               WorkerPool& pool);
-
-    /// Dispatch- and landing-time admission on one claimed file, supplied
-    /// by the serving side (open sessions veto); null admits everything.
-    /// A veto settles the claimed debt — an ordinary open session's skip
-    /// must clear it, or the pump spins; only Defer keeps the debt for a
-    /// later round.
-    std::function<Admission(Fid)> admission;
 
     /// Invoked when an index attempt settled with no retry pending, before
     /// the attempt's waiters wake (contract 15): the serving side decides
@@ -222,8 +214,8 @@ private:
     /// The pending-reindex debt: claim/settle bookkeeping, tickets and
     /// the crash-requeue budget live in the ledger. The pump-side rules
     /// on top of it, each born from a concrete bug:
-    /// 1. The admission + freshness checks inside the index task are the
-    ///    ONLY places that decide to skip work. Duplicating them at the
+    /// 1. The freshness check inside the index task is the ONLY place
+    ///    that decides to skip work. Duplicating them at the
     ///    feeder reintroduces reason-blind skips.
     /// 2. need_update() may shortcut deps-only slots ONLY: the engine
     ///    observed content changes itself, and the dep-hash check cannot
