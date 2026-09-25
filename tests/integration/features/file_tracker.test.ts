@@ -5,6 +5,7 @@
 
 import * as fs from "node:fs";
 import {
+    locationsOf,
     MTIME_GRANULARITY,
     SETTLE_TIME,
     sleep,
@@ -231,6 +232,36 @@ test("macro include change reindexes", async ({ session }) => {
         await client.waitForReference(headerUri, 3, 11, closedUri),
         "the macro includer was not reindexed",
     ).toBe(true);
+});
+
+test("dependency change keeps buffer rows", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("h.h", "#pragma once\nextern int shared_sym;\n");
+    workspace.write("a.cpp", '#include "h.h"\nint use_a() { return shared_sym; }\n');
+    workspace.write("b.cpp", '#include "h.h"\nint use_b() { return shared_sym; }\n');
+    workspace.write("c.cpp", "int shared_sym = 1;\n");
+    workspace.writeCDB(["a.cpp", "b.cpp", "c.cpp"]);
+    await client.initialize(workspace);
+
+    const [aUri] = await client.openAndWait("a.cpp");
+    expect(await client.waitForIndex(aUri, "use_b")).toBe(true);
+    const [bUri] = await client.openAndWait("b.cpp");
+    const compiled = client.armDiagnostics(bUri);
+    client.change(bUri, 1, '#include "h.h"\nint use_b() { return shared_sym; }\n// unsaved\n');
+    await client.hoverAt(bUri, 1, 22);
+    await compiled;
+    const bSites = async () =>
+        locationsOf(await client.referencesAt(aUri, 1, 22)).filter((l) => l.uri.endsWith("/b.cpp"))
+            .length;
+    expect(await bSites()).toBe(1);
+
+    // The header moves on disk: b.cpp's compile is stale, its buffer is
+    // not, so the rows it compiled from these very bytes keep serving.
+    expect(await eventsOf(client, "workspace")).toBe(0);
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("h.h", "#pragma once\n// moved\nextern int shared_sym;\n");
+    expect(await eventsOf(client, "workspace")).toBe(1);
+    expect(await bSites(), "an edited buffer's rows vanished on a dependency change").toBe(1);
 });
 
 test("touch emits no events", async ({ session }) => {
