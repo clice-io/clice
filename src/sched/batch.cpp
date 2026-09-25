@@ -779,8 +779,8 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             }
             // A symlink into the workspace is the workspace's; one pointing
             // out of it is not.
-            if(path::under(path, root)) {
-                files.push_back(std::move(path));
+            if(auto target = real(path); path::under(target, real_root)) {
+                files.push_back(std::move(target));
             }
         }
     }

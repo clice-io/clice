@@ -125,9 +125,12 @@ static void unversion(protocol::WorkspaceEdit& edit) {
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = uri_to_path(uri);
     auto path_id = this->server.files.intern(path);
+    // A document waiting under a second name has a buffer of its own: the
+    // session holds the first name's text, which answers nothing for it.
+    auto session = find_alias(path_id, path) ? nullptr : this->server.find_session(path_id);
     return ResolvedDoc{std::move(path),
                        path_id,
-                       this->server.find_session(path_id),
+                       std::move(session),
                        this->server.owner_of(path_id).shared_from_this()};
 }
 

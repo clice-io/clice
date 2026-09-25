@@ -61,6 +61,8 @@ test.skipIf(process.platform === "win32")("second name for an open file", async 
     const [first] = await client.openAndWait("real/main.cpp");
     const [second] = client.open("link/main.cpp");
     client.change(second, 1, "int main() { return undefined_name; }\n");
+    // Its own text is not the one compiled: nothing answers for it yet.
+    await expect(client.hoverAt(second, 0, 5)).rejects.toThrow("Document not open");
     client.close(second);
     // An edit folded into the first buffer would recompile it on this pull.
     expect(await client.hoverAt(first, 0, 5), "the first document stays open").not.toBeNull();
