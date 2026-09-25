@@ -256,11 +256,17 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     build_crashes.on_land(budget_key);
     auto pcm_path = std::move(committed.value().value());
-    project.pcm_cache[path_id] = {.path = pcm_path,
-                                  .key = pcm_key,
-                                  .deps = capture_deps_snapshot(project.file_table,
-                                                                result.value().deps,
-                                                                result.value().build_at)};
+    auto snapshot =
+        capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
+    // The interfaces it imported are inputs as much as its own text — the
+    // PCM embeds what it read of them — and theirs already carry their own
+    // imports', so the snapshot is transitive.
+    for(auto dep: deps.resolved) {
+        if(auto it = project.pcm_cache.find(dep); it != project.pcm_cache.end()) {
+            snapshot.append(it->second.deps.begin(), it->second.deps.end());
+        }
+    }
+    project.pcm_cache[path_id] = {.path = pcm_path, .key = pcm_key, .deps = std::move(snapshot)};
     LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
 
     project.mark_artifacts_dirty();

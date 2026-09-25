@@ -139,6 +139,19 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     // the cascade names every affected module unit.
     rescan_disk_state(path_id, dirty);
     cascade_compile_graph(path_id, dirty);
+    // Module units whose PCM read the file (a header in a global module
+    // fragment): the artifact's own record names them, the module graph
+    // knows only imports.
+    llvm::SmallVector<Fid> readers;
+    for(auto& [unit, state]: project.pcm_cache) {
+        if(unit != path_id &&
+           llvm::any_of(state.deps, [&](const DepState& dep) { return dep.path_id == path_id; })) {
+            readers.push_back(unit);
+        }
+    }
+    for(auto unit: readers) {
+        cascade_compile_graph(unit, dirty);
+    }
 
     // The new content is a compile input of every TU that transitively
     // includes it: open dependents recompile, closed ones reindex so
