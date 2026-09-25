@@ -55,7 +55,7 @@ std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
     if(!buffer) {
         return std::nullopt;
     }
-    auto text = (*buffer)->getBuffer();
+    auto text = without_bom((*buffer)->getBuffer());
     if(llvm::xxh3_64bits(text) != shard.content_hash()) {
         return std::nullopt;
     }

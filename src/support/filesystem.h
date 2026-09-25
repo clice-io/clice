@@ -260,28 +260,44 @@ inline std::error_code remove_all(llvm::StringRef target) {
 
 namespace vfs = llvm::vfs;
 
+/// A source file's text as every part of clice sees it: its bytes without
+/// a leading UTF-8 byte order mark — the text an editor shows and sends.
+/// Clang skips the mark as well, but would count it in every offset.
+inline llvm::StringRef without_bom(llvm::StringRef bytes) {
+    llvm::StringRef text = bytes;
+    text.consume_front("\xEF\xBB\xBF");
+    return text;
+}
+
 class ThreadSafeFS : public vfs::ProxyFileSystem {
 public:
     explicit ThreadSafeFS() : ProxyFileSystem(vfs::createPhysicalFileSystem()) {}
 
+    /// Serves its file's text (see without_bom), the size its status
+    /// reports agreeing with the bytes read, as clang checks.
     class VolatileFile : public vfs::File {
     public:
         explicit VolatileFile(std::unique_ptr<vfs::File> wrapped) : wrapped(std::move(wrapped)) {
             assert(this->wrapped);
         }
 
-        llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> getBuffer(const llvm::Twine& Name,
-                                                                     int64_t FileSize,
-                                                                     bool RequiresNullTerminator,
-                                                                     bool /*IsVolatile*/) override {
-            return wrapped->getBuffer(Name,
-                                      FileSize,
-                                      RequiresNullTerminator,
-                                      /*IsVolatile=*/true);
+        llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
+            getBuffer(const llvm::Twine& Name, int64_t, bool, bool) override {
+            if(auto error = load(Name)) {
+                return error;
+            }
+            return std::move(buffer);
         }
 
         llvm::ErrorOr<vfs::Status> status() override {
-            return wrapped->status();
+            auto status = wrapped->status();
+            if(!status || status->getType() != llvm::sys::fs::file_type::regular_file) {
+                return status;
+            }
+            if(auto error = load(status->getName())) {
+                return error;
+            }
+            return vfs::Status::copyWithNewSize(*status, buffer->getBufferSize());
         }
 
         llvm::ErrorOr<std::string> getName() override {
@@ -293,23 +309,73 @@ public:
         }
 
     private:
+        /// Read the whole file once, as a volatile snapshot, dropping the
+        /// mark.
+        std::error_code load(const llvm::Twine& name) {
+            if(buffer) {
+                return {};
+            }
+            auto read = wrapped->getBuffer(name, -1, true, /*IsVolatile=*/true);
+            if(!read) {
+                return read.getError();
+            }
+            buffer = std::move(*read);
+            auto text = without_bom(buffer->getBuffer());
+            if(text.size() != buffer->getBufferSize()) {
+                buffer = llvm::MemoryBuffer::getMemBufferCopy(text, buffer->getBufferIdentifier());
+            }
+            return {};
+        }
+
         std::unique_ptr<File> wrapped;
+        std::unique_ptr<llvm::MemoryBuffer> buffer;
     };
+
+    llvm::ErrorOr<vfs::Status> status(const llvm::Twine& path) override {
+        auto status = getUnderlyingFS().status(path);
+        if(!status || status->getType() != llvm::sys::fs::file_type::regular_file ||
+           status->getSize() < 3 || skips(status->getName())) {
+            return status;
+        }
+        llvm::SmallString<256> absolute;
+        path.toVector(absolute);
+        if(getUnderlyingFS().makeAbsolute(absolute) || !starts_with_bom(absolute)) {
+            return status;
+        }
+        return vfs::Status::copyWithNewSize(*status, status->getSize() - 3);
+    }
 
     llvm::ErrorOr<std::unique_ptr<vfs::File>> openFileForRead(const llvm::Twine& InPath) override {
         llvm::SmallString<128> Path;
         InPath.toVector(Path);
 
         auto file = getUnderlyingFS().openFileForRead(Path);
-        if(!file) {
-            return file;
-        }
-
-        llvm::StringRef filename = path::filename(Path);
-        if(filename.ends_with(".pch")) {
+        if(!file || skips(Path)) {
             return file;
         }
         return std::make_unique<VolatileFile>(std::move(*file));
+    }
+
+private:
+    /// Built artifacts are served as they are.
+    static bool skips(llvm::StringRef path) {
+        return path::filename(path).ends_with(".pch");
+    }
+
+    static bool starts_with_bom(llvm::StringRef path) {
+        auto fd = llvm::sys::fs::openNativeFileForRead(path);
+        if(!fd) {
+            llvm::consumeError(fd.takeError());
+            return false;
+        }
+        char head[3];
+        auto read = llvm::sys::fs::readNativeFile(*fd, head);
+        llvm::sys::fs::closeFile(*fd);
+        if(!read) {
+            llvm::consumeError(read.takeError());
+            return false;
+        }
+        return *read == 3 && without_bom(llvm::StringRef(head, 3)).empty();
     }
 };
 

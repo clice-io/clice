@@ -229,7 +229,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             if(host_session) {
                 content = host_session->text;
             } else if(auto read = fs::read(host_path)) {
-                content = std::move(*read);
+                content = without_bom(*read).str();
             } else {
                 return;
             }

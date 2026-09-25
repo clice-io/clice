@@ -5,6 +5,7 @@
 #include "vfs/file_table.h"
 
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 
@@ -155,6 +156,35 @@ TEST_CASE(FreshReadNotVouched) {
     ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Fresh);
     ASSERT_FALSE(pool.cached_hash(fid, read->size, read->mtime_ns, read->uid_device, read->uid_file)
                      .has_value());
+}
+
+TEST_CASE(ReadDropsBom) {
+    // A file saved with a UTF-8 byte order mark reads as the text an editor
+    // sends: both sides of every buffer-versus-disk comparison agree.
+    TempDir tmp;
+    tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
+    auto observed = read_file_observed(tmp.path("bom.h").c_str());
+    ASSERT_TRUE(observed.has_value());
+    ASSERT_EQ(observed->content->getBuffer(), "int x;\n");
+    ASSERT_EQ(observed->obs.hash, llvm::xxh3_64bits("int x;\n"));
+}
+
+TEST_CASE(CompileFSDropsBom) {
+    // The compile's file system serves the same text, its stat agreeing on
+    // the size as clang checks.
+    TempDir tmp;
+    tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
+    auto path = tmp.path("bom.h");
+    ThreadSafeFS vfs;
+    auto status = vfs.status(path);
+    ASSERT_TRUE(bool(status));
+    ASSERT_EQ(status->getSize(), 7u);
+    auto file = vfs.openFileForRead(path);
+    ASSERT_TRUE(bool(file));
+    auto buffer = (*file)->getBuffer(path, -1, true, false);
+    ASSERT_TRUE(bool(buffer));
+    ASSERT_EQ((*buffer)->getBuffer(), "int x;\n");
+    ASSERT_EQ((*file)->status()->getSize(), 7u);
 }
 
 TEST_CASE(ListingSeesNewFile) {

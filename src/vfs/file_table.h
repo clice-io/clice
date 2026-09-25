@@ -23,8 +23,8 @@
 
 namespace clice {
 
-/// One observation of a file's on-disk bytes: the xxh3 of the bytes a
-/// single read returned, and the stat describing them. Captured under
+/// One observation of a file's on-disk bytes: the xxh3 of the text a single
+/// read returned (see without_bom), and the stat describing the bytes. Captured under
 /// the pairing discipline (see read_file_observed) so the two halves are
 /// same-source: `paired` says the pre/post fstats of the read agreed,
 /// `reliable` additionally says the mtime lay outside the filesystem
@@ -43,7 +43,7 @@ struct DiskObservation {
     bool reliable = false;
 };
 
-/// A completed observed read: the observation plus the bytes it hashed.
+/// A completed observed read: the observation plus the text it hashed.
 struct ObservedFile {
     DiskObservation obs;
     std::unique_ptr<llvm::MemoryBuffer> content;

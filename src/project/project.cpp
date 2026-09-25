@@ -39,7 +39,7 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
         [](llvm::StringRef, bool, bool, llvm::StringRef) -> std::optional<std::string> {
         return std::nullopt;
     };
-    return count_include_occurrences((*buf)->getBuffer(),
+    return count_include_occurrences(without_bom((*buf)->getBuffer()),
                                      includer_path,
                                      target_path,
                                      null_resolver);
