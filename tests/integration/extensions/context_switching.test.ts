@@ -283,6 +283,27 @@ test("multi config host", async ({ session }) => {
     expect(current.context!.commandHash, JSON.stringify(current)).toBe(metalHash);
 });
 
+/// A file opened through a symlink is offered the commands of its identity:
+/// the rules matching the file it names edit them.
+test.skipIf(process.platform === "win32")("contexts through a symlink", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("real/main.cpp", "int main() { return 0; }\n");
+    workspace.writeEntries([
+        ["real/main.cpp", ["-DFIRST"]],
+        ["real/main.cpp", ["-DSECOND"]],
+    ]);
+    workspace.write("clice.toml", '[[rules]]\npatterns = ["real/**"]\nappend = ["-DFROM_RULE"]\n');
+    fs.symlinkSync(workspace.path("real"), workspace.path("link"));
+    await client.initialize(workspace);
+
+    const [uri] = await client.openAndWait("link/main.cpp");
+    const labels = (await client.queryContext(uri)).contexts.map((c) => c.label);
+    expect(labels).toHaveLength(2);
+    for (const label of labels) {
+        expect(label).toContain("FROM_RULE");
+    }
+});
+
 /// Adding an #include and saving must immediately expose the new host
 /// in queryContext: the include graph is rescanned on didSave.
 test("saved include updates hosts", async ({ session }) => {

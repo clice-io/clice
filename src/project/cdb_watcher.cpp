@@ -158,7 +158,7 @@ void CDBWatcher::discover_into(Fid path_id, CDBDiff& found) {
     // A registered database whose load failed so far (absent at startup,
     // unreadable at an earlier open) gets another try: with polling off
     // nothing else would.
-    for(auto& database: compile_commands_above(path::parent_path(path), root)) {
+    for(auto& database: compile_commands_above(path.parent(), root)) {
         auto registered = project.cdb.find_source(database);
         if(registered && project.cdb.loaded(*registered)) {
             continue;

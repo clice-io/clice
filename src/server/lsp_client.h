@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "server/session.h"
 #include "support/signal.h"
 #include "vfs/file_table.h"
 
@@ -19,7 +20,6 @@ namespace clice {
 
 class MasterServer;
 class ProjectServer;
-struct Session;
 
 class LSPClient {
 public:
@@ -114,13 +114,16 @@ private:
     /// over when the owner closes.
     struct AliasDocument {
         std::string spelling;
-        std::shared_ptr<Session> buffer;
+        Session buffer;
     };
 
     llvm::DenseMap<Fid, llvm::SmallVector<AliasDocument, 1>> aliases;
 
     /// The alias document of `path_id` spelled `spelling`, or nullptr.
     AliasDocument* find_alias(Fid path_id, llvm::StringRef spelling);
+
+    /// Take `alias`, one of `path_id`'s, out of the waiting list.
+    AliasDocument take_alias(Fid path_id, AliasDocument* alias);
 
     /// The configuration files publish_config_diagnostics published last.
     llvm::StringSet<> published_configs;

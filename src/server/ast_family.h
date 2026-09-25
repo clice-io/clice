@@ -199,7 +199,8 @@ private:
                                             Fid path_id,
                                             llvm::StringRef directory,
                                             const std::vector<std::string>& arguments,
-                                            llvm::StringRef text);
+                                            llvm::StringRef text,
+                                            const SynthesizedContext* synthesized);
 
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);

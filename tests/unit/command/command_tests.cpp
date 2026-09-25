@@ -372,6 +372,15 @@ TEST_CASE(SymlinkedSourceSpelling) {
     auto argv = render_entry(database, tmp.path("real/main.cpp"));
     ASSERT_FALSE(argv.empty());
     EXPECT_EQ(llvm::StringRef(argv.back()), tmp.path("main.cpp"));
+
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("real/main.cpp"), {}}
+    }));
+    ASSERT_TRUE(database.load(tmp.path("compile_commands.json")).has_value());
+    argv = render_entry(database, tmp.path("real/main.cpp"));
+    ASSERT_FALSE(argv.empty());
+    EXPECT_EQ(llvm::StringRef(argv.back()), tmp.path("real/main.cpp"));
 };
 #endif
 

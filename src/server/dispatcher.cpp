@@ -308,8 +308,8 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     auto resolution = contexts.resolve_command(path, wp.directory, wp.arguments);
     if(resolution.synthesized) {
         wp.synthesized = resolution.synthesized->files;
+        resolution.synthesized->append_suffix_include(wp.text);
     }
-    contexts.append_suffix_include(path_id, wp.text);
     wp.config = project.config;
 
     ScopedTimer timer;

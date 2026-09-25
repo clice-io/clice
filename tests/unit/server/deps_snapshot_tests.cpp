@@ -232,9 +232,10 @@ TEST_CASE(MissingTransitions) {
     // Still missing: unchanged.
     ASSERT_FALSE(changed(pool, snap));
 
-    // Appearing is a change.
+    // Appearing is a change, and the file table saw it.
     tmp.touch("ghost.h", "int f();\n");
     ASSERT_TRUE(changed(pool, snap));
+    ASSERT_FALSE(pool.seen_missing(pool.intern(dep)));
 }
 
 TEST_CASE(AbsentPlaceFilled) {

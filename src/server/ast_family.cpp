@@ -346,7 +346,8 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
                                                    Fid path_id,
                                                    llvm::StringRef directory,
                                                    const std::vector<std::string>& arguments,
-                                                   llvm::StringRef text) {
+                                                   llvm::StringRef text,
+                                                   const SynthesizedContext* synthesized) {
     // A project with no module code pays nothing — no CDB lookup, no
     // precise scan. The moment import syntax exists anywhere (the
     // lexical candidate set), every document scans precisely: that is
@@ -399,7 +400,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
                                 argv,
                                 directory,
                                 std::optional<llvm::StringRef>(text),
-                                contexts.synthesized(path_id));
+                                synthesized);
     graph.declare(node(path_id), deps.declared);
     // Sentinels join the round's candidates too: a successful landing
     // replaces the declaration with them, and a declare-only edge would
@@ -483,20 +484,21 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.text = session->text;
         auto resolution = contexts.resolve_command(file_path, params.directory, params.arguments);
         auto source = resolution.source;
-        if(resolution.synthesized) {
-            params.synthesized = resolution.synthesized->files;
-        }
+        auto* synthesized = resolution.synthesized.get();
 
         // The line the appended suffix #include lands on — anything at or
         // past it is phantom text the user cannot see.
         std::optional<std::uint32_t> suffix_line_limit;
         auto* header_context = contexts.header_context(path_id);
-        if(resolution.synthesized && !resolution.synthesized->suffix.empty()) {
-            auto newlines = std::ranges::count(params.text, '\n');
-            suffix_line_limit =
-                static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
+        if(synthesized) {
+            params.synthesized = synthesized->files;
+            if(!synthesized->suffix.empty()) {
+                auto newlines = std::ranges::count(params.text, '\n');
+                suffix_line_limit =
+                    static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
+            }
+            synthesized->append_suffix_include(params.text);
         }
-        contexts.append_suffix_include(path_id, params.text);
 
         // Whether this round is the self-containment probe: a header
         // deliberately compiled without its includer prefix to see if it
@@ -510,7 +512,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                        path_id,
                                        params.directory,
                                        params.arguments,
-                                       params.text)) {
+                                       params.text,
+                                       synthesized)) {
             case DependResult::Ready: break;
             case DependResult::Failed:
                 LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
@@ -531,11 +534,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // degradation: the compile proceeds preamble-less.
         std::optional<std::string> adopted_pch;
         if(readonly != ReadonlyMode::On) {
-            auto plan = plan_pch(path_id,
-                                 params.text,
-                                 params.directory,
-                                 params.arguments,
-                                 resolution.synthesized.get());
+            auto plan =
+                plan_pch(path_id, params.text, params.directory, params.arguments, synthesized);
             switch(plan.verdict) {
                 case PCHPlan::Verdict::None: break;
                 case PCHPlan::Verdict::Defer: adopted_pch = plan.previous; break;
@@ -945,7 +945,9 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
         argv.push_back(arg.c_str());
     }
     auto scan_text = session->text;
-    contexts.append_suffix_include(path_id, scan_text);
+    if(synthesized) {
+        synthesized->append_suffix_include(scan_text);
+    }
     if(!co_await pcm.prepare_deps(path_id,
                                   argv,
                                   directory,

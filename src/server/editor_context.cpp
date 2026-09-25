@@ -136,26 +136,6 @@ void EditorContext::load() {
     }
 }
 
-void EditorContext::append_suffix_include(Fid path_id, std::string& text) const {
-    auto* context = synthesized(path_id);
-    if(!context || context->suffix.empty()) {
-        return;
-    }
-    if(!text.ends_with('\n')) {
-        text += '\n';
-    }
-    text += "#include \"";
-    // Escape like preamble_synthesis's line markers: Windows separators
-    // must survive the preprocessor's string literal parsing.
-    for(char c: context->suffix) {
-        if(c == '\\' || c == '"') {
-            text += '\\';
-        }
-        text += c;
-    }
-    text += "\"\n";
-}
-
 bool EditorContext::pin_alive(Fid entry_file,
                               llvm::ArrayRef<CanonicalRef> paths,
                               const Selection& saved) const {

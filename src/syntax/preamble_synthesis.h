@@ -56,6 +56,13 @@ struct SynthesizedContext {
     /// Every synthesized file: the fragments, and the header's snapshot
     /// when one was given.
     SynthesizedFiles files;
+
+    /// Append the suffix as one trailing #include line: the suffix content
+    /// lives in its own synthesized file so features never see it, while
+    /// the token stream still closes any braces the fragment is embedded
+    /// in. The single extra line sits past the editor's EOF and is
+    /// invisible to the client.
+    void append_suffix_include(std::string& text) const;
 };
 
 /// Synthesize both sides of the includer context of `target_path`.

@@ -358,7 +358,7 @@ TEST_CASE(RepeatedAbsentPlace) {
     manifest.absent = {place, place};
 
     project.apply_manifest(pool, Fid{10}, std::move(manifest));
-    ASSERT_EQ(project.probed[Fid{1}].size(), std::size_t(1));
+    ASSERT_EQ(project.manifests[Fid{10}].absent.size(), std::size_t(1));
     project.remove_manifest(pool, Fid{10});
     ASSERT_TRUE(project.probed.empty());
 }

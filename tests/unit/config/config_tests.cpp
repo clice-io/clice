@@ -89,8 +89,8 @@ TEST_CASE(CacheDirServesOneProject) {
     tmp.touch("a/main.cpp", "");
     tmp.touch("b/main.cpp", "");
     auto shared = tmp.path("shared");
-    auto a = tmp.path("a");
-    auto b = tmp.path("b");
+    CanonicalPath a(tmp.path("a"));
+    CanonicalPath b(tmp.path("b"));
     EXPECT_FALSE(owned_elsewhere(shared, b));
     claim_cache_dir(shared, a);
     EXPECT_FALSE(owned_elsewhere(shared, a));
@@ -98,11 +98,11 @@ TEST_CASE(CacheDirServesOneProject) {
 
     // One inside its root belongs to that root, whatever it records, and
     // a subproject nested there finds it taken once the root claimed it.
-    tmp.touch("a/.clice/owner", b + "\n");
+    tmp.touch("a/.clice/owner", b.str() + "\n");
     auto inner = path::join(a, ".clice");
     EXPECT_FALSE(owned_elsewhere(inner, a));
     claim_cache_dir(inner, a);
-    EXPECT_TRUE(owned_elsewhere(inner, path::join(a, "sub")));
+    EXPECT_TRUE(owned_elsewhere(inner, CanonicalPath(path::join(a, "sub"))));
 
     // An owner that no longer exists claims nothing.
     tmp.touch("moved/owner", tmp.path("gone") + "\n");

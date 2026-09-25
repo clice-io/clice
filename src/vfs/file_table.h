@@ -220,7 +220,8 @@ struct FileTable {
             if(path::under(path, real)) {
                 auto [it, inserted] = root_displays.try_emplace(fid);
                 if(inserted) {
-                    it->second = save(spelled + path.str().substr(real.size()));
+                    it->second =
+                        save(spelled + llvm::StringRef(path).drop_front(real.size()).str());
                 }
                 return it->second;
             }

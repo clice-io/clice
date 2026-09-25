@@ -142,6 +142,16 @@ LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spe
     return alias != it->second.end() ? &*alias : nullptr;
 }
 
+LSPClient::AliasDocument LSPClient::take_alias(Fid path_id, AliasDocument* alias) {
+    auto it = aliases.find(path_id);
+    auto taken = std::move(*alias);
+    it->second.erase(alias);
+    if(it->second.empty()) {
+        aliases.erase(it);
+    }
+    return taken;
+}
+
 void LSPClient::register_lifecycle() {
     using StringVec = std::vector<std::string>;
 
@@ -362,9 +372,8 @@ void LSPClient::register_document_sync() {
         if(auto owner = srv.files.shown_as(path_id); owner && *owner != path) {
             LOG_WARN("didOpen: {} is already open as {}; serving that one", path, *owner);
             auto& alias = aliases[path_id].emplace_back(
-                AliasDocument{.spelling = path, .buffer = std::make_shared<Session>()});
-            alias.buffer->path_id = path_id;
-            srv.owner_of(path_id).sessions.apply_open(*alias.buffer,
+                AliasDocument{.spelling = path, .buffer = {.path_id = path_id}});
+            srv.owner_of(path_id).sessions.apply_open(alias.buffer,
                                                       params.text_document.text,
                                                       params.text_document.version);
             return;
@@ -383,7 +392,7 @@ void LSPClient::register_document_sync() {
 
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(auto* alias = find_alias(path_id, path)) {
-            project->sessions.apply_change(*alias->buffer,
+            project->sessions.apply_change(alias->buffer,
                                            params.content_changes,
                                            params.text_document.version);
             return;
@@ -441,11 +450,7 @@ void LSPClient::register_document_sync() {
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = srv.files.intern(path);
         if(auto* alias = find_alias(path_id, path)) {
-            auto& waiting = aliases[path_id];
-            waiting.erase(waiting.begin() + (alias - waiting.begin()));
-            if(waiting.empty()) {
-                aliases.erase(path_id);
-            }
+            take_alias(path_id, alias);
             return;
         }
         if(srv.files.shown_as(path_id) != path) {
@@ -459,13 +464,9 @@ void LSPClient::register_document_sync() {
         srv.close_session(path_id);
         // A document still open under another name takes the file over.
         if(auto it = aliases.find(path_id); it != aliases.end()) {
-            auto next = std::move(it->second.front());
-            it->second.erase(it->second.begin());
-            if(it->second.empty()) {
-                aliases.erase(it);
-            }
+            auto next = take_alias(path_id, &it->second.front());
             srv.files.show_as(path_id, next.spelling);
-            srv.open_session(path_id, std::move(next.buffer->text), next.buffer->version);
+            srv.open_session(path_id, std::move(next.buffer.text), next.buffer.version);
         }
     });
 

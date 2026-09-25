@@ -64,8 +64,6 @@ static std::string glob_escape(llvm::StringRef literal) {
 /// resolved like every path the file table names — a symlinked directory
 /// matches the files it holds — and the wildcard tail follows verbatim.
 /// A `**`-led pattern matches anywhere and enumerates from the workspace.
-/// `workspace_root` must be canonical: substituted into glob text, a native
-/// spelling's backslashes would read as escapes.
 static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
                                                             llvm::StringRef anchor,
                                                             CanonicalRef workspace_root) {
@@ -91,8 +89,10 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
             }
             dir = anchored;
         }
-        root = CanonicalPath(dir);
-        text = glob_escape(root);
+        // Without an anchor (a rootless project's own rule) a relative
+        // directory stays relative and matches no file.
+        root = path::is_rooted(dir) ? CanonicalPath(dir) : CanonicalPath();
+        text = glob_escape(root.empty() ? llvm::StringRef(dir) : llvm::StringRef(root));
         if(!text.ends_with('/')) {
             text += '/';
         }
@@ -127,8 +127,8 @@ void Config::finalize(llvm::StringRef workspace_root) {
                 defaults.min_stateless_worker_count,
                 "min_stateless_worker_count");
 
-    this->workspace_root = workspace_root.empty() ? CanonicalPath() : CanonicalPath(workspace_root);
-    llvm::StringRef root = this->workspace_root;
+    this->workspace_root = CanonicalPath(workspace_root);
+    CanonicalRef root = this->workspace_root;
 
     if(p.cache_dir.empty() && !root.empty()) {
         p.cache_dir = path::join(root, ".clice");
@@ -174,7 +174,7 @@ void Config::finalize(llvm::StringRef workspace_root) {
         path::canonicalize(anchor);
         CompiledRule compiled;
         for(auto& pattern: rule.patterns) {
-            if(auto compiled_pattern = compile_pattern(pattern, anchor, this->workspace_root)) {
+            if(auto compiled_pattern = compile_pattern(pattern, anchor, root)) {
                 compiled.patterns.push_back(std::move(*compiled_pattern));
             }
         }
@@ -402,14 +402,12 @@ static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
     return !owner.empty() && owner != root && llvm::sys::fs::is_directory(owner);
 }
 
-bool owned_elsewhere(llvm::StringRef cache_dir, llvm::StringRef workspace_root) {
-    CanonicalPath root(workspace_root);
-    return !path::under(CanonicalPath(cache_dir), root) &&
-           live_owner(cache_dir_owner(cache_dir), root);
+bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root) {
+    return !path::under(CanonicalPath(cache_dir), workspace_root) &&
+           live_owner(cache_dir_owner(cache_dir), workspace_root);
 }
 
-void claim_cache_dir(llvm::StringRef cache_dir, llvm::StringRef workspace_root) {
-    CanonicalPath root(workspace_root);
+void claim_cache_dir(llvm::StringRef cache_dir, CanonicalRef root) {
     auto owner = cache_dir_owner(cache_dir);
     // One inside the root is the root's, whatever it records — a copied
     // checkout carries the original's record along.

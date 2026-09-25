@@ -32,11 +32,11 @@ std::uint32_t default_max_stateless_worker_count();
 std::string cache_dir_owner(llvm::StringRef cache_dir);
 
 /// Whether `cache_dir` serves another project than `workspace_root`'s.
-bool owned_elsewhere(llvm::StringRef cache_dir, llvm::StringRef workspace_root);
+bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root);
 
 /// Record `workspace_root` as the owner of a cache directory it may use
 /// (owned_elsewhere is false); called under the directory's writer lock.
-void claim_cache_dir(llvm::StringRef cache_dir, llvm::StringRef workspace_root);
+void claim_cache_dir(llvm::StringRef cache_dir, CanonicalRef workspace_root);
 
 /// The configuration files a workspace root may hold, in lookup order.
 constexpr inline std::array<llvm::StringRef, 2> config_file_names = {"clice.toml",
@@ -307,7 +307,7 @@ struct CompiledRule {
     /// commands.
     bool declares_sources() const;
 
-    /// Whether the rule applies to `path` (canonical absolute).
+    /// Whether the rule applies to `path`.
     bool matches(CanonicalRef path) const;
 };
 
@@ -380,10 +380,9 @@ struct Config {
     KOTATSU_ANNOTATE(skip = true)
     <std::vector<CompiledRule>> compiled_rules;
 
-    /// The workspace root finalize() ran for, resolved like every file the
-    /// file table names: the `${workspace}` value, the anchor of rules and
-    /// databases no configuration file supplied, and the enumeration root
-    /// of `**`-led patterns.
+    /// The workspace root finalize() ran for: the `${workspace}` value, the
+    /// anchor of rules and databases no configuration file supplied, and
+    /// the enumeration root of `**`-led patterns.
     KOTATSU_ANNOTATE(skip = true)
     <CanonicalPath> workspace_root;
 
@@ -397,9 +396,8 @@ struct Config {
     /// (owned_elsewhere) to the default one under the workspace root.
     void keep_own_cache_dir();
 
-    /// The compiled rules applying to `path` (absolute), in declaration
-    /// order, restricted to untagged rules and rules tagged
-    /// `configuration`.
+    /// The compiled rules applying to `path`, in declaration order,
+    /// restricted to untagged rules and rules tagged `configuration`.
     llvm::SmallVector<const CompiledRule*> matching_rules(CanonicalRef path,
                                                           llvm::StringRef configuration) const;
 

@@ -175,7 +175,10 @@ TEST_CASE(LintSetSymlinkedRoot) {
 
 TEST_CASE(PatternThroughSymlink) {
     TempDir tmp;
-    tmp.touch("clice.toml", "[[rules]]\npatterns = [\"vendor/**\"]\nlint = false\n");
+    tmp.touch("clice.toml", R"([[rules]]
+patterns = ["vendor/**"]
+lint = false
+)");
     tmp.touch("third_party/lib.cpp", "int lib() { return 0; }\n");
     ASSERT_EQ(::symlink(tmp.path("third_party").c_str(), tmp.path("vendor").c_str()), 0);
 
@@ -185,6 +188,28 @@ TEST_CASE(PatternThroughSymlink) {
     Build build{config, cdb, files};
     build.reset_active(fallback_configuration(config));
     EXPECT_FALSE(build.lintable(CanonicalPath(tmp.path("vendor/lib.cpp"))));
+};
+
+TEST_CASE(WalkResolvesLinks) {
+    /// A symlink under a pattern root names the file it points to, which
+    /// the pattern does not claim.
+    TempDir tmp;
+    tmp.touch("src/main.cpp", "int main() {}\n");
+    tmp.touch("elsewhere/impl.cpp", "");
+    ASSERT_EQ(::symlink(tmp.path("elsewhere/impl.cpp").c_str(), tmp.path("src/alias.cpp").c_str()),
+              0);
+
+    Config config;
+    config.rules.push_back(
+        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    config.finalize(tmp.root.str());
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active("");
+    auto members = build.members();
+    ASSERT_EQ(members.size(), 1U);
+    EXPECT_EQ(files.resolve(members.front()), CanonicalPath(tmp.path("src/main.cpp")));
 };
 #endif
 
@@ -442,7 +467,8 @@ TEST_CASE(DiscoverEveryNearby) {
     EXPECT_EQ(found[1], path::join(tmp.root, "build", "compile_commands.json"));
     EXPECT_EQ(found[2], path::join(tmp.root, "out", "compile_commands.json"));
 
-    auto above = compile_commands_above(tmp.path("deep/proj/src"), tmp.root);
+    auto above =
+        compile_commands_above(CanonicalPath(tmp.path("deep/proj/src")), CanonicalPath(tmp.root));
     ASSERT_EQ(above.size(), 2u);
     EXPECT_EQ(above[0], path::join(tmp.root, "deep", "proj", "compile_commands.json"));
     EXPECT_EQ(above[1], path::join(tmp.root, "compile_commands.json"));

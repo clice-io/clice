@@ -115,6 +115,9 @@ BuildLoad load_build(Project& project,
         // follow — does not depend on the order files were opened in.
         auto stable =
             llvm::to_vector(llvm::make_filter_range(nearby, [&](const std::string& source) {
+                // Where the database sits, not what it links to: a
+                // compile_commands.json symlinked to a build tree outside
+                // still belongs to the root.
                 return path::under(CanonicalPath(path::parent_path(source)), root) &&
                        !llvm::is_contained(paths, source);
             }));

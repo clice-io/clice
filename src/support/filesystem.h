@@ -121,7 +121,8 @@ class CanonicalPath;
 /// rest appended as spelled, `.`/`..` removed, canonically spelled. Two
 /// spellings of one file compare equal whether it exists yet or not.
 ///
-/// Only resolution (CanonicalPath's constructor) and the file table make
+/// Only resolution (CanonicalPath's constructor), the file table and the
+/// derivations below (parent(), and entry() on its caller's word) make
 /// one, and one never compares with a plain string: a spelling taken for
 /// an identity is a compile error. Either reads as a plain string wherever
 /// a spelling will do.
@@ -160,7 +161,7 @@ public:
         return text.empty();
     }
 
-    /// The directory holding it, itself an identity; empty at a root.
+    /// The directory holding it, itself an identity.
     CanonicalPath parent() const;
 
     /// A path a directory walk from here reached without following a
@@ -198,10 +199,6 @@ public:
     /// call it is passed to.
     operator llvm::Twine() const {
         return llvm::Twine(text);
-    }
-
-    explicit operator std::string() const {
-        return text;
     }
 
     const std::string& str() const {
@@ -266,9 +263,7 @@ bool under(const P& p, const R& root) = delete;
 }  // namespace path
 
 inline CanonicalPath CanonicalRef::parent() const {
-    auto dir = path::parent_path(text);
-    return CanonicalPath(CanonicalPath::Resolved{},
-                         dir.size() < text.size() ? dir : llvm::StringRef());
+    return CanonicalPath(CanonicalPath::Resolved{}, path::parent_path(text));
 }
 
 inline CanonicalPath CanonicalRef::entry(llvm::StringRef path) const {

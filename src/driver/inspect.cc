@@ -888,7 +888,7 @@ int run_inspect(const InspectOptions& opts) {
         // between each inspected directory and the root.
         llvm::SmallVector<std::string> nearby;
         for(auto& directory: directories) {
-            for(auto& database: compile_commands_above(directory.getKey(), root)) {
+            for(auto& database: compile_commands_above(CanonicalPath(directory.getKey()), root)) {
                 if(!llvm::is_contained(nearby, database)) {
                     nearby.push_back(database);
                 }

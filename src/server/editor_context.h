@@ -89,12 +89,6 @@ struct EditorContext {
         return it != header_contexts.end() ? &it->second : nullptr;
     }
 
-    /// The includer context synthesized for the file, or nullptr.
-    const SynthesizedContext* synthesized(Fid path_id) const {
-        auto* context = header_context(path_id);
-        return context ? context->synthesized.get() : nullptr;
-    }
-
     /// Discard the file's resolved header context so the next compile
     /// re-resolves (and possibly re-synthesizes) it.
     void drop_header_context(Fid path_id) {
@@ -104,14 +98,6 @@ struct EditorContext {
     /// Headers whose resolved context was derived through `path_id` — a
     /// file along its include chain.
     llvm::SmallVector<Fid> chain_dependents(Fid path_id) const;
-
-    /// Append the header context's suffix as one trailing #include line: the
-    /// suffix content (everything after the include position along the chain)
-    /// lives in its own synthesized file so features never see it, while the
-    /// token stream still closes any braces the fragment is embedded in. The
-    /// single extra line sits past the editor's EOF and is invisible to the
-    /// client.
-    void append_suffix_include(Fid path_id, std::string& text) const;
 
     /// Whether the file's selection still holds against the current CDB
     /// and include graph: its host still compiles and includes the file,

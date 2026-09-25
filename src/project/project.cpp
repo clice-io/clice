@@ -296,8 +296,8 @@ CanonicalPath project_root_above(llvm::StringRef start) {
     return found;
 }
 
-llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
-                                                      llvm::StringRef workspace_root) {
+llvm::SmallVector<std::string> compile_commands_above(CanonicalRef start,
+                                                      CanonicalRef workspace_root) {
     llvm::SmallVector<std::string> found;
     path::walk_ancestors(start, workspace_root, [&](llvm::StringRef dir) {
         if(auto database = database_in(dir); !database.empty()) {

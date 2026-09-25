@@ -230,7 +230,7 @@ public:
     /// Lifecycle state, advanced by the LSP initialize/shutdown handlers.
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
 
-    /// The folders served, canonical: the client's workspace folders (or
+    /// The folders served: the client's workspace folders (or
     /// the command line's --workspace), and the roots open_session found
     /// above files no folder claims.
     std::vector<CanonicalPath> workspace_roots;

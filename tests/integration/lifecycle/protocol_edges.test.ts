@@ -51,7 +51,7 @@ test("open before initialize", async ({ session }) => {
 test.skipIf(process.platform === "win32")("second name for an open file", async ({ session }) => {
     // One file, one buffer: a document naming an open file through a
     // symlink does not edit the first document's buffer, and closing it
-    // leaves the first document open.
+    // leaves the first document open and nothing to take over after it.
     const { client, workspace } = session.tmp();
     workspace.write("real/main.cpp", "int main() { return 0; }\n");
     fs.symlinkSync(workspace.path("real"), workspace.path("link"));
@@ -66,6 +66,9 @@ test.skipIf(process.platform === "win32")("second name for an open file", async 
     expect(await client.hoverAt(first, 0, 5), "the first document stays open").not.toBeNull();
     await sleep(SETTLE_TIME);
     client.assertNoErrors(first, "the first document's buffer must be untouched");
+    client.close(first);
+    await sleep(SETTLE_TIME);
+    expect((await client.stats()).sessions, "the closed second name stays closed").toBe(0);
 });
 
 test.skipIf(process.platform === "win32")(

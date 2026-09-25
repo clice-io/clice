@@ -401,14 +401,16 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
                 continue;
             }
             // The iterator spells paths natively, under the root; only an
-            // entry that is itself a symlink names a file elsewhere.
+            // entry that is itself a symlink names a file elsewhere. LLVM's
+            // Windows iterator reports no symlinks and descends into
+            // junctions, so there an entry below one keeps its spelling.
             llvm::SmallString<256> storage;
             auto spelled = path::canonical(it->path(), storage);
             auto type = it->type();
             if(type == llvm::sys::fs::file_type::directory_file) {
                 auto name = path::filename(spelled);
                 if(name == ".git" ||
-                   (name == path::filename(cache_dir) && root.entry(spelled) == cache_dir)) {
+                   (name == path::filename(cache_dir) && CanonicalPath(spelled) == cache_dir)) {
                     it.no_push();
                 }
                 continue;

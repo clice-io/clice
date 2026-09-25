@@ -120,7 +120,7 @@ public:
     /// finally the builtin command — so it always succeeds. Emits a
     /// per-file decision log (tiers tried, tier hit, command hash). Any
     /// spelling of the file will do.
-    Resolution resolve_command(llvm::StringRef path,
+    Resolution resolve_command(llvm::StringRef spelled,
                                std::string& directory,
                                std::vector<std::string>& arguments,
                                const CommandRequest& request = {});

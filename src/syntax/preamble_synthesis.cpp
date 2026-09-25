@@ -304,4 +304,23 @@ std::uint32_t count_include_occurrences(llvm::StringRef content,
         collect_candidates(scan_result.includes, resolved, target_path).size());
 }
 
+void SynthesizedContext::append_suffix_include(std::string& text) const {
+    if(suffix.empty()) {
+        return;
+    }
+    if(!text.ends_with('\n')) {
+        text += '\n';
+    }
+    text += "#include \"";
+    // Escape like the line markers: Windows separators must survive the
+    // preprocessor's string literal parsing.
+    for(char c: suffix) {
+        if(c == '\\' || c == '"') {
+            text += '\\';
+        }
+        text += c;
+    }
+    text += "\"\n";
+}
+
 }  // namespace clice
