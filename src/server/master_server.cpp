@@ -422,6 +422,9 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
 
 void MasterServer::change_folders(std::vector<std::string> removed,
                                   std::vector<std::string> added) {
+    for(auto& root: removed) {
+        files.unspell_root(root);
+    }
     for(auto& root: added) {
         files.spell_root(root);
     }

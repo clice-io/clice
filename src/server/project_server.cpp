@@ -56,6 +56,10 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
 
     // The pump is serving-neutral; the session-side policy hooks live on
     // this class and are installed here.
+    sched.pump.compiled_by_session = [this](Fid path_id) {
+        auto session = sessions.find(path_id);
+        return session && session->serving == ServingMode::Escalated;
+    };
     sched.pump.on_attempt_settled = [this](Fid path_id) {
         index_attempt_settled(path_id);
     };
@@ -298,6 +302,11 @@ void ProjectServer::close_session(Fid path_id) {
     server.pool.remove_owner(path_id.raw);
     sessions.close(path_id);
     ast.drop(path_id);
+    // The session's compile stood in for the file's background index
+    // (IndexPump::compiled_by_session); the disk's turn again.
+    if(sched.pump.enqueue(path_id, ReindexReason::DepsOnly)) {
+        sched.pump.schedule(false);
+    }
     // PCH entries are content-keyed and may be shared with other sessions,
     // so nothing entry-level to clean up — but the loaded-state budget
     // shrinks with the open count, and this is the moment it does.

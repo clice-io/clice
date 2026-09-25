@@ -261,6 +261,12 @@ struct FileTable {
         }
     }
 
+    /// Stop showing files under a spelling spell_root recorded.
+    void unspell_root(llvm::StringRef root) {
+        llvm::erase_if(spelled_roots, [&](auto& entry) { return entry.second == root; });
+        root_displays.clear();
+    }
+
     llvm::DenseMap<Fid, llvm::StringRef> shown;
     llvm::SmallVector<std::pair<CanonicalPath, std::string>> spelled_roots;
     mutable llvm::DenseMap<Fid, llvm::StringRef> root_displays;

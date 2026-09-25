@@ -102,8 +102,9 @@ test("save writes only dirty shards", async ({ session }) => {
         `an incremental save must write only the touched shard: ${JSON.stringify(stats)}`,
     ).toBe(1);
 
-    // An open file's disk snapshot is indexed like any other's — the round
-    // above already landed it — so saving the same bytes queues nothing.
+    // The open file compiles itself, so the rounds leave its disk snapshot
+    // alone and saving the same bytes queues nothing; closing it hands the
+    // file back to the background index.
     client.save(uri);
     await sleep(SETTLE_TIME);
     const settled = await waitStats(
@@ -113,11 +114,14 @@ test("save writes only dirty shards", async ({ session }) => {
     );
     expect(settled.indexShardContentBytes).toBe(stats.indexShardContentBytes);
 
-    // Closing reindexes nothing: the closed file's symbols come from the
-    // shard the round wrote while it was open.
     client.close(uri);
-    const symbols = await client.workspaceSymbols("func_0");
-    expect(symbols?.some((s) => s.name === "func_0")).toBe(true);
+    await waitStats(
+        client,
+        (s) =>
+            s.indexShardContentBytes > settled.indexShardContentBytes &&
+            s.indexInmemoryShards === 0,
+        "the closed file's shard did not land",
+    );
     client.assertNoAnomaly();
 });
 

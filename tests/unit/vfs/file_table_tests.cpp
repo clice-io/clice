@@ -165,6 +165,9 @@ TEST_CASE(SymlinkShownAsSpelled) {
     ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
     pool.unshow(fid);
     ASSERT_EQ(pool.display(fid), link);
+
+    pool.unspell_root(tmp.path("link"));
+    ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
 }
 
 TEST_CASE(PairNeedsLiveIdentity) {
@@ -317,7 +320,7 @@ TEST_CASE(WindowsSpellingsCollapse) {
     // and compiles fall back to guessed commands.
     FileTable pool;
     EXPECT_EQ(pool.intern("c:/a/b.h"), pool.intern(R"(C:\a\b.h)"));
-    EXPECT_EQ(pool.resolve(pool.intern("C:/a/b.h")), "c:/a/b.h");
+    EXPECT_EQ(pool.resolve(pool.intern("C:/a/b.h")).str(), "c:/a/b.h");
     EXPECT_EQ(pool.find(R"(c:\a\b.h)"), pool.find("C:/a/b.h"));
 }
 #else

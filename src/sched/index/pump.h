@@ -36,8 +36,8 @@ struct IndexerFixture;
 /// produces (the TURun family) or where results live (the IndexStore).
 ///
 /// The pump is serving-neutral: it never sees a SessionStore. The serving
-/// side injects its escalation through `on_attempt_settled`; a batch
-/// driver installs none.
+/// side injects its policy through `compiled_by_session` and
+/// `on_attempt_settled`; a batch driver installs neither.
 class IndexPump {
 public:
     IndexPump(kota::event_loop& loop,
@@ -54,6 +54,12 @@ public:
     /// refuses — a file a rule keeps out of the index — since no attempt
     /// will ever settle for it.
     std::function<void(Fid path_id)> on_attempt_settled;
+
+    /// Whether an open document's own compile serves the file: debt other
+    /// than a change of its own content then settles without a background
+    /// compile, which would compile the file a second time. The serving
+    /// side enqueues the file again when the document closes.
+    std::function<bool(Fid path_id)> compiled_by_session;
 
     /// Emitted when store rows that may be index-served changed (merged,
     /// re-masked, dropped or shed). Carries the affected path_ids; the
