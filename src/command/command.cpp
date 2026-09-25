@@ -563,11 +563,17 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
 
         llvm::StringRef spec = ref.drop_front();
         std::string full = path::is_absolute(spec) ? spec.str() : path::join(directory, spec);
-        if(loading) {
-            source_files[static_cast<std::size_t>(*loading)].response_files.push_back(full);
+        auto file = file_table.intern(full);
+        auto observed = read_file_observed(file_table.resolve(file).data());
+        if(observed) {
+            file_table.observe(file, observed->obs);
         }
-        auto content = fs::read(full);
-        if(!content) {
+        if(loading) {
+            source_files[static_cast<std::size_t>(*loading)].inputs.push_back(
+                {.file = file,
+                 .hash = observed ? std::optional(observed->obs.hash) : std::nullopt});
+        }
+        if(!observed) {
             /// Unreadable response file: the token survives verbatim (the
             /// real compile would fail the same way).
             expanded.push_back(token);
@@ -575,7 +581,7 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
         }
 
         /// UTF-16 response files (MSVC tooling emits them) convert first.
-        llvm::StringRef text(*content);
+        llvm::StringRef text = observed->content->getBuffer();
         std::string utf8;
         if(text.size() >= 2 &&
            ((text[0] == '\xff' && text[1] == '\xfe') || (text[0] == '\xfe' && text[1] == '\xff'))) {
@@ -674,7 +680,8 @@ SourceID CompilationDatabase::add_source(llvm::StringRef path) {
     if(auto existing = find_source(key)) {
         return *existing;
     }
-    source_files.push_back({.path = std::move(key)});
+    auto file = file_table.intern(key);
+    source_files.push_back({.path = std::move(key), .inputs = {{.file = file}}});
     return SourceID(source_files.size() - 1);
 }
 
@@ -745,7 +752,11 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // entries before the cut still swap in) — the CDB poll's two-tick
     // settle debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
-    source.response_files.clear();
+    auto database = source.inputs.front().file;
+    file_table.observe(database, observed->obs);
+    source.inputs = {
+        {.file = database, .hash = observed->obs.hash}
+    };
     loading = id;
     auto recording = llvm::make_scope_exit([&] { loading.reset(); });
 
@@ -860,16 +871,16 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     source.entries = std::move(new_entries);
     source.loaded = true;
     source.present = true;
-    source.observed = observed->obs;
-    ranges::sort(source.response_files);
-    auto duplicates = ranges::unique(source.response_files);
-    source.response_files.erase(duplicates.begin(), duplicates.end());
+    auto responses = std::ranges::subrange(source.inputs.begin() + 1, source.inputs.end());
+    ranges::sort(responses, {}, &LoadInput::file);
+    auto duplicates = ranges::unique(responses, {}, &LoadInput::file);
+    source.inputs.erase(duplicates.begin(), duplicates.end());
     rebuild_entry_list();
     return count;
 }
 
-const DiskObservation& CompilationDatabase::observation(SourceID id) const {
-    return source_files[static_cast<std::size_t>(id)].observed;
+llvm::ArrayRef<CompilationDatabase::LoadInput> CompilationDatabase::inputs(SourceID id) const {
+    return source_files[static_cast<std::size_t>(id)].inputs;
 }
 
 bool CompilationDatabase::present(SourceID id) const {
@@ -878,10 +889,6 @@ bool CompilationDatabase::present(SourceID id) const {
 
 void CompilationDatabase::set_present(SourceID id, bool present) {
     source_files[static_cast<std::size_t>(id)].present = present;
-}
-
-llvm::ArrayRef<std::string> CompilationDatabase::response_files(SourceID id) const {
-    return source_files[static_cast<std::size_t>(id)].response_files;
 }
 
 llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>

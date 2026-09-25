@@ -7,8 +7,6 @@
 #include "support/logging.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/Support/FileSystem.h"
 
 namespace clice {
 
@@ -21,78 +19,20 @@ CDBWatcher::CDBWatcher(Project& project, std::string root) :
     }
 }
 
-CDBWatcher::FileStamp CDBWatcher::stat_file(llvm::StringRef path) {
-    FileStamp stamp;
-    llvm::sys::fs::file_status status;
-    if(path.empty() || llvm::sys::fs::status(path, status)) {
-        return stamp;
-    }
-    stamp.exists = true;
-    stamp.size = status.getSize();
-    stamp.mtime_ns = fs::mtime_ns(status);
-    if(fs::stable_file_ids) {
-        auto uid = status.getUniqueID();
-        stamp.uid_device = uid.getDevice();
-        stamp.uid_file = uid.getFile();
-    }
-    return stamp;
+CDBWatcher::Hashes CDBWatcher::loaded(SourceID id) const {
+    return llvm::to_vector(
+        llvm::map_range(project.cdb.inputs(id), [](auto& input) { return input.hash; }));
 }
 
-CDBWatcher::FileStamp CDBWatcher::stamp_of(const DiskObservation& observed) {
-    FileStamp stamp{.exists = true, .size = observed.size, .mtime_ns = observed.mtime_ns};
-    if(fs::stable_file_ids) {
-        stamp.uid_device = observed.uid_device;
-        stamp.uid_file = observed.uid_file;
-    }
-    return stamp;
-}
-
-CDBWatcher::SourceStamp CDBWatcher::stat_source(SourceID id) const {
-    SourceStamp stamp{.database = stat_file(project.cdb.source_path(id))};
-    for(auto& response: project.cdb.response_files(id)) {
-        stamp.responses.push_back(stat_file(response));
-    }
-    return stamp;
+CDBWatcher::Hashes CDBWatcher::look(SourceID id) {
+    return llvm::to_vector(llvm::map_range(project.cdb.inputs(id), [&](auto& input) {
+        auto observed = project.file_table.current(input.file);
+        return observed ? std::optional(observed->hash) : std::nullopt;
+    }));
 }
 
 void CDBWatcher::track(SourceID id) {
-    // A source whose startup load failed (unreadable, mid-rewrite) stays
-    // baselined as missing, so the next tick reloads it even when its
-    // stamp never changes.
-    TrackedSource tracked{.id = id};
-    if(project.cdb.loaded(id)) {
-        tracked.applied = stat_source(id);
-        tracked.reread = !project.cdb.response_files(id).empty();
-        // Loaded, then deleted before this baseline: the load marked it
-        // present, and an unchanged missing stamp would never correct it.
-        project.cdb.set_present(id, tracked.applied.database.exists);
-        if(tracked.applied.database.exists) {
-            adopt_load(tracked);
-        }
-    }
-    sources.push_back(std::move(tracked));
-}
-
-void CDBWatcher::adopt_load(TrackedSource& tracked) {
-    auto& observed = project.cdb.observation(tracked.id);
-    tracked.applied.database = stamp_of(observed);
-    tracked.hash = observed.hash;
-    tracked.trusted = observed.reliable;
-}
-
-bool CDBWatcher::content_unchanged(TrackedSource& tracked) {
-    auto observed = read_file_observed(std::string(project.cdb.source_path(tracked.id)).c_str());
-    if(!observed) {
-        // Unreadable right now: no evidence either way, and the baseline
-        // stays untrusted, so the next tick looks again.
-        return true;
-    }
-    if(observed->obs.hash != tracked.hash) {
-        return false;
-    }
-    tracked.applied.database = stamp_of(observed->obs);
-    tracked.trusted = observed->obs.reliable;
-    return true;
+    sources.push_back({.id = id, .applied = loaded(id)});
 }
 
 llvm::SmallVector<Fid> CDBWatcher::shared_files(SourceID id) const {
@@ -143,76 +83,53 @@ static void append(CDBDiff& into, const CDBDiff& from) {
 }
 
 void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta) {
-    auto current = stat_source(tracked.id);
+    auto current = look(tracked.id);
     if(!force) {
-        if(current == tracked.applied && !tracked.reread) {
-            tracked.has_pending = false;
-            if(tracked.trusted || content_unchanged(tracked)) {
-                return;
-            }
-            // Other bytes under the loaded stamp: a rewrite within the mtime
-            // granularity of the load. No stamp change will ever announce
-            // it, so there is nothing to settle — reload now.
-        } else if(!tracked.has_pending || !(tracked.pending == current)) {
-            // Generators rewrite the file in place; only act once the stamp
-            // has been stable for two consecutive ticks (half-write guard).
-            tracked.pending = current;
-            tracked.has_pending = true;
+        if(current == tracked.applied) {
+            tracked.pending.reset();
+            return;
+        }
+        if(tracked.pending != current) {
+            // Generators rewrite the file in place; only act once the
+            // content has held for two consecutive ticks (half-write guard).
+            tracked.pending = std::move(current);
             return;
         }
     }
     // A forced tick reloads unconditionally: a spurious reload just yields
     // an empty diff.
-    tracked.has_pending = false;
+    tracked.pending.reset();
+    auto database = project.cdb.inputs(tracked.id).front().file;
+    bool exists = !project.file_table.seen_missing(database);
     // A discovered database's presence ranks it (see Build::source_order):
     // the files whose default entry moves with it change command.
-    bool flips = tracked.applied.database.exists != current.database.exists &&
-                 project.build.discovered(tracked.id);
+    bool flips = project.cdb.present(tracked.id) != exists && project.build.discovered(tracked.id);
     llvm::SmallVector<Fid> shared;
     llvm::SmallVector<std::optional<SourceID>> before;
     if(flips) {
         shared = shared_files(tracked.id);
         before = default_sources(shared);
     }
-    if(!current.database.exists) {
+    if(!exists) {
         // Deleted — usually mid-regeneration. Keep serving the loaded
         // entries; the rewrite lands as the next observed change.
-        tracked.applied = current;
-        tracked.trusted = true;
-        tracked.reread = false;
+        tracked.applied = std::move(current);
         project.cdb.set_present(tracked.id, false);
         if(flips) {
             push_moved(shared, before, default_sources(shared), delta.changed);
         }
         return;
     }
-    llvm::StringMap<FileStamp> known;
-    for(auto [response, stamp]:
-        llvm::zip(project.cdb.response_files(tracked.id), current.responses)) {
-        known[response] = stamp;
-    }
     auto diff = project.cdb.reload_and_diff(tracked.id);
     if(!diff) {
-        // Stats fine but unreadable right now (e.g. still locked by the
-        // generator). Leave `applied` alone: the stamp stays different, so
-        // the reload is retried on a later tick instead of being lost.
+        // Unreadable or unparsable right now (e.g. still locked by the
+        // generator). Leave `applied` alone: the content stays different,
+        // so the reload is retried on a later tick instead of being lost.
         return;
     }
-    // The database's baseline is the reload's own read. The response
-    // files' stamps predate it, so a rewrite landing meanwhile is seen next
-    // tick; a response file this reload first named has none, so the
-    // source reloads once more after settling, with one taken before it.
-    tracked.applied = current;
-    adopt_load(tracked);
-    tracked.applied.responses.clear();
-    tracked.reread = false;
-    for(auto& response: project.cdb.response_files(tracked.id)) {
-        auto it = known.find(response);
-        if(it == known.end()) {
-            tracked.reread = true;
-        }
-        tracked.applied.responses.push_back(it != known.end() ? it->second : stat_file(response));
-    }
+    // The baseline is the reload's own reads: a rewrite landing meanwhile
+    // is seen next tick.
+    tracked.applied = loaded(tracked.id);
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
              project.cdb.source_path(tracked.id),
              diff->added.size(),
@@ -262,7 +179,7 @@ CDBDiff CDBWatcher::tick(llvm::ArrayRef<Fid> open_files, bool force) {
             auto id = project.cdb.add_source(found);
             if(llvm::none_of(sources,
                              [&](const TrackedSource& tracked) { return tracked.id == id; })) {
-                // Baselined as missing: the fresh file is a change against
+                // Never loaded, so baselined unread: the fresh file is a change against
                 // the never-loaded source and goes through the normal
                 // settle-and-reload path.
                 LOG_INFO("Found compilation database: {}", found);

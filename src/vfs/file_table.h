@@ -147,10 +147,10 @@ std::optional<ObservedFile> read_file_observed(const char* path);
 /// downstream where it is embedded into JSON (worker IPC, the query
 /// protocol) or percent-decoded by clients that interpret URIs as UTF-8.
 ///
-/// FIXME: @rsp and NVCC option files are read during CDB parsing but
-/// never tracked here — editing one changes commands without touching
-/// compile_commands.json, so nothing notices until the CDB itself
-/// changes. Folding their paths into the CDB stamp is a follow-up.
+/// FIXME: NVCC option files are read during CDB parsing but are not
+/// among the load's inputs (CompilationDatabase::inputs) — editing one
+/// changes commands without touching compile_commands.json, so nothing
+/// notices until the CDB itself changes.
 struct FileTable {
     llvm::BumpPtrAllocator allocator;
     llvm::SmallVector<llvm::StringRef> spellings;
@@ -390,6 +390,12 @@ struct FileTable {
     /// A look found the file missing.
     void saw_missing(Fid fid) {
         saw(fid, std::nullopt);
+    }
+
+    /// Whether the last look through this fid found the file missing.
+    bool seen_missing(Fid fid) const {
+        auto it = seen.find(fid);
+        return it != seen.end() && !it->second;
     }
 
     /// The changed files, in first-change order, emptying the queue.

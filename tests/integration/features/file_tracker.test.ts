@@ -436,6 +436,8 @@ test("same stamp cdb rewrite applied", async ({ session }) => {
     expect(after.size).toBe(before.size);
     expect(after.mtimeNs).toBe(before.mtimeNs);
 
+    // The new content settles like any rewrite: seen on two polls.
+    expect(await eventsOf(client, "cdb", stamped)).toBe(0);
     expect(await eventsOf(client, "cdb", stamped)).toBe(1);
     await client.waitForRecompile(main);
     client.assertNoErrors(main, "the rewritten flag must reach the open file");

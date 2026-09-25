@@ -41,7 +41,7 @@ TEST_CASE(CDBTickDebounces) {
     FileTracker tracker(project, store, tmp.root.str().str());
 
     // Rewrite with one more entry: the first tick only records the pending
-    // stamp, the second sees it stable and reloads.
+    // content, the second sees it stable and reloads.
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}},
@@ -139,7 +139,7 @@ TEST_CASE(CDBTickDeleteRecreate) {
 
 TEST_CASE(CDBTickRetriesFailedLoad) {
     /// A declared database unreadable at startup loads on a later tick even
-    /// when its stamp is unchanged by then.
+    /// when its stat is unchanged by then.
     TempDir tmp;
     tmp.touch("compile_commands.json", "[ ");
     FileTable files;
@@ -216,9 +216,9 @@ TEST_CASE(CDBTickRelocates) {
     EXPECT_EQ(project.build.entries(main_id).size(), 2u);
 }
 
-TEST_CASE(CDBBaselineSyncsPresence) {
-    /// A database loaded, then deleted before the tracker baselines it, is
-    /// absent from the start — its unchanged missing stamp never says so.
+TEST_CASE(CDBDeletedBeforeWatch) {
+    /// A database loaded, then deleted before the tracker watches it: the
+    /// load's read is the baseline, so the deletion settles like any other.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     FileTable files;
@@ -233,14 +233,15 @@ TEST_CASE(CDBBaselineSyncsPresence) {
     ASSERT_TRUE(project.cdb.present(id));
     fs::remove_all(tmp.path("compile_commands.json"));
     FileTracker tracker(project, store, tmp.root.str().str());
-    EXPECT_FALSE(project.cdb.present(id));
     EXPECT_TRUE(tracker.tick_cdb().empty());
+    EXPECT_TRUE(tracker.tick_cdb().empty());
+    EXPECT_FALSE(project.cdb.present(id));
 }
 
-TEST_CASE(CDBBaselineRereadsResponses) {
-    /// A response file rewritten between the startup load and the
-    /// tracker's baseline: the first ticks reload the database once, so
-    /// the flags in memory catch up.
+TEST_CASE(CDBResponseRewriteBeforeWatch) {
+    /// A response file rewritten between the startup load and the watch:
+    /// the load's own read is the baseline, so the flags in memory catch
+    /// up.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     tmp.touch("flags.rsp", "-DONE\n");
@@ -471,8 +472,8 @@ TEST_CASE(CDBRewriteBeforeWatch) {
 
 TEST_CASE(CDBSameStampRewrite) {
     /// A same-size rewrite in place within the mtime granularity of the
-    /// load leaves the stamp untouched: the stat of a fresh load cannot
-    /// vouch for the bytes, so an ordinary tick compares the content.
+    /// load leaves the stat untouched: the stat of a fresh load cannot
+    /// vouch for the bytes, so the ticks compare the content.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     FileTable files;
@@ -497,6 +498,7 @@ TEST_CASE(CDBSameStampRewrite) {
     }));
     set_mtime(database, stamp);
 
+    ASSERT_TRUE(tracker.tick_cdb().empty());
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
     auto main_id = project.file_table.intern(tmp.path("main.cpp"));
@@ -505,7 +507,7 @@ TEST_CASE(CDBSameStampRewrite) {
 }
 
 TEST_CASE(CDBTrustedStampQuiet) {
-    /// A stamp safely in the past vouches for the bytes: the watcher reads
+    /// A stat safely in the past vouches for the bytes: the watcher reads
     /// nothing while it holds, so a rewrite forging it goes unseen — the
     /// stat polling's accepted blind spot.
     TempDir tmp;
