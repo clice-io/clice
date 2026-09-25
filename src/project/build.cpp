@@ -27,7 +27,7 @@ void Build::reset_active(llvm::StringRef configuration) {
 }
 
 llvm::SmallVector<const CompiledRule*> Build::matching(llvm::StringRef path) const {
-    return config.matching_rules(as_configured(path), active);
+    return config.matching_rules(path, active);
 }
 
 static bool rule_active(const CompiledRule& rule, llvm::StringRef active) {
@@ -247,19 +247,8 @@ bool Build::indexed(llvm::StringRef path) const {
     return llvm::all_of(matching(path), [](const CompiledRule* rule) { return rule->index; });
 }
 
-std::string Build::as_configured(llvm::StringRef path) const {
-    llvm::SmallString<256> storage;
-    auto file = path::canonical(path, storage);
-    llvm::StringRef root = config.workspace_root;
-    llvm::StringRef real_root = config.workspace_real_root;
-    if(!path::under(file, root) && path::under(file, real_root)) {
-        return root.str() + file.substr(real_root.size()).str();
-    }
-    return file.str();
-}
-
 bool Build::inside(llvm::StringRef path, bool CompiledRule::* field) const {
-    if(!path::under(as_configured(path), config.workspace_root)) {
+    if(!path::under(path, config.workspace_root)) {
         return false;
     }
     return llvm::all_of(matching(path), [&](const CompiledRule* rule) { return rule->*field; });
@@ -411,12 +400,15 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
                 ec.clear();
                 continue;
             }
-            // The iterator spells paths natively; the cache directory and
-            // the patterns are canonical.
+            // The iterator spells paths natively and under the root's
+            // spelling; the patterns are canonical, the cache directory
+            // resolved.
             llvm::SmallString<256> storage;
             auto entry_path = path::canonical(it->path(), storage);
             if(it->type() == llvm::sys::fs::file_type::directory_file) {
-                if(path::filename(entry_path) == ".git" || entry_path == cache_dir) {
+                auto name = path::filename(entry_path);
+                if(name == ".git" ||
+                   (name == path::filename(cache_dir) && path::resolved(entry_path) == cache_dir)) {
                     it.no_push();
                 }
                 continue;

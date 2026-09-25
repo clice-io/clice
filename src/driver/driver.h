@@ -51,19 +51,16 @@ inline bool apply_log_level(const std::string& level_str) {
 }
 
 /// The workspace root of a batch subcommand: the --workspace argument
-/// made absolute, or the current directory when it is empty,
-/// canonicalized either way.
+/// made absolute, or the current directory when it is empty, resolved
+/// like every path the file table names.
 inline std::string workspace_root(llvm::StringRef argument) {
     llvm::SmallString<256> directory(argument);
     if(directory.empty()) {
         llvm::sys::fs::current_path(directory);
     } else {
         llvm::sys::fs::make_absolute(directory);
-        path::remove_dots(directory, /*remove_dot_dot=*/true);
     }
-    std::string root(directory.str());
-    path::canonicalize(root);
-    return root;
+    return path::resolved(directory);
 }
 
 template <typename Command>

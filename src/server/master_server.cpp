@@ -171,7 +171,7 @@ void MasterServer::initialize() {
 }
 
 void MasterServer::initialize(llvm::StringRef root) {
-    workspace_roots = {root.str()};
+    workspace_roots = {path::resolved(root)};
     files.spell_root(root);
     initialize();
 }
@@ -422,9 +422,12 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
 
 void MasterServer::change_folders(std::vector<std::string> removed,
                                   std::vector<std::string> added) {
+    for(auto& root: added) {
+        files.spell_root(root);
+    }
     for(auto* roots: {&removed, &added}) {
         for(auto& root: *roots) {
-            path::canonicalize(root);
+            root = path::resolved(root);
         }
     }
     llvm::erase_if(removed,
@@ -433,7 +436,6 @@ void MasterServer::change_folders(std::vector<std::string> removed,
         llvm::erase(workspace_roots, root);
     }
     for(auto& root: added) {
-        files.spell_root(root);
         if(!llvm::is_contained(workspace_roots, root)) {
             workspace_roots.push_back(std::move(root));
         }

@@ -128,15 +128,8 @@ void Config::finalize(llvm::StringRef workspace_root) {
                 defaults.min_stateless_worker_count,
                 "min_stateless_worker_count");
 
-    this->workspace_root = workspace_root.str();
-    path::canonicalize(this->workspace_root);
+    this->workspace_root = workspace_root.empty() ? std::string() : path::resolved(workspace_root);
     llvm::StringRef root = this->workspace_root;
-    llvm::SmallString<256> real;
-    if(llvm::sys::fs::real_path(root, real)) {
-        real = root;
-    }
-    this->workspace_real_root = std::string(real);
-    path::canonicalize(this->workspace_real_root);
 
     if(p.cache_dir.empty() && !root.empty()) {
         p.cache_dir = path::join(root, ".clice");
@@ -153,10 +146,12 @@ void Config::finalize(llvm::StringRef workspace_root) {
         if(!dir->empty() && !root.empty() && !path::is_rooted(*dir)) {
             *dir = path::join(root, *dir);
         }
-        // Client-supplied dirs arrive in native spelling (backslashes, any
-        // drive case); canonicalize so artifact-prefix checks against
-        // pool-resolved paths hold.
-        path::canonicalize(*dir);
+        // One spelling per directory, whatever the user wrote (`./cache`,
+        // `sub/../cache`, a symlink, native separators): the one the file
+        // table names files by.
+        if(!dir->empty()) {
+            *dir = path::resolved(*dir);
+        }
     }
 
     auto anchored = [&](std::string value, llvm::StringRef anchor) {
@@ -326,7 +321,7 @@ std::optional<Config> Config::load(llvm::StringRef path,
     }
 
     auto config = std::move(*result);
-    auto directory = path::parent_path(path).str();
+    auto directory = path::resolved(path::parent_path(path));
     for(auto& rule: config.rules) {
         rule.directory = directory;
     }

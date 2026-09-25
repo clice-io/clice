@@ -603,7 +603,7 @@ TEST_CASE(WorkspaceSubstRepeated) {
     Config config;
     config.project.cache_dir = "${workspace}/a/${workspace}/b";
     config.finalize("/root");
-    EXPECT_EQ(std::string_view(config.project.cache_dir), "/root/a//root/b");
+    EXPECT_EQ(std::string_view(config.project.cache_dir), "/root/a/root/b");
 }
 
 TEST_CASE(CompileCommandsList) {

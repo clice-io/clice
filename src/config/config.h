@@ -380,16 +380,12 @@ struct Config {
     KOTATSU_ANNOTATE(skip = true)
     <std::vector<CompiledRule>> compiled_rules;
 
-    /// The workspace root finalize() ran for, canonical: the `${workspace}`
-    /// value, the anchor of rules and databases no configuration file
-    /// supplied, and the enumeration root of `**`-led patterns.
+    /// The workspace root finalize() ran for, resolved like every file the
+    /// file table names: the `${workspace}` value, the anchor of rules and
+    /// databases no configuration file supplied, and the enumeration root
+    /// of `**`-led patterns.
     KOTATSU_ANNOTATE(skip = true)
     <std::string> workspace_root;
-
-    /// workspace_root with symlinks resolved (itself when the resolution
-    /// fails): the spelling workers report file paths in.
-    KOTATSU_ANNOTATE(skip = true)
-    <std::string> workspace_real_root;
 
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path

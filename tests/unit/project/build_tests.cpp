@@ -161,9 +161,8 @@ TEST_CASE(LintSet) {
 
 #ifndef _WIN32
 TEST_CASE(LintSetSymlinkedRoot) {
-    /// The workspace is opened through a symlink while workers report real
-    /// paths: a rule anchored at the configured spelling still keeps its
-    /// files out, whichever spelling names them.
+    /// The workspace is opened through a symlink: the configuration resolves
+    /// the root, and its rules anchor where every file's identity lies.
     TempDir tmp;
     tmp.touch("real/clice.toml", "[[rules]]\npatterns = [\"vendor/**\"]\nlint = false\n");
     tmp.touch("real/src/main.cpp", "int main() { return 0; }\n");
@@ -171,14 +170,13 @@ TEST_CASE(LintSetSymlinkedRoot) {
     [[maybe_unused]] auto linked = ::symlink(tmp.path("real").c_str(), tmp.path("link").c_str());
 
     Config config = Config::load_from_workspace(tmp.path("link"));
+    EXPECT_EQ(std::string(config.workspace_root), path::resolved(tmp.path("real")));
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
     build.reset_active(fallback_configuration(config));
-    EXPECT_TRUE(build.lintable(tmp.path("link/src/main.cpp")));
-    EXPECT_TRUE(build.lintable(tmp.path("real/src/main.cpp")));
-    EXPECT_FALSE(build.lintable(tmp.path("link/vendor/lib.cpp")));
-    EXPECT_FALSE(build.lintable(tmp.path("real/vendor/lib.cpp")));
+    EXPECT_TRUE(build.lintable(path::resolved(tmp.path("link/src/main.cpp"))));
+    EXPECT_FALSE(build.lintable(path::resolved(tmp.path("link/vendor/lib.cpp"))));
     EXPECT_FALSE(build.lintable(tmp.path("elsewhere/x.cpp")));
 };
 #endif

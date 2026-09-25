@@ -525,11 +525,11 @@ std::vector<std::string> project_files(Project& project,
 
     llvm::StringRef root = project.config.workspace_root;
     llvm::StringSet<> skipped_dirs;
-    skipped_dirs.insert(build.as_configured(project.config.project.cache_dir));
+    skipped_dirs.insert(project.config.project.cache_dir);
     // A database at the workspace root, or above it, is a copy of the
     // build's or the build of a larger tree, not a build tree of its own.
     for(auto& database: databases) {
-        auto directory = build.as_configured(path::parent_path(database));
+        auto directory = path::resolved(path::parent_path(database));
         if(directory != root && path::under(directory, root)) {
             skipped_dirs.insert(directory);
         }
@@ -541,7 +541,7 @@ std::vector<std::string> project_files(Project& project,
                 build.resolve(member, command.config, command.source, llvm::StringRef(path), path);
             auto search = project.cdb.search_config(ref);
             for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
-                skipped_dirs.insert(build.as_configured(dir.path));
+                skipped_dirs.insert(path::resolved(dir.path));
             }
         }
     }
@@ -551,27 +551,15 @@ std::vector<std::string> project_files(Project& project,
     std::vector<std::string> result;
     llvm::DenseSet<Fid> unit(members.begin(), members.end());
     for(auto fid: project.dep_graph.all_files()) {
-        auto path = build.as_configured(files.resolve(fid));
+        auto path = files.resolve(fid);
         if(!formats(path) || !build.formattable(path) ||
            (!unit.contains(fid) && llvm::any_of(skipped_dirs, [&](auto& dir) {
                return path::under(path, dir.getKey());
            }))) {
             continue;
         }
-        result.push_back(std::move(path));
+        result.emplace_back(path);
     }
-    return result;
-}
-
-/// Where a file's bytes are: clang-format's in-place mode replaces a
-/// symlink with a regular file, so the target is what it must be given.
-std::string physical(llvm::StringRef path) {
-    llvm::SmallString<256> real;
-    if(llvm::sys::fs::real_path(path, real)) {
-        return path.str();
-    }
-    std::string result(real);
-    path::canonicalize(result);
     return result;
 }
 
@@ -720,10 +708,11 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     // Explicit files are taken as given; explicit directories narrow the
     // build's own files to those under them, and only they need the build.
     std::vector<std::string> files;
-    llvm::SmallVector<llvm::StringRef> directories;
+    std::vector<std::string> directories;
+    llvm::StringRef root = project.config.workspace_root;
     for(auto& path: options.paths) {
         if(llvm::sys::fs::is_directory(path)) {
-            directories.push_back(path);
+            directories.push_back(path::resolved(path));
         } else if(!llvm::sys::fs::exists(path)) {
             result.exit_code = 2;
             result.error = std::format("{}: no such file", path);
@@ -732,17 +721,20 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             result.exit_code = 2;
             result.error = std::format("{}: not a C-family source file", path);
             return result;
-        } else if(project.build.formattable(path)) {
-            // Rewritten where its bytes are, which has to be the
+        } else {
+            // Rewritten where its bytes are — clang-format's in-place mode
+            // replaces a symlink with a regular file — which has to be the
             // workspace's too.
-            auto target = physical(path);
-            if(!path::under(target, project.config.workspace_root) &&
-               !path::under(target, project.config.workspace_real_root)) {
-                result.exit_code = 2;
-                result.error = std::format("{}: links outside the workspace", path);
-                return result;
+            auto target = path::resolved(path);
+            if(!path::under(target, root)) {
+                if(path::under(path, root)) {
+                    result.exit_code = 2;
+                    result.error = std::format("{}: links outside the workspace", path);
+                    return result;
+                }
+            } else if(project.build.formattable(target)) {
+                files.push_back(std::move(target));
             }
-            files.push_back(std::move(target));
         }
     }
     if(options.paths.empty() || !directories.empty()) {
@@ -766,8 +758,6 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
                 return result;
             }
         }
-        llvm::StringRef root = project.config.workspace_root;
-        llvm::StringRef real_root = project.config.workspace_real_root;
         for(auto& path: project_files(project, load.members, databases)) {
             if(!directories.empty() && llvm::none_of(directories, [&](llvm::StringRef directory) {
                    return path::under(path, directory);
@@ -776,9 +766,8 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             }
             // A symlink into the workspace is the workspace's; one pointing
             // out of it is not.
-            auto target = physical(path);
-            if(path::under(target, root) || path::under(target, real_root)) {
-                files.push_back(std::move(target));
+            if(path::under(path, root)) {
+                files.push_back(std::move(path));
             }
         }
     }
