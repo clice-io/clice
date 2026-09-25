@@ -1,6 +1,6 @@
 id = "clice"
 name = "clice"
-version = "0.1.0"
+version = "0.1.2"
 schema_version = 1
 authors = ["clice-io"]
 description = "C++ support"
@@ -8,4 +8,4 @@ repository = "https://github.com/clice-io/clice"
 
 [language_servers.clice]
 name = "clice"
-language = "C++"
+languages = ["C++", "C"]
