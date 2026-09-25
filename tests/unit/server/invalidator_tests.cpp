@@ -1095,14 +1095,22 @@ TEST_CASE(BatchDiskEventsDeduplicate) {
 TEST_SUITE(DropOrphanedChoices) {
 
 TEST_CASE(SurvivingEdgeKeepsChoice) {
+    TempDir tmp;
+    tmp.touch("host.cpp", R"(#include "h.h")");
+    tmp.touch("h.h");
     FileTable files;
     Project project{files};
     SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"), {}}
+    }));
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    auto host = project.file_table.intern("/proj/host.cpp");
-    auto header = project.file_table.intern("/proj/h.h");
+    auto host = project.file_table.intern(tmp.path("host.cpp"));
+    auto header = project.file_table.intern(tmp.path("h.h"));
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
 

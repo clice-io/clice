@@ -252,11 +252,21 @@ bool EditorContext::holds_choice(Fid path_id) const {
     }
     auto path = project.file_table.resolve(path_id);
     if(saved->host_path_id.valid()) {
-        auto host_path = project.file_table.resolve(saved->host_path_id);
-        llvm::StringRef edit_paths[] = {host_path, path};
-        return !project.build.commands(saved->host_path_id).empty() &&
-               !project.dep_graph.find_include_chain(saved->host_path_id, path_id).empty() &&
-               (saved->command_hash.empty() || pin_alive(saved->host_path_id, edit_paths, *saved));
+        auto host = saved->host_path_id;
+        if(project.build.commands(host).empty() ||
+           project.dep_graph.find_include_chain(host, path_id).empty()) {
+            return false;
+        }
+        // A pinned occurrence can vanish while other inclusions of the
+        // header survive (the chain stays non-empty).
+        if(saved->occurrence.has_value()) {
+            auto count = project.count_occurrences(host, path_id);
+            if(count > 0 && *saved->occurrence >= count) {
+                return false;
+            }
+        }
+        llvm::StringRef edit_paths[] = {project.file_table.resolve(host), path};
+        return saved->command_hash.empty() || pin_alive(host, edit_paths, *saved);
     }
     return !saved->command_hash.empty() && !project.build.commands(path_id).empty() &&
            pin_alive(path_id, path, *saved);

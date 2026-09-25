@@ -352,41 +352,15 @@ ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::String
 bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
     bool dropped_saved = false;
     for(auto& [session_id, session]: sessions.sessions) {
-        auto it = editor.selections.find(session_id);
-        if(it == editor.selections.end()) {
+        if(!editor.selection(session_id) || editor.holds_choice(session_id)) {
             continue;
         }
-        auto& saved = it->second;
-        auto host_id = saved.host_path_id;
-        auto& occurrence = saved.occurrence;
-        bool orphaned = false;
-        if(host_id.valid()) {
-            orphaned = project.dep_graph.find_include_chain(host_id, session_id).empty();
-            // A pinned occurrence can vanish while other inclusions of the
-            // header survive (the chain stays non-empty) — recount it.
-            if(!orphaned && occurrence.has_value()) {
-                auto count = project.count_occurrences(host_id, session_id);
-                orphaned = count > 0 && *occurrence >= count;
-            }
-            // The pinned host command itself can vanish (a CDB reload
-            // changed the entry's flags): same validation didOpen applies.
-            if(!orphaned && !saved.command_hash.empty()) {
-                llvm::StringRef edit_paths[] = {project.file_table.resolve(host_id),
-                                                project.file_table.resolve(session_id)};
-                orphaned = !editor.pin_alive(host_id, edit_paths, saved);
-            }
-        } else if(!saved.command_hash.empty()) {
-            // Own-entry pin: the pinned command must still exist in the CDB.
-            orphaned = !editor.pin_alive(session_id, project.file_table.resolve(session_id), saved);
-        }
-        if(orphaned) {
-            LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
-                     project.file_table.resolve(session_id));
-            editor.drop_header_context(session_id);
-            ast.switch_identity(*session);
-            editor.selections.erase(it);
-            dropped_saved = true;
-        }
+        LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
+                 project.file_table.resolve(session_id));
+        editor.drop_header_context(session_id);
+        ast.switch_identity(*session);
+        editor.selections.erase(session_id);
+        dropped_saved = true;
     }
     return dropped_saved;
 }
