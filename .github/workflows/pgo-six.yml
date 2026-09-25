@@ -102,12 +102,12 @@ jobs:
           ninja -C build/train -k 0 clice || true
           echo "training build: $(( (SECONDS - start) / 60 )) min" | tee -a "$GITHUB_STEP_SUMMARY"
           ls -la pgo-raw
-          "$MINGW_ROOT/bin/llvm-profdata.exe" merge --sparse --failure-mode=all -o pgo-out/profile.profdata pgo-raw/*.profraw
-          "$MINGW_ROOT/bin/llvm-profdata.exe" show pgo-out/profile.profdata | tail -n 6 | tee -a "$GITHUB_STEP_SUMMARY"
+      # llvm-mingw's llvm-profdata has no zlib, and the raw profile's name
+      # section is compressed: the merge happens on Linux (merge_six).
       - uses: actions/upload-artifact@v7
         with:
-          name: profile-clang-${{ matrix.arch }}-mingw
-          path: pgo-out
+          name: raw-clang-${{ matrix.arch }}-mingw
+          path: pgo-raw
           retention-days: 14
 
   merge_six:
@@ -135,8 +135,12 @@ jobs:
           get 36036050639 profile-clang-arm64-linux
           get 36036050639 profile-clang-arm64-mac
           get "$FIRST_RUN" profile-clang-x64-mac
-          get "${{ github.run_id }}" profile-clang-x86_64-mingw
-          get "${{ github.run_id }}" profile-clang-aarch64-mingw
+          for arch in x86_64 aarch64; do
+            gh run download "${{ github.run_id }}" -R "$GITHUB_REPOSITORY" -n "raw-clang-$arch-mingw" -D "raw/$arch"
+            mkdir -p "p/profile-clang-$arch-mingw"
+            pixi run -e package llvm-profdata merge --sparse --failure-mode=all \
+              -o "p/profile-clang-$arch-mingw/profile.profdata" raw/$arch/*.profraw
+          done
           mkdir -p pgo-out
           pixi run -e package llvm-profdata merge --sparse -o pgo-out/profile.profdata p/*/profile.profdata
           for p in p/*/profile.profdata pgo-out/profile.profdata; do
@@ -146,6 +150,11 @@ jobs:
         with:
           name: profile-six
           path: pgo-out
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        with:
+          name: profiles-each
+          path: p
           retention-days: 14
 
   match:
