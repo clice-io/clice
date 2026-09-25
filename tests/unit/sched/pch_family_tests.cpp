@@ -1,4 +1,3 @@
-#include <chrono>
 #include <optional>
 #include <string>
 
@@ -11,43 +10,6 @@
 
 namespace clice::testing {
 namespace {
-
-/// A build that failed on the user's code is remembered by its key until
-/// something it read — a place a failed lookup looked included — changes.
-TEST_SUITE(FailedBuilds) {
-
-TEST_CASE(HoldsUntilInputChanges) {
-    TempDir tmp;
-    FileTable files;
-    FailedBuilds failures;
-    auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-                   std::chrono::system_clock::now().time_since_epoch())
-                   .count();
-    std::optional<worker::ArtifactBuildResult> failed = worker::ArtifactBuildResult{
-        .success = false,
-        .has_user_errors = true,
-        .build_at = now,
-        .deps = {{tmp.path("gen.h"), 0}},
-    };
-    failures.record("key", files, failed);
-    ASSERT_TRUE(failures.holds("key", files));
-    ASSERT_FALSE(failures.holds("other", files));
-
-    tmp.touch("gen.h", "int make();\n");
-    ASSERT_FALSE(failures.holds("key", files));
-}
-
-TEST_CASE(OnlyUserErrorsRemembered) {
-    FileTable files;
-    FailedBuilds failures;
-    std::optional<worker::ArtifactBuildResult> broken = worker::ArtifactBuildResult{
-        .success = false,
-    };
-    failures.record("key", files, broken);
-    ASSERT_FALSE(failures.holds("key", files));
-}
-
-};  // TEST_SUITE(FailedBuilds)
 
 /// The acquisition evidence matrix: worker deaths land exactly once, on
 /// the dispatch owner's probe, whatever happens to the joiners or to the

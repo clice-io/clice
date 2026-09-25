@@ -8,7 +8,6 @@
 
 #include "project/project.h"
 #include "sched/crash_budget.h"
-#include "sched/families/build_common.h"
 #include "sched/graph.h"
 #include "worker/pool.h"
 
@@ -176,8 +175,6 @@ private:
     /// Consumption strikes per key (see blame); separate from the
     /// build-side build_crashes, which every successful rebuild clears.
     CrashBudget consume_blames;
-
-    FailedBuilds failures;
 
     /// Keys of pch_cache entries whose envelope is currently loaded,
     /// most recently used first (see enforce_loaded_budget).

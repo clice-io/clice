@@ -426,7 +426,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
             break;
         }
 
-        for(auto dep: pcm.with_imports(deps.resolved)) {
+        for(auto dep: deps.resolved) {
             switch(co_await ctx.depend({Family::PCM, dep.raw})) {
                 case DependResult::Ready: break;
                 case DependResult::Failed: co_return DependResult::Failed;

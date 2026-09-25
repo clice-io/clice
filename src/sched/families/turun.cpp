@@ -159,7 +159,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             if(attempt > 0 && !any_evicted) {
                 break;
             }
-            for(auto dep: pcm.with_imports(deps.resolved)) {
+            for(auto dep: deps.resolved) {
                 if(co_await ctx.depend({Family::PCM, dep.raw}) == DependResult::Cancelled) {
                     landed[path_id] = {.verdict = Verdict::Preempted};
                     co_return RoundOutcome::Stale;

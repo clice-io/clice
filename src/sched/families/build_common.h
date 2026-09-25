@@ -4,7 +4,6 @@
 #include <initializer_list>
 #include <string>
 
-#include "project/project.h"
 #include "worker/protocol.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -44,44 +43,5 @@ inline bool expected_build_failure(const auto& result) {
 const inline std::string& build_failure_message(const auto& result) {
     return result.has_value() ? result.value().error : result.error().message;
 }
-
-/// Builds that failed on the user's code, by content key, with what they
-/// read — the places their failed lookups looked included: the same key
-/// over the same inputs fails the same way, so a request takes the verdict
-/// instead of repeating the build until one of those inputs changes.
-class FailedBuilds {
-public:
-    /// Whether the key's last build failed and nothing it read changed.
-    bool holds(llvm::StringRef key, FileTable& files) {
-        auto it = failures.find(key);
-        if(it == failures.end()) {
-            return false;
-        }
-        auto wave = files.wave();
-        if(deps_changed(files, it->second)) {
-            failures.erase(it);
-            return false;
-        }
-        return true;
-    }
-
-    /// Remember a failure with user errors; others say nothing about the
-    /// inputs.
-    void record(llvm::StringRef key, FileTable& files, const auto& result) {
-        if(!result.has_value() || !result.value().has_user_errors) {
-            return;
-        }
-        // Keys are content-derived: typing through failing preambles leaves
-        // one entry per keystroke. Shedding them all past a bound costs
-        // only repeat builds.
-        if(failures.size() >= 1024) {
-            failures.clear();
-        }
-        failures[key] = capture_deps_snapshot(files, result.value().deps, result.value().build_at);
-    }
-
-private:
-    llvm::StringMap<DepsSnapshot> failures;
-};
 
 }  // namespace clice
