@@ -162,7 +162,9 @@ static std::string add_file(SynthesizedContext& context,
                             llvm::StringRef directory,
                             std::string content) {
     llvm::SmallString<256> path(directory);
-    llvm::sys::path::append(path, std::format(".clice-{:016x}.h", llvm::xxh3_64bits(content)));
+    llvm::sys::path::append(path,
+                            llvm::sys::path::Style::posix,
+                            std::format(".clice-{:016x}.h", llvm::xxh3_64bits(content)));
     context.files.emplace_back(std::string(path), std::move(content));
     return std::string(path);
 }

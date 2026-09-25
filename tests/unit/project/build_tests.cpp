@@ -470,8 +470,10 @@ TEST_CASE(DiscoverEveryNearby) {
     auto above =
         compile_commands_above(CanonicalPath(tmp.path("deep/proj/src")), CanonicalPath(tmp.root));
     ASSERT_EQ(above.size(), 2u);
-    EXPECT_EQ(above[0], path::join(tmp.root, "deep", "proj", "compile_commands.json"));
-    EXPECT_EQ(above[1], path::join(tmp.root, "compile_commands.json"));
+    EXPECT_EQ(CanonicalPath(above[0]),
+              CanonicalPath(path::join(tmp.root, "deep", "proj", "compile_commands.json")));
+    EXPECT_EQ(CanonicalPath(above[1]),
+              CanonicalPath(path::join(tmp.root, "compile_commands.json")));
 };
 
 TEST_CASE(ProjectRootAbove) {
