@@ -16,7 +16,7 @@
 
 namespace clice {
 
-FileTracker::FileTracker(Project& project, const SessionStore& store, std::string root) :
+FileTracker::FileTracker(Project& project, const SessionStore& store, CanonicalPath root) :
     project(project), store(store), cdb(project, std::move(root)) {}
 
 /// Diff ids and event ids share the single file table.

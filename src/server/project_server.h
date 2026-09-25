@@ -40,17 +40,16 @@ class ProjectServer : public std::enable_shared_from_this<ProjectServer> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
     /// server without folders runs, which loads nothing.
-    ProjectServer(MasterServer& server, std::string root);
+    ProjectServer(MasterServer& server, CanonicalPath root);
     ~ProjectServer();
 
     /// Load the configuration — clice.toml under the root, overlaid with
     /// the client's initializationOptions (`init_options`, JSON), then
     /// finalized — and apply its serving mode. A cache directory belongs
     /// to one project: when the one configured is among
-    /// `taken_cache_dirs` (resolved, see path::resolved), this project
-    /// falls back to its clice.toml's, then the default, then runs without
-    /// one.
-    void configure(llvm::StringRef init_options, llvm::ArrayRef<std::string> taken_cache_dirs);
+    /// `taken_cache_dirs`, this project falls back to its clice.toml's,
+    /// then the default, then runs without one.
+    void configure(llvm::StringRef init_options, llvm::ArrayRef<CanonicalPath> taken_cache_dirs);
 
     /// Load the project from disk (see bootstrap_project), restore the
     /// editor's context choices, and start its store-lifetime services;
@@ -97,7 +96,7 @@ public:
 
     MasterServer& server;
     kota::event_loop& loop;
-    std::string root;
+    CanonicalPath root;
 
     /// The open documents routed to this project, and their buffer-sync
     /// logic.

@@ -27,7 +27,7 @@ class CDBWatcher {
 public:
     /// Construct after the project is loaded: every registered source is
     /// baselined at its load.
-    CDBWatcher(Project& project, std::string root);
+    CDBWatcher(Project& project, CanonicalPath root);
 
     /// One poll tick. When no rule declares a source, registers every
     /// database discovery finds that is not watched yet, at the root and
@@ -101,7 +101,7 @@ private:
     llvm::SmallVector<std::optional<SourceID>> default_sources(llvm::ArrayRef<Fid> files) const;
 
     Project& project;
-    std::string root;
+    CanonicalPath root;
 
     llvm::SmallVector<TrackedSource> sources;
 };

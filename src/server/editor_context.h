@@ -130,7 +130,7 @@ struct EditorContext {
     /// edit moves every applied hash; the base survives it). The validity
     /// test shared by didOpen validation and the server's orphan pass.
     bool pin_alive(Fid entry_file,
-                   llvm::ArrayRef<llvm::StringRef> paths,
+                   llvm::ArrayRef<CanonicalRef> paths,
                    const Selection& saved) const;
 
     /// Mark the choices changed: they reserialize into the blob, the next

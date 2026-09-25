@@ -49,7 +49,7 @@ static void log_command_decision(llvm::StringRef path,
 static Candidate pick_pinned_config(Project& project,
                                     Fid file,
                                     llvm::ArrayRef<Candidate> candidates,
-                                    llvm::ArrayRef<llvm::StringRef> paths,
+                                    llvm::ArrayRef<CanonicalRef> paths,
                                     llvm::StringRef language_path,
                                     llvm::StringRef pinned_hash,
                                     llvm::StringRef pinned_base) {
@@ -75,8 +75,8 @@ static Candidate pick_pinned_config(Project& project,
     return candidates.front();
 }
 
-HeaderMode CommandResolver::header_mode(llvm::StringRef path, Fid path_id) const {
-    if(is_context_header_path(path)) {
+HeaderMode CommandResolver::header_mode(Fid path_id) const {
+    if(is_context_header_path(project.file_table.resolve(path_id))) {
         return HeaderMode::NeedsContext;
     }
     if(auto it = header_verdicts.find(path_id); it != header_verdicts.end()) {
@@ -152,8 +152,7 @@ void CommandResolver::load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
     }
 }
 
-bool CommandResolver::fill_header_context_args(llvm::StringRef path,
-                                               Fid path_id,
+bool CommandResolver::fill_header_context_args(Fid path_id,
                                                std::string& directory,
                                                std::vector<std::string>& arguments,
                                                const CommandRequest& request,
@@ -164,9 +163,10 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
     // diagnostics indicate missing includer state. An explicitly chosen
     // occurrence — even #0 — only has meaning under includer-context
     // semantics, so it forces synthesis regardless of the verdict.
+    auto path = project.file_table.resolve(path_id);
     const Selection* choice = request.selection;
     bool has_host_choice = choice && choice->host_path_id.valid();
-    bool synthesize = header_mode(path, path_id) == HeaderMode::NeedsContext ||
+    bool synthesize = header_mode(path_id) == HeaderMode::NeedsContext ||
                       (has_host_choice && choice->occurrence.has_value());
 
     // Use cached context if it is still valid; otherwise resolve. The cache
@@ -222,7 +222,7 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
     // The header inherits the host's world: the rules matching the host
     // and the rules matching the header both edit the borrowed command,
     // each once, in declaration order.
-    llvm::StringRef edit_paths[] = {host_path, path};
+    CanonicalRef edit_paths[] = {host_path, path};
     auto base = pick_pinned_config(project,
                                    path_id,
                                    commands,
@@ -254,11 +254,12 @@ bool CommandResolver::fill_header_context_args(llvm::StringRef path,
     return true;
 }
 
-Resolution CommandResolver::resolve_command(llvm::StringRef path,
+Resolution CommandResolver::resolve_command(llvm::StringRef spelled,
                                             std::string& directory,
                                             std::vector<std::string>& arguments,
                                             const CommandRequest& request) {
-    auto path_id = project.file_table.intern(path);
+    auto path_id = project.file_table.intern(spelled);
+    auto path = project.file_table.resolve(path_id);
     llvm::SmallVector<llvm::StringRef, 4> tried;
     Resolution resolution;
 
@@ -266,7 +267,7 @@ Resolution CommandResolver::resolve_command(llvm::StringRef path,
     // default command, a borrowed or the builtin one alike.
     auto fill = [&](ConfigID base,
                     CommandSource source,
-                    llvm::ArrayRef<llvm::StringRef> paths,
+                    llvm::ArrayRef<CanonicalRef> paths,
                     llvm::StringRef language_path) {
         auto ref = project.build.resolve(path_id,
                                          base,
@@ -293,7 +294,7 @@ Resolution CommandResolver::resolve_command(llvm::StringRef path,
     //    host source's CDB entry with file path replaced and preamble injected.
     if(has_host_choice) {
         tried.push_back("switch_context");
-        if(fill_header_context_args(path, path_id, directory, arguments, request, resolution)) {
+        if(fill_header_context_args(path_id, directory, arguments, request, resolution)) {
             return settle(CommandSource::IncludeGraph);
         }
     }
@@ -320,7 +321,7 @@ Resolution CommandResolver::resolve_command(llvm::StringRef path,
     // 3. No CDB entry — try automatic header context resolution.
     if(!has_host_choice) {
         tried.push_back("include_graph");
-        if(fill_header_context_args(path, path_id, directory, arguments, request, resolution)) {
+        if(fill_header_context_args(path_id, directory, arguments, request, resolution)) {
             return settle(CommandSource::IncludeGraph);
         }
     }
@@ -338,7 +339,7 @@ Resolution CommandResolver::resolve_command(llvm::StringRef path,
     tried.push_back("inferred");
     if(auto lender = command_lender(project, path_id)) {
         auto lender_path = project.file_table.resolve(lender->unit);
-        llvm::StringRef edit_paths[] = {path, lender_path};
+        CanonicalRef edit_paths[] = {path, lender_path};
         fill(lender->config, CommandSource::Inferred, edit_paths, lender_path);
         LOG_INFO("resolve_command: {} borrows the command of {}", path, lender_path);
         return settle(CommandSource::Inferred);
@@ -408,7 +409,7 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
         return std::nullopt;
     }
     auto target_path = project.file_table.resolve(chain.back());
-    llvm::StringRef edit_paths[] = {host_path, target_path};
+    CanonicalRef edit_paths[] = {host_path, target_path};
     auto picked = pick_pinned_config(project,
                                      host_path_id,
                                      commands,

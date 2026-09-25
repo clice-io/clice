@@ -277,7 +277,7 @@ struct CompiledRule {
 
         /// The literal directory the pattern starts in (the workspace root
         /// for `**`-led patterns): where the files it claims are enumerated.
-        std::string root;
+        CanonicalPath root;
     };
 
     std::vector<Pattern> patterns;
@@ -308,7 +308,7 @@ struct CompiledRule {
     bool declares_sources() const;
 
     /// Whether the rule applies to `path` (canonical absolute).
-    bool matches(llvm::StringRef path) const;
+    bool matches(CanonicalRef path) const;
 };
 
 /// A problem found while loading a configuration file, carrying enough
@@ -385,7 +385,7 @@ struct Config {
     /// databases no configuration file supplied, and the enumeration root
     /// of `**`-led patterns.
     KOTATSU_ANNOTATE(skip = true)
-    <std::string> workspace_root;
+    <CanonicalPath> workspace_root;
 
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path
@@ -400,7 +400,7 @@ struct Config {
     /// The compiled rules applying to `path` (absolute), in declaration
     /// order, restricted to untagged rules and rules tagged
     /// `configuration`.
-    llvm::SmallVector<const CompiledRule*> matching_rules(llvm::StringRef path,
+    llvm::SmallVector<const CompiledRule*> matching_rules(CanonicalRef path,
                                                           llvm::StringRef configuration) const;
 
     /// The distinct configuration tags, in first-appearance order.

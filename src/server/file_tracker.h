@@ -36,7 +36,7 @@ class FileTracker {
 public:
     /// Construct after the project is loaded: its databases are baselined
     /// at their loads.
-    FileTracker(Project& project, const SessionStore& store, std::string root);
+    FileTracker(Project& project, const SessionStore& store, CanonicalPath root);
 
     /// One CDB poll tick (see CDBWatcher::tick), the open files looking
     /// for a database; the reload's diff as one CDBChanged event.

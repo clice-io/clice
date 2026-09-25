@@ -85,7 +85,7 @@ public:
     /// the persisted verdict. Only NeedsContext is ever persisted — a
     /// "self-contained" impression is session-local and re-evaluated when
     /// compile inputs change, so it can never go stale.
-    HeaderMode header_mode(llvm::StringRef path, Fid path_id) const;
+    HeaderMode header_mode(Fid path_id) const;
 
     /// Drop an in-memory SelfContained verdict (never a persisted
     /// NeedsContext) so the next compile re-runs the trial.
@@ -118,7 +118,8 @@ public:
     /// Tries, in order: the pinned host, the file's own command, a header
     /// context through the include graph, a default command, a lender and
     /// finally the builtin command — so it always succeeds. Emits a
-    /// per-file decision log (tiers tried, tier hit, command hash).
+    /// per-file decision log (tiers tried, tier hit, command hash). Any
+    /// spelling of the file will do.
     Resolution resolve_command(llvm::StringRef path,
                                std::string& directory,
                                std::vector<std::string>& arguments,
@@ -142,8 +143,7 @@ private:
     /// through the include graph, synthesizing a preamble prefix/suffix when
     /// the header needs includer context. Returns false when no usable host
     /// context exists.
-    bool fill_header_context_args(llvm::StringRef path,
-                                  Fid path_id,
+    bool fill_header_context_args(Fid path_id,
                                   std::string& directory,
                                   std::vector<std::string>& arguments,
                                   const CommandRequest& request,

@@ -16,7 +16,7 @@ namespace clice {
 
 ProjectLoad load_project(Project& project,
                          IndexStore& store,
-                         llvm::StringRef root,
+                         CanonicalRef root,
                          llvm::StringRef requested_configuration,
                          bool read_only_index,
                          bool scan_tree) {
@@ -93,7 +93,7 @@ ProjectLoad load_project(Project& project,
 }
 
 BuildLoad load_build(Project& project,
-                     llvm::StringRef root,
+                     CanonicalRef root,
                      llvm::StringRef configuration,
                      llvm::ArrayRef<std::string> nearby) {
     BuildLoad load;
@@ -115,7 +115,8 @@ BuildLoad load_build(Project& project,
         // follow — does not depend on the order files were opened in.
         auto stable =
             llvm::to_vector(llvm::make_filter_range(nearby, [&](const std::string& source) {
-                return path::under(source, root) && !llvm::is_contained(paths, source);
+                return path::under(CanonicalPath(path::parent_path(source)), root) &&
+                       !llvm::is_contained(paths, source);
             }));
         std::ranges::sort(stable, {}, [](const std::string& source) {
             return std::tuple(llvm::count_if(source, [](char c) { return path::is_separator(c); }),

@@ -158,7 +158,7 @@ struct BatchLifetime {
 /// the session file logger, and the worker pool. `log_tag` names the log
 /// files after the subcommand.
 bool start_batch(BatchStack& stack,
-                 llvm::StringRef root,
+                 CanonicalRef root,
                  std::uint32_t workers,
                  llvm::StringRef self_path,
                  llvm::StringRef log_tag) {
@@ -347,8 +347,10 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
             std::ranges::copy_if(outcome.tidy_diagnostics,
                                  std::back_inserter(sweep.findings),
                                  [&](const worker::TidyDiagnostic& d) {
+                                     auto& files = stack.project.file_table;
                                      return d.check == "clang-diagnostic-error" ||
-                                            stack.project.build.lintable(d.file);
+                                            stack.project.build.lintable(
+                                                files.resolve(files.intern(d.file)));
                                  });
             break;
         }
@@ -517,45 +519,48 @@ bool formats(llvm::StringRef path) {
 /// generates or fetches lives there) and the commands' system include
 /// directories, of a type clang-format formats, no matching rule saying
 /// `format = false`.
-std::vector<std::string> project_files(Project& project,
-                                       llvm::ArrayRef<Fid> members,
-                                       llvm::ArrayRef<std::string> databases) {
+std::vector<CanonicalPath> project_files(Project& project,
+                                         llvm::ArrayRef<Fid> members,
+                                         llvm::ArrayRef<std::string> databases) {
     auto& build = project.build;
     auto& files = project.file_table;
 
-    llvm::StringRef root = project.config.workspace_root;
-    llvm::StringSet<> skipped_dirs;
-    skipped_dirs.insert(project.config.project.cache_dir);
+    CanonicalRef root = project.config.workspace_root;
+    std::vector<CanonicalPath> skipped_dirs;
+    auto skip = [&](CanonicalPath dir) {
+        if(!llvm::is_contained(skipped_dirs, dir)) {
+            skipped_dirs.push_back(std::move(dir));
+        }
+    };
+    skip(CanonicalPath(project.config.project.cache_dir));
     // A database at the workspace root, or above it, is a copy of the
     // build's or the build of a larger tree, not a build tree of its own.
     for(auto& database: databases) {
-        auto directory = path::resolved(path::parent_path(database));
+        auto directory = CanonicalPath(path::parent_path(database));
         if(directory != root && path::under(directory, root)) {
-            skipped_dirs.insert(directory);
+            skip(std::move(directory));
         }
     }
     for(auto member: members) {
         auto path = files.resolve(member);
         for(auto& command: build.commands(member)) {
-            auto ref =
-                build.resolve(member, command.config, command.source, llvm::StringRef(path), path);
+            auto ref = build.resolve(member, command.config, command.source, path, path);
             auto search = project.cdb.search_config(ref);
             for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
-                skipped_dirs.insert(path::resolved(dir.path));
+                skip(CanonicalPath(dir.path));
             }
         }
     }
 
     // The build's own units are its own wherever they sit; the
     // directories keep out only what they include.
-    std::vector<std::string> result;
+    std::vector<CanonicalPath> result;
     llvm::DenseSet<Fid> unit(members.begin(), members.end());
     for(auto fid: project.dep_graph.all_files()) {
         auto path = files.resolve(fid);
         if(!formats(path) || !build.formattable(path) ||
-           (!unit.contains(fid) && llvm::any_of(skipped_dirs, [&](auto& dir) {
-               return path::under(path, dir.getKey());
-           }))) {
+           (!unit.contains(fid) &&
+            llvm::any_of(skipped_dirs, [&](auto& dir) { return path::under(path, dir); }))) {
             continue;
         }
         result.emplace_back(path);
@@ -707,12 +712,12 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
 
     // Explicit files are taken as given; explicit directories narrow the
     // build's own files to those under them, and only they need the build.
-    std::vector<std::string> files;
-    std::vector<std::string> directories;
-    llvm::StringRef root = project.config.workspace_root;
+    std::vector<CanonicalPath> files;
+    std::vector<CanonicalPath> directories;
+    CanonicalRef root = project.config.workspace_root;
     for(auto& path: options.paths) {
         if(llvm::sys::fs::is_directory(path)) {
-            directories.push_back(path::resolved(path));
+            directories.push_back(CanonicalPath(path));
         } else if(!llvm::sys::fs::exists(path)) {
             result.exit_code = 2;
             result.error = std::format("{}: no such file", path);
@@ -725,9 +730,9 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             // Rewritten where its bytes are — clang-format's in-place mode
             // replaces a symlink with a regular file — which has to be the
             // workspace's too.
-            auto target = path::resolved(path);
+            auto target = CanonicalPath(path);
             if(!path::under(target, root)) {
-                if(path::under(path, root)) {
+                if(path::under(CanonicalPath(path::parent_path(path)), root)) {
                     result.exit_code = 2;
                     result.error = std::format("{}: links outside the workspace", path);
                     return result;
@@ -759,7 +764,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             }
         }
         for(auto& path: project_files(project, load.members, databases)) {
-            if(!directories.empty() && llvm::none_of(directories, [&](llvm::StringRef directory) {
+            if(!directories.empty() && llvm::none_of(directories, [&](auto& directory) {
                    return path::under(path, directory);
                })) {
                 continue;
@@ -793,7 +798,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             bytes = 0;
         }
         bytes += file.size() + 1;
-        chunks.back().push_back(file);
+        chunks.back().push_back(file.str());
     }
 
     std::uint32_t jobs =

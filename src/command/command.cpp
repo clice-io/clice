@@ -752,7 +752,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // entries before the cut still swap in) — the CDB poll's two-tick
     // settle debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
-    auto database = file_table.intern(path::resolved(source.path));
+    auto database = file_table.intern(CanonicalPath(source.path));
     file_table.observe(database, observed->obs);
     source.inputs = {
         {.file = database, .hash = observed->obs.hash}
@@ -828,8 +828,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         auto path_id = file_table.intern(file_abs);
         llvm::SmallString<256> storage;
         auto spelled = path::canonical(file_abs, storage);
-        llvm::StringRef spelling =
-            spelled != file_table.resolve(path_id) ? strings.save(spelled) : llvm::StringRef();
+        llvm::StringRef spelling = spelled != llvm::StringRef(file_table.resolve(path_id))
+                                       ? strings.save(spelled)
+                                       : llvm::StringRef();
 
         std::optional<ConfigID> normalized;
 

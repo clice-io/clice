@@ -154,7 +154,7 @@ int run_indexing_via_server(const index::ServerEndpoint& endpoint, llvm::StringR
     return 0;
 }
 
-int run_indexing(std::string root,
+int run_indexing(CanonicalPath root,
                  std::string configuration,
                  std::uint32_t workers,
                  const char* self_path) {
@@ -628,8 +628,8 @@ int run_show_symbol(Project& project, llvm::StringRef wanted) {
             std::println("  scope={}  file={}  reference files={}",
                          kota::meta::enum_name(symbol->scope, "External"),
                          symbol->file == index::no_file
-                             ? "-"
-                             : project.file_table.resolve(Fid{symbol->file}),
+                             ? llvm::StringRef("-")
+                             : llvm::StringRef(project.file_table.resolve(Fid{symbol->file})),
                          project.project_index.reference_count(hash));
         } else {
             std::println("  scope=local (not in the global table)");

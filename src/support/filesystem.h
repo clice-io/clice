@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <compare>
+#include <concepts>
 #include <cstdint>
 #include <expected>
 #include <memory>
@@ -109,28 +111,200 @@ inline void canonicalize([[maybe_unused]] std::string& p) {
 #endif
 }
 
-/// `p` with the symlinks of its longest existing prefix resolved and the
-/// rest appended as spelled: two spellings of one directory compare equal
-/// whether it exists yet or not.
-inline std::string resolved(llvm::StringRef p) {
+}  // namespace path
+
+struct FileTable;
+class CanonicalPath;
+
+/// A path naming a file or directory by its identity, the way the file
+/// table does: the symlinks of its longest existing prefix resolved, the
+/// rest appended as spelled, `.`/`..` removed, canonically spelled. Two
+/// spellings of one file compare equal whether it exists yet or not.
+///
+/// Only resolution (CanonicalPath's constructor) and the file table make
+/// one, and one never compares with a plain string: a spelling taken for
+/// an identity is a compile error. Either reads as a plain string wherever
+/// a spelling will do.
+class CanonicalRef {
+public:
+    CanonicalRef() = default;
+
+    operator llvm::StringRef() const {
+        return text;
+    }
+
+    /// For LLVM's file APIs; points into this object, so it lives for the
+    /// call it is passed to.
+    operator llvm::Twine() const {
+        return llvm::Twine(text);
+    }
+
+    explicit operator std::string() const {
+        return text.str();
+    }
+
+    std::string str() const {
+        return text.str();
+    }
+
+    /// Null-terminated.
+    const char* data() const {
+        return text.data();
+    }
+
+    std::size_t size() const {
+        return text.size();
+    }
+
+    bool empty() const {
+        return text.empty();
+    }
+
+    /// The directory holding it, itself an identity; empty at a root.
+    CanonicalPath parent() const;
+
+    /// A path a directory walk from here reached without following a
+    /// symlink, itself an identity: every component below this one is a
+    /// real directory entry.
+    CanonicalPath entry(llvm::StringRef path) const;
+
+private:
+    friend class CanonicalPath;
+    friend struct FileTable;
+
+    explicit CanonicalRef(llvm::StringRef text) : text(text) {}
+
+    llvm::StringRef text;
+};
+
+class CanonicalPath {
+public:
+    CanonicalPath() = default;
+
+    /// The identity of what `spelled` names.
+    explicit CanonicalPath(llvm::StringRef spelled);
+
+    CanonicalPath(CanonicalRef ref) : text(ref.str()) {}
+
+    operator CanonicalRef() const {
+        return CanonicalRef(text);
+    }
+
+    operator llvm::StringRef() const {
+        return text;
+    }
+
+    /// For LLVM's file APIs; points into this object, so it lives for the
+    /// call it is passed to.
+    operator llvm::Twine() const {
+        return llvm::Twine(text);
+    }
+
+    explicit operator std::string() const {
+        return text;
+    }
+
+    const std::string& str() const {
+        return text;
+    }
+
+    std::size_t size() const {
+        return text.size();
+    }
+
+    bool empty() const {
+        return text.empty();
+    }
+
+private:
+    friend class CanonicalRef;
+
+    struct Resolved {};
+
+    CanonicalPath(Resolved, llvm::StringRef text) : text(text) {}
+
+    std::string text;
+};
+
+/// An identity: a CanonicalRef, a CanonicalPath, or a type wrapping one
+/// by inheritance (a reflected configuration field).
+template <typename T>
+concept Canonical = std::same_as<T, CanonicalRef> || std::derived_from<T, CanonicalPath>;
+
+template <Canonical L, Canonical R>
+bool operator==(const L& lhs, const R& rhs) {
+    return llvm::StringRef(lhs) == llvm::StringRef(rhs);
+}
+
+template <Canonical L, Canonical R>
+std::strong_ordering operator<=>(const L& lhs, const R& rhs) {
+    return llvm::StringRef(lhs).compare(llvm::StringRef(rhs)) <=> 0;
+}
+
+/// An identity compares with an identity only.
+template <typename L, typename R>
+    requires (Canonical<L> != Canonical<R>)
+bool operator==(const L& lhs, const R& rhs) = delete;
+
+template <typename L, typename R>
+    requires (Canonical<L> != Canonical<R>)
+std::strong_ordering operator<=>(const L& lhs, const R& rhs) = delete;
+
+namespace path {
+
+/// Whether the identity `p` is `root` or lies under it.
+template <Canonical P, Canonical R>
+bool under(const P& p, const R& root) {
+    return under(llvm::StringRef(p), llvm::StringRef(root));
+}
+
+/// An identity lies under an identity only.
+template <typename P, typename R>
+    requires (Canonical<P> != Canonical<R>)
+bool under(const P& p, const R& root) = delete;
+
+}  // namespace path
+
+inline CanonicalPath CanonicalRef::parent() const {
+    auto dir = path::parent_path(text);
+    return CanonicalPath(CanonicalPath::Resolved{},
+                         dir.size() < text.size() ? dir : llvm::StringRef());
+}
+
+inline CanonicalPath CanonicalRef::entry(llvm::StringRef path) const {
+    assert(path::under(path, text));
+    return CanonicalPath(CanonicalPath::Resolved{}, path);
+}
+
+inline CanonicalPath::CanonicalPath(llvm::StringRef spelled) {
     llvm::SmallString<256> real;
-    llvm::StringRef existing = p;
+    llvm::StringRef existing = spelled;
     while(llvm::sys::fs::real_path(existing, real)) {
-        auto parent = parent_path(existing);
+        auto parent = path::parent_path(existing);
         if(parent.empty() || parent.size() == existing.size()) {
-            return p.str();
+            text = spelled.str();
+            return;
         }
         existing = parent;
     }
-    real += p.drop_front(existing.size());
+    real += spelled.drop_front(existing.size());
     // The unresolved tail may still climb (`missing/../cache`).
-    remove_dots(real, /*remove_dot_dot=*/true);
-    std::string result(real);
-    canonicalize(result);
-    return result;
+    path::remove_dots(real, /*remove_dot_dot=*/true);
+    text = std::string(real);
+    path::canonicalize(text);
 }
 
-}  // namespace path
+}  // namespace clice
+
+template <clice::Canonical T>
+struct std::formatter<T> : std::formatter<llvm::StringRef> {
+    template <typename FormatContext>
+    auto format(const T& value, FormatContext& ctx) const {
+        return std::formatter<llvm::StringRef>::format(llvm::StringRef(value), ctx);
+    }
+};
+
+namespace clice {
 
 namespace fs {
 

@@ -157,7 +157,7 @@ void EditorContext::append_suffix_include(Fid path_id, std::string& text) const 
 }
 
 bool EditorContext::pin_alive(Fid entry_file,
-                              llvm::ArrayRef<llvm::StringRef> paths,
+                              llvm::ArrayRef<CanonicalRef> paths,
                               const Selection& saved) const {
     auto entry_path = project.file_table.resolve(entry_file);
     for(auto& entry: project.build.commands(entry_file)) {
@@ -193,7 +193,7 @@ bool EditorContext::holds_choice(Fid path_id) const {
                 return false;
             }
         }
-        llvm::StringRef edit_paths[] = {project.file_table.resolve(host), path};
+        CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
         return saved->command_hash.empty() || pin_alive(host, edit_paths, *saved);
     }
     return !saved->command_hash.empty() && !project.build.commands(path_id).empty() &&

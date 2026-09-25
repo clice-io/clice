@@ -62,7 +62,7 @@ void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
     }
 }
 
-int run_lint(std::string root,
+int run_lint(CanonicalPath root,
              std::string configuration,
              std::uint32_t workers,
              bool with_index,

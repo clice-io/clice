@@ -65,7 +65,7 @@ void Project::rescan_disk_file(Fid path_id) {
         // includes via the includer directory. Every command contributes
         // its own edges, as the startup scan does.
         Fid cmd_file = path_id;
-        llvm::StringRef cmd_path = path;
+        CanonicalRef cmd_path = path;
         std::optional<Lender> lender;
         if(!build.unit(path_id)) {
             if(auto host = default_host(*this, path_id)) {
@@ -283,12 +283,12 @@ bool defines_project(llvm::StringRef dir) {
     return configured(dir) || !discover_compile_commands(dir).empty();
 }
 
-std::string project_root_above(llvm::StringRef start) {
-    std::string found;
+CanonicalPath project_root_above(llvm::StringRef start) {
+    CanonicalPath found;
     path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
         if(configured(dir) || !database_in(dir).empty() ||
            !database_in(path::join(dir, "build")).empty()) {
-            found = dir.str();
+            found = CanonicalPath(dir);
             return false;
         }
         return true;

@@ -392,11 +392,14 @@ TEST_CASE(ResponseFilesRecorded) {
     ASSERT_TRUE(database.load_source(id).has_value());
     auto recorded = database.inputs(id);
     ASSERT_EQ(recorded.size(), 3u);
-    EXPECT_EQ(file_table.resolve(recorded[0].file), tmp.path("compile_commands.json"));
+    EXPECT_EQ(file_table.resolve(recorded[0].file),
+              CanonicalPath(tmp.path("compile_commands.json")));
     EXPECT_TRUE(recorded[0].hash.has_value());
-    EXPECT_EQ(file_table.resolve(recorded[1].file), path::join(tmp.root, "flags.rsp"));
+    EXPECT_EQ(file_table.resolve(recorded[1].file),
+              CanonicalPath(path::join(tmp.root, "flags.rsp")));
     EXPECT_TRUE(recorded[1].hash.has_value());
-    EXPECT_EQ(file_table.resolve(recorded[2].file), path::join(tmp.root, "missing.rsp"));
+    EXPECT_EQ(file_table.resolve(recorded[2].file),
+              CanonicalPath(path::join(tmp.root, "missing.rsp")));
     EXPECT_FALSE(recorded[2].hash.has_value());
     EXPECT_TRUE(database.present(id));
 

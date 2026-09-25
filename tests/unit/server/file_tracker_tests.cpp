@@ -41,7 +41,7 @@ TEST_CASE(CDBTickDebounces) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     // Rewrite with one more entry: the first tick only records the pending
     // content, the second sees it stable and reloads.
@@ -76,7 +76,7 @@ TEST_CASE(CDBTickForceImmediate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
@@ -97,7 +97,7 @@ TEST_CASE(CDBTickDiscoversLate) {
     Project project{files};
     SessionStore store;
     // No compile_commands.json at construction time.
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
 
     tmp.touch("compile_commands.json",
@@ -123,7 +123,7 @@ TEST_CASE(CDBTickDeleteRecreate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     // Deletion (mid-regeneration): keep serving the loaded entries.
     fs::remove_all(tmp.path("compile_commands.json"));
@@ -153,7 +153,7 @@ TEST_CASE(CDBTickRetriesFailedLoad) {
     llvm::sys::fs::file_status before;
     ASSERT_FALSE(
         static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     tmp.touch("compile_commands.json", "[]");
     int fd = 0;
@@ -190,7 +190,7 @@ TEST_CASE(CDBTickRelocates) {
         {tmp.root, tmp.path("only.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, original);
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     auto main_id = project.file_table.intern(tmp.path("main.cpp"));
     auto only_id = project.file_table.intern(tmp.path("only.cpp"));
     auto root = *project.cdb.find_source(tmp.path("compile_commands.json"));
@@ -235,7 +235,7 @@ TEST_CASE(CDBDeletedBeforeWatch) {
     auto id = *project.cdb.find_source(tmp.path("compile_commands.json"));
     ASSERT_TRUE(project.cdb.present(id));
     fs::remove_all(tmp.path("compile_commands.json"));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     EXPECT_TRUE(tracker.tick_cdb().empty());
     EXPECT_TRUE(tracker.tick_cdb().empty());
     EXPECT_FALSE(project.cdb.present(id));
@@ -257,7 +257,7 @@ TEST_CASE(ResponseRewriteBeforeWatch) {
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
     }));
     tmp.touch("flags.rsp", "-DTWO\n");
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     EXPECT_TRUE(tracker.tick_cdb().empty());
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
@@ -281,7 +281,7 @@ TEST_CASE(CDBTickRenameOver) {
                   build_cdb_json({
                       {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
         }));
-        FileTracker tracker(project, store, tmp.root.str().str());
+        FileTracker tracker(project, store, CanonicalPath(tmp.root));
         llvm::sys::fs::file_status before;
         ASSERT_FALSE(
             static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
@@ -323,7 +323,7 @@ TEST_CASE(CDBDiscoverRetriesRegistered) {
     project.config.finalize(tmp.root.str());
     project.build.reset_active("");
     auto id = project.cdb.add_source(tmp.path("a/compile_commands.json"));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     auto main = project.file_table.intern(tmp.path("a/main.cpp"));
     EXPECT_TRUE(tracker.discover_around(main).empty());
 
@@ -359,7 +359,7 @@ TEST_CASE(CDBTickFollowsRetarget) {
     SessionStore store;
     auto id = project.cdb.add_source(database);
     ASSERT_TRUE(project.cdb.load_source(id).has_value());
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     fs::remove(database);
     ASSERT_EQ(::symlink(tmp.path("release.json").c_str(), database.c_str()), 0);
@@ -388,7 +388,7 @@ TEST_CASE(CDBTickDiscoversAround) {
               build_cdb_json({
                   {tmp.root, tmp.path("a/b/main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     auto main_id = project.file_table.intern(tmp.path("a/b/main.cpp"));
     auto other_id = project.file_table.intern(tmp.path("a/other.cpp"));
 
@@ -425,7 +425,7 @@ TEST_CASE(CDBTickPhantomReplacement) {
         {tmp.root, tmp.path("main.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, original);
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     auto main_id = project.file_table.intern(tmp.path("main.cpp"));
     auto other_id = project.file_table.intern(tmp.path("other.cpp"));
     auto root = *project.cdb.find_source(tmp.path("compile_commands.json"));
@@ -462,7 +462,7 @@ TEST_CASE(CDBTickCoalescesSources) {
     project.build.reset_active("");
     auto a = project.cdb.add_source(tmp.path("a/compile_commands.json"));
     auto b = project.cdb.add_source(tmp.path("b/compile_commands.json"));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     tmp.touch("a/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/main.cpp"), {}}
@@ -496,7 +496,7 @@ TEST_CASE(CDBRewriteBeforeWatch) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DLONGER"}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     ASSERT_TRUE(tracker.tick_cdb().empty());
     auto events = tracker.tick_cdb();
@@ -525,7 +525,7 @@ TEST_CASE(CDBSameStampRewrite) {
     auto stamp = std::chrono::system_clock::now() + std::chrono::hours(1);
     set_mtime(database, stamp);
     ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     ASSERT_TRUE(tracker.tick_cdb().empty());
 
     tmp.touch("compile_commands.json",
@@ -560,7 +560,7 @@ TEST_CASE(CDBTrustedStampQuiet) {
     auto stamp = std::chrono::system_clock::now() - std::chrono::hours(1);
     set_mtime(database, stamp);
     ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     ASSERT_TRUE(tracker.tick_cdb().empty());
     ASSERT_TRUE(tracker.tick_cdb().empty());
 
@@ -594,7 +594,7 @@ TEST_CASE(WorkspaceTickStateMachine) {
     auto header = project.file_table.intern(tmp.path("header.h"));
     project.dep_graph.set_includes(tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     auto body = [&]() -> kota::task<> {
         // A first look is no change, even for main.cpp missing on disk.
@@ -662,7 +662,7 @@ TEST_CASE(WorkspaceTickKeepsListedMember) {
               build_cdb_json({
                   {tmp.root, tmp.path("src/both.cpp"), {}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     auto both = project.file_table.intern(tmp.path("src/both.cpp"));
     project.dep_graph.set_includes(both, 0, {});
     project.dep_graph.build_reverse_map();
@@ -697,7 +697,7 @@ TEST_CASE(WorkspaceTickSeesOpen) {
     project.dep_graph.set_includes(header, 0, {});
     project.dep_graph.build_reverse_map();
     store.open(header);
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     auto body = [&]() -> kota::task<> {
         EXPECT_TRUE((co_await sweep(tracker, files)).empty());
@@ -739,7 +739,7 @@ TEST_CASE(WorkspaceTickAfterScan) {
     project.dep_graph.build_reverse_map();
     project.file_table.read(header);
     tmp.touch("header.h", R"(int x = 2222;)");
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     auto body = [&]() -> kota::task<> {
         auto first = co_await sweep(tracker, files);
@@ -770,7 +770,7 @@ TEST_CASE(AnyLookReportsChange) {
     project.dep_graph.set_includes(header, 0, {});
     project.dep_graph.build_reverse_map();
     project.file_table.read(header);
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     tmp.touch("header.h", R"(int x = 2222;)");
     project.rescan_disk_file(header);
 

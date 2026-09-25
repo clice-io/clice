@@ -67,15 +67,15 @@ protocol::CodeAction render(std::string title, protocol::CodeActionKind kind, Fi
 /// the quoted segment — whichever of these the command's lookup order
 /// actually resolves to `header`, since a shorter spelling can name a
 /// same-named file in an earlier directory.
-std::optional<std::string> include_spelling(llvm::StringRef header,
+std::optional<std::string> include_spelling(CanonicalRef header,
                                             const SearchConfig& search,
-                                            llvm::StringRef file,
+                                            CanonicalRef file,
                                             DirListingCache& dir_cache) {
-    auto below = [&](llvm::StringRef root) -> std::optional<llvm::StringRef> {
+    auto below = [&](CanonicalRef root) -> std::optional<llvm::StringRef> {
         if(root.empty() || !path::under(header, root) || header.size() <= root.size()) {
             return std::nullopt;
         }
-        return header.drop_front(root.size()).ltrim("/\\");
+        return llvm::StringRef(header).drop_front(root.size()).ltrim("/\\");
     };
 
     struct Candidate {
@@ -84,13 +84,13 @@ std::optional<std::string> include_spelling(llvm::StringRef header,
     };
 
     std::vector<Candidate> candidates;
-    auto directory = llvm::sys::path::parent_path(file);
+    auto directory = file.parent();
     if(auto relative = below(directory)) {
         candidates.push_back({*relative, false});
     }
-    std::vector<std::string> dirs;
+    std::vector<CanonicalPath> dirs;
     for(auto& dir: search.dirs) {
-        dirs.push_back(path::resolved(dir.path));
+        dirs.push_back(CanonicalPath(dir.path));
     }
     for(auto [index, dir]: llvm::enumerate(dirs)) {
         if(auto relative = below(dir)) {
@@ -108,7 +108,7 @@ std::optional<std::string> include_spelling(llvm::StringRef header,
                                         0,
                                         search,
                                         dir_cache);
-        if(resolved && path::resolved(resolved->path) == header) {
+        if(resolved && CanonicalPath(resolved->path) == header) {
             return candidate.angled ? std::format("<{}>", candidate.name)
                                     : std::format("\"{}\"", candidate.name);
         }
@@ -266,7 +266,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             }
         }
         llvm::StringSet<> seen;
-        std::vector<std::string> headers;
+        std::vector<CanonicalRef> headers;
         for(const auto& located: query.locate(symbol_query)) {
             if(located.symbol.name != request.name) {
                 continue;
@@ -275,7 +275,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                 for(const auto& site: query.sites(located.symbol.hash, kind)) {
                     if(site.file.valid() && site.file != path_id && is_header_path(site.path) &&
                        seen.insert(project.file_table.resolve(site.file)).second) {
-                        headers.push_back(project.file_table.resolve(site.file).str());
+                        headers.push_back(project.file_table.resolve(site.file));
                     }
                 }
             }

@@ -156,17 +156,13 @@ public:
     /// file's own project offers, then the ones other projects do —
     /// choosing one of those moves the file there (switch_context). The
     /// listing's epoch covers every project (context_epoch).
-    ext::QueryContextResult query_contexts(llvm::StringRef path,
-                                           Fid path_id,
-                                           const ext::QueryContextParams& params);
+    ext::QueryContextResult query_contexts(Fid path_id, const ext::QueryContextParams& params);
 
     /// clice/switchContext: pin the context in the project offering it —
     /// the file's own first — moving the open document there first. Only
     /// that project keeps a choice for the file, and routing keeps the file
     /// with it (compiler).
-    kota::task<ext::SwitchContextResult> switch_context(llvm::StringRef path,
-                                                        Fid path_id,
-                                                        llvm::StringRef context_path,
+    kota::task<ext::SwitchContextResult> switch_context(Fid path_id,
                                                         Fid context_path_id,
                                                         ext::SwitchContextParams params);
 
@@ -237,7 +233,7 @@ public:
     /// The folders served, canonical: the client's workspace folders (or
     /// the command line's --workspace), and the roots open_session found
     /// above files no folder claims.
-    std::vector<std::string> workspace_roots;
+    std::vector<CanonicalPath> workspace_roots;
 
     /// The client's initializationOptions (JSON), applied to every project.
     std::string init_options_json;
@@ -250,16 +246,16 @@ public:
 private:
     /// A project over `root`, its cross-project queries wired to the
     /// others.
-    std::shared_ptr<ProjectServer> make_project(std::string root);
+    std::shared_ptr<ProjectServer> make_project(CanonicalPath root);
 
     /// The root of the project serving a folder: the folder itself when it
     /// is a project of its own (defines_project), else the project of the
     /// nearest folder enclosing it, else the folder itself.
-    std::string root_of(llvm::StringRef folder) const;
+    CanonicalPath root_of(CanonicalRef folder) const;
 
     /// The roots of the projects the folders need, in folder order; the
     /// rootless project's when there is no folder.
-    std::vector<std::string> project_roots() const;
+    std::vector<CanonicalPath> project_roots() const;
 
     /// Make the projects served those project_roots names: start the
     /// missing ones, retire the ones no folder needs, and move the open
@@ -271,10 +267,9 @@ private:
     /// Shut a project that stopped serving down in the background.
     void retire(std::shared_ptr<ProjectServer> project);
 
-    /// The cache directories in use, resolved (path::resolved): a cache
-    /// directory belongs to one project at a time, a removed one's until
-    /// it is gone.
-    std::vector<std::string> taken_cache_dirs() const;
+    /// The cache directories in use: a cache directory belongs to one
+    /// project at a time, a removed one's until it is gone.
+    std::vector<CanonicalPath> taken_cache_dirs() const;
 
     /// Before a file's first compile: every project whose root holds the
     /// file registers the databases between it and the root, so routing

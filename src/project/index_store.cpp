@@ -113,8 +113,8 @@ CDBSnapshot build_cdb_snapshot(Project& project,
             // by this view, so not part of its identity.
             continue;
         }
-        auto file = project.file_table.resolve(path_id).str();
-        auto rules = project.build.edit_hash(llvm::StringRef(file));
+        auto file = project.file_table.resolve(path_id);
+        auto rules = project.build.edit_hash(file);
         // In build order, which registration order — the order databases
         // were discovered in — must not leak into: the sequence is the
         // file's command identity across sessions.
@@ -128,7 +128,7 @@ CDBSnapshot build_cdb_snapshot(Project& project,
             }
         }
         snapshot.entries.push_back({
-            .file = std::move(file),
+            .file = file.str(),
             .hashes = std::move(hashes),
             .selected = project.cdb.entry_hash_hex(candidates.front().config),
             .sources = std::move(sources),
@@ -146,11 +146,12 @@ CDBSnapshot build_cdb_snapshot(Project& project,
         }
         std::string host;
         std::string host_selected;
-        llvm::SmallVector<llvm::StringRef, 2> edit_paths;
+        llvm::SmallVector<CanonicalRef, 2> edit_paths;
         if(auto host_it = header_hosts.find(tu); host_it != header_hosts.end()) {
-            host = project.file_table.resolve(host_it->second).str();
+            auto host_path = project.file_table.resolve(host_it->second);
+            host = host_path.str();
             host_selected = selected_hash(project, host_it->second);
-            edit_paths.push_back(host);
+            edit_paths.push_back(host_path);
         }
         edit_paths.push_back(file);
         auto rules = project.build.edit_hash(edit_paths);
@@ -1660,9 +1661,11 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         std::string rules = entry.rules;
         std::string host_selected = entry.host_selected;
         if(entry.host.empty() && !old.host.empty()) {
-            llvm::StringRef paths[] = {old.host, entry.file};
+            auto host_id = project.file_table.intern(old.host);
+            CanonicalRef paths[] = {project.file_table.resolve(host_id),
+                                    project.file_table.resolve(server_id)};
             rules = project.build.edit_hash(paths);
-            host_selected = selected_hash(project, project.file_table.intern(old.host));
+            host_selected = selected_hash(project, host_id);
         }
         if(old.rules != rules || old.selected != entry.selected) {
             // The default command that claimed it is gone and no host

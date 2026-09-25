@@ -15,7 +15,7 @@ class IndexPump;
 ProjectLoad bootstrap_project(Project& project,
                               IndexStore& store,
                               IndexPump& pump,
-                              llvm::StringRef root,
+                              CanonicalRef root,
                               llvm::StringRef requested_configuration,
                               bool read_only_index = false,
                               bool scan_tree = false);

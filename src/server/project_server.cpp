@@ -23,7 +23,7 @@
 
 namespace clice {
 
-ProjectServer::ProjectServer(MasterServer& server, std::string root) :
+ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     server(server), loop(server.loop), root(std::move(root)), project(server.files),
     sched(loop, project, commands, server.pool),
     ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions, loop),
@@ -77,7 +77,7 @@ ProjectServer::ProjectServer(MasterServer& server, std::string root) :
 ProjectServer::~ProjectServer() = default;
 
 void ProjectServer::configure(llvm::StringRef init_options,
-                              llvm::ArrayRef<std::string> taken_cache_dirs) {
+                              llvm::ArrayRef<CanonicalPath> taken_cache_dirs) {
     config_issues.clear();
     config_path.clear();
     // Load clice.toml raw and overlay initializationOptions BEFORE computing
@@ -103,7 +103,7 @@ void ProjectServer::configure(llvm::StringRef init_options,
     // then none.
     auto& cache_dir = project.config.project.cache_dir;
     auto taken = [&] {
-        return llvm::is_contained(taken_cache_dirs, path::resolved(cache_dir)) ||
+        return llvm::is_contained(taken_cache_dirs, CanonicalPath(cache_dir)) ||
                owned_elsewhere(cache_dir, root);
     };
     if(!root.empty() && taken()) {

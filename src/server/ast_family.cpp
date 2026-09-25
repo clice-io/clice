@@ -504,7 +504,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // the prefix; the landing gates what the probe may write.
         bool trial_round = attempt == 0 && !session->trial_done && header_context &&
                            !header_context->synthesized &&
-                           contexts.commands.header_mode(file_path, path_id) == HeaderMode::Unknown;
+                           contexts.commands.header_mode(path_id) == HeaderMode::Unknown;
 
         switch(co_await depend_modules(ctx,
                                        path_id,

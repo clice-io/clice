@@ -179,7 +179,7 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path
     // command would be a different compile.
     auto needs_context = [&](Fid file) {
         auto* choice = ctx.contexts.selection(file);
-        return ctx.contexts.commands.header_mode(path, file) == HeaderMode::NeedsContext ||
+        return ctx.contexts.commands.header_mode(file) == HeaderMode::NeedsContext ||
                (choice && choice->host_path_id.valid() && choice->occurrence.has_value());
     };
     if(auto file = ctx.project.file_table.find(path); file && needs_context(*file)) {

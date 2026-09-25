@@ -302,7 +302,7 @@ Reply answer(Project& project,
 /// gate, so only units whose inputs changed are recompiled — and an
 /// absent index gets built from nothing. Returns the units that failed
 /// to index.
-std::expected<std::vector<std::string>, std::string> refresh(llvm::StringRef root,
+std::expected<std::vector<std::string>, std::string> refresh(CanonicalRef root,
                                                              llvm::StringRef configuration,
                                                              const char* self_path) {
     auto config = Config::load_from_workspace(root);
@@ -334,7 +334,7 @@ std::expected<std::vector<std::string>, std::string> refresh(llvm::StringRef roo
                      progress.failed);
     };
     auto result = run_batch_index({
-        .root = root.str(),
+        .root = root,
         .configuration = configuration.str(),
         .self_path = self_path,
         .on_progress = report_progress,

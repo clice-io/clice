@@ -542,7 +542,7 @@ bool is_header_type(clang::driver::types::ID type) {
 /// the server would from the project root; `start` itself when none does.
 /// Only the ancestors themselves are checked — scanning their
 /// subdirectories would let an unrelated sibling project's database win.
-std::string workspace_of(llvm::StringRef start) {
+CanonicalPath workspace_of(llvm::StringRef start) {
     std::string root = start.str();
     path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
         bool marked = llvm::any_of(config_file_names,
@@ -555,7 +555,7 @@ std::string workspace_of(llvm::StringRef start) {
         }
         return !marked;
     });
-    return root;
+    return CanonicalPath(root);
 }
 
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
@@ -878,7 +878,7 @@ int run_inspect(const InspectOptions& opts) {
         return 1;
     }
     if(flags.empty()) {
-        std::string root = workspace_of(unit_directory);
+        auto root = workspace_of(unit_directory);
         project.config = Config::load_from_workspace(root);
         auto requested = opts.configuration.value_or("");
         if(!check_requested_configuration(project.config, requested)) {
@@ -903,16 +903,16 @@ int run_inspect(const InspectOptions& opts) {
     if(is_dir && flags.empty()) {
         llvm::StringSet<> listed;
         for(auto& [rel, abs]: files) {
-            listed.insert(path::resolved(abs));
+            listed.insert(CanonicalPath(abs));
         }
-        auto root = path::resolved(abs_path);
+        auto root = CanonicalPath(abs_path);
         for(auto member: project.build.members()) {
             auto abs = project.file_table.resolve(member);
-            if(!abs.starts_with(root) || abs.size() <= root.size() || abs[root.size()] != '/' ||
-               listed.contains(abs)) {
+            if(!path::under(abs, root) || abs == root || listed.contains(abs)) {
                 continue;
             }
-            files.emplace_back(abs.drop_front(root.size() + 1).str(), abs.str());
+            auto relative = llvm::StringRef(abs).drop_front(root.size()).ltrim('/');
+            files.emplace_back(relative.str(), abs.str());
         }
     }
 

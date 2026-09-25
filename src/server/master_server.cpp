@@ -39,7 +39,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
     bg_tasks(loop), self_path(std::move(self_path)) {
     // Documents opened before initialize land in this project: sessions
     // are plain state, and initialize re-routes them once folders exist.
-    projects.push_back(make_project(std::string()));
+    projects.push_back(make_project(CanonicalPath()));
     // A disk change can be seen deep inside any operation — a staleness
     // check, a rescan inside a cascade: the drain runs on a later loop
     // turn, outside it.
@@ -171,7 +171,7 @@ void MasterServer::initialize() {
 }
 
 void MasterServer::initialize(llvm::StringRef root) {
-    workspace_roots = {path::resolved(root)};
+    workspace_roots = {CanonicalPath(root)};
     files.spell_root(root);
     initialize();
 }
@@ -216,7 +216,7 @@ void MasterServer::wire() {
 
 /// The deepest of the projects `accept` takes whose root holds `path`.
 static ProjectServer* deepest_holding(llvm::ArrayRef<std::shared_ptr<ProjectServer>> projects,
-                                      llvm::StringRef path,
+                                      CanonicalRef path,
                                       llvm::function_ref<bool(ProjectServer&)> accept) {
     ProjectServer* deepest = nullptr;
     for(auto& project: projects) {
@@ -281,7 +281,7 @@ std::shared_ptr<Session> MasterServer::find_session(Fid path_id) {
     return it != owners.end() ? it->second->sessions.find(path_id) : nullptr;
 }
 
-std::shared_ptr<ProjectServer> MasterServer::make_project(std::string root) {
+std::shared_ptr<ProjectServer> MasterServer::make_project(CanonicalPath root) {
     // A removed project holds its cache directory (writer lock, database)
     // until its last reference — the retirement, or a request still
     // running in it — goes: a root waiting for the directory serves then.
@@ -311,13 +311,13 @@ std::shared_ptr<ProjectServer> MasterServer::make_project(std::string root) {
     return made;
 }
 
-std::vector<std::string> MasterServer::taken_cache_dirs() const {
-    std::vector<std::string> dirs;
+std::vector<CanonicalPath> MasterServer::taken_cache_dirs() const {
+    std::vector<CanonicalPath> dirs;
     auto take = [&](const ProjectServer& project) {
         // The rootless project opens no store.
         auto& cache_dir = project.project.config.project.cache_dir;
         if(!project.root.empty() && !cache_dir.empty()) {
-            dirs.push_back(path::resolved(cache_dir));
+            dirs.push_back(CanonicalPath(cache_dir));
         }
     };
     for(auto& project: projects) {
@@ -425,17 +425,18 @@ void MasterServer::change_folders(std::vector<std::string> removed,
     for(auto& root: added) {
         files.spell_root(root);
     }
-    for(auto* roots: {&removed, &added}) {
-        for(auto& root: *roots) {
-            root = path::resolved(root);
+    auto identities = [](llvm::ArrayRef<std::string> roots) {
+        return llvm::to_vector(
+            llvm::map_range(roots, [](auto& root) { return CanonicalPath(root); }));
+    };
+    auto gone = identities(removed);
+    auto fresh = identities(added);
+    for(auto& root: gone) {
+        if(!llvm::is_contained(fresh, root)) {
+            llvm::erase(workspace_roots, root);
         }
     }
-    llvm::erase_if(removed,
-                   [&](const std::string& root) { return llvm::is_contained(added, root); });
-    for(auto& root: removed) {
-        llvm::erase(workspace_roots, root);
-    }
-    for(auto& root: added) {
+    for(auto& root: fresh) {
         if(!llvm::is_contained(workspace_roots, root)) {
             workspace_roots.push_back(std::move(root));
         }
@@ -445,22 +446,25 @@ void MasterServer::change_folders(std::vector<std::string> removed,
     }
 }
 
-std::string MasterServer::root_of(llvm::StringRef folder) const {
+CanonicalPath MasterServer::root_of(CanonicalRef folder) const {
     if(defines_project(folder)) {
-        return folder.str();
+        return folder;
     }
-    llvm::StringRef enclosing;
+    CanonicalRef enclosing;
     for(auto& other: workspace_roots) {
         if(other.size() < folder.size() && other.size() > enclosing.size() &&
            path::under(folder, other)) {
             enclosing = other;
         }
     }
-    return enclosing.empty() ? folder.str() : root_of(enclosing);
+    if(enclosing.empty()) {
+        return folder;
+    }
+    return root_of(enclosing);
 }
 
-std::vector<std::string> MasterServer::project_roots() const {
-    std::vector<std::string> roots;
+std::vector<CanonicalPath> MasterServer::project_roots() const {
+    std::vector<CanonicalPath> roots;
     for(auto& folder: workspace_roots) {
         auto root = root_of(folder);
         if(!llvm::is_contained(roots, root)) {
@@ -477,7 +481,7 @@ void MasterServer::serve_folders() {
     llvm::erase_if(retired, [](auto& weak) { return weak.expired(); });
     std::vector<std::shared_ptr<ProjectServer>> serving;
     llvm::SmallVector<ProjectServer*> fresh;
-    auto serve = [&](std::string root) {
+    auto serve = [&](CanonicalPath root) {
         if(auto it = llvm::find_if(projects, [&](auto& project) { return project->root == root; });
            it != projects.end()) {
             serving.push_back(*it);
@@ -497,7 +501,7 @@ void MasterServer::serve_folders() {
         }
     }
     if(serving.empty()) {
-        serve(std::string());
+        serve(CanonicalPath());
     }
 
     std::vector<std::shared_ptr<ProjectServer>> leaving;
@@ -627,17 +631,16 @@ std::size_t MasterServer::drain_disk_changes() {
     return events.size();
 }
 
-ext::QueryContextResult MasterServer::query_contexts(llvm::StringRef path,
-                                                     Fid path_id,
+ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
                                                      const ext::QueryContextParams& params) {
     constexpr std::size_t page_size = 10;
     auto& owner = owner_of(path_id);
-    auto items = owner.context_service.contexts(path, path_id);
+    auto items = owner.context_service.contexts(path_id);
     for(auto& project: projects) {
         if(project.get() == &owner) {
             continue;
         }
-        for(auto& item: project->context_service.contexts(path, path_id)) {
+        for(auto& item: project->context_service.contexts(path_id)) {
             auto same = [&](const ext::ContextItem& known) {
                 return known.uri == item.uri && known.occurrence == item.occurrence &&
                        known.command_hash == item.command_hash;
@@ -657,9 +660,7 @@ ext::QueryContextResult MasterServer::query_contexts(llvm::StringRef path,
     return result;
 }
 
-kota::task<ext::SwitchContextResult> MasterServer::switch_context(llvm::StringRef path,
-                                                                  Fid path_id,
-                                                                  llvm::StringRef context_path,
+kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
                                                                   Fid context_path_id,
                                                                   ext::SwitchContextParams params) {
     ext::SwitchContextResult result;
@@ -675,7 +676,7 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(llvm::StringRe
     // others, in the order query_contexts listed them.
     auto owner = owner_of(path_id).shared_from_this();
     auto offers = [&](ProjectServer& project) {
-        return llvm::any_of(project.context_service.contexts(path, path_id),
+        return llvm::any_of(project.context_service.contexts(path_id),
                             [&](const ext::ContextItem& item) {
                                 return item.uri == params.context_uri &&
                                        item.occurrence == params.occurrence &&
@@ -703,10 +704,8 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(llvm::StringRe
         target->open_session(path_id, session->text, session->version);
         session = find_session(path_id);
     }
-    result = co_await target->context_service.switch_context(path,
-                                                             path_id,
+    result = co_await target->context_service.switch_context(path_id,
                                                              session.get(),
-                                                             context_path,
                                                              context_path_id,
                                                              params);
     // A context choice asks for the context-pure AST view; the merged

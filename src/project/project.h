@@ -333,7 +333,7 @@ bool defines_project(llvm::StringRef dir);
 /// or a compile_commands.json, directly or in its build/ directory: the
 /// root of the project a file outside every served folder belongs to.
 /// Empty when no ancestor has either.
-std::string project_root_above(llvm::StringRef start);
+CanonicalPath project_root_above(llvm::StringRef start);
 
 /// The `compile_commands.json` files in `start` and its ancestors up to
 /// `workspace_root`, nearest first: the databases a file deeper in the

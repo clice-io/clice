@@ -10,10 +10,8 @@
 
 namespace clice {
 
-CDBWatcher::CDBWatcher(Project& project, std::string root) :
+CDBWatcher::CDBWatcher(Project& project, CanonicalPath root) :
     project(project), root(std::move(root)) {
-    // Discovery compares the root with the file table's spellings.
-    path::canonicalize(this->root);
     for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
         track(SourceID(i));
     }
@@ -25,7 +23,7 @@ CDBWatcher::Hashes CDBWatcher::loaded(SourceID id) const {
 }
 
 Fid CDBWatcher::database(SourceID id) {
-    return project.file_table.intern(path::resolved(project.cdb.source_path(id)));
+    return project.file_table.intern(CanonicalPath(project.cdb.source_path(id)));
 }
 
 CDBWatcher::Hashes CDBWatcher::look(SourceID id) {

@@ -149,20 +149,20 @@ TEST_CASE(SymlinkShownAsSpelled) {
     TempDir tmp;
     tmp.touch("real/a.h", "");
     ASSERT_EQ(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()), 0);
-    auto real = path::resolved(tmp.path("real/a.h"));
+    auto real = CanonicalPath(tmp.path("real/a.h"));
     auto link = tmp.path("link/a.h");
 
     FileTable pool;
     auto fid = pool.intern(link);
     ASSERT_EQ(pool.intern(real), fid);
     ASSERT_EQ(pool.resolve(fid), real);
-    ASSERT_EQ(pool.display(fid), real);
+    ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
 
     pool.spell_root(tmp.path("link"));
     ASSERT_EQ(pool.display(fid), link);
 
     pool.show_as(fid, real);
-    ASSERT_EQ(pool.display(fid), real);
+    ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
     pool.unshow(fid);
     ASSERT_EQ(pool.display(fid), link);
 }
@@ -328,7 +328,7 @@ TEST_CASE(PosixBytesPreserved) {
     EXPECT_NE(pool.intern(R"(a\b)"), pool.intern("a/b"));
     EXPECT_NE(pool.intern("C:/x.h"), pool.intern("c:/x.h"));
     EXPECT_NE(pool.intern("/c/x.h"), pool.intern("/C/x.h"));
-    EXPECT_EQ(pool.resolve(pool.intern(R"(a\b)")), R"(a\b)");
+    EXPECT_EQ(pool.resolve(pool.intern(R"(a\b)")).str(), R"(a\b)");
 }
 #endif
 

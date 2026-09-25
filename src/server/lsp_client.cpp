@@ -729,8 +729,8 @@ void LSPClient::register_extensions() {
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] = resolve_uri(params.uri);
-            co_return to_raw(this->server.query_contexts(path, path_id, params));
+            auto path_id = this->server.files.intern(uri_to_path(params.uri));
+            co_return to_raw(this->server.query_contexts(path_id, params));
         });
 
     peer.on_request(
@@ -738,25 +738,20 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.uri);
-            co_return to_raw(project->context_service.current_context(path, session.get(), params));
+            co_return to_raw(project->context_service.current_context(session.get(), params));
         });
 
     peer.on_request(
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto path = uri_to_path(params.uri);
-            auto path_id = this->server.files.intern(path);
-            auto context_path = uri_to_path(params.context_uri);
-            auto context_path_id = this->server.files.intern(context_path);
+            auto path_id = this->server.files.intern(uri_to_path(params.uri));
+            auto context_path_id = this->server.files.intern(uri_to_path(params.context_uri));
             // The session reset lives inside switch_context (single owner,
             // synchronous, no cross-file cascade — exempt from the event
             // pipeline; see the Invalidator charter).
-            co_return to_raw(co_await this->server.switch_context(path,
-                                                                  path_id,
-                                                                  context_path,
-                                                                  context_path_id,
-                                                                  params));
+            co_return to_raw(
+                co_await this->server.switch_context(path_id, context_path_id, params));
         });
 
     // The project serving the named document; without one the first

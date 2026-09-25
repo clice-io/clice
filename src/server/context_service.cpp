@@ -58,8 +58,9 @@ static std::string flags_label(Project& ws, ConfigID config) {
     return desc;
 }
 
-std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid path_id) {
+std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     auto& ws = project;
+    auto path = ws.file_table.resolve(path_id);
     std::vector<ext::ContextItem> all_items;
 
     // Contexts that would produce identical compilation results are
@@ -69,7 +70,7 @@ std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid
     // host, and an un-trialed header may turn out the same way, so
     // every host stays a distinct context for both.
     llvm::StringSet<> seen_configs;
-    bool dedup_hosts = editor.commands.header_mode(path, path_id) == HeaderMode::SelfContained;
+    bool dedup_hosts = editor.commands.header_mode(path_id) == HeaderMode::SelfContained;
 
     for(auto host_id: ranked_hosts(ws, path_id)) {
         auto commands = host_commands(ws, path_id, host_id);
@@ -83,7 +84,7 @@ std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid
         // different preprocessor state. Hashes are those of the command
         // the header actually compiles with — the host's, edited by the
         // rules matching either file.
-        llvm::StringRef edit_paths[] = {host_path, path};
+        CanonicalRef edit_paths[] = {host_path, path};
         auto occurrences = ws.count_occurrences(host_id, path_id);
 
         for(auto& entry: commands) {
@@ -153,8 +154,7 @@ std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid
     return all_items;
 }
 
-ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
-                                                          const Session* session,
+ext::CurrentContextResult ContextService::current_context(const Session* session,
                                                           const ext::CurrentContextParams& params) {
     ext::CurrentContextResult result;
     const Selection* choice = session ? editor.selection(session->path_id) : nullptr;
@@ -182,6 +182,7 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
         item.uri = params.uri;
         item.command_hash = choice->command_hash;
         item.label = std::format("config {}", choice->command_hash.substr(0, 8));
+        auto path = ws.file_table.resolve(session->path_id);
         for(auto& entry: ws.build.entries(session->path_id)) {
             auto applied =
                 ws.build
@@ -202,13 +203,12 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
 }
 
 kota::task<ext::SwitchContextResult>
-    ContextService::switch_context(llvm::StringRef path,
-                                   Fid path_id,
+    ContextService::switch_context(Fid path_id,
                                    Session* session,
-                                   llvm::StringRef context_path,
                                    Fid context_path_id,
                                    const ext::SwitchContextParams& params) {
     auto& ws = project;
+    auto path = ws.file_table.resolve(path_id);
 
     ext::SwitchContextResult result;
 
@@ -228,7 +228,7 @@ kota::task<ext::SwitchContextResult>
     // the matched candidate's base entry hash — the identity that stays
     // unique when rules collapse two applied hashes onto one value.
     auto find_command = [&](Fid entry_file,
-                            llvm::ArrayRef<llvm::StringRef> paths,
+                            llvm::ArrayRef<CanonicalRef> paths,
                             llvm::StringRef hash) -> std::optional<std::string> {
         auto entry_path = ws.file_table.resolve(entry_file);
         for(auto& entry: ws.build.commands(entry_file)) {
@@ -262,7 +262,7 @@ kota::task<ext::SwitchContextResult>
         }
         std::optional<std::string> base;
         if(params.command_hash.has_value()) {
-            llvm::StringRef edit_paths[] = {context_path, path};
+            CanonicalRef edit_paths[] = {ws.file_table.resolve(context_path_id), path};
             base = find_command(context_path_id, edit_paths, *params.command_hash);
             if(!base) {
                 co_return result;

@@ -25,9 +25,7 @@ std::string inspected_path(const Project& project, llvm::StringRef argument) {
 namespace {
 
 /// Resolve the configuration and open the store and database read-only.
-bool open_database(Project& project,
-                   llvm::StringRef root,
-                   llvm::StringRef requested_configuration) {
+bool open_database(Project& project, CanonicalRef root, llvm::StringRef requested_configuration) {
     auto config = Config::load_from_workspace(root);
     if(!check_requested_configuration(config, requested_configuration)) {
         return false;
@@ -64,7 +62,7 @@ bool open_database(Project& project,
 
 }  // namespace
 
-bool open_index(Project& project, llvm::StringRef root, llvm::StringRef requested_configuration) {
+bool open_index(Project& project, CanonicalRef root, llvm::StringRef requested_configuration) {
     if(!open_database(project, root, requested_configuration)) {
         return false;
     }
@@ -78,7 +76,7 @@ bool open_index(Project& project, llvm::StringRef root, llvm::StringRef requeste
 
 std::optional<LoadedIndex> load_index(Project& project,
                                       CommandResolver& commands,
-                                      llvm::StringRef root,
+                                      CanonicalRef root,
                                       llvm::StringRef requested_configuration,
                                       bool with_build) {
     if(!open_database(project, root, requested_configuration)) {

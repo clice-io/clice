@@ -461,7 +461,7 @@ int main(int argc, const char** argv) {
     // like the server picks.
     std::vector<llvm::StringRef> files;
     for(auto& entry: cdb.entries()) {
-        auto path = cdb.files().resolve(entry.file);
+        llvm::StringRef path = cdb.files().resolve(entry.file);
         if(opts.filter.has_value() && !path.contains(*opts.filter)) {
             continue;
         }

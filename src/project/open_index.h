@@ -17,7 +17,7 @@ namespace clice {
 /// read snapshot (pinned for the project's lifetime), shards fetched
 /// on first use. Nothing is decoded or copied. False — with the cause
 /// logged — when there is no usable index.
-bool open_index(Project& project, llvm::StringRef root, llvm::StringRef requested_configuration);
+bool open_index(Project& project, CanonicalRef root, llvm::StringRef requested_configuration);
 
 /// What load_index found beyond the tables: the translation units the
 /// load dropped as stale or partially written, whose rows are absent
@@ -36,7 +36,7 @@ struct LoadedIndex {
 /// there is no usable index.
 std::optional<LoadedIndex> load_index(Project& project,
                                       CommandResolver& commands,
-                                      llvm::StringRef root,
+                                      CanonicalRef root,
                                       llvm::StringRef requested_configuration,
                                       bool with_build);
 

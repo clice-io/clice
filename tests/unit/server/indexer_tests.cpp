@@ -2958,7 +2958,7 @@ TEST_CASE(HeaderModePersisted) {
     open_store(tmp, f.project);
     f.load();
     auto id = f.project.file_table.intern(path);
-    ASSERT_TRUE(f.commands.header_mode(path, id) == HeaderMode::NeedsContext);
+    ASSERT_TRUE(f.commands.header_mode(id) == HeaderMode::NeedsContext);
 }
 
 TEST_CASE(ContextsBlobRoundTrip) {

@@ -75,7 +75,7 @@ public:
     /// vanished, shallower before deeper, then by path. While the active
     /// configuration declares sources, one only inactive rules declare is
     /// left out.
-    llvm::SmallVector<SourceID, 4> source_order(llvm::StringRef path) const;
+    llvm::SmallVector<SourceID, 4> source_order(CanonicalRef path) const;
 
     /// Whether discovery registered the source: no active rule declares it
     /// (under discovery every registered source is discovered).
@@ -98,9 +98,9 @@ public:
     /// The edits the rules matching any of `paths` contribute, in
     /// declaration order, each rule once — a header borrowing a host's
     /// command passes both so it inherits the host's edits.
-    Edits edits(llvm::ArrayRef<llvm::StringRef> paths) const;
+    Edits edits(llvm::ArrayRef<CanonicalRef> paths) const;
 
-    Edits edits(llvm::StringRef path) const {
+    Edits edits(CanonicalRef path) const {
         return edits(llvm::ArrayRef(path));
     }
 
@@ -116,14 +116,14 @@ public:
     CommandRef resolve(Fid file,
                        ConfigID base,
                        CommandSource source,
-                       llvm::ArrayRef<llvm::StringRef> paths,
+                       llvm::ArrayRef<CanonicalRef> paths,
                        llvm::StringRef language_path,
                        llvm::ArrayRef<std::string> extra_prepend = {},
                        llvm::ArrayRef<std::string> extra_append = {});
 
     /// Hash of the edits for `paths`, empty when none apply: the rules'
     /// part of a file's persisted command identity.
-    std::string edit_hash(llvm::ArrayRef<llvm::StringRef> paths) const;
+    std::string edit_hash(llvm::ArrayRef<CanonicalRef> paths) const;
 
     /// Every translation unit of the build: files with entries, plus the
     /// source files on disk that a default-command rule matches — enumerated
@@ -150,22 +150,22 @@ public:
 
     /// Whether a file joins the background index: no matching active rule
     /// says `index = false`.
-    bool indexed(llvm::StringRef path) const;
+    bool indexed(CanonicalRef path) const;
 
     /// Whether `clice lint` checks a file: it sits inside the workspace and
     /// no matching active rule says `lint = false`.
-    bool lintable(llvm::StringRef path) const;
+    bool lintable(CanonicalRef path) const;
 
     /// Whether `clice format` formats a file: it sits inside the workspace
     /// and no matching active rule says `format = false`.
-    bool formattable(llvm::StringRef path) const;
+    bool formattable(CanonicalRef path) const;
 
 private:
-    llvm::SmallVector<const CompiledRule*> matching(llvm::StringRef path) const;
+    llvm::SmallVector<const CompiledRule*> matching(CanonicalRef path) const;
 
     /// Whether a file sits inside the workspace and every matching active
     /// rule keeps `field` on: the lint and format sets.
-    bool inside(llvm::StringRef path, bool CompiledRule::* field) const;
+    bool inside(CanonicalRef path, bool CompiledRule::* field) const;
 
     /// The sources rules declare: the active rules' — and, while the active
     /// configuration declares any, the inactive rules' too, which hide a
@@ -173,7 +173,7 @@ private:
     llvm::SmallVector<SourceID, 4> declared_ids() const;
 
     /// The first matching active rule declaring a default command.
-    const CompiledRule* default_rule(llvm::StringRef path) const;
+    const CompiledRule* default_rule(CanonicalRef path) const;
 
     /// The rule's default command interned; nullopt when it is not a
     /// compile command.
@@ -182,7 +182,7 @@ private:
     /// The interned default command of the first matching active rule
     /// declaring one; nullopt when no rule does or its command is not a
     /// compile command.
-    std::optional<ConfigID> default_command(llvm::StringRef path);
+    std::optional<ConfigID> default_command(CanonicalRef path);
 
     /// Whether a default command compiles `path` as a unit: a C-family
     /// source by suffix (never a header), or a file a rule singles out by
@@ -190,7 +190,7 @@ private:
     /// extensionless tool). A rule without patterns applies to every file,
     /// so its forced language claims only what clang recognizes — or the
     /// configuration file itself would become a unit.
-    bool default_source(llvm::StringRef path);
+    bool default_source(CanonicalRef path);
 
     /// Files a default-command rule claims: C-family sources (never
     /// headers) under the rules' pattern roots matching their patterns,

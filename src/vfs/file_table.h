@@ -169,7 +169,7 @@ struct FileTable {
         if(auto it = ids.find(path); it != ids.end()) {
             return it->second;
         }
-        auto real = path::resolved(path);
+        CanonicalPath real(path);
         auto [it, inserted] =
             ids.try_emplace(real, Fid{static_cast<std::uint32_t>(spellings.size())});
         if(inserted) {
@@ -177,7 +177,7 @@ struct FileTable {
             // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
             const std::size_t n = real.size();
             char* buf = allocator.Allocate<char>(n + 1);
-            std::ranges::copy(real, buf);
+            std::ranges::copy(real.str(), buf);
             buf[n] = '\0';
             spellings.push_back(llvm::StringRef(buf, n));
         }
@@ -186,9 +186,9 @@ struct FileTable {
         return fid;
     }
 
-    llvm::StringRef resolve(Fid fid) const {
+    CanonicalRef resolve(Fid fid) const {
         assert(fid.raw < spellings.size());
-        return spellings[fid.raw];
+        return CanonicalRef(spellings[fid.raw]);
     }
 
     /// Look up a path without interning it, applying the same
@@ -198,7 +198,7 @@ struct FileTable {
         path = path::canonical(path, storage);
         auto it = ids.find(path);
         if(it == ids.end()) {
-            it = ids.find(path::resolved(path));
+            it = ids.find(CanonicalPath(path));
         }
         if(it == ids.end()) {
             return std::nullopt;
@@ -220,7 +220,7 @@ struct FileTable {
             if(path::under(path, real)) {
                 auto [it, inserted] = root_displays.try_emplace(fid);
                 if(inserted) {
-                    it->second = save(spelled + path.drop_front(real.size()).str());
+                    it->second = save(spelled + path.str().substr(real.size()));
                 }
                 return it->second;
             }
@@ -253,15 +253,15 @@ struct FileTable {
 
     /// Files under `root` show under this spelling of it.
     void spell_root(llvm::StringRef root) {
-        auto real = path::resolved(root);
-        if(real != root) {
+        CanonicalPath real(root);
+        if(real.str() != root) {
             spelled_roots.emplace_back(std::move(real), root.str());
             root_displays.clear();
         }
     }
 
     llvm::DenseMap<Fid, llvm::StringRef> shown;
-    llvm::SmallVector<std::pair<std::string, std::string>> spelled_roots;
+    llvm::SmallVector<std::pair<CanonicalPath, std::string>> spelled_roots;
     mutable llvm::DenseMap<Fid, llvm::StringRef> root_displays;
     mutable llvm::BumpPtrAllocator display_storage;
 

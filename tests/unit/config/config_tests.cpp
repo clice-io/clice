@@ -73,7 +73,7 @@ void match_rules(const Config& config,
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{const_cast<Config&>(config), cdb, files};
-    for(auto& edit: build.edits(path).edits) {
+    for(auto& edit: build.edits(CanonicalPath(path)).edits) {
         auto& out = edit.kind == CommandEdit::Kind::Remove ? remove : append;
         out.insert(out.end(), edit.flags.begin(), edit.flags.end());
     }
@@ -432,7 +432,7 @@ compile_commands = ["build", "{}"]
     ASSERT_EQ(config.compiled_rules.size(), 3u);
     EXPECT_EQ(config.compiled_rules[0].compile_commands[0], at("sub/out/debug"));
     EXPECT_EQ(config.compiled_rules[0].directory, at("sub"));
-    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, at("sub/src"));
+    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, CanonicalPath(at("sub/src")));
     EXPECT_TRUE(config.compiled_rules[0].declares_sources());
     /// The string spelling is tokenized, then `${workspace}` substituted
     /// per argument.
@@ -440,10 +440,10 @@ compile_commands = ["build", "{}"]
     EXPECT_EQ(config.compiled_rules[0].default_command[2], "-I" + at("include"));
     EXPECT_FALSE(config.compiled_rules[1].declares_sources());
     ASSERT_EQ(config.compiled_rules[1].patterns.size(), 4u);
-    EXPECT_EQ(config.compiled_rules[1].patterns[0].root, root);
-    EXPECT_EQ(config.compiled_rules[1].patterns[1].root, at("gen"));
-    EXPECT_EQ(config.compiled_rules[1].patterns[2].root, at("shared"));
-    EXPECT_EQ(config.compiled_rules[1].patterns[3].root, at("sub"));
+    EXPECT_EQ(config.compiled_rules[1].patterns[0].root, CanonicalPath(root));
+    EXPECT_EQ(config.compiled_rules[1].patterns[1].root, CanonicalPath(at("gen")));
+    EXPECT_EQ(config.compiled_rules[1].patterns[2].root, CanonicalPath(at("shared")));
+    EXPECT_EQ(config.compiled_rules[1].patterns[3].root, CanonicalPath(at("sub")));
     EXPECT_TRUE(config.compiled_rules[2].patterns.empty());
     EXPECT_EQ(config.compiled_rules[2].compile_commands[0], at("sub/build"));
     EXPECT_EQ(config.compiled_rules[2].compile_commands[1], at("elsewhere/compile_commands.json"));
@@ -454,18 +454,18 @@ compile_commands = ["build", "{}"]
 
     /// A relative pattern sees only files under its anchor; a bare `*`
     /// names the anchor's direct children.
-    EXPECT_EQ(config.matching_rules(at("sub/src/a.cpp"), "debug").size(), 2u);
-    EXPECT_EQ(config.matching_rules(at("sub/src/a.cpp"), "release").size(), 1u);
-    EXPECT_EQ(config.matching_rules(at("src/a.cpp"), "debug").size(), 1u);
-    EXPECT_EQ(config.matching_rules(at("sub/a.cpp"), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(CanonicalPath(at("sub/src/a.cpp")), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(CanonicalPath(at("sub/src/a.cpp")), "release").size(), 1u);
+    EXPECT_EQ(config.matching_rules(CanonicalPath(at("src/a.cpp")), "debug").size(), 1u);
+    EXPECT_EQ(config.matching_rules(CanonicalPath(at("sub/a.cpp")), "debug").size(), 2u);
     /// `**` and `${workspace}` patterns match the absolute path; `..`
     /// climbs out of the anchor, `*` stays within one segment.
-    auto hxx = config.matching_rules(at("other/tree/x.hxx"), "debug");
+    auto hxx = config.matching_rules(CanonicalPath(at("other/tree/x.hxx")), "debug");
     ASSERT_EQ(hxx.size(), 2u);
     EXPECT_EQ(hxx[0]->append.size(), 2u);
-    EXPECT_EQ(config.matching_rules(at("gen/x.cpp"), "debug").size(), 2u);
-    EXPECT_EQ(config.matching_rules(at("shared/x.cpp"), "debug").size(), 2u);
-    EXPECT_EQ(config.matching_rules(at("shared/deep/x.cpp"), "debug").size(), 1u);
+    EXPECT_EQ(config.matching_rules(CanonicalPath(at("gen/x.cpp")), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(CanonicalPath(at("shared/x.cpp")), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(CanonicalPath(at("shared/deep/x.cpp")), "debug").size(), 1u);
 }
 
 TEST_CASE(InitOptionsAnchorAtWorkspace) {
@@ -491,7 +491,7 @@ compile_commands = ["../build"]
 
     auto from_file = Config::load_from_workspace(root);
     ASSERT_EQ(from_file.compiled_rules.size(), 2u);
-    EXPECT_EQ(from_file.compiled_rules[0].patterns[0].root, at("src"));
+    EXPECT_EQ(from_file.compiled_rules[0].patterns[0].root, CanonicalPath(at("src")));
     EXPECT_EQ(from_file.compiled_rules[0].directory, at(".clice"));
     EXPECT_EQ(from_file.compiled_rules[1].compile_commands[0], at("build"));
 
@@ -503,7 +503,7 @@ compile_commands = ["../build"]
     config.finalize(root);
 
     ASSERT_EQ(config.compiled_rules.size(), 2u);
-    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, at("src"));
+    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, CanonicalPath(at("src")));
     EXPECT_EQ(config.compiled_rules[0].compile_commands[0], at("cmake"));
     EXPECT_EQ(config.compiled_rules[0].directory, root);
     EXPECT_EQ(config.compiled_rules[1].compile_commands[0], at("out"));
@@ -744,7 +744,7 @@ TEST_CASE(RuleOrderLaterRemoveWins) {
     CompilationDatabase cdb{files};
     cdb.add_command("/src", "/src/a.cpp", std::string_view("clang++ -DFOO a.cpp"));
     Build build{config, cdb, files};
-    auto edits = build.edits(llvm::StringRef("/src/a.cpp"));
+    auto edits = build.edits(CanonicalPath("/src/a.cpp"));
     ASSERT_EQ(edits.edits.size(), 2u);
     EXPECT_EQ(edits.edits[1].kind, CommandEdit::Kind::Remove);
     EXPECT_EQ(print_argv(render_entry(cdb, "/src/a.cpp", edits.options())),
