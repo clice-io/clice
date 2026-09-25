@@ -33,8 +33,11 @@ if(DEFINED CLICE_TARGET_TRIPLE AND CLICE_TARGET_TRIPLE MATCHES "^([a-z0-9_]+)-w6
         # clang looks for the builtins in its own resource directory, where
         # CI copies llvm-mingw's.
         file(TO_CMAKE_PATH "$ENV{CLICE_MINGW_ROOT}" _mingw_root)
-        set(CMAKE_SYSROOT "${_mingw_root}/${CLICE_TARGET_TRIPLE}")
-        if(NOT EXISTS "${CMAKE_SYSROOT}/include/windows.h")
+        if(EXISTS "${_mingw_root}/${CLICE_TARGET_TRIPLE}/include/windows.h")
+            set(CMAKE_SYSROOT "${_mingw_root}/${CLICE_TARGET_TRIPLE}")
+        elseif(NOT EXISTS "${_mingw_root}/include/windows.h")
+            # The Windows-hosted llvm-mingw keeps the headers at the top
+            # (no per-target symlinks); its own clang finds them unaided.
             message(FATAL_ERROR "No ${CLICE_TARGET_TRIPLE} sysroot under CLICE_MINGW_ROOT=${_mingw_root}")
         endif()
         set(_mingw_args "-rtlib=compiler-rt;-unwindlib=libunwind;-nostdlib++;-Qunused-arguments")
