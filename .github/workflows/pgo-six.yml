@@ -18,40 +18,13 @@ permissions:
   contents: read
   actions: read
 
+env:
+  # The run that trained macOS x64 and the frontend profile and cross-built
+  # the instrumented mingw clangs.
+  FIRST_RUN: "36095618013"
+
 jobs:
-  train_mac_x64:
-    uses: ./.github/workflows/pgo-llvm.yml
-    with:
-      name: profile-clang-x64-mac
-      os: macos-15-intel
-      instrument: true
-      clang-train: true
-      extra-args: --pgo-strip-prefix
-
-  train_fe:
-    uses: ./.github/workflows/pgo-llvm.yml
-    with:
-      name: profile-clang-fe
-      clang-train: true
-      extra-args: --pgo-strip-prefix --pgo-instrument-fe
-
-  win_clang:
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x86_64, aarch64]
-    uses: ./.github/workflows/pgo-llvm.yml
-    with:
-      name: clang-instr-${{ matrix.arch }}-mingw
-      instrument: true
-      clang-bundle: true
-      target-triple: ${{ matrix.arch }}-w64-mingw32
-      pixi-env: cross-windows-mingw
-      llvm-mingw: true
-      extra-args: --pgo-strip-prefix
-
   win_train:
-    needs: win_clang
     strategy:
       fail-fast: false
       matrix:
@@ -83,6 +56,8 @@ jobs:
         with:
           name: clang-instr-${{ matrix.arch }}-mingw
           path: iclang
+          run-id: ${{ env.FIRST_RUN }}
+          github-token: ${{ github.token }}
       - uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.pkg }}
@@ -103,8 +78,10 @@ jobs:
             [[ -f "$root/bin/$exe.exe" ]] && cp iclang/clang.exe "$root/bin/$exe.exe"
           done
           "$root/bin/clang.exe" --version
-          mkdir -p "$RUNNER_TEMP/llvm"
-          "$RUNNER_TEMP/zstd/zstd-v1.5.7-win64/zstd.exe" -dc llvm-artifact/llvm.tar.zst | tar -C "$RUNNER_TEMP/llvm" -xf -
+          # GNU tar reads a drive colon as a remote host: POSIX paths for it.
+          llvm_dir="$(cygpath -u "$RUNNER_TEMP/llvm")"
+          mkdir -p "$llvm_dir"
+          "$RUNNER_TEMP/zstd/zstd-v1.5.7-win64/zstd.exe" -dc llvm-artifact/llvm.tar.zst | tar -C "$llvm_dir" -xf -
           {
             echo "MINGW_ROOT=$(cygpath -m "$root")"
             echo "LLVM_PKG=$(cygpath -m "$RUNNER_TEMP/llvm")"
@@ -134,7 +111,7 @@ jobs:
           retention-days: 14
 
   merge_six:
-    needs: [train_mac_x64, win_train]
+    needs: win_train
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     steps:
@@ -149,10 +126,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           get() { gh run download "$1" -R "$GITHUB_REPOSITORY" -n "$2" -D "p/$2"; }
+          # macOS x64 trains on the slow Intel runner in the first run: wait for it.
+          for _ in $(seq 120); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FIRST_RUN/artifacts" --jq '.artifacts[].name' | grep -qx profile-clang-x64-mac && break
+            sleep 120
+          done
           get 35973108478 profile-clang-strip
           get 36036050639 profile-clang-arm64-linux
           get 36036050639 profile-clang-arm64-mac
-          get "${{ github.run_id }}" profile-clang-x64-mac
+          get "$FIRST_RUN" profile-clang-x64-mac
           get "${{ github.run_id }}" profile-clang-x86_64-mingw
           get "${{ github.run_id }}" profile-clang-aarch64-mingw
           mkdir -p pgo-out
@@ -167,7 +149,7 @@ jobs:
           retention-days: 14
 
   match:
-    needs: [merge_six, train_fe]
+    needs: merge_six
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
@@ -223,7 +205,7 @@ jobs:
         run: |
           gh run download 35973108478 -R "$GITHUB_REPOSITORY" -n profile-clang-strip -D profiles/x86
           gh run download "${{ github.run_id }}" -R "$GITHUB_REPOSITORY" -n profile-six -D profiles/six
-          gh run download "${{ github.run_id }}" -R "$GITHUB_REPOSITORY" -n profile-clang-fe -D profiles/fe
+          gh run download "$FIRST_RUN" -R "$GITHUB_REPOSITORY" -n profile-clang-fe -D profiles/fe
       - name: Configure
         run: |
           git clone --branch llvmorg-23.1.1 --depth 1 https://github.com/llvm/llvm-project.git .llvm
