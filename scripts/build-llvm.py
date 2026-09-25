@@ -229,6 +229,7 @@ class Build:
         )
         self.clang_only: bool = args.clang_only
         self.pgo_strip: bool = args.pgo_strip_prefix
+        self.pgo_remap: Path | None = Path(args.pgo_remap).resolve() if args.pgo_remap else None
         self.msvc_ob2: bool = args.msvc_ob2
         self.default_triple_override: str | None = args.default_triple
         self.x86_mc: bool = args.x86_mc
@@ -311,9 +312,12 @@ class Build:
         """Profile names of static functions carry the TU's absolute path;
         strip everything up to the llvm-project root so a profile trained
         in one checkout (host, repository) matches another."""
-        if not self.pgo_strip:
-            return ""
-        return f" -mllvm -static-func-strip-dirname-prefix={len(self.root.parts)}"
+        flags = ""
+        if self.pgo_strip:
+            flags += f" -mllvm -static-func-strip-dirname-prefix={len(self.root.parts)}"
+        if self.pgo_remap and self.pgo_profile:
+            flags += f" -fprofile-remapping-file={self.pgo_remap.as_posix()}"
+        return flags
 
     def common_args(self, cxx_flags: str) -> list[str]:
         args = [
@@ -687,6 +691,10 @@ def main() -> None:
         "--msvc-ob2",
         action="store_true",
         help="Build the MSVC-target RelWithDebInfo package with /Ob2 instead of /Ob1",
+    )
+    parser.add_argument(
+        "--pgo-remap",
+        help="Profile remapping file (-fprofile-remapping-file), for names mangled differently per target",
     )
     parser.add_argument(
         "--pgo-strip-prefix",

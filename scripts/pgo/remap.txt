@@ -1,0 +1,5 @@
+# Itanium manglings of the same source types across LP64 and LLP64/Darwin:
+# size_t / uint64_t are unsigned long (m) on Linux, unsigned long long (y) on
+# Windows (and uint64_t on macOS); int64_t likewise l / x.
+type m y
+type l x

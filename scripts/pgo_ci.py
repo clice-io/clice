@@ -303,8 +303,10 @@ def match_report(args) -> None:
         result["profiles"][pname] = records
         mism = [r for r in records if r["kind"] == "mismatch"]
         fe = [r for r in records if r["kind"] == "fe-mismatch"]
+        fe_missing = [r for r in records if r["kind"] == "fe-missing"]
         print(f"{args.target} {pname}: IR {len(mism)} mismatched ({sum(r['count'] for r in mism)} counts); "
-              f"FE {sum(r['count'] for r in fe)} of {sum(r['functions'] for r in fe)} functions mismatched")
+              f"FE {sum(r['count'] for r in fe)} of {sum(r['functions'] for r in fe)} functions mismatched, "
+              f"{sum(r['count'] for r in fe_missing)} of {sum(r['functions'] for r in fe_missing)} without data")
     Path(args.json).write_text(json.dumps(result))
 
 
