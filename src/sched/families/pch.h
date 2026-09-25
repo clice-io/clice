@@ -48,6 +48,8 @@ public:
         /// prefix and the build sends the whole buffer.
         std::string content;
         std::uint32_t preamble_bound = 0;
+        /// See worker::BuildPCHParams::synthesized.
+        std::vector<std::pair<std::string, std::string>> synthesized;
     };
 
     enum class Outcome : std::uint8_t {

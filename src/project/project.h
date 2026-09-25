@@ -22,6 +22,7 @@
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
 #include "syntax/dependency_graph.h"
+#include "syntax/preamble_synthesis.h"
 #include "vfs/file_table.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -35,7 +36,7 @@ namespace clice {
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 11;
+constexpr inline std::uint32_t cache_format_version = 12;
 
 /// One dependency of a compilation artifact.
 ///
@@ -57,26 +58,15 @@ struct DepState {
 using DepsSnapshot = llvm::SmallVector<DepState>;
 
 /// Context for compiling a header file that lacks its own CDB entry.
-/// The cache-store namespace of synthesized header-context files
-/// (preamble, suffix and self snapshot): content-addressed blobs, so a
-/// header reopened in a later session finds its preamble — and the PCH
-/// keyed on the preamble's path — intact.
-constexpr inline llvm::StringLiteral header_context_ns = "header_context";
-
 struct HeaderContext {
-    Fid host_path_id;             ///< Source file acting as host.
-    std::string preamble_path;    ///< Path to generated preamble file on disk.
-    std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
+    Fid host_path_id;  ///< Source file acting as host.
 
-    /// Path to the generated suffix file (content after the include
-    /// position along the chain), appended to the header's buffer as one
-    /// trailing #include line. Empty when the suffix is empty.
-    std::string suffix_path;
-
-    /// Path to the disk snapshot of the header itself, which the prefix
-    /// includes in place of the header's other occurrences along the
-    /// chain. Empty when the header could not be read.
-    std::string snapshot_path;
+    /// The includer context synthesized for the header, served to its
+    /// compiles from memory; null on the self-contained route, which
+    /// borrows the host's command alone. Content-addressed: equal chain
+    /// text gives equal paths, so the PCH keyed on the -include path
+    /// survives a reopen.
+    std::shared_ptr<const SynthesizedContext> synthesized;
 
     /// Which include of this header in its direct includer produced the
     /// preamble (0-based, in directive order).
@@ -91,11 +81,12 @@ struct HeaderContext {
     std::string host_base_hash;
 
     /// Include chain from host to the target's direct includer (excludes the
-    /// target itself). The synthesized preamble embeds these files' content,
+    /// target itself). The synthesized context embeds these files' content,
     /// so clang never opens them — staleness must be tracked here.
     llvm::SmallVector<Fid> chain;
 
-    /// Staleness snapshot over the chain files (mtime + content hash).
+    /// The versions of the chain files (and the header's snapshot) the
+    /// synthesis read.
     DepsSnapshot deps;
 };
 
@@ -257,13 +248,6 @@ struct Project {
 
     /// What a file without a command can borrow (see command_lender).
     LenderIndex lenders;
-
-    /// Whether `path` is one of our own synthesized context artifacts
-    /// (prefix/suffix/self-snapshot files under the cache directory). A
-    /// user can open these for debugging; they must never go through
-    /// header-context resolution themselves — a synthesized file deriving
-    /// context from other synthesized files would chain junk state.
-    bool is_synthesized_artifact(llvm::StringRef path) const;
 
     /// How many times the direct includer on host->target's chain includes
     /// the target. Spelling-based (no search-path resolution): multiple

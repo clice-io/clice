@@ -3,13 +3,11 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "server/editor_context.h"
-#include "support/cache_store.h"
 
 namespace clice::testing {
 namespace {
 
-/// A host including a header, with a cache store able to hold the
-/// header's synthesized context.
+/// A host including a header that needs its includer context.
 struct HostedHeader {
     TempDir tmp;
     FileTable files;
@@ -33,14 +31,6 @@ struct HostedHeader {
         project.dep_graph.set_includes(host, 0, {{header}});
         project.dep_graph.build_reverse_map();
 
-        auto store = CacheStore::open(tmp.path("cache"), 1);
-        ASSERT_TRUE(store.has_value());
-        store->register_namespace({.name = std::string(header_context_ns),
-                                   .extension = ".h",
-                                   .policy = CachePolicy::LRU,
-                                   .max_bytes = 1ull << 30});
-        project.store.emplace(std::move(*store));
-
         auto disk = project.file_table.current(header);
         ASSERT_TRUE(disk.has_value());
         commands.record_header_mode(header, HeaderMode::NeedsContext, disk->hash);
@@ -49,9 +39,9 @@ struct HostedHeader {
 
 TEST_SUITE(EditorContext) {
 
-TEST_CASE(SynthesisRecordsEditorHosts) {
-    // Only an editor resolution attributes the files it synthesized; a
-    // background one leaves the editor's state (and its blob) alone.
+TEST_CASE(EditorCachesContext) {
+    // Both resolutions synthesize the context in memory; only an editor
+    // resolution keeps it, and reuses it after.
     HostedHeader fx;
     ContextsBlob blob;
     EditorContext editor{fx.project, fx.commands, blob};
@@ -61,68 +51,19 @@ TEST_CASE(SynthesisRecordsEditorHosts) {
     auto background = fx.commands.resolve_command(fx.header_path, directory, arguments);
     ASSERT_EQ(background.source, CommandSource::IncludeGraph);
     ASSERT_EQ(background.host, fx.host);
-    ASSERT_FALSE(background.synthesized.empty());
-    ASSERT_TRUE(editor.synthesized_hosts.empty());
+    ASSERT_TRUE(background.synthesized != nullptr);
+    ASSERT_TRUE(llvm::is_contained(arguments, background.synthesized->prefix));
     ASSERT_TRUE(editor.header_contexts.empty());
-    ASSERT_FALSE(blob.dirty);
 
     auto resolution = editor.resolve_command(fx.header_path, directory, arguments);
     ASSERT_EQ(resolution.source, CommandSource::IncludeGraph);
-    ASSERT_FALSE(resolution.synthesized.empty());
-    for(auto& file: resolution.synthesized) {
-        ASSERT_EQ(file.host, fx.host);
-        ASSERT_EQ(editor.synthesized_hosts.lookup(file.path), fx.host);
-    }
-    ASSERT_TRUE(blob.dirty);
     auto* context = editor.header_context(fx.header);
     ASSERT_TRUE(context != nullptr);
-    ASSERT_FALSE(context->preamble_path.empty());
-
-    // A reuse synthesizes nothing and leaves the blob clean.
-    blob.dirty = false;
-    auto reused = editor.resolve_command(fx.header_path, directory, arguments);
-    ASSERT_TRUE(reused.synthesized.empty());
+    ASSERT_TRUE(resolution.synthesized == context->synthesized);
     ASSERT_FALSE(blob.dirty);
-}
 
-TEST_CASE(FailedSynthesisKeepsHost) {
-    // The header's snapshot lands before the chain fails to match: the
-    // resolution falls through, and the snapshot still names its host.
-    HostedHeader fx;
-    fx.tmp.touch("host.cpp", "int unrelated;\n");
-    ContextsBlob blob;
-    EditorContext editor{fx.project, fx.commands, blob};
-    std::string directory;
-    std::vector<std::string> arguments;
-
-    auto resolution = editor.resolve_command(fx.header_path, directory, arguments);
-    ASSERT_TRUE(resolution.source != CommandSource::IncludeGraph);
-    ASSERT_EQ(resolution.synthesized.size(), 1u);
-    ASSERT_EQ(resolution.synthesized[0].host, fx.host);
-    ASSERT_EQ(editor.synthesized_hosts.lookup(resolution.synthesized[0].path), fx.host);
-    ASSERT_FALSE(blob.bytes.empty());
-}
-
-TEST_CASE(ArtifactNeedsEditorHost) {
-    // An opened artifact compiles under the host the editor recorded for
-    // it; background resolution has no such record and never borrows.
-    HostedHeader fx;
-    ContextsBlob blob;
-    EditorContext editor{fx.project, fx.commands, blob};
-    std::string directory;
-    std::vector<std::string> arguments;
-    editor.resolve_command(fx.header_path, directory, arguments);
-    auto preamble = editor.header_context(fx.header)->preamble_path;
-    ASSERT_TRUE(fx.project.is_synthesized_artifact(preamble));
-
-    auto opened = editor.resolve_command(preamble, directory, arguments);
-    ASSERT_EQ(opened.source, CommandSource::IncludeGraph);
-    ASSERT_EQ(opened.host, fx.host);
-    ASSERT_TRUE(
-        llvm::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("HOSTED"); }));
-
-    auto background = fx.commands.resolve_command(preamble, directory, arguments);
-    ASSERT_TRUE(background.source != CommandSource::IncludeGraph);
+    auto reused = editor.resolve_command(fx.header_path, directory, arguments);
+    ASSERT_TRUE(reused.synthesized == context->synthesized);
 }
 
 TEST_CASE(GuessedTracksEditorOnly) {

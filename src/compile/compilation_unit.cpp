@@ -189,6 +189,32 @@ auto CompilationUnitRef::include_location(clang::FileID fid) -> clang::SourceLoc
     return self->SM().getIncludeLoc(fid);
 }
 
+bool CompilationUnitRef::synthesized(clang::FileID fid) {
+    if(self->synthesized.empty()) {
+        return false;
+    }
+    auto entry = self->SM().getFileEntryRefForID(fid);
+    return entry && self->synthesized.contains(file_path(*entry));
+}
+
+bool CompilationUnitRef::from_context(clang::FileID fid) {
+    if(self->synthesized.empty()) {
+        return false;
+    }
+    auto [it, inserted] = self->context_files.try_emplace(fid);
+    if(!inserted) {
+        return it->second;
+    }
+    bool result = synthesized(fid);
+    if(!result) {
+        auto include = include_location(fid);
+        result = include.isValid() && from_context(file_id(include));
+    }
+    // The recursion may have grown the map: store through a fresh lookup.
+    self->context_files[fid] = result;
+    return result;
+}
+
 auto CompilationUnitRef::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
     return self->SM().getPresumedLoc(location, false);
 }
@@ -310,8 +336,9 @@ std::vector<DepFile> CompilationUnitRef::deps() {
 
     for(auto& [fid, directive]: directives()) {
         for(auto& include: directive.includes) {
-            /// A failed include leaves an invalid fid — nothing to depend on.
-            if(!include.skipped && include.fid.isValid()) {
+            /// A failed include leaves an invalid fid — nothing to depend
+            /// on; nor does a synthesized one, which no disk file carries.
+            if(!include.skipped && include.fid.isValid() && !synthesized(include.fid)) {
                 add_fid(include.fid);
             }
         }

@@ -14,8 +14,10 @@
 #include "compile/dep_file.h"
 #include "support/filesystem.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace clang {
 
@@ -175,6 +177,19 @@ struct CompilationParams {
     /// A flag to inform to stop compilation, this is very useful
     /// to cancel old compilation task.
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
+
+    /// Paths of the files add_synthesized served, see
+    /// CompilationUnitRef::synthesized.
+    llvm::StringSet<> synthesized;
+
+    /// Serve files the command names from memory: a header context's
+    /// synthesized fragments.
+    void add_synthesized(llvm::ArrayRef<std::pair<std::string, std::string>> files) {
+        for(auto& [path, content]: files) {
+            add_remapped_file(path, content);
+            synthesized.insert(path);
+        }
+    }
 
     void add_remapped_file(llvm::StringRef path,
                            llvm::StringRef content,

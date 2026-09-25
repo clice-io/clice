@@ -158,9 +158,11 @@ public:
     /// AST nodes reachable from its top-level decls can carry locations
     /// in other files: inherited default arguments and base specifiers
     /// of classes defined in a preamble header land there. Such rows
-    /// belong to the preamble's own index, so they are dropped here.
+    /// belong to the preamble's own index, so they are dropped here. So
+    /// are the rows of a header's borrowed includer context: its host
+    /// indexes them.
     FileIndex* file_index(clang::FileID fid) {
-        if(main_file_only && fid != unit.main_file()) {
+        if((main_file_only && fid != unit.main_file()) || unit.from_context(fid)) {
             return nullptr;
         }
         return &file_indices[fid];

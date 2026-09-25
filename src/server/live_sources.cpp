@@ -130,10 +130,6 @@ void ServerLiveSources::each_overlay(llvm::function_ref<bool(const index::TUInde
     });
 }
 
-bool ServerLiveSources::excluded(llvm::StringRef path) const {
-    return project.is_synthesized_artifact(path);
-}
-
 std::shared_ptr<index::TUIndex> ServerLiveSources::preamble_blob(Fid file) const {
     auto session = sessions.find(file);
     if(!session) {

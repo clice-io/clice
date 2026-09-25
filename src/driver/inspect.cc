@@ -518,6 +518,7 @@ struct SourceFile {
 struct FileCommand {
     std::vector<std::string> arguments;
     std::string directory;
+    std::shared_ptr<const SynthesizedContext> synthesized;
 };
 
 void apply_command(CompilationParams& params, const FileCommand& command) {
@@ -525,6 +526,9 @@ void apply_command(CompilationParams& params, const FileCommand& command) {
         params.arguments.push_back(arg.c_str());
     }
     params.directory = command.directory;
+    if(command.synthesized) {
+        params.add_synthesized(command.synthesized->files);
+    }
 }
 
 bool is_header_type(clang::driver::types::ID type) {
@@ -605,7 +609,8 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         return command;
     }
 
-    commands->resolve_command(file, command.directory, command.arguments);
+    command.synthesized =
+        commands->resolve_command(file, command.directory, command.arguments).synthesized;
     return command;
 }
 

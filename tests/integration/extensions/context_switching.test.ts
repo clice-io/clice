@@ -5,16 +5,14 @@
 /// by canonical flags, host ranking, and switch validation.
 
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { MTIME_GRANULARITY, SETTLE_TIME, sleep, waitUntil } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
-/// Snapshot the artifact directory as name -> mtime (nanoseconds), matching
-/// the Python st_mtime_ns comparison.
-function snapshotMtimes(dir: string): Record<string, bigint> {
+/// Snapshot files as path -> mtime (nanoseconds).
+function snapshotMtimes(files: string[]): Record<string, bigint> {
     const out: Record<string, bigint> = {};
-    for (const name of fs.readdirSync(dir)) {
-        out[name] = fs.statSync(path.join(dir, name), { bigint: true }).mtimeNs;
+    for (const file of files) {
+        out[file] = fs.statSync(file, { bigint: true }).mtimeNs;
     }
     return out;
 }
@@ -312,7 +310,7 @@ test("saved include updates hosts", async ({ session }) => {
 });
 
 /// Closing and reopening a header keeps its context choice and reuses
-/// the synthesized preamble instead of re-synthesizing it.
+/// the PCH built over its synthesized context.
 test("reopen reuses preamble", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("list.def", "X(alpha)\nX(beta)\n");
@@ -336,11 +334,8 @@ test("reopen reuses preamble", async ({ session }) => {
     expect(switched.success).toBe(true);
     await client.waitForRecompile(defUri);
 
-    const artifactDir = workspace.headerContextDir();
-    const snapshot = snapshotMtimes(artifactDir);
-    expect(Object.keys(snapshot).length, "expected synthesized preamble artifacts").toBeGreaterThan(
-        0,
-    );
+    const snapshot = snapshotMtimes(workspace.pchFiles());
+    expect(Object.keys(snapshot).length, "expected a PCH over the context").toBeGreaterThan(0);
 
     client.close(defUri);
     await sleep(MTIME_GRANULARITY);
@@ -349,56 +344,12 @@ test("reopen reuses preamble", async ({ session }) => {
     const current = await client.currentContext(defUri);
     expect(current.context!.occurrence).toBe(1);
 
-    const after = snapshotMtimes(artifactDir);
-    expect(after, "reopen must reuse the preamble, not re-synthesize").toEqual(snapshot);
-});
-
-/// A synthesized preamble wiped from the cache while the server runs (a
-/// user resetting state, or the store's own budget) is re-synthesized on
-/// the header's next compile instead of reaching clang as a missing
-/// -include.
-test("wiped artifacts resynthesize", async ({ session }) => {
-    const { client, workspace } = session.tmp();
-    workspace.write("list.def", "X(alpha)\nX(beta)\n");
-    workspace.write(
-        "main.cpp",
-        "#define X(name) int name = 1;\n" +
-            '#include "list.def"\n' +
-            "#undef X\n" +
-            "#define X(name) void get_##name();\n" +
-            '#include "list.def"\n' +
-            "#undef X\n" +
-            "int main() { return alpha; }\n",
-    );
-    workspace.writeCDB(["main.cpp"]);
-    await client.initialize(workspace);
-
-    const [mainUri] = await client.openAndWait("main.cpp");
-    const [defUri] = await client.openAndWait("list.def");
-    const switched = await client.switchContext(defUri, mainUri, { occurrence: 1 });
-    expect(switched.success).toBe(true);
-    await client.waitForRecompile(defUri);
-    client.assertCleanCompile(defUri);
-
-    const artifactDir = workspace.headerContextDir();
-    const before = Object.keys(snapshotMtimes(artifactDir)).sort();
-    expect(before.length, "expected synthesized preamble artifacts").toBeGreaterThan(0);
-    for (const name of before) {
-        fs.rmSync(path.join(artifactDir, name));
-    }
-
-    client.change(defUri, 2, "X(alpha)\nX(beta)\nX(gamma)\n");
-    await client.waitForRecompile(defUri);
-    client.assertCleanCompile(defUri);
-    // Content-addressed: the header's current context synthesizes the same
-    // file names again; the other occurrence's files stay gone until used.
-    const after = Object.keys(snapshotMtimes(artifactDir));
-    expect(after.length, "expected re-synthesized artifacts").toBeGreaterThan(0);
-    expect(before).toEqual(expect.arrayContaining(after));
+    const after = snapshotMtimes(workspace.pchFiles());
+    expect(after, "reopen must reuse the PCH, not rebuild it").toEqual(snapshot);
 });
 
 /// Reopening a header after its chain file changed on disk must NOT
-/// reuse the stale preamble — the chain content is embedded in it.
+/// reuse the stale context — the chain content is embedded in it.
 test("chain change resynthesizes", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("list.def", "X(alpha)\nX(beta)\n");
@@ -421,23 +372,18 @@ test("chain change resynthesizes", async ({ session }) => {
     const switched = await client.switchContext(defUri, mainUri, { occurrence: 1 });
     expect(switched.success).toBe(true);
     await client.waitForRecompile(defUri);
-
-    const artifactDir = workspace.headerContextDir();
-    const snapshot = snapshotMtimes(artifactDir);
-    expect(Object.keys(snapshot).length, "expected synthesized preamble artifacts").toBeGreaterThan(
-        0,
-    );
+    client.assertCleanCompile(defUri);
 
     client.close(defUri);
     await sleep(MTIME_GRANULARITY);
     // The chain file (the includer) changes on disk while the header is
-    // closed: the embedded preamble content is now stale.
+    // closed: the embedded context content is now stale.
     workspace.write(
         "main.cpp",
-        "#define X(name) int name = 2;\n" +
+        "#define X(name) int name = 1;\n" +
             '#include "list.def"\n' +
             "#undef X\n" +
-            "#define X(name) void get_##name();\n" +
+            "#define X(name) int get_##name = missing_value;\n" +
             '#include "list.def"\n' +
             "#undef X\n" +
             "int main() { return alpha; }\n",
@@ -447,8 +393,13 @@ test("chain change resynthesizes", async ({ session }) => {
     const current = await client.currentContext(defUri);
     expect(current.context!.occurrence).toBe(1);
 
-    const after = snapshotMtimes(artifactDir);
-    expect(after, "stale preamble must be re-synthesized").not.toEqual(snapshot);
+    const messages = client
+        .errors(defUri)
+        .map((d) => (typeof d.message === "string" ? d.message : d.message.value));
+    expect(
+        messages.some((m) => m.includes("missing_value")),
+        `the reopened compile must see the new chain: ${JSON.stringify(messages)}`,
+    ).toBe(true);
 });
 
 /// The client resync contract: after a successful switch the client

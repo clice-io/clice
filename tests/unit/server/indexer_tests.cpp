@@ -2920,10 +2920,8 @@ TEST_CASE(ContextsBlobRoundTrip) {
     TempDir tmp;
     tmp.touch("host.cpp", "#include \"h.h\"\n");
     tmp.touch("h.h", "int x;\n");
-    tmp.touch("artifact.h", "");
     auto host_path = tmp.path("host.cpp");
     auto header_path = tmp.path("h.h");
-    auto artifact_path = tmp.path("artifact.h");
 
     {
         IndexerFixture f;
@@ -2934,7 +2932,6 @@ TEST_CASE(ContextsBlobRoundTrip) {
         auto host = f.project.file_table.intern(host_path);
         auto header = f.project.file_table.intern(header_path);
         editor.selections[header] = Selection{host, 1, "applied", "base"};
-        editor.synthesized_hosts[artifact_path] = host;
         editor.mark_dirty();
         auto ticket = f.index_store.contexts.ticket;
         f.save();
@@ -2955,35 +2952,7 @@ TEST_CASE(ContextsBlobRoundTrip) {
     ASSERT_EQ(saved->occurrence, std::optional<std::uint32_t>(1));
     ASSERT_EQ(saved->command_hash, "applied");
     ASSERT_EQ(saved->base_hash, "base");
-    ASSERT_EQ(editor.synthesized_hosts.lookup(artifact_path), host);
     ASSERT_FALSE(f.index_store.contexts.dirty);
-}
-
-TEST_CASE(EvictedArtifactHostDropped) {
-    // An artifact the store evicted while no server ran has nothing left
-    // to open under its host: the record leaves, and the blob with it.
-    TempDir tmp;
-    tmp.touch("host.cpp", "");
-    auto gone_path = tmp.path("gone.h");
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        EditorContext editor{f.project, f.commands, f.index_store.contexts};
-        f.load();
-        editor.load();
-        editor.synthesized_hosts[gone_path] = f.project.file_table.intern(tmp.path("host.cpp"));
-        editor.mark_dirty();
-        f.save();
-    }
-
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    EditorContext editor{f.project, f.commands, f.index_store.contexts};
-    f.load();
-    editor.load();
-    ASSERT_TRUE(editor.synthesized_hosts.empty());
-    ASSERT_TRUE(f.index_store.contexts.dirty);
 }
 
 TEST_CASE(UnownedContextsPassThrough) {

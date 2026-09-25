@@ -90,6 +90,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         landed[path_id] = {.verdict = Verdict::Skipped};
         co_return RoundOutcome::Stale;
     }
+    if(resolved.synthesized) {
+        params.synthesized = resolved.synthesized->files;
+    }
 
     // A module interface unit waits on its own PCM node — that round
     // builds the transitive imports and registers their artifacts. An
@@ -125,7 +128,11 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             for(auto& arg: params.arguments) {
                 argv.push_back(arg.c_str());
             }
-            auto scanned = pcm.direct_deps(path_id, argv, params.directory, std::nullopt);
+            auto scanned = pcm.direct_deps(path_id,
+                                           argv,
+                                           params.directory,
+                                           std::nullopt,
+                                           resolved.synthesized.get());
             llvm::append_range(deps.resolved, scanned.resolved);
             llvm::append_range(deps.declared, scanned.declared);
         }

@@ -66,6 +66,12 @@ struct CompilationUnitRef::Self {
 
     llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> remapped_buffers;
 
+    /// See CompilationParams::synthesized.
+    llvm::StringSet<> synthesized;
+
+    /// Memo of CompilationUnitRef::from_context.
+    llvm::DenseMap<clang::FileID, bool> context_files;
+
     /// The frontend action used to build the unit.
     std::unique_ptr<clang::FrontendAction> action;
 

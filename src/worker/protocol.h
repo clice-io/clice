@@ -116,6 +116,9 @@ struct CompileParams {
     std::string text;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files the command names that exist only in memory (path, content):
+    /// a header context's synthesized fragments.
+    std::vector<std::pair<std::string, std::string>> synthesized;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
 
@@ -173,6 +176,9 @@ struct BuildPCHParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files the command names that exist only in memory (path, content):
+    /// a header context's synthesized fragments.
+    std::vector<std::pair<std::string, std::string>> synthesized;
 
     /// The preamble content, remapped over the file.
     std::string content;
@@ -209,6 +215,9 @@ struct TURunParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files the command names that exist only in memory (path, content):
+    /// a header context's synthesized fragments.
+    std::vector<std::pair<std::string, std::string>> synthesized;
 
     /// PCM dependencies for TUs that import modules.
     std::unordered_map<std::string, std::string> pcms;
@@ -234,6 +243,9 @@ struct CompletionParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files the command names that exist only in memory (path, content):
+    /// a header context's synthesized fragments.
+    std::vector<std::pair<std::string, std::string>> synthesized;
 
     std::string text;
     uint32_t offset = 0;
@@ -250,6 +262,9 @@ struct SignatureHelpParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files the command names that exist only in memory (path, content):
+    /// a header context's synthesized fragments.
+    std::vector<std::pair<std::string, std::string>> synthesized;
 
     std::string text;
     uint32_t offset = 0;

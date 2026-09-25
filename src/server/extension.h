@@ -175,6 +175,8 @@ struct StatsResult {
     /// Trend gauges.
     std::uint32_t pch_cache_entries = 0;
     std::uint32_t header_contexts = 0;
+    /// Of those, the ones whose includer context was synthesized.
+    std::uint32_t synthesized_contexts = 0;
     std::uint32_t sessions = 0;
 };
 

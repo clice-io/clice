@@ -143,6 +143,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     cp.kind = CompilationKind::Preamble;
     fill_args(cp, params.directory, params.arguments);
     cp.add_remapped_file(params.file, params.content, params.preamble_bound);
+    cp.add_synthesized(params.synthesized);
     cp.stop = stop;
 
     auto output = artifact_output("PCH", params.output_path, "clice-pch", "pch");
@@ -370,6 +371,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     // Indexing kind.
     cp.kind = params.tidy ? CompilationKind::Content : CompilationKind::Indexing;
     fill_args(cp, params.directory, params.arguments);
+    cp.add_synthesized(params.synthesized);
     for(auto& [name, path]: params.pcms) {
         cp.pcms.try_emplace(name, path);
     }
@@ -448,6 +450,7 @@ static kota::codec::RawValue handle_completion(const worker::CompletionParams& p
         cp.pcms.try_emplace(name, path);
     }
     cp.add_remapped_file(params.file, params.text);
+    cp.add_synthesized(params.synthesized);
     cp.completion = {params.file, params.offset};
     cp.stop = stop;
 
@@ -471,6 +474,7 @@ static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpPa
         cp.pcms.try_emplace(name, path);
     }
     cp.add_remapped_file(params.file, params.text);
+    cp.add_synthesized(params.synthesized);
     cp.completion = {params.file, params.offset};
     cp.stop = stop;
 

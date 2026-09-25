@@ -17,11 +17,10 @@
 
 namespace clice {
 
-/// The editor's side of command resolution: the user's context choices,
-/// the header contexts resolved for open files and the hosts of the
-/// artifacts synthesized for them. Editor-facing compiles resolve through
-/// here, layering this state over the project's CommandResolver;
-/// background compiles never see it. The choices and artifact hosts are
+/// The editor's side of command resolution: the user's context choices and
+/// the header contexts resolved for open files. Editor-facing compiles
+/// resolve through here, layering this state over the project's
+/// CommandResolver; background compiles never see it. The choices are
 /// what the contexts blob encodes: every change reserializes them into it,
 /// and a load parses them back (switchContext waits on its durability).
 /// The protocol handlers (clice/queryContext,
@@ -40,17 +39,9 @@ struct EditorContext {
     /// didOpen. The single source of truth for a file's active context.
     llvm::DenseMap<Fid, Selection> selections;
 
-    /// Host source of each synthesized artifact (prefix/suffix/snapshot
-    /// file path -> host path_id), recorded when an editor resolution
-    /// synthesizes it and persisted in the contexts blob. Opening an
-    /// artifact compiles it with its host's command — it is a fragment of
-    /// that TU, and treated as self-contained (an artifact needing context
-    /// itself is out of scope).
-    llvm::StringMap<Fid> synthesized_hosts;
-
     /// Resolved compilation contexts of header files, keyed by the header.
     /// Entries outlive their sessions: closing a header keeps its
-    /// synthesized preamble, so reopening reuses it instead of
+    /// synthesized context, so reopening reuses it instead of
     /// re-synthesizing. Entries are re-validated at use (deps_changed) and
     /// invalidated by saves along their include chain. An automatic (not
     /// user-chosen) host sticks until such an invalidation — reuse
@@ -103,20 +94,16 @@ struct EditorContext {
         header_contexts.erase(path_id);
     }
 
-    /// The store evicted synthesized files: drop the host records of the
-    /// files gone from disk. A resolved context checks its own files on
-    /// every reuse, so none needs dropping here.
-    void drop_evicted_artifacts();
-
     /// Headers whose resolved context was derived through `path_id` — a
     /// file along its include chain.
     llvm::SmallVector<Fid> chain_dependents(Fid path_id) const;
 
     /// Append the header context's suffix as one trailing #include line: the
     /// suffix content (everything after the include position along the chain)
-    /// lives in its own file so features never see it, while the token stream
-    /// still closes any braces the fragment is embedded in. The single extra
-    /// line sits past the editor's EOF and is invisible to the client.
+    /// lives in its own synthesized file so features never see it, while the
+    /// token stream still closes any braces the fragment is embedded in. The
+    /// single extra line sits past the editor's EOF and is invisible to the
+    /// client.
     void append_suffix_include(Fid path_id, std::string& text) const;
 
     /// Whether the file's selection still holds against the current CDB
@@ -144,17 +131,11 @@ struct EditorContext {
     /// it has.
     void mark_dirty();
 
-    /// Restore the choices and artifact hosts from the blob as loaded.
+    /// Restore the choices from the blob as loaded.
     void load();
 
 private:
     std::string serialize() const;
-
-    /// Record a synthesized artifact's host attribution, marking the
-    /// contexts blob dirty when the mapping actually changes — synthesis
-    /// re-derives the same content-addressed paths on every resolve, and
-    /// an unconditional mark would rewrite the blob each time.
-    void record_synthesized_host(llvm::StringRef path, Fid host_path_id);
 };
 
 }  // namespace clice

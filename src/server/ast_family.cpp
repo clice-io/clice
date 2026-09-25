@@ -58,7 +58,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     auto path = project.file_table.resolve(path_id);
     auto bound = compute_preamble_bound(text);
     auto* header_context = contexts.header_context(path_id);
-    bool has_prefix = header_context && !header_context->preamble_path.empty();
+    bool has_prefix = header_context && header_context->synthesized;
     if(bound == 0 && !has_prefix) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts land here too: they borrow
@@ -67,11 +67,12 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     }
 
     // With a synthesized prefix, the PCH is worth building even at
-    // bound == 0: the -include'd preamble file is processed via the
-    // predefines buffer and lands in the PCH, so the (potentially huge)
-    // prefix is not re-parsed on every edit. The -include flag is part of
-    // the canonicalized arguments below, and the preamble file name is its
-    // content hash, so the key tracks prefix changes automatically.
+    // bound == 0: the -include'd prefix is processed via the predefines
+    // buffer and lands in the PCH, so the (potentially huge) prefix is not
+    // re-parsed on every edit. The -include flag is part of the
+    // canonicalized arguments below, and the prefix's name hashes its
+    // content — through the fragments it includes, the whole chain's — so
+    // the key tracks prefix changes automatically.
 
     // Key the PCH by preamble text plus the frontend-relevant compile flags,
     // so files with the same preamble text but different flags (-D, -I, -std)
@@ -115,6 +116,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .arguments = arguments,
                       .content = std::string(text),
                       .preamble_bound = bound,
+                      .synthesized = has_prefix ? header_context->synthesized->files
+                                          : std::vector<std::pair<std::string, std::string>>{},
                       },
     };
 }
@@ -394,7 +397,12 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    auto deps = pcm.direct_deps(path_id, argv, directory, std::optional<llvm::StringRef>(text));
+    auto* header_context = contexts.header_context(path_id);
+    auto deps = pcm.direct_deps(path_id,
+                                argv,
+                                directory,
+                                std::optional<llvm::StringRef>(text),
+                                header_context ? header_context->synthesized.get() : nullptr);
     graph.declare(node(path_id), deps.declared);
     // Sentinels join the round's candidates too: a successful landing
     // replaces the declaration with them, and a declare-only edge would
@@ -476,14 +484,18 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.path = file_path;
         params.version = session->version;
         params.text = session->text;
-        auto source =
-            contexts.resolve_command(file_path, params.directory, params.arguments).source;
+        auto resolution = contexts.resolve_command(file_path, params.directory, params.arguments);
+        auto source = resolution.source;
+        if(resolution.synthesized) {
+            params.synthesized = resolution.synthesized->files;
+        }
 
         // The line the appended suffix #include lands on — anything at or
         // past it is phantom text the user cannot see.
         std::optional<std::uint32_t> suffix_line_limit;
         auto* header_context = contexts.header_context(path_id);
-        if(header_context && !header_context->suffix_path.empty()) {
+        if(header_context && header_context->synthesized &&
+           !header_context->synthesized->suffix.empty()) {
             auto newlines = std::ranges::count(params.text, '\n');
             suffix_line_limit =
                 static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
@@ -495,7 +507,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // stands alone. Decided here, where resolve_command chose to omit
         // the prefix; the landing gates what the probe may write.
         bool trial_round = attempt == 0 && !session->trial_done && header_context &&
-                           header_context->preamble_path.empty() &&
+                           !header_context->synthesized &&
                            contexts.commands.header_mode(file_path, path_id) == HeaderMode::Unknown;
 
         switch(co_await depend_modules(ctx,
@@ -931,10 +943,12 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     }
     auto scan_text = session->text;
     contexts.append_suffix_include(path_id, scan_text);
+    auto* header_context = contexts.header_context(path_id);
     if(!co_await pcm.prepare_deps(path_id,
                                   argv,
                                   directory,
                                   std::optional<llvm::StringRef>(scan_text),
+                                  header_context ? header_context->synthesized.get() : nullptr,
                                   /*foreground=*/true)) {
         co_return false;
     }

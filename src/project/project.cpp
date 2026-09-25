@@ -24,13 +24,6 @@
 
 namespace clice {
 
-bool Project::is_synthesized_artifact(llvm::StringRef path) const {
-    if(!store) {
-        return false;
-    }
-    return path.starts_with(path::join(store->base_dir(), header_context_ns));
-}
-
 std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
     auto chain = dep_graph.find_include_chain(host_id, target_id);
     if(chain.size() < 2) {

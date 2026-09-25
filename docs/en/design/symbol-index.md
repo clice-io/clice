@@ -137,7 +137,7 @@ The index is rebuilt from the table, on the thread pool, when the symbols merged
 
 ### Staleness Detection
 
-Staleness detection determines whether a file needs to be re-indexed. Each indexed artifact records the identity and observed content version of its inputs; validation is delegated to the master's shared file table, which performs the same two-layer check used everywhere else — a (size, mtime) stat fast path, then content-hash confirmation with stamp repair (see [Incremental Compilation](incremental-parse.md)). Re-indexing triggers only when input content actually changed; command changes are caught separately through the entry identity hashes recorded in the manifests.
+Staleness detection determines whether a file needs to be re-indexed. Each indexed artifact records the identity and observed content version of its inputs; validation is delegated to the master's shared file table, which performs the same two-layer check used everywhere else — a (size, mtime) stat fast path against the file's last observation, then content-hash confirmation (see [Incremental Compilation](incremental-parse.md)). Re-indexing triggers only when input content actually changed; command changes are caught separately through the entry identity hashes recorded in the manifests.
 
 ### Background Indexing Scheduling
 

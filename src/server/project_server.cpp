@@ -475,12 +475,7 @@ void ProjectServer::drain_store_evictions() {
     // lifetime even for keys never requested again. An entry mid-rebuild
     // keeps its slot — its commit republishes fresh blobs over the
     // eviction.
-    bool artifacts_evicted = false;
     for(auto& evicted: project.store->take_evictions()) {
-        if(evicted.ns == header_context_ns) {
-            artifacts_evicted = true;
-            continue;
-        }
         if(evicted.ns != "pch") {
             continue;
         }
@@ -495,9 +490,6 @@ void ProjectServer::drain_store_evictions() {
            it != project.pch_cache.end() && !sched.pch.building(evicted.key)) {
             project.pch_cache.erase(it);
         }
-    }
-    if(artifacts_evicted) {
-        contexts.drop_evicted_artifacts();
     }
 }
 

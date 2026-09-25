@@ -15,6 +15,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/Basic/Version.h"
 
@@ -52,8 +53,20 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id, std::optional<llvm::St
 PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id,
                                              llvm::ArrayRef<const char*> arguments,
                                              llvm::StringRef directory,
-                                             std::optional<llvm::StringRef> content) {
-    auto scan_result = scan_precise(arguments, directory, content);
+                                             std::optional<llvm::StringRef> content,
+                                             const SynthesizedContext* synthesized) {
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs;
+    if(synthesized) {
+        auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
+        for(auto& [file, text]: synthesized->files) {
+            memory->addFile(file, 0, llvm::MemoryBuffer::getMemBufferCopy(text, file));
+        }
+        auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+            llvm::vfs::createPhysicalFileSystem());
+        overlay->pushOverlay(std::move(memory));
+        vfs = std::move(overlay);
+    }
+    auto scan_result = scan_precise(arguments, directory, content, nullptr, std::move(vfs));
 
     // Every scanned name lands in the edge set, resolved or not: an
     // unresolved name edges to its sentinel, which is what lets the
@@ -301,6 +314,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
                                          llvm::ArrayRef<const char*> arguments,
                                          llvm::StringRef directory,
                                          std::optional<llvm::StringRef> content,
+                                         const SynthesizedContext* synthesized,
                                          bool foreground) {
     // A project without module units pays nothing. A CDB reload that
     // introduces modules mid-session takes effect on the next call.
@@ -314,7 +328,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
     // provider appearing for a sentinel) cascades to the open TUs
     // importing it through them. Declared even when empty, so a removed
     // import stops cascading.
-    auto deps = direct_deps(path_id, arguments, directory, content);
+    auto deps = direct_deps(path_id, arguments, directory, content, synthesized);
     // A module unit's PCM node carries its ARTIFACT's edge truth, owned
     // by its own rounds — a request's buffer view must not overwrite it
     // (an unsaved removed import would disconnect the cached PCM from

@@ -157,9 +157,6 @@ void IndexQuery::visit_overlay_files(const TUIndex& state,
             file = *known;
             path = files.display(file);
         }
-        if(live->excluded(path)) {
-            continue;
-        }
         RowSource source{.kind = RowSource::Kind::Overlay,
                          .file = file,
                          .path = path,

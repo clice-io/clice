@@ -826,6 +826,9 @@ void LSPClient::register_extensions() {
 
                 stats.header_contexts +=
                     static_cast<std::uint32_t>(served->contexts.header_contexts.size());
+                stats.synthesized_contexts += static_cast<std::uint32_t>(llvm::count_if(
+                    llvm::make_second_range(served->contexts.header_contexts),
+                    [](const HeaderContext& context) { return context.synthesized != nullptr; }));
                 stats.sessions += static_cast<std::uint32_t>(served->sessions.sessions.size());
             }
             co_return to_raw(stats);

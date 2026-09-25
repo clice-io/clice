@@ -153,6 +153,16 @@ public:
     /// Check if a file is a builtin file.
     bool is_builtin_file(clang::FileID fid);
 
+    /// Whether the request synthesized the file (a header context's
+    /// fragment, see CompilationParams::add_synthesized): no file on disk
+    /// carries its bytes, so nothing may depend on it.
+    bool synthesized(clang::FileID fid);
+
+    /// Whether the file belongs to a borrowed includer context: synthesized
+    /// itself, or entered through a synthesized file. Such files are the
+    /// host's to index, not this unit's.
+    bool from_context(clang::FileID fid);
+
     /// Get the include location of the file id, i.e. where the file
     /// was introduced by `#include`.
     auto include_location(clang::FileID fid) -> clang::SourceLocation;

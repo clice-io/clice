@@ -27,7 +27,7 @@ General-purpose utilities and infrastructure shared by all other modules.
 
 ### `src/vfs/` — File Identity and Versions
 
-- `FileTable`: Internalizes file paths as stable `Fid` identifiers used throughout the system, and owns the shared per-file facts derived from them — stat stamps, content versions, scan results, directory listings. The two-layer freshness check (stat fast path, then content hash with stamp repair) lives here once and is shared by every consumer: PCH validation, index staleness, and disk polling.
+- `FileTable`: Internalizes file paths as stable `Fid` identifiers used throughout the system, and owns the shared per-file facts derived from them — the last observation of each file on disk, content versions, scan results, directory listings. The two-layer freshness check (stat fast path, then content hash) lives here once and is shared by every consumer: PCH validation, index staleness, and disk polling. Every look that finds other content than the last one is reported as a change, whoever looked.
 
 ### `src/config/` — Configuration
 
@@ -126,7 +126,7 @@ The language server's core runtime, responsible for assembling all the layers ab
 
 - `Session` / `SessionStore`: The open-buffer truth for each open file — content, document version, generation, and serving state — created on didOpen and destroyed on didClose. Compile products do not live here
 - `ASTProjection` / `ASTProjectionTable`: The published products of each document's most recent compilation (feature results, PCH key, dependency snapshot) — an immutable read model replaced wholesale on each publication
-- `EditorContext`: The editor's side of command resolution — the user's context choices, the header contexts resolved for open files, and the hosts of their synthesized preambles — layered over the project's `CommandResolver` for editor-facing compiles only
+- `EditorContext`: The editor's side of command resolution — the user's context choices and the header contexts resolved for open files — layered over the project's `CommandResolver` for editor-facing compiles only
 - `Invalidator`: The invalidation engine — folds file events (buffer opens/saves, on-disk changes, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
 - `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`: the project's database watch plus a sweep of the files on disk, which judges each file against the content its include edges were scanned from
 - `Quarantine`: Per-document crash accounting — documents whose content keeps killing workers are isolated and recover through licensed probe attempts

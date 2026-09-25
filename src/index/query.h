@@ -91,10 +91,6 @@ public:
     /// share one).
     virtual void each_overlay(llvm::function_ref<bool(const TUIndex&)> visit) const = 0;
 
-    /// Whether an overlay header entry must never reach the user: the
-    /// server's own synthesized context artifacts.
-    virtual bool excluded(llvm::StringRef path) const = 0;
-
     /// An open buffer's PCH envelope while the buffer still starts with
     /// the exact preamble the envelope was built from; null otherwise.
     virtual std::shared_ptr<TUIndex> preamble_blob(Fid file) const = 0;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -44,10 +45,6 @@ struct CommandRequest {
     /// Resolved header contexts to reuse and to fill: a still-valid entry
     /// is reused, a stale one replaced.
     llvm::DenseMap<Fid, HeaderContext>* header_contexts = nullptr;
-
-    /// Hosts of synthesized artifacts: an opened artifact compiles under
-    /// its host's command.
-    const llvm::StringMap<Fid>* synthesized_hosts = nullptr;
 };
 
 /// How a file's command was resolved.
@@ -62,17 +59,10 @@ struct Resolution {
     /// structured consumers (search config, language queries).
     CommandRef ref;
 
-    /// A file synthesized for a header's context, and the host whose TU it
-    /// is a fragment of.
-    struct Synthesized {
-        std::string path;
-        Fid host;
-    };
-
-    /// Files this resolution synthesized (preamble, suffix, self snapshot)
-    /// — kept even when a later step of the synthesis failed and the
-    /// resolution fell through to another source.
-    llvm::SmallVector<Synthesized, 3> synthesized;
+    /// The header context the arguments name (-include of its prefix),
+    /// which exists only in memory: every compile under them must be
+    /// served its files. Null when nothing was synthesized.
+    std::shared_ptr<const SynthesizedContext> synthesized;
 };
 
 /// Composes a file's final compile command from the project on disk.
@@ -83,10 +73,9 @@ struct Resolution {
 /// entry, host, default command, lender, builtin — then the rule edits
 /// and a run's extras; an editor request layers the user's pin and its
 /// cached header contexts on top. Around the host branch it owns the
-/// header-context synthesis (prefix/suffix/self-snapshot files restoring
-/// the includer's preprocessor state, content-addressed in the cache
-/// store) and the self-containment verdicts that decide it, persisted in
-/// the artifacts blob.
+/// header-context synthesis (in-memory files restoring the includer's
+/// preprocessor state, see SynthesizedContext) and the self-containment
+/// verdicts that decide it, persisted in the artifacts blob.
 class CommandResolver {
 public:
     explicit CommandResolver(Project& project) : project(project) {}
@@ -160,11 +149,9 @@ private:
                                   const CommandRequest& request,
                                   Resolution& resolution);
 
-    std::optional<HeaderContext>
-        resolve_header_context(Fid header_path_id,
-                               const Selection* choice,
-                               bool synthesize,
-                               llvm::SmallVectorImpl<Resolution::Synthesized>& synthesized_files);
+    std::optional<HeaderContext> resolve_header_context(Fid header_path_id,
+                                                        const Selection* choice,
+                                                        bool synthesize);
 
     /// What dump_mode_slices would emit for this file (0 = nothing) — the
     /// before/after probe record and reset compare to mark the artifacts
