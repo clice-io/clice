@@ -715,6 +715,14 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     std::vector<CanonicalPath> files;
     std::vector<CanonicalPath> directories;
     CanonicalRef root = project.config.workspace_root;
+    // Rewriting follows links even where a path's identity does not
+    // (Windows): the bytes clang-format replaces are the link's target's.
+    auto real = [](llvm::StringRef path) {
+        llvm::SmallString<256> target;
+        llvm::sys::fs::real_path(path, target);
+        return CanonicalPath(target);
+    };
+    auto real_root = real(root);
     for(auto& path: options.paths) {
         if(llvm::sys::fs::is_directory(path)) {
             directories.push_back(CanonicalPath(path));
@@ -730,8 +738,8 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             // Rewritten where its bytes are — clang-format's in-place mode
             // replaces a symlink with a regular file — which has to be the
             // workspace's too.
-            auto target = CanonicalPath(path);
-            if(!path::under(target, root)) {
+            auto target = real(path);
+            if(!path::under(target, real_root)) {
                 if(path::under(CanonicalPath(path::parent_path(path)), root)) {
                     result.exit_code = 2;
                     result.error = std::format("{}: links outside the workspace", path);

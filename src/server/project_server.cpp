@@ -303,8 +303,10 @@ void ProjectServer::close_session(Fid path_id) {
     sessions.close(path_id);
     ast.drop(path_id);
     // The session's compile stood in for the file's background index
-    // (IndexPump::compiled_by_session); the disk's turn again.
-    if(sched.pump.enqueue(path_id, ReindexReason::DepsOnly)) {
+    // (IndexPump::compiled_by_session); the disk's turn again, unless it
+    // was deleted meanwhile.
+    if(!project.file_table.seen_missing(path_id) &&
+       sched.pump.enqueue(path_id, ReindexReason::DepsOnly)) {
         sched.pump.schedule(false);
     }
     // PCH entries are content-keyed and may be shared with other sessions,

@@ -1,8 +1,26 @@
 /// Integration tests for PCH (precompiled header) functionality in MasterServer.
 
-import { cliceTest, expect } from "../fixtures.ts";
+import * as fs from "node:fs";
+import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { cliceTest, expect, test as sessionTest } from "../fixtures.ts";
 
 const test = cliceTest("pch_test");
+
+sessionTest("unchanged preamble keeps its pch", async ({ session }) => {
+    // The standard library's lookups (`#include_next`, `__has_include`)
+    // fail in some directories on the way: none of that is a change.
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "#include <iostream>\nint main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    const [uri] = await client.openAndWait("main.cpp");
+    const [pch] = workspace.pchFiles();
+    const built = fs.statSync(pch!).mtimeMs;
+    await sleep(MTIME_GRANULARITY);
+    await client.completionAt(uri, 1, 0);
+    expect(fs.statSync(pch!).mtimeMs, "the pch was rebuilt").toBe(built);
+});
 
 test("pch diagnostics on open", async ({ client }) => {
     // Opening a file with #include should trigger PCH build and return clean diagnostics.
