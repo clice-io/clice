@@ -1,0 +1,106 @@
+name: pgo bench par
+
+# Benchmark several clice bundles in parallel: one job per (workload, shard),
+# each running every variant once, interleaved, on its own machine, so each
+# job yields ratios to the base that never mix machines; the aggregate job
+# reports the median ratio over the shards. Replaces one long serial job.
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        description: "Prefix of the result artifacts"
+        type: string
+        required: true
+      os:
+        type: string
+        required: true
+      pixi-env:
+        type: string
+        default: package
+      flags:
+        description: "CMAKE_C/CXX_FLAGS of the workloads (--no-default-config on macOS)"
+        type: string
+        default: ""
+      variants:
+        description: "Space-separated NAME=ARTIFACT@RUN; the first is the base"
+        type: string
+        required: true
+      shards:
+        description: "JSON array of shard numbers, one job per shard and workload"
+        type: string
+        default: "[1, 2, 3, 4, 5]"
+
+jobs:
+  run:
+    strategy:
+      fail-fast: false
+      matrix:
+        workload: [abseil, llvm-sema]
+        shard: ${{ fromJSON(inputs.shards) }}
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: ${{ inputs.pixi-env }}
+      - name: Unpack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$RUNNER_OS" == macOS ]] && { command -v zstd || brew install zstd; }
+          for spec in ${{ inputs.variants }}; do
+            name="${spec%%=*}"; rest="${spec#*=}"; artifact="${rest%@*}"; run="${rest#*@}"
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$artifact" -D "bundles/$name"
+            mkdir -p "variants/$name"
+            if [[ -f "bundles/$name/bundle.tar.gz" ]]; then
+              tar -C "variants/$name" -xzf "bundles/$name/bundle.tar.gz"
+            else
+              zstd -dc "bundles/$name/bundle.tar.zst" | tar -C "variants/$name" -xf -
+            fi
+          done
+      - name: Workload
+        run: |
+          only=abseil; [[ "${{ matrix.workload }}" == llvm-sema ]] && only=llvm
+          pixi run -e "${{ inputs.pixi-env }}" python scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads" \
+            --only "$only" ${{ inputs.flags && format('--flags={0}', inputs.flags) || '' }}
+      - name: Benchmark
+        run: |
+          here="$PWD"; [[ "$RUNNER_OS" == Windows ]] && here="$(cygpath -m "$PWD")"
+          ARGS=()
+          for spec in ${{ inputs.variants }}; do name="${spec%%=*}"; ARGS+=(--variant "$name=$here/variants/$name"); done
+          if [[ "${{ matrix.workload }}" == abseil ]]; then
+            load="abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60"
+          else
+            load="llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+          fi
+          pixi run -e "${{ inputs.pixi-env }}" python scripts/pgo_ci.py bench "${ARGS[@]}" --rounds 1 \
+            --out bench-out --workload "$load"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.name }}-${{ matrix.workload }}-${{ matrix.shard }}
+          path: bench-out/summary.json
+          retention-days: 30
+
+  aggregate:
+    needs: run
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ inputs.name }}-*
+          path: results
+      - name: Aggregate
+        run: |
+          base="$(echo "${{ inputs.variants }}" | awk '{print $1}')"
+          python3 scripts/pgo_ci.py bench-aggregate --dir results --base "${base%%=*}"

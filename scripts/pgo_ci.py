@@ -84,17 +84,20 @@ def workloads(args) -> None:
     root.mkdir(parents=True, exist_ok=True)
 
     abseil = root / "abseil"
-    if not abseil.exists():
+    if args.only == "llvm":
+        pass
+    elif not abseil.exists():
         run(["git", "clone", "--depth", "1", "--branch", "20250814.1",
              "https://github.com/abseil/abseil-cpp.git", abseil], check=True)
     compilers = [f"-DCMAKE_C_COMPILER={args.cc}", f"-DCMAKE_CXX_COMPILER={args.cxx}"]
     if args.flags:
         compilers += [f"-DCMAKE_C_FLAGS={args.flags}", f"-DCMAKE_CXX_FLAGS={args.flags}"]
-    run(["cmake", "-S", abseil, "-B", abseil / "build", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
-         "-DCMAKE_CXX_STANDARD=20", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DABSL_BUILD_TESTING=OFF",
-         *compilers], check=True)
+    if args.only != "llvm":
+        run(["cmake", "-S", abseil, "-B", abseil / "build", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
+             "-DCMAKE_CXX_STANDARD=20", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DABSL_BUILD_TESTING=OFF",
+             *compilers], check=True)
 
-    if args.skip_llvm:
+    if args.skip_llvm or args.only == "abseil":
         return
     llvm = root / "llvm"
     if not llvm.exists():
@@ -387,6 +390,51 @@ def tablegen(args) -> None:
     run(["ninja", "-C", build, *gens], check=True)
 
 
+def bench_aggregate(args) -> None:
+    """Median over parallel jobs of each variant's ratio to the base. Every
+    job ran all variants on one machine, so a ratio never mixes machines."""
+    ratios: dict[str, dict[str, dict[str, list[float]]]] = {}
+    order: list[str] = []
+    jobs = 0
+    for path in sorted(Path(args.dir).rglob("summary.json")):
+        jobs += 1
+        summary = json.loads(path.read_text())
+        base = summary[args.base]
+        for variant, loads in summary.items():
+            if variant not in order:
+                order.append(variant)
+            for load, data in loads.items():
+                if load not in base:
+                    continue
+                cell = ratios.setdefault(load, {}).setdefault(variant, {})
+                cell.setdefault("wall", []).append(
+                    statistics.median(data["wall"]) / statistics.median(base[load]["wall"]))
+                for stage in STAGES:
+                    b = statistics.median(r[stage] for r in base[load]["stages"])
+                    v = statistics.median(r[stage] for r in data["stages"])
+                    if b:
+                        cell.setdefault(stage, []).append(v / b)
+    lines = [f"Median over {jobs} parallel jobs of time / {args.base} (each job one machine; lower is faster;"
+             " spread in brackets).", ""]
+    for load, cells in ratios.items():
+        n = len(next(iter(cells.values()))["wall"])
+        lines += [f"### {load} ({n} jobs)", "",
+                  "| variant | wall | " + " | ".join(s.removesuffix("_ms") for s in STAGES) + " |",
+                  "|" + "---|" * (len(STAGES) + 2)]
+        for variant in order:
+            cell = cells.get(variant)
+            if not cell:
+                continue
+            fmt = lambda xs: f"{statistics.median(xs):.3f} ({min(xs):.2f}–{max(xs):.2f})" if xs else "-"
+            lines.append(f"| {variant} | {fmt(cell['wall'])} | " + " | ".join(fmt(cell.get(s, [])) for s in STAGES) + " |")
+        lines.append("")
+    text = "\n".join(lines)
+    print(text)
+    if "GITHUB_STEP_SUMMARY" in os.environ:
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+            f.write(text + "\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -411,6 +459,7 @@ def main() -> None:
     p.add_argument("--cc", default="clang")
     p.add_argument("--cxx", default="clang++")
     p.add_argument("--flags", default="", help="CMAKE_C_FLAGS / CMAKE_CXX_FLAGS of the workloads")
+    p.add_argument("--only", choices=["abseil", "llvm"], help="Materialize one workload only")
     p.set_defaults(func=workloads)
 
     p = sub.add_parser("bench")
@@ -420,6 +469,11 @@ def main() -> None:
     p.add_argument("--out", required=True)
     p.add_argument("--env", action="append", default=[], help="NAME=KEY=VALUE for one variant's runs")
     p.set_defaults(func=bench)
+
+    p = sub.add_parser("bench-aggregate")
+    p.add_argument("--dir", required=True)
+    p.add_argument("--base", required=True)
+    p.set_defaults(func=bench_aggregate)
 
     p = sub.add_parser("match-report")
     p.add_argument("--build", required=True, help="LLVM build directory (compile_commands.json)")
