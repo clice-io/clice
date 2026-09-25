@@ -23,7 +23,7 @@
 
 namespace clice {
 
-ProjectServer::ProjectServer(MasterServer& server, std::string root) :
+ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     server(server), loop(server.loop), root(std::move(root)), project(server.files),
     sched(loop, project, commands, server.pool),
     ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions, loop),
@@ -31,7 +31,8 @@ ProjectServer::ProjectServer(MasterServer& server, std::string root) :
     live_sources(project, sched.pch, sessions, ast.projections),
     index_query(project.project_index, project.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
-    invalidator(project, sessions, contexts, sched.pcm, sched.store), bg_tasks(loop) {
+    invalidator(project, sessions, contexts, ast.projections, sched.pcm, sched.store),
+    bg_tasks(loop) {
     ast.register_runner();
     // The loaded-state budget follows the open-document count; the PCH
     // family cannot see SessionStore, so the project wires the provider.
@@ -55,8 +56,9 @@ ProjectServer::ProjectServer(MasterServer& server, std::string root) :
 
     // The pump is serving-neutral; the session-side policy hooks live on
     // this class and are installed here.
-    sched.pump.admission = [this](Fid path_id) {
-        return index_admission(path_id);
+    sched.pump.compiled_by_session = [this](Fid path_id) {
+        auto session = sessions.find(path_id);
+        return session && session->serving == ServingMode::Escalated;
     };
     sched.pump.on_attempt_settled = [this](Fid path_id) {
         index_attempt_settled(path_id);
@@ -64,19 +66,22 @@ ProjectServer::ProjectServer(MasterServer& server, std::string root) :
     index_rows_conn = sched.pump.on_rows_changed.connect(
         [this](llvm::ArrayRef<Fid> path_ids) { index_rows_changed(path_ids); });
 
-    // The AST family's pull-side staleness check found a dependency changed
-    // on disk: route it through the same DiskChanged path the file
-    // tracker's polling uses, so lazy detection and polling share one
-    // invalidation cascade.
+    // The AST family's pull-side staleness check found an input of an open
+    // document changed on disk: the document gets the treatment the
+    // changed file's cascade gives its dependents.
     ast.on_stale = [this](Fid path_id) {
-        dispatch(FileEvent::disk_changed(path_id));
+        if(auto session = sessions.find(path_id)) {
+            ast.invalidate(path_id);
+            session->trial_done = false;
+        }
+        commands.forget_self_contained(path_id);
     };
 }
 
 ProjectServer::~ProjectServer() = default;
 
 void ProjectServer::configure(llvm::StringRef init_options,
-                              llvm::ArrayRef<std::string> taken_cache_dirs) {
+                              llvm::ArrayRef<CanonicalPath> taken_cache_dirs) {
     config_issues.clear();
     config_path.clear();
     // Load clice.toml raw and overlay initializationOptions BEFORE computing
@@ -102,7 +107,7 @@ void ProjectServer::configure(llvm::StringRef init_options,
     // then none.
     auto& cache_dir = project.config.project.cache_dir;
     auto taken = [&] {
-        return llvm::is_contained(taken_cache_dirs, path::resolved(cache_dir)) ||
+        return llvm::is_contained(taken_cache_dirs, CanonicalPath(cache_dir)) ||
                owned_elsewhere(cache_dir, root);
     };
     if(!root.empty() && taken()) {
@@ -136,6 +141,7 @@ void ProjectServer::configure(llvm::StringRef init_options,
         }
         ast.readonly = ReadonlyMode::Off;
     }
+    freshness.options.withhold = cfg.enable_indexing.value;
     if(cfg.cache_dir_defaulted.value) {
         CacheStore::write_ignore_markers(cfg.cache_dir);
     }
@@ -255,7 +261,7 @@ void ProjectServer::settle_open_serving(std::shared_ptr<Session> session) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: escalate
         // now instead of answering empty until the first edit.
-        if(!it->second.matches_content(session->text)) {
+        if(!it->second.matches_content(session->text.size(), session->hash)) {
             ast.escalate(*session);
         }
         return;
@@ -296,53 +302,36 @@ void ProjectServer::close_session(Fid path_id) {
     server.pool.remove_owner(path_id.raw);
     sessions.close(path_id);
     ast.drop(path_id);
+    // The session's compile stood in for the file's background index
+    // (IndexPump::compiled_by_session); the disk's turn again, unless it
+    // was deleted meanwhile.
+    if(!project.file_table.seen_missing(path_id) &&
+       sched.pump.enqueue(path_id, ReindexReason::DepsOnly)) {
+        sched.pump.schedule(false);
+    }
     // PCH entries are content-keyed and may be shared with other sessions,
     // so nothing entry-level to clean up — but the loaded-state budget
     // shrinks with the open count, and this is the moment it does.
     sched.pch.enforce_loaded_budget();
-    dispatch(FileEvent::buffer_closed(path_id));
     LOG_DEBUG("Closed {}", path);
+}
+
+bool ProjectServer::knows(Fid path_id) {
+    return sessions.find(path_id) != nullptr || !project.build.commands(path_id).empty() ||
+           project.dep_graph.knows(path_id) || !invalidator.readers(path_id).empty();
 }
 
 void ProjectServer::open_session(Fid path_id, std::string text, int version) {
     auto session = create_session(path_id);
     sessions.apply_open(*session, std::move(text), version);
+    // What the disk holds under the buffer: a later save or outside
+    // write is then a change from it, even for a file nothing else knew.
+    project.file_table.current(path_id);
     if(!started) {
         return;
     }
     contexts.validate_saved_context(path_id);
-    dispatch(FileEvent::buffer_opened(path_id));
     settle_open_serving(session);
-}
-
-Admission ProjectServer::index_admission(Fid path_id) {
-    // An open file's session serves the LSP side; its disk snapshot is
-    // indexed for the command-line readers when the disk itself changed
-    // (a save), not for a dependency sweep — that would compile a file
-    // the user just opened twice over. Skipping loses no debt: the veto
-    // settles the claim, and BufferClosed re-checks the shard against the
-    // disk on close. An index-only session is the other case — its shard
-    // IS what the LSP serves (freshness clause 4), so it indexes only
-    // while its buffer matches the disk this index would read: rows from
-    // a diverged disk fail clause 4's content gate and would replace the
-    // one shard the session can serve from, blanking its features until
-    // an escalation. Keep the last matching rows instead — the close-time
-    // re-check covers the debt here too.
-    auto session = sessions.find(path_id);
-    if(!session) {
-        return Admission::Admit;
-    }
-    if(session->serving != ServingMode::IndexOnly) {
-        return sched.pump.pending_reason(path_id) == ReindexReason::ContentChanged
-                   ? Admission::Admit
-                   : Admission::SkipAndSettle;
-    }
-    auto disk = project.file_table.current(path_id);
-    if(!disk || disk->size != session->text.size() ||
-       disk->hash != llvm::xxh3_64bits(session->text)) {
-        return Admission::SkipAndSettle;
-    }
-    return Admission::Admit;
 }
 
 void ProjectServer::index_attempt_settled(Fid path_id) {
@@ -355,7 +344,8 @@ void ProjectServer::index_attempt_settled(Fid path_id) {
         return;
     }
     auto it = project.project_index.shards.find(path_id);
-    if(it == project.project_index.shards.end() || !it->second.matches_content(session->text)) {
+    if(it == project.project_index.shards.end() ||
+       !it->second.matches_content(session->text.size(), session->hash)) {
         ast.escalate(*session);
     }
 }
@@ -405,30 +395,9 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         }
     }
 
-    // Headers whose synthesized preamble embeds changed chain content:
-    // dropping the snapshot's fast paths forces deps_changed() to re-validate
-    // every chain file by content hash; open sessions also recompile and
-    // re-trial.
-    auto stamps = project.file_table.stamp_generation;
-    for(auto path_id: dirty.force_revalidate) {
-        contexts.invalidate_header_deps(path_id);
-        if(auto session = sessions.find(path_id)) {
-            ast.invalidate(path_id);
-            session->trial_done = false;
-        }
-    }
-    // Revoked stamps live on in the global blob's version table and the
-    // artifacts blob's dep records — of every project sharing the table;
-    // all must rewrite, or a restart after a same-stat dependency edit
-    // re-adopts the dropped fast paths and judges the edited file fresh
-    // without a read.
-    if(project.file_table.stamp_generation != stamps) {
-        server.stamps_revoked();
-    }
-
-    // The header's borrowed compile command changed: its resolved context
-    // (and synthesized preamble) describes flags that no longer exist, so
-    // the next use must re-resolve. Session dirtying arrives in the same
+    // The header's resolved context was derived from what changed — its
+    // borrowed compile command, a file along its include chain — so the
+    // next use must re-resolve. Session dirtying arrives in the same
     // DirtySet via mark_ast_dirty.
     for(auto path_id: dirty.drop_context) {
         contexts.drop_header_context(path_id);
@@ -517,12 +486,7 @@ void ProjectServer::drain_store_evictions() {
     // lifetime even for keys never requested again. An entry mid-rebuild
     // keeps its slot — its commit republishes fresh blobs over the
     // eviction.
-    bool artifacts_evicted = false;
     for(auto& evicted: project.store->take_evictions()) {
-        if(evicted.ns == header_context_ns) {
-            artifacts_evicted = true;
-            continue;
-        }
         if(evicted.ns != "pch") {
             continue;
         }
@@ -537,9 +501,6 @@ void ProjectServer::drain_store_evictions() {
            it != project.pch_cache.end() && !sched.pch.building(evicted.key)) {
             project.pch_cache.erase(it);
         }
-    }
-    if(artifacts_evicted) {
-        contexts.drop_evicted_artifacts();
     }
 }
 
@@ -589,6 +550,7 @@ kota::task<> ProjectServer::workspace_poll_task() {
         if(!events.empty()) {
             dispatch(events);
         }
+        server.drain_disk_changes();
     }
 }
 

@@ -40,17 +40,16 @@ class ProjectServer : public std::enable_shared_from_this<ProjectServer> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
     /// server without folders runs, which loads nothing.
-    ProjectServer(MasterServer& server, std::string root);
+    ProjectServer(MasterServer& server, CanonicalPath root);
     ~ProjectServer();
 
     /// Load the configuration — clice.toml under the root, overlaid with
     /// the client's initializationOptions (`init_options`, JSON), then
     /// finalized — and apply its serving mode. A cache directory belongs
     /// to one project: when the one configured is among
-    /// `taken_cache_dirs` (resolved, see path::resolved), this project
-    /// falls back to its clice.toml's, then the default, then runs without
-    /// one.
-    void configure(llvm::StringRef init_options, llvm::ArrayRef<std::string> taken_cache_dirs);
+    /// `taken_cache_dirs`, this project falls back to its clice.toml's,
+    /// then the default, then runs without one.
+    void configure(llvm::StringRef init_options, llvm::ArrayRef<CanonicalPath> taken_cache_dirs);
 
     /// Load the project from disk (see bootstrap_project), restore the
     /// editor's context choices, and start its store-lifetime services;
@@ -89,9 +88,15 @@ public:
     /// services (sessions, editor context, background indexer).
     void dispatch(llvm::ArrayRef<FileEvent> events);
 
+    /// Whether anything here derives from the file: an open document, a
+    /// command, an include edge, index rows, a compile that read it or
+    /// looked for it. The disk changes of files it does not know are not
+    /// this project's to cascade.
+    bool knows(Fid path_id);
+
     MasterServer& server;
     kota::event_loop& loop;
-    std::string root;
+    CanonicalPath root;
 
     /// The open documents routed to this project, and their buffer-sync
     /// logic.
@@ -103,11 +108,11 @@ public:
     /// The scheduling core the batch driver runs too, its families
     /// registered at construction — nodes materialize on demand, so a
     /// module-free project pays nothing. The store and the pump are
-    /// serving-neutral; the session-side policy — admission vetoes,
-    /// unservable escalation, serving-row refresh — lives on this class
-    /// and is installed into the pump's hooks at construction. The AST
-    /// family is assembled here in the project's server: its rounds
-    /// capture sessions, quarantine and publishing.
+    /// serving-neutral; the session-side policy — unservable escalation,
+    /// serving-row refresh — lives on this class and is installed into the
+    /// pump's hooks at construction. The AST family is assembled here in
+    /// the project's server: its rounds capture sessions, quarantine and
+    /// publishing.
     SchedulingStack sched;
     EditorContext contexts{project, commands, sched.store.contexts};
     ASTFamily ast;
@@ -116,7 +121,7 @@ public:
     ContextService context_service{project, contexts, ast};
 
     ServerLiveSources live_sources;
-    PumpGate freshness{sched.pump, project.config};
+    index::FreshnessGate freshness{project.file_table};
     index::IndexQuery index_query;
 
     Features features;
@@ -146,10 +151,6 @@ private:
 
     /// start() ran: documents opened from now on are settled at once.
     bool started = false;
-
-    /// Dispatch- and landing-time admission on one claimed pump file: the
-    /// serving side's veto (open sessions, index-only disk divergence).
-    Admission index_admission(Fid path_id);
 
     /// An index attempt settled with no retry pending; a session waiting
     /// on the index with nothing servable will never be served by it —

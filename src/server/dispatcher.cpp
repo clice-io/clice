@@ -305,13 +305,20 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     Params wp;
     wp.file = path;
     wp.text = session.text;
-    contexts.resolve_command(path, wp.directory, wp.arguments);
-    contexts.append_suffix_include(path_id, wp.text);
+    auto resolution = contexts.resolve_command(path, wp.directory, wp.arguments);
+    if(resolution.synthesized) {
+        wp.synthesized = resolution.synthesized->files;
+        resolution.synthesized->append_suffix_include(wp.text);
+    }
     wp.config = project.config;
 
     ScopedTimer timer;
     ASTFamily::StatelessInputs inputs;
-    if(!co_await ast.prepare_stateless_inputs(ticket, wp.directory, wp.arguments, inputs)) {
+    if(!co_await ast.prepare_stateless_inputs(ticket,
+                                              wp.directory,
+                                              wp.arguments,
+                                              resolution.synthesized.get(),
+                                              inputs)) {
         LOG_WARN("{}: dependency preparation failed for {}", label, path);
         co_return kota::outcome_error(kota::ipc::Error{"Dependency preparation failed"});
     }

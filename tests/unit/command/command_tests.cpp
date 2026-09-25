@@ -1,3 +1,7 @@
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "test/cdb_helper.h"
 #include "test/platform.h"
 #include "test/temp_dir.h"
@@ -351,9 +355,39 @@ TEST_CASE(ResponseFileExpansion) {
     EXPECT_NOT_CONTAINS(argv, "@");
 };
 
+#ifndef _WIN32
+TEST_CASE(SymlinkedSourceSpelling) {
+    /// A database entry naming a symlinked source compiles under that name,
+    /// as the build does; its identity stays the file it points to.
+    TempDir tmp;
+    tmp.touch("real/main.cpp", "int main() {}\n");
+    ASSERT_EQ(::symlink(tmp.path("real/main.cpp").c_str(), tmp.path("main.cpp").c_str()), 0);
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    ASSERT_TRUE(database.load(tmp.path("compile_commands.json")).has_value());
+    auto argv = render_entry(database, tmp.path("real/main.cpp"));
+    ASSERT_FALSE(argv.empty());
+    EXPECT_EQ(llvm::StringRef(argv.back()), tmp.path("main.cpp"));
+
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("real/main.cpp"), {}}
+    }));
+    ASSERT_TRUE(database.load(tmp.path("compile_commands.json")).has_value());
+    argv = render_entry(database, tmp.path("real/main.cpp"));
+    ASSERT_FALSE(argv.empty());
+    EXPECT_EQ(llvm::StringRef(argv.back()), tmp.path("real/main.cpp"));
+};
+#endif
+
 TEST_CASE(ResponseFilesRecorded) {
-    /// A load records the response files its commands name, the ones it
-    /// could not read included, so the tracker can watch them all.
+    /// A load records the response files its commands name among its
+    /// inputs, the ones it could not read included, so the tracker can
+    /// watch them all.
     TempDir tmp;
     tmp.touch("flags.rsp", "-DFROM_RSP=1\n");
     tmp.touch("compile_commands.json",
@@ -365,10 +399,17 @@ TEST_CASE(ResponseFilesRecorded) {
     CompilationDatabase database{file_table};
     auto id = database.add_source(tmp.path("compile_commands.json"));
     ASSERT_TRUE(database.load_source(id).has_value());
-    auto recorded = database.response_files(id);
-    ASSERT_EQ(recorded.size(), 2u);
-    EXPECT_EQ(recorded[0], path::join(tmp.root, "flags.rsp"));
-    EXPECT_EQ(recorded[1], path::join(tmp.root, "missing.rsp"));
+    auto recorded = database.inputs(id);
+    ASSERT_EQ(recorded.size(), 3u);
+    EXPECT_EQ(file_table.resolve(recorded[0].file),
+              CanonicalPath(tmp.path("compile_commands.json")));
+    EXPECT_TRUE(recorded[0].hash.has_value());
+    EXPECT_EQ(file_table.resolve(recorded[1].file),
+              CanonicalPath(path::join(tmp.root, "flags.rsp")));
+    EXPECT_TRUE(recorded[1].hash.has_value());
+    EXPECT_EQ(file_table.resolve(recorded[2].file),
+              CanonicalPath(path::join(tmp.root, "missing.rsp")));
+    EXPECT_FALSE(recorded[2].hash.has_value());
     EXPECT_TRUE(database.present(id));
 
     tmp.touch("compile_commands.json",
@@ -376,7 +417,7 @@ TEST_CASE(ResponseFilesRecorded) {
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
     }));
     ASSERT_TRUE(database.load_source(id).has_value());
-    EXPECT_EQ(database.response_files(id).size(), 1u);
+    EXPECT_EQ(database.inputs(id).size(), 2u);
 };
 
 TEST_CASE(DriverModeFromRsp) {

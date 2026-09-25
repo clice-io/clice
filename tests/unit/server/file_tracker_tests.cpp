@@ -1,4 +1,7 @@
 #include <chrono>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
@@ -7,7 +10,6 @@
 #include "support/filesystem.h"
 
 #include "llvm/Support/Process.h"
-#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 namespace {
@@ -39,10 +41,10 @@ TEST_CASE(CDBTickDebounces) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     // Rewrite with one more entry: the first tick only records the pending
-    // stamp, the second sees it stable and reloads.
+    // content, the second sees it stable and reloads.
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}},
@@ -74,7 +76,7 @@ TEST_CASE(CDBTickForceImmediate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
@@ -95,7 +97,7 @@ TEST_CASE(CDBTickDiscoversLate) {
     Project project{files};
     SessionStore store;
     // No compile_commands.json at construction time.
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
 
     tmp.touch("compile_commands.json",
@@ -121,7 +123,7 @@ TEST_CASE(CDBTickDeleteRecreate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     // Deletion (mid-regeneration): keep serving the loaded entries.
     fs::remove_all(tmp.path("compile_commands.json"));
@@ -140,7 +142,7 @@ TEST_CASE(CDBTickDeleteRecreate) {
 
 TEST_CASE(CDBTickRetriesFailedLoad) {
     /// A declared database unreadable at startup loads on a later tick even
-    /// when its stamp is unchanged by then.
+    /// when its stat is unchanged by then.
     TempDir tmp;
     tmp.touch("compile_commands.json", "[ ");
     FileTable files;
@@ -151,7 +153,7 @@ TEST_CASE(CDBTickRetriesFailedLoad) {
     llvm::sys::fs::file_status before;
     ASSERT_FALSE(
         static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     tmp.touch("compile_commands.json", "[]");
     int fd = 0;
@@ -188,7 +190,7 @@ TEST_CASE(CDBTickRelocates) {
         {tmp.root, tmp.path("only.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, original);
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     auto main_id = project.file_table.intern(tmp.path("main.cpp"));
     auto only_id = project.file_table.intern(tmp.path("only.cpp"));
     auto root = *project.cdb.find_source(tmp.path("compile_commands.json"));
@@ -217,9 +219,9 @@ TEST_CASE(CDBTickRelocates) {
     EXPECT_EQ(project.build.entries(main_id).size(), 2u);
 }
 
-TEST_CASE(CDBBaselineSyncsPresence) {
-    /// A database loaded, then deleted before the tracker baselines it, is
-    /// absent from the start — its unchanged missing stamp never says so.
+TEST_CASE(CDBDeletedBeforeWatch) {
+    /// A database loaded, then deleted before the tracker watches it: the
+    /// load's read is the baseline, so the deletion settles like any other.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     FileTable files;
@@ -233,15 +235,16 @@ TEST_CASE(CDBBaselineSyncsPresence) {
     auto id = *project.cdb.find_source(tmp.path("compile_commands.json"));
     ASSERT_TRUE(project.cdb.present(id));
     fs::remove_all(tmp.path("compile_commands.json"));
-    FileTracker tracker(project, store, tmp.root.str().str());
-    EXPECT_FALSE(project.cdb.present(id));
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     EXPECT_TRUE(tracker.tick_cdb().empty());
+    EXPECT_TRUE(tracker.tick_cdb().empty());
+    EXPECT_FALSE(project.cdb.present(id));
 }
 
-TEST_CASE(CDBBaselineRereadsResponses) {
-    /// A response file rewritten between the startup load and the
-    /// tracker's baseline: the first ticks reload the database once, so
-    /// the flags in memory catch up.
+TEST_CASE(ResponseRewriteBeforeWatch) {
+    /// A response file rewritten between the startup load and the watch:
+    /// the load's own read is the baseline, so the flags in memory catch
+    /// up.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     tmp.touch("flags.rsp", "-DONE\n");
@@ -254,7 +257,7 @@ TEST_CASE(CDBBaselineRereadsResponses) {
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
     }));
     tmp.touch("flags.rsp", "-DTWO\n");
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     EXPECT_TRUE(tracker.tick_cdb().empty());
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
@@ -278,7 +281,7 @@ TEST_CASE(CDBTickRenameOver) {
                   build_cdb_json({
                       {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
         }));
-        FileTracker tracker(project, store, tmp.root.str().str());
+        FileTracker tracker(project, store, CanonicalPath(tmp.root));
         llvm::sys::fs::file_status before;
         ASSERT_FALSE(
             static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
@@ -320,7 +323,7 @@ TEST_CASE(CDBDiscoverRetriesRegistered) {
     project.config.finalize(tmp.root.str());
     project.build.reset_active("");
     auto id = project.cdb.add_source(tmp.path("a/compile_commands.json"));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     auto main = project.file_table.intern(tmp.path("a/main.cpp"));
     EXPECT_TRUE(tracker.discover_around(main).empty());
 
@@ -334,6 +337,39 @@ TEST_CASE(CDBDiscoverRetriesRegistered) {
     EXPECT_TRUE(project.cdb.loaded(id));
     EXPECT_TRUE(tracker.discover_around(main).empty());
 }
+
+#ifndef _WIN32
+TEST_CASE(CDBTickFollowsRetarget) {
+    /// A database reached through a symlink: pointing the link at another
+    /// file is a change, though neither file was written.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("debug.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DDEBUG"}}
+    }));
+    tmp.touch("release.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DRELEASE"}}
+    }));
+    auto database = tmp.path("compile_commands.json");
+    ASSERT_EQ(::symlink(tmp.path("debug.json").c_str(), database.c_str()), 0);
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto id = project.cdb.add_source(database);
+    ASSERT_TRUE(project.cdb.load_source(id).has_value());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+
+    fs::remove(database);
+    ASSERT_EQ(::symlink(tmp.path("release.json").c_str(), database.c_str()), 0);
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    auto events = tracker.tick_cdb();
+    ASSERT_EQ(events.size(), 1u);
+    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
+}
+#endif
 
 TEST_CASE(CDBTickDiscoversAround) {
     /// Opening a file registers the databases above it up to the root, at
@@ -352,7 +388,7 @@ TEST_CASE(CDBTickDiscoversAround) {
               build_cdb_json({
                   {tmp.root, tmp.path("a/b/main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     auto main_id = project.file_table.intern(tmp.path("a/b/main.cpp"));
     auto other_id = project.file_table.intern(tmp.path("a/other.cpp"));
 
@@ -389,7 +425,7 @@ TEST_CASE(CDBTickPhantomReplacement) {
         {tmp.root, tmp.path("main.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, original);
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     auto main_id = project.file_table.intern(tmp.path("main.cpp"));
     auto other_id = project.file_table.intern(tmp.path("other.cpp"));
     auto root = *project.cdb.find_source(tmp.path("compile_commands.json"));
@@ -414,6 +450,138 @@ TEST_CASE(CDBTickPhantomReplacement) {
     EXPECT_FALSE(project.cdb.candidate_entries(other_id).empty());
 }
 
+TEST_CASE(CDBTickCoalescesSources) {
+    /// Two databases settling in one tick make one delta.
+    TempDir tmp;
+    tmp.touch("a/main.cpp", R"(int main() {})");
+    tmp.touch("b/other.cpp", R"(int other() {})");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    project.config.finalize(tmp.root.str());
+    project.build.reset_active("");
+    auto a = project.cdb.add_source(tmp.path("a/compile_commands.json"));
+    auto b = project.cdb.add_source(tmp.path("b/compile_commands.json"));
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    tmp.touch("a/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("a/main.cpp"), {}}
+    }));
+    tmp.touch("b/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("b/other.cpp"), {}}
+    }));
+    EXPECT_TRUE(tracker.tick_cdb().empty());
+    auto events = tracker.tick_cdb();
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].cdb.added.size(), 2u);
+    EXPECT_TRUE(project.cdb.loaded(a));
+    EXPECT_TRUE(project.cdb.loaded(b));
+}
+
+TEST_CASE(CDBRewriteBeforeWatch) {
+    /// A rewrite landing between the load and the watch is a change: the
+    /// baseline is the load's own read, not a stat taken afterwards.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
+    }));
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DLONGER"}}
+    }));
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    auto events = tracker.tick_cdb();
+    ASSERT_EQ(events.size(), 1u);
+    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+}
+
+TEST_CASE(CDBSameStampRewrite) {
+    /// A same-size rewrite in place within the mtime granularity of the
+    /// load leaves the stat untouched: the stat of a fresh load cannot
+    /// vouch for the bytes, so the ticks compare the content.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
+    }));
+    // An mtime not yet safely in the past, however long the load takes.
+    auto database = tmp.path("compile_commands.json");
+    auto stamp = std::chrono::system_clock::now() + std::chrono::hours(1);
+    set_mtime(database, stamp);
+    ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
+    }));
+    set_mtime(database, stamp);
+
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    auto events = tracker.tick_cdb();
+    ASSERT_EQ(events.size(), 1u);
+    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+}
+
+TEST_CASE(CDBTrustedStampQuiet) {
+    /// A stat safely in the past vouches for the bytes: the watcher reads
+    /// nothing while it holds, so a rewrite forging it goes unseen — the
+    /// stat polling's accepted blind spot.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
+    }));
+    auto database = tmp.path("compile_commands.json");
+    auto stamp = std::chrono::system_clock::now() - std::chrono::hours(1);
+    set_mtime(database, stamp);
+    ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
+    }));
+    set_mtime(database, stamp);
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+}
+
+/// One workspace sweep and the disk changes the file table saw during it.
+kota::task<llvm::SmallVector<FileEvent>> sweep(FileTracker& tracker, FileTable& files) {
+    auto events = co_await tracker.tick_workspace();
+    for(auto& event: take_disk_events(files)) {
+        events.push_back(event);
+    }
+    co_return events;
+}
+
 TEST_CASE(WorkspaceTickStateMachine) {
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
@@ -426,12 +594,11 @@ TEST_CASE(WorkspaceTickStateMachine) {
     auto header = project.file_table.intern(tmp.path("header.h"));
     project.dep_graph.set_includes(tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     auto body = [&]() -> kota::task<> {
-        // First sweep seeds the baseline silently, even though main.cpp is
-        // missing on disk.
-        auto seeded = co_await tracker.tick_workspace();
+        // A first look is no change, even for main.cpp missing on disk.
+        auto seeded = co_await sweep(tracker, files);
         EXPECT_TRUE(seeded.empty());
 
         // Content change is confirmed by hash and reported once. The new
@@ -440,7 +607,7 @@ TEST_CASE(WorkspaceTickStateMachine) {
         // the size change keeps the (mtime, size) fast path deterministic.
         // (ASSERT_* expands to `return` and cannot be used in coroutines.)
         tmp.touch("header.h", R"(int x = 2222;)");
-        auto changed = co_await tracker.tick_workspace();
+        auto changed = co_await sweep(tracker, files);
         EXPECT_EQ(changed.size(), 1u);
         if(changed.size() == 1) {
             EXPECT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
@@ -449,23 +616,23 @@ TEST_CASE(WorkspaceTickStateMachine) {
 
         // Touch: mtime may bump, identical bytes — silent either way.
         tmp.touch("header.h", R"(int x = 2222;)");
-        auto touched = co_await tracker.tick_workspace();
+        auto touched = co_await sweep(tracker, files);
         EXPECT_TRUE(touched.empty());
 
         // Removal reported once, then quiet while missing.
         fs::remove_all(tmp.path("header.h"));
-        auto removed = co_await tracker.tick_workspace();
+        auto removed = co_await sweep(tracker, files);
         EXPECT_EQ(removed.size(), 1u);
         if(removed.size() == 1) {
             EXPECT_EQ(removed[0].kind, FileEvent::Kind::DiskRemoved);
             EXPECT_EQ(removed[0].path_id, header);
         }
-        auto still_removed = co_await tracker.tick_workspace();
+        auto still_removed = co_await sweep(tracker, files);
         EXPECT_TRUE(still_removed.empty());
 
         // Reappearance counts as a disk change.
         tmp.touch("header.h", R"(int x = 3;)");
-        auto reborn = co_await tracker.tick_workspace();
+        auto reborn = co_await sweep(tracker, files);
         EXPECT_EQ(reborn.size(), 1u);
         if(reborn.size() == 1) {
             EXPECT_EQ(reborn[0].kind, FileEvent::Kind::DiskChanged);
@@ -495,15 +662,15 @@ TEST_CASE(WorkspaceTickKeepsListedMember) {
               build_cdb_json({
                   {tmp.root, tmp.path("src/both.cpp"), {}}
     }));
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
     auto both = project.file_table.intern(tmp.path("src/both.cpp"));
     project.dep_graph.set_includes(both, 0, {});
     project.dep_graph.build_reverse_map();
     auto body = [&]() -> kota::task<> {
-        auto seeded = co_await tracker.tick_workspace();
+        auto seeded = co_await sweep(tracker, files);
         EXPECT_TRUE(seeded.empty());
         fs::remove_all(tmp.path("src/both.cpp"));
-        auto removed = co_await tracker.tick_workspace();
+        auto removed = co_await sweep(tracker, files);
         EXPECT_EQ(removed.size(), 1u);
         if(removed.size() == 1) {
             EXPECT_EQ(removed[0].kind, FileEvent::Kind::DiskRemoved);
@@ -515,36 +682,10 @@ TEST_CASE(WorkspaceTickKeepsListedMember) {
     loop.run();
 }
 
-TEST_CASE(CDBTickCoalescesSources) {
-    /// Two databases settling in one tick make one delta.
-    TempDir tmp;
-    tmp.touch("a/main.cpp", R"(int main() {})");
-    tmp.touch("b/other.cpp", R"(int other() {})");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    project.config.finalize(tmp.root.str());
-    project.build.reset_active("");
-    auto a = project.cdb.add_source(tmp.path("a/compile_commands.json"));
-    auto b = project.cdb.add_source(tmp.path("b/compile_commands.json"));
-    FileTracker tracker(project, store, tmp.root.str().str());
-    tmp.touch("a/compile_commands.json",
-              build_cdb_json({
-                  {tmp.root, tmp.path("a/main.cpp"), {}}
-    }));
-    tmp.touch("b/compile_commands.json",
-              build_cdb_json({
-                  {tmp.root, tmp.path("b/other.cpp"), {}}
-    }));
-    EXPECT_TRUE(tracker.tick_cdb().empty());
-    auto events = tracker.tick_cdb();
-    ASSERT_EQ(events.size(), 1u);
-    EXPECT_EQ(events[0].cdb.added.size(), 2u);
-    EXPECT_TRUE(project.cdb.loaded(a));
-    EXPECT_TRUE(project.cdb.loaded(b));
-}
-
-TEST_CASE(WorkspaceTickSkipsOpen) {
+TEST_CASE(WorkspaceTickSeesOpen) {
+    /// A buffer shadows the disk for its own file's compile only: a disk
+    /// change under it is still a change for everything else, reported
+    /// while the file is open, once; a removal likewise.
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
 
@@ -556,201 +697,22 @@ TEST_CASE(WorkspaceTickSkipsOpen) {
     project.dep_graph.set_includes(header, 0, {});
     project.dep_graph.build_reverse_map();
     store.open(header);
-    FileTracker tracker(project, store, tmp.root.str().str());
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     auto body = [&]() -> kota::task<> {
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
+        EXPECT_TRUE((co_await sweep(tracker, files)).empty());
 
-        // The open buffer is the truth: its disk changes are not tracked.
-        tmp.touch("header.h", R"(int x = 2;)");
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
-    };
-    auto task = body();
-    loop.schedule(task);
-    loop.run();
-}
-
-TEST_CASE(CDBRewriteBeforeWatch) {
-    /// A rewrite landing between the load and the watch is a change: the
-    /// baseline is the load's own read, not a stat taken afterwards.
-    TempDir tmp;
-    tmp.touch("main.cpp", R"(int main() {})");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    write_cdb(tmp,
-              project.cdb,
-              build_cdb_json({
-                  {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
-    }));
-    tmp.touch("compile_commands.json",
-              build_cdb_json({
-                  {tmp.root, tmp.path("main.cpp"), {"-DLONGER"}}
-    }));
-    FileTracker tracker(project, store, tmp.root.str().str());
-
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-    auto events = tracker.tick_cdb();
-    ASSERT_EQ(events.size(), 1u);
-    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
-    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-}
-
-TEST_CASE(CDBSameStampRewrite) {
-    /// A same-size rewrite in place within the mtime granularity of the
-    /// load leaves the stamp untouched: the stat of a fresh load cannot
-    /// vouch for the bytes, so an ordinary tick compares the content.
-    TempDir tmp;
-    tmp.touch("main.cpp", R"(int main() {})");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    write_cdb(tmp,
-              project.cdb,
-              build_cdb_json({
-                  {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
-    }));
-    // An mtime not yet safely in the past, however long the load takes.
-    auto database = tmp.path("compile_commands.json");
-    auto stamp = std::chrono::system_clock::now() + std::chrono::hours(1);
-    set_mtime(database, stamp);
-    ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
-    FileTracker tracker(project, store, tmp.root.str().str());
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-
-    tmp.touch("compile_commands.json",
-              build_cdb_json({
-                  {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
-    }));
-    set_mtime(database, stamp);
-
-    auto events = tracker.tick_cdb();
-    ASSERT_EQ(events.size(), 1u);
-    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
-    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-}
-
-TEST_CASE(CDBTrustedStampQuiet) {
-    /// A stamp safely in the past vouches for the bytes: the watcher reads
-    /// nothing while it holds, so a rewrite forging it goes unseen — the
-    /// stat polling's accepted blind spot.
-    TempDir tmp;
-    tmp.touch("main.cpp", R"(int main() {})");
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    write_cdb(tmp,
-              project.cdb,
-              build_cdb_json({
-                  {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
-    }));
-    auto database = tmp.path("compile_commands.json");
-    auto stamp = std::chrono::system_clock::now() - std::chrono::hours(1);
-    set_mtime(database, stamp);
-    ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
-    FileTracker tracker(project, store, tmp.root.str().str());
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-
-    tmp.touch("compile_commands.json",
-              build_cdb_json({
-                  {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
-    }));
-    set_mtime(database, stamp);
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-}
-
-TEST_CASE(WorkspaceTickScannedBaseline) {
-    /// The first sweep judges a file the scan read against the scanned
-    /// content: a rewrite landing before that sweep is still a change,
-    /// while a file no scan read only seeds.
-    TempDir tmp;
-    tmp.touch("header.h", R"(int x = 1;)");
-
-    kota::event_loop loop;
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto tu = project.file_table.intern(tmp.path("main.cpp"));
-    auto header = project.file_table.intern(tmp.path("header.h"));
-    project.dep_graph.set_includes(tu, 0, {{header}});
-    project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 1;)"));
-    tmp.touch("header.h", R"(int x = 2222;)");
-    FileTracker tracker(project, store, tmp.root.str().str());
-
-    auto body = [&]() -> kota::task<> {
-        auto first = co_await tracker.tick_workspace();
-        EXPECT_EQ(first.size(), 1u);
-        if(first.size() == 1) {
-            EXPECT_EQ(first[0].kind, FileEvent::Kind::DiskChanged);
-            EXPECT_EQ(first[0].path_id, header);
+        tmp.touch("header.h", R"(int x = 2222;)");
+        auto changed = co_await sweep(tracker, files);
+        EXPECT_EQ(changed.size(), 1u);
+        if(changed.size() == 1) {
+            EXPECT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
+            EXPECT_EQ(changed[0].path_id, header);
         }
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
-    };
-    auto task = body();
-    loop.schedule(task);
-    loop.run();
-}
+        EXPECT_TRUE((co_await sweep(tracker, files)).empty());
 
-TEST_CASE(ReloadKeepsBaseline) {
-    /// A database reload rescans every file before the first sweep: the
-    /// baseline taken at construction still reports the change that landed
-    /// in between.
-    TempDir tmp;
-    tmp.touch("header.h", R"(int x = 1;)");
-
-    kota::event_loop loop;
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern(tmp.path("header.h"));
-    project.dep_graph.set_includes(header, 0, {});
-    project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 1;)"));
-    FileTracker tracker(project, store, tmp.root.str().str());
-    tmp.touch("header.h", R"(int x = 2222;)");
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 2222;)"));
-
-    auto body = [&]() -> kota::task<> {
-        auto first = co_await tracker.tick_workspace();
-        EXPECT_EQ(first.size(), 1u);
-        if(first.size() == 1) {
-            EXPECT_EQ(first[0].kind, FileEvent::Kind::DiskChanged);
-        }
-    };
-    auto task = body();
-    loop.schedule(task);
-    loop.run();
-}
-
-TEST_CASE(DeletedWhileOpenReported) {
-    /// Deleted while open, then closed: the sweep after the close reports
-    /// the removal, which BufferClosed leaves to it.
-    TempDir tmp;
-    tmp.touch("header.h", R"(int x = 1;)");
-
-    kota::event_loop loop;
-    FileTable files;
-    Project project{files};
-    SessionStore store;
-    auto header = project.file_table.intern(tmp.path("header.h"));
-    project.dep_graph.set_includes(header, 0, {});
-    project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 1;)"));
-    store.open(header);
-    FileTracker tracker(project, store, tmp.root.str().str());
-
-    auto body = [&]() -> kota::task<> {
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
         fs::remove_all(tmp.path("header.h"));
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
-
-        store.close(header);
-        auto removed = co_await tracker.tick_workspace();
+        auto removed = co_await sweep(tracker, files);
         EXPECT_EQ(removed.size(), 1u);
         if(removed.size() == 1) {
             EXPECT_EQ(removed[0].kind, FileEvent::Kind::DiskRemoved);
@@ -762,10 +724,9 @@ TEST_CASE(DeletedWhileOpenReported) {
     loop.run();
 }
 
-TEST_CASE(ChangedWhileOpenOnce) {
-    /// Changed on disk while open and closed without a cascade: the sweep
-    /// after the close reports it once. Had the close cascaded, its rescan
-    /// would have moved the scanned content, and nothing is reported.
+TEST_CASE(WorkspaceTickAfterScan) {
+    /// What the load's scan read is what the first sweep compares with: a
+    /// rewrite landing before that sweep is still a change.
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
 
@@ -776,39 +737,28 @@ TEST_CASE(ChangedWhileOpenOnce) {
     auto header = project.file_table.intern(tmp.path("header.h"));
     project.dep_graph.set_includes(header, 0, {});
     project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 1;)"));
-    store.open(header);
-    FileTracker tracker(project, store, tmp.root.str().str());
+    project.file_table.read(header);
+    tmp.touch("header.h", R"(int x = 2222;)");
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
 
     auto body = [&]() -> kota::task<> {
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
-        tmp.touch("header.h", R"(int x = 2222;)");
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
-
-        store.close(header);
-        auto changed = co_await tracker.tick_workspace();
-        EXPECT_EQ(changed.size(), 1u);
-        if(changed.size() == 1) {
-            EXPECT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
+        auto first = co_await sweep(tracker, files);
+        EXPECT_EQ(first.size(), 1u);
+        if(first.size() == 1) {
+            EXPECT_EQ(first[0].kind, FileEvent::Kind::DiskChanged);
+            EXPECT_EQ(first[0].path_id, header);
         }
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
-
-        // Reopened, changed, closed with a cascade: already accounted for.
-        store.open(header);
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
-        tmp.touch("header.h", R"(int x = 3;)");
-        store.close(header);
-        project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 3;)"));
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
+        EXPECT_TRUE((co_await sweep(tracker, files)).empty());
     };
     auto task = body();
     loop.schedule(task);
     loop.run();
 }
 
-TEST_CASE(SavedWhileOpenQuiet) {
-    /// A save rescans the file, which moves the scanned content: the sweep
-    /// after the close does not announce the save a second time.
+TEST_CASE(AnyLookReportsChange) {
+    /// Whoever reads the new bytes first — here a rescan, as a database
+    /// reload's graph rebuild does — reports the change; the sweep after
+    /// it has nothing left to report.
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
 
@@ -819,18 +769,18 @@ TEST_CASE(SavedWhileOpenQuiet) {
     auto header = project.file_table.intern(tmp.path("header.h"));
     project.dep_graph.set_includes(header, 0, {});
     project.dep_graph.build_reverse_map();
-    project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 1;)"));
-    store.open(header);
-    FileTracker tracker(project, store, tmp.root.str().str());
+    project.file_table.read(header);
+    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    tmp.touch("header.h", R"(int x = 2222;)");
+    project.rescan_disk_file(header);
 
     auto body = [&]() -> kota::task<> {
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
-        tmp.touch("header.h", R"(int x = 2222;)");
-        project.dep_graph.set_scanned_hash(header, llvm::xxh3_64bits(R"(int x = 2222;)"));
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
-
-        store.close(header);
-        EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
+        auto first = co_await sweep(tracker, files);
+        EXPECT_EQ(first.size(), 1u);
+        if(first.size() == 1) {
+            EXPECT_EQ(first[0].kind, FileEvent::Kind::DiskChanged);
+        }
+        EXPECT_TRUE((co_await sweep(tracker, files)).empty());
     };
     auto task = body();
     loop.schedule(task);

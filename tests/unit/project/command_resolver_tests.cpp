@@ -58,7 +58,7 @@ TEST_CASE(UnboundVerdictStaysLocal) {
     auto id = project.file_table.intern(path);
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext);
-    ASSERT_TRUE(resolver.header_mode(path, id) == HeaderMode::NeedsContext);
+    ASSERT_TRUE(resolver.header_mode(id) == HeaderMode::NeedsContext);
 
     std::vector<CacheModeEntry> slices;
     resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
@@ -67,7 +67,7 @@ TEST_CASE(UnboundVerdictStaysLocal) {
     CommandResolver restarted(project);
     slices.push_back({id.raw, static_cast<std::uint32_t>(HeaderMode::NeedsContext), 0});
     restarted.load_mode_slices(slices, [&](std::uint32_t) -> llvm::StringRef { return path; });
-    ASSERT_TRUE(restarted.header_mode(path, id) == HeaderMode::Unknown);
+    ASSERT_TRUE(restarted.header_mode(id) == HeaderMode::Unknown);
 }
 
 TEST_CASE(ModeSliceContentGate) {
@@ -93,12 +93,12 @@ TEST_CASE(ModeSliceContentGate) {
     };
     CommandResolver same_disk(project);
     same_disk.load_mode_slices(slices, resolve);
-    ASSERT_TRUE(same_disk.header_mode(path, id) == HeaderMode::NeedsContext);
+    ASSERT_TRUE(same_disk.header_mode(id) == HeaderMode::NeedsContext);
 
     tmp.touch("h.h", "int y;\n");
     CommandResolver edited(project);
     edited.load_mode_slices(slices, resolve);
-    ASSERT_TRUE(edited.header_mode(path, id) == HeaderMode::Unknown);
+    ASSERT_TRUE(edited.header_mode(id) == HeaderMode::Unknown);
 }
 
 TEST_CASE(VerdictPersistenceMarksDirty) {

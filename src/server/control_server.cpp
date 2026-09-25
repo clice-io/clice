@@ -76,7 +76,7 @@ void register_control(ProjectServer& srv, kota::ipc::JsonPeer& peer) {
             auto shard = srv.project.project_index.shards.find(file);
             auto disk = srv.project.file_table.current(file);
             bool current = shard != srv.project.project_index.shards.end() && disk &&
-                           shard->second.matches_content(disk->size, disk->hash);
+                           shard->second.content_hash() == disk->hash;
             if(!current) {
                 result.failed.emplace_back(srv.project.file_table.resolve(file));
             }

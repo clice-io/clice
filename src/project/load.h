@@ -28,7 +28,7 @@ struct BuildLoad {
 /// them. The project's configuration is final. The one loading path of
 /// the server, the batch driver and `clice inspect`.
 BuildLoad load_build(Project& project,
-                     llvm::StringRef root,
+                     CanonicalRef root,
                      llvm::StringRef configuration,
                      llvm::ArrayRef<std::string> nearby = {});
 
@@ -72,7 +72,7 @@ struct ProjectLoad {
 /// batch commands, which open no file.
 ProjectLoad load_project(Project& project,
                          IndexStore& store,
-                         llvm::StringRef root,
+                         CanonicalRef root,
                          llvm::StringRef requested_configuration,
                          bool read_only_index = false,
                          bool scan_tree = false);

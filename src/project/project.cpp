@@ -24,13 +24,6 @@
 
 namespace clice {
 
-bool Project::is_synthesized_artifact(llvm::StringRef path) const {
-    if(!store) {
-        return false;
-    }
-    return path.starts_with(path::join(store->base_dir(), header_context_ns));
-}
-
 std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
     auto chain = dep_graph.find_include_chain(host_id, target_id);
     if(chain.size() < 2) {
@@ -46,13 +39,13 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
         [](llvm::StringRef, bool, bool, llvm::StringRef) -> std::optional<std::string> {
         return std::nullopt;
     };
-    return count_include_occurrences((*buf)->getBuffer(),
+    return count_include_occurrences(without_bom((*buf)->getBuffer()),
                                      includer_path,
                                      target_path,
                                      null_resolver);
 }
 
-void Project::rescan_after_save(Fid path_id) {
+void Project::rescan_disk_file(Fid path_id) {
     auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
 
@@ -63,7 +56,6 @@ void Project::rescan_after_save(Fid path_id) {
     auto observed = read_file_observed(path.data());
     if(observed) {
         file_table.observe(path_id, observed->obs);
-        dep_graph.set_scanned_hash(path_id, observed->obs.hash);
         const auto& scan =
             file_table.scan_of(path_id, observed->obs.hash, observed->content->getBuffer());
 
@@ -73,7 +65,7 @@ void Project::rescan_after_save(Fid path_id) {
         // includes via the includer directory. Every command contributes
         // its own edges, as the startup scan does.
         Fid cmd_file = path_id;
-        llvm::StringRef cmd_path = path;
+        CanonicalRef cmd_path = path;
         std::optional<Lender> lender;
         if(!build.unit(path_id)) {
             if(auto host = default_host(*this, path_id)) {
@@ -291,12 +283,12 @@ bool defines_project(llvm::StringRef dir) {
     return configured(dir) || !discover_compile_commands(dir).empty();
 }
 
-std::string project_root_above(llvm::StringRef start) {
-    std::string found;
+CanonicalPath project_root_above(llvm::StringRef start) {
+    CanonicalPath found;
     path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
         if(configured(dir) || !database_in(dir).empty() ||
            !database_in(path::join(dir, "build")).empty()) {
-            found = dir.str();
+            found = CanonicalPath(dir);
             return false;
         }
         return true;
@@ -304,8 +296,8 @@ std::string project_root_above(llvm::StringRef start) {
     return found;
 }
 
-llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
-                                                      llvm::StringRef workspace_root) {
+llvm::SmallVector<std::string> compile_commands_above(CanonicalRef start,
+                                                      CanonicalRef workspace_root) {
     llvm::SmallVector<std::string> found;
     path::walk_ancestors(start, workspace_root, [&](llvm::StringRef dir) {
         if(auto database = database_in(dir); !database.empty()) {
@@ -320,8 +312,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
                                    llvm::ArrayRef<DepFile> deps,
                                    std::int64_t build_at) {
     // Files whose mtime falls within the guard of the build start count as
-    // "possibly modified during the build" and offer no fast-path
-    // baseline; one passing hash comparison repairs them (check_version).
+    // "possibly modified during the build".
     auto baseline_before_ns = fs::stat_baseline_before_ns(build_at);
 
     DepsSnapshot snap;
@@ -331,23 +322,33 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
         dep.path_id = files.intern(file.path);
         auto hash = file.hash;
 
+        // A place a failed lookup looked: the build saw nothing there,
+        // whatever is there by now. The file table watches it from here on;
+        // a file there is a change.
+        if(file.absent) {
+            dep.missing = true;
+            files.current(dep.path_id);
+            continue;
+        }
+
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(file.path, status)) {
-            // The build read it, but it is gone already: record the absence,
-            // reappearing counts as a change. Still-missing deliberately
-            // counts as unchanged — flagging it would rebuild on every
-            // check without ever converging, while the artifact is the
-            // last remaining truth for the file (and dependents' recovery
-            // is the DiskRemoved cascade's job, not this snapshot's).
+            // A file the build read that is gone already: record the
+            // absence, reappearing counts as a change. Still-missing
+            // deliberately counts as unchanged — flagging it would rebuild
+            // on every check without ever converging, while the artifact is
+            // the last remaining truth for the file (and dependents'
+            // recovery is the DiskRemoved cascade's job, not this
+            // snapshot's).
             dep.missing = true;
+            files.saw_missing(dep.path_id);
             continue;
         }
 
         auto size = status.getSize();
         auto mtime_ns = fs::mtime_ns(status);
-        bool untouched = mtime_ns <= baseline_before_ns;
         if(hash == 0) {
-            if(!untouched) {
+            if(mtime_ns > baseline_before_ns) {
                 // The worker could not hash the consumed bytes and the file
                 // may have changed during the build — no version can name
                 // them. The dep stays version-less and reads as changed
@@ -366,13 +367,6 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
         }
 
         dep.version = files.intern_version(dep.path_id, hash);
-        if(untouched) {
-            // Untouched since before the build started — the disk still
-            // holds the consumed bytes, so the stat is a trustworthy fast
-            // path (recorded only when corroborated, see try_stamp).
-            auto uid = status.getUniqueID();
-            files.try_stamp(dep.version, size, mtime_ns, uid.getDevice(), uid.getFile());
-        }
     }
     return snap;
 }
@@ -382,7 +376,7 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         if(dep.missing) {
             // Gone at build time: reappearing is the change; still-missing
             // stays unchanged (see the capture).
-            if(fs::exists(files.resolve(dep.path_id))) {
+            if(files.current(dep.path_id)) {
                 return true;
             }
             continue;
@@ -401,12 +395,6 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         }
     }
     return false;
-}
-
-void force_revalidate_deps(FileTable& files, const DepsSnapshot& snap) {
-    for(auto& dep: snap) {
-        files.force_revalidate(dep.path_id);
-    }
 }
 
 std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path) {

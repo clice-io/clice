@@ -73,6 +73,7 @@ std::unique_ptr<clang::CompilerInvocation>
         pp_opts.addRemappedFile(file, buffer.get());
     }
     self.remapped_buffers = std::move(params.buffers);
+    self.synthesized = std::move(params.synthesized);
 
     auto [pch, bound] = params.pch;
     pp_opts.ImplicitPCHInclude = std::move(pch);

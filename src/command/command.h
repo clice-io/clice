@@ -233,6 +233,12 @@ struct CompilationEntry {
     /// entries in configuration order, so this is the default-selection
     /// order within one source.
     std::uint32_t ordinal = 0;
+
+    /// How the database names the file when that is not its identity (a
+    /// symlinked source), empty otherwise: the build compiles it under that
+    /// name, which decides where its quoted includes look and what
+    /// `__FILE__` says.
+    llvm::StringRef spelling;
 };
 
 /// Render one structured argument back into argv fragments. Unknown args
@@ -318,11 +324,24 @@ public:
     /// Whether the source's last load succeeded, so its entries are current.
     bool loaded(SourceID id) const;
 
-    /// The read the source's current entries came from: its stat and the
-    /// hash of the bytes (see read_file_observed). A watcher compares the
-    /// disk against this, not against a stat taken after the load, which a
-    /// rewrite landing in between would already describe.
-    const DiskObservation& observation(SourceID id) const;
+    /// One file a load read: the database, or a response file its
+    /// commands name. `hash` names the bytes the entries were built from;
+    /// nullopt when the file could not be read.
+    struct LoadInput {
+        Fid file;
+        std::optional<std::uint64_t> hash;
+
+        friend bool operator==(const LoadInput&, const LoadInput&) = default;
+    };
+
+    /// What the source's current entries were built from: the database
+    /// first, then the response files (`@file`) its commands name, readable
+    /// or not — a change to one changes the commands as much as an edit of
+    /// the database itself. A source never loaded has only the database,
+    /// unread. A watcher compares the disk against these hashes, not
+    /// against a stat taken after the load, which a rewrite landing in
+    /// between would already describe.
+    llvm::ArrayRef<LoadInput> inputs(SourceID id) const;
 
     /// Whether the source's file exists on disk as last observed: set by a
     /// successful load, then maintained by the CDBWatcher's stats. A
@@ -330,11 +349,6 @@ public:
     /// to the present ones (see Build::source_order).
     bool present(SourceID id) const;
     void set_present(SourceID id, bool present);
-
-    /// The response files (`@file`) the source's commands name, readable
-    /// or not, as recorded by its last load: a change to one changes the
-    /// commands as much as an edit of the database itself.
-    llvm::ArrayRef<std::string> response_files(SourceID id) const;
 
     /// Register and load `path` in one step; the entry count on success.
     std::optional<std::size_t> load(llvm::StringRef path);
@@ -508,18 +522,21 @@ private:
         std::vector<CompilationEntry> entries;
         bool loaded = false;
         bool present = false;
-        std::vector<std::string> response_files;
-        DiskObservation observed;
+        std::vector<LoadInput> inputs;
     };
 
     std::vector<Source> source_files;
 
     /// The source being loaded, which records the response files its
-    /// commands expand; nullopt outside a load.
+    /// commands expand among its inputs; nullopt outside a load.
     std::optional<SourceID> loading;
 
     /// Every source's entries, sorted by (file, source, ordinal).
     std::vector<CompilationEntry> entry_list;
+
+    /// The path a command gives its input file as: a database's spelling
+    /// of it (CompilationEntry::spelling), else its identity.
+    llvm::StringRef input_path(Fid file) const;
 
     std::string workspace_root;
 

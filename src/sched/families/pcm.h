@@ -39,15 +39,17 @@ public:
 
     /// Re-validate on-disk PCM blobs and build the module dependencies of
     /// a request that compiles under `arguments` with `content` as the
-    /// main file (the forwarder's per-request builds — the scan must see
-    /// the buffer's imports under the request's command). Building a
-    /// dependency can itself evict another clean module's PCM under
-    /// budget pressure, which reopens the window the revalidation just
-    /// closed — hence the bounded retry until the set is stable.
+    /// main file and `synthesized` served from memory (the forwarder's
+    /// per-request builds — the scan must see the buffer's imports under
+    /// the request's command). Building a dependency can itself evict
+    /// another clean module's PCM under budget pressure, which reopens the
+    /// window the revalidation just closed — hence the bounded retry until
+    /// the set is stable.
     kota::task<bool> prepare_deps(Fid path_id,
                                   llvm::ArrayRef<const char*> arguments,
                                   llvm::StringRef directory,
                                   std::optional<llvm::StringRef> content,
+                                  const SynthesizedContext* synthesized,
                                   bool foreground);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
@@ -120,11 +122,14 @@ public:
     /// arguments the caller will compile with. The AST path uses it so a
     /// context choice or donated header host cannot diverge between the
     /// scan and the parse — the path_id flavor re-picks a CDB entry,
-    /// which is only right for whole-TU runs on real commands.
+    /// which is only right for whole-TU runs on real commands. The
+    /// header context the arguments name is served to the scan from
+    /// `synthesized`.
     ModuleDeps direct_deps(Fid path_id,
                            llvm::ArrayRef<const char*> arguments,
                            llvm::StringRef directory,
-                           std::optional<llvm::StringRef> content);
+                           std::optional<llvm::StringRef> content,
+                           const SynthesizedContext* synthesized = nullptr);
 
 private:
     /// Commit the scan's full edge set as the unit's durable edges (see

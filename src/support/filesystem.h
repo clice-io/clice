@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <compare>
+#include <concepts>
 #include <cstdint>
 #include <expected>
 #include <memory>
@@ -109,28 +111,203 @@ inline void canonicalize([[maybe_unused]] std::string& p) {
 #endif
 }
 
-/// `p` with the symlinks of its longest existing prefix resolved and the
-/// rest appended as spelled: two spellings of one directory compare equal
-/// whether it exists yet or not.
-inline std::string resolved(llvm::StringRef p) {
+}  // namespace path
+
+struct FileTable;
+class CanonicalPath;
+
+/// A path naming a file or directory by its identity, the way the file
+/// table does: the symlinks of its longest existing prefix resolved, the
+/// rest appended as spelled, `.`/`..` removed, canonically spelled. Two
+/// spellings of one file compare equal whether it exists yet or not. On
+/// Windows the canonical spelling alone is the identity: nothing is
+/// resolved, so neither case variants nor links through junctions merge.
+///
+/// Only resolution (CanonicalPath's constructor), the file table and the
+/// derivations below (parent(), and entry() on its caller's word) make
+/// one, and one never compares with a plain string: a spelling taken for
+/// an identity is a compile error. Either reads as a plain string wherever
+/// a spelling will do.
+class CanonicalRef {
+public:
+    CanonicalRef() = default;
+
+    operator llvm::StringRef() const {
+        return text;
+    }
+
+    /// For LLVM's file APIs; points into this object, so it lives for the
+    /// call it is passed to.
+    operator llvm::Twine() const {
+        return llvm::Twine(text);
+    }
+
+    explicit operator std::string() const {
+        return text.str();
+    }
+
+    std::string str() const {
+        return text.str();
+    }
+
+    /// Null-terminated.
+    const char* data() const {
+        return text.data();
+    }
+
+    std::size_t size() const {
+        return text.size();
+    }
+
+    bool empty() const {
+        return text.empty();
+    }
+
+    /// The directory holding it, itself an identity.
+    CanonicalPath parent() const;
+
+    /// A path a directory walk from here reached without following a
+    /// symlink, itself an identity: every component below this one is a
+    /// real directory entry.
+    CanonicalPath entry(llvm::StringRef path) const;
+
+private:
+    friend class CanonicalPath;
+    friend struct FileTable;
+
+    explicit CanonicalRef(llvm::StringRef text) : text(text) {}
+
+    llvm::StringRef text;
+};
+
+class CanonicalPath {
+public:
+    CanonicalPath() = default;
+
+    /// The identity of what `spelled` names.
+    explicit CanonicalPath(llvm::StringRef spelled);
+
+    CanonicalPath(CanonicalRef ref) : text(ref.str()) {}
+
+    operator CanonicalRef() const {
+        return CanonicalRef(text);
+    }
+
+    operator llvm::StringRef() const {
+        return text;
+    }
+
+    /// For LLVM's file APIs; points into this object, so it lives for the
+    /// call it is passed to.
+    operator llvm::Twine() const {
+        return llvm::Twine(text);
+    }
+
+    const std::string& str() const {
+        return text;
+    }
+
+    std::size_t size() const {
+        return text.size();
+    }
+
+    bool empty() const {
+        return text.empty();
+    }
+
+private:
+    friend class CanonicalRef;
+
+    struct Resolved {};
+
+    CanonicalPath(Resolved, llvm::StringRef text) : text(text) {}
+
+    std::string text;
+};
+
+/// An identity: a CanonicalRef, a CanonicalPath, or a type wrapping one
+/// by inheritance (a reflected configuration field).
+template <typename T>
+concept Canonical = std::same_as<T, CanonicalRef> || std::derived_from<T, CanonicalPath>;
+
+template <Canonical L, Canonical R>
+bool operator==(const L& lhs, const R& rhs) {
+    return llvm::StringRef(lhs) == llvm::StringRef(rhs);
+}
+
+template <Canonical L, Canonical R>
+std::strong_ordering operator<=>(const L& lhs, const R& rhs) {
+    return llvm::StringRef(lhs).compare(llvm::StringRef(rhs)) <=> 0;
+}
+
+/// An identity compares with an identity only.
+template <typename L, typename R>
+    requires (Canonical<L> != Canonical<R>)
+bool operator==(const L& lhs, const R& rhs) = delete;
+
+template <typename L, typename R>
+    requires (Canonical<L> != Canonical<R>)
+std::strong_ordering operator<=>(const L& lhs, const R& rhs) = delete;
+
+namespace path {
+
+/// Whether the identity `p` is `root` or lies under it.
+template <Canonical P, Canonical R>
+bool under(const P& p, const R& root) {
+    return under(llvm::StringRef(p), llvm::StringRef(root));
+}
+
+/// An identity lies under an identity only.
+template <typename P, typename R>
+    requires (Canonical<P> != Canonical<R>)
+bool under(const P& p, const R& root) = delete;
+
+}  // namespace path
+
+inline CanonicalPath CanonicalRef::parent() const {
+    return CanonicalPath(CanonicalPath::Resolved{}, path::parent_path(text));
+}
+
+inline CanonicalPath CanonicalRef::entry(llvm::StringRef path) const {
+    assert(path::under(path, text));
+    return CanonicalPath(CanonicalPath::Resolved{}, path);
+}
+
+inline CanonicalPath::CanonicalPath(llvm::StringRef spelled) {
+#ifdef _WIN32
+    llvm::SmallString<256> dotless(spelled);
+    path::remove_dots(dotless, /*remove_dot_dot=*/true);
+    text = std::string(dotless);
+    path::canonicalize(text);
+#else
     llvm::SmallString<256> real;
-    llvm::StringRef existing = p;
+    llvm::StringRef existing = spelled;
     while(llvm::sys::fs::real_path(existing, real)) {
-        auto parent = parent_path(existing);
+        auto parent = path::parent_path(existing);
         if(parent.empty() || parent.size() == existing.size()) {
-            return p.str();
+            text = spelled.str();
+            return;
         }
         existing = parent;
     }
-    real += p.drop_front(existing.size());
+    real += spelled.drop_front(existing.size());
     // The unresolved tail may still climb (`missing/../cache`).
-    remove_dots(real, /*remove_dot_dot=*/true);
-    std::string result(real);
-    canonicalize(result);
-    return result;
+    path::remove_dots(real, /*remove_dot_dot=*/true);
+    text = std::string(real);
+#endif
 }
 
-}  // namespace path
+}  // namespace clice
+
+template <clice::Canonical T>
+struct std::formatter<T> : std::formatter<llvm::StringRef> {
+    template <typename FormatContext>
+    auto format(const T& value, FormatContext& ctx) const {
+        return std::formatter<llvm::StringRef>::format(llvm::StringRef(value), ctx);
+    }
+};
+
+namespace clice {
 
 namespace fs {
 
@@ -260,28 +437,44 @@ inline std::error_code remove_all(llvm::StringRef target) {
 
 namespace vfs = llvm::vfs;
 
+/// A source file's text as every part of clice sees it: its bytes without
+/// a leading UTF-8 byte order mark — the text an editor shows and sends.
+/// Clang skips the mark as well, but would count it in every offset.
+inline llvm::StringRef without_bom(llvm::StringRef bytes) {
+    llvm::StringRef text = bytes;
+    text.consume_front("\xEF\xBB\xBF");
+    return text;
+}
+
 class ThreadSafeFS : public vfs::ProxyFileSystem {
 public:
     explicit ThreadSafeFS() : ProxyFileSystem(vfs::createPhysicalFileSystem()) {}
 
+    /// Serves its file's text (see without_bom), the size its status
+    /// reports agreeing with the bytes read, as clang checks.
     class VolatileFile : public vfs::File {
     public:
         explicit VolatileFile(std::unique_ptr<vfs::File> wrapped) : wrapped(std::move(wrapped)) {
             assert(this->wrapped);
         }
 
-        llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> getBuffer(const llvm::Twine& Name,
-                                                                     int64_t FileSize,
-                                                                     bool RequiresNullTerminator,
-                                                                     bool /*IsVolatile*/) override {
-            return wrapped->getBuffer(Name,
-                                      FileSize,
-                                      RequiresNullTerminator,
-                                      /*IsVolatile=*/true);
+        llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
+            getBuffer(const llvm::Twine& Name, int64_t, bool, bool) override {
+            if(auto error = load(Name)) {
+                return error;
+            }
+            return std::move(buffer);
         }
 
         llvm::ErrorOr<vfs::Status> status() override {
-            return wrapped->status();
+            auto status = wrapped->status();
+            if(!status || status->getType() != llvm::sys::fs::file_type::regular_file) {
+                return status;
+            }
+            if(auto error = load(status->getName())) {
+                return error;
+            }
+            return vfs::Status::copyWithNewSize(*status, buffer->getBufferSize());
         }
 
         llvm::ErrorOr<std::string> getName() override {
@@ -293,23 +486,73 @@ public:
         }
 
     private:
+        /// Read the whole file once, as a volatile snapshot, dropping the
+        /// mark.
+        std::error_code load(const llvm::Twine& name) {
+            if(buffer) {
+                return {};
+            }
+            auto read = wrapped->getBuffer(name, -1, true, /*IsVolatile=*/true);
+            if(!read) {
+                return read.getError();
+            }
+            buffer = std::move(*read);
+            auto text = without_bom(buffer->getBuffer());
+            if(text.size() != buffer->getBufferSize()) {
+                buffer = llvm::MemoryBuffer::getMemBufferCopy(text, buffer->getBufferIdentifier());
+            }
+            return {};
+        }
+
         std::unique_ptr<File> wrapped;
+        std::unique_ptr<llvm::MemoryBuffer> buffer;
     };
+
+    llvm::ErrorOr<vfs::Status> status(const llvm::Twine& path) override {
+        auto status = getUnderlyingFS().status(path);
+        if(!status || status->getType() != llvm::sys::fs::file_type::regular_file ||
+           status->getSize() < 3 || skips(status->getName())) {
+            return status;
+        }
+        llvm::SmallString<256> absolute;
+        path.toVector(absolute);
+        if(getUnderlyingFS().makeAbsolute(absolute) || !starts_with_bom(absolute)) {
+            return status;
+        }
+        return vfs::Status::copyWithNewSize(*status, status->getSize() - 3);
+    }
 
     llvm::ErrorOr<std::unique_ptr<vfs::File>> openFileForRead(const llvm::Twine& InPath) override {
         llvm::SmallString<128> Path;
         InPath.toVector(Path);
 
         auto file = getUnderlyingFS().openFileForRead(Path);
-        if(!file) {
-            return file;
-        }
-
-        llvm::StringRef filename = path::filename(Path);
-        if(filename.ends_with(".pch")) {
+        if(!file || skips(Path)) {
             return file;
         }
         return std::make_unique<VolatileFile>(std::move(*file));
+    }
+
+private:
+    /// Built artifacts are served as they are.
+    static bool skips(llvm::StringRef path) {
+        return path::filename(path).ends_with(".pch");
+    }
+
+    static bool starts_with_bom(llvm::StringRef path) {
+        auto fd = llvm::sys::fs::openNativeFileForRead(path);
+        if(!fd) {
+            llvm::consumeError(fd.takeError());
+            return false;
+        }
+        char head[3];
+        auto read = llvm::sys::fs::readNativeFile(*fd, head);
+        llvm::sys::fs::closeFile(*fd);
+        if(!read) {
+            llvm::consumeError(read.takeError());
+            return false;
+        }
+        return *read == 3 && without_bom(llvm::StringRef(head, 3)).empty();
     }
 };
 

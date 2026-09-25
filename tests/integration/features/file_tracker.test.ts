@@ -1,10 +1,11 @@
 /// File tracker: each test drives deterministic ticks through the
-/// clice/internal/poll hook (loops disabled). The first workspace tick
-/// judges scanned files against the bytes the scan read and seeds the stat
-/// baseline of the rest.
+/// clice/internal/poll hook (loops disabled). A workspace tick looks at
+/// every known file; a look finding other bytes than the one before — the
+/// scan's included — is a change.
 
 import * as fs from "node:fs";
 import {
+    locationsOf,
     MTIME_GRANULARITY,
     SETTLE_TIME,
     sleep,
@@ -181,6 +182,111 @@ test("checkout updates workspace", async ({ session }) => {
     ).toBe(true);
 });
 
+test("checkout under an open header", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("header.h", HEADER_V1);
+    workspace.write("closed.cpp", '#include "header.h"\nint use_target() { return TARGET(); }\n');
+    workspace.writeCDB(["closed.cpp"]);
+    await client.initialize(workspace);
+
+    const headerUri = workspace.uri("header.h");
+    const closedUri = workspace.uri("closed.cpp");
+    expect(await client.waitForReference(headerUri, 2, 11, closedUri)).toBe(true);
+    client.open("header.h");
+    expect(await eventsOf(client, "workspace")).toBe(0);
+
+    // The editor reloads a clean buffer after a checkout: didChange, no
+    // didSave. The buffer shadows the disk for the header's own compile
+    // only, so the closed includer sees the checkout while it stays open.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("header.h", HEADER_V2);
+    client.change(headerUri, 1, HEADER_V2);
+    expect(await eventsOf(client, "workspace")).toBe(1);
+    expect(
+        await client.waitForReference(headerUri, 3, 11, closedUri),
+        "closed TU was not reindexed while the header stayed open",
+    ).toBe(true);
+});
+
+test("macro include change reindexes", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("header.h", HEADER_V1);
+    workspace.write(
+        "closed.cpp",
+        '#define HEADER "header.h"\n#include HEADER\nint use_target() { return TARGET(); }\n',
+    );
+    workspace.writeCDB(["closed.cpp"]);
+    await client.initialize(workspace);
+
+    const headerUri = workspace.uri("header.h");
+    const closedUri = workspace.uri("closed.cpp");
+    expect(await client.waitForReference(headerUri, 2, 11, closedUri)).toBe(true);
+    expect(await eventsOf(client, "workspace")).toBe(0);
+
+    // Only the compile resolves the include: the header is watched and its
+    // includer found through what the indexed compile read.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("header.h", HEADER_V2);
+    expect(await eventsOf(client, "workspace")).toBe(1);
+    expect(
+        await client.waitForReference(headerUri, 3, 11, closedUri),
+        "the macro includer was not reindexed",
+    ).toBe(true);
+});
+
+test("created header reaches includers", async ({ session }) => {
+    // Where a failed include looked is watched: creating the header there
+    // recompiles the open includer and reindexes the closed one.
+    const { client, workspace } = session.tmp();
+    workspace.write("open.cpp", '#include "gen.h"\nint use_a() { return make(); }\n');
+    workspace.write("closed.cpp", '#include "gen.h"\nint use_b() { return make(); }\n');
+    workspace.writeCDB(["open.cpp", "closed.cpp"]);
+    await client.initialize(workspace);
+
+    const [openUri] = await client.openAndWait("open.cpp");
+    client.assertHasErrors(openUri, "gen.h does not exist yet");
+    expect(await client.waitForIndex(openUri, "use_b")).toBe(true);
+
+    workspace.write("gen.h", "int make();\n");
+    expect(await eventsOf(client, "workspace")).toBe(1);
+    await client.waitForRecompile(openUri);
+    client.assertNoErrors(openUri, "the open includer must find the new header");
+    expect(
+        await client.waitForReference(workspace.uri("gen.h"), 0, 4, workspace.uri("closed.cpp")),
+        "the closed includer was not reindexed",
+    ).toBe(true);
+});
+
+test("dependency change keeps buffer rows", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("h.h", "#pragma once\nextern int shared_sym;\n");
+    workspace.write("a.cpp", '#include "h.h"\nint use_a() { return shared_sym; }\n');
+    workspace.write("b.cpp", '#include "h.h"\nint use_b() { return shared_sym; }\n');
+    workspace.write("c.cpp", "int shared_sym = 1;\n");
+    workspace.writeCDB(["a.cpp", "b.cpp", "c.cpp"]);
+    await client.initialize(workspace);
+
+    const [aUri] = await client.openAndWait("a.cpp");
+    expect(await client.waitForIndex(aUri, "use_b")).toBe(true);
+    const [bUri] = await client.openAndWait("b.cpp");
+    const compiled = client.armDiagnostics(bUri);
+    client.change(bUri, 1, '#include "h.h"\nint use_b() { return shared_sym; }\n// unsaved\n');
+    await client.hoverAt(bUri, 1, 22);
+    await compiled;
+    const bSites = async () =>
+        locationsOf(await client.referencesAt(aUri, 1, 22)).filter((l) => l.uri.endsWith("/b.cpp"))
+            .length;
+    expect(await bSites()).toBe(1);
+
+    // The header moves on disk: b.cpp's compile is stale, its buffer is
+    // not, so the rows it compiled from these very bytes keep serving.
+    expect(await eventsOf(client, "workspace")).toBe(0);
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("h.h", "#pragma once\n// moved\nextern int shared_sym;\n");
+    expect(await eventsOf(client, "workspace")).toBe(1);
+    expect(await bSites(), "an edited buffer's rows vanished on a dependency change").toBe(1);
+});
+
 test("touch emits no events", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("header.h", HEADER_V1);
@@ -281,20 +387,21 @@ test("rewrite before first sweep reported", async ({ session }) => {
     ).toBe(true);
 });
 
-test("delete while open reported on close", async ({ session }) => {
+test("delete while open reported", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("header.h", HEADER_V1);
     workspace.write("main.cpp", '#include "header.h"\nint main() { return VALUE; }\n');
     workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
+    // A buffer shadows the disk for its own file's compile only: the
+    // removal is main.cpp's news while the header is still open.
     const [header] = client.open("header.h");
     expect(await eventsOf(client, "workspace")).toBe(0);
     workspace.rm("header.h");
-    expect(await eventsOf(client, "workspace"), "an open file's disk is not reported").toBe(0);
+    expect(await eventsOf(client, "workspace"), "an open file's removal is reported").toBe(1);
     client.close(header);
-    expect(await eventsOf(client, "workspace"), "the close hands the removal to the sweep").toBe(1);
-    expect(await eventsOf(client, "workspace")).toBe(0);
+    expect(await eventsOf(client, "workspace"), "reported once").toBe(0);
 });
 
 test("unchanged save no recompile", async ({ session }) => {
@@ -352,6 +459,8 @@ test("same stamp cdb rewrite applied", async ({ session }) => {
     expect(after.size).toBe(before.size);
     expect(after.mtimeNs).toBe(before.mtimeNs);
 
+    // The new content settles like any rewrite: seen on two polls.
+    expect(await eventsOf(client, "cdb", stamped)).toBe(0);
     expect(await eventsOf(client, "cdb", stamped)).toBe(1);
     await client.waitForRecompile(main);
     client.assertNoErrors(main, "the rewritten flag must reach the open file");

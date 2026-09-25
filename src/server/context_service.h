@@ -36,11 +36,10 @@ struct ContextService {
 
     /// The compilation contexts this project offers a file (clice/queryContext):
     /// its host sources and the file's own CDB configurations.
-    std::vector<ext::ContextItem> contexts(llvm::StringRef path, Fid path_id);
+    std::vector<ext::ContextItem> contexts(Fid path_id);
 
     /// clice/currentContext: describe the file's currently active context.
-    ext::CurrentContextResult current_context(llvm::StringRef path,
-                                              const Session* session,
+    ext::CurrentContextResult current_context(const Session* session,
                                               const ext::CurrentContextParams& params);
 
     /// clice/switchContext: pin a host source or CDB entry as the file's
@@ -50,10 +49,8 @@ struct ContextService {
     /// dirty and awaits the write pipeline's ticket. Sessions without a
     /// writable database (read-only, caching disabled, open failure) apply
     /// the choice in memory and acknowledge immediately.
-    kota::task<ext::SwitchContextResult> switch_context(llvm::StringRef path,
-                                                        Fid path_id,
+    kota::task<ext::SwitchContextResult> switch_context(Fid path_id,
                                                         Session* session,
-                                                        llvm::StringRef context_path,
                                                         Fid context_path_id,
                                                         const ext::SwitchContextParams& params);
 

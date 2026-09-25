@@ -1,3 +1,7 @@
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "support/filesystem.h"
@@ -5,6 +9,7 @@
 #include "vfs/file_table.h"
 
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 
@@ -113,72 +118,10 @@ TEST_CASE(RenameSaveRebinds) {
             .has_value());
 }
 
-TEST_CASE(RevalidateClearsAliasStamps) {
-    // force_revalidate through one spelling must clear the version stamps
-    // of a hardlinked twin: its stamp would otherwise vouch for a
-    // same-stat edit before the erased entity pair is ever consulted.
-    TempDir tmp;
-    tmp.touch("a.h", "int shared();\n");
-    auto a = tmp.path("a.h");
-    auto b = tmp.path("b.h");
-    ASSERT_FALSE(bool(llvm::sys::fs::create_hard_link(a, b)));
-    age(a);
-
-    FileTable pool;
-    auto a_id = pool.intern(a);
-    auto b_id = pool.intern(b);
-    ASSERT_TRUE(pool.read(a_id).has_value());
-    auto read = pool.read(b_id);
-    ASSERT_TRUE(read.has_value());
-    auto vid = pool.intern_version(b_id, read->hash);
-    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device, read->uid_file);
-    ASSERT_TRUE(pool.version(vid).mtime_ns != 0);
-
-    pool.force_revalidate(a_id);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
-}
-
-TEST_CASE(RevocationStopsAdoption) {
-    // A hole left by a revocation looks like one never stamped; stamps a
-    // project persisted before must not refill it.
-    FileTable pool;
-    auto file = pool.intern("/proj/a.h");
-    auto vid = pool.intern_version(file, 0x1);
-    pool.adopt_stamp(vid, 10, 100);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 100);
-
-    pool.force_revalidate(file);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
-    pool.adopt_stamp(vid, 10, 100);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
-}
-
-TEST_CASE(StampNeedsLiveIdentity) {
-    // A stamp corroborates only through the identity the pair was earned
-    // under: a stat carrying a different UniqueID (same-stat replace)
-    // must decline even when size and mtime match the pair.
-    TempDir tmp;
-    tmp.touch("f.h", "int v1();\n");
-    auto f = tmp.path("f.h");
-    age(f);
-
-    FileTable pool;
-    auto fid = pool.intern(f);
-    auto read = pool.read(fid);
-    ASSERT_TRUE(read.has_value());
-    auto vid = pool.intern_version(fid, read->hash);
-
-    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device + 1, read->uid_file + 1);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
-
-    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device, read->uid_file);
-    ASSERT_TRUE(pool.version(vid).mtime_ns != 0);
-}
-
 TEST_CASE(FastPathChecksIdentity) {
-    // A stamped version's stat fast path must not survive a rename-over
-    // that forges the same size and mtime: the inode changed, and the
-    // session knows this fid's identity.
+    // The file's stat fast path must not survive a rename-over that
+    // forges the same size and mtime: the inode changed, and the session
+    // knows this fid's identity.
     TempDir tmp;
     tmp.touch("f.h", "int v1();\n");
     auto f = tmp.path("f.h");
@@ -189,8 +132,8 @@ TEST_CASE(FastPathChecksIdentity) {
     auto read = pool.read(fid);
     ASSERT_TRUE(read.has_value());
     auto vid = pool.intern_version(fid, read->hash);
-    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device, read->uid_file);
-    ASSERT_TRUE(pool.version(vid).mtime_ns != 0);
+    ASSERT_TRUE(pool.cached_hash(fid, read->size, read->mtime_ns, read->uid_device, read->uid_file)
+                    .has_value());
 
     tmp.touch("f.h.tmp", "int v2();\n");
     ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
@@ -199,12 +142,57 @@ TEST_CASE(FastPathChecksIdentity) {
     auto wave = pool.wave();
     ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Stale);
 }
+
+TEST_CASE(SymlinkShownAsSpelled) {
+    // A file is its resolved path; results name it the way the user does:
+    // the open document's spelling, else the workspace root's.
+    TempDir tmp;
+    tmp.touch("real/a.h", "");
+    ASSERT_EQ(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()), 0);
+    auto real = CanonicalPath(tmp.path("real/a.h"));
+    auto link = tmp.path("link/a.h");
+
+    FileTable pool;
+    auto fid = pool.intern(link);
+    ASSERT_EQ(pool.intern(real), fid);
+    ASSERT_EQ(pool.resolve(fid), real);
+    ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
+
+    pool.spell_root(tmp.path("link"));
+    ASSERT_EQ(pool.display(fid), link);
+
+    pool.show_as(fid, real);
+    ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
+    pool.unshow(fid);
+    ASSERT_EQ(pool.display(fid), link);
+
+    pool.unspell_root(tmp.path("link"));
+    ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
+}
+
+TEST_CASE(PairNeedsLiveIdentity) {
+    // The shared pair answers only through the identity it was earned
+    // under: a stat carrying another UniqueID (a same-stat replace) must
+    // read, even when size and mtime match.
+    TempDir tmp;
+    tmp.touch("f.h", "int v1();\n");
+    auto f = tmp.path("f.h");
+    age(f);
+
+    FileTable pool;
+    auto fid = pool.intern(f);
+    auto read = pool.read(fid);
+    ASSERT_TRUE(read.has_value());
+    ASSERT_FALSE(
+        pool.cached_hash(fid, read->size, read->mtime_ns, read->uid_device + 1, read->uid_file + 1)
+            .has_value());
+}
 #endif
 
-TEST_CASE(FreshReadCannotStamp) {
+TEST_CASE(FreshReadNotVouched) {
     // A check that reads a just-written file gets the right verdict but
-    // must not stamp the version: on a coarse-mtime filesystem a same-tick
-    // write could later forge the stamped stat.
+    // must not keep the stat as the fast path: on a coarse-mtime
+    // filesystem a same-tick write could later forge it.
     TempDir tmp;
     tmp.touch("f.h", "int fresh();\n");
     auto f = tmp.path("f.h");
@@ -217,7 +205,37 @@ TEST_CASE(FreshReadCannotStamp) {
 
     auto wave = pool.wave();
     ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Fresh);
-    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
+    ASSERT_FALSE(pool.cached_hash(fid, read->size, read->mtime_ns, read->uid_device, read->uid_file)
+                     .has_value());
+}
+
+TEST_CASE(ReadDropsBom) {
+    // A file saved with a UTF-8 byte order mark reads as the text an editor
+    // sends: both sides of every buffer-versus-disk comparison agree.
+    TempDir tmp;
+    tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
+    auto observed = read_file_observed(tmp.path("bom.h").c_str());
+    ASSERT_TRUE(observed.has_value());
+    ASSERT_EQ(observed->content->getBuffer(), "int x;\n");
+    ASSERT_EQ(observed->obs.hash, llvm::xxh3_64bits("int x;\n"));
+}
+
+TEST_CASE(CompileFSDropsBom) {
+    // The compile's file system serves the same text, its stat agreeing on
+    // the size as clang checks.
+    TempDir tmp;
+    tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
+    auto path = tmp.path("bom.h");
+    ThreadSafeFS vfs;
+    auto status = vfs.status(path);
+    ASSERT_TRUE(bool(status));
+    ASSERT_EQ(status->getSize(), 7u);
+    auto file = vfs.openFileForRead(path);
+    ASSERT_TRUE(bool(file));
+    auto buffer = (*file)->getBuffer(path, -1, true, false);
+    ASSERT_TRUE(bool(buffer));
+    ASSERT_EQ((*buffer)->getBuffer(), "int x;\n");
+    ASSERT_EQ((*file)->status()->getSize(), 7u);
 }
 
 TEST_CASE(ListingSeesNewFile) {
@@ -302,7 +320,7 @@ TEST_CASE(WindowsSpellingsCollapse) {
     // and compiles fall back to guessed commands.
     FileTable pool;
     EXPECT_EQ(pool.intern("c:/a/b.h"), pool.intern(R"(C:\a\b.h)"));
-    EXPECT_EQ(pool.resolve(pool.intern("C:/a/b.h")), "c:/a/b.h");
+    EXPECT_EQ(pool.resolve(pool.intern("C:/a/b.h")).str(), "c:/a/b.h");
     EXPECT_EQ(pool.find(R"(c:\a\b.h)"), pool.find("C:/a/b.h"));
 }
 #else
@@ -313,7 +331,7 @@ TEST_CASE(PosixBytesPreserved) {
     EXPECT_NE(pool.intern(R"(a\b)"), pool.intern("a/b"));
     EXPECT_NE(pool.intern("C:/x.h"), pool.intern("c:/x.h"));
     EXPECT_NE(pool.intern("/c/x.h"), pool.intern("/C/x.h"));
-    EXPECT_EQ(pool.resolve(pool.intern(R"(a\b)")), R"(a\b)");
+    EXPECT_EQ(pool.resolve(pool.intern(R"(a\b)")).str(), R"(a\b)");
 }
 #endif
 

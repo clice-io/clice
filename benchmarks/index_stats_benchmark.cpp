@@ -1081,7 +1081,7 @@ int main(int argc, const char** argv) {
     std::vector<llvm::StringRef> files;
     llvm::StringSet<> seen_files;
     for(auto& entry: cdb.entries()) {
-        auto path = cdb.files().resolve(entry.file);
+        llvm::StringRef path = cdb.files().resolve(entry.file);
         if(opts.filter.has_value() && !path.contains(*opts.filter)) {
             continue;
         }

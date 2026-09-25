@@ -212,7 +212,7 @@ Reply answer(Project& project,
              const QueryOptions& opts,
              llvm::ArrayRef<std::string> failed,
              llvm::ArrayRef<Fid> dropped) {
-    index::DiskGate gate(project.project_index, project.file_table);
+    index::FreshnessGate gate(project.file_table, {.check_disk = true});
     index::IndexQuery index_query(project.project_index, project.file_table, &gate, nullptr);
     query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
 
@@ -230,12 +230,12 @@ Reply answer(Project& project,
     auto emit = [&](auto outcome) {
         std::vector<std::string> stale;
         for(auto file: gate.withheld()) {
-            stale.emplace_back(project.file_table.resolve(file));
+            stale.emplace_back(project.file_table.display(file));
         }
         stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
         stale.insert(stale.end(), failed.begin(), failed.end());
         for(auto unit: dropped) {
-            stale.emplace_back(project.file_table.resolve(unit));
+            stale.emplace_back(project.file_table.display(unit));
         }
         std::ranges::sort(stale);
         auto duplicates = std::ranges::unique(stale);
@@ -302,7 +302,7 @@ Reply answer(Project& project,
 /// gate, so only units whose inputs changed are recompiled — and an
 /// absent index gets built from nothing. Returns the units that failed
 /// to index.
-std::expected<std::vector<std::string>, std::string> refresh(llvm::StringRef root,
+std::expected<std::vector<std::string>, std::string> refresh(CanonicalRef root,
                                                              llvm::StringRef configuration,
                                                              const char* self_path) {
     auto config = Config::load_from_workspace(root);
@@ -334,7 +334,7 @@ std::expected<std::vector<std::string>, std::string> refresh(llvm::StringRef roo
                      progress.failed);
     };
     auto result = run_batch_index({
-        .root = root.str(),
+        .root = root,
         .configuration = configuration.str(),
         .self_path = self_path,
         .on_progress = report_progress,
@@ -357,7 +357,8 @@ int run_query(const QueryOptions& opts, const char* self_path) {
                                                    : std::format("unknown method '{}'", method)});
         return 1;
     }
-    auto root = workspace_root(opts.workspace.value_or(""));
+    auto spelling = workspace_spelling(opts.workspace.value_or(""));
+    CanonicalPath root(spelling);
     auto configuration = opts.configuration.value_or("");
     std::vector<std::string> failed;
     if(opts.fresh) {
@@ -372,6 +373,8 @@ int run_query(const QueryOptions& opts, const char* self_path) {
     // writer's load restores; the index questions bind the tables in
     // place and touch nothing else.
     FileTable files;
+    // Answers name files under the workspace as the command line does.
+    files.spell_root(spelling);
     Project project{files};
     CommandResolver commands{project};
     ContextsBlob saved;

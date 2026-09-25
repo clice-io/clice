@@ -3,7 +3,6 @@
 #include "index/query.h"
 #include "project/project.h"
 #include "sched/families/pch.h"
-#include "sched/index/pump.h"
 #include "server/ast_projection.h"
 #include "server/session_store.h"
 
@@ -26,13 +25,16 @@ public:
     void each_session_index(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
     void each_preamble(llvm::function_ref<bool(const index::RowSource&)> visit) const override;
     void each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
-    bool excluded(llvm::StringRef path) const override;
     std::shared_ptr<index::TUIndex> preamble_blob(Fid file) const override;
 
 private:
     /// The overlay envelope of an open buffer's PCH, or null when it has
     /// no PCH or the envelope is unreadable.
     std::shared_ptr<index::TUIndex> overlay_of(Fid file) const;
+
+    /// The open buffer's own file index when its rows describe the buffer:
+    /// the compile is current, or it compiled these very bytes.
+    const index::Shard* session_rows(Fid file, const Session& session) const;
 
     index::RowSource buffer_source(index::RowSource::Kind kind,
                                    Fid file,
@@ -43,24 +45,6 @@ private:
     PCHFamily& pch;
     const SessionStore& sessions;
     const ASTProjectionTable& projections;
-};
-
-/// Freshness clause 2 as the indexer sees it: a file whose own content
-/// changed contributes nothing until its reindex lands. With background
-/// indexing disabled nothing ever catches up, so the last-known rows keep
-/// serving instead of leaving a permanent hole.
-class PumpGate final : public index::FreshnessGate {
-public:
-    PumpGate(const IndexPump& pump, const Config& config) : pump(pump), config(config) {}
-
-    bool withhold(Fid file) const override {
-        return config.project.enable_indexing.value &&
-               pump.pending_reason(file) == ReindexReason::ContentChanged;
-    }
-
-private:
-    const IndexPump& pump;
-    const Config& config;
 };
 
 }  // namespace clice

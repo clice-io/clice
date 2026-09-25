@@ -90,6 +90,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         landed[path_id] = {.verdict = Verdict::Skipped};
         co_return RoundOutcome::Stale;
     }
+    if(resolved.synthesized) {
+        params.synthesized = resolved.synthesized->files;
+    }
 
     // A module interface unit waits on its own PCM node — that round
     // builds the transitive imports and registers their artifacts. An
@@ -125,7 +128,11 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             for(auto& arg: params.arguments) {
                 argv.push_back(arg.c_str());
             }
-            auto scanned = pcm.direct_deps(path_id, argv, params.directory, std::nullopt);
+            auto scanned = pcm.direct_deps(path_id,
+                                           argv,
+                                           params.directory,
+                                           std::nullopt,
+                                           resolved.synthesized.get());
             llvm::append_range(deps.resolved, scanned.resolved);
             llvm::append_range(deps.declared, scanned.declared);
         }
@@ -187,15 +194,6 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             if(guards.superseded && guards.superseded()) {
                 LOG_INFO("Discarding superseded index result for {}", file_path);
                 landed[path_id] = {.verdict = Verdict::Skipped};
-                co_return RoundOutcome::Stale;
-            }
-            // Landing-time admission: the serving side re-arbitrates before
-            // the merge lands — a session opened or diverged mid-flight
-            // vetoes the rows exactly as it would have at dispatch.
-            auto landing = guards.landing ? guards.landing() : Admission::Admit;
-            if(landing != Admission::Admit) {
-                LOG_INFO("Serving side vetoed the index result for {}", file_path);
-                landed[path_id] = {.verdict = Verdict::Skipped, .landing = landing};
                 co_return RoundOutcome::Stale;
             }
             ScopedTimer merge_timer;

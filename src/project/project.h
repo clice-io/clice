@@ -22,6 +22,7 @@
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
 #include "syntax/dependency_graph.h"
+#include "syntax/preamble_synthesis.h"
 #include "vfs/file_table.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -35,18 +36,18 @@ namespace clice {
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 11;
+constexpr inline std::uint32_t cache_format_version = 12;
 
 /// One dependency of a compilation artifact.
 ///
 /// `version` names the FileVersion the build actually consumed (interned
-/// from the worker-reported content hash) — the stat fast path and the
-/// two-layer freshness test live on the shared version, paid once per
+/// from the worker-reported content hash); its check is paid once per
 /// wave for every artifact and TU referencing it (FileTable::
 /// check_version). An invalid version means the build saw no nameable
-/// bytes: `missing` distinguishes "the file was absent" (reappearing is
-/// the change) from "the bytes could not be hashed" (stale until a
-/// rebuild's capture converges).
+/// bytes: `missing` distinguishes "the file was absent" — a place a failed
+/// lookup looked, or a file gone by the capture — (appearing is the
+/// change) from "the bytes could not be hashed" (stale until a rebuild's
+/// capture converges).
 struct DepState {
     Fid path_id;
     VersionID version;
@@ -57,35 +58,16 @@ struct DepState {
 /// header preambles): the consumed versions, checked via deps_changed.
 using DepsSnapshot = llvm::SmallVector<DepState>;
 
-/// Drop every trust anchor of the snapshot's files so the next check
-/// re-validates each dependency by a real read (the versions stay: they
-/// describe what the artifact was built from). Used when embedded copies
-/// of dependency content may disagree with the files themselves.
-/// Shared-level on purpose: the anchors live on the versions, so other
-/// consumers of a forced file pay one re-read too.
-void force_revalidate_deps(FileTable& files, const DepsSnapshot& snap);
-
 /// Context for compiling a header file that lacks its own CDB entry.
-/// The cache-store namespace of synthesized header-context files
-/// (preamble, suffix and self snapshot): content-addressed blobs, so a
-/// header reopened in a later session finds its preamble — and the PCH
-/// keyed on the preamble's path — intact.
-constexpr inline llvm::StringLiteral header_context_ns = "header_context";
-
 struct HeaderContext {
-    Fid host_path_id;             ///< Source file acting as host.
-    std::string preamble_path;    ///< Path to generated preamble file on disk.
-    std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
+    Fid host_path_id;  ///< Source file acting as host.
 
-    /// Path to the generated suffix file (content after the include
-    /// position along the chain), appended to the header's buffer as one
-    /// trailing #include line. Empty when the suffix is empty.
-    std::string suffix_path;
-
-    /// Path to the disk snapshot of the header itself, which the prefix
-    /// includes in place of the header's other occurrences along the
-    /// chain. Empty when the header could not be read.
-    std::string snapshot_path;
+    /// The includer context synthesized for the header, served to its
+    /// compiles from memory; null on the self-contained route, which
+    /// borrows the host's command alone. Content-addressed: equal chain
+    /// text gives equal paths, so the PCH keyed on the -include path
+    /// survives a reopen.
+    std::shared_ptr<const SynthesizedContext> synthesized;
 
     /// Which include of this header in its direct includer produced the
     /// preamble (0-based, in directive order).
@@ -100,11 +82,12 @@ struct HeaderContext {
     std::string host_base_hash;
 
     /// Include chain from host to the target's direct includer (excludes the
-    /// target itself). The synthesized preamble embeds these files' content,
+    /// target itself). The synthesized context embeds these files' content,
     /// so clang never opens them — staleness must be tracked here.
     llvm::SmallVector<Fid> chain;
 
-    /// Staleness snapshot over the chain files (mtime + content hash).
+    /// The versions of the chain files (and the header's snapshot) the
+    /// synthesis read.
     DepsSnapshot deps;
 };
 
@@ -195,7 +178,7 @@ struct PCMState {
 /// Project is NEVER modified by unsaved buffer content.  The only mutation
 /// paths are:
 ///   - Initialization  (load_project at startup)
-///   - didSave         (rescan_after_save: rescan disk, cascade invalidation)
+///   - A disk change   (rescan_disk_file: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
 struct Project {
     explicit Project(FileTable& file_table) : file_table(file_table) {}
@@ -267,25 +250,18 @@ struct Project {
     /// What a file without a command can borrow (see command_lender).
     LenderIndex lenders;
 
-    /// Whether `path` is one of our own synthesized context artifacts
-    /// (prefix/suffix/self-snapshot files under the cache directory). A
-    /// user can open these for debugging; they must never go through
-    /// header-context resolution themselves — a synthesized file deriving
-    /// context from other synthesized files would chain junk state.
-    bool is_synthesized_artifact(llvm::StringRef path) const;
-
     /// How many times the direct includer on host->target's chain includes
     /// the target. Spelling-based (no search-path resolution): multiple
     /// inclusions of one header always share a spelling, and synthesis
     /// validates the real occurrence anyway.
     std::uint32_t count_occurrences(Fid host_id, Fid target_id) const;
 
-    /// Rescan a file after it was saved to disk, from one read: refresh
+    /// Rescan a file whose disk content changed, from one read: refresh
     /// its include edges (so host lookups and context queries see includes
-    /// the save added or removed), its scanned hash and its module
-    /// declaration. The module-graph cascade is the invalidator's job
+    /// the change added or removed) and its module declaration. The
+    /// module-graph cascade is the invalidator's job
     /// (PCMFamily::invalidate).
-    void rescan_after_save(Fid path_id);
+    void rescan_disk_file(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a
     /// replacement provider would otherwise sit behind it and never be
@@ -357,31 +333,27 @@ bool defines_project(llvm::StringRef dir);
 /// or a compile_commands.json, directly or in its build/ directory: the
 /// root of the project a file outside every served folder belongs to.
 /// Empty when no ancestor has either.
-std::string project_root_above(llvm::StringRef start);
+CanonicalPath project_root_above(llvm::StringRef start);
 
 /// The `compile_commands.json` files in `start` and its ancestors up to
 /// `workspace_root`, nearest first: the databases a file deeper in the
 /// tree than startup discovery looks may compile from.
-llvm::SmallVector<std::string> compile_commands_above(llvm::StringRef start,
-                                                      llvm::StringRef workspace_root);
+llvm::SmallVector<std::string> compile_commands_above(CanonicalRef start,
+                                                      CanonicalRef workspace_root);
 
 /// Capture a staleness snapshot from a build's reported inputs, interning
 /// the consumed versions into the shared table.
 ///
 /// `deps` carries the consumed-content hashes the worker computed at build
 /// time; `build_at` is milliseconds since epoch, sampled before the build
-/// started. Each dependency is stat'ed once: a file untouched since
-/// `build_at` offers its stat as the version's fast-path baseline
-/// (recorded only when corroborated, see FileTable::try_stamp), a file
-/// modified during or after the build offers none — the next check must
-/// prove the disk still matches the consumed hash before trusting (and
-/// repairing) the stat.
+/// started. A dependency the worker could not hash takes its hash from
+/// the disk only when the file is untouched since `build_at`.
 DepsSnapshot capture_deps_snapshot(FileTable& files,
                                    llvm::ArrayRef<DepFile> deps,
                                    std::int64_t build_at);
 
 /// Whether any consumed version stopped matching the disk; see
-/// FileTable::check_version for the two-layer test and DepState for the
+/// FileTable::check_version and DepState for the
 /// per-reference missing policy. Callers open the memo wave.
 bool deps_changed(FileTable& files, const DepsSnapshot& snap);
 

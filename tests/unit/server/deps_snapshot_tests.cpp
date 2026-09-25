@@ -11,8 +11,7 @@ namespace clice::testing {
 namespace {
 
 /// A build_at (milliseconds since epoch, like the worker's `unit.build_at()`)
-/// far enough in the future that every existing file clears the mtime guard
-/// and earns a stat fast path at capture.
+/// far enough in the future that every existing file clears the mtime guard.
 std::int64_t generous_build_at() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::system_clock::now().time_since_epoch())
@@ -30,14 +29,25 @@ std::uint64_t consumed_hash(llvm::StringRef path) {
 /// Rewind a file's mtime out of the mtime-granularity guard window, the
 /// way real project files predate a server start. A freshly touched file
 /// is deliberately untrusted (see read_file_observed), so tests exercising
-/// stamps and repairs must age their files first.
+/// the stat fast path must age their files first.
 void age_file(llvm::StringRef path) {
     EXPECT_TRUE(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
 }
 
-/// The shared stat fast path of the version a dep names (0 = none).
-std::int64_t stamp_of(FileTable& pool, const DepState& dep) {
-    return pool.version(dep.version).mtime_ns;
+/// Whether the file table answers the file's current stat without a read.
+bool vouched(FileTable& pool, llvm::StringRef path) {
+    llvm::sys::fs::file_status status;
+    if(llvm::sys::fs::status(path, status)) {
+        return false;
+    }
+    auto uid = status.getUniqueID();
+    return pool
+        .cached_hash(pool.intern(path),
+                     status.getSize(),
+                     fs::mtime_ns(status),
+                     uid.getDevice(),
+                     uid.getFile())
+        .has_value();
 }
 
 bool changed(FileTable& pool, const DepsSnapshot& snap) {
@@ -62,27 +72,9 @@ TEST_CASE(FreshWhenUntouched) {
     ASSERT_EQ(snap.size(), 1u);
     ASSERT_FALSE(changed(pool, snap));
 
-    // The passing check earned the version its stat fast path.
-    ASSERT_EQ(stamp_of(pool, snap[0]), file_mtime_ns(dep));
-}
-
-TEST_CASE(PairStampsAtCapture) {
-    // With the startup scan's read in the shared pair, the capture-time
-    // stat is corroborated and the fast path exists before any check.
-    TempDir tmp;
-    tmp.touch("dep.h", "int f();\n");
-    auto dep = tmp.path("dep.h");
-    age_file(dep);
-
-    FileTable pool;
-    pool.read(pool.intern(dep));
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed_hash(dep)}
-    },
-                                      generous_build_at());
-    ASSERT_EQ(stamp_of(pool, snap[0]), file_mtime_ns(dep));
-    ASSERT_FALSE(changed(pool, snap));
+    // The check's read left the file's pair behind: the next check is a
+    // stat.
+    ASSERT_TRUE(vouched(pool, dep));
 }
 
 TEST_CASE(SnapshotsShareOneVersion) {
@@ -105,9 +97,10 @@ TEST_CASE(SnapshotsShareOneVersion) {
                                         build_at);
     ASSERT_EQ(pool.versions.size(), 1u);
 
-    // A repair through one snapshot's check serves the other.
+    // One check's read serves the other snapshot.
     ASSERT_FALSE(changed(pool, first));
-    ASSERT_EQ(stamp_of(pool, second[0]), file_mtime_ns(dep));
+    ASSERT_TRUE(vouched(pool, dep));
+    ASSERT_FALSE(changed(pool, second));
 }
 
 TEST_CASE(ImmediateEditDetected) {
@@ -143,8 +136,8 @@ TEST_CASE(BackdatedEditDetected) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    auto recorded_mtime = stamp_of(pool, snap[0]);
-    ASSERT_TRUE(recorded_mtime != 0);
+    auto recorded_mtime = file_mtime_ns(dep);
+    ASSERT_TRUE(vouched(pool, dep));
 
     tmp.touch("dep.h", "int new_name();\n");  // same length
     ASSERT_TRUE(set_file_mtime(dep, recorded_mtime - 5'000'000'000));
@@ -166,12 +159,14 @@ TEST_CASE(TouchRepairsFastPath) {
                                       generous_build_at());
 
     // Rewrite identical bytes: the stat moves, the content does not.
+    auto before = file_mtime_ns(dep);
     tmp.touch("dep.h", "int f();\n");
-    ASSERT_TRUE(set_file_mtime(dep, stamp_of(pool, snap[0]) + 5'000'000'000));
+    ASSERT_TRUE(set_file_mtime(dep, before + 5'000'000'000));
+    ASSERT_FALSE(vouched(pool, dep));
     ASSERT_FALSE(changed(pool, snap));
 
-    // The passing hash comparison repaired the fast path in place.
-    ASSERT_EQ(stamp_of(pool, snap[0]), file_mtime_ns(dep));
+    // The check's read moved the pair to the new stat.
+    ASSERT_TRUE(vouched(pool, dep));
 }
 
 TEST_CASE(PoisonedCaptureDetected) {
@@ -184,22 +179,19 @@ TEST_CASE(PoisonedCaptureDetected) {
     auto consumed = consumed_hash(dep);
 
     tmp.touch("dep.h", "int v2();\n");
-    // build_at in the past: the file's mtime falls inside "modified during
-    // or after the build", so no fast path is recorded.
     FileTable pool;
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, consumed}
     },
                                       /*build_at=*/1);
-    ASSERT_EQ(stamp_of(pool, snap[0]), 0);
     ASSERT_TRUE(changed(pool, snap));
 }
 
-TEST_CASE(StalePairCannotStamp) {
-    // The pair describes bytes the scan read; after an edit the capture's
-    // live stat no longer matches the pair, so the stale hash cannot
-    // corroborate a stamp for the newly consumed version.
+TEST_CASE(StalePairRereads) {
+    // The pair describes bytes the scan read; after an edit the live stat
+    // no longer matches it, so the check reads instead of answering with
+    // the old hash.
     TempDir tmp;
     tmp.touch("dep.h", "int v1();\n");
     auto dep = tmp.path("dep.h");
@@ -220,32 +212,9 @@ TEST_CASE(StalePairCannotStamp) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    ASSERT_EQ(stamp_of(pool, snap[0]), 0);
-
-    // The first check reads, proves the consumed bytes and repairs.
+    ASSERT_FALSE(vouched(pool, dep));
     ASSERT_FALSE(changed(pool, snap));
-    ASSERT_EQ(stamp_of(pool, snap[0]), file_mtime_ns(dep));
-}
-
-TEST_CASE(NoBaselineConverges) {
-    // Capture during the guard window, but the disk still holds the
-    // consumed bytes: one hash comparison proves it and earns the fast
-    // path.
-    TempDir tmp;
-    tmp.touch("dep.h", "int f();\n");
-    auto dep = tmp.path("dep.h");
-    age_file(dep);
-
-    FileTable pool;
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed_hash(dep)}
-    },
-                                      /*build_at=*/1);
-    ASSERT_EQ(stamp_of(pool, snap[0]), 0);
-
-    ASSERT_FALSE(changed(pool, snap));
-    ASSERT_EQ(stamp_of(pool, snap[0]), file_mtime_ns(dep));
+    ASSERT_TRUE(vouched(pool, dep));
 }
 
 TEST_CASE(MissingTransitions) {
@@ -263,8 +232,27 @@ TEST_CASE(MissingTransitions) {
     // Still missing: unchanged.
     ASSERT_FALSE(changed(pool, snap));
 
-    // Appearing is a change.
+    // Appearing is a change, and the file table saw it.
     tmp.touch("ghost.h", "int f();\n");
+    ASSERT_TRUE(changed(pool, snap));
+    ASSERT_FALSE(pool.seen_missing(pool.intern(dep)));
+}
+
+TEST_CASE(AbsentPlaceFilled) {
+    // A place a failed lookup looked holds a file by the capture: the build
+    // never saw it, so the artifact is stale however old the file is.
+    TempDir tmp;
+    tmp.touch("gen.h", "int make();\n");
+    auto place = tmp.path("gen.h");
+    age_file(place);
+
+    FileTable pool;
+    auto snap = capture_deps_snapshot(pool,
+                                      {
+                                          DepFile{.path = place, .absent = true}
+    },
+                                      generous_build_at());
+    ASSERT_TRUE(snap[0].missing);
     ASSERT_TRUE(changed(pool, snap));
 }
 
@@ -282,57 +270,6 @@ TEST_CASE(RemovedAfterBuild) {
 
     fs::remove(dep);
     ASSERT_TRUE(changed(pool, snap));
-}
-
-TEST_CASE(RevalidateGoesByHash) {
-    TempDir tmp;
-    tmp.touch("dep.h", "int old_name();\n");
-    auto dep = tmp.path("dep.h");
-    age_file(dep);
-
-    FileTable pool;
-    pool.read(pool.intern(dep));
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed_hash(dep)}
-    },
-                                      generous_build_at());
-    auto recorded_mtime = stamp_of(pool, snap[0]);
-    ASSERT_TRUE(recorded_mtime != 0);
-
-    // An edit that restores the recorded stat exactly would pass the fast
-    // path; force_revalidate drops it, so the hash still catches the edit.
-    tmp.touch("dep.h", "int new_name();\n");  // same length
-    ASSERT_TRUE(set_file_mtime(dep, recorded_mtime));
-
-    force_revalidate_deps(pool, snap);
-    ASSERT_TRUE(changed(pool, snap));
-}
-
-TEST_CASE(RevalidatePurgesWaveMemo) {
-    // A force point inside a wave must not be bypassed by a verdict the
-    // wave already memoized.
-    TempDir tmp;
-    tmp.touch("dep.h", "int old_name();\n");
-    auto dep = tmp.path("dep.h");
-    age_file(dep);
-
-    FileTable pool;
-    pool.read(pool.intern(dep));
-    auto snap = capture_deps_snapshot(pool,
-                                      {
-                                          DepFile{dep, consumed_hash(dep)}
-    },
-                                      generous_build_at());
-    auto recorded_mtime = stamp_of(pool, snap[0]);
-
-    auto wave = pool.wave();
-    ASSERT_FALSE(deps_changed(pool, snap));
-
-    tmp.touch("dep.h", "int new_name();\n");  // same length
-    ASSERT_TRUE(set_file_mtime(dep, recorded_mtime));
-    force_revalidate_deps(pool, snap);
-    ASSERT_TRUE(deps_changed(pool, snap));
 }
 
 };  // TEST_SUITE(DepsSnapshot)

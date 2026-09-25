@@ -518,6 +518,7 @@ struct SourceFile {
 struct FileCommand {
     std::vector<std::string> arguments;
     std::string directory;
+    std::shared_ptr<const SynthesizedContext> synthesized;
 };
 
 void apply_command(CompilationParams& params, const FileCommand& command) {
@@ -525,6 +526,9 @@ void apply_command(CompilationParams& params, const FileCommand& command) {
         params.arguments.push_back(arg.c_str());
     }
     params.directory = command.directory;
+    if(command.synthesized) {
+        params.add_synthesized(command.synthesized->files);
+    }
 }
 
 bool is_header_type(clang::driver::types::ID type) {
@@ -538,7 +542,7 @@ bool is_header_type(clang::driver::types::ID type) {
 /// the server would from the project root; `start` itself when none does.
 /// Only the ancestors themselves are checked — scanning their
 /// subdirectories would let an unrelated sibling project's database win.
-std::string workspace_of(llvm::StringRef start) {
+CanonicalPath workspace_of(llvm::StringRef start) {
     std::string root = start.str();
     path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
         bool marked = llvm::any_of(config_file_names,
@@ -551,7 +555,7 @@ std::string workspace_of(llvm::StringRef start) {
         }
         return !marked;
     });
-    return root;
+    return CanonicalPath(root);
 }
 
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
@@ -605,7 +609,8 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         return command;
     }
 
-    commands->resolve_command(file, command.directory, command.arguments);
+    command.synthesized =
+        commands->resolve_command(file, command.directory, command.arguments).synthesized;
     return command;
 }
 
@@ -873,7 +878,7 @@ int run_inspect(const InspectOptions& opts) {
         return 1;
     }
     if(flags.empty()) {
-        std::string root = workspace_of(unit_directory);
+        auto root = workspace_of(unit_directory);
         project.config = Config::load_from_workspace(root);
         auto requested = opts.configuration.value_or("");
         if(!check_requested_configuration(project.config, requested)) {
@@ -883,7 +888,7 @@ int run_inspect(const InspectOptions& opts) {
         // between each inspected directory and the root.
         llvm::SmallVector<std::string> nearby;
         for(auto& directory: directories) {
-            for(auto& database: compile_commands_above(directory.getKey(), root)) {
+            for(auto& database: compile_commands_above(CanonicalPath(directory.getKey()), root)) {
                 if(!llvm::is_contained(nearby, database)) {
                     nearby.push_back(database);
                 }
@@ -898,18 +903,16 @@ int run_inspect(const InspectOptions& opts) {
     if(is_dir && flags.empty()) {
         llvm::StringSet<> listed;
         for(auto& [rel, abs]: files) {
-            llvm::SmallString<256> storage;
-            listed.insert(path::canonical(abs, storage));
+            listed.insert(CanonicalPath(abs));
         }
-        llvm::SmallString<256> storage;
-        auto root = path::canonical(abs_path, storage);
+        auto root = CanonicalPath(abs_path);
         for(auto member: project.build.members()) {
             auto abs = project.file_table.resolve(member);
-            if(!abs.starts_with(root) || abs.size() <= root.size() || abs[root.size()] != '/' ||
-               listed.contains(abs)) {
+            if(!path::under(abs, root) || abs == root || listed.contains(abs)) {
                 continue;
             }
-            files.emplace_back(abs.drop_front(root.size() + 1).str(), abs.str());
+            auto relative = llvm::StringRef(abs).drop_front(root.size()).ltrim('/');
+            files.emplace_back(relative.str(), abs.str());
         }
     }
 
@@ -930,10 +933,11 @@ int run_inspect(const InspectOptions& opts) {
         // code may legitimately contain `§` (in strings or comments) and
         // must reach the compiler verbatim.
         AnnotatedSource source;
+        auto text = without_bom((*buffer)->getBuffer());
         if(opts.annotations) {
-            source = AnnotatedSource::from((*buffer)->getBuffer());
+            source = AnnotatedSource::from(text);
         } else {
-            source.content = (*buffer)->getBuffer().str();
+            source.content = text.str();
         }
         FileEntry entry;
         entry.stripped_hash = sha256_hex(source.content);

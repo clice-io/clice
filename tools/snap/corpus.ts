@@ -846,7 +846,11 @@ function makeFixture(
     extras: string[],
 ): SnapFixture {
     const files = sources.map((sourceRel) => {
-        const content = fs.readFileSync(path.join(corpus, sourceRel), "utf8");
+        // The server reads a source without its byte order mark; so does
+        // clice inspect, the offsets below included.
+        const content = fs
+            .readFileSync(path.join(corpus, sourceRel), "utf8")
+            .replace(/^\uFEFF/, "");
         return { rel: sourceRel, content, source: parseAnnotations(content) };
     });
     const entry = files.find((file) => file.rel === rel);

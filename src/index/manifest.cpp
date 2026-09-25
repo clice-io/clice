@@ -33,6 +33,8 @@ struct ManifestBlob {
     /// contribution_count × (varint fv, 8-byte little-endian rows hash —
     /// hashes are random bits, varint would only inflate them)
     std::vector<std::uint8_t> contributions;
+
+    std::vector<std::uint32_t> absent;
 };
 
 void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value) {
@@ -89,6 +91,10 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
         std::uint8_t bytes[8];
         std::memcpy(bytes, &hash, sizeof(hash));
         blob.contributions.insert(blob.contributions.end(), bytes, bytes + sizeof(bytes));
+    }
+
+    for(auto fv: manifest.absent) {
+        blob.absent.push_back(fv.raw);
     }
 
     serialize_blob(blob, os);
@@ -164,6 +170,10 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     }
     if(pos != contributions.size()) {
         return std::nullopt;
+    }
+
+    for(auto fv: blob.absent) {
+        manifest.absent.push_back(VersionID{fv});
     }
 
     return manifest;

@@ -183,6 +183,7 @@ export interface StatsResult {
     pendingTmpFiles: number;
     pchCacheEntries: number;
     headerContexts: number;
+    synthesizedContexts: number;
     sessions: number;
 }
 

@@ -1,9 +1,13 @@
 #include "syntax/preamble_synthesis.h"
 
+#include <format>
+
 #include "syntax/scan.h"
 
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -106,58 +110,44 @@ static void append_line_marker_at(std::string& out, llvm::StringRef path, std::u
     out += "\"\n";
 }
 
-/// Emit content[from, to) rewriting resolved quoted includes to absolute
-/// paths: the synthesized files live in the cache directory, so
-/// includer-relative lookup would resolve against the wrong location.
-/// Angled includes never use the includer's directory and keep their
-/// system-header semantics; #include_next is kept verbatim (its
-/// search-resume semantics cannot survive relocation anyway).
-static void emit_rewritten(std::string& out,
-                           llvm::StringRef content,
-                           std::uint32_t from,
-                           std::uint32_t to,
-                           llvm::ArrayRef<ScanResult::IncludeInfo> includes,
-                           llvm::ArrayRef<std::optional<std::string>> resolved,
-                           llvm::StringRef target_path,
-                           llvm::StringRef self_snapshot_path) {
+/// Emit content[from, to) with every include of the target itself — a
+/// different occurrence — redirected to the header's snapshot, or blanked
+/// (keeping the line count) when there is none. Every other directive is
+/// kept verbatim: each fragment sits in the directory of the file it was
+/// cut from, so its includes, `__has_include` probes and macro-spelled
+/// includes resolve there as they do in that file.
+static void emit_fragment(std::string& out,
+                          llvm::StringRef content,
+                          std::uint32_t from,
+                          std::uint32_t to,
+                          llvm::ArrayRef<ScanResult::IncludeInfo> includes,
+                          llvm::ArrayRef<std::optional<std::string>> resolved,
+                          llvm::StringRef target_path,
+                          llvm::StringRef snapshot_path) {
     std::uint32_t pos = from;
-    for(std::size_t j = 0; j < includes.size(); ++j) {
+    for(std::size_t j = 0; j < includes.size(); j += 1) {
         auto& include = includes[j];
         if(include.name_offset < from || include.offset >= to) {
             continue;
         }
-        if(!resolved[j].has_value()) {
+        if(resolved[j] != target_path) {
             continue;
         }
-
-        // Another include of the target itself (a different occurrence):
-        // redirect it to the disk snapshot, or blank the directive line
-        // (keeping the line count) when no snapshot is available.
-        if(*resolved[j] == target_path) {
-            if(!self_snapshot_path.empty()) {
-                out += content.substr(pos, include.name_offset - pos);
-                append_quoted_path(out, self_snapshot_path);
-                pos = include.name_offset + include.name_length;
-                continue;
-            }
-            auto line_start = content.rfind('\n', include.offset);
-            auto begin = line_start == llvm::StringRef::npos
-                             ? from
-                             : std::max(from, static_cast<std::uint32_t>(line_start + 1));
-            auto eol = content.find('\n', include.offset);
-            auto end =
-                eol == llvm::StringRef::npos ? to : std::min(to, static_cast<std::uint32_t>(eol));
-            out += content.substr(pos, begin - pos);
-            pos = end;
+        if(!snapshot_path.empty()) {
+            out += content.substr(pos, include.name_offset - pos);
+            append_quoted_path(out, snapshot_path);
+            pos = include.name_offset + include.name_length;
             continue;
         }
-
-        if(include.is_angled || include.is_include_next) {
-            continue;
-        }
-        out += content.substr(pos, include.name_offset - pos);
-        append_quoted_path(out, *resolved[j]);
-        pos = include.name_offset + include.name_length;
+        auto line_start = content.rfind('\n', include.offset);
+        auto begin = line_start == llvm::StringRef::npos
+                         ? from
+                         : std::max(from, static_cast<std::uint32_t>(line_start + 1));
+        auto eol = content.find('\n', include.offset);
+        auto end =
+            eol == llvm::StringRef::npos ? to : std::min(to, static_cast<std::uint32_t>(eol));
+        out += content.substr(pos, begin - pos);
+        pos = end;
     }
     out += content.substr(pos, to - pos);
     if(!out.ends_with('\n')) {
@@ -165,15 +155,46 @@ static void emit_rewritten(std::string& out,
     }
 }
 
-std::optional<SynthesizedContext> synthesize_context(llvm::ArrayRef<ChainEntry> chain,
-                                                     llvm::StringRef target_path,
-                                                     IncludeResolver resolve,
-                                                     std::optional<std::uint32_t> occurrence,
-                                                     llvm::StringRef self_snapshot_path) {
-    SynthesizedContext out;
-    llvm::SmallVector<std::string> suffix_fragments;
+/// Add a synthesized file to the context under a name derived from its
+/// content, in `directory`, and return that path. The dot-prefixed name
+/// cannot collide with a real header anyone includes.
+static std::string add_file(SynthesizedContext& context,
+                            llvm::StringRef directory,
+                            std::string content) {
+    llvm::SmallString<256> path(directory);
+    llvm::sys::path::append(path,
+                            llvm::sys::path::Style::posix,
+                            std::format(".clice-{:016x}.h", llvm::xxh3_64bits(content)));
+    context.files.emplace_back(std::string(path), std::move(content));
+    return std::string(path);
+}
 
-    for(std::size_t i = 0; i < chain.size(); ++i) {
+/// Emit an include of a synthesized file, on its own line.
+static void append_include(std::string& out, llvm::StringRef path) {
+    out += "#include ";
+    append_quoted_path(out, path);
+    out += '\n';
+}
+
+std::optional<SynthesizedContext>
+    synthesize_context(llvm::ArrayRef<ChainEntry> chain,
+                       llvm::StringRef target_path,
+                       IncludeResolver resolve,
+                       std::optional<std::uint32_t> occurrence,
+                       std::optional<llvm::StringRef> target_content) {
+    SynthesizedContext context;
+    std::string snapshot_path;
+    if(target_content) {
+        snapshot_path =
+            add_file(context, llvm::sys::path::parent_path(target_path), target_content->str());
+    }
+
+    // Each chain file cut at its include of the next one: the text before
+    // the cut (closing the conditionals it lands in) and the text after it
+    // (reopening them).
+    llvm::SmallVector<std::string> before;
+    llvm::SmallVector<std::string> after;
+    for(std::size_t i = 0; i < chain.size(); i += 1) {
         auto& entry = chain[i];
         bool is_last = i + 1 == chain.size();
         auto next_path = is_last ? target_path : chain[i + 1].path;
@@ -201,65 +222,70 @@ std::optional<SynthesizedContext> synthesize_context(llvm::ArrayRef<ChainEntry> 
         auto cut = matched.offset;
         auto depth = matched.conditional_depth;
 
-        // Prefix: everything before the matched directive, then balancing
-        // #endifs when the cut lands inside #if blocks (most commonly an
-        // include guard on an intermediate header). The guard condition is
-        // still evaluated by the compiler, so the fragment's semantics hold.
-        append_line_marker(out.prefix, entry.path);
-        emit_rewritten(out.prefix,
-                       entry.content,
-                       0,
-                       cut,
-                       scan_result.includes,
-                       resolved,
-                       target_path,
-                       self_snapshot_path);
-        for(std::uint16_t d = depth; d > 0; --d) {
-            out.prefix += "#endif\n";
+        // Before the cut: everything up to the matched directive, then
+        // balancing #endifs when the cut lands inside #if blocks (most
+        // commonly an include guard on an intermediate header). The guard
+        // condition is still evaluated by the compiler, so the fragment's
+        // semantics hold.
+        auto& head = before.emplace_back();
+        append_line_marker(head, entry.path);
+        emit_fragment(head,
+                      entry.content,
+                      0,
+                      cut,
+                      scan_result.includes,
+                      resolved,
+                      target_path,
+                      snapshot_path);
+        for(std::uint16_t d = depth; d > 0; d -= 1) {
+            head += "#endif\n";
         }
 
-        // Suffix: everything after the matched directive's line, mirrored
-        // (assembled innermost-first below). The prefix closed `depth`
-        // conditionals early, so reopen them with `#if 1` to keep the
-        // fragment's own #endifs balanced.
+        // After the cut: everything past the matched directive's line. The
+        // text before closed `depth` conditionals early, so reopen them
+        // with `#if 1` to keep the fragment's own #endifs balanced.
         auto line_end = entry.content.find('\n', cut);
         auto resume = line_end == llvm::StringRef::npos
                           ? static_cast<std::uint32_t>(entry.content.size())
                           : static_cast<std::uint32_t>(line_end + 1);
-        std::string fragment;
-        for(std::uint16_t d = depth; d > 0; --d) {
-            fragment += "#if 1\n";
+        auto& tail = after.emplace_back();
+        for(std::uint16_t d = depth; d > 0; d -= 1) {
+            tail += "#if 1\n";
         }
         auto resume_line =
             static_cast<std::uint32_t>(entry.content.substr(0, resume).count('\n')) + 1;
-        append_line_marker_at(fragment, entry.path, resume_line);
-        emit_rewritten(fragment,
-                       entry.content,
-                       resume,
-                       entry.content.size(),
-                       scan_result.includes,
-                       resolved,
-                       target_path,
-                       self_snapshot_path);
-        suffix_fragments.push_back(std::move(fragment));
+        append_line_marker_at(tail, entry.path, resume_line);
+        emit_fragment(tail,
+                      entry.content,
+                      resume,
+                      entry.content.size(),
+                      scan_result.includes,
+                      resolved,
+                      target_path,
+                      snapshot_path);
     }
 
-    for(auto& fragment: llvm::reverse(suffix_fragments)) {
-        out.suffix += fragment;
+    // The fragments nest the way the chain does: each one ends by
+    // including the next — host first before the cut, direct includer
+    // first after it — so every fragment is entered from the same place
+    // its file would be.
+    for(std::size_t i = chain.size(); i > 0; i -= 1) {
+        auto& head = before[i - 1];
+        if(!context.prefix.empty()) {
+            append_include(head, context.prefix);
+        }
+        context.prefix =
+            add_file(context, llvm::sys::path::parent_path(chain[i - 1].path), std::move(head));
     }
-
-    return out;
-}
-
-std::optional<std::string> synthesize_preamble(llvm::ArrayRef<ChainEntry> chain,
-                                               llvm::StringRef target_path,
-                                               IncludeResolver resolve,
-                                               std::optional<std::uint32_t> occurrence) {
-    auto context = synthesize_context(chain, target_path, resolve, occurrence);
-    if(!context) {
-        return std::nullopt;
+    for(std::size_t i = 0; i < chain.size(); i += 1) {
+        auto& tail = after[i];
+        if(!context.suffix.empty()) {
+            append_include(tail, context.suffix);
+        }
+        context.suffix =
+            add_file(context, llvm::sys::path::parent_path(chain[i].path), std::move(tail));
     }
-    return std::move(context->prefix);
+    return context;
 }
 
 std::uint32_t count_include_occurrences(llvm::StringRef content,
@@ -278,6 +304,25 @@ std::uint32_t count_include_occurrences(llvm::StringRef content,
 
     return static_cast<std::uint32_t>(
         collect_candidates(scan_result.includes, resolved, target_path).size());
+}
+
+void SynthesizedContext::append_suffix_include(std::string& text) const {
+    if(suffix.empty()) {
+        return;
+    }
+    if(!text.ends_with('\n')) {
+        text += '\n';
+    }
+    text += "#include \"";
+    // Escape like the line markers: Windows separators must survive the
+    // preprocessor's string literal parsing.
+    for(char c: suffix) {
+        if(c == '\\' || c == '"') {
+            text += '\\';
+        }
+        text += c;
+    }
+    text += "\"\n";
 }
 
 }  // namespace clice

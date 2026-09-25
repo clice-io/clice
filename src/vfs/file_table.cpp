@@ -34,6 +34,10 @@ std::optional<ObservedFile> read_file_observed(const char* path) {
 
     ObservedFile result;
     result.content = std::move(*buf);
+    if(auto text = without_bom(result.content->getBuffer());
+       text.size() != result.content->getBufferSize()) {
+        result.content = llvm::MemoryBuffer::getMemBufferCopy(text, path);
+    }
 
     llvm::sys::fs::file_status after;
     bool have_after = !llvm::sys::fs::status(*fd, after);

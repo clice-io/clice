@@ -326,7 +326,18 @@ test("folder re-added at once keeps its cache", async ({ session }) => {
     // The control endpoint record appears only while a project holds the
     // cache directory's writer lock.
     const record = workspace.path("beta/.clice/server.json");
-    const endpoint = () => (fs.existsSync(record) ? fs.readFileSync(record, "utf8") : null);
+    // The retiring project deletes the record while the new one writes its
+    // own: a read can lose the race with the delete.
+    const endpoint = () => {
+        try {
+            return fs.readFileSync(record, "utf8");
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+                return null;
+            }
+            throw error;
+        }
+    };
     const before = endpoint();
     expect(before).not.toBeNull();
 

@@ -6,14 +6,11 @@
 /// only the final diagnostics are published. Verdicts and user context
 /// choices persist across server sessions via the index database.
 
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
-import type { Workspace } from "@clice/tools/workspace";
+import { type CliceClient, MTIME_GRANULARITY, sleep } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
-function prefixFiles(workspace: Workspace): string[] {
-    return workspace
-        .headerContextFiles()
-        .filter((file) => !file.endsWith(".suffix.h") && !file.endsWith(".self.h"));
+async function synthesized(client: CliceClient): Promise<number> {
+    return (await client.stats()).synthesizedContexts;
 }
 
 test("self contained skips synthesis", async ({ session }) => {
@@ -31,8 +28,8 @@ test("self contained skips synthesis", async ({ session }) => {
     await client.openAndWait("main.cpp");
     const [helperUri] = await client.openAndWait("helper.h");
     client.assertCleanCompile(helperUri);
-    expect(prefixFiles(workspace), "Self-contained headers must not synthesize a prefix").toEqual(
-        [],
+    expect(await synthesized(client), "Self-contained headers must not synthesize a prefix").toBe(
+        0,
     );
 });
 
@@ -52,7 +49,7 @@ test("fallback on missing context", async ({ session }) => {
     await client.openAndWait("main.cpp");
     const [utilsUri] = await client.openAndWait("utils.h");
     client.assertCleanCompile(utilsUri);
-    expect(prefixFiles(workspace).length, "Fallback must synthesize exactly one prefix").toBe(1);
+    expect(await synthesized(client), "Fallback must synthesize exactly one prefix").toBe(1);
 });
 
 test("choice persisted across sessions", async ({ session }) => {
@@ -106,7 +103,7 @@ test("ordinary error no fallback", async ({ session }) => {
     const [typoUri] = await client.openAndWait("typo.h");
     const diags = client.diagnostics.get(typoUri) ?? [];
     expect(diags.length, "The syntax error must be published").toBeGreaterThan(0);
-    expect(prefixFiles(workspace), "Ordinary errors must not trigger prefix synthesis").toEqual([]);
+    expect(await synthesized(client), "Ordinary errors must not trigger prefix synthesis").toBe(0);
 });
 
 test("header save resets verdict", async ({ session }) => {
@@ -126,7 +123,7 @@ test("header save resets verdict", async ({ session }) => {
     await c.openAndWait("main.cpp");
     const [utilsUri] = await c.openAndWait("utils.h");
     c.assertCleanCompile(utilsUri);
-    expect(prefixFiles(workspace).length, "Initial verdict: needs context").toBe(1);
+    expect(await synthesized(c), "Initial verdict: needs context").toBe(1);
 
     // Make the header self-contained on disk and in the buffer, then save.
     await sleep(MTIME_GRANULARITY);
@@ -137,6 +134,7 @@ test("header save resets verdict", async ({ session }) => {
 
     await c.waitForRecompile(utilsUri);
     c.assertCleanCompile(utilsUri);
+    expect(await synthesized(c), "the self-contained header drops its prefix").toBe(0);
     await c.shutdown();
 });
 
@@ -154,7 +152,7 @@ test("dependency change retries trial", async ({ session }) => {
     await client.openAndWait("main.cpp");
     const [hUri] = await client.openAndWait("h.h");
     client.assertCleanCompile(hUri);
-    expect(prefixFiles(workspace), "Initially self-contained").toEqual([]);
+    expect(await synthesized(client), "Initially self-contained").toBe(0);
 
     // foo.h stops defining FOO; only the host's #define can provide it now.
     await sleep(MTIME_GRANULARITY);
@@ -163,7 +161,7 @@ test("dependency change retries trial", async ({ session }) => {
     await client.waitForRecompile(hUri);
     client.assertCleanCompile(hUri);
     expect(
-        prefixFiles(workspace).length,
+        await synthesized(client),
         "Dependency change must re-run the trial and fall back to synthesis",
     ).toBe(1);
 });
@@ -214,32 +212,44 @@ test("suffix function body", async ({ session }) => {
     client.assertCleanCompile(defUri);
 });
 
-test("open synthesized artifact", async ({ session }) => {
-    // Opening a synthesized prefix file compiles it with its host's
-    // command (it is a fragment of that TU), not with junk context.
+test("context lookups beside includer", async ({ session }) => {
+    // The synthesized context resolves lookups as the file it was cut
+    // from does: a `__has_include` probe relative to the host still finds
+    // its header.
     const { client, workspace } = session.tmp();
-    workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
-    workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
+    workspace.write("src/local_config.h", "#pragma once\nstruct Local { int v; };\n");
+    workspace.write("src/x.h", "inline int value() { Local l{3}; return l.v; }\n");
+    workspace.write(
+        "src/main.cpp",
+        '#if __has_include("local_config.h")\n#include "local_config.h"\n#endif\n' +
+            '#include "x.h"\nint main() { return value(); }\n',
+    );
+    workspace.writeCDB(["src/main.cpp"]);
+    await client.initialize(workspace);
+
+    await client.openAndWait("src/main.cpp");
+    const [xUri] = await client.openAndWait("src/x.h");
+    client.assertCleanCompile(xUri);
+    expect(await synthesized(client)).toBe(1);
+});
+
+test("context without cache directory", async ({ session }) => {
+    // The synthesized context lives in memory: a cache directory the
+    // server cannot use leaves it intact.
+    const workspace = session.tmpdir();
+    workspace.write(".clice", "not a directory\n");
+    workspace.write("utils.h", "inline int get(Point p) { return p.x; }\n");
     workspace.write(
         "main.cpp",
-        '#include "types.h"\n#include "utils.h"\nint main() { return get_x({1, 2}); }\n',
+        'struct Point { int x; };\n#include "utils.h"\nint main() { return get(Point{1}); }\n',
     );
     workspace.writeCDB(["main.cpp"]);
+    const client = session.spawn(workspace);
     await client.initialize(workspace);
 
     await client.openAndWait("main.cpp");
     const [utilsUri] = await client.openAndWait("utils.h");
     client.assertCleanCompile(utilsUri);
-
-    const prefixes = prefixFiles(workspace);
-    expect(prefixes.length).toBe(1);
-    const [prefixUri] = await client.openAndWait(prefixes[0]!);
-    client.assertCleanCompile(prefixUri);
-
-    // No context of its own, and no further synthesis chained off it.
-    const q = await client.queryContext(prefixUri);
-    expect(q.total, JSON.stringify(q)).toBe(0);
-    expect(prefixFiles(workspace).length, "Opening an artifact must not synthesize more").toBe(1);
 });
 
 test("unbalanced brace degrades gracefully", async ({ session }) => {

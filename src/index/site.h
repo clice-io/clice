@@ -27,7 +27,7 @@ struct LineColumn {
 
 /// One row's site: the file, the row's byte range in the text the rows
 /// were built from, and the range's ends as positions. `path` names the
-/// file in the file table's canonical spelling.
+/// file as the user knows it (FileTable::display).
 struct Site {
     Fid file;
     llvm::StringRef path;

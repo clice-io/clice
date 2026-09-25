@@ -55,7 +55,7 @@ std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
     if(!buffer) {
         return std::nullopt;
     }
-    auto text = (*buffer)->getBuffer();
+    auto text = without_bom((*buffer)->getBuffer());
     if(llvm::xxh3_64bits(text) != shard.content_hash()) {
         return std::nullopt;
     }
@@ -94,25 +94,19 @@ void dedup_sites(std::vector<Site>& sites) {
     sites.erase(dup.begin(), dup.end());
 }
 
-bool DiskGate::withhold(Fid file) const {
-    auto [it, inserted] = verdicts.try_emplace(file, false);
-    if(inserted) {
-        if(auto* shard = index.shard(file)) {
-            auto disk = files.current(file);
-            it->second = !disk || !shard->matches_content(disk->size, disk->hash);
-        }
+bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
+    if(!options.withhold) {
+        return false;
     }
-    return it->second;
-}
-
-llvm::SmallVector<Fid> DiskGate::withheld() const {
-    llvm::SmallVector<Fid> result;
-    for(auto& [file, stale]: verdicts) {
-        if(stale) {
-            result.push_back(file);
-        }
+    if(options.check_disk && checked.insert(file).second) {
+        files.current(file);
     }
-    return result;
+    auto seen = files.seen_hash(file);
+    if(!seen || *seen == content_hash) {
+        return false;
+    }
+    withheld_files.insert(file);
+    return true;
 }
 
 IndexQuery::IndexQuery(const ProjectIndex& index,
@@ -125,16 +119,13 @@ std::optional<RowSource> IndexQuery::serving(Fid file) const {
     if(live && live->is_open(file)) {
         return live->claim(file);
     }
-    if(gate && gate->withhold(file)) {
-        return std::nullopt;
-    }
     auto* shard = index.shard(file);
-    if(!shard) {
+    if(!shard || (gate && gate->stale(file, shard->content_hash()))) {
         return std::nullopt;
     }
     return RowSource{.kind = RowSource::Kind::Shard,
                      .file = file,
-                     .path = files.resolve(file),
+                     .path = files.display(file),
                      .rows = shard,
                      .coords = shard_coordinates(*shard)};
 }
@@ -157,18 +148,15 @@ void IndexQuery::visit_overlay_files(const TUIndex& state,
             continue;
         }
         auto path = state.path(local_id);
+        auto& shard = state.shard_of(local_id);
         Fid file;
         if(auto known = files.find(path)) {
-            if(live->is_open(*known) || (gate && gate->withhold(*known))) {
+            if(live->is_open(*known) || (gate && gate->stale(*known, shard.content_hash()))) {
                 continue;
             }
             file = *known;
-            path = files.resolve(file);
+            path = files.display(file);
         }
-        if(live->excluded(path)) {
-            continue;
-        }
-        auto& shard = state.shard_of(local_id);
         RowSource source{.kind = RowSource::Kind::Overlay,
                          .file = file,
                          .path = path,

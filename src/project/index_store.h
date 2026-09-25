@@ -236,13 +236,6 @@ public:
                !search_bytes.empty();
     }
 
-    /// The FileVersion table's persisted stamps moved outside the store's
-    /// own checks (force_revalidate revoked them): rewrite the global blob
-    /// on the next save so the revocation survives a restart.
-    void mark_global_dirty() {
-        global_dirty = true;
-    }
-
 private:
     friend struct testing::IndexerFixture;
 

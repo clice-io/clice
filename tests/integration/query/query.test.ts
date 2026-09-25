@@ -184,6 +184,24 @@ test("answers from the persisted index", ({ session }) => {
     expect(deps.result?.includes.map((d) => asUri(d.path))).toEqual([ws.uri("a.h")]);
 });
 
+test.skipIf(process.platform === "win32")("compile command through a symlink", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("real/main.cpp", "int main() { return 0; }\n");
+    ws.writeCDB(["real/main.cpp"]);
+    ws.write(
+        "clice.toml",
+        '[project]\ncache_dir = "${workspace}/.clice"\n\n' +
+            '[[rules]]\npatterns = ["real/**"]\nappend = ["-DFROM_RULE"]\n',
+    );
+    fs.symlinkSync(ws.path("real"), ws.path("link"));
+    expect(runIndex(ws).status).toBe(0);
+
+    const command = query<{ arguments: string[] }>(ws, "compileCommand", "--path", "link/main.cpp");
+    expect(command.result?.arguments, "the rule matching the file's identity applies").toContain(
+        "FROM_RULE",
+    );
+});
+
 test("answers for a file only its own symbols name", ({ session }) => {
     // Nothing in the global table references the file, so only the
     // fetch of its own shard can answer for it.

@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { waitUntil, withTimeout, type CliceClient } from "@clice/tools/client";
+import { SETTLE_TIME, sleep, waitUntil, withTimeout, type CliceClient } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test, type SessionFactory } from "../fixtures.ts";
 
@@ -47,6 +47,49 @@ test("open before initialize", async ({ session }) => {
     await withTimeout(arrived, 60_000, "diagnostics");
     expect(client.errors(uri)).toEqual([]);
 });
+
+test.skipIf(process.platform === "win32")("second name for an open file", async ({ session }) => {
+    // One file, one buffer: a document naming an open file through a
+    // symlink does not edit the first document's buffer, and closing it
+    // leaves the first document open and nothing to take over after it.
+    const { client, workspace } = session.tmp();
+    workspace.write("real/main.cpp", "int main() { return 0; }\n");
+    fs.symlinkSync(workspace.path("real"), workspace.path("link"));
+    workspace.writeCDB(["real/main.cpp"]);
+    await client.initialize(workspace);
+
+    const [first] = await client.openAndWait("real/main.cpp");
+    const [second] = client.open("link/main.cpp");
+    client.change(second, 1, "int main() { return undefined_name; }\n");
+    // Its own text is not the one compiled: nothing answers for it yet.
+    await expect(client.hoverAt(second, 0, 5)).rejects.toThrow("Document not open");
+    client.close(second);
+    // An edit folded into the first buffer would recompile it on this pull.
+    expect(await client.hoverAt(first, 0, 5), "the first document stays open").not.toBeNull();
+    await sleep(SETTLE_TIME);
+    client.assertNoErrors(first, "the first document's buffer must be untouched");
+    client.close(first);
+    await sleep(SETTLE_TIME);
+    expect((await client.stats()).sessions, "the closed second name stays closed").toBe(0);
+});
+
+test.skipIf(process.platform === "win32")(
+    "second name takes over on close",
+    async ({ session }) => {
+        const { client, workspace } = session.tmp();
+        workspace.write("real/main.cpp", "int main() { return 0; }\n");
+        fs.symlinkSync(workspace.path("real"), workspace.path("link"));
+        workspace.writeCDB(["real/main.cpp"]);
+        await client.initialize(workspace);
+
+        const [first] = await client.openAndWait("real/main.cpp");
+        const [second] = client.open("link/main.cpp");
+        client.change(second, 1, "int main() { return undefined_name; }\n");
+        client.close(first);
+        await client.waitForRecompile(second);
+        client.assertHasErrors(second, "the second document compiles with its own edits");
+    },
+);
 
 test("close before initialize", async ({ session }) => {
     const { client, workspace } = session.tmp();

@@ -54,12 +54,11 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
 ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        llvm::StringRef text,
                                        const std::string& directory,
-                                       const std::vector<std::string>& arguments) {
+                                       const std::vector<std::string>& arguments,
+                                       const SynthesizedContext* synthesized) {
     auto path = project.file_table.resolve(path_id);
     auto bound = compute_preamble_bound(text);
-    auto* header_context = contexts.header_context(path_id);
-    bool has_prefix = header_context && !header_context->preamble_path.empty();
-    if(bound == 0 && !has_prefix) {
+    if(bound == 0 && !synthesized) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts land here too: they borrow
         // a command but inject nothing.
@@ -67,11 +66,12 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     }
 
     // With a synthesized prefix, the PCH is worth building even at
-    // bound == 0: the -include'd preamble file is processed via the
-    // predefines buffer and lands in the PCH, so the (potentially huge)
-    // prefix is not re-parsed on every edit. The -include flag is part of
-    // the canonicalized arguments below, and the preamble file name is its
-    // content hash, so the key tracks prefix changes automatically.
+    // bound == 0: the -include'd prefix is processed via the predefines
+    // buffer and lands in the PCH, so the (potentially huge) prefix is not
+    // re-parsed on every edit. The -include flag is part of the
+    // canonicalized arguments below, and the prefix's name hashes its
+    // content — through the fragments it includes, the whole chain's — so
+    // the key tracks prefix changes automatically.
 
     // Key the PCH by preamble text plus the frontend-relevant compile flags,
     // so files with the same preamble text but different flags (-D, -I, -std)
@@ -81,9 +81,9 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // resolve against them, so equal preamble text in different directories
     // can mean different content.  The clang version guards against reusing
     // blobs a newer bundled clang would reject, and the build configuration
-    // keeps the blob with the library that records its dependency stamps:
+    // keeps the blob with the library that records its dependencies:
     // shared across configurations, one could rebuild it while another's
-    // stamps still vouched for the old content.
+    // records still vouched for the old content.
     auto preamble_text = text.substr(0, bound);
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               project.build.active_configuration(),
@@ -115,6 +115,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .arguments = arguments,
                       .content = std::string(text),
                       .preamble_bound = bound,
+                      .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
                       },
     };
 }
@@ -320,10 +321,10 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
             co_return true;
         }
         // A dependency changed on disk behind this session's back — the
-        // lazy twin of the file tracker's DiskChanged. Route it through
-        // the event pipeline (synchronous) so both share one cascade; for
-        // an open file that dispatch invalidates the projection and
-        // resets the trial. The dispatch re-resolves the session by
+        // lazy twin of the workspace sweep. The document recompiles now,
+        // whether or not the dependency graph knows the edge (a macro
+        // include); the changed file's cascade follows from the file
+        // table's change queue. The handler re-resolves the session by
         // path_id; no suspension separates it from this frame, so it
         // finds the same open session this coroutine holds.
         on_stale(path_id);
@@ -345,7 +346,8 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
                                                    Fid path_id,
                                                    llvm::StringRef directory,
                                                    const std::vector<std::string>& arguments,
-                                                   llvm::StringRef text) {
+                                                   llvm::StringRef text,
+                                                   const SynthesizedContext* synthesized) {
     // A project with no module code pays nothing — no CDB lookup, no
     // precise scan. The moment import syntax exists anywhere (the
     // lexical candidate set), every document scans precisely: that is
@@ -394,7 +396,11 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    auto deps = pcm.direct_deps(path_id, argv, directory, std::optional<llvm::StringRef>(text));
+    auto deps = pcm.direct_deps(path_id,
+                                argv,
+                                directory,
+                                std::optional<llvm::StringRef>(text),
+                                synthesized);
     graph.declare(node(path_id), deps.declared);
     // Sentinels join the round's candidates too: a successful landing
     // replaces the declaration with them, and a declare-only edge would
@@ -476,33 +482,38 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.path = file_path;
         params.version = session->version;
         params.text = session->text;
-        auto source =
-            contexts.resolve_command(file_path, params.directory, params.arguments).source;
+        auto resolution = contexts.resolve_command(file_path, params.directory, params.arguments);
+        auto source = resolution.source;
+        auto* synthesized = resolution.synthesized.get();
 
         // The line the appended suffix #include lands on — anything at or
         // past it is phantom text the user cannot see.
         std::optional<std::uint32_t> suffix_line_limit;
         auto* header_context = contexts.header_context(path_id);
-        if(header_context && !header_context->suffix_path.empty()) {
-            auto newlines = std::ranges::count(params.text, '\n');
-            suffix_line_limit =
-                static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
+        if(synthesized) {
+            params.synthesized = synthesized->files;
+            if(!synthesized->suffix.empty()) {
+                auto newlines = std::ranges::count(params.text, '\n');
+                suffix_line_limit =
+                    static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
+            }
+            synthesized->append_suffix_include(params.text);
         }
-        contexts.append_suffix_include(path_id, params.text);
 
         // Whether this round is the self-containment probe: a header
         // deliberately compiled without its includer prefix to see if it
         // stands alone. Decided here, where resolve_command chose to omit
         // the prefix; the landing gates what the probe may write.
         bool trial_round = attempt == 0 && !session->trial_done && header_context &&
-                           header_context->preamble_path.empty() &&
-                           contexts.commands.header_mode(file_path, path_id) == HeaderMode::Unknown;
+                           !header_context->synthesized &&
+                           contexts.commands.header_mode(path_id) == HeaderMode::Unknown;
 
         switch(co_await depend_modules(ctx,
                                        path_id,
                                        params.directory,
                                        params.arguments,
-                                       params.text)) {
+                                       params.text,
+                                       synthesized)) {
             case DependResult::Ready: break;
             case DependResult::Failed:
                 LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
@@ -523,7 +534,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // degradation: the compile proceeds preamble-less.
         std::optional<std::string> adopted_pch;
         if(readonly != ReadonlyMode::On) {
-            auto plan = plan_pch(path_id, params.text, params.directory, params.arguments);
+            auto plan =
+                plan_pch(path_id, params.text, params.directory, params.arguments, synthesized);
             switch(plan.verdict) {
                 case PCHPlan::Verdict::None: break;
                 case PCHPlan::Verdict::Defer: adopted_pch = plan.previous; break;
@@ -788,10 +800,11 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
             if(indicates_missing_context(diagnostics)) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
-                auto disk = project.file_table.current(path_id);
+                // Scored on the buffer: a restart keeps it only for the
+                // same text on disk.
                 contexts.commands.record_header_mode(path_id,
                                                      HeaderMode::NeedsContext,
-                                                     disk ? disk->hash : 0);
+                                                     session->hash);
                 contexts.drop_header_context(path_id);
                 adopted_pch.reset();
                 continue;
@@ -864,7 +877,8 @@ kota::task<bool> ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
                                        std::uint64_t license_generation,
                                        std::uint64_t license_epoch,
                                        const std::string& directory,
-                                       const std::vector<std::string>& arguments) {
+                                       const std::vector<std::string>& arguments,
+                                       const SynthesizedContext* synthesized) {
     auto path_id = session->path_id;
     auto license = [&] {
         return session->generation == license_generation &&
@@ -877,7 +891,7 @@ kota::task<bool> ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
         co_return false;
     }
 
-    auto plan = plan_pch(path_id, session->text, directory, arguments);
+    auto plan = plan_pch(path_id, session->text, directory, arguments, synthesized);
     switch(plan.verdict) {
         case PCHPlan::Verdict::None: projections.set_pch_key(path_id, std::nullopt); co_return true;
         case PCHPlan::Verdict::Defer: co_return plan.previous.has_value();
@@ -913,6 +927,7 @@ kota::task<bool> ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
 kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
                                                      const std::string& directory,
                                                      const std::vector<std::string>& arguments,
+                                                     const SynthesizedContext* synthesized,
                                                      StatelessInputs& inputs) {
     auto& session = ticket.session;
     auto path_id = session->path_id;
@@ -930,18 +945,25 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
         argv.push_back(arg.c_str());
     }
     auto scan_text = session->text;
-    contexts.append_suffix_include(path_id, scan_text);
+    if(synthesized) {
+        synthesized->append_suffix_include(scan_text);
+    }
     if(!co_await pcm.prepare_deps(path_id,
                                   argv,
                                   directory,
                                   std::optional<llvm::StringRef>(scan_text),
+                                  synthesized,
                                   /*foreground=*/true)) {
         co_return false;
     }
 
     if(readonly != ReadonlyMode::On) {
-        auto pch_ok =
-            co_await ensure_pch(session, ticket.generation, license_epoch, directory, arguments);
+        auto pch_ok = co_await ensure_pch(session,
+                                          ticket.generation,
+                                          license_epoch,
+                                          directory,
+                                          arguments,
+                                          synthesized);
         auto projection = projections.projection(path_id);
         if(pch_ok && projection && projection->pch_key.has_value()) {
             if(auto pch_it = project.pch_cache.find(*projection->pch_key);

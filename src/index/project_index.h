@@ -65,7 +65,7 @@ struct ProjectIndex {
     bool bind_global(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files);
 
     /// The writer's half of a bound blob: intern its file versions into
-    /// `files`, adopting their stat stamps, and read the per-TU manifest
+    /// `files` and read the per-TU manifest
     /// pins — `manifest_pins` maps each pinned TU's tu_fv (as the table's
     /// id) to the generation stamp its manifest must carry to be adopted.
     /// Rejects a blob whose version table is inconsistent, leaving `files`
@@ -157,6 +157,10 @@ struct ProjectIndex {
     /// Derived from `manifests`: file fid -> (TU fid -> rows hash).
     llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>> contributions;
 
+    /// Derived from `manifests`: a place some TU's failed lookup looked ->
+    /// those TUs (TUManifest::absent).
+    llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> probed;
+
     /// The file table's id for a version id the loaded global blob
     /// carries; nullopt for any other.
     std::optional<VersionID> runtime_version(std::uint32_t persisted) const;
@@ -169,10 +173,6 @@ struct ProjectIndex {
     /// The manifest as persisted: its versions under this index's
     /// persisted ids, handing ids out to versions that have none yet.
     TUManifest export_manifest(const TUManifest& manifest);
-
-    /// FileTable::revocation_generation as this index's lineage counts it:
-    /// what the loaded global blob recorded, plus the revocations since.
-    std::uint64_t revocation_generation(const FileTable& files) const;
 
     /// Install (or replace) a TU's manifest and rederive the affected
     /// contribution entries. Returns the file path_ids whose contribution
@@ -260,11 +260,6 @@ private:
     std::uint32_t next_persisted_id = 0;
 
     std::uint32_t persisted_id(VersionID version);
-
-    /// The revocation count the loaded blob recorded, and the file
-    /// table's own count when it loaded.
-    std::uint64_t loaded_revocations = 0;
-    std::uint64_t revocations_at_load = 0;
 };
 
 }  // namespace clice::index

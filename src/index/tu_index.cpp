@@ -72,6 +72,10 @@ struct EnvelopeBlob {
     llvm::ArrayRef<feature::DocumentLink> links;
     llvm::ArrayRef<std::uint32_t> inactive_regions;
     llvm::ArrayRef<std::uint8_t> open_conditionals;
+
+    /// The places the parse's failed lookups looked that held no file
+    /// (CompilationUnitRef::absent).
+    std::vector<std::string> absent;
 };
 
 /// What build_preamble_index adds on top of an ordinary build.
@@ -158,9 +162,11 @@ public:
     /// AST nodes reachable from its top-level decls can carry locations
     /// in other files: inherited default arguments and base specifiers
     /// of classes defined in a preamble header land there. Such rows
-    /// belong to the preamble's own index, so they are dropped here.
+    /// belong to the preamble's own index, so they are dropped here. So
+    /// are the rows of a header's borrowed includer context: its host
+    /// indexes them.
     FileIndex* file_index(clang::FileID fid) {
-        if(main_file_only && fid != unit.main_file()) {
+        if((main_file_only && fid != unit.main_file()) || unit.from_context(fid)) {
             return nullptr;
         }
         return &file_indices[fid];
@@ -820,6 +826,7 @@ public:
         blob.paths = std::move(tree.paths);
         blob.path_hashes = std::move(tree.path_hashes);
         blob.nodes = std::move(tree.nodes);
+        blob.absent = unit.absent();
         blob.symbols = std::move(symbols);
         blob.sections = std::move(sections);
         if(extras) {
@@ -1004,6 +1011,14 @@ std::uint32_t TUIndex::path_count() const {
 
 llvm::StringRef TUIndex::path(std::uint32_t id) const {
     return to_ref(wire_root(data)[&EnvelopeBlob::paths].at(id));
+}
+
+std::uint32_t TUIndex::absent_count() const {
+    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::absent].size()) : 0;
+}
+
+llvm::StringRef TUIndex::absent(std::uint32_t i) const {
+    return to_ref(wire_root(data)[&EnvelopeBlob::absent].at(i));
 }
 
 std::uint64_t TUIndex::path_hash(std::uint32_t id) const {

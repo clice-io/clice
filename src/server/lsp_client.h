@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "server/session.h"
 #include "support/signal.h"
 #include "vfs/file_table.h"
 
@@ -19,7 +20,6 @@ namespace clice {
 
 class MasterServer;
 class ProjectServer;
-struct Session;
 
 class LSPClient {
 public:
@@ -108,6 +108,22 @@ private:
     /// change, so the client's pulled results went stale without any
     /// didChange to make it re-pull — the push path sends refreshes.
     llvm::DenseMap<Fid, int> published_versions;
+
+    /// A document naming a file already open under another name: the first
+    /// name owns the file's buffer, this one keeps its own text and takes
+    /// over when the owner closes.
+    struct AliasDocument {
+        std::string spelling;
+        Session buffer;
+    };
+
+    llvm::DenseMap<Fid, llvm::SmallVector<AliasDocument, 1>> aliases;
+
+    /// The alias document of `path_id` spelled `spelling`, or nullptr.
+    AliasDocument* find_alias(Fid path_id, llvm::StringRef spelling);
+
+    /// Take `alias`, one of `path_id`'s, out of the waiting list.
+    AliasDocument take_alias(Fid path_id, AliasDocument* alias);
 
     /// The configuration files publish_config_diagnostics published last.
     llvm::StringSet<> published_configs;

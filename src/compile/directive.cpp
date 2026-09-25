@@ -1,6 +1,7 @@
 #include "compile/directive.h"
 
 #include "compile/implement.h"
+#include "support/filesystem.h"
 #include "syntax/lexer.h"
 
 #include "clang/Basic/Module.h"
@@ -103,18 +104,54 @@ public:
         });
     }
 
+    /// A lookup that found nothing still consulted the disk: a file created
+    /// at any place it looked changes what the compile sees. Every such
+    /// place — the includer's directory for a quoted name, then each search
+    /// directory the lookup walks — is recorded as an absent input.
+    void add_absent(llvm::StringRef name, bool angled, clang::SourceLocation location) {
+        auto& absent = unit->absent;
+        auto& files = unit->instance->getFileManager();
+        auto add = [&](llvm::StringRef directory) {
+            llvm::SmallString<256> candidate(directory);
+            path::append(candidate, name);
+            files.makeAbsolutePath(candidate);
+            path::remove_dots(candidate, /*remove_dot_dot=*/true);
+            absent.insert(candidate);
+        };
+        if(path::is_absolute(name)) {
+            absent.insert(name);
+            return;
+        }
+        if(!angled) {
+            if(auto includer = unit->SM().getFileEntryRefForID(unit.file_id(location))) {
+                add(path::parent_path(unit.file_path(*includer)));
+            }
+        }
+        auto& search = unit->instance->getPreprocessor().getHeaderSearchInfo();
+        for(auto it = angled ? search.angled_dir_begin() : search.quoted_dir_begin();
+            it != search.search_dir_end();
+            ++it) {
+            if(auto directory = it->getDirRef()) {
+                add(directory->getName());
+            }
+        }
+    }
+
     void InclusionDirective(clang::SourceLocation hash_loc,
                             const clang::Token& include_tok,
-                            llvm::StringRef,
-                            bool,
+                            llvm::StringRef file_name,
+                            bool is_angled,
                             clang::CharSourceRange,
-                            clang::OptionalFileEntryRef,
+                            clang::OptionalFileEntryRef file,
                             llvm::StringRef,
                             llvm::StringRef,
                             const clang::Module*,
                             bool,
                             clang::SrcMgr::CharacteristicKind) override {
         prev_fid = unit.file_id(hash_loc);
+        if(!file) {
+            add_absent(file_name, is_angled, hash_loc);
+        }
 
         /// An `IncludeDirective` call is always followed by either a `LexedFileChanged`
         /// or a `FileSkipped`. so we cannot get the file id of included file here.
@@ -171,11 +208,14 @@ public:
     }
 
     void HasInclude(clang::SourceLocation location,
-                    llvm::StringRef,
-                    bool,
+                    llvm::StringRef file_name,
+                    bool is_angled,
                     clang::OptionalFileEntryRef file,
                     clang::SrcMgr::CharacteristicKind) override {
         unit->directives[unit.file_id(location)].has_includes.emplace_back(file, location);
+        if(!file) {
+            add_absent(file_name, is_angled, location);
+        }
     }
 
     void PragmaDirective(clang::SourceLocation loc,

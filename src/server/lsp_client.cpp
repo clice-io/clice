@@ -125,10 +125,34 @@ static void unversion(protocol::WorkspaceEdit& edit) {
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = uri_to_path(uri);
     auto path_id = this->server.files.intern(path);
+    // A document waiting under a second name has a buffer of its own: the
+    // session holds the first name's text, which answers nothing for it.
+    auto session = find_alias(path_id, path) ? nullptr : this->server.find_session(path_id);
     return ResolvedDoc{std::move(path),
                        path_id,
-                       this->server.find_session(path_id),
+                       std::move(session),
                        this->server.owner_of(path_id).shared_from_this()};
+}
+
+LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spelling) {
+    auto it = aliases.find(path_id);
+    if(it == aliases.end()) {
+        return nullptr;
+    }
+    auto alias = llvm::find_if(it->second, [&](const AliasDocument& document) {
+        return document.spelling == spelling;
+    });
+    return alias != it->second.end() ? &*alias : nullptr;
+}
+
+LSPClient::AliasDocument LSPClient::take_alias(Fid path_id, AliasDocument* alias) {
+    auto it = aliases.find(path_id);
+    auto taken = std::move(*alias);
+    it->second.erase(alias);
+    if(it->second.empty()) {
+        aliases.erase(it);
+    }
+    return taken;
 }
 
 void LSPClient::register_lifecycle() {
@@ -343,9 +367,22 @@ void LSPClient::register_document_sync() {
             LOG_WARN("didOpen before the server is ready, accepting: {}", path);
         }
 
-        srv.open_session(srv.files.intern(path),
-                         params.text_document.text,
-                         params.text_document.version);
+        auto path_id = srv.files.intern(path);
+        // One file, one buffer: a second document naming it through another
+        // path (a symlink) would fold its own edits into the first one's.
+        // The document opened first keeps it; this one waits with its own
+        // text.
+        if(auto owner = srv.files.shown_as(path_id); owner && *owner != path) {
+            LOG_WARN("didOpen: {} is already open as {}; serving that one", path, *owner);
+            auto& alias = aliases[path_id].emplace_back(
+                AliasDocument{.spelling = path, .buffer = {.path_id = path_id}});
+            srv.owner_of(path_id).sessions.apply_open(alias.buffer,
+                                                      params.text_document.text,
+                                                      params.text_document.version);
+            return;
+        }
+        srv.files.show_as(path_id, path);
+        srv.open_session(path_id, params.text_document.text, params.text_document.version);
 
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
     });
@@ -357,10 +394,20 @@ void LSPClient::register_document_sync() {
         srv.pool.foreground_pulse();
 
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        if(auto* alias = find_alias(path_id, path)) {
+            project->sessions.apply_change(alias->buffer,
+                                           params.content_changes,
+                                           params.text_document.version);
+            return;
+        }
         if(!session) {
             // Dropping is the only safe move: without the didOpen baseline
             // there is no buffer to fold the edits into.
             LOG_ERROR("didChange for a document with no open session, dropping: {}", path);
+            return;
+        }
+        if(srv.files.shown_as(path_id) != path) {
+            LOG_WARN("didChange for {}, never opened under that name, dropping", path);
             return;
         }
 
@@ -386,8 +433,6 @@ void LSPClient::register_document_sync() {
         // session invests in PCH/AST.
         project->ast.escalate(*session);
 
-        project->dispatch(FileEvent::buffer_edited(path_id));
-
         LOG_DEBUG("didChange: path={} version={} gen={}",
                   path,
                   session->version,
@@ -405,18 +450,34 @@ void LSPClient::register_document_sync() {
         // clear is suppressed until the handshake completes — nothing was
         // pushed, and publishDiagnostics may not flow yet (push_output
         // drops the clear while !client_ready).
-        auto path_id = srv.files.intern(uri_to_path(params.text_document.uri));
+        auto path = uri_to_path(params.text_document.uri);
+        auto path_id = srv.files.intern(path);
+        if(auto* alias = find_alias(path_id, path)) {
+            take_alias(path_id, alias);
+            return;
+        }
+        if(srv.files.shown_as(path_id) != path) {
+            return;
+        }
         // LSP versions are scoped to an open document: a reopen restarts
         // them, so a stale entry would misread the fresh document's first
         // compile as an unchanged-text recompile.
         published_versions.erase(path_id);
+        // The diagnostics clear goes out under the spelling being closed.
         srv.close_session(path_id);
+        srv.files.unshow(path_id);
+        // A document still open under another name takes the file over.
+        if(auto it = aliases.find(path_id); it != aliases.end()) {
+            auto next = take_alias(path_id, &it->second.front());
+            srv.files.show_as(path_id, next.spelling);
+            srv.open_session(path_id, std::move(next.buffer.text), next.buffer.version);
+        }
     });
 
     peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {
         auto& srv = this->server;
         // Unlike didOpen/didChange, a save arriving before the server is
-        // ready needs no special handling: BufferSaved only invalidates
+        // ready needs no special handling: a disk change only invalidates
         // derived state, none of which exists yet — the workspace load at
         // ready reads the saved disk content anyway.
         if(srv.lifecycle != ServerLifecycle::Ready)
@@ -673,8 +734,8 @@ void LSPClient::register_extensions() {
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] = resolve_uri(params.uri);
-            co_return to_raw(this->server.query_contexts(path, path_id, params));
+            auto path_id = this->server.files.intern(uri_to_path(params.uri));
+            co_return to_raw(this->server.query_contexts(path_id, params));
         });
 
     peer.on_request(
@@ -682,25 +743,20 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.uri);
-            co_return to_raw(project->context_service.current_context(path, session.get(), params));
+            co_return to_raw(project->context_service.current_context(session.get(), params));
         });
 
     peer.on_request(
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto path = uri_to_path(params.uri);
-            auto path_id = this->server.files.intern(path);
-            auto context_path = uri_to_path(params.context_uri);
-            auto context_path_id = this->server.files.intern(context_path);
+            auto path_id = this->server.files.intern(uri_to_path(params.uri));
+            auto context_path_id = this->server.files.intern(uri_to_path(params.context_uri));
             // The session reset lives inside switch_context (single owner,
             // synchronous, no cross-file cascade — exempt from the event
             // pipeline; see the Invalidator charter).
-            co_return to_raw(co_await this->server.switch_context(path,
-                                                                  path_id,
-                                                                  context_path,
-                                                                  context_path_id,
-                                                                  params));
+            co_return to_raw(
+                co_await this->server.switch_context(path_id, context_path_id, params));
         });
 
     // The project serving the named document; without one the first
@@ -768,6 +824,9 @@ void LSPClient::register_extensions() {
                                 kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
                                                  "No workspace is loaded"});
                         }
+                        if(params.loop == "workspace") {
+                            count += static_cast<std::uint32_t>(srv.drain_disk_changes());
+                        }
                         co_return to_raw(ext::PollResult{count});
                     });
 
@@ -824,6 +883,9 @@ void LSPClient::register_extensions() {
 
                 stats.header_contexts +=
                     static_cast<std::uint32_t>(served->contexts.header_contexts.size());
+                stats.synthesized_contexts += static_cast<std::uint32_t>(llvm::count_if(
+                    llvm::make_second_range(served->contexts.header_contexts),
+                    [](const HeaderContext& context) { return context.synthesized != nullptr; }));
                 stats.sessions += static_cast<std::uint32_t>(served->sessions.sessions.size());
             }
             co_return to_raw(stats);
@@ -898,7 +960,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     }
     auto& output = *projection->output;
 
-    auto file_path = std::string(server.files.resolve(session.path_id));
+    auto file_path = std::string(server.files.display(session.path_id));
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 

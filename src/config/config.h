@@ -32,11 +32,11 @@ std::uint32_t default_max_stateless_worker_count();
 std::string cache_dir_owner(llvm::StringRef cache_dir);
 
 /// Whether `cache_dir` serves another project than `workspace_root`'s.
-bool owned_elsewhere(llvm::StringRef cache_dir, llvm::StringRef workspace_root);
+bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root);
 
 /// Record `workspace_root` as the owner of a cache directory it may use
 /// (owned_elsewhere is false); called under the directory's writer lock.
-void claim_cache_dir(llvm::StringRef cache_dir, llvm::StringRef workspace_root);
+void claim_cache_dir(llvm::StringRef cache_dir, CanonicalRef workspace_root);
 
 /// The configuration files a workspace root may hold, in lookup order.
 constexpr inline std::array<llvm::StringRef, 2> config_file_names = {"clice.toml",
@@ -277,7 +277,7 @@ struct CompiledRule {
 
         /// The literal directory the pattern starts in (the workspace root
         /// for `**`-led patterns): where the files it claims are enumerated.
-        std::string root;
+        CanonicalPath root;
     };
 
     std::vector<Pattern> patterns;
@@ -307,8 +307,8 @@ struct CompiledRule {
     /// commands.
     bool declares_sources() const;
 
-    /// Whether the rule applies to `path` (canonical absolute).
-    bool matches(llvm::StringRef path) const;
+    /// Whether the rule applies to `path`.
+    bool matches(CanonicalRef path) const;
 };
 
 /// A problem found while loading a configuration file, carrying enough
@@ -380,16 +380,11 @@ struct Config {
     KOTATSU_ANNOTATE(skip = true)
     <std::vector<CompiledRule>> compiled_rules;
 
-    /// The workspace root finalize() ran for, canonical: the `${workspace}`
-    /// value, the anchor of rules and databases no configuration file
-    /// supplied, and the enumeration root of `**`-led patterns.
+    /// The workspace root finalize() ran for: the `${workspace}` value, the
+    /// anchor of rules and databases no configuration file supplied, and
+    /// the enumeration root of `**`-led patterns.
     KOTATSU_ANNOTATE(skip = true)
-    <std::string> workspace_root;
-
-    /// workspace_root with symlinks resolved (itself when the resolution
-    /// fails): the spelling workers report file paths in.
-    KOTATSU_ANNOTATE(skip = true)
-    <std::string> workspace_real_root;
+    <CanonicalPath> workspace_root;
 
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path
@@ -401,10 +396,9 @@ struct Config {
     /// (owned_elsewhere) to the default one under the workspace root.
     void keep_own_cache_dir();
 
-    /// The compiled rules applying to `path` (absolute), in declaration
-    /// order, restricted to untagged rules and rules tagged
-    /// `configuration`.
-    llvm::SmallVector<const CompiledRule*> matching_rules(llvm::StringRef path,
+    /// The compiled rules applying to `path`, in declaration order,
+    /// restricted to untagged rules and rules tagged `configuration`.
+    llvm::SmallVector<const CompiledRule*> matching_rules(CanonicalRef path,
                                                           llvm::StringRef configuration) const;
 
     /// The distinct configuration tags, in first-appearance order.

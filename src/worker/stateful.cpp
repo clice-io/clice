@@ -255,6 +255,7 @@ void StatefulWorker::register_handlers() {
                         cp.pch = doc->pch;
                     }
                     cp.add_remapped_file(params.path, doc->text);
+                    cp.add_synthesized(params.synthesized);
                     for(auto& entry: doc->pcms) {
                         cp.pcms.try_emplace(entry.getKey(), entry.getValue());
                     }

@@ -16,7 +16,7 @@ namespace clice {
 
 ProjectLoad load_project(Project& project,
                          IndexStore& store,
-                         llvm::StringRef root,
+                         CanonicalRef root,
                          llvm::StringRef requested_configuration,
                          bool read_only_index,
                          bool scan_tree) {
@@ -43,22 +43,12 @@ ProjectLoad load_project(Project& project,
                                        .extension = ".pcm",
                                        .policy = CachePolicy::LRU,
                                        .max_bytes = 8 * GiB});
-            cache->register_namespace({.name = std::string(header_context_ns),
-                                       .extension = ".h",
-                                       .policy = CachePolicy::LRU,
-                                       .max_bytes = 1 * GiB});
-            // Synthesized header-context files once lived directly under
-            // the cache root, outside the store. A directory an earlier
-            // version left there is regenerable, and its files would
-            // otherwise stay navigable through the metadata that names
-            // them.
-            fs::remove_all(path::join(cfg.cache_dir, header_context_ns));
             project.store.emplace(std::move(*cache));
             // A read-only bootstrap opens the index database read-only:
             // no writer lock (a concurrent server or index run keeps
-            // owning it), while the persisted version stamps and artifact
-            // metadata still seed this session's fast paths. Its own
-            // metadata stays in memory and exits with it.
+            // owning it), while the persisted versions and artifact
+            // metadata still seed this session. Its own metadata stays in
+            // memory and exits with it.
             if(read_only_index) {
                 project.index_db = index::open_database(*project.store, configuration, true);
             } else if((project.writer_lock = index::WriterLock::acquire(cfg.cache_dir))) {
@@ -103,7 +93,7 @@ ProjectLoad load_project(Project& project,
 }
 
 BuildLoad load_build(Project& project,
-                     llvm::StringRef root,
+                     CanonicalRef root,
                      llvm::StringRef configuration,
                      llvm::ArrayRef<std::string> nearby) {
     BuildLoad load;
@@ -125,7 +115,11 @@ BuildLoad load_build(Project& project,
         // follow — does not depend on the order files were opened in.
         auto stable =
             llvm::to_vector(llvm::make_filter_range(nearby, [&](const std::string& source) {
-                return path::under(source, root) && !llvm::is_contained(paths, source);
+                // Where the database sits, not what it links to: a
+                // compile_commands.json symlinked to a build tree outside
+                // still belongs to the root.
+                return path::under(CanonicalPath(path::parent_path(source)), root) &&
+                       !llvm::is_contained(paths, source);
             }));
         std::ranges::sort(stable, {}, [](const std::string& source) {
             return std::tuple(llvm::count_if(source, [](char c) { return path::is_separator(c); }),

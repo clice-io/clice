@@ -23,7 +23,7 @@ struct BatchProgress {
 };
 
 struct BatchOptions {
-    std::string root;
+    CanonicalPath root;
 
     /// The build configuration to activate (`--configuration`); empty
     /// takes the persisted selection, else the default.
@@ -85,7 +85,7 @@ struct BatchResult {
 BatchResult run_batch_index(const BatchOptions& options);
 
 struct BatchLintOptions {
-    std::string root;
+    CanonicalPath root;
 
     /// The build configuration to activate (`--configuration`); empty
     /// takes the persisted selection, else the default.
@@ -128,7 +128,7 @@ struct BatchLintResult {
 };
 
 struct BatchFormatOptions {
-    std::string root;
+    CanonicalPath root;
 
     /// The build configuration to activate (`--configuration`); empty
     /// takes the persisted selection, else the default.

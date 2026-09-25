@@ -80,8 +80,6 @@ test("save writes only dirty shards", async ({ session }) => {
     const [uri] = await client.openAndWait("file0.cpp");
     expect(await client.waitForIndex(uri, "func_3"), "background index did not finish").toBe(true);
     await waitStats(client, (s) => s.indexInmemoryShards === 0, "initial round did not settle");
-    // The first workspace tick only seeds the stat baseline.
-    await client.poll("workspace");
 
     // Change one file on disk and tick the tracker: only its shard should
     // be re-merged and re-saved.
@@ -104,24 +102,26 @@ test("save writes only dirty shards", async ({ session }) => {
         `an incremental save must write only the touched shard: ${JSON.stringify(stats)}`,
     ).toBe(1);
 
-    // Saving the open file indexes its disk snapshot: the first save lands
-    // the shard its session never contributed, a second save of the same
-    // bytes queues nothing at all.
-    const before = stats.indexShardContentBytes;
-    client.save(uri);
-    const landed = await waitStats(
-        client,
-        (s) => s.indexShardContentBytes > before && s.indexInmemoryShards === 0,
-        "the open file's shard did not land",
-    );
+    // The open file compiles itself, so the rounds leave its disk snapshot
+    // alone and saving the same bytes queues nothing; closing it hands the
+    // file back to the background index.
     client.save(uri);
     await sleep(SETTLE_TIME);
     const settled = await waitStats(
         client,
         (s) => s.indexInmemoryShards === 0,
-        "the second save left shards in memory",
+        "the save left shards in memory",
     );
-    expect(settled.indexShardContentBytes).toBe(landed.indexShardContentBytes);
+    expect(settled.indexShardContentBytes).toBe(stats.indexShardContentBytes);
+
+    client.close(uri);
+    await waitStats(
+        client,
+        (s) =>
+            s.indexShardContentBytes > settled.indexShardContentBytes &&
+            s.indexInmemoryShards === 0,
+        "the closed file's shard did not land",
+    );
     client.assertNoAnomaly();
 });
 
@@ -163,6 +163,7 @@ test("cancel storm leaves no tmp", async ({ session }) => {
         [
             ...wireKeys<StatsResult>()([
                 "headerContexts",
+                "synthesizedContexts",
                 "indexInmemoryShards",
                 "indexShardContentBytes",
                 "lastSaveShards",

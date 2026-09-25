@@ -58,8 +58,9 @@ static std::string flags_label(Project& ws, ConfigID config) {
     return desc;
 }
 
-std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid path_id) {
+std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     auto& ws = project;
+    auto path = ws.file_table.resolve(path_id);
     std::vector<ext::ContextItem> all_items;
 
     // Contexts that would produce identical compilation results are
@@ -69,12 +70,12 @@ std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid
     // host, and an un-trialed header may turn out the same way, so
     // every host stays a distinct context for both.
     llvm::StringSet<> seen_configs;
-    bool dedup_hosts = editor.commands.header_mode(path, path_id) == HeaderMode::SelfContained;
+    bool dedup_hosts = editor.commands.header_mode(path_id) == HeaderMode::SelfContained;
 
     for(auto host_id: ranked_hosts(ws, path_id)) {
         auto commands = host_commands(ws, path_id, host_id);
         auto host_path = ws.file_table.resolve(host_id);
-        auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
+        auto host_uri_opt = lsp::URI::from_file_path(std::string(ws.file_table.display(host_id)));
         if(!host_uri_opt)
             continue;
 
@@ -83,7 +84,7 @@ std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid
         // different preprocessor state. Hashes are those of the command
         // the header actually compiles with — the host's, edited by the
         // rules matching either file.
-        llvm::StringRef edit_paths[] = {host_path, path};
+        CanonicalRef edit_paths[] = {host_path, path};
         auto occurrences = ws.count_occurrences(host_id, path_id);
 
         for(auto& entry: commands) {
@@ -131,7 +132,7 @@ std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid
     // exist, so a host override can be switched back to the file's
     // own command.
     if(auto entries = ws.build.entries(path_id); !entries.empty()) {
-        auto uri_opt = lsp::URI::from_file_path(std::string(path));
+        auto uri_opt = lsp::URI::from_file_path(std::string(ws.file_table.display(path_id)));
         for(std::size_t i = 0; uri_opt && i < entries.size(); ++i) {
             auto applied =
                 ws.build.resolve(path_id, entries[i].config, CommandSource::CDBExact, path, path)
@@ -153,14 +154,14 @@ std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid
     return all_items;
 }
 
-ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
-                                                          const Session* session,
+ext::CurrentContextResult ContextService::current_context(const Session* session,
                                                           const ext::CurrentContextParams& params) {
     ext::CurrentContextResult result;
     const Selection* choice = session ? editor.selection(session->path_id) : nullptr;
     if(choice && choice->host_path_id.valid()) {
         auto ctx_path = project.file_table.resolve(choice->host_path_id);
-        auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
+        auto ctx_uri_opt =
+            lsp::URI::from_file_path(std::string(project.file_table.display(choice->host_path_id)));
         if(ctx_uri_opt) {
             ext::ContextItem item;
             item.label = llvm::sys::path::filename(ctx_path).str();
@@ -181,6 +182,7 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
         item.uri = params.uri;
         item.command_hash = choice->command_hash;
         item.label = std::format("config {}", choice->command_hash.substr(0, 8));
+        auto path = ws.file_table.resolve(session->path_id);
         for(auto& entry: ws.build.entries(session->path_id)) {
             auto applied =
                 ws.build
@@ -201,13 +203,12 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
 }
 
 kota::task<ext::SwitchContextResult>
-    ContextService::switch_context(llvm::StringRef path,
-                                   Fid path_id,
+    ContextService::switch_context(Fid path_id,
                                    Session* session,
-                                   llvm::StringRef context_path,
                                    Fid context_path_id,
                                    const ext::SwitchContextParams& params) {
     auto& ws = project;
+    auto path = ws.file_table.resolve(path_id);
 
     ext::SwitchContextResult result;
 
@@ -227,7 +228,7 @@ kota::task<ext::SwitchContextResult>
     // the matched candidate's base entry hash — the identity that stays
     // unique when rules collapse two applied hashes onto one value.
     auto find_command = [&](Fid entry_file,
-                            llvm::ArrayRef<llvm::StringRef> paths,
+                            llvm::ArrayRef<CanonicalRef> paths,
                             llvm::StringRef hash) -> std::optional<std::string> {
         auto entry_path = ws.file_table.resolve(entry_file);
         for(auto& entry: ws.build.commands(entry_file)) {
@@ -261,7 +262,7 @@ kota::task<ext::SwitchContextResult>
         }
         std::optional<std::string> base;
         if(params.command_hash.has_value()) {
-            llvm::StringRef edit_paths[] = {context_path, path};
+            CanonicalRef edit_paths[] = {ws.file_table.resolve(context_path_id), path};
             base = find_command(context_path_id, edit_paths, *params.command_hash);
             if(!base) {
                 co_return result;
@@ -351,41 +352,15 @@ ext::SwitchConfigurationResult ContextService::switch_configuration(llvm::String
 bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
     bool dropped_saved = false;
     for(auto& [session_id, session]: sessions.sessions) {
-        auto it = editor.selections.find(session_id);
-        if(it == editor.selections.end()) {
+        if(!editor.selection(session_id) || editor.holds_choice(session_id)) {
             continue;
         }
-        auto& saved = it->second;
-        auto host_id = saved.host_path_id;
-        auto& occurrence = saved.occurrence;
-        bool orphaned = false;
-        if(host_id.valid()) {
-            orphaned = project.dep_graph.find_include_chain(host_id, session_id).empty();
-            // A pinned occurrence can vanish while other inclusions of the
-            // header survive (the chain stays non-empty) — recount it.
-            if(!orphaned && occurrence.has_value()) {
-                auto count = project.count_occurrences(host_id, session_id);
-                orphaned = count > 0 && *occurrence >= count;
-            }
-            // The pinned host command itself can vanish (a CDB reload
-            // changed the entry's flags): same validation didOpen applies.
-            if(!orphaned && !saved.command_hash.empty()) {
-                llvm::StringRef edit_paths[] = {project.file_table.resolve(host_id),
-                                                project.file_table.resolve(session_id)};
-                orphaned = !editor.pin_alive(host_id, edit_paths, saved);
-            }
-        } else if(!saved.command_hash.empty()) {
-            // Own-entry pin: the pinned command must still exist in the CDB.
-            orphaned = !editor.pin_alive(session_id, project.file_table.resolve(session_id), saved);
-        }
-        if(orphaned) {
-            LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
-                     project.file_table.resolve(session_id));
-            editor.drop_header_context(session_id);
-            ast.switch_identity(*session);
-            editor.selections.erase(it);
-            dropped_saved = true;
-        }
+        LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
+                 project.file_table.resolve(session_id));
+        editor.drop_header_context(session_id);
+        ast.switch_identity(*session);
+        editor.selections.erase(session_id);
+        dropped_saved = true;
     }
     return dropped_saved;
 }

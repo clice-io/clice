@@ -349,6 +349,20 @@ TEST_CASE(ManifestContributions) {
     ASSERT_TRUE(project.contributions.empty());
 }
 
+TEST_CASE(RepeatedAbsentPlace) {
+    clice::FileTable pool;
+    index::ProjectIndex project;
+    auto place = pool.intern_version(Fid{1}, 0);
+    index::TUManifest manifest;
+    manifest.tu_fv = pool.intern_version(Fid{10}, 0x1);
+    manifest.absent = {place, place};
+
+    project.apply_manifest(pool, Fid{10}, std::move(manifest));
+    ASSERT_EQ(project.manifests[Fid{10}].absent.size(), std::size_t(1));
+    project.remove_manifest(pool, Fid{10});
+    ASSERT_TRUE(project.probed.empty());
+}
+
 TEST_CASE(GlobalRoundTripWithRealMerge) {
     add_main("main.cpp", R"(
         int global_value = 42;

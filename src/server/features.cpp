@@ -139,8 +139,8 @@ struct CommandLang {
     std::string standard;
 };
 
-static std::optional<CommandLang> command_lang(Project& project, llvm::StringRef path) {
-    auto file = project.file_table.intern(path);
+static std::optional<CommandLang> command_lang(Project& project, Fid file) {
+    auto path = project.file_table.resolve(file);
     auto commands = project.build.commands(file);
     if(commands.empty()) {
         return std::nullopt;
@@ -178,7 +178,7 @@ Fid Features::host_of(Fid path_id) const {
 
 const clang::LangOptions& Features::index_lang_options(const Session& session) {
     auto path = project.file_table.resolve(session.path_id);
-    auto own = command_lang(project, path);
+    auto own = command_lang(project, session.path_id);
     // A file's entry is its command; a default command yields to the host
     // a header borrows from, in resolve_command's order.
     if(own && own->forces_c && own->source == CommandSource::CDBExact) {
@@ -190,8 +190,8 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
     // contributor union the way it does for the AST after an escalation.
     Fid host = host_of(session.path_id);
     if(host.valid()) {
-        auto host_path = project.file_table.resolve(host);
-        auto host_lang = command_lang(project, host_path);
+        llvm::StringRef host_path = project.file_table.resolve(host);
+        auto host_lang = command_lang(project, host);
         if(host_lang && host_lang->forces_c) {
             return feature::index_lang_options("", *host_lang->forces_c, host_lang->standard);
         }
@@ -209,7 +209,7 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
     auto it = contributions.find(session.path_id);
     bool c_rows = it != contributions.end() && !it->second.empty() &&
                   llvm::all_of(llvm::make_first_range(it->second), [&](Fid tu) {
-                      return project.file_table.resolve(tu).ends_with(".c");
+                      return llvm::StringRef(project.file_table.resolve(tu)).ends_with(".c");
                   });
     return feature::index_lang_options(path,
                                        c_rows,
@@ -260,7 +260,7 @@ std::vector<protocol::Location>
         /// Link ranges are half-open; contains() would also accept end.
         if(*offset >= link.range.begin && *offset < link.range.end) {
             locations.push_back(protocol::Location{
-                .uri = feature::to_uri(link.target),
+                .uri = feature::to_uri(project.file_table.display(link.target)),
                 .range = protocol::Range{},
             });
             break;
@@ -322,7 +322,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             if(!range)
                 continue;
             protocol::DocumentLink out{.range = *range};
-            out.target = feature::to_uri(link.target);
+            out.target = feature::to_uri(project.file_table.display(link.target));
             out.tooltip = link.target;
             links.push_back(std::move(out));
         }
@@ -443,7 +443,7 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
                 if(*offset >= link.range.begin && *offset < link.range.end) {
                     std::vector<protocol::Location> locations{
                         protocol::Location{
-                                           .uri = feature::to_uri(link.target),
+                                           .uri = feature::to_uri(project.file_table.display(link.target)),
                                            .range = protocol::Range{},
                                            }
                     };

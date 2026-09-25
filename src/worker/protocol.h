@@ -11,6 +11,7 @@
 #include "compile/dep_file.h"
 #include "config/config.h"
 #include "feature/feature.h"
+#include "syntax/preamble_synthesis.h"
 #include "syntax/token.h"
 
 #include "kota/codec/json/json.h"
@@ -116,6 +117,9 @@ struct CompileParams {
     std::string text;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files the command names that exist only in memory (path, content):
+    /// a header context's synthesized fragments.
+    SynthesizedFiles synthesized;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
 
@@ -173,6 +177,9 @@ struct BuildPCHParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files the command names that exist only in memory (path, content):
+    /// a header context's synthesized fragments.
+    SynthesizedFiles synthesized;
 
     /// The preamble content, remapped over the file.
     std::string content;
@@ -209,6 +216,9 @@ struct TURunParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files the command names that exist only in memory (path, content):
+    /// a header context's synthesized fragments.
+    SynthesizedFiles synthesized;
 
     /// PCM dependencies for TUs that import modules.
     std::unordered_map<std::string, std::string> pcms;
@@ -234,6 +244,9 @@ struct CompletionParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files the command names that exist only in memory (path, content):
+    /// a header context's synthesized fragments.
+    SynthesizedFiles synthesized;
 
     std::string text;
     uint32_t offset = 0;
@@ -250,6 +263,9 @@ struct SignatureHelpParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+    /// Files the command names that exist only in memory (path, content):
+    /// a header context's synthesized fragments.
+    SynthesizedFiles synthesized;
 
     std::string text;
     uint32_t offset = 0;

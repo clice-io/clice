@@ -113,6 +113,7 @@ public:
     kota::task<bool> prepare_stateless_inputs(const Ticket& ticket,
                                               const std::string& directory,
                                               const std::vector<std::string>& arguments,
+                                              const SynthesizedContext* synthesized,
                                               StatelessInputs& inputs);
 
     /// The edit path's whole supersede (didChange): the buffer moved, so
@@ -150,10 +151,10 @@ public:
     std::function<void()> on_indexing_needed;
 
     /// Invoked from ensure_compiled's fast path when the pull-side
-    /// staleness check finds a dependency changed on disk. The owner routes
-    /// it into the event pipeline as a DiskChanged (synchronously), so lazy
-    /// detection and the file tracker's polling share one invalidation
-    /// cascade instead of maintaining two.
+    /// staleness check finds an input of the document changed on disk. The
+    /// owner invalidates the document itself (synchronously); the changed
+    /// file's own cascade comes from the file table, whose look during the
+    /// check queued the change like any other.
     std::function<void(Fid path_id)> on_stale;
 
     /// Publish the quarantine diagnostic as the document's current output
@@ -198,10 +199,10 @@ private:
                                             Fid path_id,
                                             llvm::StringRef directory,
                                             const std::vector<std::string>& arguments,
-                                            llvm::StringRef text);
+                                            llvm::StringRef text,
+                                            const SynthesizedContext* synthesized);
 
-    /// Non-const: a passing staleness check may repair the snapshots'
-    /// stat fast paths in place (see deps_changed).
+    /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);
 
     /// What a buffer state owes the PCH family: nothing (an empty
@@ -221,7 +222,8 @@ private:
     PCHPlan plan_pch(Fid path_id,
                      llvm::StringRef text,
                      const std::string& directory,
-                     const std::vector<std::string>& arguments);
+                     const std::vector<std::string>& arguments,
+                     const SynthesizedContext* synthesized);
 
     /// Revalidate or build the session's preamble PCH through the family
     /// and adopt its key under the request's license (see
@@ -233,7 +235,8 @@ private:
                                 std::uint64_t license_generation,
                                 std::uint64_t license_epoch,
                                 const std::string& directory,
-                                const std::vector<std::string>& arguments);
+                                const std::vector<std::string>& arguments,
+                                const SynthesizedContext* synthesized);
 
     friend struct testing::ASTFamilyFixture;
 

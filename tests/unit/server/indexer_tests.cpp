@@ -2,6 +2,9 @@
 #include <format>
 #include <limits>
 #include <memory>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
@@ -154,8 +157,8 @@ struct IndexerFixture {
         return index_store.global_dirty;
     }
 
-    /// Drop the merge's own dirty mark so a later assertion isolates the
-    /// stamp-repair path.
+    /// Drop the merge's own dirty mark so a later assertion isolates what
+    /// a check alone dirties.
     void reset_global_dirty() {
         index_store.global_dirty = false;
     }
@@ -1243,8 +1246,8 @@ struct Indexed {
         tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
         src = tmp.path("main.cpp");
         header = tmp.path("dep.h");
-        // Age the files out of the mtime guard window so the merge records
-        // stat stamps, the way real project files predate an index run.
+        // Age the files out of the mtime guard window so their stats can
+        // vouch for them, the way real project files predate an index run.
         if(!set_file_mtime(src, file_mtime_ns(src) - 10'000'000'000) ||
            !set_file_mtime(header, file_mtime_ns(header) - 10'000'000'000)) {
             return false;
@@ -1258,19 +1261,63 @@ struct Indexed {
     }
 };
 
-TEST_CASE(TouchRepairsStamp) {
+TEST_CASE(CreatedHeaderStales) {
+    // Where a failed include looked is an input of the TU: a header
+    // appearing there makes its rows stale.
+    TempDir tmp;
+    tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
+    auto src = tmp.path("main.cpp");
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+    IndexerFixture f;
+    f.merge(indexed.data.data(), indexed.data.size());
+    auto tu = f.project.file_table.intern(indexed.tu_path);
+    auto gen = f.project.file_table.intern(tmp.path("gen.h"));
+    ASSERT_TRUE(f.project.project_index.probed.lookup(gen).contains(tu));
+    ASSERT_TRUE(f.project.file_table.seen_missing(gen));
+    ASSERT_FALSE(f.need_update(src));
+
+    tmp.touch("gen.h", "int make();\n");
+    f.clear_verdicts();
+    ASSERT_TRUE(f.need_update(src));
+}
+
+#ifndef _WIN32
+TEST_CASE(AbsentSpellingsOnePlace) {
+    // A failed include looked in a directory under two spellings (one a
+    // symlink): one place, recorded once, and a reindex drops it cleanly.
+    TempDir tmp;
+    tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
+    tmp.mkdir("real");
+    ASSERT_EQ(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()), 0);
+    auto src = tmp.path("main.cpp");
+    auto indexed = index_file(tmp, src, {"-I" + tmp.path("real"), "-I" + tmp.path("link")});
+    ASSERT_FALSE(indexed.data.empty());
+    IndexerFixture f;
+    f.merge(indexed.data.data(), indexed.data.size());
+    f.merge(indexed.data.data(), indexed.data.size());
+    auto tu = f.project.file_table.intern(indexed.tu_path);
+    auto& manifest = f.project.project_index.manifests.find(tu)->second;
+    auto place = f.project.file_table.intern(tmp.path("real/gen.h"));
+    ASSERT_EQ(
+        llvm::count_if(manifest.absent,
+                       [&](VersionID fv) { return f.project.file_table.version(fv).fid == place; }),
+        1);
+}
+#endif
+
+TEST_CASE(TouchStaysFresh) {
     Indexed x;
     ASSERT_TRUE(x.setup());
     ASSERT_FALSE(x.f.need_update(x.src));
 
-    // Same bytes, new mtime (still outside the guard window): the stat
-    // fast path misses, the hash proves a mere touch, and the stamp is
-    // repaired in place (dirtying the global blob so the repair persists).
+    // Same bytes, new mtime: the stat fast path misses, the hash proves a
+    // mere touch, and nothing persisted needs rewriting.
     ASSERT_TRUE(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
     x.f.reset_global_dirty();
     x.f.clear_verdicts();
     ASSERT_FALSE(x.f.need_update(x.src));
-    ASSERT_TRUE(x.f.global_dirty());
+    ASSERT_FALSE(x.f.global_dirty());
 }
 
 TEST_CASE(PreservedMtimeEditStale) {
@@ -1337,8 +1384,8 @@ TEST_CASE(LoadRestoresIndex) {
     ASSERT_TRUE(f.project.project_index.shards.contains(tu_id));
     ASSERT_TRUE(f.project.project_index.shards.contains(header_id));
     ASSERT_TRUE(f.project.project_index.contributions.lookup(header_id).contains(tu_id));
-    // The persisted FileVersion stamps make the untouched TU judge fresh
-    // without any reindex.
+    // The persisted versions make the untouched TU judge fresh without any
+    // reindex.
     ASSERT_FALSE(f.need_update(src));
 }
 
@@ -2785,73 +2832,6 @@ TEST_CASE(VanishedHeaderDebtDies) {
     ASSERT_FALSE(f.pump.pending_reason(f.project.file_table.intern(header)).has_value());
 }
 
-TEST_CASE(RevokedStampStaysRevoked) {
-    // The global and artifacts blobs commit non-atomically; a crash
-    // between the two writes of a revocation save leaves a global
-    // recording the revocation next to an artifacts blob predating it.
-    // Adopting the old blob's dep stamps would undo the revocation.
-    TempDir tmp;
-    tmp.touch("dep.h", "int x;\n");
-    auto dep_path = tmp.path("dep.h");
-    std::string stale_artifacts;
-
-    auto setup = [&](IndexerFixture& f) {
-        open_store(tmp, f.project);
-        f.project.store->register_namespace(
-            {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU});
-    };
-    auto dep_version = [&](IndexerFixture& f) {
-        return f.project.file_table.intern_version(f.project.file_table.intern(dep_path), 7);
-    };
-
-    {
-        IndexerFixture f;
-        setup(f);
-        auto pending = f.project.store->begin_store("pcm", "k");
-        ASSERT_TRUE(fs::write(pending.tmp_path, "pcm-bytes").has_value());
-        ASSERT_TRUE(f.project.store->commit(std::move(pending)).has_value());
-
-        auto dep_id = f.project.file_table.intern(dep_path);
-        auto vid = dep_version(f);
-        f.project.file_table.adopt_stamp(vid, 42, 123);
-        auto& st = f.project.pcm_cache[dep_id];
-        st.path = "dep.pcm";
-        st.key = "k";
-        st.deps.push_back({.path_id = dep_id, .version = vid});
-        f.project.mark_artifacts_dirty();
-        f.index_store.mark_global_dirty();
-        f.save();
-
-        auto blob = f.project.index_db->read(index::IndexBlobKind::Artifacts, "artifacts");
-        ASSERT_TRUE(bool(blob));
-        stale_artifacts = blob.buffer->getBuffer().str();
-    }
-
-    {
-        // Matching revocation generations adopt the persisted stamp...
-        IndexerFixture f;
-        setup(f);
-        f.load();
-        ASSERT_EQ(f.project.file_table.version(dep_version(f)).mtime_ns, std::int64_t(123));
-
-        // ...then revoke, persist both blobs, and put the pre-revocation
-        // artifacts blob back — the on-disk pair a mid-batch crash leaves.
-        f.project.file_table.force_revalidate(f.project.file_table.intern(dep_path));
-        f.project.mark_artifacts_dirty();
-        f.index_store.mark_global_dirty();
-        f.save();
-        index::BlobDatabase::Blob stale{index::IndexBlobKind::Artifacts,
-                                        "artifacts",
-                                        stale_artifacts};
-        ASSERT_TRUE(f.project.index_db->write(stale, {}).empty());
-    }
-
-    IndexerFixture f;
-    setup(f);
-    f.load();
-    ASSERT_EQ(f.project.file_table.version(dep_version(f)).mtime_ns, std::int64_t(0));
-}
-
 TEST_CASE(StaleFormatDropsPch) {
     // A .pch.idx envelope written under an older index format is
     // unreadable; the format gate drops every PCH entry at load so the
@@ -2978,7 +2958,7 @@ TEST_CASE(HeaderModePersisted) {
     open_store(tmp, f.project);
     f.load();
     auto id = f.project.file_table.intern(path);
-    ASSERT_TRUE(f.commands.header_mode(path, id) == HeaderMode::NeedsContext);
+    ASSERT_TRUE(f.commands.header_mode(id) == HeaderMode::NeedsContext);
 }
 
 TEST_CASE(ContextsBlobRoundTrip) {
@@ -2988,10 +2968,8 @@ TEST_CASE(ContextsBlobRoundTrip) {
     TempDir tmp;
     tmp.touch("host.cpp", "#include \"h.h\"\n");
     tmp.touch("h.h", "int x;\n");
-    tmp.touch("artifact.h", "");
     auto host_path = tmp.path("host.cpp");
     auto header_path = tmp.path("h.h");
-    auto artifact_path = tmp.path("artifact.h");
 
     {
         IndexerFixture f;
@@ -3002,7 +2980,6 @@ TEST_CASE(ContextsBlobRoundTrip) {
         auto host = f.project.file_table.intern(host_path);
         auto header = f.project.file_table.intern(header_path);
         editor.selections[header] = Selection{host, 1, "applied", "base"};
-        editor.synthesized_hosts[artifact_path] = host;
         editor.mark_dirty();
         auto ticket = f.index_store.contexts.ticket;
         f.save();
@@ -3023,35 +3000,7 @@ TEST_CASE(ContextsBlobRoundTrip) {
     ASSERT_EQ(saved->occurrence, std::optional<std::uint32_t>(1));
     ASSERT_EQ(saved->command_hash, "applied");
     ASSERT_EQ(saved->base_hash, "base");
-    ASSERT_EQ(editor.synthesized_hosts.lookup(artifact_path), host);
     ASSERT_FALSE(f.index_store.contexts.dirty);
-}
-
-TEST_CASE(EvictedArtifactHostDropped) {
-    // An artifact the store evicted while no server ran has nothing left
-    // to open under its host: the record leaves, and the blob with it.
-    TempDir tmp;
-    tmp.touch("host.cpp", "");
-    auto gone_path = tmp.path("gone.h");
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        EditorContext editor{f.project, f.commands, f.index_store.contexts};
-        f.load();
-        editor.load();
-        editor.synthesized_hosts[gone_path] = f.project.file_table.intern(tmp.path("host.cpp"));
-        editor.mark_dirty();
-        f.save();
-    }
-
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    EditorContext editor{f.project, f.commands, f.index_store.contexts};
-    f.load();
-    editor.load();
-    ASSERT_TRUE(editor.synthesized_hosts.empty());
-    ASSERT_TRUE(f.index_store.contexts.dirty);
 }
 
 TEST_CASE(UnownedContextsPassThrough) {
@@ -3335,7 +3284,7 @@ TEST_CASE(PauseResumesRound) {
 /// The store's neutral change reports and the pump's claim of them — the
 /// contracts the Indexer split introduced: every row-changing source
 /// reports debt and row changes, the save carries the pump's debt
-/// snapshot both ways, and admission is re-judged at landing.
+/// snapshot both ways.
 TEST_SUITE(IndexReports) {
 
 TEST_CASE(MergeReportsRowsChanged) {
@@ -3520,69 +3469,6 @@ TEST_CASE(LateDebtShutdownRetry) {
     auto blob = f.project.index_db->read(index::IndexBlobKind::CDB, "cdb");
     ASSERT_TRUE(bool(blob));
     ASSERT_TRUE(llvm::StringRef(blob.buffer->getBuffer()).contains("dep.h"));
-}
-
-TEST_CASE(DispatchDeferKeepsDebt) {
-    IndexerFixture f;
-    f.project.config.project.enable_indexing.value = false;
-    auto id = f.project.file_table.intern("/fake/a.cpp");
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
-
-    f.pump.admission = [](Fid) {
-        return Admission::Defer;
-    };
-    f.run_round();
-
-    // The claim was consumed but never settled: the debt stands for a
-    // later round, and nothing was counted as failed.
-    ASSERT_TRUE(f.pump.pending_reason(id) == ReindexReason::ContentChanged);
-    ASSERT_EQ(f.pump.failed().size(), 0u);
-    ASSERT_TRUE(f.pump.is_idle());
-}
-
-TEST_CASE(LandingVetoDropsResult) {
-    // Landing-time admission (the S6 behavior decision): a session
-    // arriving while the parse is in flight vetoes the finished result —
-    // the merge is dropped and the claim settles, exactly as a
-    // dispatch-time veto would have skipped the work.
-    IndexerFixture f;
-    TempDir tmp;
-    tmp.touch("main.cpp", "int value() { return 1; }\n");
-    auto src = tmp.path("main.cpp");
-    f.project.config.project.enable_indexing.value = false;
-    f.project.cdb.add_command(
-        tmp.root,
-        src,
-        std::format("clang++ -fsyntax-only -resource-dir {} -c {}", resource_dir(), src));
-
-    auto id = f.project.file_table.intern(src);
-    f.pump.enqueue(id, ReindexReason::ContentChanged);
-
-    int asks = 0;
-    f.pump.admission = [&](Fid) {
-        asks += 1;
-        // First ask = dispatch (admit); second = landing, where the
-        // serving side has changed its mind.
-        return asks == 1 ? Admission::Admit : Admission::SkipAndSettle;
-    };
-
-    auto body = [&]() -> kota::task<> {
-        WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        CO_ASSERT_TRUE(f.pool.start(opts));
-        co_await f.round_task();
-        co_await f.pool.stop();
-    };
-    auto task = body();
-    f.loop.schedule(task);
-    f.loop.run();
-
-    ASSERT_EQ(asks, 2);
-    ASSERT_FALSE(f.project.project_index.shards.contains(id));
-    ASSERT_FALSE(f.pump.pending_reason(id).has_value());
-    ASSERT_EQ(f.pump.failed().size(), 0u);
 }
 
 TEST_CASE(BoostRearmsIdleTimer) {

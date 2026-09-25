@@ -13,9 +13,12 @@
 #include "compile/compilation_unit.h"
 #include "compile/dep_file.h"
 #include "support/filesystem.h"
+#include "syntax/preamble_synthesis.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace clang {
 
@@ -175,6 +178,23 @@ struct CompilationParams {
     /// A flag to inform to stop compilation, this is very useful
     /// to cancel old compilation task.
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
+
+    /// Paths of the files add_synthesized served, see
+    /// CompilationUnitRef::synthesized.
+    llvm::StringSet<> synthesized;
+
+    /// Serve files the command names from memory: a header context's
+    /// synthesized fragments.
+    void add_synthesized(const SynthesizedFiles& files) {
+        for(auto& [file, content]: files) {
+            add_remapped_file(file, content);
+            // Spelled the way CompilationUnitRef::file_path spells a file no
+            // disk holds: the separators are the native ones.
+            llvm::SmallString<256> key(file);
+            path::remove_dots(key, /*remove_dot_dot=*/true);
+            synthesized.insert(key);
+        }
+    }
 
     void add_remapped_file(llvm::StringRef path,
                            llvm::StringRef content,

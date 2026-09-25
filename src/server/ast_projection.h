@@ -76,10 +76,8 @@ struct ASTProjectionTable {
         std::shared_ptr<const ASTProjection> projection;
 
         /// Dependency snapshot from the last successful AST compilation,
-        /// used for two-layer staleness detection (mtime + content hash).
-        /// Kept out of the immutable projection: a passing staleness
-        /// check repairs the snapshot's stat fast paths in place, and no
-        /// reader outside the family consumes it.
+        /// used for staleness detection. Kept out of the immutable
+        /// projection: no reader outside the family consumes it.
         std::optional<DepsSnapshot> deps;
 
         /// Whether the projection describes the current buffer: the last
@@ -129,6 +127,28 @@ struct ASTProjectionTable {
     std::uint64_t epoch(Fid path_id) const {
         const auto* entry = find(path_id);
         return entry ? entry->epoch : 0;
+    }
+
+    /// Whether the document's last compile read `file` — itself or through
+    /// the PCH it adopted, a missing file it looked for included: the
+    /// compile truth a lexical scan misses (a macro include, a header that
+    /// did not exist yet).
+    bool read(Fid path_id, Fid file, const llvm::StringMap<PCHState>& pch_cache) const {
+        const auto* entry = find(path_id);
+        if(!entry) {
+            return false;
+        }
+        auto names = [&](const DepsSnapshot& deps) {
+            return llvm::any_of(deps, [&](const DepState& dep) { return dep.path_id == file; });
+        };
+        if(entry->deps && names(*entry->deps)) {
+            return true;
+        }
+        if(!entry->projection || !entry->projection->pch_key) {
+            return false;
+        }
+        auto it = pch_cache.find(*entry->projection->pch_key);
+        return it != pch_cache.end() && names(it->second.deps);
     }
 
     /// Replace one field of the projection, keeping the rest (readers

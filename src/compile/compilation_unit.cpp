@@ -189,6 +189,32 @@ auto CompilationUnitRef::include_location(clang::FileID fid) -> clang::SourceLoc
     return self->SM().getIncludeLoc(fid);
 }
 
+bool CompilationUnitRef::synthesized(clang::FileID fid) {
+    if(self->synthesized.empty()) {
+        return false;
+    }
+    auto entry = self->SM().getFileEntryRefForID(fid);
+    return entry && self->synthesized.contains(file_path(*entry));
+}
+
+bool CompilationUnitRef::from_context(clang::FileID fid) {
+    if(self->synthesized.empty()) {
+        return false;
+    }
+    auto [it, inserted] = self->context_files.try_emplace(fid);
+    if(!inserted) {
+        return it->second;
+    }
+    bool result = synthesized(fid);
+    if(!result) {
+        auto include = include_location(fid);
+        result = include.isValid() && from_context(file_id(include));
+    }
+    // The recursion may have grown the map: store through a fresh lookup.
+    self->context_files[fid] = result;
+    return result;
+}
+
 auto CompilationUnitRef::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
     return self->SM().getPresumedLoc(location, false);
 }
@@ -310,21 +336,17 @@ std::vector<DepFile> CompilationUnitRef::deps() {
 
     for(auto& [fid, directive]: directives()) {
         for(auto& include: directive.includes) {
-            /// A failed include leaves an invalid fid — nothing to depend on.
-            if(!include.skipped && include.fid.isValid()) {
+            /// A failed include leaves an invalid fid — nothing to depend
+            /// on; nor does a synthesized one, which no disk file carries.
+            if(!include.skipped && include.fid.isValid() && !synthesized(include.fid)) {
                 add_fid(include.fid);
             }
         }
 
-        /// FIXME: Not-found `__has_include`/`__has_embed` probes leave no
-        /// trace here, so creating the probed file later cannot invalidate
-        /// products built while it was missing. `clang -MD` drops misses
-        /// the same way — the build ecosystem accepts this hole, and even
-        /// clang's preamble simulates the failed lookup's candidate paths
-        /// only for `#include` misses. Rather than stat'ing candidate sets
-        /// per freshness check, the right home is the invalidation
-        /// pipeline: persist unresolved lookups and match them against
-        /// file-creation events from the workspace watcher.
+        /// FIXME: Not-found `__has_embed` probes leave no trace, so
+        /// creating the probed file later cannot invalidate products built
+        /// while it was missing (failed includes and `__has_include` are
+        /// recorded, see absent()).
         for(auto& has_include: directive.has_includes) {
             add_file(has_include.file);
         }
@@ -344,7 +366,25 @@ std::vector<DepFile> CompilationUnitRef::deps() {
     for(auto& dep: deps) {
         result.emplace_back(dep.getKey().str(), dep.getValue());
     }
+    for(auto& path: absent()) {
+        result.push_back({.path = std::move(path), .absent = true});
+    }
 
+    return result;
+}
+
+std::vector<std::string> CompilationUnitRef::absent() {
+    std::vector<std::string> result;
+    for(auto& entry: self->absent) {
+        // The candidates over-approximate where a lookup looked (an
+        // `#include_next` does not start at the first directory, a lookup
+        // also fails on a directory of that name): only a place holding
+        // nothing is absent.
+        if(!llvm::sys::fs::exists(entry.getKey())) {
+            result.emplace_back(entry.getKey());
+        }
+    }
+    std::ranges::sort(result);
     return result;
 }
 

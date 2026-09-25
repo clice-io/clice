@@ -15,6 +15,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/Basic/Version.h"
 
@@ -52,8 +53,20 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id, std::optional<llvm::St
 PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id,
                                              llvm::ArrayRef<const char*> arguments,
                                              llvm::StringRef directory,
-                                             std::optional<llvm::StringRef> content) {
-    auto scan_result = scan_precise(arguments, directory, content);
+                                             std::optional<llvm::StringRef> content,
+                                             const SynthesizedContext* synthesized) {
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs;
+    if(synthesized) {
+        auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
+        for(auto& [file, text]: synthesized->files) {
+            memory->addFile(file, 0, llvm::MemoryBuffer::getMemBufferCopy(text, file));
+        }
+        auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+            llvm::vfs::createPhysicalFileSystem());
+        overlay->pushOverlay(std::move(memory));
+        vfs = std::move(overlay);
+    }
+    auto scan_result = scan_precise(arguments, directory, content, nullptr, std::move(vfs));
 
     // Every scanned name lands in the edge set, resolved or not: an
     // unresolved name edges to its sentinel, which is what lets the
@@ -192,9 +205,10 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // preamble text), pcm_key is content-free, and a blocked budget
     // must unlock the moment the poison is edited.
     auto content = llvm::MemoryBuffer::getFile(file_path);
-    auto budget_key = std::format("{}-{:016x}",
-                                  pcm_key,
-                                  content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0);
+    auto budget_key =
+        std::format("{}-{:016x}",
+                    pcm_key,
+                    content ? llvm::xxh3_64bits(without_bom((*content)->getBuffer())) : 0);
     if(build_crashes.blocked(budget_key)) {
         LOG_WARN("PCM build for module {} refused: key {} keeps crashing workers",
                  module_name,
@@ -256,11 +270,17 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     build_crashes.on_land(budget_key);
     auto pcm_path = std::move(committed.value().value());
-    project.pcm_cache[path_id] = {.path = pcm_path,
-                                  .key = pcm_key,
-                                  .deps = capture_deps_snapshot(project.file_table,
-                                                                result.value().deps,
-                                                                result.value().build_at)};
+    auto snapshot =
+        capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
+    // The interfaces it imported are inputs as much as its own text — the
+    // PCM embeds what it read of them — and theirs already carry their own
+    // imports', so the snapshot is transitive.
+    for(auto dep: deps.resolved) {
+        if(auto it = project.pcm_cache.find(dep); it != project.pcm_cache.end()) {
+            snapshot.append(it->second.deps.begin(), it->second.deps.end());
+        }
+    }
+    project.pcm_cache[path_id] = {.path = pcm_path, .key = pcm_key, .deps = std::move(snapshot)};
     LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
 
     project.mark_artifacts_dirty();
@@ -295,6 +315,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
                                          llvm::ArrayRef<const char*> arguments,
                                          llvm::StringRef directory,
                                          std::optional<llvm::StringRef> content,
+                                         const SynthesizedContext* synthesized,
                                          bool foreground) {
     // A project without module units pays nothing. A CDB reload that
     // introduces modules mid-session takes effect on the next call.
@@ -308,7 +329,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
     // provider appearing for a sentinel) cascades to the open TUs
     // importing it through them. Declared even when empty, so a removed
     // import stops cascading.
-    auto deps = direct_deps(path_id, arguments, directory, content);
+    auto deps = direct_deps(path_id, arguments, directory, content, synthesized);
     // A module unit's PCM node carries its ARTIFACT's edge truth, owned
     // by its own rounds — a request's buffer view must not overwrite it
     // (an unsaved removed import would disconnect the cached PCM from

@@ -19,7 +19,6 @@
 #include "server/ast_projection.h"
 #include "server/live_sources.h"
 #include "server/session_store.h"
-#include "support/cache_store.h"
 #include "support/filesystem.h"
 #include "worker/pool.h"
 
@@ -48,7 +47,7 @@ TURunFamily turun{graph, project, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 PCHFamily pch{graph, project, pool};
 ServerLiveSources live{project, pch, session_store, projections};
-PumpGate gate{indexer, project.config};
+index::FreshnessGate gate{project.file_table};
 index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
 index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
 
@@ -358,10 +357,11 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 
     ASSERT_TRUE(index_query.first_site(hash_of("foo"), RelationKind::Definition).has_value());
 
-    // The header's own disk content changed and awaits reindexing: its
-    // overlay rows describe text that no longer exists (freshness
-    // contract, clause 2), exactly like a shard contribution.
-    indexer.enqueue(project.file_table.intern(header_path("foo.h")), ReindexReason::ContentChanged);
+    // The disk was seen holding other text for the header: its overlay
+    // rows describe text that no longer exists (freshness contract,
+    // clause 2), exactly like a shard contribution.
+    project.file_table.observe(project.file_table.intern(header_path("foo.h")),
+                               DiskObservation{.hash = 1});
     EXPECT_FALSE(index_query.first_site(hash_of("foo"), RelationKind::Definition).has_value());
 }
 
@@ -555,27 +555,30 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     EXPECT_EQ(line_of(*def), 1u);
 }
 
-TEST_CASE(SynthesizedArtifactSkipped) {
-    auto store = CacheStore::open(dir.path("cache"), cache_format_version);
-    ASSERT_TRUE(store.has_value());
-    store->register_namespace({.name = std::string(header_context_ns), .extension = ".h"});
-    project.store.emplace(std::move(*store));
-
-    // The header lives inside the store's synthesized-artifact namespace:
-    // its overlay rows must never send the user into the cache.
-    auto header = path::join(project.store->base_dir(), header_context_ns, "gen.h");
-    add_file(header, R"(
-inline void gen() {}
-)");
+TEST_CASE(SynthesizedContextSkipped) {
+    // A header context's synthesized files name nothing on disk, and what
+    // they declare is the host's to index: no rows, no dependency.
+    auto synthesized = TestVFS::path(".clice-context.h");
     add_main("main.cpp",
              std::format(R"(
 #include "{}"
 int main() {{ gen(); return 0; }}
 )",
-                         header));
-    open_with_overlay();
+                         synthesized));
+    prepare();
+    params.add_synthesized({
+        {synthesized, "inline void gen() {}\n"}
+    });
+    ASSERT_TRUE(try_compile());
 
-    EXPECT_FALSE(index_query.first_site(hash_of("gen"), RelationKind::Definition).has_value());
+    auto index = index::TUIndex::from_buffer(
+        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+    ASSERT_TRUE(index.loaded());
+    for(std::uint32_t i = 0; i < index.path_count(); i += 1) {
+        EXPECT_NE(index.path(i), synthesized);
+    }
+    EXPECT_FALSE(
+        llvm::any_of(unit->deps(), [&](const DepFile& dep) { return dep.path == synthesized; }));
 }
 
 TEST_CASE(UnreadableBlobCleared) {

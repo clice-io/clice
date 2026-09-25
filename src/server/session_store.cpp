@@ -8,6 +8,7 @@
 #include "support/logging.h"
 
 #include "kota/ipc/lsp/position.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -49,6 +50,7 @@ void SessionStore::for_each(llvm::function_ref<bool(Fid, const Session&)> visito
 void SessionStore::apply_open(Session& session, std::string text, int version) {
     session.version = version;
     session.text = std::move(text);
+    session.hash = llvm::xxh3_64bits(session.text);
     session.line_starts = lsp::build_line_starts(session.text);
     session.generation++;
     session.quarantine.reset();
@@ -111,6 +113,7 @@ void SessionStore::apply_change(Session& session,
     // attempt; no-op edits grant none (see Quarantine::on_edit).
     session.quarantine.on_edit(applied);
 
+    session.hash = llvm::xxh3_64bits(session.text);
     session.generation++;
 }
 

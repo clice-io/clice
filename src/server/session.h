@@ -68,6 +68,10 @@ struct Session {
     /// Current buffer content (may differ from disk until saved).
     std::string text;
 
+    /// xxh3 of `text`, rewritten with it: what "the buffer holds these
+    /// bytes" is compared by against disk observations and index rows.
+    std::uint64_t hash = 0;
+
     /// Byte offsets of each line start in `text`, built by `build_line_starts`.
     /// Updated on didOpen and after every didChange.
     std::vector<std::uint32_t> line_starts;

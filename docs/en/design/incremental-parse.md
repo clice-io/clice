@@ -64,12 +64,12 @@ An alternative is directly comparing content hashes: recompute the hash of every
 
 clice combines both into a two-layer detection strategy, implemented once in the master's file table and shared by every consumer that needs file freshness (PCH validation, index staleness, disk polling):
 
-- **Layer 1 (stat fast path)**: Compare each dependency's (size, mtime) stamp against the stamp recorded for the file version the PCH was built from. An equal stamp means the file is unchanged.
-- **Layer 2 (content hash verification)**: For files whose stamp differs, recompute the xxh3 content hash and compare against the recorded one. If the content is in fact identical, the recorded stamp is repaired in place so the next check takes the fast path again; only a hash mismatch invalidates the PCH.
+- **Layer 1 (stat fast path)**: The file table keeps one observation per file — the (size, mtime) a read saw and the hash of the bytes it read. When a dependency's current stat equals that observation, its content hash is known without reading.
+- **Layer 2 (content hash verification)**: For files whose stat differs, read the file and hash it; the read becomes the file's new observation, so the next check takes the fast path again. The PCH is stale only when the current hash differs from the hash of the bytes it was built from.
 
-Layer 1 filters out the vast majority of unchanged files (the common-case path). Layer 2 eliminates stamp false positives (build tool touches, VCS checkouts, etc.). The combined effect: PCH is rebuilt only when the content of a dependency file has actually changed.
+Layer 1 filters out the vast majority of unchanged files (the common-case path). Layer 2 eliminates stat false positives (build tool touches, VCS checkouts, etc.). The combined effect: PCH is rebuilt only when the content of a dependency file has actually changed.
 
-`DepsSnapshot` is the per-artifact record for two-layer detection, captured when a PCH build completes. It stores each dependency's file identity and observed version (plus markers for files that were missing at build time) and delegates the actual comparison to the shared file table.
+`DepsSnapshot` is the per-artifact record for two-layer detection, captured when a PCH build completes. It stores each dependency's file identity and the content version the build consumed (plus markers for files that were missing at build time) and delegates the actual comparison to the shared file table. The stat observation belongs to the file, not to the artifact: one observation serves every artifact that depends on the file.
 
 ### Pull-Based Compilation
 
@@ -148,11 +148,11 @@ Multiple feature requests may simultaneously trigger a PCH build for the same co
 
 ### Dependency Snapshot Timing Guarantee
 
-The `DepsSnapshot` build timestamp (`build_at`) is obtained **before** computing file hashes. This ordering ensures there is no time window in which a modification could be missed:
+The content versions in a `DepsSnapshot` are hashes of the bytes the compiler actually consumed, taken from its own buffers, so a file modified during the build is never mistaken for what the build read: its new content fails the hash comparison on the next check. The build timestamp (`build_at`), obtained **before** the build starts, covers the one remaining case -- a dependency whose consumed bytes the worker could not hash:
 
-If a file is modified during hash computation, its mtime will be later than `build_at`. On the next two-layer detection, Layer 1 will flag this file as "possibly modified," and Layer 2 will recompute its hash and discover the change.
+If the file's mtime is no later than `build_at`, the disk still holds the bytes the build consumed, and their hash is taken from the file table. If it is later, the file may have changed during the build: the dependency is recorded without a version, reads as changed, and the next build captures it again.
 
-If the order were reversed -- hashing first, then obtaining the timestamp -- a window could arise: a file modified between hash computation and timestamp acquisition would have an mtime no later than `build_at`, causing the modification to be missed.
+If the order were reversed -- building first, then obtaining the timestamp -- a window could arise: a file modified during the build would have an mtime no later than `build_at`, and its new content would be recorded as the version the build consumed, causing the modification to be missed.
 
 ### Overall Compilation Flow
 

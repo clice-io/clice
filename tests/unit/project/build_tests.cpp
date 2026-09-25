@@ -40,11 +40,9 @@ struct Layout {
         }
     }
 
-    /// Canonical spelling, like every path the build hands out.
-    std::string path(llvm::StringRef relative) const {
-        auto joined = path::join(root, relative);
-        path::canonicalize(joined);
-        return joined;
+    /// The file's identity, like every path the build hands out.
+    CanonicalPath path(llvm::StringRef relative) const {
+        return CanonicalPath(path::join(root, relative));
     }
 
     Fid fid(llvm::StringRef relative) {
@@ -54,19 +52,14 @@ struct Layout {
     /// The driver-level render of the file's default selection, or of the
     /// builtin fallback when the build does not compile it.
     std::vector<const char*> render(llvm::StringRef relative) {
-        auto file = path(relative);
+        auto identity = path(relative);
+        CanonicalRef file = identity;
         auto id = files.intern(file);
         auto commands = build.commands(id);
-        auto ref = commands.empty() ? build.resolve(id,
-                                                    build.builtin(file),
-                                                    CommandSource::Fallback,
-                                                    llvm::StringRef(file),
-                                                    file)
-                                    : build.resolve(id,
-                                                    commands.front().config,
-                                                    commands.front().source,
-                                                    llvm::StringRef(file),
-                                                    file);
+        auto ref =
+            commands.empty()
+                ? build.resolve(id, build.builtin(file), CommandSource::Fallback, file, file)
+                : build.resolve(id, commands.front().config, commands.front().source, file, file);
         return cdb.render_driver(ref);
     }
 
@@ -90,11 +83,11 @@ TEST_CASE(RuleBoundDatabaseWins) {
     EXPECT_TRUE(has_arg(layout.render("src/a.cpp"), "ROOT"));
 
     /// Edits accumulate from the rules matching the file, headers included.
-    auto edits = layout.build.edits(llvm::StringRef(layout.path("lib/y.hxx"))).edits;
+    auto edits = layout.build.edits(layout.path("lib/y.hxx")).edits;
     ASSERT_EQ(edits.size(), 1U);
     EXPECT_EQ(edits[0].kind, CommandEdit::Kind::Append);
     EXPECT_EQ(edits[0].flags, (std::vector<std::string>{"-x", "c++-header"}));
-    EXPECT_TRUE(layout.build.edits(llvm::StringRef(layout.path("lib/x.cpp"))).empty());
+    EXPECT_TRUE(layout.build.edits(layout.path("lib/x.cpp")).empty());
 
     auto members = layout.build.members();
     EXPECT_EQ(members.size(), 2U);
@@ -155,31 +148,68 @@ TEST_CASE(LintSet) {
     EXPECT_TRUE(layout.build.lintable(layout.path("include/api.h")));
     EXPECT_FALSE(layout.build.lintable(layout.path("vendor/lib.cpp")));
     EXPECT_FALSE(layout.build.lintable(layout.path("vendor/deep/lib.h")));
-    EXPECT_FALSE(layout.build.lintable("/usr/include/stdio.h"));
-    EXPECT_FALSE(layout.build.lintable(layout.root + "-sibling/x.cpp"));
+    EXPECT_FALSE(layout.build.lintable(CanonicalPath("/usr/include/stdio.h")));
+    EXPECT_FALSE(layout.build.lintable(CanonicalPath(layout.root + "-sibling/x.cpp")));
 };
 
 #ifndef _WIN32
 TEST_CASE(LintSetSymlinkedRoot) {
-    /// The workspace is opened through a symlink while workers report real
-    /// paths: a rule anchored at the configured spelling still keeps its
-    /// files out, whichever spelling names them.
+    /// The workspace is opened through a symlink: the configuration resolves
+    /// the root, and its rules anchor where every file's identity lies.
     TempDir tmp;
     tmp.touch("real/clice.toml", "[[rules]]\npatterns = [\"vendor/**\"]\nlint = false\n");
     tmp.touch("real/src/main.cpp", "int main() { return 0; }\n");
     tmp.touch("real/vendor/lib.cpp", "int lib() { return 0; }\n");
-    [[maybe_unused]] auto linked = ::symlink(tmp.path("real").c_str(), tmp.path("link").c_str());
+    ASSERT_EQ(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()), 0);
 
     Config config = Config::load_from_workspace(tmp.path("link"));
+    EXPECT_EQ(config.workspace_root.str(), CanonicalPath(tmp.path("real")).str());
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
     build.reset_active(fallback_configuration(config));
-    EXPECT_TRUE(build.lintable(tmp.path("link/src/main.cpp")));
-    EXPECT_TRUE(build.lintable(tmp.path("real/src/main.cpp")));
-    EXPECT_FALSE(build.lintable(tmp.path("link/vendor/lib.cpp")));
-    EXPECT_FALSE(build.lintable(tmp.path("real/vendor/lib.cpp")));
-    EXPECT_FALSE(build.lintable(tmp.path("elsewhere/x.cpp")));
+    EXPECT_TRUE(build.lintable(CanonicalPath(tmp.path("link/src/main.cpp"))));
+    EXPECT_FALSE(build.lintable(CanonicalPath(tmp.path("link/vendor/lib.cpp"))));
+    EXPECT_FALSE(build.lintable(CanonicalPath(tmp.path("elsewhere/x.cpp"))));
+};
+
+TEST_CASE(PatternThroughSymlink) {
+    TempDir tmp;
+    tmp.touch("clice.toml", R"([[rules]]
+patterns = ["vendor/**"]
+lint = false
+)");
+    tmp.touch("third_party/lib.cpp", "int lib() { return 0; }\n");
+    ASSERT_EQ(::symlink(tmp.path("third_party").c_str(), tmp.path("vendor").c_str()), 0);
+
+    Config config = Config::load_from_workspace(tmp.root);
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active(fallback_configuration(config));
+    EXPECT_FALSE(build.lintable(CanonicalPath(tmp.path("vendor/lib.cpp"))));
+};
+
+TEST_CASE(WalkResolvesLinks) {
+    /// A symlink under a pattern root names the file it points to, which
+    /// the pattern does not claim.
+    TempDir tmp;
+    tmp.touch("src/main.cpp", "int main() {}\n");
+    tmp.touch("elsewhere/impl.cpp", "");
+    ASSERT_EQ(::symlink(tmp.path("elsewhere/impl.cpp").c_str(), tmp.path("src/alias.cpp").c_str()),
+              0);
+
+    Config config;
+    config.rules.push_back(
+        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    config.finalize(tmp.root.str());
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active("");
+    auto members = build.members();
+    ASSERT_EQ(members.size(), 1U);
+    EXPECT_EQ(files.resolve(members.front()), CanonicalPath(tmp.path("src/main.cpp")));
 };
 #endif
 
@@ -191,7 +221,7 @@ TEST_CASE(FormatSet) {
     EXPECT_TRUE(layout.build.formattable(layout.path("vendor/lib.cpp")));
     EXPECT_FALSE(layout.build.formattable(layout.path("gen/out.h")));
     EXPECT_TRUE(layout.build.lintable(layout.path("gen/out.h")));
-    EXPECT_FALSE(layout.build.formattable("/usr/include/stdio.h"));
+    EXPECT_FALSE(layout.build.formattable(CanonicalPath("/usr/include/stdio.h")));
 };
 
 TEST_CASE(PatternRootsEnumerate) {
@@ -215,8 +245,8 @@ TEST_CASE(PatternRootsEnumerate) {
         {.patterns = {"../lib/*.cpp"}, .default_command = std::string("clang++ -DLIB")}));
     config.finalize(tmp.root.str());
     ASSERT_EQ(config.compiled_rules.size(), 2U);
-    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, canonical(tmp, "src"));
-    EXPECT_EQ(config.compiled_rules[1].patterns[0].root, canonical(tmp, "lib"));
+    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, CanonicalPath(canonical(tmp, "src")));
+    EXPECT_EQ(config.compiled_rules[1].patterns[0].root, CanonicalPath(canonical(tmp, "lib")));
 
     FileTable files;
     CompilationDatabase cdb{files};
@@ -437,10 +467,13 @@ TEST_CASE(DiscoverEveryNearby) {
     EXPECT_EQ(found[1], path::join(tmp.root, "build", "compile_commands.json"));
     EXPECT_EQ(found[2], path::join(tmp.root, "out", "compile_commands.json"));
 
-    auto above = compile_commands_above(tmp.path("deep/proj/src"), tmp.root);
+    auto above =
+        compile_commands_above(CanonicalPath(tmp.path("deep/proj/src")), CanonicalPath(tmp.root));
     ASSERT_EQ(above.size(), 2u);
-    EXPECT_EQ(above[0], path::join(tmp.root, "deep", "proj", "compile_commands.json"));
-    EXPECT_EQ(above[1], path::join(tmp.root, "compile_commands.json"));
+    EXPECT_EQ(CanonicalPath(above[0]),
+              CanonicalPath(path::join(tmp.root, "deep", "proj", "compile_commands.json")));
+    EXPECT_EQ(CanonicalPath(above[1]),
+              CanonicalPath(path::join(tmp.root, "compile_commands.json")));
 };
 
 TEST_CASE(ProjectRootAbove) {
@@ -451,11 +484,12 @@ TEST_CASE(ProjectRootAbove) {
     tmp.touch("app/build/compile_commands.json", "[]");
     tmp.touch("tool/compile_commands.json", "[]");
     tmp.touch("tool/sub/clice.toml", "");
-    EXPECT_EQ(project_root_above(tmp.path("lib/src/deep")), path::join(tmp.root, "lib"));
-    EXPECT_EQ(project_root_above(tmp.path("app/src")), path::join(tmp.root, "app"));
-    EXPECT_EQ(project_root_above(tmp.path("tool/src")), path::join(tmp.root, "tool"));
-    EXPECT_EQ(project_root_above(tmp.path("tool/sub/src")), path::join(tmp.root, "tool", "sub"));
-    EXPECT_EQ(project_root_above(tmp.path("none/src")), "");
+    EXPECT_EQ(project_root_above(tmp.path("lib/src/deep")),
+              CanonicalPath(path::join(tmp.root, "lib")));
+    EXPECT_EQ(project_root_above(tmp.path("app/src")), CanonicalPath(tmp.path("app")));
+    EXPECT_EQ(project_root_above(tmp.path("tool/src")), CanonicalPath(tmp.path("tool")));
+    EXPECT_EQ(project_root_above(tmp.path("tool/sub/src")), CanonicalPath(tmp.path("tool/sub")));
+    EXPECT_TRUE(project_root_above(tmp.path("none/src")).empty());
 };
 
 TEST_CASE(DefinesProject) {
@@ -481,10 +515,10 @@ TEST_CASE(ResolvedSpelling) {
     TempDir tmp;
     tmp.touch("real/file", "");
     [[maybe_unused]] auto linked = ::symlink(tmp.path("real").c_str(), tmp.path("link").c_str());
-    auto real = path::resolved(tmp.path("real"));
-    EXPECT_EQ(path::resolved(tmp.path("link")), real);
-    EXPECT_EQ(path::resolved(tmp.path("link/.clice")), path::join(real, ".clice"));
-    EXPECT_EQ(path::resolved(tmp.path("real/.clice")), path::join(real, ".clice"));
+    auto real = CanonicalPath(tmp.path("real"));
+    EXPECT_EQ(CanonicalPath(tmp.path("link")), real);
+    EXPECT_EQ(CanonicalPath(tmp.path("link/.clice")).str(), path::join(real, ".clice"));
+    EXPECT_EQ(CanonicalPath(tmp.path("real/.clice")).str(), path::join(real, ".clice"));
 };
 #endif
 
@@ -560,7 +594,7 @@ TEST_CASE(InactiveConfigurationExcluded) {
     auto candidates = build.entries(main);
     ASSERT_EQ(candidates.size(), 1U);
     EXPECT_TRUE(has_arg(cdb.render_full(candidates.front().config), "RELEASE"));
-    EXPECT_TRUE(build.edits(llvm::StringRef(canonical(tmp, "main.cpp"))).empty());
+    EXPECT_TRUE(build.edits(CanonicalPath(canonical(tmp, "main.cpp"))).empty());
 };
 
 TEST_CASE(InactiveSourceKeepsDiscovery) {
@@ -608,9 +642,9 @@ TEST_CASE(EditsAcrossHostAndHeader) {
     Build build{config, cdb, files};
     build.reset_active("");
 
-    std::string host = canonical(tmp, "src/main.cpp");
-    std::string header = canonical(tmp, "include/x.h");
-    llvm::StringRef both[] = {host, header};
+    CanonicalPath host(canonical(tmp, "src/main.cpp"));
+    CanonicalPath header(canonical(tmp, "include/x.h"));
+    CanonicalRef both[] = {host, header};
     auto edits = build.edits(both).edits;
     ASSERT_EQ(edits.size(), 4U);
     EXPECT_EQ(edits[0].flags, (std::vector<std::string>{"-DA"}));
@@ -619,7 +653,7 @@ TEST_CASE(EditsAcrossHostAndHeader) {
     EXPECT_EQ(edits[2].flags, (std::vector<std::string>{"-DA"}));
     EXPECT_EQ(edits[3].flags, (std::vector<std::string>{"-DC"}));
 
-    auto header_only = build.edits(llvm::StringRef(header)).edits;
+    auto header_only = build.edits(header).edits;
     ASSERT_EQ(header_only.size(), 3U);
     EXPECT_EQ(header_only[0].flags, (std::vector<std::string>{"-DB"}));
 };

@@ -26,7 +26,8 @@ struct ASTFamilyFixture {
                                        std::uint64_t license_epoch,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments) {
-        return ast.ensure_pch(session, license_generation, license_epoch, directory, arguments);
+        return ast
+            .ensure_pch(session, license_generation, license_epoch, directory, arguments, nullptr);
     }
 };
 

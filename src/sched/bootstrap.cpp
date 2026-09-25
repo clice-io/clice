@@ -9,7 +9,7 @@ namespace clice {
 ProjectLoad bootstrap_project(Project& project,
                               IndexStore& store,
                               IndexPump& pump,
-                              llvm::StringRef root,
+                              CanonicalRef root,
                               llvm::StringRef requested_configuration,
                               bool read_only_index,
                               bool scan_tree) {

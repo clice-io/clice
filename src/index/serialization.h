@@ -132,8 +132,9 @@ namespace clice::index {
 /// include tree is one node type on the wire and in manifests, and module
 /// names are keyed by their entity; v15: the global blob is columnar in
 /// hash order with a stable path table and pins its search blob, so it
-/// is read in place; v16: entity hashes follow clang 23's node kinds).
-constexpr inline std::uint32_t index_format_version = 16;
+/// is read in place; v16: entity hashes follow clang 23's node kinds;
+/// v17: file versions carry no stat stamps).
+constexpr inline std::uint32_t index_format_version = 17;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

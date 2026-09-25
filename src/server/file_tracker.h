@@ -17,7 +17,7 @@ namespace clice {
 /// Stat-based discovery of changes the client never tells us about:
 /// compile_commands.json edits (its CDBWatcher) and files
 /// changing on disk behind the server's back (git checkout, code
-/// generators, save hooks), swept here.
+/// generators, save hooks), looked at here.
 ///
 /// Core design property: polling only marks dirty and emits events — it
 /// never needs to be complete. A missed change means derived state stays
@@ -27,15 +27,16 @@ namespace clice {
 /// simple and coarse, and why it polls stat instead of using inotify — for
 /// clangd's reasons: portable, no fd limits, no event storms.
 ///
-/// The tracker only observes and returns event batches; it never
-/// dispatches. MasterServer's polling loops (and the clice/internal/poll
-/// test hook) hand each batch to dispatch(), which keeps the tracker
-/// unit-testable against plain data structures.
+/// The tracker only observes; it never dispatches. Disk changes surface
+/// through the file table's change queue, database changes as the
+/// returned batches the polling loops (and the clice/internal/poll test
+/// hook) hand to dispatch(), which keeps the tracker unit-testable
+/// against plain data structures.
 class FileTracker {
 public:
     /// Construct after the project is loaded: its databases are baselined
     /// at their loads.
-    FileTracker(Project& project, const SessionStore& store, std::string root);
+    FileTracker(Project& project, const SessionStore& store, CanonicalPath root);
 
     /// One CDB poll tick (see CDBWatcher::tick), the open files looking
     /// for a database; the reload's diff as one CDBChanged event.
@@ -45,19 +46,15 @@ public:
     /// events.
     llvm::SmallVector<FileEvent> discover_around(Fid path_id);
 
-    /// One workspace sweep. Stats every file the dependency graph knows,
-    /// skipping open buffers; a (mtime, size) suspect is confirmed by
-    /// content hash before DiskChanged is emitted, so touch-only changes
-    /// (mtime bump, identical bytes) stay silent. A stat failure on a
-    /// known file emits DiskRemoved once; a transient content-read failure
-    /// emits nothing and is retried on the next tick.
-    ///
-    /// A file is judged against the content its include edges were scanned
-    /// from when first seen — at construction for the load's scan, so a
-    /// change landing before the first sweep is still reported — and again
-    /// once it closes, after BufferClosed's own cascade, so a file deleted
-    /// while open is reported removed then. A file no scan read only seeds
-    /// the baseline.
+    /// One workspace sweep: look at every file the dependency graph knows
+    /// or an indexed compile read — open ones included, a buffer shadows
+    /// the disk only for its own file's compile — and every place the file
+    /// table last saw empty, through the file table, which turns every look
+    /// that finds other content than it last saw into a change (see
+    /// FileTable::changes); the sweep itself keeps no state. An unchanged
+    /// file costs one stat the shared pair vouches for, a moved stat one
+    /// read, so touch-only changes stay silent. Returns the build's gain of
+    /// default-command sources as a CDBChanged event.
     ///
     /// Stats run synchronously in batches, yielding to the event loop
     /// between batches; each round's duration is perf-logged.
@@ -67,25 +64,12 @@ public:
     kota::task<llvm::SmallVector<FileEvent>> tick_workspace();
 
 private:
-    /// Last-known on-disk state of a tracked file.
-    struct FileState {
-        std::uint64_t size = 0;
-        std::int64_t mtime_ns = 0;
-        std::uint64_t hash = 0;
-        std::uint64_t uid_device = 0;
-        std::uint64_t uid_file = 0;
-        bool missing = false;
-    };
-
     Project& project;
     const SessionStore& store;
     CDBWatcher cdb;
 
-    /// Workspace sweep baseline.
-    llvm::DenseMap<Fid, FileState> baseline;
-
     /// True while a sweep is in flight (it suspends between batches);
-    /// concurrent ticks are skipped instead of racing on the baseline.
+    /// concurrent ticks are skipped.
     bool sweeping = false;
 };
 

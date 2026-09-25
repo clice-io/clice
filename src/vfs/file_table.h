@@ -3,13 +3,16 @@
 #include <cassert>
 #include <cstdint>
 #include <format>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "support/filesystem.h"
 #include "syntax/scan.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -20,8 +23,8 @@
 
 namespace clice {
 
-/// One observation of a file's on-disk bytes: the xxh3 of the bytes a
-/// single read returned, and the stat describing them. Captured under
+/// One observation of a file's on-disk bytes: the xxh3 of the text a single
+/// read returned (see without_bom), and the stat describing the bytes. Captured under
 /// the pairing discipline (see read_file_observed) so the two halves are
 /// same-source: `paired` says the pre/post fstats of the read agreed,
 /// `reliable` additionally says the mtime lay outside the filesystem
@@ -40,7 +43,7 @@ struct DiskObservation {
     bool reliable = false;
 };
 
-/// A completed observed read: the observation plus the bytes it hashed.
+/// A completed observed read: the observation plus the text it hashed.
 struct ObservedFile {
     DiskObservation obs;
     std::unique_ptr<llvm::MemoryBuffer> content;
@@ -124,10 +127,10 @@ namespace clice {
 /// opened or read. Safe to call from any thread.
 std::optional<ObservedFile> read_file_observed(const char* path);
 
-/// The master-side table of every file the workspace touches: a path
-/// spelling is interned once to a compact fid, and downstream code
-/// references files by fid. A fid names a spelling, not an on-disk
-/// file — case variants or links to one file are distinct fids.
+/// The master-side table of every file the workspace touches: a path is
+/// interned once to a compact fid, and downstream code references files
+/// by fid. A fid names a resolved path: symlinked spellings of one file
+/// share it, while case variants and hardlinks stay distinct fids.
 ///
 /// Paths are opaque byte strings interned in the canonical spelling of
 /// path::canonical, so on Windows the URI form VS Code sends
@@ -144,36 +147,48 @@ std::optional<ObservedFile> read_file_observed(const char* path);
 /// downstream where it is embedded into JSON (worker IPC, the query
 /// protocol) or percent-decoded by clients that interpret URIs as UTF-8.
 ///
-/// FIXME: @rsp and NVCC option files are read during CDB parsing but
-/// never tracked here — editing one changes commands without touching
-/// compile_commands.json, so nothing notices until the CDB itself
-/// changes. Folding their paths into the CDB stamp is a follow-up.
+/// FIXME: NVCC option files are read during CDB parsing but are not
+/// among the load's inputs (CompilationDatabase::inputs) — editing one
+/// changes commands without touching compile_commands.json, so nothing
+/// notices until the CDB itself changes.
 struct FileTable {
     llvm::BumpPtrAllocator allocator;
     llvm::SmallVector<llvm::StringRef> spellings;
     llvm::StringMap<Fid> ids;
 
+    /// The file a path names: every spelling of it — through symlinks,
+    /// `.`/`..` segments — interns to the fid of its resolved path, which
+    /// is also what resolve() gives back. The worker reports the paths its
+    /// compiles read resolved the same way, so both sides of the boundary
+    /// name one file by one fid. A spelling stays bound to the file it first
+    /// resolved to: one that must follow a retargeted symlink (a database
+    /// path) is resolved by its caller.
     Fid intern(llvm::StringRef path) {
         llvm::SmallString<256> storage;
         path = path::canonical(path, storage);
-
+        if(auto it = ids.find(path); it != ids.end()) {
+            return it->second;
+        }
+        CanonicalPath real(path);
         auto [it, inserted] =
-            ids.try_emplace(path, Fid{static_cast<std::uint32_t>(spellings.size())});
+            ids.try_emplace(real, Fid{static_cast<std::uint32_t>(spellings.size())});
         if(inserted) {
             // Allocate with null terminator so that resolve().data() is safe
             // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
-            const std::size_t n = path.size();
+            const std::size_t n = real.size();
             char* buf = allocator.Allocate<char>(n + 1);
-            std::ranges::copy(path, buf);
+            std::ranges::copy(real.str(), buf);
             buf[n] = '\0';
             spellings.push_back(llvm::StringRef(buf, n));
         }
-        return it->second;
+        auto fid = it->second;
+        ids.try_emplace(path, fid);
+        return fid;
     }
 
-    llvm::StringRef resolve(Fid fid) const {
+    CanonicalRef resolve(Fid fid) const {
         assert(fid.raw < spellings.size());
-        return spellings[fid.raw];
+        return CanonicalRef(spellings[fid.raw]);
     }
 
     /// Look up a path without interning it, applying the same
@@ -183,9 +198,88 @@ struct FileTable {
         path = path::canonical(path, storage);
         auto it = ids.find(path);
         if(it == ids.end()) {
+            it = ids.find(CanonicalPath(path));
+        }
+        if(it == ids.end()) {
             return std::nullopt;
         }
         return it->second;
+    }
+
+    /// The spelling a user knows a file by, when it differs from its
+    /// resolved path: the one its open document was opened under, else
+    /// the path under the spelling of a root it lies in (a workspace
+    /// opened through a symlink). Everything the user is shown — URIs,
+    /// query output — names files this way; identity never does.
+    llvm::StringRef display(Fid fid) const {
+        if(auto it = shown.find(fid); it != shown.end()) {
+            return it->second;
+        }
+        auto path = resolve(fid);
+        for(auto& [real, spelled]: spelled_roots) {
+            if(path::under(path, real)) {
+                auto [it, inserted] = root_displays.try_emplace(fid);
+                if(inserted) {
+                    it->second =
+                        save(spelled + llvm::StringRef(path).drop_front(real.size()).str());
+                }
+                return it->second;
+            }
+        }
+        return path;
+    }
+
+    /// A path as display() would show the file it names.
+    llvm::StringRef display(llvm::StringRef path) const {
+        if(auto fid = find(path)) {
+            return display(*fid);
+        }
+        return path;
+    }
+
+    /// An open document names its file this way until it closes.
+    void show_as(Fid fid, llvm::StringRef spelling) {
+        shown[fid] = save(spelling);
+    }
+
+    /// The spelling the file's open document was opened under, if one is.
+    std::optional<llvm::StringRef> shown_as(Fid fid) const {
+        auto it = shown.find(fid);
+        return it != shown.end() ? std::optional(it->second) : std::nullopt;
+    }
+
+    void unshow(Fid fid) {
+        shown.erase(fid);
+    }
+
+    /// Files under `root` show under this spelling of it.
+    void spell_root(llvm::StringRef root) {
+        auto spelled = root.str();
+        path::canonicalize(spelled);
+        CanonicalPath real(spelled);
+        if(real.str() != spelled) {
+            spelled_roots.emplace_back(std::move(real), std::move(spelled));
+            root_displays.clear();
+        }
+    }
+
+    /// Stop showing files under a spelling spell_root recorded.
+    void unspell_root(llvm::StringRef root) {
+        auto spelled = root.str();
+        path::canonicalize(spelled);
+        llvm::erase_if(spelled_roots, [&](auto& entry) { return entry.second == spelled; });
+        root_displays.clear();
+    }
+
+    llvm::DenseMap<Fid, llvm::StringRef> shown;
+    llvm::SmallVector<std::pair<CanonicalPath, std::string>> spelled_roots;
+    mutable llvm::DenseMap<Fid, llvm::StringRef> root_displays;
+    mutable llvm::BumpPtrAllocator display_storage;
+
+    llvm::StringRef save(llvm::StringRef text) const {
+        auto* buf = display_storage.Allocate<char>(text.size());
+        std::ranges::copy(text, buf);
+        return llvm::StringRef(buf, text.size());
     }
 
     /// Entities: on-disk files merged by filesystem UniqueID, the way
@@ -194,10 +288,9 @@ struct FileTable {
     /// fid's binding to an entity is itself stat-verified: every
     /// observation carries the UniqueID its stat returned, and a mismatch
     /// rebinds (editors save via tmp+rename, so a spelling changes inode
-    /// on every save). Consumer-specific observation state (what a
-    /// consumer has *seen*, e.g. the tracker's last-reported baseline)
-    /// stays with the consumer and per fid — shared, a save through one
-    /// hardlink spelling would swallow the other spelling's change event.
+    /// on every save). What was last seen on disk (`seen`) stays per fid:
+    /// shared per entity, a save through one hardlink spelling would
+    /// swallow the other spelling's change event.
     ///
     /// FIXME: UniqueID reliability on network filesystems is inherited
     /// from clang's known limitation — some report unstable or colliding
@@ -278,7 +371,66 @@ struct FileTable {
         if(pair.size != size || pair.mtime_ns != mtime_ns) {
             return std::nullopt;
         }
+        saw(fid, pair.hash);
         return pair.hash;
+    }
+
+    /// What the disk held at the last look through each fid: the content
+    /// hash, or nullopt when the file was missing. No entry before the
+    /// first look. Every read, every stat the shared pair vouches for and
+    /// every failed stat of a freshness check or sweep writes it — the one
+    /// record of "what is on disk now", lagging the disk by at most the
+    /// time since the last look.
+    llvm::DenseMap<Fid, std::optional<std::uint64_t>> seen;
+
+    /// Files whose seen content moved from one known state to another
+    /// since the last take_changes(), in first-change order: the table is
+    /// the single source of disk change events, whoever happened to look
+    /// (the workspace sweep, a save, a rescan, a compile's staleness
+    /// check). A first look is no change — nothing was derived from an
+    /// unseen state.
+    llvm::SmallVector<Fid> changes;
+    llvm::DenseSet<Fid> changed;
+
+    /// Invoked when `changes` goes from empty to non-empty; the owner
+    /// schedules the drain. Unset (batch tools, tests) leaves the queue to
+    /// whoever takes it.
+    std::function<void()> on_change;
+
+    /// The disk content as last seen through this fid, without I/O;
+    /// nullopt before the first look and while the file is missing.
+    std::optional<std::uint64_t> seen_hash(Fid fid) const {
+        auto it = seen.find(fid);
+        return it != seen.end() ? it->second : std::nullopt;
+    }
+
+    /// A look found the file missing.
+    void saw_missing(Fid fid) {
+        saw(fid, std::nullopt);
+    }
+
+    /// Whether the last look through this fid found the file missing.
+    bool seen_missing(Fid fid) const {
+        auto it = seen.find(fid);
+        return it != seen.end() && !it->second;
+    }
+
+    /// Every fid the last look found missing: deleted files, and the places
+    /// failed lookups looked — where a file appearing is a change.
+    llvm::SmallVector<Fid> missing_files() const {
+        llvm::SmallVector<Fid> result;
+        for(auto& [fid, hash]: seen) {
+            if(!hash) {
+                result.push_back(fid);
+            }
+        }
+        return result;
+    }
+
+    /// The changed files, in first-change order, emptying the queue.
+    llvm::SmallVector<Fid> take_changes() {
+        changed.clear();
+        return std::exchange(changes, {});
     }
 
     /// Record a same-source read (the scan worker's, or one made through
@@ -288,6 +440,7 @@ struct FileTable {
     void observe(Fid fid, const DiskObservation& obs) {
         auto& binding = bind(fid, obs.uid_device, obs.uid_file);
         binding.earned = true;
+        saw(fid, obs.hash);
         if(obs.reliable) {
             disk_states[binding.entity] = obs;
         }
@@ -310,6 +463,7 @@ struct FileTable {
     std::optional<DiskObservation> current(Fid fid) {
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(resolve(fid), status)) {
+            saw_missing(fid);
             return std::nullopt;
         }
         return observe_for(fid, status);
@@ -339,17 +493,12 @@ struct FileTable {
 
     /// A content version of a file: `content_hash` names the bytes (for
     /// build artifacts, the bytes the build consumed — reported by the
-    /// worker, never replaced by a later disk read), and the stat is the
-    /// shared fast path proving the disk still holds them. Recorded only
-    /// when the file provably did not change since before the consuming
-    /// build started; mtime_ns == 0 means "no fast path" and a check
-    /// falls through to the hash comparison, which repairs the fast path
-    /// in place — once, for every consumer of the version.
+    /// worker, never replaced by a later disk read). Whether the disk still
+    /// holds them is asked of the file's own observation, never recorded
+    /// on the version.
     struct FileVersion {
         Fid fid;
         std::uint64_t content_hash = 0;
-        std::uint64_t size = 0;
-        std::int64_t mtime_ns = 0;
     };
 
     /// Version table, indexed by VersionID. The table is append-only:
@@ -360,24 +509,6 @@ struct FileTable {
     /// (index::ProjectIndex maps them), so these ids live one session.
     llvm::SmallVector<FileVersion> versions;
     llvm::DenseMap<std::pair<Fid, std::uint64_t>, VersionID> version_ids;
-
-    /// Bumped whenever a version's stat fast path is written (stamped at
-    /// capture or repaired by a check) or revoked (force_revalidate).
-    /// Persistence compares it around an operation to learn whether the
-    /// table changed under it.
-    std::uint64_t stamp_generation = 0;
-
-    /// Bumped only when force_revalidate revokes stamps, and persisted —
-    /// offset by each index lineage's own count
-    /// (index::ProjectIndex::revocation_generation) — in both metadata
-    /// blobs that carry them (the global blob's version table, the
-    /// artifacts blob's dep records). The blobs commit non-atomically, so
-    /// a crash can land a global recording a revocation next to an
-    /// artifacts blob that predates it — whose stamps adopt_stamp would
-    /// then restore into the revoked holes. Adoption is gated on the
-    /// artifacts blob being at least as revocation-current as the loaded
-    /// global.
-    std::uint64_t revocation_generation = 0;
 
     const FileVersion& version(VersionID vid) const {
         assert(vid.raw < versions.size());
@@ -394,104 +525,6 @@ struct FileTable {
             versions.push_back(FileVersion{.fid = fid, .content_hash = content_hash});
         }
         return it->second;
-    }
-
-    /// Give a version its stat fast path, but only corroborated: the shared
-    /// pair must prove the bytes at exactly this stat hash to the version's
-    /// content hash. A caller's own proof (e.g. "mtime predates the build")
-    /// is not enough — a same-stat rewrite forging the mtime would stamp a
-    /// stat describing bytes the consumer never saw, and the equality fast
-    /// path would then judge them fresh forever. An already-stamped version
-    /// keeps its stamp (it was earned the same way; concurrent captures of
-    /// one version must not regress each other).
-    void try_stamp(VersionID vid,
-                   std::uint64_t size,
-                   std::int64_t mtime_ns,
-                   std::uint64_t uid_device,
-                   std::uint64_t uid_file) {
-        assert(vid.raw < versions.size());
-        auto& version = versions[vid.raw];
-        if(version.mtime_ns != 0 || version.content_hash == 0) {
-            return;
-        }
-        // Corroborate through the fid's earned binding; an unverified or
-        // missing binding simply declines the stamp and the first check
-        // earns it by reading.
-        auto binding = bindings.find(version.fid);
-        if(binding == bindings.end() || !binding->second.earned) {
-            return;
-        }
-        // The live stat's identity must be the earned binding's: a
-        // same-stat replace (new inode, forged size and mtime) would
-        // otherwise corroborate through the replaced file's pair.
-        auto entity = entity_ids.find(entity_key(version.fid, uid_device, uid_file));
-        if(entity == entity_ids.end() || entity->second != binding->second.entity) {
-            return;
-        }
-        auto pair = disk_states.find(binding->second.entity);
-        if(pair == disk_states.end() || pair->second.size != size ||
-           pair->second.mtime_ns != mtime_ns || pair->second.hash != version.content_hash) {
-            return;
-        }
-        version.size = size;
-        version.mtime_ns = mtime_ns;
-        stamp_generation += 1;
-    }
-
-    /// Adopt a stamp persisted by an earlier session — it was earned under
-    /// try_stamp's corroboration discipline back then, which is what makes
-    /// it trustworthy without a live pair now. Only fills a hole: a stamp
-    /// earned this session describes the same bytes at least as recently.
-    /// Refused once the table revoked any stamp: a hole may then be a
-    /// revocation, which a project loading later must not refill from its
-    /// own blobs.
-    void adopt_stamp(VersionID vid, std::uint64_t size, std::int64_t mtime_ns) {
-        assert(vid.raw < versions.size());
-        auto& version = versions[vid.raw];
-        if(revocation_generation == 0 && version.mtime_ns == 0 && version.content_hash != 0 &&
-           mtime_ns != 0) {
-            version.size = size;
-            version.mtime_ns = mtime_ns;
-        }
-    }
-
-    /// A save embedded this file's content into artifacts that will not be
-    /// re-read from disk (synthesized preambles): drop every trust anchor
-    /// so the next check of any of its versions performs a real read — the
-    /// stat fast paths, the shared pair a check would consult instead of
-    /// reading, and verdicts already memoized in the current wave, which
-    /// would bypass the forced point entirely.
-    void force_revalidate(Fid fid) {
-        // Entity-level: dropping only fid-scoped anchors would leave the
-        // pair — and the version stamps of a hardlinked spelling of the
-        // same file — vouching for bytes this call says to re-read.
-        auto entity = ~0u;
-        if(auto binding = bindings.find(fid); binding != bindings.end()) {
-            entity = binding->second.entity;
-            disk_states.erase(entity);
-        }
-        bool revoked = false;
-        for(std::uint32_t i = 0; i < versions.size(); i += 1) {
-            auto& version = versions[i];
-            bool same_file = version.fid == fid;
-            if(!same_file && entity != ~0u) {
-                auto alias = bindings.find(version.fid);
-                same_file = alias != bindings.end() && alias->second.entity == entity;
-            }
-            if(same_file) {
-                revoked = revoked || version.mtime_ns != 0;
-                version.size = 0;
-                version.mtime_ns = 0;
-                wave_verdicts.erase(VersionID{i});
-            }
-        }
-        // Revocation is stamp movement like any other: persisted stamps
-        // (the global blob, artifact dep records) must not outlive it, or
-        // the next session re-adopts trust this call just dropped.
-        if(revoked) {
-            stamp_generation += 1;
-            revocation_generation += 1;
-        }
     }
 
     /// How one wave's check of a version came out. Policy-free facts;
@@ -562,10 +595,7 @@ struct FileTable {
 
     /// Wave-scoped verdict memo: one top-level check operation (a
     /// deps_changed chain, an index need_update batch) opens a Wave, and
-    /// every version is settled at most once inside it. Within a wave, a
-    /// version with no fast path is validated by a real read exactly once;
-    /// the repair the read performs is what later waves' fast paths are
-    /// made of.
+    /// every version is settled at most once inside it.
     llvm::DenseMap<VersionID, Verdict> wave_verdicts;
     bool wave_open = false;
 
@@ -597,11 +627,9 @@ struct FileTable {
         return Wave(*this);
     }
 
-    /// The unified two-layer staleness check: stat equality against the
-    /// version's shared fast path, else a read through the disk-state
-    /// compartment (feeding both compartments), comparing the bytes'
-    /// hash against the version's and repairing the fast path on a
-    /// match. Memoized within the current wave.
+    /// Whether the disk still holds a version's bytes: a live stat, the
+    /// file's observation for it (observe_for: the shared pair, else a
+    /// read), and the hash compared. Memoized within the current wave.
     Verdict check_version(VersionID vid) {
         assert(wave_open && "check_version outside a Wave");
         if(auto it = wave_verdicts.find(vid); it != wave_verdicts.end()) {
@@ -613,59 +641,37 @@ struct FileTable {
     }
 
 private:
-    /// Whether a stat-equality fast path may stand for this fid: once the
-    /// session has learned the file's identity (an earned binding), the
-    /// live stat must still carry it — a rename-over with a forged equal
-    /// stat changes the UniqueID and must fall through to a read. A fid
-    /// with no earned binding keeps cross-session trust: adopted stamps
-    /// serve the cold start before any read has happened.
-    bool stamp_identity_holds(Fid fid, const llvm::sys::fs::file_status& status) const {
-        auto binding = bindings.find(fid);
-        if(binding == bindings.end() || !binding->second.earned) {
-            return true;
+    void saw(Fid fid, std::optional<std::uint64_t> hash) {
+        auto [it, first] = seen.try_emplace(fid, hash);
+        if(first || it->second == hash) {
+            return;
         }
-        auto uid = status.getUniqueID();
-        auto entity = entity_ids.find(entity_key(fid, uid.getDevice(), uid.getFile()));
-        return entity != entity_ids.end() && entity->second == binding->second.entity;
+        it->second = hash;
+        if(changed.insert(fid).second) {
+            changes.push_back(fid);
+            if(changes.size() == 1 && on_change) {
+                on_change();
+            }
+        }
     }
 
     Verdict check_version_uncached(VersionID vid) {
-        assert(vid.raw < versions.size());
-        auto& version = versions[vid.raw];
-
+        auto& version = this->version(vid);
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(resolve(version.fid), status)) {
+            saw_missing(version.fid);
             return Verdict::Missing;
         }
-        auto size = status.getSize();
-        auto mtime_ns = fs::mtime_ns(status);
-        if(version.mtime_ns != 0 && version.size == size && version.mtime_ns == mtime_ns &&
-           stamp_identity_holds(version.fid, status)) {
-            return Verdict::Fresh;
-        }
-
-        // No trusted hash to compare against: never fresh (0 is the
-        // consumed-hash sentinel for "the worker had no bytes to hash").
+        // 0 is the consumed-hash sentinel for "the worker had no bytes to
+        // hash": nothing to compare against, never fresh.
         if(version.content_hash == 0) {
             return Verdict::Stale;
         }
-
         auto obs = observe_for(version.fid, status);
         if(!obs) {
             return Verdict::Unreadable;
         }
-        if(obs->hash != version.content_hash) {
-            return Verdict::Stale;
-        }
-        // Touched but not modified — repair the fast path so the next
-        // check is a single stat again, for every consumer at once. An
-        // unpaired or guard-window observation must not become one.
-        if(obs->reliable) {
-            version.size = obs->size;
-            version.mtime_ns = obs->mtime_ns;
-            stamp_generation += 1;
-        }
-        return Verdict::Fresh;
+        return obs->hash == version.content_hash ? Verdict::Fresh : Verdict::Stale;
     }
 };
 

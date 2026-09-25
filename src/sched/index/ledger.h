@@ -33,20 +33,6 @@ enum class ReindexReason : std::uint8_t {
     ContentChanged,
 };
 
-/// Dispatch/landing-time admission verdict on one unit of pump work,
-/// produced by the client (the serving side knows sessions; batch is
-/// trivially Admit) — the pump itself never sees a SessionStore.
-enum class Admission : std::uint8_t {
-    /// Run the work as planned.
-    Admit,
-    /// Skip the work and settle the claimed debt: an ordinary open
-    /// session's veto must clear the debt, or the pump spins and a
-    /// ContentChanged suppression hangs for the whole open period.
-    SkipAndSettle,
-    /// Skip the work and keep the debt for a later round.
-    Defer,
-};
-
 /// The pump's per-file debt ledger — the claim/settle contract behind
 /// background reindexing:
 ///
@@ -162,8 +148,9 @@ public:
     }
 
     /// Some file still holds a queued-and-unconsumed slot. The drained
-    /// queue's compaction invariant: deferred debt (admission's Defer)
-    /// legitimately outlives the round, a queued slot must not.
+    /// queue's compaction invariant: debt legitimately outlives the round
+    /// (a round the graph refused keeps its booking), a queued slot must
+    /// not.
     bool has_queued_slots() const {
         return !queued.empty();
     }
