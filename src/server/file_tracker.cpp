@@ -59,13 +59,15 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     auto guard = llvm::make_scope_exit([this] { sweeping = false; });
 
     ScopedTimer timer;
-    // What the lexical scan saw included, and what compiles actually read
-    // (the files index rows came from): a header only a macro include
-    // reaches is invisible to the former.
+    // What the lexical scan saw included, what compiles actually read (the
+    // files index rows came from) — a header only a macro include reaches
+    // is invisible to the former — and every place last seen empty, where
+    // a file appearing changes what some compile would see.
     auto files = project.dep_graph.all_files();
     for(auto& [file, contributors]: project.project_index.contributions) {
         files.push_back(file);
     }
+    llvm::append_range(files, project.file_table.seen_missing());
     llvm::sort(files);
     files.erase(llvm::unique(files), files.end());
     for(std::size_t begin = 0; begin < files.size(); begin += batch_size) {

@@ -90,6 +90,11 @@ public:
 
     std::uint64_t path_hash(std::uint32_t id) const;
 
+    /// The places the parse's failed lookups looked that held no file.
+    std::uint32_t absent_count() const;
+
+    llvm::StringRef absent(std::uint32_t i) const;
+
     std::uint32_t node_count() const;
 
     /// One node of the include tree, its file a path id of this envelope.

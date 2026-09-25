@@ -343,15 +343,10 @@ std::vector<DepFile> CompilationUnitRef::deps() {
             }
         }
 
-        /// FIXME: Not-found `__has_include`/`__has_embed` probes leave no
-        /// trace here, so creating the probed file later cannot invalidate
-        /// products built while it was missing. `clang -MD` drops misses
-        /// the same way — the build ecosystem accepts this hole, and even
-        /// clang's preamble simulates the failed lookup's candidate paths
-        /// only for `#include` misses. Rather than stat'ing candidate sets
-        /// per freshness check, the right home is the invalidation
-        /// pipeline: persist unresolved lookups and match them against
-        /// file-creation events from the workspace watcher.
+        /// FIXME: Not-found `__has_embed` probes leave no trace, so
+        /// creating the probed file later cannot invalidate products built
+        /// while it was missing (failed includes and `__has_include` are
+        /// recorded, see absent()).
         for(auto& has_include: directive.has_includes) {
             add_file(has_include.file);
         }
@@ -371,7 +366,23 @@ std::vector<DepFile> CompilationUnitRef::deps() {
     for(auto& dep: deps) {
         result.emplace_back(dep.getKey().str(), dep.getValue());
     }
+    for(auto& path: absent()) {
+        result.emplace_back(std::move(path), 0);
+    }
 
+    return result;
+}
+
+std::vector<std::string> CompilationUnitRef::absent() {
+    std::vector<std::string> result;
+    for(auto& entry: self->absent) {
+        // A lookup also fails on a directory of that name: only a place
+        // holding nothing is absent.
+        if(!llvm::sys::fs::exists(entry.getKey())) {
+            result.emplace_back(entry.getKey());
+        }
+    }
+    std::ranges::sort(result);
     return result;
 }
 

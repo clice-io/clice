@@ -324,13 +324,16 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
 
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(file.path, status)) {
-            // The build read it, but it is gone already: record the absence,
-            // reappearing counts as a change. Still-missing deliberately
-            // counts as unchanged — flagging it would rebuild on every
-            // check without ever converging, while the artifact is the
-            // last remaining truth for the file (and dependents' recovery
-            // is the DiskRemoved cascade's job, not this snapshot's).
+            // A place a failed lookup looked, or a file the build read that
+            // is gone already: record the absence, appearing counts as a
+            // change — the file table watches it from here on. Still-missing
+            // deliberately counts as unchanged — flagging it would rebuild
+            // on every check without ever converging, while the artifact is
+            // the last remaining truth for the file (and dependents'
+            // recovery is the DiskRemoved cascade's job, not this
+            // snapshot's).
             dep.missing = true;
+            files.saw_missing(dep.path_id);
             continue;
         }
 

@@ -58,6 +58,7 @@ struct ManifestBlobMirror {
     std::uint32_t contribution_count = 0;
     std::vector<std::uint8_t> nodes;
     std::vector<std::uint8_t> contributions;
+    std::vector<std::uint32_t> absent;
 };
 
 TEST_CASE(ManifestCountMismatchRejected) {

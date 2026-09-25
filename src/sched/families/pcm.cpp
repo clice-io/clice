@@ -134,7 +134,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             ctx.reference(dep);
         }
     }
-    for(auto dep: deps.resolved) {
+    for(auto dep: with_imports(deps.resolved)) {
         switch(co_await ctx.depend(node(dep))) {
             case DependResult::Ready: break;
             case DependResult::Failed: co_return RoundOutcome::Failed;
@@ -214,6 +214,10 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
                  budget_key);
         co_return RoundOutcome::Failed;
     }
+    if(failures.holds(budget_key, project.file_table)) {
+        LOG_PERF("cache", "ns=pcm event=failed_before key={} module={}", budget_key, module_name);
+        co_return RoundOutcome::Failed;
+    }
 
     bp.module_name = module_name;
     auto pending = project.store->begin_store("pcm", pcm_key);
@@ -246,6 +250,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Stale;
     }
     if(!result.has_value() || !result.value().success) {
+        failures.record(budget_key, project.file_table, result);
         if(expected_build_failure(result)) {
             LOG_WARN("BuildPCM failed for module {}: {}",
                      module_name,
@@ -348,8 +353,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
         }
 
         std::vector<kota::task<JoinOutcome>> waits;
-        waits.reserve(deps.resolved.size());
-        for(auto dep: deps.resolved) {
+        for(auto dep: with_imports(deps.resolved)) {
             waits.push_back(graph.request(node(dep), {.foreground = foreground}));
         }
         auto results = co_await kota::when_all(std::move(waits));
@@ -361,6 +365,20 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
         }
     }
     co_return true;
+}
+
+llvm::SmallVector<Fid> PCMFamily::with_imports(llvm::ArrayRef<Fid> units) const {
+    llvm::SmallVector<Fid> result(units.begin(), units.end());
+    for(std::size_t i = 0; i < result.size(); i += 1) {
+        for(auto dep: graph.dependencies(node(result[i]))) {
+            auto unit = Fid{static_cast<std::uint32_t>(dep.key)};
+            if(dep.family == Family::PCM && !is_unresolved(dep) &&
+               !llvm::is_contained(result, unit)) {
+                result.push_back(unit);
+            }
+        }
+    }
+    return result;
 }
 
 bool PCMFamily::tracks(Fid path_id) const {

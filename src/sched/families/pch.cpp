@@ -150,6 +150,10 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
                  pch_key);
         co_return RoundOutcome::Failed;
     }
+    if(failures.holds(pch_key, project.file_table)) {
+        LOG_PERF("cache", "ns=pch event=failed_before key={} file={}", pch_key, request.file);
+        co_return RoundOutcome::Failed;
+    }
 
     // Build a new pair via a stateless worker: it writes the PCH and its
     // pch.idx envelope to the tmp paths allocated here; the store commits
@@ -193,6 +197,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         co_return RoundOutcome::Stale;
     }
     if(!result.has_value() || !result.value().success) {
+        failures.record(pch_key, project.file_table, result);
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", bp.file, build_failure_message(result));
         } else {

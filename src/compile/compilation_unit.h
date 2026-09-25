@@ -256,8 +256,13 @@ public:
     clang::TranslationUnitDecl* tu();
 
     /// The files this compilation read (include and __has_include targets),
-    /// each with the hash of the bytes the compiler actually consumed.
+    /// each with the hash of the bytes the compiler actually consumed, and
+    /// the places its failed lookups looked (see absent), hash 0.
     std::vector<DepFile> deps();
+
+    /// The places failed include and `__has_include` lookups looked that
+    /// hold no file: creating one changes what this compilation would see.
+    std::vector<std::string> absent();
 
     /// The entity of a declaration (semantic/identity.h), memoized for the
     /// unit's lifetime.

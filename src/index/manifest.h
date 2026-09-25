@@ -51,6 +51,11 @@ struct TUManifest {
     /// even when the file was entered several times.
     std::vector<std::pair<VersionID, std::uint64_t>> contributions;
 
+    /// The places the TU's failed lookups looked that held no file, as
+    /// versions without bytes (content hash 0): a file appearing at one
+    /// changes what the TU compiles to.
+    std::vector<VersionID> absent;
+
     friend bool operator==(const TUManifest&, const TUManifest&) = default;
 };
 

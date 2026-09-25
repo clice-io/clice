@@ -375,8 +375,8 @@ const char e[] = {
 };
 
 TEST_CASE(FailedIncludeDeps) {
-    // A failed include records an invalid fid; deps must skip it
-    // instead of resolving it to a path.
+    // A failed include records an invalid fid, which resolves to no path;
+    // the places its lookup looked are absent inputs instead, hash 0.
     add_files("main.cpp", R"cpp(
 #[test.h]
 
@@ -388,9 +388,12 @@ TEST_CASE(FailedIncludeDeps) {
     auto built = clice::compile(params);
 
     auto deps = built.deps();
-    ASSERT_EQ(deps.size(), 1U);
+    ASSERT_EQ(deps.size(), 2U);
     ASSERT_EQ(deps[0].path, TestVFS::path("test.h"));
     ASSERT_TRUE(deps[0].hash != 0);
+    ASSERT_EQ(deps[1].path, TestVFS::path("missing.h"));
+    ASSERT_EQ(deps[1].hash, 0U);
+    ASSERT_EQ(built.absent(), std::vector<std::string>{TestVFS::path("missing.h")});
 };
 
 };  // TEST_SUITE(Directive)

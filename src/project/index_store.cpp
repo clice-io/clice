@@ -548,7 +548,18 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
     }
 
+    // The places the parse's failed lookups looked: the file table watches
+    // them from here on. One that holds a file by now makes the rows stale
+    // on arrival.
     Report report;
+    for(std::uint32_t i = 0; i < view.absent_count(); i += 1) {
+        auto fid = project.file_table.intern(view.absent(i));
+        if(project.file_table.current(fid)) {
+            report.add_reindex(tu_path_id);
+        }
+        manifest.absent.push_back(project.file_table.intern_version(fid, 0));
+    }
+
     for(auto& [global_id, replacement]: replacements) {
         project.project_index.shards[global_id] = std::move(replacement);
         dirty_shards.insert(global_id);
@@ -1811,7 +1822,9 @@ bool IndexStore::need_update(llvm::StringRef file_path) {
             return true;
         }
     }
-    return false;
+    return llvm::any_of(manifest.absent, [&](VersionID fv) {
+        return project.file_table.current(project.file_table.version(fv).fid).has_value();
+    });
 }
 
 }  // namespace clice

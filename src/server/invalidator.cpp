@@ -14,9 +14,11 @@ namespace clice {
 Invalidator::Invalidator(Project& project,
                          const SessionStore& store,
                          const EditorContext& contexts,
+                         const ASTProjectionTable& projections,
                          PCMFamily& pcm,
                          const IndexStore& index) :
-    project(project), store(store), contexts(contexts), pcm(pcm), index(index) {}
+    project(project), store(store), contexts(contexts), projections(projections), pcm(pcm),
+    index(index) {}
 
 llvm::SmallVector<FileEvent> take_disk_events(FileTable& files) {
     llvm::SmallVector<FileEvent> events;
@@ -47,6 +49,32 @@ void Invalidator::mark_dependent(Fid path_id, DirtySet& dirty) {
     } else {
         dirty.add_reindex_deps_only(path_id);
     }
+}
+
+llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
+    auto result = project.dep_graph.find_host_sources(path_id);
+    auto add = [&](Fid reader) {
+        if(reader != path_id && !llvm::is_contained(result, reader)) {
+            result.push_back(reader);
+        }
+    };
+    auto& index = project.project_index;
+    if(auto it = index.contributions.find(path_id); it != index.contributions.end()) {
+        for(auto tu: llvm::make_first_range(it->second)) {
+            add(tu);
+        }
+    }
+    if(auto it = index.probed.find(path_id); it != index.probed.end()) {
+        for(auto tu: it->second) {
+            add(tu);
+        }
+    }
+    for(auto document: llvm::make_first_range(store.sessions)) {
+        if(projections.read(document, path_id, project.pch_cache)) {
+            add(document);
+        }
+    }
+    return result;
 }
 
 void Invalidator::cascade_compile_graph(Fid path_id, DirtySet& dirty) {
@@ -120,17 +148,14 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     dirty.reset_header_mode.push_back(path_id);
     dirty.reset_trial.push_back(path_id);
 
-    // Root TUs transitively including the file: the ones the lexical scan
-    // sees, and the ones whose indexed compile read it — the scan cannot
-    // resolve a macro include. The rescan below rewrites only the file's
-    // own outgoing edges, never the includers this walks.
-    auto dependents = project.dep_graph.find_host_sources(path_id);
-    if(auto it = project.project_index.contributions.find(path_id);
-       it != project.project_index.contributions.end()) {
-        for(auto& [tu, rows]: it->second) {
-            if(tu != path_id && !llvm::is_contained(dependents, tu)) {
-                dependents.push_back(tu);
-            }
+    // Taken before the rescan below, which rewrites only the file's own
+    // outgoing edges, never the includers this walks. A file the scan did
+    // not know is new: its readers looked for it and failed, and their
+    // rescans give the lexical graph the edges it lacked.
+    auto dependents = readers(path_id);
+    if(!project.dep_graph.knows(path_id)) {
+        for(auto reader: dependents) {
+            rescan_disk_state(reader, dirty);
         }
     }
 
@@ -223,7 +248,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // ones recompile (the missing-file diagnostic is the truth),
                 // closed ones reindex — nothing else would ever queue them.
                 // Snapshot before the scrub below rewrites the graph.
-                for(auto root: project.dep_graph.find_host_sources(path_id)) {
+                for(auto root: readers(path_id)) {
                     mark_dependent(root, dirty);
                 }
                 // A removed module unit takes its PCM with it: importers'

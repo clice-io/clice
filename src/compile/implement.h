@@ -69,6 +69,10 @@ struct CompilationUnitRef::Self {
     /// See CompilationParams::synthesized.
     llvm::StringSet<> synthesized;
 
+    /// Every place a failed include or `__has_include` lookup looked, see
+    /// CompilationUnitRef::absent.
+    llvm::StringSet<> absent;
+
     /// Memo of CompilationUnitRef::from_context.
     llvm::DenseMap<clang::FileID, bool> context_files;
 

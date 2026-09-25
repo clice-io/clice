@@ -398,6 +398,18 @@ struct FileTable {
         return it != seen.end() && !it->second;
     }
 
+    /// Every fid the last look found missing: deleted files, and the places
+    /// failed lookups looked — where a file appearing is a change.
+    llvm::SmallVector<Fid> seen_missing() const {
+        llvm::SmallVector<Fid> result;
+        for(auto& [fid, hash]: seen) {
+            if(!hash) {
+                result.push_back(fid);
+            }
+        }
+        return result;
+    }
+
     /// The changed files, in first-change order, emptying the queue.
     llvm::SmallVector<Fid> take_changes() {
         changed.clear();

@@ -1258,6 +1258,27 @@ struct Indexed {
     }
 };
 
+TEST_CASE(CreatedHeaderStales) {
+    // Where a failed include looked is an input of the TU: a header
+    // appearing there makes its rows stale.
+    TempDir tmp;
+    tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
+    auto src = tmp.path("main.cpp");
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+    IndexerFixture f;
+    f.merge(indexed.data.data(), indexed.data.size());
+    auto tu = f.project.file_table.intern(indexed.tu_path);
+    auto gen = f.project.file_table.intern(tmp.path("gen.h"));
+    ASSERT_TRUE(f.project.project_index.probed.lookup(gen).contains(tu));
+    ASSERT_TRUE(f.project.file_table.seen_missing(gen));
+    ASSERT_FALSE(f.need_update(src));
+
+    tmp.touch("gen.h", "int make();\n");
+    f.clear_verdicts();
+    ASSERT_TRUE(f.need_update(src));
+}
+
 TEST_CASE(TouchStaysFresh) {
     Indexed x;
     ASSERT_TRUE(x.setup());

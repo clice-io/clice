@@ -7,6 +7,7 @@
 
 #include "project/index_store.h"
 #include "project/project.h"
+#include "server/ast_projection.h"
 #include "server/editor_context.h"
 #include "server/session_store.h"
 
@@ -238,6 +239,7 @@ public:
     Invalidator(Project& project,
                 const SessionStore& store,
                 const EditorContext& contexts,
+                const ASTProjectionTable& projections,
                 PCMFamily& pcm,
                 const IndexStore& index);
 
@@ -269,9 +271,16 @@ private:
     /// dependency invalidation.
     void mark_dependent(Fid path_id, DirtySet& dirty);
 
+    /// The root TUs and open documents whose compiles depend on the file:
+    /// the ones the lexical scan sees including it, and the ones whose
+    /// compiles read it or looked for it — the scan cannot resolve a macro
+    /// include, and never sees a file before it exists.
+    llvm::SmallVector<Fid> readers(Fid path_id) const;
+
     Project& project;
     const SessionStore& store;
     const EditorContext& contexts;
+    const ASTProjectionTable& projections;
     PCMFamily& pcm;
     const IndexStore& index;
 };

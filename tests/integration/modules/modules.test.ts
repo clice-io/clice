@@ -217,6 +217,38 @@ test("module compile error", async ({ session }) => {
     ).toBe(true);
 });
 
+test("evicted transitive import recovers", async ({ session }) => {
+    // A compile importing B reads A's PCM too: with only A's evicted below
+    // a clean B, A is rebuilt before the compile.
+    const { client, workspace } = session.tmp();
+    workspace.pinCacheDir();
+    workspace.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    workspace.write(
+        "b.cppm",
+        "export module B;\nexport import A;\nexport int b() { return a() + 1; }\n",
+    );
+    const MAIN = "import B;\nint main() { return a() + b(); }\n";
+    workspace.write("main.cpp", MAIN);
+    workspace.writeEntries(
+        [
+            ["a.cppm", []],
+            ["b.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertNoErrors(uri);
+
+    for (const pcm of workspace.pcmFiles().filter((p) => path.basename(p).startsWith("A-"))) {
+        fs.rmSync(pcm);
+    }
+    client.change(uri, 1, MAIN + "// edit\n");
+    await client.waitForRecompile(uri);
+    client.assertNoErrors(uri, "the evicted transitive import must be rebuilt");
+});
+
 /// A 5-level module chain (m1->m2->...->m5) should compile correctly.
 test("deep chain", async ({ session }) => {
     const { client } = await session("modules/deep_chain");

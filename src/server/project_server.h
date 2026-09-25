@@ -90,8 +90,9 @@ public:
     void dispatch(llvm::ArrayRef<FileEvent> events);
 
     /// Whether anything here derives from the file: an open document, a
-    /// command, an include edge, index rows. The disk changes of files it
-    /// does not know are not this project's to cascade.
+    /// command, an include edge, index rows, a compile that read it or
+    /// looked for it. The disk changes of files it does not know are not
+    /// this project's to cascade.
     bool knows(Fid path_id);
 
     MasterServer& server;

@@ -129,6 +129,28 @@ struct ASTProjectionTable {
         return entry ? entry->epoch : 0;
     }
 
+    /// Whether the document's last compile read `file` — itself or through
+    /// the PCH it adopted, a missing file it looked for included: the
+    /// compile truth a lexical scan misses (a macro include, a header that
+    /// did not exist yet).
+    bool read(Fid path_id, Fid file, const llvm::StringMap<PCHState>& pch_cache) const {
+        const auto* entry = find(path_id);
+        if(!entry) {
+            return false;
+        }
+        auto names = [&](const DepsSnapshot& deps) {
+            return llvm::any_of(deps, [&](const DepState& dep) { return dep.path_id == file; });
+        };
+        if(entry->deps && names(*entry->deps)) {
+            return true;
+        }
+        if(!entry->projection || !entry->projection->pch_key) {
+            return false;
+        }
+        auto it = pch_cache.find(*entry->projection->pch_key);
+        return it != pch_cache.end() && names(it->second.deps);
+    }
+
     /// Replace one field of the projection, keeping the rest (readers
     /// holding the old shared_ptr are unaffected).
     void set_pch_key(Fid path_id, std::optional<std::string> pch_key) {

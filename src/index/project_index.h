@@ -157,6 +157,10 @@ struct ProjectIndex {
     /// Derived from `manifests`: file fid -> (TU fid -> rows hash).
     llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>> contributions;
 
+    /// Derived from `manifests`: a place some TU's failed lookup looked ->
+    /// those TUs (TUManifest::absent).
+    llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> probed;
+
     /// The file table's id for a version id the loaded global blob
     /// carries; nullopt for any other.
     std::optional<VersionID> runtime_version(std::uint32_t persisted) const;

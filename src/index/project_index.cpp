@@ -645,6 +645,7 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         for(auto& [fv, hash]: manifest.contributions) {
             referenced.insert(fv);
         }
+        referenced.insert(manifest.absent.begin(), manifest.absent.end());
     }
 
     GlobalBlob blob;
@@ -814,6 +815,11 @@ bool ProjectIndex::import_manifest(TUManifest& manifest) const {
             return false;
         }
     }
+    for(auto& fv: manifest.absent) {
+        if(!import(fv.raw)) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -824,6 +830,9 @@ TUManifest ProjectIndex::export_manifest(const TUManifest& manifest) {
         node.file = persisted_id(VersionID{node.file});
     }
     for(auto& fv: llvm::make_first_range(exported.contributions)) {
+        fv.raw = persisted_id(fv);
+    }
+    for(auto& fv: exported.absent) {
         fv.raw = persisted_id(fv);
     }
     return exported;
@@ -846,6 +855,9 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
         auto path_id = files.version(fv).fid;
         contributions[path_id][tu_path_id] = hash;
         affected.push_back(path_id);
+    }
+    for(auto fv: manifest.absent) {
+        probed[files.version(fv).fid].insert(tu_path_id);
     }
     manifests[tu_path_id] = std::move(manifest);
 
@@ -872,6 +884,13 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
             contributions.erase(contribution_it);
         }
         affected.push_back(path_id);
+    }
+    for(auto fv: it->second.absent) {
+        auto probe_it = probed.find(files.version(fv).fid);
+        probe_it->second.erase(tu_path_id);
+        if(probe_it->second.empty()) {
+            probed.erase(probe_it);
+        }
     }
     manifests.erase(it);
 

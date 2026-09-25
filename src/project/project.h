@@ -44,9 +44,10 @@ constexpr inline std::uint32_t cache_format_version = 12;
 /// from the worker-reported content hash); its check is paid once per
 /// wave for every artifact and TU referencing it (FileTable::
 /// check_version). An invalid version means the build saw no nameable
-/// bytes: `missing` distinguishes "the file was absent" (reappearing is
-/// the change) from "the bytes could not be hashed" (stale until a
-/// rebuild's capture converges).
+/// bytes: `missing` distinguishes "the file was absent" — a place a failed
+/// lookup looked, or a file gone by the capture — (appearing is the
+/// change) from "the bytes could not be hashed" (stale until a rebuild's
+/// capture converges).
 struct DepState {
     Fid path_id;
     VersionID version;

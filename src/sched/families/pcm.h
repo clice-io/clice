@@ -7,6 +7,7 @@
 #include "project/command_resolver.h"
 #include "project/project.h"
 #include "sched/crash_budget.h"
+#include "sched/families/build_common.h"
 #include "sched/graph.h"
 #include "worker/pool.h"
 
@@ -104,6 +105,12 @@ public:
         return id.family == Family::PCM && (id.key >> 63) != 0;
     }
 
+    /// The units plus every module they import, transitively, through the
+    /// graph's edges: a compile importing them reads all of their PCMs, so
+    /// it waits on all of them — one evicted below a clean import is
+    /// rebuilt too.
+    llvm::SmallVector<Fid> with_imports(llvm::ArrayRef<Fid> units) const;
+
     /// A module name gained a provider it lacked: void the sentinel's
     /// dependents (dropping dirtied units' cached PCM state on the way)
     /// and return them for serving-side treatment.
@@ -154,6 +161,9 @@ private:
     /// content — and therefore its key — changes. Document quarantine
     /// cannot contain it: every importer would burn workers of its own.
     CrashBudget build_crashes;
+
+    /// Keyed like build_crashes, with the module's content.
+    FailedBuilds failures;
 };
 
 }  // namespace clice

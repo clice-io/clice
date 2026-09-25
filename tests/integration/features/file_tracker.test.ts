@@ -234,6 +234,29 @@ test("macro include change reindexes", async ({ session }) => {
     ).toBe(true);
 });
 
+test("created header reaches includers", async ({ session }) => {
+    // Where a failed include looked is watched: creating the header there
+    // recompiles the open includer and reindexes the closed one.
+    const { client, workspace } = session.tmp();
+    workspace.write("open.cpp", '#include "gen.h"\nint use_a() { return make(); }\n');
+    workspace.write("closed.cpp", '#include "gen.h"\nint use_b() { return make(); }\n');
+    workspace.writeCDB(["open.cpp", "closed.cpp"]);
+    await client.initialize(workspace);
+
+    const [openUri] = await client.openAndWait("open.cpp");
+    client.assertHasErrors(openUri, "gen.h does not exist yet");
+    expect(await client.waitForIndex(openUri, "use_b")).toBe(true);
+
+    workspace.write("gen.h", "int make();\n");
+    expect(await eventsOf(client, "workspace")).toBe(1);
+    await client.waitForRecompile(openUri);
+    client.assertNoErrors(openUri, "the open includer must find the new header");
+    expect(
+        await client.waitForReference(workspace.uri("gen.h"), 0, 4, workspace.uri("closed.cpp")),
+        "the closed includer was not reindexed",
+    ).toBe(true);
+});
+
 test("dependency change keeps buffer rows", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("h.h", "#pragma once\nextern int shared_sym;\n");

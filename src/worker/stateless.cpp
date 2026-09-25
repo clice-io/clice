@@ -112,7 +112,8 @@ static std::expected<std::string, std::string> artifact_output(llvm::StringRef l
 /// path to commit and the build's inputs; failure removes the half-written
 /// file and classifies the errors — `internal_error` marks a failure of
 /// the worker's own I/O, never the user's code, and must not be downgraded
-/// to an expected build failure.
+/// to an expected build failure. A failure of the user's code still hands
+/// over its inputs.
 static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
                                                  bool success,
                                                  const std::string& tmp_path,
@@ -132,6 +133,10 @@ static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
     result.success = false;
     result.has_user_errors = !internal_error && !errors.empty();
     result.error = errors.empty() ? std::format("{} compilation failed", label) : std::move(errors);
+    if(result.has_user_errors) {
+        result.build_at = build_at;
+        result.deps = deps;
+    }
     return result;
 }
 
@@ -163,8 +168,12 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     auto build_at = unit.build_at().count();
 
     std::string errors;
-    if(!success)
+    if(!success) {
         errors = collect_errors(unit);
+        if(unit.fatal_error()) {
+            pch_info.deps = unit.deps();
+        }
+    }
 
     std::string blob;
     ScopedTimer index_timer;
@@ -243,8 +252,12 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
     auto build_at = unit.build_at().count();
 
     std::string errors;
-    if(!success)
+    if(!success) {
         errors = collect_errors(unit);
+        if(unit.fatal_error()) {
+            pcm_info.deps = unit.deps();
+        }
+    }
 
     // TODO: PCM indexing. Unlike the PCH, a PCM is not a transient
     // buffer-derived artifact — module units are ordinary disk files with
