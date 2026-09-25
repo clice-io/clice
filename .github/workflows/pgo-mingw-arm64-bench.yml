@@ -1,0 +1,68 @@
+name: pgo mingw arm64 bench
+
+# Benchmark only, on the aarch64 mingw bundles of run 36024664634 (whose
+# unit tests passed on windows-11-arm).
+
+on:
+  push:
+    branches: [exp/pgo-mingw-arm64-bench]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows:
+    runs-on: windows-11-arm
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: test-run
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: final-arm64-mingw-*
+          path: bundles
+          run-id: "36024664634"
+          github-token: ${{ github.token }}
+      - name: Unpack
+        run: |
+          echo "cores: $NUMBER_OF_PROCESSORS"; uname -m
+          for v in base pgo; do
+            mkdir -p "variants/$v" && tar -C "variants/$v" -xzf "bundles/final-arm64-mingw-$v/bundle.tar.gz"
+          done
+          ls -la variants/*/bin
+      - name: Native toolchain for the workloads
+        run: |
+          curl -sSL -o llvm-mingw.zip https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-aarch64.zip
+          unzip -q llvm-mingw.zip -d "$RUNNER_TEMP"
+          echo "LLVM_MINGW=$(cygpath -m "$RUNNER_TEMP/llvm-mingw-20260922-ucrt-aarch64")" >> "$GITHUB_ENV"
+          # The test-run python has no pip: native arm64 cmake and ninja from their releases.
+          curl -sSL -o cmake.zip https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-arm64.zip
+          curl -sSL -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-winarm64.zip
+          unzip -q cmake.zip -d "$RUNNER_TEMP" && unzip -q ninja.zip -d "$RUNNER_TEMP/ninja"
+          echo "$(cygpath -w "$RUNNER_TEMP/cmake-4.1.2-windows-arm64/bin")" >> "$GITHUB_PATH"
+          echo "$(cygpath -w "$RUNNER_TEMP/ninja")" >> "$GITHUB_PATH"
+      - name: Workloads
+        run: |
+          pixi run -e test-run python scripts/pgo_ci.py workloads --dir "$RUNNER_TEMP/workloads" \
+            --cc "$LLVM_MINGW/bin/clang.exe" --cxx "$LLVM_MINGW/bin/clang++.exe"
+      - name: Benchmark
+        run: |
+          W="$(cygpath -m "$PWD")"
+          pixi run -e test-run python scripts/pgo_ci.py bench --rounds 3 --out bench-out \
+            --variant "base=$W/variants/base" --variant "pgo=$W/variants/pgo" \
+            --workload "abseil:$RUNNER_TEMP/workloads/abseil/build/compile_commands.json::60" \
+            --workload "llvm-sema:$RUNNER_TEMP/workloads/llvm/build/compile_commands.json:clang/lib/Sema/:16"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-arm64-mingw
+          path: bench-out

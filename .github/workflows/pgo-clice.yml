@@ -42,6 +42,10 @@ on:
       pixi-env:
         type: string
         default: package
+      llvm-mingw:
+        description: "Take the mingw sysroot and runtimes from llvm-mingw (aarch64-w64-mingw32)"
+        type: boolean
+        default: false
       os:
         type: string
         default: ubuntu-24.04
@@ -69,6 +73,19 @@ jobs:
       - uses: ./.github/actions/setup-pixi
         with:
           environments: ${{ inputs.pixi-env }}
+
+      - name: llvm-mingw
+        if: inputs.llvm-mingw
+        run: |
+          # The aarch64 mingw sysroot, libunwind and compiler-rt builtins; see
+          # cmake/toolchain.cmake (CLICE_MINGW_ROOT).
+          curl -sSL https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64.tar.xz \
+            | tar -xJ -C "$RUNNER_TEMP"
+          root="$RUNNER_TEMP/llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64"
+          prefix="$(pixi run -e "${{ inputs.pixi-env }}" printenv CONDA_PREFIX)"
+          mkdir -p "$prefix/lib/clang/23/lib/windows"
+          cp "$root"/lib/clang/*/lib/windows/libclang_rt.builtins-*.a "$prefix/lib/clang/23/lib/windows/"
+          echo "CLICE_MINGW_ROOT=$root" >> "$GITHUB_ENV"
 
       - name: Download LLVM
         if: inputs.llvm != ''
