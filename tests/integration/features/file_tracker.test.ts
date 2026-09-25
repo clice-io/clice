@@ -1,7 +1,7 @@
 /// File tracker: each test drives deterministic ticks through the
-/// clice/internal/poll hook (loops disabled). The first workspace tick
-/// judges scanned files against the bytes the scan read and seeds the stat
-/// baseline of the rest.
+/// clice/internal/poll hook (loops disabled). A workspace tick looks at
+/// every known file; a look finding other bytes than the one before — the
+/// scan's included — is a change.
 
 import * as fs from "node:fs";
 import {
@@ -178,6 +178,58 @@ test("checkout updates workspace", async ({ session }) => {
     expect(
         await client.waitForIndex(mainUri, "checkout_added"),
         "closed TU's own disk change was not indexed",
+    ).toBe(true);
+});
+
+test("checkout under an open header", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("header.h", HEADER_V1);
+    workspace.write("closed.cpp", '#include "header.h"\nint use_target() { return TARGET(); }\n');
+    workspace.writeCDB(["closed.cpp"]);
+    await client.initialize(workspace);
+
+    const headerUri = workspace.uri("header.h");
+    const closedUri = workspace.uri("closed.cpp");
+    expect(await client.waitForReference(headerUri, 2, 11, closedUri)).toBe(true);
+    client.open("header.h");
+    expect(await eventsOf(client, "workspace")).toBe(0);
+
+    // The editor reloads a clean buffer after a checkout: didChange, no
+    // didSave. The buffer shadows the disk for the header's own compile
+    // only, so the closed includer sees the checkout while it stays open.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("header.h", HEADER_V2);
+    client.change(headerUri, 1, HEADER_V2);
+    expect(await eventsOf(client, "workspace")).toBe(1);
+    expect(
+        await client.waitForReference(headerUri, 3, 11, closedUri),
+        "closed TU was not reindexed while the header stayed open",
+    ).toBe(true);
+});
+
+test("macro include change reindexes", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("header.h", HEADER_V1);
+    workspace.write(
+        "closed.cpp",
+        '#define HEADER "header.h"\n#include HEADER\nint use_target() { return TARGET(); }\n',
+    );
+    workspace.writeCDB(["closed.cpp"]);
+    await client.initialize(workspace);
+
+    const headerUri = workspace.uri("header.h");
+    const closedUri = workspace.uri("closed.cpp");
+    expect(await client.waitForReference(headerUri, 2, 11, closedUri)).toBe(true);
+    expect(await eventsOf(client, "workspace")).toBe(0);
+
+    // Only the compile resolves the include: the header is watched and its
+    // includer found through what the indexed compile read.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("header.h", HEADER_V2);
+    expect(await eventsOf(client, "workspace")).toBe(1);
+    expect(
+        await client.waitForReference(headerUri, 3, 11, closedUri),
+        "the macro includer was not reindexed",
     ).toBe(true);
 });
 

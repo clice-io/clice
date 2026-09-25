@@ -120,9 +120,19 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     dirty.reset_header_mode.push_back(path_id);
     dirty.reset_trial.push_back(path_id);
 
-    // Root TUs transitively including the file. The rescan below rewrites
-    // only the file's own outgoing edges, never the includers this walks.
+    // Root TUs transitively including the file: the ones the lexical scan
+    // sees, and the ones whose indexed compile read it — the scan cannot
+    // resolve a macro include. The rescan below rewrites only the file's
+    // own outgoing edges, never the includers this walks.
     auto dependents = project.dep_graph.find_host_sources(path_id);
+    if(auto it = project.project_index.contributions.find(path_id);
+       it != project.project_index.contributions.end()) {
+        for(auto& [tu, rows]: it->second) {
+            if(tu != path_id && !llvm::is_contained(dependents, tu)) {
+                dependents.push_back(tu);
+            }
+        }
+    }
 
     // Rescan disk state (include edges, module declaration); then cascade
     // through the module graph — importers' build products went stale, and

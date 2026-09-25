@@ -59,7 +59,15 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     auto guard = llvm::make_scope_exit([this] { sweeping = false; });
 
     ScopedTimer timer;
+    // What the lexical scan saw included, and what compiles actually read
+    // (the files index rows came from): a header only a macro include
+    // reaches is invisible to the former.
     auto files = project.dep_graph.all_files();
+    for(auto& [file, contributors]: project.project_index.contributions) {
+        files.push_back(file);
+    }
+    llvm::sort(files);
+    files.erase(llvm::unique(files), files.end());
     for(std::size_t begin = 0; begin < files.size(); begin += batch_size) {
         if(begin != 0) {
             // Yield one loop iteration between batches so a long sweep

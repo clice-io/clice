@@ -46,8 +46,8 @@ public:
     /// events.
     llvm::SmallVector<FileEvent> discover_around(Fid path_id);
 
-    /// One workspace sweep: look at every file the dependency graph knows —
-    /// open ones included, a buffer shadows the disk only for its own
+    /// One workspace sweep: look at every file the dependency graph knows
+    /// or an indexed compile read — open ones included, a buffer shadows the disk only for its own
     /// file's compile — through the file table, which turns every look
     /// that finds other content than it last saw into a change (see
     /// FileTable::changes); the sweep itself keeps no state. An unchanged

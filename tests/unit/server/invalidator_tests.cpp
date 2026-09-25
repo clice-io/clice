@@ -554,6 +554,32 @@ TEST_CASE(DiskChangeOpenCascades) {
     ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed_tu});
 }
 
+TEST_CASE(CompiledIncluderCascades) {
+    // An includer the lexical scan never saw (a macro include) but whose
+    // indexed compile read the file is a dependent all the same.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern("/proj/m.h");
+    auto scanned = project.file_table.intern("/proj/a.cpp");
+    auto compiled = project.file_table.intern("/proj/b.cpp");
+    project.dep_graph.set_includes(scanned, 0, {{header}});
+    project.dep_graph.set_includes(compiled, 0, {});
+    project.dep_graph.build_reverse_map();
+    project.project_index.contributions[header][compiled] = 1;
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
+
+    llvm::SmallVector<Fid> reindexed{scanned, compiled};
+    llvm::sort(reindexed);
+    ASSERT_EQ(dirty.reindex_deps_only, reindexed);
+}
+
 TEST_CASE(CloseNoEffects) {
     // Closing drops the buffer's shadow over its own file's compile; what
     // the disk did meanwhile was cascaded when it was seen.
