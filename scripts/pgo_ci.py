@@ -266,9 +266,11 @@ def match_report(args) -> None:
     build = Path(args.build).resolve()
     entries = json.loads((build / "compile_commands.json").read_text())
     profiles = dict(p.split("=", 1) for p in args.profile)
+    remaps = dict(r.split("=", 1) for r in args.remap)
     result = {"target": args.target, "profiles": {}}
     for pname, ppath in profiles.items():
         ppath = str(Path(ppath).resolve())
+        remap = [f"-fprofile-remapping-file={Path(remaps[pname]).resolve()}"] if pname in remaps else []
         records = []
         for want in args.files:
             entry = next((e for e in entries if e["file"].replace("\\", "/").endswith(want)), None)
@@ -292,6 +294,7 @@ def match_report(args) -> None:
             argv = kept
             if "-o" in argv:
                 argv[argv.index("-o") + 1] = os.devnull
+            argv = [a for a in argv if not a.startswith("-fprofile-remapping-file=")] + remap
             argv += ["-Wno-everything", "-Wbackend-plugin", "-Wprofile-instr-out-of-date", "-Wprofile-instr-missing",
                      "-mllvm", "-pgo-warn-missing-function", "-mllvm", "-no-pgo-warn-mismatch-comdat-weak=false"]
             out = subprocess.run(argv, cwd=entry["directory"], capture_output=True, text=True)
@@ -479,6 +482,7 @@ def main() -> None:
     p.add_argument("--build", required=True, help="LLVM build directory (compile_commands.json)")
     p.add_argument("--files", nargs="+", required=True)
     p.add_argument("--profile", action="append", required=True, help="NAME=PATH")
+    p.add_argument("--remap", action="append", default=[], help="NAME=FILE: a remapping file for profile NAME")
     p.add_argument("--target", default="")
     p.add_argument("--json", default="match.json")
     p.set_defaults(func=match_report)

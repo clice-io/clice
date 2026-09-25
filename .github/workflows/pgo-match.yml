@@ -21,11 +21,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The other five targets are in run 36070387006.
+          - target: x64-linux
+            os: ubuntu-24.04
+            llvm-mingw: false
           - target: x64-mingw
             os: ubuntu-24.04
             triple: x86_64-w64-mingw32
             env: cross-windows-mingw
+            llvm-mingw: true
+          - target: arm64-mac
+            os: macos-15
             llvm-mingw: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
@@ -51,8 +56,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh run download 35973108478 -R "$GITHUB_REPOSITORY" -n profile-clang-strip -D profiles/x86
-          gh run download 36068532278 -R "$GITHUB_REPOSITORY" -n profile-merged-2arch -D profiles/2arch
-          gh run download 36036050639 -R "$GITHUB_REPOSITORY" -n profile-merged-arch -D profiles/3arch
+          gh run download 36095618013 -R "$GITHUB_REPOSITORY" -n profile-clang-fe -D profiles/fe
       - name: Configure
         run: |
           git clone --branch llvmorg-23.1.1 --depth 1 https://github.com/llvm/llvm-project.git .llvm
@@ -65,9 +69,8 @@ jobs:
         run: |
           pixi run -e "${{ matrix.env || 'package' }}" python3 scripts/pgo_ci.py match-report --build .llvm/build/llvm \
             --target "${{ matrix.target }}" --json "match-${{ matrix.target }}.json" \
-            --profile "x86=$PWD/profiles/x86/profile.profdata" \
-            --profile "2arch=$PWD/profiles/2arch/profile.profdata" \
-            --profile "3arch=$PWD/profiles/3arch/profile.profdata" \
+            --profile "fe=$PWD/profiles/fe/profile.profdata" \
+            --profile "fe-remap=$PWD/profiles/fe/profile.profdata" --remap "fe-remap=$PWD/scripts/pgo/remap.txt" \
             --files clang/lib/Sema/SemaExpr.cpp clang/lib/Sema/SemaDecl.cpp clang/lib/Sema/SemaTemplate.cpp \
               clang/lib/Sema/SemaOverload.cpp clang/lib/Sema/SemaLookup.cpp clang/lib/Sema/SemaTemplateInstantiate.cpp \
               clang/lib/Parse/ParseDecl.cpp clang/lib/Parse/ParseExpr.cpp clang/lib/Lex/Lexer.cpp \
