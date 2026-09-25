@@ -94,22 +94,19 @@ void dedup_sites(std::vector<Site>& sites) {
     sites.erase(dup.begin(), dup.end());
 }
 
-bool DiskGate::stale(Fid file, std::uint64_t content_hash) const {
-    auto [it, inserted] = disk.try_emplace(file);
-    if(inserted) {
-        if(auto observed = files.current(file)) {
-            it->second = observed->hash;
-        }
+bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
+    if(!options.withhold) {
+        return false;
     }
-    if(it->second == content_hash) {
+    if(options.look && looked.insert(file).second) {
+        files.current(file);
+    }
+    auto seen = files.seen_hash(file);
+    if(!seen || *seen == content_hash) {
         return false;
     }
     withheld_files.insert(file);
     return true;
-}
-
-llvm::SmallVector<Fid> DiskGate::withheld() const {
-    return llvm::to_vector(withheld_files);
 }
 
 IndexQuery::IndexQuery(const ProjectIndex& index,

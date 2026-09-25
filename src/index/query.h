@@ -100,33 +100,40 @@ public:
     virtual std::shared_ptr<TUIndex> preamble_blob(Fid file) const = 0;
 };
 
+struct FreshnessOptions {
+    /// Look at each file once per gate instead of trusting the last
+    /// observation: a reader nobody keeps the observations current for
+    /// (the command line), whose gate lives one query.
+    bool look = false;
+
+    /// Rows no indexer will ever refresh keep serving instead of leaving
+    /// a permanent hole: off when background indexing is.
+    bool withhold = true;
+};
+
 /// Freshness clause 2: whether rows built from `content_hash` no longer
 /// describe the file's content on disk — they would point at text that no
 /// longer exists. The one question every disk-side row source is judged by
-/// (persisted shards, PCH overlay entries); the gates differ only in how
-/// they learn what the disk holds.
+/// (persisted shards, PCH overlay entries), against what the file table
+/// last saw on disk. A file seen missing keeps its last-known rows: they
+/// are the only remaining truth about it.
 class FreshnessGate {
 public:
-    virtual ~FreshnessGate() = default;
+    explicit FreshnessGate(FileTable& files, FreshnessOptions options = {}) :
+        options(options), files(files) {}
 
-    virtual bool stale(Fid file, std::uint64_t content_hash) const = 0;
-};
-
-/// The gate of a reader without an indexer: the disk is read and hashed,
-/// once per file. The verdicts double as the reader's report of what it
-/// withheld.
-class DiskGate final : public FreshnessGate {
-public:
-    explicit DiskGate(FileTable& files) : files(files) {}
-
-    bool stale(Fid file, std::uint64_t content_hash) const override;
+    bool stale(Fid file, std::uint64_t content_hash) const;
 
     /// The files whose rows were withheld, in no particular order.
-    llvm::SmallVector<Fid> withheld() const;
+    llvm::SmallVector<Fid> withheld() const {
+        return llvm::to_vector(withheld_files);
+    }
+
+    FreshnessOptions options;
 
 private:
     FileTable& files;
-    mutable llvm::DenseMap<Fid, std::optional<std::uint64_t>> disk;
+    mutable llvm::DenseSet<Fid> looked;
     mutable llvm::DenseSet<Fid> withheld_files;
 };
 

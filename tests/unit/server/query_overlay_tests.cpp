@@ -48,7 +48,7 @@ TURunFamily turun{graph, project, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 PCHFamily pch{graph, project, pool};
 ServerLiveSources live{project, pch, session_store, projections};
-SeenGate gate{project.file_table, project.config};
+index::FreshnessGate gate{project.file_table};
 index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
 index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
 

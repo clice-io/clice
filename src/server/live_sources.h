@@ -48,23 +48,4 @@ private:
     const ASTProjectionTable& projections;
 };
 
-/// Freshness clause 2 as the server sees it: rows whose content is not what
-/// the file table last saw on disk (a sweep, a save, a staleness check)
-/// point at text that no longer exists. With background indexing disabled
-/// nothing ever catches up, so the last-known rows keep serving instead of
-/// leaving a permanent hole.
-class SeenGate final : public index::FreshnessGate {
-public:
-    SeenGate(const FileTable& files, const Config& config) : files(files), config(config) {}
-
-    bool stale(Fid file, std::uint64_t content_hash) const override {
-        auto seen = files.seen_hash(file);
-        return config.project.enable_indexing.value && seen && *seen != content_hash;
-    }
-
-private:
-    const FileTable& files;
-    const Config& config;
-};
-
 }  // namespace clice

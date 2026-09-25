@@ -136,6 +136,7 @@ void ProjectServer::configure(llvm::StringRef init_options,
         }
         ast.readonly = ReadonlyMode::Off;
     }
+    freshness.options.withhold = cfg.enable_indexing.value;
     if(cfg.cache_dir_defaulted.value) {
         CacheStore::write_ignore_markers(cfg.cache_dir);
     }

@@ -121,7 +121,7 @@ public:
     ContextService context_service{project, contexts, ast};
 
     ServerLiveSources live_sources;
-    SeenGate freshness{project.file_table, project.config};
+    index::FreshnessGate freshness{project.file_table};
     index::IndexQuery index_query;
 
     Features features;

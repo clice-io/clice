@@ -43,7 +43,7 @@ TURunFamily turun{graph, project, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 PCHFamily pch{graph, project, pool};
 ServerLiveSources live{project, pch, store, projections};
-SeenGate gate{project.file_table, project.config};
+index::FreshnessGate gate{project.file_table};
 index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
 index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
 
@@ -111,9 +111,7 @@ TEST_CASE(PendingReasonUpgrade) {
     ASSERT_TRUE(indexer.pending_reason(file) == ReindexReason::ContentChanged);
 }
 
-TEST_CASE(SeenGateSplitsRows) {
-    project.config.project.enable_indexing = true;
-
+TEST_CASE(GateSplitsRows) {
     add_file("header.h", R"(
         int helper() { return 1; }
     )");
@@ -161,7 +159,7 @@ TEST_CASE(SeenGateSplitsRows) {
 
     // With background indexing disabled nothing would ever catch up:
     // last-known rows keep serving instead of leaving a permanent hole.
-    project.config.project.enable_indexing = false;
+    gate.options.withhold = false;
     ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
 }
 
