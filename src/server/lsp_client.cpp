@@ -343,9 +343,9 @@ void LSPClient::register_document_sync() {
             LOG_WARN("didOpen before the server is ready, accepting: {}", path);
         }
 
-        srv.open_session(srv.files.intern(path),
-                         params.text_document.text,
-                         params.text_document.version);
+        auto path_id = srv.files.intern(path);
+        srv.files.show_as(path_id, path);
+        srv.open_session(path_id, params.text_document.text, params.text_document.version);
 
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
     });
@@ -406,6 +406,7 @@ void LSPClient::register_document_sync() {
         // pushed, and publishDiagnostics may not flow yet (push_output
         // drops the clear while !client_ready).
         auto path_id = srv.files.intern(uri_to_path(params.text_document.uri));
+        srv.files.unshow(path_id);
         // LSP versions are scoped to an open document: a reopen restarts
         // them, so a stale entry would misread the fresh document's first
         // compile as an unchanged-text recompile.
@@ -901,7 +902,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     }
     auto& output = *projection->output;
 
-    auto file_path = std::string(server.files.resolve(session.path_id));
+    auto file_path = std::string(server.files.display(session.path_id));
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 

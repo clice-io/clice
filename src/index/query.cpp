@@ -128,7 +128,7 @@ std::optional<RowSource> IndexQuery::serving(Fid file) const {
     }
     return RowSource{.kind = RowSource::Kind::Shard,
                      .file = file,
-                     .path = files.resolve(file),
+                     .path = files.display(file),
                      .rows = shard,
                      .coords = shard_coordinates(*shard)};
 }
@@ -158,7 +158,7 @@ void IndexQuery::visit_overlay_files(const TUIndex& state,
                 continue;
             }
             file = *known;
-            path = files.resolve(file);
+            path = files.display(file);
         }
         if(live->excluded(path)) {
             continue;

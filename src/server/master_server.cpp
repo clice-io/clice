@@ -172,6 +172,7 @@ void MasterServer::initialize() {
 
 void MasterServer::initialize(llvm::StringRef root) {
     workspace_roots = {root.str()};
+    files.spell_root(root);
     initialize();
 }
 
@@ -439,6 +440,7 @@ void MasterServer::change_folders(std::vector<std::string> removed,
         llvm::erase(workspace_roots, root);
     }
     for(auto& root: added) {
+        files.spell_root(root);
         if(!llvm::is_contained(workspace_roots, root)) {
             workspace_roots.push_back(std::move(root));
         }

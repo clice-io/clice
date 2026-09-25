@@ -139,7 +139,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
 
     auto path_id = session->path_id;
     auto path = project.file_table.resolve(path_id);
-    auto uri = feature::to_uri(path);
+    auto uri = feature::to_uri(project.file_table.display(path_id));
     auto map = session->line_map();
 
     /// The action rendered over main-file replacements, all of them or
@@ -245,7 +245,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             std::format("{} in {}", action.title, llvm::sys::path::filename(host_path)),
             std::move(action.kind),
             FileEdit{
-                .uri = feature::to_uri(host_path),
+                .uri = feature::to_uri(project.file_table.display(host_path)),
                 .version = host_session ? std::optional(host_session->version) : std::nullopt,
                 .edits = {std::move(edit)},
             }));

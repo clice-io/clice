@@ -260,7 +260,7 @@ std::vector<protocol::Location>
         /// Link ranges are half-open; contains() would also accept end.
         if(*offset >= link.range.begin && *offset < link.range.end) {
             locations.push_back(protocol::Location{
-                .uri = feature::to_uri(link.target),
+                .uri = feature::to_uri(project.file_table.display(link.target)),
                 .range = protocol::Range{},
             });
             break;
@@ -322,7 +322,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             if(!range)
                 continue;
             protocol::DocumentLink out{.range = *range};
-            out.target = feature::to_uri(link.target);
+            out.target = feature::to_uri(project.file_table.display(link.target));
             out.tooltip = link.target;
             links.push_back(std::move(out));
         }
@@ -443,7 +443,7 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
                 if(*offset >= link.range.begin && *offset < link.range.end) {
                     std::vector<protocol::Location> locations{
                         protocol::Location{
-                                           .uri = feature::to_uri(link.target),
+                                           .uri = feature::to_uri(project.file_table.display(link.target)),
                                            .range = protocol::Range{},
                                            }
                     };

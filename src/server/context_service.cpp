@@ -74,7 +74,7 @@ std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid
     for(auto host_id: ranked_hosts(ws, path_id)) {
         auto commands = host_commands(ws, path_id, host_id);
         auto host_path = ws.file_table.resolve(host_id);
-        auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
+        auto host_uri_opt = lsp::URI::from_file_path(std::string(ws.file_table.display(host_id)));
         if(!host_uri_opt)
             continue;
 
@@ -131,7 +131,7 @@ std::vector<ext::ContextItem> ContextService::contexts(llvm::StringRef path, Fid
     // exist, so a host override can be switched back to the file's
     // own command.
     if(auto entries = ws.build.entries(path_id); !entries.empty()) {
-        auto uri_opt = lsp::URI::from_file_path(std::string(path));
+        auto uri_opt = lsp::URI::from_file_path(std::string(ws.file_table.display(path_id)));
         for(std::size_t i = 0; uri_opt && i < entries.size(); ++i) {
             auto applied =
                 ws.build.resolve(path_id, entries[i].config, CommandSource::CDBExact, path, path)
@@ -160,7 +160,8 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
     const Selection* choice = session ? editor.selection(session->path_id) : nullptr;
     if(choice && choice->host_path_id.valid()) {
         auto ctx_path = project.file_table.resolve(choice->host_path_id);
-        auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
+        auto ctx_uri_opt =
+            lsp::URI::from_file_path(std::string(project.file_table.display(choice->host_path_id)));
         if(ctx_uri_opt) {
             ext::ContextItem item;
             item.label = llvm::sys::path::filename(ctx_path).str();

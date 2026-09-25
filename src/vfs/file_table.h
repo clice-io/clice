@@ -127,10 +127,10 @@ namespace clice {
 /// opened or read. Safe to call from any thread.
 std::optional<ObservedFile> read_file_observed(const char* path);
 
-/// The master-side table of every file the workspace touches: a path
-/// spelling is interned once to a compact fid, and downstream code
-/// references files by fid. A fid names a spelling, not an on-disk
-/// file — case variants or links to one file are distinct fids.
+/// The master-side table of every file the workspace touches: a path is
+/// interned once to a compact fid, and downstream code references files
+/// by fid. A fid names a resolved path: symlinked spellings of one file
+/// share it, while case variants and hardlinks stay distinct fids.
 ///
 /// Paths are opaque byte strings interned in the canonical spelling of
 /// path::canonical, so on Windows the URI form VS Code sends
@@ -156,22 +156,32 @@ struct FileTable {
     llvm::SmallVector<llvm::StringRef> spellings;
     llvm::StringMap<Fid> ids;
 
+    /// The file a path names: every spelling of it — through symlinks,
+    /// `.`/`..` segments — interns to the fid of its resolved path, which
+    /// is also what resolve() gives back. The worker reports the paths its
+    /// compiles read resolved the same way, so both sides of the boundary
+    /// name one file by one fid.
     Fid intern(llvm::StringRef path) {
         llvm::SmallString<256> storage;
         path = path::canonical(path, storage);
-
+        if(auto it = ids.find(path); it != ids.end()) {
+            return it->second;
+        }
+        auto real = path::resolved(path);
         auto [it, inserted] =
-            ids.try_emplace(path, Fid{static_cast<std::uint32_t>(spellings.size())});
+            ids.try_emplace(real, Fid{static_cast<std::uint32_t>(spellings.size())});
         if(inserted) {
             // Allocate with null terminator so that resolve().data() is safe
             // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
-            const std::size_t n = path.size();
+            const std::size_t n = real.size();
             char* buf = allocator.Allocate<char>(n + 1);
-            std::ranges::copy(path, buf);
+            std::ranges::copy(real, buf);
             buf[n] = '\0';
             spellings.push_back(llvm::StringRef(buf, n));
         }
-        return it->second;
+        auto fid = it->second;
+        ids.try_emplace(path, fid);
+        return fid;
     }
 
     llvm::StringRef resolve(Fid fid) const {
@@ -186,9 +196,73 @@ struct FileTable {
         path = path::canonical(path, storage);
         auto it = ids.find(path);
         if(it == ids.end()) {
+            it = ids.find(path::resolved(path));
+        }
+        if(it == ids.end()) {
             return std::nullopt;
         }
         return it->second;
+    }
+
+    /// The spelling a user knows a file by, when it differs from its
+    /// resolved path: the one its open document was opened under, else
+    /// the path under the spelling of a root it lies in (a workspace
+    /// opened through a symlink). Everything the user is shown — URIs,
+    /// query output — names files this way; identity never does.
+    llvm::StringRef display(Fid fid) const {
+        if(auto it = shown.find(fid); it != shown.end()) {
+            return it->second;
+        }
+        auto path = resolve(fid);
+        for(auto& [real, spelled]: spelled_roots) {
+            if(path::under(path, real)) {
+                auto [it, inserted] = root_displays.try_emplace(fid);
+                if(inserted) {
+                    it->second = save(spelled + path.drop_front(real.size()).str());
+                }
+                return it->second;
+            }
+        }
+        return path;
+    }
+
+    /// A path as display() would show the file it names.
+    llvm::StringRef display(llvm::StringRef path) const {
+        if(auto fid = find(path)) {
+            return display(*fid);
+        }
+        return path;
+    }
+
+    /// An open document names its file this way until it closes.
+    void show_as(Fid fid, llvm::StringRef spelling) {
+        if(spelling != resolve(fid)) {
+            shown[fid] = save(spelling);
+        }
+    }
+
+    void unshow(Fid fid) {
+        shown.erase(fid);
+    }
+
+    /// Files under `root` show under this spelling of it.
+    void spell_root(llvm::StringRef root) {
+        auto real = path::resolved(root);
+        if(real != root) {
+            spelled_roots.emplace_back(std::move(real), root.str());
+            root_displays.clear();
+        }
+    }
+
+    llvm::DenseMap<Fid, llvm::StringRef> shown;
+    llvm::SmallVector<std::pair<std::string, std::string>> spelled_roots;
+    mutable llvm::DenseMap<Fid, llvm::StringRef> root_displays;
+    mutable llvm::BumpPtrAllocator display_storage;
+
+    llvm::StringRef save(llvm::StringRef text) const {
+        auto* buf = display_storage.Allocate<char>(text.size());
+        std::ranges::copy(text, buf);
+        return llvm::StringRef(buf, text.size());
     }
 
     /// Entities: on-disk files merged by filesystem UniqueID, the way

@@ -25,7 +25,7 @@ index::RowSource ServerLiveSources::buffer_source(index::RowSource::Kind kind,
     return {
         .kind = kind,
         .file = file,
-        .path = project.file_table.resolve(file),
+        .path = project.file_table.display(file),
         .rows = &rows,
         .coords = {session.text,
                    static_cast<std::uint32_t>(session.text.size()),

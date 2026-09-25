@@ -27,7 +27,7 @@ void Build::reset_active(llvm::StringRef configuration) {
 }
 
 llvm::SmallVector<const CompiledRule*> Build::matching(llvm::StringRef path) const {
-    return config.matching_rules(path, active);
+    return config.matching_rules(as_configured(path), active);
 }
 
 static bool rule_active(const CompiledRule& rule, llvm::StringRef active) {
@@ -259,11 +259,10 @@ std::string Build::as_configured(llvm::StringRef path) const {
 }
 
 bool Build::inside(llvm::StringRef path, bool CompiledRule::* field) const {
-    auto file = as_configured(path);
-    if(!path::under(file, config.workspace_root)) {
+    if(!path::under(as_configured(path), config.workspace_root)) {
         return false;
     }
-    return llvm::all_of(matching(file), [&](const CompiledRule* rule) { return rule->*field; });
+    return llvm::all_of(matching(path), [&](const CompiledRule* rule) { return rule->*field; });
 }
 
 bool Build::lintable(llvm::StringRef path) const {
