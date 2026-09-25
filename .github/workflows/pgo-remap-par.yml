@@ -1,0 +1,30 @@
+name: pgo remap par
+
+# The remapping comparison of pgo-remap.yml again, through the parallel
+# benchmark (pgo-bench-par.yml), on the bundles already built.
+
+on:
+  push:
+    branches: [exp/pgo-par]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows:
+    uses: ./.github/workflows/pgo-bench-par.yml
+    with:
+      name: par-x64-mingw
+      os: windows-2025
+      pixi-env: default
+      variants: "base=final-x64-mingw-base@36104068281 fe=final-x64-mingw-fe@36104068281 fe-remap=final-x64-mingw-fe-remap@36124223777"
+
+  mac:
+    uses: ./.github/workflows/pgo-bench-par.yml
+    with:
+      name: par-arm64-mac
+      os: macos-15
+      flags: --no-default-config
+      variants: "base=final-M0@35973108478 fe=final-arm64-mac-fe@36104068281 fe-remap=final-arm64-mac-fe-remap@36124223777"
