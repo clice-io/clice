@@ -551,6 +551,40 @@ TEST_CASE(LaterRemoveCancelsAppend) {
               std::format("clang++ -D FOO=1 {}", fake("main.cpp")));
 };
 
+TEST_CASE(RemoveIncludeWildcard) {
+    /// `*` removes every value of a path option instead of naming a file
+    /// in the rule's directory.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "main.cpp", "clang++ -Iinc -I/opt/include main.cpp"sv);
+    for(auto flags: {
+            std::vector<std::string>{"-I*"},
+            std::vector<std::string>{"-I", "*"}
+    }) {
+        std::vector<CommandEdit> edits = {
+            {CommandEdit::Kind::Remove, flags, Spelling::absolute("/config")}
+        };
+        EXPECT_EQ(print_argv(render_entry(database, fake("main.cpp"), {.edits = edits})),
+                  std::format("clang++ {}", fake("main.cpp")));
+    }
+};
+
+TEST_CASE(RuleAnchorKeysMemo) {
+    /// One rule text read from two configuration directories names two
+    /// include directories.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "main.cpp", "clang++ main.cpp"sv);
+    auto render = [&](llvm::StringRef directory) {
+        std::vector<CommandEdit> edits = {
+            {CommandEdit::Kind::Append, {"-Iinc"}, Spelling::absolute(directory)}
+        };
+        return print_argv(render_entry(database, fake("main.cpp"), {.edits = edits}));
+    };
+    EXPECT_CONTAINS(render("/one"), Spelling("inc", Spelling::absolute("/one")).str());
+    EXPECT_CONTAINS(render("/two"), Spelling("inc", Spelling::absolute("/two")).str());
+};
+
 TEST_CASE(InternedCommand) {
     /// A hand-written command normalizes like an entry: one ConfigID per
     /// (directory, spelling), the string and argv forms meeting on it, the

@@ -1005,7 +1005,8 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         return id;
     }
 
-    /// Rule-set identity for the memo: the exact edit content.
+    /// Rule-set identity for the memo: the exact edit content and the
+    /// directory each edit's relative paths are anchored at.
     std::string rule_key;
     auto append_section = [&](llvm::ArrayRef<std::string> section) {
         for(auto& item: section) {
@@ -1016,6 +1017,8 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     };
     for(auto& edit: options.edits) {
         rule_key += edit.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
+        rule_key += edit.directory.str();
+        rule_key += '\0';
         append_section(edit.flags);
     }
     append_section(options.extra_prepend);
@@ -1121,9 +1124,12 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
             }
             auto& remove = removes.emplace_back(*parsed);
             // Anchored like the base command's paths, so a relative value
-            // names the file the rule's configuration means.
+            // names the file the rule's configuration means; the `*`
+            // wildcard stays a wildcard.
             for(auto& value: remove.values) {
-                value = anchored(remove.id, value, anchor, strings);
+                if(value != "*") {
+                    value = anchored(remove.id, value, anchor, strings);
+                }
             }
         }
         return removes;

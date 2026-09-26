@@ -266,6 +266,27 @@ TEST_CASE(PatternRootsEnumerate) {
     EXPECT_TRUE(has_arg(cdb.render_full(util.front().config), "LIB"));
 };
 
+TEST_CASE(EditHashKeepsAnchor) {
+    /// A rule's relative paths mean another directory once its
+    /// configuration moves under .clice/, so its edit hash changes too.
+    TempDir tmp;
+    tmp.touch("main.cpp", "");
+    auto hash = [&](llvm::StringRef directory) {
+        Config config;
+        config.rules.push_back(ConfigRule{.append = {"-Iinc"}});
+        config.rules.back().directory = directory;
+        config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+        FileTable files;
+        CompilationDatabase cdb{files};
+        Build build{config, cdb, files};
+        CanonicalPath main(Spelling::absolute(tmp.path("main.cpp")));
+        CanonicalRef file = main;
+        return build.edit_hash(file);
+    };
+    EXPECT_EQ(hash(tmp.root), hash(tmp.root));
+    EXPECT_NE(hash(tmp.root), hash(tmp.path(".clice")));
+};
+
 TEST_CASE(ForcedLanguageMembers) {
     /// An extensionless tool source joins the members when its default
     /// command forces the language; a header never does.

@@ -240,6 +240,9 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
     std::string joined;
     for(auto& item: edit.edits) {
         joined += item.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
+        llvm::SmallString<256> storage;
+        joined += path::portable(item.directory.str(), root, storage);
+        joined += '\0';
         for(llvm::StringRef flag: item.flags) {
             // The rule's `${workspace}` put back, so a moved checkout
             // keeps the hash.
