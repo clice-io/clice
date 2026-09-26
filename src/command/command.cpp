@@ -62,11 +62,11 @@ struct LocalArg {
     llvm::SmallVector<const char*, 2> values;
 };
 
-/// `value` anchored at `anchor` when it names a relative path
-/// (names_relative_path), else `value` itself.
+/// `value` spelled against `anchor` when it names a path (names_path),
+/// else `value` itself.
 llvm::StringRef
     anchored(unsigned id, llvm::StringRef value, const Spelling& anchor, StringSet& strings) {
-    if(!names_relative_path(id, value)) {
+    if(!names_path(id, value)) {
         return value;
     }
     return strings.save(Spelling(value, anchor).str());

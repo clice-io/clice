@@ -5,8 +5,6 @@
 #include <string_view>
 #include <utility>
 
-#include "support/filesystem.h"
-
 #include <kota/deco/option.h>
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringTable.h"
@@ -197,9 +195,8 @@ bool is_user_content_option(unsigned id) {
     }
 }
 
-bool names_relative_path(unsigned id, llvm::StringRef value) {
-    if(value.empty() || value.starts_with("=") || value.starts_with("$SYSROOT") ||
-       path::is_rooted(value)) {
+bool names_path(unsigned id, llvm::StringRef value) {
+    if(value.empty() || value.starts_with("=") || value.starts_with("$SYSROOT")) {
         return false;
     }
     switch(id) {

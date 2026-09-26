@@ -864,7 +864,7 @@ Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
 #endif
 
     /// A known option's path values were anchored when the command was
-    /// read (names_relative_path); only an unknown one can still hold a
+    /// read (names_path); only an unknown one can still hold a
     /// relative path.
     bool values_clean = true;
     for(auto& arg: config.args) {
