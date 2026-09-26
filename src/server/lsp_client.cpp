@@ -128,17 +128,16 @@ LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
         return ResolvedDoc{.project = this->server.projects.front()};
     }
     auto path_id = this->server.files.intern(*path);
-    // A document under a second name has a buffer of its own: the session
-    // answers for it only while both hold the same text.
+    auto project = this->server.owner_of(path_id).shared_from_this();
+    // A document under a second name has a buffer of its own: it is the
+    // file — its session, its index rows — only while both hold the same
+    // text.
     auto session = this->server.find_session(path_id);
     if(auto* alias = find_alias(path_id, *path);
        alias && session && alias->buffer.text != session->text) {
-        session = nullptr;
+        return ResolvedDoc{.path = path->str(), .project = std::move(project)};
     }
-    return ResolvedDoc{path->str(),
-                       path_id,
-                       std::move(session),
-                       this->server.owner_of(path_id).shared_from_this()};
+    return ResolvedDoc{path->str(), path_id, std::move(session), std::move(project)};
 }
 
 LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spelling) {
@@ -152,8 +151,10 @@ LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spe
     return alias != it->second.end() ? &*alias : nullptr;
 }
 
-kota::ipc::Error LSPClient::unserved(Fid path_id, llvm::StringRef spelling) {
-    return find_alias(path_id, spelling) ? content_modified() : document_not_open();
+kota::ipc::Error LSPClient::unserved(llvm::StringRef spelling) {
+    auto path_id =
+        spelling.empty() ? std::nullopt : server.files.find(Spelling::absolute(spelling));
+    return path_id && find_alias(*path_id, spelling) ? content_modified() : document_not_open();
 }
 
 void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, ProjectServer& project) {
@@ -470,7 +471,16 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.foreground_pulse();
 
-        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        // The edit reaches a second name's buffer whether or not it still
+        // agrees with the first name's.
+        auto spelled = uri_to_path(params.text_document.uri);
+        if(!spelled) {
+            return;
+        }
+        auto& path = spelled->str();
+        auto path_id = srv.files.intern(*spelled);
+        auto project = srv.owner_of(path_id).shared_from_this();
+        auto session = srv.find_session(path_id);
         if(auto* alias = find_alias(path_id, path)) {
             project->sessions.apply_change(alias->buffer,
                                            params.content_changes,
@@ -593,7 +603,7 @@ void LSPClient::register_language_features() {
         auto [path, path_id, session, project] =
             resolve_uri(params.text_document_position_params.text_document.uri);
         if(!session)
-            co_return kota::outcome_error(unserved(path_id, path));
+            co_return kota::outcome_error(unserved(path));
         co_return co_await project->features.hover(session,
                                                    params.text_document_position_params.position,
                                                    ctx.cancellation);
@@ -604,7 +614,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path_id, path));
+                co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.semantic_tokens(session, ctx.cancellation);
         });
 
@@ -613,7 +623,7 @@ void LSPClient::register_language_features() {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
-            co_return kota::outcome_error(unserved(path_id, path));
+            co_return kota::outcome_error(unserved(path));
         co_return co_await project->features.inlay_hints(session, params.range, ctx.cancellation);
     });
 
@@ -622,7 +632,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path_id, path));
+                co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.folding_range(session, ctx.cancellation);
         });
 
@@ -631,7 +641,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path_id, path));
+                co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.document_symbol(session, ctx.cancellation);
         });
 
@@ -640,7 +650,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path_id, path));
+                co_return kota::outcome_error(unserved(path));
             auto links = co_await project->features.document_links(session, ctx.cancellation);
             if(!links.has_value())
                 co_return kota::outcome_error(std::move(links.error()));
@@ -652,7 +662,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path_id, path));
+                co_return kota::outcome_error(unserved(path));
             auto actions = co_await project->features.code_action(
                 session,
                 params.range,
@@ -725,7 +735,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session, project] =
                 resolve_uri(params.text_document_position_params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path_id, path));
+                co_return kota::outcome_error(unserved(path));
             llvm::StringRef trigger;
             if(params.context && params.context->trigger_character) {
                 trigger = *params.context->trigger_character;
@@ -743,7 +753,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session, project] =
                 resolve_uri(params.text_document_position_params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path_id, path));
+                co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.signature_help(
                 session,
                 params.text_document_position_params.position,
@@ -755,7 +765,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path_id, path));
+                co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.formatting(session, ctx.cancellation);
         });
 
@@ -764,7 +774,7 @@ void LSPClient::register_language_features() {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
-            co_return kota::outcome_error(unserved(path_id, path));
+            co_return kota::outcome_error(unserved(path));
         co_return co_await project->features.range_formatting(session,
                                                               params.range,
                                                               ctx.cancellation);

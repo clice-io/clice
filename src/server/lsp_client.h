@@ -131,7 +131,7 @@ private:
     AliasDocument take_alias(Fid path_id, AliasDocument* alias);
 
     /// Why a request on a document has no session to answer it.
-    kota::ipc::Error unserved(Fid path_id, llvm::StringRef spelling);
+    kota::ipc::Error unserved(llvm::StringRef spelling);
 
     /// Publish a second name's diagnostics: the first name's while their
     /// texts agree, else one telling the user to close either.

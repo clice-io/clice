@@ -792,7 +792,8 @@ TEST_CASE(BareFileValueAnchored) {
     CompilationDatabase database{file_table};
     database.add_command("/project",
                          "main.cpp",
-                         "clang++ -fsanitize-ignorelist=ignore.txt --config=x.cfg main.cpp"sv);
+                         "clang++ -fsanitize-ignorelist=ignore.txt --config=x.cfg --sysroot sdk "
+                         "main.cpp"sv);
     auto config = database.candidate_entries("/project/main.cpp").front().config;
     llvm::SmallVector<std::string> values;
     for(auto& arg: database.config(config).args) {
@@ -801,6 +802,7 @@ TEST_CASE(BareFileValueAnchored) {
         }
     }
     EXPECT_TRUE(llvm::is_contained(values, "/project/ignore.txt"));
+    EXPECT_TRUE(llvm::is_contained(values, "/project/sdk"));
     EXPECT_TRUE(llvm::is_contained(values, "x.cfg"));
 };
 

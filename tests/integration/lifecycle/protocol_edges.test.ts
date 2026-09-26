@@ -74,6 +74,7 @@ test.skipIf(process.platform === "win32")("second name for an open file", async 
     );
     expect(warnings).toEqual([expect.stringContaining("also open as")]);
     await expect(client.hoverAt(second, 0, 5)).rejects.toThrow("Document changed");
+    expect(await client.referencesAt(second, 0, 5), "no rows answer for other text").toEqual([]);
     const cleared = client.armDiagnostics(second);
     client.close(second);
     await withTimeout(cleared, 30_000, "the closed second name's clear");

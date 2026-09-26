@@ -11,7 +11,7 @@ import * as path from "node:path";
 import { sleep, waitUntil, type CliceClient } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
-const FILE_COUNT = 20;
+const FILE_COUNT = 12;
 const OUTAGE_RESPONSE_TIMEOUT = 15_000;
 
 function statelessWorkerPids(serverPid: number): number[] {
@@ -107,9 +107,9 @@ test.skipIf(process.platform !== "linux")(
         // eventually appears in the project index.
         const expected = new Set(Array.from({ length: FILE_COUNT }, (_, i) => `func_${i}`));
         // Budgeted for the Debug/ASan CI runners: 20 single-worker ASan
-        // compiles plus a crash respawn and one round boundary for the
-        // requeued file measure ~130s there (~60s locally), and a slow
-        // runner has needed most of 180s.
+        // compiles plus a crash respawn and one round boundary came to
+        // ~250s there (~90s locally), past this budget on a slow runner;
+        // 12 keep the round in flight at the kill for well under it.
         let found = new Set<string>();
         await waitUntil(
             async () => {
