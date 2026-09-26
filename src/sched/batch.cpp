@@ -349,8 +349,8 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
                                  [&](const worker::TidyDiagnostic& d) {
                                      auto& files = stack.project.file_table;
                                      return d.check == "clang-diagnostic-error" ||
-                                            stack.project.build.lintable(
-                                                files.resolve(files.intern(Spelling::absolute(d.file))));
+                                            stack.project.build.lintable(files.resolve(
+                                                files.intern(Spelling::absolute(d.file))));
                                  });
             break;
         }

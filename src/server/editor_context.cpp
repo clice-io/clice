@@ -76,11 +76,11 @@ std::string EditorContext::serialize() const {
     ContextsData data;
     llvm::StringMap<std::uint32_t> index_map;
     auto intern = [&](Fid fid) -> std::uint32_t {
-        auto path = project.file_table.resolve(fid);
+        auto path = project.project_index.portable(project.file_table.resolve(fid));
         auto [it, inserted] =
             index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
         if(inserted) {
-            data.paths.push_back(path.str());
+            data.paths.push_back(path);
         }
         return it->second;
     };
@@ -125,14 +125,14 @@ void EditorContext::load() {
             auto host = resolve(entry.host);
             if(host.empty())
                 continue;
-            saved.host_path_id = project.file_table.intern(Spelling::absolute(host));
+            saved.host_path_id = project.file_table.intern(project.project_index.local(host));
         }
         if(entry.occurrence != ~0u) {
             saved.occurrence = entry.occurrence;
         }
         saved.command_hash = entry.command_hash;
         saved.base_hash = entry.base_hash;
-        selections[project.file_table.intern(Spelling::absolute(file))] = std::move(saved);
+        selections[project.file_table.intern(project.project_index.local(file))] = std::move(saved);
     }
 }
 

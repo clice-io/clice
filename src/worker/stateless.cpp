@@ -142,6 +142,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     CompilationParams cp;
     cp.kind = CompilationKind::Preamble;
     fill_args(cp, params.directory, params.arguments);
+    cp.workspace = params.workspace;
     cp.add_remapped_file(params.file, params.content, params.preamble_bound);
     cp.add_synthesized(params.synthesized);
     cp.stop = stop;
@@ -371,6 +372,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     // Indexing kind.
     cp.kind = params.tidy ? CompilationKind::Content : CompilationKind::Indexing;
     fill_args(cp, params.directory, params.arguments);
+    cp.workspace = params.workspace;
     cp.add_synthesized(params.synthesized);
     for(auto& [name, path]: params.pcms) {
         cp.pcms.try_emplace(name, path);

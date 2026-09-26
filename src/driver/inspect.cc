@@ -518,6 +518,7 @@ struct SourceFile {
 struct FileCommand {
     std::vector<std::string> arguments;
     std::string directory;
+    std::string workspace;
     std::shared_ptr<const SynthesizedContext> synthesized;
 };
 
@@ -526,6 +527,7 @@ void apply_command(CompilationParams& params, const FileCommand& command) {
         params.arguments.push_back(arg.c_str());
     }
     params.directory = command.directory;
+    params.workspace = command.workspace;
     if(command.synthesized) {
         params.add_synthesized(command.synthesized->files);
     }
@@ -544,10 +546,11 @@ bool is_header_type(clang::driver::types::ID type) {
 /// subdirectories would let an unrelated sibling project's database win.
 CanonicalPath workspace_of(CanonicalRef start) {
     for(CanonicalPath dir = start; !dir.empty();) {
-        bool marked =
-            llvm::any_of(config_file_names,
-                         [&](llvm::StringRef marker) { return fs::exists(path::join(dir, marker)); }) ||
-            fs::exists(path::join(dir, "compile_commands.json"));
+        bool marked = llvm::any_of(config_file_names,
+                                   [&](llvm::StringRef marker) {
+                                       return fs::exists(path::join(dir, marker));
+                                   }) ||
+                      fs::exists(path::join(dir, "compile_commands.json"));
         if(marked) {
             return dir;
         }
@@ -945,11 +948,15 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     auto command_for = [&](FileEntry& entry, const SourceFile& file) {
-        return file_command(entry,
-                            file.abs,
-                            flags,
-                            unit_directory,
-                            flags.empty() ? &commands : nullptr);
+        auto command = file_command(entry,
+                                    file.abs,
+                                    flags,
+                                    unit_directory,
+                                    flags.empty() ? &commands : nullptr);
+        if(command) {
+            command->workspace = project.config.workspace_root.str();
+        }
+        return command;
     };
 
     // Serial module builder (directory mode): scan for module declarations

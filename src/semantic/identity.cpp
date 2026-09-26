@@ -5,6 +5,7 @@
 #include "semantic/decls.h"
 #include "semantic/expr_hash.h"
 #include "semantic/hasher.h"
+#include "support/filesystem.h"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -337,7 +338,7 @@ std::uint64_t EntityTable::entity(llvm::StringRef name, clang::SourceLocation de
     if(definition.isValid()) {
         auto [fid, offset] = unit.decompose_location(definition);
         if(!unit.is_builtin_file(fid)) {
-            hasher.add(unit.file_path(fid));
+            add_file(hasher, fid);
             hasher.add(static_cast<std::uint64_t>(offset));
         }
     }
@@ -1044,7 +1045,7 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
         return;
     }
     auto [fid, offset] = unit.decompose_location(unit.expansion_location(location));
-    hasher.add(unit.is_builtin_file(fid) ? llvm::StringRef() : unit.file_path(fid));
+    add_file(hasher, fid);
     hasher.add(static_cast<std::uint64_t>(offset));
     add_macro_history(hasher, location);
 }
@@ -1079,7 +1080,16 @@ void EntityTable::add_path(Hasher& hasher, clang::SourceLocation location) {
         return;
     }
     auto fid = unit.decompose_location(unit.expansion_location(location)).first;
-    hasher.add(unit.is_builtin_file(fid) ? llvm::StringRef() : unit.file_path(fid));
+    add_file(hasher, fid);
+}
+
+void EntityTable::add_file(Hasher& hasher, clang::FileID fid) {
+    if(unit.is_builtin_file(fid)) {
+        hasher.add(llvm::StringRef());
+        return;
+    }
+    llvm::SmallString<256> storage;
+    hasher.add(path::portable(unit.file_path(fid), unit.workspace(), storage));
 }
 
 void EntityTable::add_declaration_name(Hasher& hasher, clang::DeclarationName name) {

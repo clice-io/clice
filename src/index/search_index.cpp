@@ -896,7 +896,9 @@ bool SearchIndex::contains(SymbolHash hash) const {
     });
 }
 
-SearchOutcome SearchIndex::search(const SymbolQuery& query, std::size_t limit) const {
+SearchOutcome SearchIndex::search(const SymbolQuery& query,
+                                  std::size_t limit,
+                                  CanonicalRef workspace) const {
     if(!view || limit == 0 || !query.by_pattern()) {
         return {};
     }
@@ -922,9 +924,10 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query, std::size_t limit) c
     if(!query.paths.empty()) {
         Bitmap allowed;
         for(std::uint32_t i = 0; i < index.paths.size(); i += 1) {
-            auto path = index.paths[i];
+            llvm::SmallString<256> storage;
+            auto file = path::local(to_ref(index.paths[i]), workspace, storage);
             if(llvm::any_of(query.paths, [&](const std::string& wanted) {
-                   return path_matches(wanted, to_ref(path));
+                   return path_matches(wanted, file);
                })) {
                 allowed |= index.file(i);
             }

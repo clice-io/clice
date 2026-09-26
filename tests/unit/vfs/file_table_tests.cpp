@@ -312,6 +312,22 @@ TEST_CASE(CanonicalSpelling) {
     EXPECT_FALSE(path::needs_canonical("/usr/x.h"));
 }
 
+TEST_CASE(PortableNames) {
+    // Under the workspace a path is named relative to it, anywhere else it
+    // keeps its own name; a name reads back in whichever checkout holds it.
+    llvm::SmallString<64> storage;
+    EXPECT_EQ(path::portable("/w/src/a.cpp", "/w", storage), "${workspace}/src/a.cpp");
+    EXPECT_EQ(path::portable("/w", "/w", storage), "${workspace}");
+    EXPECT_EQ(path::portable("/a.cpp", "/", storage), "${workspace}/a.cpp");
+    EXPECT_EQ(path::portable("/wx/a.cpp", "/w", storage), "/wx/a.cpp");
+    EXPECT_EQ(path::portable("/w/a.cpp", "", storage), "/w/a.cpp");
+
+    EXPECT_EQ(path::local("${workspace}/src/a.cpp", "/moved", storage), "/moved/src/a.cpp");
+    EXPECT_EQ(path::local("${workspace}", "/moved", storage), "/moved");
+    EXPECT_EQ(path::local("${workspace}/a.cpp", "/", storage), "/a.cpp");
+    EXPECT_EQ(path::local("/wx/a.cpp", "/moved", storage), "/wx/a.cpp");
+}
+
 #ifdef _WIN32
 TEST_CASE(WindowsSpellingsCollapse) {
     // VS Code sends lowercase drive URIs while the CDB and clang report

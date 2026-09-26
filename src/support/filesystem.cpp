@@ -112,6 +112,36 @@ std::string normalized(llvm::StringRef absolute) {
 
 }  // namespace
 
+llvm::StringRef path::portable(llvm::StringRef p,
+                               llvm::StringRef workspace,
+                               llvm::SmallVectorImpl<char>& storage) {
+    if(workspace.empty() || !under(p, workspace)) {
+        return p;
+    }
+    auto rest = p.drop_front(workspace.size());
+    storage.assign(workspace_anchor.begin(), workspace_anchor.end());
+    if(!rest.empty() && !is_separator(rest.front())) {
+        storage.push_back('/');
+    }
+    storage.append(rest.begin(), rest.end());
+    return llvm::StringRef(storage.data(), storage.size());
+}
+
+llvm::StringRef path::local(llvm::StringRef name,
+                            llvm::StringRef workspace,
+                            llvm::SmallVectorImpl<char>& storage) {
+    if(!name.consume_front(workspace_anchor)) {
+        return name;
+    }
+    assert(!workspace.empty() && "a portable name read without its workspace");
+    storage.assign(workspace.begin(), workspace.end());
+    if(workspace.ends_with("/")) {
+        name.consume_front("/");
+    }
+    storage.append(name.begin(), name.end());
+    return llvm::StringRef(storage.data(), storage.size());
+}
+
 Spelling::Spelling(llvm::StringRef text, const Spelling& base) {
     if(path::is_absolute(text)) {
         this->text = normalized(text);
@@ -133,6 +163,11 @@ Spelling Spelling::cwd() {
     llvm::SmallString<256> directory;
     llvm::sys::fs::current_path(directory);
     return absolute(directory);
+}
+
+Spelling Spelling::from_portable(llvm::StringRef name, CanonicalRef workspace) {
+    llvm::SmallString<256> storage;
+    return absolute(path::local(name, workspace, storage));
 }
 
 Spelling::Spelling(CanonicalRef identity) : text(identity.str()) {}

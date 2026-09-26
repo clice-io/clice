@@ -123,6 +123,10 @@ auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
     return file_path(*entry);
 }
 
+auto CompilationUnitRef::workspace() -> llvm::StringRef {
+    return self->workspace;
+}
+
 auto CompilationUnitRef::file_content(clang::FileID fid) -> llvm::StringRef {
     return self->SM().getBufferData(fid);
 }

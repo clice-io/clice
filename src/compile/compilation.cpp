@@ -358,6 +358,7 @@ CompilationUnit run_clang(CompilationParams& params,
     auto self = new CompilationUnitRef::Self();
     self->kind = params.kind;
     self->stop = std::move(params.stop);
+    self->workspace = std::move(params.workspace);
 
     using namespace std::chrono;
     self->build_at = duration_cast<milliseconds>(system_clock::now().time_since_epoch());

@@ -251,6 +251,7 @@ void StatefulWorker::register_handlers() {
                     CompilationParams cp;
                     cp.kind = CompilationKind::Content;
                     fill_args(cp, doc->directory, doc->arguments);
+                    cp.workspace = params.workspace;
                     if(!doc->pch.first.empty()) {
                         cp.pch = doc->pch;
                     }

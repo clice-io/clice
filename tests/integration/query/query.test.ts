@@ -6,7 +6,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { waitUntil, type CliceClient } from "@clice/tools/client";
-import { canonicalUri, type Workspace } from "@clice/tools/workspace";
+import { canonicalUri, Workspace } from "@clice/tools/workspace";
 import { URI } from "vscode-uri";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
@@ -220,6 +220,43 @@ test("answers for a file only its own symbols name", ({ session }) => {
     expect(onLine.status).toBe(0);
     expect(onLine.result?.symbols.map((s) => s.name)).toEqual(["helper"]);
     expect(onLine.stale).toEqual([]);
+});
+
+test("moved checkout keeps its index", ({ session }) => {
+    const parent = session.tmpdir();
+    const before = new Workspace(parent.path("before"));
+    const after = new Workspace(parent.path("after"));
+    // Written the way a build generator writes it: every path absolute.
+    const writeCDB = (ws: Workspace) => {
+        ws.writeCDB(["src/a.cpp", "src/b.cpp"], { extraArgs: [`-I${ws.path("inc")}`] });
+    };
+    before.write("inc/util.h", "#pragma once\n#define UTIL_LIMIT 4\n");
+    before.write(
+        "src/a.cpp",
+        '#include "util.h"\nstatic int helper() { return UTIL_LIMIT; }\nint use_a() { return helper(); }\n',
+    );
+    before.write("src/b.cpp", '#include "util.h"\nint use_b() { return UTIL_LIMIT; }\n');
+    before.pinCacheDir();
+    writeCDB(before);
+    const indexed = (ws: Workspace) => {
+        const run = runIndex(ws);
+        expect(run.status, run.stderr).toBe(0);
+        return Number(/Indexed (\d+) translation unit/.exec(run.stdout)?.[1]);
+    };
+    const ids = (ws: Workspace) =>
+        ["UTIL_LIMIT", "src/a.cpp:2"].map(
+            (text) =>
+                query<{ symbols: { symbolId: string }[] }>(ws, "symbolSearch", "--query", text)
+                    .result?.symbols[0]?.symbolId,
+        );
+    expect(indexed(before)).toBe(2);
+    const first = ids(before);
+    expect(first.every((id) => id !== undefined)).toBe(true);
+
+    fs.renameSync(before.root, after.root);
+    writeCDB(after);
+    expect(indexed(after), "the moved index is current").toBe(0);
+    expect(ids(after), "a macro and a file-local symbol keep their ids").toEqual(first);
 });
 
 test("rejects bad questions", ({ session }) => {

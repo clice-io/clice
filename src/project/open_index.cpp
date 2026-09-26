@@ -43,6 +43,7 @@ bool open_database(Project& project, CanonicalRef root, llvm::StringRef requeste
         return false;
     }
     project.config = std::move(config);
+    project.project_index.workspace = root;
     project.store.emplace(std::move(*store));
     project.build.reset_active(configuration);
     project.index_db = index::open_database(*project.store, configuration, /*read_only=*/true);

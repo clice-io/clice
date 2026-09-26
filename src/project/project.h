@@ -36,7 +36,7 @@ namespace clice {
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 12;
+constexpr inline std::uint32_t cache_format_version = 13;
 
 /// One dependency of a compilation artifact.
 ///
@@ -338,8 +338,7 @@ CanonicalPath project_root_above(CanonicalRef start);
 /// The `compile_commands.json` files in `start` and its ancestors up to
 /// `workspace_root`, nearest first: the databases a file deeper in the
 /// tree than startup discovery looks may compile from.
-llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
-                                                   CanonicalRef workspace_root);
+llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start, CanonicalRef workspace_root);
 
 /// Capture a staleness snapshot from a build's reported inputs, interning
 /// the consumed versions into the shared table.

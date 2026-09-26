@@ -51,7 +51,7 @@ namespace ranges = std::ranges;
 /// Version salt of the persistent command identity: entry hashes change
 /// wholesale on schema changes even when old and new renders happen to
 /// produce the same bytes.
-constexpr llvm::StringRef identity_salt = "clice-cmd-v8";
+constexpr llvm::StringRef identity_salt = "clice-cmd-v9";
 
 /// Pre-dedup form of an argument: value storage owned locally until the
 /// config wins insertion into the pool.
@@ -236,8 +236,8 @@ CompilationDatabase::CompilationDatabase(FileTable& files) :
 
 CompilationDatabase::~CompilationDatabase() = default;
 
-void CompilationDatabase::set_workspace_root(llvm::StringRef root) {
-    workspace_root = root.str();
+void CompilationDatabase::set_workspace_root(CanonicalRef root) {
+    workspace_root = root;
 }
 
 const CompileConfig& CompilationDatabase::config(ConfigID id) const {
@@ -608,6 +608,18 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
         out += '\0';
     };
 
+    llvm::BumpPtrAllocator allocator;
+    llvm::StringSaver saver(allocator);
+    auto render_portable = [&](const Arg& arg) {
+        llvm::SmallVector<const char*, 2> values;
+        for(const char* value: arg.values) {
+            llvm::SmallString<256> storage;
+            auto name = path::portable(value, workspace_root, storage);
+            values.push_back(name.data() == value ? value : saver.save(name).data());
+        }
+        render_arg({.opt_id = arg.opt_id, .cls = arg.cls, .values = values}, append);
+    };
+
     append(cfg.driver);
     if(cfg.subcommand) {
         append(cfg.subcommand);
@@ -616,7 +628,7 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
         switch(arg.cls) {
             case ArgClass::Semantic:
             case ArgClass::UserContent:
-            case ArgClass::Diagnostics: render_arg(arg, append); break;
+            case ArgClass::Diagnostics: render_portable(arg); break;
             case ArgClass::Unknown: append(arg.spelling); break;
             case ArgClass::Input: append("\x01input"); break;
             case ArgClass::Codegen:
@@ -635,7 +647,8 @@ std::uint64_t CompilationDatabase::entry_hash(ConfigID id) {
     buf += identity_salt;
     buf += '\0';
     render_identity(id, buf);
-    buf += config(id).directory;
+    llvm::SmallString<256> storage;
+    buf += path::portable(config(id).directory, workspace_root, storage);
     it->second = hash_bytes(buf);
     return it->second;
 }
@@ -660,8 +673,8 @@ void CompilationDatabase::rebuild_entry_list() {
 /// every spelling of that directory finds the same source, while a
 /// database file symlinked elsewhere is still read through the link.
 static Spelling source_key(const Spelling& path) {
-    auto file = path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path)
-                                                        : path;
+    auto file =
+        path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
     return Spelling(path::filename(file.str()), Spelling(CanonicalPath(file.parent())));
 }
 
@@ -1180,7 +1193,9 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
             });
             remove_args.insert(remove_args.end(), removes.begin(), removes.end());
         } else {
-            parse_edit(translate_rule_flags(edit.flags, /*edit=*/true), edit.directory, append_args);
+            parse_edit(translate_rule_flags(edit.flags, /*edit=*/true),
+                       edit.directory,
+                       append_args);
         }
     }
     auto entry_directory = Spelling::absolute(directory);

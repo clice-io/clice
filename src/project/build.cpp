@@ -47,8 +47,9 @@ llvm::SmallVector<Spelling> Build::declared_sources() const {
             continue;
         }
         for(auto& database: rule.compile_commands) {
-            if(llvm::none_of(result,
-                             [&](const Spelling& known) { return known.str() == database.str(); })) {
+            if(llvm::none_of(result, [&](const Spelling& known) {
+                   return known.str() == database.str();
+               })) {
                 result.push_back(database);
             }
         }
@@ -160,12 +161,14 @@ Edits Build::edits(llvm::ArrayRef<CanonicalRef> paths) const {
             continue;
         }
         if(!rule.remove.empty()) {
-            result.edits.push_back(
-                {.kind = CommandEdit::Kind::Remove, .flags = rule.remove, .directory = rule.directory});
+            result.edits.push_back({.kind = CommandEdit::Kind::Remove,
+                                    .flags = rule.remove,
+                                    .directory = rule.directory});
         }
         if(!rule.append.empty()) {
-            result.edits.push_back(
-                {.kind = CommandEdit::Kind::Append, .flags = rule.append, .directory = rule.directory});
+            result.edits.push_back({.kind = CommandEdit::Kind::Append,
+                                    .flags = rule.append,
+                                    .directory = rule.directory});
         }
     }
     return result;
@@ -235,10 +238,19 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
     if(edit.empty()) {
         return {};
     }
+    llvm::StringRef root = config.workspace_root;
     std::string joined;
     for(auto& item: edit.edits) {
         joined += item.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
-        for(auto& flag: item.flags) {
+        for(llvm::StringRef flag: item.flags) {
+            // The rule's `${workspace}` put back, so a moved checkout
+            // keeps the hash.
+            for(auto at = flag.find(root); !root.empty() && at != llvm::StringRef::npos;
+                at = flag.find(root)) {
+                joined += flag.take_front(at);
+                joined += path::workspace_anchor;
+                flag = flag.drop_front(at + root.size());
+            }
             joined += flag;
             joined += '\0';
         }

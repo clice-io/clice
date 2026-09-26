@@ -1176,7 +1176,8 @@ Toolchain::ProbeAdmission Toolchain::admit_probe(ConfigID id, InputKind input) {
     admission.spec.slot = argv.slot;
     admission.spec.kind = input.value;
     admission.spec.family = config.family;
-    admission.spec.cwd = probe_cwd(pk.cwd_sensitive ? config.directory : db.workspace_root);
+    admission.spec.cwd =
+        probe_cwd(pk.cwd_sensitive ? config.directory : llvm::StringRef(db.workspace_root));
     return admission;
 }
 

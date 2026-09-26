@@ -158,6 +158,11 @@ struct CompilationParams {
 
     std::string directory;
 
+    /// The workspace root: hashes that outlive the checkout's location
+    /// name the unit's files relative to it (path::portable). Empty for
+    /// none.
+    std::string workspace;
+
     /// Responsible for storing the arguments.
     std::vector<const char*> arguments;
 

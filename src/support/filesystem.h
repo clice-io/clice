@@ -140,6 +140,10 @@ public:
     /// The directory command-line arguments are relative to.
     static Spelling cwd();
 
+    /// The file a portable name (path::portable) names in the checkout at
+    /// `workspace`.
+    static Spelling from_portable(llvm::StringRef name, CanonicalRef workspace);
+
     /// An identity spells itself.
     explicit Spelling(CanonicalRef identity);
 
@@ -304,6 +308,24 @@ std::strong_ordering operator<=>(const L& lhs, const R& rhs) = delete;
 
 namespace path {
 
+/// How configuration and persisted names spell the workspace root.
+constexpr inline llvm::StringRef workspace_anchor = "${workspace}";
+
+/// The name records that outlive the checkout's location give a path:
+/// `${workspace}/rel` under the workspace root, so the index database and
+/// the hashes of symbols and commands survive a move of the checkout; any
+/// other path, and every path without a workspace, stays as it is. Points
+/// into `p` or `storage`.
+llvm::StringRef portable(llvm::StringRef p,
+                         llvm::StringRef workspace,
+                         llvm::SmallVectorImpl<char>& storage);
+
+/// The path a portable name names in the checkout at `workspace`. Points
+/// into `name` or `storage`.
+llvm::StringRef local(llvm::StringRef name,
+                      llvm::StringRef workspace,
+                      llvm::SmallVectorImpl<char>& storage);
+
 /// Whether the identity `p` is `root` or lies under it.
 template <Canonical P, Canonical R>
 bool under(const P& p, const R& root) {
@@ -325,7 +347,6 @@ inline CanonicalPath CanonicalRef::entry(llvm::StringRef path) const {
     assert(path::under(path, text));
     return CanonicalPath(CanonicalPath::Resolved{}, path);
 }
-
 
 }  // namespace clice
 

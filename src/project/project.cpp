@@ -302,8 +302,7 @@ bool defines_project(CanonicalRef dir) {
 CanonicalPath project_root_above(CanonicalRef start) {
     for(CanonicalPath dir = start; !dir.empty();) {
         Spelling spelled(dir);
-        if(configured(spelled) || database_in(spelled) ||
-           database_in(Spelling("build", spelled))) {
+        if(configured(spelled) || database_in(spelled) || database_in(Spelling("build", spelled))) {
             return dir;
         }
         auto parent = CanonicalRef(dir).parent();

@@ -18,7 +18,6 @@
 
 namespace clice {
 
-
 bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics) {
     constexpr static llvm::StringRef codes[] = {
         "err_unknown_typename",

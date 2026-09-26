@@ -21,6 +21,7 @@
 #include "index/symbol_query.h"
 #include "index/types.h"
 #include "support/bitmap.h"
+#include "support/filesystem.h"
 #include "support/fuzzy_matcher.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -60,6 +61,7 @@ struct SearchEntry {
 /// their files index.
 struct SearchSnapshot {
     std::vector<SearchEntry> entries;
+    /// Named the way the database names files (ProjectIndex::portable).
     std::vector<std::string> paths;
     /// The generation of the global blob these rows will be persisted
     /// next to; a loader finding another generation knows rows may have
@@ -161,8 +163,9 @@ public:
     bool damaged() const;
 
     /// At most `limit` hits, best first. Empty for a query by id or
-    /// place.
-    SearchOutcome search(const SymbolQuery& query, std::size_t limit) const;
+    /// place. `workspace` is the root the index names files under
+    /// relative to (ProjectIndex::workspace).
+    SearchOutcome search(const SymbolQuery& query, std::size_t limit, CanonicalRef workspace) const;
 
 private:
     struct View;

@@ -27,10 +27,9 @@ namespace clice {
 static void substitute_workspace(std::string& value, llvm::StringRef workspace_root) {
     if(workspace_root.empty())
         return;
-    constexpr std::string_view placeholder = "${workspace}";
     std::size_t pos = 0;
-    while((pos = value.find(placeholder, pos)) != std::string::npos) {
-        value.replace(pos, placeholder.size(), workspace_root);
+    while((pos = value.find(path::workspace_anchor, pos)) != std::string::npos) {
+        value.replace(pos, path::workspace_anchor.size(), workspace_root);
         pos += workspace_root.size();
     }
 }
@@ -92,7 +91,7 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
     // A substituted workspace root is path, never glob syntax: the wildcard
     // search starts after it, and the literal prefix it lands in is escaped.
     std::size_t search_from =
-        llvm::StringRef(pattern).starts_with("${workspace}") ? workspace_root.size() : 0;
+        llvm::StringRef(pattern).starts_with(path::workspace_anchor) ? workspace_root.size() : 0;
     substitute_workspace(pattern, workspace_root);
     llvm::StringRef ref(pattern);
     std::string text = pattern;
@@ -101,7 +100,8 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
         auto wildcard = ref.find_first_of(R"(*?[{\)", search_from);
         auto cut = ref.rfind('/', wildcard == llvm::StringRef::npos ? ref.size() : wildcard);
         auto dir = cut == llvm::StringRef::npos ? llvm::StringRef() : ref.take_front(cut + 1);
-        root = CanonicalPath(path::is_absolute(dir) ? Spelling::absolute(dir) : Spelling(dir, anchor));
+        root =
+            CanonicalPath(path::is_absolute(dir) ? Spelling::absolute(dir) : Spelling(dir, anchor));
         text = glob_escape(root);
         if(!text.ends_with('/')) {
             text += '/';
@@ -169,11 +169,12 @@ void Config::finalize(CanonicalRef workspace_root) {
         // A rule read from a file anchors at the file's directory, one from
         // initializationOptions at the workspace root; a project without a
         // folder has nothing to anchor one at.
-        auto anchor = rule.directory.empty() ? root_anchor
-                                             : Spelling::absolute(std::string(rule.directory));
+        auto anchor =
+            rule.directory.empty() ? root_anchor : Spelling::absolute(std::string(rule.directory));
         if(anchor.str().empty()) {
-            LOG_GUIDANCE("Rules need a workspace folder to anchor their paths; a rule "
-                         "without one is ignored");
+            LOG_GUIDANCE(
+                "Rules need a workspace folder to anchor their paths; a rule "
+                "without one is ignored");
             return std::nullopt;
         }
         CompiledRule compiled;
@@ -418,9 +419,8 @@ void claim_cache_dir(llvm::StringRef cache_dir, CanonicalRef root) {
     auto owner = cache_dir_owner(cache_dir);
     // One inside the root is the root's, whatever it records — a copied
     // checkout carries the original's record along.
-    if(owner == root.str() ||
-       (!path::under(CanonicalPath(Spelling::absolute(cache_dir)), root) &&
-        live_owner(owner, root))) {
+    if(owner == root.str() || (!path::under(CanonicalPath(Spelling::absolute(cache_dir)), root) &&
+                               live_owner(owner, root))) {
         return;
     }
     if(auto written = fs::write(path::join(cache_dir, cache_owner_file), root.str() + "\n");

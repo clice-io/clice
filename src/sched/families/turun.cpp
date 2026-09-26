@@ -55,6 +55,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
 
     worker::TURunParams params;
     params.file = file_path;
+    params.workspace = project.config.workspace_root.str();
     params.index = plan.index;
     params.tidy = plan.tidy;
     params.tidy_checks = std::move(plan.tidy_params.checks);

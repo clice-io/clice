@@ -66,7 +66,7 @@ TEST_CASE(UnboundVerdictStaysLocal) {
 
     CommandResolver restarted(project);
     slices.push_back({id.raw, static_cast<std::uint32_t>(HeaderMode::NeedsContext), 0});
-    restarted.load_mode_slices(slices, [&](std::uint32_t) -> llvm::StringRef { return path; });
+    restarted.load_mode_slices(slices, [&](std::uint32_t) -> std::optional<Fid> { return id; });
     ASSERT_TRUE(restarted.header_mode(id) == HeaderMode::Unknown);
 }
 
@@ -88,8 +88,8 @@ TEST_CASE(ModeSliceContentGate) {
     resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
     ASSERT_EQ(slices.size(), 1u);
 
-    auto resolve = [&](std::uint32_t) -> llvm::StringRef {
-        return path;
+    auto resolve = [&](std::uint32_t) -> std::optional<Fid> {
+        return id;
     };
     CommandResolver same_disk(project);
     same_disk.load_mode_slices(slices, resolve);

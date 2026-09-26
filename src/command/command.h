@@ -288,9 +288,10 @@ public:
     CompilationDatabase(const CompilationDatabase&) = delete;
     CompilationDatabase& operator=(const CompilationDatabase&) = delete;
 
-    /// Where probes of cwd-insensitive configs run. Set before load; empty
-    /// means the process working directory.
-    void set_workspace_root(llvm::StringRef root);
+    /// Where probes of cwd-insensitive configs run, and what entry hashes
+    /// name the paths under relative to (path::portable). Set before load;
+    /// empty means the process working directory, and absolute paths.
+    void set_workspace_root(CanonicalRef root);
 
     FileTable& files() {
         return file_table;
@@ -415,7 +416,9 @@ public:
     llvm::StringRef forced_language(ConfigID id) const;
 
     /// Identity hash of a config (Frontend view + slot position + directory
-    /// + schema salt). The CDB diff identity, the index snapshot command
+    /// + schema salt), with the directory and the option values under the
+    /// workspace root taken by their portable names so a moved checkout
+    /// keeps it. The CDB diff identity, the index snapshot command
     /// identity, and — computed over a rules-applied config — the pin
     /// identity of clice/switchContext.
     std::uint64_t entry_hash(ConfigID id);
@@ -542,7 +545,7 @@ private:
     /// of it (CompilationEntry::spelling), else its identity.
     llvm::StringRef input_path(Fid file) const;
 
-    std::string workspace_root;
+    CanonicalPath workspace_root;
 
     /// Derivation memos, append-only alongside the pools.
     llvm::DenseMap<std::uint32_t, std::uint64_t> entry_hashes;

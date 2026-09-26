@@ -31,7 +31,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
         }
         if(arg.opt_id == OPT_isysroot) {
             sysroot = arg.values[0];
-        } else if(sysroot.empty() && (arg.opt_id == OPT__sysroot_EQ || arg.opt_id == OPT__sysroot)) {
+        } else if(sysroot.empty() &&
+                  (arg.opt_id == OPT__sysroot_EQ || arg.opt_id == OPT__sysroot)) {
             sysroot = arg.values[0];
         }
     }
@@ -118,7 +119,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
         unsigned removed_before_system = 0;
         unsigned removed_before_after = 0;
         for(unsigned read = config.angled_start_idx; read < config.dirs.size(); ++read) {
-            if(seen.insert(CanonicalPath(Spelling::absolute(config.dirs[read].path)).str()).second) {
+            if(seen.insert(CanonicalPath(Spelling::absolute(config.dirs[read].path)).str())
+                   .second) {
                 if(write != read) {
                     config.dirs[write] = std::move(config.dirs[read]);
                 }

@@ -821,8 +821,7 @@ void LSPClient::register_extensions() {
             if(!path) {
                 co_return to_raw(ext::QueryContextResult{});
             }
-            co_return to_raw(
-                this->server.query_contexts(this->server.files.intern(*path), params));
+            co_return to_raw(this->server.query_contexts(this->server.files.intern(*path), params));
         });
 
     peer.on_request(
@@ -1028,7 +1027,8 @@ void LSPClient::publish_config_diagnostics() {
 
     for(auto& [file, diagnostics]: by_file) {
         protocol::PublishDiagnosticsParams params;
-        params.uri = feature::to_uri(server.files.display(server.files.intern(Spelling::absolute(file.str()))));
+        params.uri = feature::to_uri(
+            server.files.display(server.files.intern(Spelling::absolute(file.str()))));
         params.diagnostics = std::move(diagnostics);
         peer.send_notification(params);
     }

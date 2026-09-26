@@ -21,6 +21,7 @@ ProjectLoad load_project(Project& project,
                          bool read_only_index,
                          bool scan_tree) {
     ProjectLoad report;
+    project.project_index.workspace = root;
     auto& cfg = project.config.project;
     auto configuration = resolve_configuration(project.config, requested_configuration);
 
@@ -117,16 +118,16 @@ BuildLoad load_build(Project& project,
             return llvm::any_of(paths,
                                 [&](const Spelling& path) { return path.str() == source.str(); });
         };
-        auto stable =
-            llvm::to_vector(llvm::make_filter_range(nearby, [&](const Spelling& source) {
-                // Where the database sits, not what it links to: a
-                // compile_commands.json symlinked to a build tree outside
-                // still belongs to the root.
-                return path::under(CanonicalPath(source.parent()), root) && !listed(source);
-            }));
+        auto stable = llvm::to_vector(llvm::make_filter_range(nearby, [&](const Spelling& source) {
+            // Where the database sits, not what it links to: a
+            // compile_commands.json symlinked to a build tree outside
+            // still belongs to the root.
+            return path::under(CanonicalPath(source.parent()), root) && !listed(source);
+        }));
         auto key = [](const Spelling& source) {
-            return std::tuple(llvm::count_if(source.str(), [](char c) { return path::is_separator(c); }),
-                              llvm::StringRef(source));
+            return std::tuple(
+                llvm::count_if(source.str(), [](char c) { return path::is_separator(c); }),
+                llvm::StringRef(source));
         };
         std::ranges::sort(stable, {}, key);
         auto duplicates = std::ranges::unique(stable, {}, &Spelling::str);

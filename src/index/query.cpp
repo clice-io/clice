@@ -700,7 +700,7 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
                                                  std::size_t limit) const {
     std::vector<Ranked> hits;
     llvm::DenseSet<SymbolHash> seen;
-    auto indexed = index.search_index.search(query, limit);
+    auto indexed = index.search_index.search(query, limit, index.workspace);
     // A damaged index answers incompletely, a missing one not at all:
     // until the rebuild the whole table is judged row by row instead.
     bool scan_table = index.search_index.damaged() || !index.search_index.loaded();

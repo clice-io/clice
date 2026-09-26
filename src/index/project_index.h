@@ -57,6 +57,22 @@ struct ProjectIndex {
     ProjectIndex(ProjectIndex&&) noexcept;
     ProjectIndex& operator=(ProjectIndex&&) noexcept;
 
+    /// The root the database names the files under relative to, by their
+    /// portable names (path::portable), so a moved checkout keeps its
+    /// index; empty names every file by its identity. Set before a blob
+    /// is bound or written.
+    CanonicalPath workspace;
+
+    /// The name the database keeps for `path`.
+    std::string portable(llvm::StringRef path) const;
+
+    /// The path a name the database keeps names in this checkout.
+    Spelling local(llvm::StringRef name) const;
+
+    /// The key of a file's blobs (its shard, a TU's manifest) in the
+    /// database.
+    std::string key_of(const FileTable& files, Fid file) const;
+
     /// Bind a global blob as the table's base, mapping its path table into
     /// `files`. False — and the index untouched — when the bytes are not
     /// a global blob of this format or are inconsistent. The base's

@@ -109,10 +109,11 @@ public:
     void dump_mode_slices(std::vector<CacheModeEntry>& modes,
                           llvm::function_ref<std::uint32_t(Fid)> intern_id) const;
 
-    /// Restore header-mode verdicts. @param resolve maps a path table
-    /// index back to a path (empty when the index is invalid).
+    /// Restore header-mode verdicts. @param file_of maps a path table
+    /// index back to the file it names (nullopt when the index is
+    /// invalid).
     void load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
-                          llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve);
+                          llvm::function_ref<std::optional<Fid>(std::uint32_t)> file_of);
 
     /// Fill compile arguments for a file and report where they came from.
     /// Tries, in order: the pinned host, the file's own command, a header

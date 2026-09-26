@@ -419,8 +419,7 @@ struct Config {
                                       bool finalized = true);
 
     /// Try to load configuration from a JSON string (e.g. initializationOptions).
-    static std::optional<Config> load_from_json(llvm::StringRef json,
-                                                CanonicalRef workspace_root);
+    static std::optional<Config> load_from_json(llvm::StringRef json, CanonicalRef workspace_root);
 
     /// Load config from the workspace, trying standard locations.
     /// Returns a default config if no file is found. `loaded_path`, when
