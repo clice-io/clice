@@ -396,8 +396,11 @@ TEST_CASE(ParseCC1MultiCall) {
     auto args = Toolchain::parse_cc1(
         R"( "/opt/xclang/bin/llvm" "clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "a.cpp")");
 
-    std::vector<std::string> expected =
-        {"/opt/xclang/bin/llvm", "-cc1", "-triple", "x86_64-unknown-linux-gnu", "a.cpp"};
+    std::vector<std::string> expected = {"/opt/xclang/bin/llvm",
+                                         "-cc1",
+                                         "-triple",
+                                         "x86_64-unknown-linux-gnu",
+                                         "a.cpp"};
     EXPECT_EQ(args, expected);
 }
 
