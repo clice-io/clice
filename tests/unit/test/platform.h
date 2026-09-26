@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include <string>
 
+#include "support/filesystem.h"
+
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -60,16 +62,19 @@ public:
 #endif
     }
 
-    /// root() + relative → absolute path; an absolute path stays as is
-    /// (a file that must live outside the root, e.g. inside a cache
-    /// store's directory).
+    /// root() + relative → absolute path, spelled the way the file table
+    /// names a file (path::canonicalize); an absolute path stays as is (a
+    /// file that must live outside the root, e.g. inside a cache store's
+    /// directory).
     static std::string path(llvm::StringRef relative) {
         if(llvm::sys::path::is_absolute(relative)) {
             return relative.str();
         }
-        llvm::SmallString<128> result;
-        llvm::sys::path::append(result, root(), relative);
-        return std::string(result);
+        llvm::SmallString<128> joined;
+        llvm::sys::path::append(joined, root(), relative);
+        std::string result(joined);
+        path::canonicalize(result);
+        return result;
     }
 
     /// Add a file with an optional content (relative path, auto-prefixed
