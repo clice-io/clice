@@ -579,7 +579,7 @@ TEST_CASE(InternedCommand) {
     auto rendered = database.render_driver(ref);
     EXPECT_TRUE(llvm::is_contained(rendered, "-std=c++20"sv));
     EXPECT_TRUE(has_arg(rendered, "/ws/include"));
-    EXPECT_EQ(std::string_view(rendered.back()), "/ws/src/a.cpp"sv);
+    EXPECT_EQ(std::string_view(rendered.back()), file_table.resolve(ref.file).str());
 };
 
 TEST_CASE(MultiCommand) {

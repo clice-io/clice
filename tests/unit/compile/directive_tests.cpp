@@ -38,10 +38,7 @@ void EXPECT_INCLUDE(u32 index, llvm::StringRef position, llvm::StringRef path) {
     auto [_, offset] = unit->decompose_location(include.location);
     ASSERT_EQ(offset, point(position));
 
-    /// FIXME: Implicit relative path ...
-    llvm::SmallString<64> target = include.skipped ? "" : unit->file_path(include.fid);
-    path::remove_dots(target);
-
+    auto target = include.skipped ? llvm::StringRef() : unit->file_path(include.fid);
     ASSERT_EQ(target, path);
 }
 
@@ -50,12 +47,7 @@ void EXPECT_HAS_INL(u32 index, llvm::StringRef position, llvm::StringRef path) {
     auto [_, offset] = unit->decompose_location(has_include.location);
     ASSERT_EQ(offset, point(position));
 
-    llvm::SmallString<64> target;
-    if(has_include.file) {
-        target = unit->file_path(*has_include.file);
-    }
-    path::remove_dots(target);
-
+    auto target = has_include.file ? unit->file_path(*has_include.file) : llvm::StringRef();
     ASSERT_EQ(target, path);
 }
 

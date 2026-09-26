@@ -56,7 +56,7 @@ public:
 
     const static char* root() {
 #ifdef _WIN32
-        return "C:\\clice-test";
+        return "c:/clice-test";
 #else
         return "/clice-test";
 #endif

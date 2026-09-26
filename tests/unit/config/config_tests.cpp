@@ -294,7 +294,8 @@ TEST_CASE(FinalizePreservesSet) {
     config.inlay_hints.parameters = false;
     config.inlay_hints.block_end = true;
     config.finalize(CanonicalPath(Spelling::absolute("/workspace")));
-    EXPECT_EQ(std::string_view(config.project.cache_dir), "/custom");
+    EXPECT_EQ(std::string_view(config.project.cache_dir),
+              CanonicalPath(Spelling::absolute("/custom")).str());
     EXPECT_EQ(config.project.cache_dir_defaulted.value, false);
     EXPECT_EQ(config.project.enable_indexing.value, false);
     EXPECT_EQ(config.inlay_hints.parameters.value, false);
@@ -314,7 +315,8 @@ TEST_CASE(LoadFromJson) {
     })",
                                          CanonicalPath(Spelling::absolute("/workspace")));
     EXPECT_TRUE(result.has_value());
-    EXPECT_EQ(std::string_view(result->project.cache_dir), "/opt/cache");
+    EXPECT_EQ(std::string_view(result->project.cache_dir),
+              CanonicalPath(Spelling::absolute("/opt/cache")).str());
     EXPECT_EQ(result->project.enable_indexing.value, false);
     EXPECT_EQ(result->rules.size(), 1u);
     EXPECT_EQ(result->compiled_rules.size(), 1u);
@@ -345,7 +347,8 @@ worker_memory_limit = 4294967296
 )");
     auto result = Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT_TRUE(result.has_value());
-    EXPECT_EQ(std::string_view(result->project.cache_dir), "/opt/cache");
+    EXPECT_EQ(std::string_view(result->project.cache_dir),
+              CanonicalPath(Spelling("/opt/cache", Spelling::absolute(tmp.root))).str());
 }
 
 TEST_CASE(LoadMissingFile) {
@@ -592,12 +595,11 @@ TEST_CASE(ConfigPriorityJson) {
 
 TEST_CASE(DefaultWorkspaceCache) {
     Config config;
-    config.finalize(CanonicalPath(Spelling::absolute("/ws/root")));
+    CanonicalPath root(Spelling::absolute("/ws/root"));
+    config.finalize(root);
 
-    EXPECT_EQ(path::convert_to_slash(std::string_view(config.project.cache_dir)),
-              "/ws/root/.clice");
-    EXPECT_EQ(path::convert_to_slash(std::string_view(config.project.logging_dir)),
-              "/ws/root/.clice/logs");
+    EXPECT_EQ(std::string_view(config.project.cache_dir), root.str() + "/.clice");
+    EXPECT_EQ(std::string_view(config.project.logging_dir), root.str() + "/.clice/logs");
 }
 
 TEST_CASE(WorkspaceSubstEmpty) {
@@ -635,8 +637,10 @@ TEST_CASE(WorkspaceSubstRepeated) {
     // Multiple ${workspace} occurrences in one string all get substituted.
     Config config;
     config.project.cache_dir = "${workspace}/a/${workspace}/b";
-    config.finalize(CanonicalPath(Spelling::absolute("/root")));
-    EXPECT_EQ(std::string_view(config.project.cache_dir), "/root/a/root/b");
+    CanonicalPath root(Spelling::absolute("/root"));
+    config.finalize(root);
+    EXPECT_EQ(std::string_view(config.project.cache_dir),
+              CanonicalPath(Spelling::absolute(root.str() + "/a/" + root.str() + "/b")).str());
 }
 
 TEST_CASE(CompileCommandsList) {
@@ -787,7 +791,7 @@ TEST_CASE(RuleOrderLaterRemoveWins) {
     ASSERT_EQ(edits.edits.size(), 2u);
     EXPECT_EQ(edits.edits[1].kind, CommandEdit::Kind::Remove);
     EXPECT_EQ(print_argv(render_entry(cdb, "/src/a.cpp", edits.options())),
-              "clang++ -D BAR /src/a.cpp");
+              "clang++ -D BAR " + CanonicalPath(Spelling::absolute("/src/a.cpp")).str());
 }
 
 TEST_CASE(RuleOrderLaterAppendWins) {
@@ -828,7 +832,8 @@ append = ["-DFROM_TOML"]
 )");
 
     auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
+    auto from_toml = CanonicalPath(Spelling("/from/toml", Spelling::absolute(tmp.root))).str();
+    EXPECT_EQ(std::string_view(config.project.cache_dir), from_toml);
     EXPECT_EQ(config.project.test_hooks.value, true);
     EXPECT_EQ(config.project.idle_timeout_ms.value, 16u);
     EXPECT_EQ(config.compiled_rules.size(), 1u);
@@ -841,7 +846,7 @@ append = ["-DFROM_TOML"]
     // Overridden field.
     EXPECT_EQ(config.project.idle_timeout_ms.value, 99u);
     // Untouched fields stay at TOML values.
-    EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
+    EXPECT_EQ(std::string_view(config.project.cache_dir), from_toml);
     EXPECT_EQ(config.project.test_hooks.value, true);
     // Rules from clice.toml must survive the overlay.
     EXPECT_EQ(config.rules.size(), 1u);

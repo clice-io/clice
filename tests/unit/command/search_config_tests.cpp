@@ -19,6 +19,11 @@ SearchConfig extract(llvm::ArrayRef<const char*> args, llvm::StringRef directory
     return extract_search_config(db.config(entry.config).args, directory);
 }
 
+/// A search directory as extraction spells it: absolute, canonically.
+std::string spelled(const TempDir& tmp, llvm::StringRef relative) {
+    return Spelling::absolute(tmp.path(relative)).str();
+}
+
 TEST_CASE(ReordersDirectoryGroups) {
     // TempDir gives cross-platform absolute paths (drive letter on Windows).
     TempDir tmp;
@@ -41,11 +46,11 @@ TEST_CASE(ReordersDirectoryGroups) {
     EXPECT_EQ(config.angled_start_idx, 1u);
     EXPECT_EQ(config.system_start_idx, 2u);
 
-    EXPECT_EQ(config.dirs[0].path, tmp.path("quoted"));
-    EXPECT_EQ(config.dirs[1].path, tmp.path("user"));
-    EXPECT_EQ(config.dirs[2].path, tmp.path("stdlib"));
-    EXPECT_EQ(config.dirs[3].path, tmp.path("clang"));
-    EXPECT_EQ(config.dirs[4].path, tmp.path("sysroot"));
+    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "quoted"));
+    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "user"));
+    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "stdlib"));
+    EXPECT_EQ(config.dirs[3].path, spelled(tmp, "clang"));
+    EXPECT_EQ(config.dirs[4].path, spelled(tmp, "sysroot"));
 }
 
 TEST_CASE(PreservesWithinGroupOrder) {
@@ -65,10 +70,10 @@ TEST_CASE(PreservesWithinGroupOrder) {
     ASSERT_EQ(config.dirs.size(), 4u);
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.system_start_idx, 2u);
-    EXPECT_EQ(config.dirs[0].path, tmp.path("b"));
-    EXPECT_EQ(config.dirs[1].path, tmp.path("a"));
-    EXPECT_EQ(config.dirs[2].path, tmp.path("s2"));
-    EXPECT_EQ(config.dirs[3].path, tmp.path("s1"));
+    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "b"));
+    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "a"));
+    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "s2"));
+    EXPECT_EQ(config.dirs[3].path, spelled(tmp, "s1"));
 }
 
 TEST_CASE(DeduplicatesAngledSystem) {
@@ -87,8 +92,8 @@ TEST_CASE(DeduplicatesAngledSystem) {
     ASSERT_EQ(config.dirs.size(), 2u);
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.system_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, tmp.path("shared"));
-    EXPECT_EQ(config.dirs[1].path, tmp.path("only_sys"));
+    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "shared"));
+    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "only_sys"));
 }
 
 TEST_CASE(QuotedAngledSamePathKeptInBoth) {
@@ -109,9 +114,9 @@ TEST_CASE(QuotedAngledSamePathKeptInBoth) {
     // "shared" must appear in both Quoted and Angled segments.
     ASSERT_EQ(config.dirs.size(), 3u);
     EXPECT_EQ(config.angled_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, tmp.path("shared"));  // Quoted
-    EXPECT_EQ(config.dirs[1].path, tmp.path("shared"));  // Angled (not deduped)
-    EXPECT_EQ(config.dirs[2].path, tmp.path("other"));
+    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "shared"));  // Quoted
+    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "shared"));  // Angled (not deduped)
+    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "other"));
 }
 
 TEST_CASE(DeduplicateAdjustsIndices) {
@@ -135,10 +140,10 @@ TEST_CASE(DeduplicateAdjustsIndices) {
     ASSERT_EQ(config.dirs.size(), 4u);
     EXPECT_EQ(config.angled_start_idx, 1u);
     EXPECT_EQ(config.system_start_idx, 3u);
-    EXPECT_EQ(config.dirs[0].path, tmp.path("q"));
-    EXPECT_EQ(config.dirs[1].path, tmp.path("dup"));
-    EXPECT_EQ(config.dirs[2].path, tmp.path("a2"));
-    EXPECT_EQ(config.dirs[3].path, tmp.path("s"));
+    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "q"));
+    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "dup"));
+    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "a2"));
+    EXPECT_EQ(config.dirs[3].path, spelled(tmp, "s"));
 }
 
 TEST_CASE(PrefixIncludeOptions) {
@@ -166,9 +171,9 @@ TEST_CASE(PrefixIncludeOptions) {
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.system_start_idx, 1u);
     EXPECT_EQ(config.after_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, tmp.path("gcc/12/include"));
-    EXPECT_EQ(config.dirs[1].path, tmp.path("gcc/12/lib"));
-    EXPECT_EQ(config.dirs[2].path, tmp.path("gcc/13/include"));
+    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "gcc/12/include"));
+    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "gcc/12/lib"));
+    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "gcc/13/include"));
 }
 
 TEST_CASE(DirafterGroup) {
@@ -187,9 +192,9 @@ TEST_CASE(DirafterGroup) {
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.system_start_idx, 1u);
     EXPECT_EQ(config.after_start_idx, 2u);
-    EXPECT_EQ(config.dirs[0].path, tmp.path("user"));
-    EXPECT_EQ(config.dirs[1].path, tmp.path("sys"));
-    EXPECT_EQ(config.dirs[2].path, tmp.path("fallback"));
+    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "user"));
+    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "sys"));
+    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "fallback"));
 }
 
 TEST_CASE(DirafterDeduplication) {
@@ -207,8 +212,8 @@ TEST_CASE(DirafterDeduplication) {
     ASSERT_EQ(config.dirs.size(), 2u);
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.after_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, tmp.path("shared"));
-    EXPECT_EQ(config.dirs[1].path, tmp.path("extra"));
+    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "shared"));
+    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "extra"));
 }
 
 };  // TEST_SUITE(ExtractSearchConfig)

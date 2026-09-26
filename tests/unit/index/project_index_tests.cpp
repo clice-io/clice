@@ -433,15 +433,15 @@ TEST_CASE(LazyShardsStayPut) {
     std::string shard;
     llvm::raw_string_ostream shard_os(shard);
     index::write_shard(rows, {}, content, shard_os);
+    clice::FileTable files;
+    index::ProjectIndex project;
     for(std::uint32_t i = 0; i < count; i += 1) {
-        puts.push_back(
-            {index::IndexBlobKind::Shard, index::blob_key(std::format("/proj/f{}.cpp", i)), shard});
+        auto file = files.intern(Spelling::absolute(std::format("/proj/f{}.cpp", i)));
+        puts.push_back({index::IndexBlobKind::Shard, project.key_of(files, file), shard});
     }
     ASSERT_TRUE(db->write(puts, {}).empty());
     ASSERT_TRUE(db->advance_read_snapshot().has_value());
 
-    clice::FileTable files;
-    index::ProjectIndex project;
     ASSERT_TRUE(project.open(*db, files));
     auto first = files.intern(Spelling::absolute("/proj/f0.cpp"));
     const auto* held = project.shard(first);

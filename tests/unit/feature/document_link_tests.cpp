@@ -26,9 +26,7 @@ void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) 
     ASSERT_EQ(link.range.begin, expected.begin);
     ASSERT_EQ(link.range.end, expected.end);
 
-    llvm::SmallString<128> target(link.target.begin(), link.target.end());
-    path::remove_dots(target);
-    ASSERT_EQ(target, path);
+    ASSERT_EQ(llvm::StringRef(link.target), path);
 }
 
 TEST_CASE(DirectiveArgumentFromFilename) {

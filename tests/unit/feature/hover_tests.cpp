@@ -775,9 +775,7 @@ int x = 0;
     EXPECT_EQ(info->kind, SymbolKind::Header);
     EXPECT_EQ(info->name, "test.h");
 
-    llvm::SmallString<128> path(info->definition);
-    path::remove_dots(path);
-    EXPECT_EQ(path, TestVFS::path("test.h"));
+    EXPECT_EQ(info->definition, TestVFS::path("test.h"));
     ASSERT_TRUE(info->symbol_range.has_value());
     EXPECT_EQ(info->symbol_range->begin, arg.begin);
     EXPECT_EQ(info->symbol_range->end, arg.end);
@@ -811,9 +809,7 @@ TEST_CASE(has_include_header) {
     EXPECT_EQ(hover->kind, SymbolKind::Header);
     EXPECT_EQ(hover->name, "test.h");
 
-    llvm::SmallString<128> path(hover->definition);
-    path::remove_dots(path);
-    EXPECT_EQ(path, TestVFS::path("test.h"));
+    EXPECT_EQ(hover->definition, TestVFS::path("test.h"));
     EXPECT_EQ(hover->symbol_range, arg);
 }
 
@@ -832,9 +828,7 @@ const unsigned char data[] = {
     EXPECT_EQ(hover->kind, SymbolKind::Header);
     EXPECT_EQ(hover->name, "data.bin");
 
-    llvm::SmallString<128> path(hover->definition);
-    path::remove_dots(path);
-    EXPECT_EQ(path, TestVFS::path("data.bin"));
+    EXPECT_EQ(hover->definition, TestVFS::path("data.bin"));
     EXPECT_EQ(hover->symbol_range, arg);
 }
 
@@ -852,9 +846,7 @@ TEST_CASE(has_embed_file) {
     EXPECT_EQ(hover->kind, SymbolKind::Header);
     EXPECT_EQ(hover->name, "data.bin");
 
-    llvm::SmallString<128> path(hover->definition);
-    path::remove_dots(path);
-    EXPECT_EQ(path, TestVFS::path("data.bin"));
+    EXPECT_EQ(hover->definition, TestVFS::path("data.bin"));
     EXPECT_EQ(hover->symbol_range, arg);
 }
 
@@ -872,9 +864,7 @@ TEST_CASE(macro_include_header) {
     EXPECT_EQ(hover->kind, SymbolKind::Header);
     EXPECT_EQ(hover->name, "HEADER");
 
-    llvm::SmallString<128> path(hover->definition);
-    path::remove_dots(path);
-    EXPECT_EQ(path, TestVFS::path("test.h"));
+    EXPECT_EQ(hover->definition, TestVFS::path("test.h"));
     EXPECT_EQ(hover->symbol_range, arg);
 }
 

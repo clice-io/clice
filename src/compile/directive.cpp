@@ -117,10 +117,10 @@ public:
             llvm::SmallString<256> candidate(directory);
             path::append(candidate, name);
             files.makeAbsolutePath(candidate);
-            absent.insert(candidate);
+            absent.insert(Spelling::absolute(candidate).str());
         };
         if(path::is_absolute(name)) {
-            absent.insert(name);
+            absent.insert(Spelling::absolute(name).str());
             return;
         }
         if(!angled) {
