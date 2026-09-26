@@ -49,16 +49,14 @@ jobs:
           environments: ${{ inputs.pixi_env }}
 
       # Restore only; saved below, after the build, on pushes to main.
-      # clang takes the MSVC version it targets from the toolset installed
-      # on the runner, never from the command line, so neither the ccache
-      # key nor its compiler check sees it: a runner image with a newer
-      # toolset must not reuse objects built against the old one, a
-      # precompiled header above all (clang rejects one from another MSVC
-      # version). Scoped per image on Windows.
+      # Scoped per xclang build: on Windows the compiler ccache hashes is
+      # xclang's launcher (clang++.exe starts llvm.exe), the same bytes in
+      # every release, so its compiler check cannot tell two releases
+      # apart, and clang rejects a precompiled header from another one.
       - name: Compiler cache scope
         id: ccache-scope
         shell: bash
-        run: echo "scope=${{ runner.os == 'Windows' && '$ImageVersion' || 'any' }}" >> "$GITHUB_OUTPUT"
+        run: echo "scope=$(grep -om1 'xclang-[0-9.]*-[a-z0-9_]*\.conda' pixi.lock)" >> "$GITHUB_OUTPUT"
 
       - name: Restore compiler cache
         uses: actions/cache/restore@v6
@@ -94,11 +92,10 @@ jobs:
             --target clice-pack clice-pack-symbol
 
       - name: Check artifact dependencies
-        if: ${{ !contains(inputs.target_triple, 'windows') }}
         shell: bash
         run: |
           pixi run -e "${{ inputs.pixi_env }}" -- \
-            python scripts/check_artifact_deps.py build/RelWithDebInfo/pack/clice/bin/clice
+            python scripts/check_artifact_deps.py build/RelWithDebInfo/pack/clice/bin/clice${{ contains(inputs.target_triple, 'mingw') && '.exe' || '' }}
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v7
@@ -114,7 +111,6 @@ jobs:
           retention-days: 30
 
       - name: Upload full debug info
-        if: ${{ !contains(inputs.target_triple, 'windows') }}
         uses: actions/upload-artifact@v7
         with:
           name: debug-info-${{ inputs.target_name }}

@@ -10,12 +10,13 @@ accidental sentinel into an explicit gate: it inspects the shipped binary's
 dynamic dependencies and rejects anything that resolves into a conda/pixi env
 instead of the OS.
 
-Both branches use LLVM binutils (``llvm-otool`` / ``llvm-readelf``), which ship
-in the build env and can read Mach-O even from a Linux host.
+Windows (MinGW) binaries must not import a toolchain's runtime DLLs:
+libc++, libunwind, winpthreads (xclang links them statically) or the MSVC
+C++ runtime.
 
-TODO: read PE too. With the /MT switch (static CRT), the Windows artifacts
-should no longer import ``MSVCP140.dll`` or ``VCRUNTIME140.dll``; add PE
-support to verify this.
+All branches use LLVM binutils (``llvm-otool`` / ``llvm-readelf`` /
+``llvm-readobj``), which ship in the build env and read every format on
+every host.
 """
 
 import argparse
@@ -40,6 +41,11 @@ LINUX_NEEDED_WHITELIST = {
     "ld-linux-x86-64.so.2",
     "ld-linux-aarch64.so.1",
 }
+
+# MinGW runtime DLLs are lib-prefixed (libc++.dll, libunwind.dll,
+# libwinpthread-1.dll, libgcc_s_seh-1.dll, libstdc++-6.dll), which no
+# Windows system DLL is.
+PE_FORBIDDEN_PREFIXES = ("lib", "msvcp", "vcruntime")
 
 # Path fragments that indicate a dependency or search path pointing into a
 # conda/pixi environment rather than the operating system.
@@ -91,6 +97,8 @@ def detect_format(binary: Path) -> str:
     }
     if magic in macho:
         return "macho"
+    if magic[:2] == b"MZ":
+        return "pe"
     raise RuntimeError(f"{binary}: unrecognized object file magic {magic!r}")
 
 
@@ -159,6 +167,18 @@ def check_macho(binary: Path) -> list[str]:
     return violations
 
 
+def check_pe(binary: Path) -> list[str]:
+    """Return a list of violation messages for a PE (MinGW) binary."""
+    out = run_tool(["llvm-readobj", "--coff-imports", str(binary)])
+    violations = []
+    dlls = re.findall(r"^\s*Name: (\S+\.dll)\s*$", out, re.MULTILINE | re.IGNORECASE)
+    for dll in dlls:
+        if dll.lower().startswith(PE_FORBIDDEN_PREFIXES):
+            violations.append(f"runtime DLL dependency: {dll}")
+    violations.extend(assert_parsed(len(dlls), "llvm-readobj --coff-imports", "imported DLLs"))
+    return violations
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -172,7 +192,7 @@ def main() -> int:
         return 1
 
     fmt = detect_format(binary)
-    violations = check_elf(binary) if fmt == "elf" else check_macho(binary)
+    violations = {"elf": check_elf, "macho": check_macho, "pe": check_pe}[fmt](binary)
 
     if violations:
         print(f"FAIL: {binary} has forbidden dynamic dependencies:", file=sys.stderr)

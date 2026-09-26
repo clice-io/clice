@@ -1,10 +1,26 @@
 # Toolchain Changelog
 
-Pitfalls met while building and consuming the prebuilt LLVM packages: the package
-definition (`scripts/build-llvm.py`, `build-llvm.yml`, the clice-llvm patches) and
-the consumer side (`cmake/llvm.cmake`). `llvm-changelog.md` covers clang API changes;
-this file covers everything around them. Every entry: what you see, why, what we do,
-how to check it before spending CI time. Append to it with every toolchain change.
+Pitfalls met while building with the toolchain and consuming the prebuilt LLVM
+packages (`cmake/llvm.cmake`, `cmake/toolchain.cmake`, CI). `llvm-changelog.md` covers
+clang API changes; this file covers everything around them. Every entry: what you see,
+why, what we do, how to check it before spending CI time. Append to it with every
+toolchain change.
+
+## 2026-09: xclang
+
+clice builds with [xclang](https://github.com/clice-io/xclang) (conda package `xclang`
+from https://conda.clice.io) and links the libclang archives of the same xclang
+release. clice-llvm, `scripts/build-llvm.py` and its two workflows are gone; the
+sections below this one are their history. Windows builds target MinGW
+(`*-w64-mingw32`), the one Windows ABI xclang has.
+
+| Symptom | Cause | What we do | How to check |
+| --- | --- | --- | --- |
+| The toolchain probe finds no cc1 line in `clang++ -###`. | xclang's tools are one multi-call `llvm` binary: the line reads `"…/bin/llvm" "clang" "-cc1" …`. | `parse_cc1_output` skips the tool name before `-cc1`. | `ParseCC1MultiCall` in `toolchain_tests.cpp`. |
+| MinGW link: `unable to find library -lstdc++exp`. | kotatsu 0cbb8d4 links libstdc++'s `stdc++exp` on every MinGW. | kotatsu 626bb08 keys that on libstdc++ being the standard library. | A MinGW configure prints `KOTA_MINGW_LIBSTDCXX` false. |
+| MinGW lld rejects `-Wl,/OPT:REF`, and `$<TARGET_PDB_FILE:clice>` is a CMake error. | Both belong to the MSVC ABI. | GNU-style link flags on every target; Windows symbols are DWARF split into `clice.debug` and converted to GSYM, as on Linux. | `clice-pack-symbol` on the Windows legs. |
+| On Windows, ccache would reuse objects and precompiled headers across xclang releases. | `clang++.exe` is xclang's launcher, which starts `llvm.exe`: the same bytes in every release, so ccache's compiler check cannot tell releases apart. | The cache key is scoped by the xclang build in `pixi.lock`. | The `Compiler cache scope` step's output. |
+| macOS binaries link the SDK's `libc++.dylib`. | `--no-default-config` (kept from conda-forge's clang) drops xclang's config files, which select its static libc++. | No `--no-default-config`. | `scripts/check_artifact_deps.py`. |
 
 ## 2026-09: package redefinition, clang and LLVM 23.1.1 together
 

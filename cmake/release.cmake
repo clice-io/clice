@@ -12,35 +12,23 @@ set(CLICE_STRIPPED "${CLICE_SYMBOL_DIR}/stripped/$<TARGET_FILE_NAME:clice>")
 if(WIN32)
     set(CLICE_ARCHIVE_EXT ".zip")
     set(CLICE_SYMBOL_ARCHIVE_EXT ".zip")
-    set(CLICE_SYMBOL_NAME "clice.pdb")
 else()
     set(CLICE_ARCHIVE_EXT ".tar.gz")
     # The main archive stays .tar.gz for downloader compatibility; the symbol
     # archive is new enough to pick xz.
     set(CLICE_SYMBOL_ARCHIVE_EXT ".tar.xz")
-    if(APPLE)
-        set(CLICE_SYMBOL_NAME "clice.dSYM")
-    else()
-        set(CLICE_SYMBOL_NAME "clice.debug")
-    endif()
-    # Not REQUIRED: manual builds outside the pixi env may lack llvm-tools;
-    # they only lose the clice-pack-symbol target below.
-    find_program(CLICE_GSYMUTIL llvm-gsymutil)
 endif()
+if(APPLE)
+    set(CLICE_SYMBOL_NAME "clice.dSYM")
+else()
+    # DWARF on Windows as well: MinGW binaries carry it like ELF ones.
+    set(CLICE_SYMBOL_NAME "clice.debug")
+endif()
+# Not REQUIRED: manual builds outside the pixi env may lack the LLVM tools;
+# they only lose the clice-pack-symbol target below.
+find_program(CLICE_GSYMUTIL llvm-gsymutil)
 
-if(WIN32)
-    # The PDB already lives outside the binary; the "stripped" copy is plain.
-    add_custom_target(clice-strip
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}/stripped"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_PDB_FILE:clice>"
-            "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}"
-        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:clice>" "${CLICE_STRIPPED}"
-        DEPENDS clice
-        COMMENT "Collecting PDB for clice"
-        VERBATIM
-    )
-elseif(APPLE)
+if(APPLE)
     add_custom_target(clice-strip
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}/stripped"
         COMMAND dsymutil "$<TARGET_FILE:clice>" -o "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}"
@@ -82,33 +70,28 @@ add_custom_target(clice-pack
 # The released symbol package carries GSYM, not DWARF: it keeps everything
 # crash symbolization needs (functions, lines, inline chains) at ~1/10 the
 # size. The full DWARF stays in ${CLICE_SYMBOL_DIR} for CI to publish as a
-# workflow artifact. Windows has no GSYM path and ships the PDB directly.
-if(NOT WIN32 AND NOT CLICE_GSYMUTIL)
+# workflow artifact.
+if(NOT CLICE_GSYMUTIL)
     message(STATUS "llvm-gsymutil not found: clice-pack-symbol target disabled")
     return()
 endif()
 
-if(WIN32)
-    set(CLICE_PACK_SYMBOL_CMD ${CMAKE_COMMAND} -E copy
-        "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "${CLICE_SYMBOL_DIR}/pack/")
+if(APPLE)
+    set(CLICE_GSYM_INPUT
+        "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}/Contents/Resources/DWARF/clice")
 else()
-    if(APPLE)
-        set(CLICE_GSYM_INPUT
-            "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}/Contents/Resources/DWARF/clice")
-    else()
-        set(CLICE_GSYM_INPUT "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}")
-    endif()
-    # --merged-functions: ICF folds identical functions onto one address
-    # range; without it only one of the folded names survives conversion.
-    # The same folding trips one line-table warning per folded DIE, which
-    # gsym.cmake keeps out of the build log.
-    set(CLICE_PACK_SYMBOL_CMD ${CMAKE_COMMAND}
-        "-DGSYMUTIL=${CLICE_GSYMUTIL}"
-        "-DINPUT=${CLICE_GSYM_INPUT}"
-        "-DOUTPUT=${CLICE_SYMBOL_DIR}/pack/clice.gsym"
-        "-DLOG=${CLICE_SYMBOL_DIR}/gsymutil.log"
-        -P "${PROJECT_SOURCE_DIR}/cmake/gsym.cmake")
+    set(CLICE_GSYM_INPUT "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}")
 endif()
+# --merged-functions: ICF folds identical functions onto one address
+# range; without it only one of the folded names survives conversion.
+# The same folding trips one line-table warning per folded DIE, which
+# gsym.cmake keeps out of the build log.
+set(CLICE_PACK_SYMBOL_CMD ${CMAKE_COMMAND}
+    "-DGSYMUTIL=${CLICE_GSYMUTIL}"
+    "-DINPUT=${CLICE_GSYM_INPUT}"
+    "-DOUTPUT=${CLICE_SYMBOL_DIR}/pack/clice.gsym"
+    "-DLOG=${CLICE_SYMBOL_DIR}/gsymutil.log"
+    -P "${PROJECT_SOURCE_DIR}/cmake/gsym.cmake")
 
 add_custom_target(clice-pack-symbol
     DEPENDS clice-strip

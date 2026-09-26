@@ -1,6 +1,6 @@
 # 从源码构建
 
-clice 依赖 C++23 特性，需要使用现代 C++ 工具链。同时还需要链接 LLVM/Clang 以解析 AST。为了加快构建速度，默认配置会下载我们发布的 [clice-llvm](https://github.com/clice-io/clice-llvm) 预编译包。这要求本地环境与预编译环境高度一致（尤其是在启用 Address Sanitizer 或 LTO 时）。
+clice 依赖 C++23 特性，需要使用现代 C++ 工具链。同时还需要链接 LLVM/Clang 以解析 AST。两者都来自 clice-io 的 clang 工具链 [xclang](https://github.com/clice-io/xclang)：pixi 安装它的编译器，默认配置则下载同一 xclang 版本预编译的 LLVM/Clang 库。两者必须一致：这些库里是 ThinLTO bitcode，只有该版本的编译器能读取。
 
 为了简化环境配置并确保构建可复现，我们**强烈推荐**使用 [pixi](https://pixi.prefix.dev/latest) 管理开发环境。依赖版本固定在 `pixi.toml` 中。
 
@@ -38,7 +38,7 @@ pixi run snap-test Debug
 
 如果你打算手动构建，请先确保工具链版本与 `pixi.toml` 中定义的版本一致。
 
-> 兼容性说明：理论上，clice 不依赖任何编译器特有的扩展，因此主流编译器（GCC/Clang/MSVC）应该都能使用。不过，CI 仅保证特定版本的 Clang 可用。对于其他编译器或版本，我们只会尽力提供支持。如果遇到问题，请提交 issue 或 PR。
+> 兼容性说明：clice 本身不依赖任何编译器特有的扩展，但它链接的 LLVM/Clang 库里是 ThinLTO bitcode，因此编译器必须是 `pixi.toml` 中固定的 xclang 版本；`cmake/llvm.cmake` 会在配置时检查这一点。遇到问题欢迎提交 issue 或 PR。
 
 ### CMake
 
@@ -70,10 +70,10 @@ clice 调用 Clang API 解析 C++ 代码，因此必须链接 LLVM/Clang。由�
 
 可以通过以下两种方式满足此依赖：
 
-1. 我们在 [clice-llvm](https://github.com/clice-io/clice-llvm/releases) 中发布所用 LLVM 版本的预编译二进制文件，供 CI 和发布版构建使用。构建时，CMake 默认会下载这些 LLVM 库。
+1. 每个 [xclang](https://github.com/clice-io/xclang/releases) 版本都会为全部六个目标发布预编译的 LLVM/Clang 库（`libclang-*` 压缩包），由该版本自己的工具链构建。构建时，CMake 默认会下载对应目标的压缩包。
 
 > [!IMPORTANT]
 >
-> 对于 LLVM 的调试构建，我们会启用 Address Sanitizer；它依赖 compiler-rt，并且对编译器版本非常敏感。如果使用调试构建，请确保 clang 的 compiler-rt 版本与 `pixi.toml` 中定义的版本一致。
+> 在 x86_64 Linux 和 arm64 macOS 上，调试构建会启用 Address Sanitizer，并链接 xclang 为这两个目标发布的 ASan 插桩库。其他目标的调试构建链接发布版的库，不启用 Address Sanitizer。
 
-2. 自行构建 LLVM/Clang，使其与你的环境相匹配。如果默认的预编译二进制文件因 ABI 或库版本不匹配而无法使用，或者你需要自定义调试构建，请采用这种方式。我们提供了 `scripts/build-llvm.py`，用于构建所需的 LLVM 库；你也可以参阅 LLVM 官方指南[使用 CMake 构建 LLVM](https://llvm.org/docs/CMake.html)。
+2. 自行构建 LLVM/Clang，并通过 `LLVM_INSTALL_PATH` 传入安装目录。`cmake/llvm.cmake` 会用 xclang 写入的清单 `lib/cmake/xclang/libclang.cmake` 检查该安装，因此构建方法是使用 xclang 的 `scripts/toolchain.ts`；参见 [xclang](https://github.com/clice-io/xclang)。

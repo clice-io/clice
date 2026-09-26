@@ -13,14 +13,13 @@ license-file = "LICENSE"
 readme = "README.md"
 documentation = "https://docs.clice.io/clice/"
 repository = "https://github.com/clice-io/clice"
-channels = ["conda-forge"]
+# conda.clice.io: clice-io's own channel, for xclang (clice-io/xclang).
+channels = ["conda-forge", "https://conda.clice.io"]
 platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64", "win-arm64"]
 
 [environments]
 default = ["build", "test"]
 package = ["build", "test", "package"]
-cross-linux-arm64 = ["build", "package", "cross-linux-arm64"]
-cross-windows-arm64 = ["build", "package", "cross-windows-arm64"]
 node = ["node"]
 format = ["format"]
 test-run = ["test", "cuda"]
@@ -36,12 +35,11 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 python = ">=3.13"
 cmake = ">=3.30"
 ninja = "*"
-clang = "==23.1.1"
-clangxx = "==23.1.1"
-lld = "==23.1.1"
-llvm-tools = "==23.1.1"
-clang-tools = "==23.1.1"
-compiler-rt = "==23.1.1"
+# The toolchain: clang, lld and the LLVM tools, with libc++, compiler-rt
+# and the sysroots of all six targets (glibc 2.17, mingw-w64, macOS runtimes
+# on Xcode's SDK), so a cross build needs nothing else. Its version is the
+# one of the libclang cmake/llvm.cmake downloads.
+xclang = "==23.1.2.1"
 # cmake/archive.cmake pipes tar through xz for the symbol archives.
 xz = ">=5.8.1,<6"
 
@@ -52,36 +50,11 @@ xz = ">=5.8.1,<6"
 # clang-dependent object would fall back to the slower preprocessor mode.
 ccache = "4.13.*"
 
-# No gcc: the standard library is the libc++ shipped inside the LLVM package,
-# and clang's own dependencies bring the crt objects and libgcc.
 [feature.build.target.linux-64.dependencies]
-sysroot_linux-64 = "==2.17"
 ccache = "4.13.*"
 
 [feature.build.target.osx-arm64.dependencies]
 ccache = "4.13.*"
-
-[feature.build.target.linux-64.activation]
-scripts = ["scripts/activate_linux.sh"]
-
-[feature.build.target.win-64.activation]
-scripts = ["scripts/activate_asan.bat"]
-
-# Linux arm64 (from x64): the aarch64 sysroot, and the cross gcc for the
-# target's crt objects and libgcc (conda has no aarch64 compiler-rt).
-[feature.cross-linux-arm64.target.linux-64.dependencies]
-sysroot_linux-aarch64 = "==2.17"
-gcc_linux-aarch64 = "==15.2.0"
-gxx_linux-aarch64 = "==15.2.0"
-
-[feature.cross-linux-arm64.target.linux-64.activation]
-scripts = ["scripts/activate_cross_linux.sh"]
-
-# Windows arm64 (from x64): Windows SDK on CI already includes ARM64 libs.
-[feature.cross-windows-arm64.target.win-64.dependencies]
-
-[feature.cross-windows-arm64.target.win-64.activation]
-scripts = ["scripts/activate_cross_windows.bat"]
 
 # nodejs bundles npm on every platform including win-arm64, where
 # cross-test runs this env. Floor 24: the tools
@@ -103,8 +76,8 @@ clang-format = "==23.1.1"
 gcc = "==15.2.0"
 gxx = "==15.2.0"
 # The symbolization round-trip test replays the release strip/GSYM flow
-# (linux-only, like the crash tests it builds on).
-llvm-tools = "==23.1.1"
+# (linux-only, like the crash tests it builds on) with xclang's LLVM tools.
+xclang = "==23.1.2.1"
 
 # The NVCC toolchain tests drive a real nvcc; cudart is the runtime the
 # probe compiles against and curand is included unconditionally by clang's
@@ -119,22 +92,16 @@ libcurand-dev = "*"
 # The linux-aarch64 cross-test job runs the integration suite on a native
 # arm64 runner, so the symbolization test needs the same tools there.
 [feature.test.target.linux-aarch64.dependencies]
-llvm-tools = "==23.1.1"
+xclang = "==23.1.2.1"
 
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
 # LLVM cannot parse.  Providing upstream clang + lld in PATH prevents
 # fallback to /usr/bin/clang++ and satisfies toolchain.cmake's -fuse-ld=lld.
 [feature.test.target.osx-64.dependencies]
-clang = "==23.1.1"
-clangxx = "==23.1.1"
-lld = "==23.1.1"
-compiler-rt = "==23.1.1"
+xclang = "==23.1.2.1"
 
 [feature.test.target.osx-arm64.dependencies]
-clang = "==23.1.1"
-clangxx = "==23.1.1"
-lld = "==23.1.1"
-compiler-rt = "==23.1.1"
+xclang = "==23.1.2.1"
 
 # Debug builds are ASAN-instrumented; macOS links the ASAN runtime as a
 # dylib resolved against the build env, which artifact-based test jobs
@@ -286,16 +253,10 @@ platforms = ["linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 # Same mitigation as feature.test: editor-prepare configures fixtures with
 # toolchain.cmake's -fuse-ld=lld, which Apple system clang rejects.
 [feature.editor.target.osx-arm64.dependencies]
-clang = "==23.1.1"
-clangxx = "==23.1.1"
-lld = "==23.1.1"
-compiler-rt = "==23.1.1"
+xclang = "==23.1.2.1"
 
 [feature.editor.target.osx-64.dependencies]
-clang = "==23.1.1"
-clangxx = "==23.1.1"
-lld = "==23.1.1"
-compiler-rt = "==23.1.1"
+xclang = "==23.1.2.1"
 
 # Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]
