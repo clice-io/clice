@@ -1,74 +1,40 @@
 ---
 name: upgrade-llvm
-description: Complete workflow for upgrading the prebuilt LLVM packages clice depends on — build-llvm CI, API adaptation, release-llvm publishing, changelog. Arg = target version, e.g. 22.1.4.
+description: Complete workflow for upgrading the LLVM clice builds with and links — the xclang release, the pins, API adaptation, changelog. Arg = the xclang version, e.g. 23.1.2.1.
 ---
 
-Upgrade LLVM to a new version. Accepts the target version as argument (e.g., `22.1.4`).
+Upgrade LLVM to a new version. Accepts the xclang version as argument (e.g., `23.1.2.1`: LLVM 23.1.2, xclang's first build of it).
 
-This is the complete workflow for upgrading the LLVM prebuilt packages that clice depends on. Follow each step in order. Steps that involve CI should use polling (check every ~5 minutes) to wait for completion.
+The compiler clice builds with and the LLVM/Clang libraries it links both come from one [xclang](https://github.com/clice-io/xclang) release: the conda package `xclang` (channel `https://conda.clice.io`) and the release's `libclang-<version>-<triple>[-asan].tar.xz` archives, which `cmake/llvm.cmake` downloads. They always move together: the archives hold ThinLTO bitcode, and `cmake/llvm.cmake` refuses a compiler of another LLVM version. Follow each step in order. Steps that involve CI should use polling (check every ~5 minutes) to wait for completion.
 
-**Read `toolchain-changelog.md` in this directory before touching `scripts/build-llvm.py`, the clice-llvm patches or `cmake/llvm.cmake`**: it records every platform pitfall met so far (symptom, cause, fix, how to check). Every new one is appended there in the same shape; a toolchain change without an entry is not finished.
+**Read `toolchain-changelog.md` in this directory before touching `cmake/llvm.cmake` or `cmake/toolchain.cmake`**: it records every platform pitfall met so far (symptom, cause, fix, how to check). Every new one is appended there in the same shape; a toolchain change without an entry is not finished.
 
-## Step 1: Validate the Package Definition Locally, Then Trigger the Build
+## Step 1: The xclang Release
 
-The package is built from an explicit component list (`COMPONENTS` in `scripts/build-llvm.py`), and that list drifts between LLVM versions: libraries appear, split or disappear. Validate it against the new version before spending CI time:
+The toolchain and the libraries are built in the xclang repository, by its own pipeline; a new LLVM version there is a change of its `LLVM_VERSION` and sources, and ends with a release tagged `<llvm version>.<revision>` and the conda packages on conda.clice.io. Upgrading clice starts once that release exists:
 
 ```bash
-git -C ../llvm-project checkout llvmorg-<VERSION>   # or a worktree at that tag
-pixi run -e package python3 scripts/build-llvm.py --llvm-src ../llvm-project \
-  --mode RelWithDebInfo --build-dir ../llvm-project/build-validate --configure-only
+gh release view <VERSION> -R clice-io/xclang --json assets --jq '.assets[].name' | grep libclang
 ```
 
-This builds the runtimes pass for real (libc++ and libc++abi, a few minutes) and configures LLVM against it without building it, then prints the size of the build plan. It needs a full llvm-project checkout: a hand-copied tree must carry `libcxx/`, `libcxxabi/`, `runtimes/` and `libc/` besides `llvm/`, `clang/`, `clang-tools-extra/`, `cmake/` and `third-party/`. The configure fails on both kinds of drift: an entry whose library no longer exists ("doesn't have an install target") and a library the closure now needs but the list lacks ("requires target X that is not in any export set"). Fix `COMPONENTS` until it passes; a Debug run (`--mode Debug`) covers the ASan variant, `--lto ON` the LTO one, and `pixi run -e cross-linux-arm64 ... --target-triple aarch64-unknown-linux-gnu` the cross build (it also builds the native tablegen tools, minutes). With a Windows checkout reachable from WSL, run the same there with `pixi run -e package python scripts\build-llvm.py ...`. Never do this by pushing attempts at CI.
+Every target clice builds needs its `libclang-<VERSION>-<triple>.tar.xz`, and the Debug legs (x86_64 Linux, arm64 macOS) their `-asan` archives.
 
-The configure also decides what goes into `lib/clang/<major>/include`, and nothing complains when a header is missing there — the failure surfaces as `<arm_neon.h> not found` inside a standard header on one CI leg. Check the resource headers against the previous package before trusting the plan:
+## Step 2: Pin It and Build
 
-```bash
-grep -n LLVM_TARGETS_TO_BUILD ../llvm-project/clang/lib/Headers/CMakeLists.txt   # the gated blocks; ARM/AArch64 and RISCV as of 23
-grep -o '"[^"]*"' ../llvm-project/build-validate/llvm/tools/clang/lib/Headers/cmake_install.cmake | tr -d '"' \
-  | grep Headers/ | sed -E 's#.*/lib/Headers/##' | sort -u > /tmp/plan.txt
-(cd ~/.cache/clice/cpm/llvm_prebuilt/<hash>/lib/clang/<previous major>/include && find . -type f | sed 's#^\./##' | sort) > /tmp/previous.txt
-comm -13 /tmp/plan.txt /tmp/previous.txt      # in the previous package, not in the plan
-```
+Move every pin in one change:
 
-Every name that comes out must be a header the new release deleted (`ls ../llvm-project/clang/lib/Headers/<name>` fails); anything that still exists in the source is a gate the target list does not open, and the list in `scripts/build-llvm.py` grows until the diff is clean.
+- `pixi.toml`: every `xclang = "==<VERSION>"`
+- `cmake/package.cmake`: `setup_llvm("<VERSION>")`
+- `pixi.lock`: `pixi lock`
 
-The pixi clang and the LLVM being packaged are always the same release: the pixi pins move together with the package version in one PR. Configure-level validation cannot see link-time problems; the first CI round is the real test for those, and a failure there is reproduced locally with a small program, never by rebuilding LLVM.
-
-Trigger the `build-llvm` workflow on GitHub Actions:
+Build in a fresh build directory:
 
 ```bash
-gh workflow run build-llvm.yml \
-  --ref <BRANCH> \
-  --field llvm_version="<VERSION>"
-```
-
-`--ref` makes the run use the branch's `scripts/build-llvm.py` and workflow; without it the dispatch runs `main`'s.
-
-- Poll until all 14 matrix builds complete, note the workflow run ID
-
-## Step 2: Download Local Platform Artifact
-
-Download the artifact matching the development machine (`<HOST_TRIPLE>` is `x86_64`/`aarch64` plus `unknown-linux-gnu`, `apple-darwin` or `pc-windows-msvc`) into a directory outside the checkout — nothing in the repository holds a package:
-
-```bash
-gh run view <RUN_ID>
-ARCHIVE="<HOST_TRIPLE>.releasedbg.tar.xz"
-gh run download <RUN_ID> -n "$ARCHIVE" -D /tmp/llvm-download
-mkdir -p ~/.cache/clice/llvm-<VERSION>
-tar -xf "/tmp/llvm-download/$ARCHIVE" -C ~/.cache/clice/llvm-<VERSION>
-```
-
-Configure clice to build against it:
-
-```bash
-pixi run cmake-config RelWithDebInfo ON -- "-DLLVM_INSTALL_PATH=$HOME/.cache/clice/llvm-<VERSION>"
+pixi run cmake-config RelWithDebInfo ON
 pixi run cmake-build RelWithDebInfo
 ```
 
-Once the release exists, drop the override (`-ULLVM_INSTALL_PATH`) so the build goes back to the CPM download. A release re-published under the same tag is invisible to CPM's cache: delete `~/.cache/clice/cpm/llvm_prebuilt/` first (toolchain changelog).
-
-An existing build directory caches `LLVM_DIR` and `Clang_DIR` from the previous package, and `find_package` honours them before the `PATHS` we pass — the new package is silently ignored. Add `-ULLVM_DIR -UClang_DIR` to the `--` arguments, or use a fresh build directory.
+An existing build directory keeps the compiler it detected, and the manifest check then compares the new archive with the old compiler; it also keeps `LLVM_INSTALL_PATH`, `LLVM_DIR` and `Clang_DIR` of the old archive. A release re-published under the same tag is invisible to CPM's cache: delete `~/.cache/clice/cpm/llvm_prebuilt/` first.
 
 Compilation will likely fail — that's what Step 3 addresses.
 
@@ -90,7 +56,7 @@ Strategy:
 4. Ensure `pixi run unit-test RelWithDebInfo` passes
 5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an agent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `unit_tests --test-filter=expr_hash` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
 6. Bump `index_format_version` in `src/index/serialization.h`: entity hashes (`src/semantic/identity.cpp`) follow clang's canonicalization rules, so they can change silently across versions and an old index would otherwise keep serving stale symbols
-7. A library clice starts using directly is added to `cmake/llvm.cmake` and to `COMPONENTS` in `scripts/build-llvm.py` (the package ships exactly that closure); re-run the Step 1 validation
+7. A library clice starts using directly is added to `cmake/llvm.cmake`; xclang's libclang archives carry every LLVM and clang library, so nothing else changes
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
@@ -104,44 +70,9 @@ git push -u origin chore/upgrade-llvm-XX
 gh pr create --title "chore: upgrade LLVM to XX.Y.Z" --body "..."
 ```
 
-CI will fail at this point (manifest hashes are stale) — this is expected.
+## Step 5: Write the Changelogs (REQUIRED)
 
-## Step 5: Run Release LLVM Workflow
-
-Trigger `release-llvm` to publish the artifacts of the Step 1 run:
-
-```bash
-gh workflow run release-llvm.yml \
-  --ref <BRANCH> \
-  --field source_run_id="<STEP1_RUN_ID>" \
-  --field llvm_version="<VERSION>"
-```
-
-This creates (or reuses) the clice-llvm release and uploads the 14 archives as built. Poll until complete.
-
-The package contains only the libraries clice links: `COMPONENTS` is the transitive closure of the libraries `cmake/llvm.cmake` names (validated in Step 1).
-
-## Step 6: Update Version
-
-Update the version string in `cmake/package.cmake`:
-
-```
-setup_llvm("<VERSION>")
-```
-
-Commit and push:
-
-```bash
-git add cmake/package.cmake
-git commit -m "chore: update LLVM to <VERSION>"
-git push
-```
-
-Poll CI until all platforms pass. CMake downloads the correct artifact automatically based on the version and platform — no manifest file needed. Local build directories keep building against the old package: `setup_llvm` skips the download while the cached `LLVM_INSTALL_PATH` still points at an existing install, and `find_package` keeps the cached `LLVM_DIR`/`Clang_DIR`. Reconfigure with `-ULLVM_INSTALL_PATH -ULLVM_DIR -UClang_DIR`, or use a fresh build directory. When the pixi clang moved to a new release as well, only a fresh build directory works: CMake caches the detected compiler version per build tree, and the manifest check would compare the package against the old one.
-
-## Step 7: Write the Changelogs (REQUIRED)
-
-Toolchain-level findings (package definition, platform quirks, CI mechanics) go to `toolchain-changelog.md` in this directory, in its symptom / cause / fix / check table shape. API changes go to `llvm-changelog.md` as described below.
+Toolchain-level findings on clice's side (`cmake/llvm.cmake`, `cmake/toolchain.cmake`, CI mechanics; the toolchain itself keeps its own notes in xclang) go to `toolchain-changelog.md` in this directory, in its symptom / cause / fix / check table shape. API changes go to `llvm-changelog.md` as described below.
 
 **Every LLVM upgrade MUST append to `llvm-changelog.md` in this skill's directory** (`.claude/skills/upgrade-llvm/llvm-changelog.md`). It is maintainer reference material, deliberately not a docs page.
 
@@ -164,7 +95,7 @@ If the LLVM source is not available locally, look up changes on GitHub by search
 
 Group changes by category (Type System, NNS, Driver/Frontend, Other) with a table per category. See the existing `LLVM 21 → 22` section as a template.
 
-## Step 8: Report to User
+## Step 6: Report to User
 
 Present a summary to the user and **wait for confirmation** before considering the upgrade complete. The summary should include:
 
@@ -177,6 +108,5 @@ The user decides whether all changes are acceptable or if adjustments are needed
 
 ## Notes
 
-- **Artifact size limit**: GitHub Release max 2GB per file. macOS LTO artifacts are largest, currently ~1.7GB with xz -9e.
-- **Package contents**: a static libc++ from the runtimes pass, then no backend (clice generates no code); `LLVM_TARGETS_TO_BUILD` lists `AArch64;ARM;RISCV` only because `clang/lib/Headers` generates `arm_neon.h` and friends on that condition. Only `COMPONENTS` are built, so a configure that passes locally with `--configure-only` is what CI builds.
-- **Private headers**: clice depends on private Clang Sema headers (TreeTransform.h etc.), copied from source during `build-llvm.py`. Users must use our packaged LLVM.
+- **Private headers**: clice includes private clang Sema headers (`TreeTransform.h`, `TypeLocBuilder.h`, `CoroutineStmtBuilder.h`), which xclang copies into its libclang archives from the source; one more goes into xclang's `scripts/toolchain.ts` first. Users must use xclang's libclang.
+- **Debug builds**: ASan exists for the targets xclang builds an ASan libclang for (`clice_asan_available` in `cmake/llvm.cmake`); Debug builds for the other targets link the release archive without ASan.

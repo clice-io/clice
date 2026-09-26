@@ -1,6 +1,6 @@
 # Build from Source
 
-clice depends on C++23 features and requires a modern C++ toolchain. We also need to link against LLVM/Clang to parse ASTs. To speed up builds, the default configuration downloads our published [clice-llvm](https://github.com/clice-io/clice-llvm) prebuilt package. This assumes your local environment matches the prebuilt environment closely (especially when enabling Address Sanitizer or LTO).
+clice depends on C++23 features and requires a modern C++ toolchain. We also need to link against LLVM/Clang to parse ASTs. Both come from [xclang](https://github.com/clice-io/xclang), clice-io's clang toolchain: pixi installs its compiler, and the default configuration downloads the prebuilt LLVM/Clang libraries of the same xclang release. The two must match: the libraries hold ThinLTO bitcode, which only the compiler of that release reads.
 
 To simplify setup and keep builds reproducible, we **strongly recommend** [pixi](https://pixi.prefix.dev/latest) to manage the development environment. Dependency versions are pinned in `pixi.toml`.
 
@@ -38,7 +38,7 @@ pixi run snap-test Debug
 
 If you plan to build manually, first ensure your toolchain matches the versions defined in `pixi.toml`.
 
-> Compatibility: In theory clice does not rely on compiler-specific extensions, so mainstream compilers (GCC/Clang/MSVC) should work. However, CI only guarantees specific versions of Clang. Other compilers or versions are supported on a **best-effort** basis. Please open an issue or PR if you hit problems.
+> Compatibility: clice itself does not rely on compiler-specific extensions, but the LLVM/Clang libraries it links hold ThinLTO bitcode, so the compiler must be the xclang release pinned in `pixi.toml`; `cmake/llvm.cmake` checks this at configure time. Please open an issue or PR if you hit problems.
 
 ### CMake
 
@@ -70,10 +70,10 @@ clice calls Clang APIs to parse C++ code, so it must link against LLVM/Clang. Be
 
 Two ways to satisfy this dependency:
 
-1. We publish prebuilt binaries of the LLVM version we use at [clice-llvm](https://github.com/clice-io/clice-llvm/releases) for CI and release builds. During builds, cmake downloads these LLVM libs by default.
+1. Every [xclang](https://github.com/clice-io/xclang/releases) release publishes prebuilt LLVM/Clang libraries (the `libclang-*` archives) for all six targets, built by that release's toolchain. During builds, cmake downloads the archive of the target by default.
 
 > [!IMPORTANT]
 >
-> For debug LLVM builds, we enable address sanitizer, which depends on compiler-rt and is very sensitive to compiler version. If you use a debug build, ensure your clang compiler-rt version matches the one defined in `pixi.toml`.
+> Debug builds for x86_64 Linux and arm64 macOS enable Address Sanitizer and link the ASan-instrumented libraries xclang publishes for these two targets. Debug builds for the other targets link the release libraries, without Address Sanitizer.
 
-2. Build LLVM/Clang yourself to match your environment. If the default prebuilt binaries fail due to ABI or library version mismatches, or you need a custom debug build, use this approach. We provide `scripts/build-llvm.py` to build the required LLVM libs, or refer to LLVM's official guide [Building LLVM with CMake](https://llvm.org/docs/CMake.html).
+2. Build LLVM/Clang yourself and pass the install directory as `LLVM_INSTALL_PATH`. `cmake/llvm.cmake` checks the install against the manifest xclang writes, `lib/cmake/xclang/libclang.cmake`, so the way to build one is xclang's `scripts/toolchain.ts`; see [xclang](https://github.com/clice-io/xclang).

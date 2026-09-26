@@ -52,8 +52,8 @@ jobs:
                     package-clice.aarch64-unknown-linux-gnu.tar.gz
                     package-clice.aarch64-apple-darwin.tar.gz
                     package-clice.x86_64-apple-darwin.tar.gz
-                    package-clice.x86_64-pc-windows-msvc.zip
-                    package-clice.aarch64-pc-windows-msvc.zip"
+                    package-clice.x86_64-w64-mingw32.zip
+                    package-clice.aarch64-w64-mingw32.zip"
           COUNT=$(wc -w <<< "$PACKAGES")
           TAGS=$(git tag -l 'v*.*.*')
           COMMIT=""
@@ -182,8 +182,8 @@ jobs:
             row "Linux arm64" aarch64-unknown-linux-gnu tar.gz tar.xz
             row "macOS arm64" aarch64-apple-darwin tar.gz tar.xz
             row "macOS x64" x86_64-apple-darwin tar.gz tar.xz
-            row "Windows x64" x86_64-pc-windows-msvc zip zip
-            row "Windows arm64" aarch64-pc-windows-msvc zip zip
+            row "Windows x64" x86_64-w64-mingw32 zip zip
+            row "Windows arm64" aarch64-w64-mingw32 zip zip
             echo
             echo "Symbol packages hold GSYM data for crash log symbolization"
             echo "via \`scripts/symbolize.py\`. VS Code users on the Marketplace"
