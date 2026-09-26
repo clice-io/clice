@@ -323,6 +323,18 @@ TEST_CASE(WindowsSpellingsCollapse) {
     EXPECT_EQ(pool.resolve(pool.intern("C:/a/b.h")).str(), "c:/a/b.h");
     EXPECT_EQ(pool.find(R"(c:\a\b.h)"), pool.find("C:/a/b.h"));
 }
+
+TEST_CASE(WindowsCaseVariantsMerge) {
+    // The worker names a file by the OS's final name for it, in on-disk
+    // case; a spelling in another case interning to a second fid splits
+    // the file's dependencies and index rows between the two.
+    TempDir tmp;
+    tmp.touch("Real/File.h", "");
+    FileTable pool;
+    auto fid = pool.intern(tmp.path("real/file.H"));
+    EXPECT_EQ(pool.intern(tmp.path("Real/File.h")), fid);
+    EXPECT_TRUE(llvm::StringRef(pool.resolve(fid)).ends_with("/Real/File.h"));
+}
 #else
 TEST_CASE(PosixBytesPreserved) {
     // '\' and "C:" are ordinary filename characters on POSIX; identity is

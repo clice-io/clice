@@ -129,18 +129,9 @@ std::optional<ObservedFile> read_file_observed(const char* path);
 
 /// The master-side table of every file the workspace touches: a path is
 /// interned once to a compact fid, and downstream code references files
-/// by fid. A fid names a resolved path: symlinked spellings of one file
-/// share it, while case variants and hardlinks stay distinct fids.
-///
-/// Paths are opaque byte strings interned in the canonical spelling of
-/// path::canonical, so on Windows the URI form VS Code sends
-/// ("file:///f%3A/...") and the "F:/..." form the CDB and clang report
-/// intern to one ID — without that, every CDB lookup missed and compiles
-/// fell back to guessed commands. POSIX paths are never rewritten.
-///
-/// FIXME: non-drive components keep their case, so case-variant
-/// spellings of one file on a case-insensitive filesystem can still
-/// intern to different IDs.
+/// by fid. A fid names a file's identity (CanonicalPath): symlinked and,
+/// on Windows, case-variant, junction and subst spellings of one file
+/// share it, while hardlinks stay distinct fids.
 ///
 /// FIXME: paths are assumed to be valid UTF-8. POSIX filenames
 /// are raw bytes; a non-UTF-8 path survives interning but breaks

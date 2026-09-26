@@ -117,11 +117,12 @@ struct FileTable;
 class CanonicalPath;
 
 /// A path naming a file or directory by its identity, the way the file
-/// table does: the symlinks of its longest existing prefix resolved, the
-/// rest appended as spelled, `.`/`..` removed, canonically spelled. Two
-/// spellings of one file compare equal whether it exists yet or not. On
-/// Windows the canonical spelling alone is the identity: nothing is
-/// resolved, so neither case variants nor links through junctions merge.
+/// table and the worker do: the name the OS gives its longest existing
+/// prefix, the rest appended as spelled with `.`/`..` removed, canonically
+/// spelled. The OS's name follows symlinks everywhere; on Windows it also
+/// carries the on-disk case and follows junctions and subst drives, which
+/// is exactly what clang merges into one file there. Two spellings of one
+/// file compare equal whether it exists yet or not.
 ///
 /// Only resolution (CanonicalPath's constructor), the file table and the
 /// derivations below (parent(), and entry() on its caller's word) make
@@ -273,29 +274,6 @@ inline CanonicalPath CanonicalRef::entry(llvm::StringRef path) const {
     return CanonicalPath(CanonicalPath::Resolved{}, path);
 }
 
-inline CanonicalPath::CanonicalPath(llvm::StringRef spelled) {
-#ifdef _WIN32
-    llvm::SmallString<256> dotless(spelled);
-    path::remove_dots(dotless, /*remove_dot_dot=*/true);
-    text = std::string(dotless);
-    path::canonicalize(text);
-#else
-    llvm::SmallString<256> real;
-    llvm::StringRef existing = spelled;
-    while(llvm::sys::fs::real_path(existing, real)) {
-        auto parent = path::parent_path(existing);
-        if(parent.empty() || parent.size() == existing.size()) {
-            text = spelled.str();
-            return;
-        }
-        existing = parent;
-    }
-    real += spelled.drop_front(existing.size());
-    // The unresolved tail may still climb (`missing/../cache`).
-    path::remove_dots(real, /*remove_dot_dot=*/true);
-    text = std::string(real);
-#endif
-}
 
 }  // namespace clice
 

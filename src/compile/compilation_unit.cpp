@@ -87,28 +87,16 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
         return it->second;
     }
 
-    auto& fm = self->SM().getFileManager();
-
-    /// Absolutize against the compile's working directory first, then
-    /// resolve through the compiler's VFS so remapped and in-memory
-    /// files canonicalize like on-disk ones. Symlinked spellings of a
-    /// file collapse into one path here; hardlinked spellings do not
-    /// (`real_path` does not fold them), and the cache is keyed by the
-    /// spelling-level FileEntryRef so each keeps its own path — the
-    /// dependency set must cover every spelling the compile read.
-    llvm::SmallString<128> path(entry.getName());
-    fm.makeAbsolutePath(path);
-
-    llvm::SmallString<128> real;
-    if(auto error = fm.getVirtualFileSystem().getRealPath(path, real)) {
-        /// The VFS cannot resolve it; keep the absolute path with dot
-        /// segments removed rather than a raw spelling — consumers stat
-        /// these paths from a different working directory.
-        path::remove_dots(path, /*remove_dot_dot=*/true);
-    } else {
-        path = real;
-    }
-    assert(!path.empty() && "Invalid file path");
+    /// Absolutized against the compile's working directory, then named by
+    /// the identity the master interns: symlinked spellings of a file
+    /// collapse into one path here, hardlinked ones do not, and the cache
+    /// is keyed by the spelling-level FileEntryRef so each keeps its own
+    /// path — the dependency set must cover every spelling the compile
+    /// read. A file only memory holds (a header context's fragment) is
+    /// named like a missing one, through its directory.
+    llvm::SmallString<128> spelled(entry.getName());
+    self->SM().getFileManager().makeAbsolutePath(spelled);
+    auto path = CanonicalPath(spelled).str();
 
     /// Allocate the path in the storage.
     auto size = path.size();
