@@ -50,8 +50,9 @@ test("open before initialize", async ({ session }) => {
 
 test.skipIf(process.platform === "win32")("second name for an open file", async ({ session }) => {
     // One file, one buffer: a document naming an open file through a
-    // symlink does not edit the first document's buffer, and closing it
-    // leaves the first document open and nothing to take over after it.
+    // symlink shares the first document's answers while their texts agree,
+    // gets none once they diverge, never edits the first document's
+    // buffer, and closing it leaves nothing to take over after it.
     const { client, workspace } = session.tmp();
     workspace.write("real/main.cpp", "int main() { return 0; }\n");
     fs.symlinkSync(workspace.path("real"), workspace.path("link"));
@@ -59,10 +60,20 @@ test.skipIf(process.platform === "win32")("second name for an open file", async 
     await client.initialize(workspace);
 
     const [first] = await client.openAndWait("real/main.cpp");
-    const [second] = client.open("link/main.cpp");
+    const second = workspace.uri("link/main.cpp");
+    const shared = client.armDiagnostics(second);
+    client.open("link/main.cpp");
+    await withTimeout(shared, 30_000, "the second name's diagnostics");
+    expect(await client.hoverAt(second, 0, 5), "equal texts share answers").not.toBeNull();
+
+    const diverged = client.armDiagnostics(second);
     client.change(second, 1, "int main() { return undefined_name; }\n");
-    // Its own text is not the one compiled: nothing answers for it yet.
-    await expect(client.hoverAt(second, 0, 5)).rejects.toThrow("Document not open");
+    await withTimeout(diverged, 30_000, "the divergence warning");
+    const warnings = (client.diagnostics.get(second) ?? []).map((d) =>
+        typeof d.message === "string" ? d.message : d.message.value,
+    );
+    expect(warnings).toEqual([expect.stringContaining("also open as")]);
+    await expect(client.hoverAt(second, 0, 5)).rejects.toThrow("Document changed");
     client.close(second);
     // An edit folded into the first buffer would recompile it on this pull.
     expect(await client.hoverAt(first, 0, 5), "the first document stays open").not.toBeNull();

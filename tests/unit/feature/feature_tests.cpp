@@ -22,12 +22,6 @@ TEST_CASE(WindowsBackslashPath) {
     ASSERT_EQ(feature::to_uri(R"(F:\C++\cmake\clice\main.cpp)"),
               "file:///f:/C++/cmake/clice/main.cpp");
 }
-
-TEST_CASE(FormedUriDriveLowered) {
-    // The already-a-URI branch canonicalizes too: an uppercase drive must
-    // not leak through no matter which shape a caller hands in.
-    ASSERT_EQ(feature::to_uri("file:///C:/x.cpp"), "file:///c:/x.cpp");
-}
 #endif
 
 TEST_CASE(PlusStaysLiteral) {
@@ -64,15 +58,6 @@ TEST_CASE(RoundTripIdentity) {
 
 TEST_CASE(PosixPath) {
     ASSERT_EQ(feature::to_uri("/home/user/main.cpp"), "file:///home/user/main.cpp");
-}
-
-TEST_CASE(FormedUri) {
-    ASSERT_EQ(feature::to_uri("file:///home/user/main.cpp"), "file:///home/user/main.cpp");
-}
-
-TEST_CASE(RelativePath) {
-    // Neither an absolute path nor a URI: returned verbatim.
-    ASSERT_EQ(feature::to_uri("include/test.h"), "include/test.h");
 }
 
 TEST_CASE(PathWithSpaces) {

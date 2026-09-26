@@ -297,7 +297,7 @@ std::optional<protocol::Hover>
         feature::HoverInfo info;
         info.name = name.str();
         info.kind = SymbolKind::Header;
-        info.definition = link.target;
+        info.definition = project.file_table.display(link.target).str();
         info.symbol_range = link.range;
 
         auto hover = feature::to_protocol_hover(info, project.config.hover, map);
@@ -322,8 +322,9 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             if(!range)
                 continue;
             protocol::DocumentLink out{.range = *range};
-            out.target = feature::to_uri(project.file_table.display(link.target));
-            out.tooltip = link.target;
+            auto shown = project.file_table.display(link.target);
+            out.target = feature::to_uri(shown);
+            out.tooltip = shown.str();
             links.push_back(std::move(out));
         }
     };

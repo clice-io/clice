@@ -44,38 +44,17 @@ namespace protocol = kota::ipc::protocol;
 using kota::ipc::lsp::LineMap;
 using kota::ipc::lsp::PositionEncoding;
 
-/// Render a file path (or an already-formed URI) as an LSP URI string.
+/// Render an absolute path as an LSP URI string.
 ///
 /// On Windows the path is canonicalized first (lowercase drive, forward
-/// slashes): clang reports whatever spelling the -I dirs and CDB used,
-/// while LSP clients key documents by vscode-uri's lowercase-drive form
-/// — an uppercase-drive URI from the server never matches there.
+/// slashes): LSP clients key documents by vscode-uri's lowercase-drive
+/// form, and an uppercase-drive URI from the server never matches there.
 inline auto to_uri(llvm::StringRef file) -> std::string {
     llvm::SmallString<256> storage;
     file = path::canonical(file, storage);
-    const auto file_view = std::string_view(file.data(), file.size());
-
-    // Convert as a path first: a Windows drive prefix like "f:" would
-    // otherwise be accepted by URI::parse as a single-letter scheme.
-    if(auto uri = kota::ipc::lsp::URI::from_file_path(file_view)) {
-        return uri->str();
-    }
-
-    if(auto parsed = kota::ipc::lsp::URI::parse(file_view)) {
-        auto str = parsed->str();
-#ifdef _WIN32
-        // An already-formed file URI can carry an uppercase drive;
-        // canonicalize it like the path branch would have.
-        constexpr std::size_t at = sizeof("file:///") - 1;
-        if(str.size() > at + 1 && llvm::StringRef(str).starts_with("file:///") &&
-           llvm::isUpper(str[at]) && str[at + 1] == ':') {
-            str[at] = llvm::toLower(str[at]);
-        }
-#endif
-        return str;
-    }
-
-    return file.str();
+    auto uri = kota::ipc::lsp::URI::from_file_path(std::string_view(file.data(), file.size()));
+    assert(uri && "a URI names an absolute path");
+    return uri ? uri->str() : std::string();
 }
 
 inline auto to_position(const LineMap& map, std::uint32_t offset)

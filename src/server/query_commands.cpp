@@ -59,11 +59,19 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     return file;
 }
 
-/// Anchor a query's place in the workspace: its path becomes absolute the
-/// way the command's own path arguments do, and must be an indexed file.
+/// Anchor a query's paths in the workspace: its place's path becomes
+/// absolute the way the command's own path arguments do, and must be an
+/// indexed file.
 /// Nullopt when the file is not indexed, which the caller answers as not
 /// found with the path noted.
 Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
+    // Path filters match the file table's names for files: a rooted one
+    // names its file however the command line spelled it.
+    for(auto& wanted: query.paths) {
+        if(path::is_absolute(wanted)) {
+            wanted = CanonicalPath(Spelling::absolute(wanted)).str();
+        }
+    }
     if(!query.position) {
         return true;
     }
@@ -129,7 +137,7 @@ std::vector<DepEntry> collect_deps(Project& ws,
                 continue;
             }
             queue.push_back({next, depth + 1});
-            entries.push_back({.path = ws.file_table.resolve(next).str(), .depth = depth + 1});
+            entries.push_back({.path = ws.file_table.display(next).str(), .depth = depth + 1});
         }
     }
     return entries;
@@ -216,7 +224,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
         if(filter != "all" && filter != kind) {
             continue;
         }
-        FileInfo info{.path = file_path.str(), .kind = kind.str()};
+        FileInfo info{.path = ws.file_table.display(member).str(), .kind = kind.str()};
         if(!module_name.empty()) {
             info.module_name = module_name.str();
         }
@@ -227,7 +235,8 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
             auto path = ws.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header_path(path)) {
                 seen.insert(path_id);
-                result.files.push_back({.path = path.str(), .kind = "header"});
+                result.files.push_back(
+                    {.path = ws.file_table.display(path_id).str(), .kind = "header"});
             }
         }
     }
@@ -254,6 +263,7 @@ Outcome<FileDepsResult>
     if(!file) {
         return result;
     }
+    result.file = ws.file_table.display(*file).str();
     if(direction != "includers") {
         result.includes = collect_deps(ws, *file, depth, [&](Fid id) {
             return ws.dep_graph.get_all_includes(id);
@@ -280,13 +290,13 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     auto direct = ws.dep_graph.get_includers(*file);
     llvm::DenseSet<Fid> seen{*file};
     for(auto includer: direct) {
-        result.direct_dependents.push_back(ws.file_table.resolve(includer).str());
+        result.direct_dependents.push_back(ws.file_table.display(includer).str());
         seen.insert(includer);
     }
     auto hosts = ws.dep_graph.find_host_sources(*file);
     for(auto host: hosts) {
         if(seen.insert(host).second) {
-            result.transitive_dependents.push_back(ws.file_table.resolve(host).str());
+            result.transitive_dependents.push_back(ws.file_table.display(host).str());
         }
     }
     for(auto host: hosts) {
@@ -334,7 +344,9 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
             }
             return !query->paths.empty() &&
                    llvm::none_of(query->paths, [&](const std::string& wanted) {
-                       return index::path_matches(wanted, hit.site.path);
+                       return hit.site.file.valid() &&
+                              index::path_matches(wanted,
+                                                  ctx.project.file_table.resolve(hit.site.file));
                    });
         });
         if(located.size() > limit) {

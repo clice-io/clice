@@ -111,10 +111,15 @@ private:
 
     /// A document naming a file already open under another name: the first
     /// name owns the file's buffer, this one keeps its own text and takes
-    /// over when the owner closes.
+    /// over when the owner closes. While both texts are equal it shares the
+    /// first name's answers; diverged, it gets none, and the user is told
+    /// to close one.
     struct AliasDocument {
         std::string spelling;
         Session buffer;
+
+        /// The user was told the texts diverged; reset once they agree.
+        bool warned = false;
     };
 
     llvm::DenseMap<Fid, llvm::SmallVector<AliasDocument, 1>> aliases;
@@ -124,6 +129,16 @@ private:
 
     /// Take `alias`, one of `path_id`'s, out of the waiting list.
     AliasDocument take_alias(Fid path_id, AliasDocument* alias);
+
+    /// Why a request on a document has no session to answer it.
+    kota::ipc::Error unserved(Fid path_id, llvm::StringRef spelling);
+
+    /// Publish a second name's diagnostics: the first name's while their
+    /// texts agree, else one telling the user to close either.
+    void publish_alias(AliasDocument& alias, const Session* owner, ProjectServer& project);
+
+    /// publish_alias for every second name of `path_id`.
+    void publish_aliases(Fid path_id);
 
     /// The configuration files publish_config_diagnostics published last.
     llvm::StringSet<> published_configs;

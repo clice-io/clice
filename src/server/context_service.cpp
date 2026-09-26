@@ -5,20 +5,19 @@
 #include <vector>
 
 #include "command/argument_parser.h"
+#include "feature/feature.h"
 #include "project/configuration.h"
 #include "project/hosting.h"
 #include "server/ast_family.h"
 #include "server/session_store.h"
 #include "support/logging.h"
 
-#include "kota/ipc/lsp/uri.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Path.h"
 
 namespace clice {
 
-namespace lsp = kota::ipc::lsp;
 
 bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics) {
     constexpr static llvm::StringRef codes[] = {
@@ -75,9 +74,8 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     for(auto host_id: ranked_hosts(ws, path_id)) {
         auto commands = host_commands(ws, path_id, host_id);
         auto host_path = ws.file_table.resolve(host_id);
-        auto host_uri_opt = lsp::URI::from_file_path(std::string(ws.file_table.display(host_id)));
-        if(!host_uri_opt)
-            continue;
+        auto host_shown = ws.file_table.display(host_id);
+        auto host_uri = feature::to_uri(host_shown);
 
         // A multi-configuration host contributes one context per
         // CDB entry: each configuration compiles the header under
@@ -100,7 +98,7 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
                 continue;
 
             ext::ContextItem item;
-            item.label = llvm::sys::path::filename(host_path).str();
+            item.label = llvm::sys::path::filename(host_shown).str();
             if(commands.size() > 1) {
                 auto desc = flags_label(ws, applied);
                 if(!desc.empty()) {
@@ -108,8 +106,8 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
                 }
                 item.command_hash = hash;
             }
-            item.description = std::string(host_path);
-            item.uri = host_uri_opt->str();
+            item.description = host_shown.str();
+            item.uri = host_uri;
 
             // A guard-less header can be included several times by
             // one host — each occurrence is a distinct context.
@@ -132,8 +130,8 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     // exist, so a host override can be switched back to the file's
     // own command.
     if(auto entries = ws.build.entries(path_id); !entries.empty()) {
-        auto uri_opt = lsp::URI::from_file_path(std::string(ws.file_table.display(path_id)));
-        for(std::size_t i = 0; uri_opt && i < entries.size(); ++i) {
+        auto uri = feature::to_uri(ws.file_table.display(path_id));
+        for(std::size_t i = 0; i < entries.size(); ++i) {
             auto applied =
                 ws.build.resolve(path_id, entries[i].config, CommandSource::CDBExact, path, path)
                     .config;
@@ -145,7 +143,7 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
             ext::ContextItem item;
             item.label = desc.empty() ? std::format("config #{}", i) : desc;
             item.description = ws.cdb.config(applied).directory;
-            item.uri = uri_opt->str();
+            item.uri = uri;
             item.command_hash = std::move(hash);
             all_items.push_back(std::move(item));
         }
@@ -159,23 +157,19 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
     ext::CurrentContextResult result;
     const Selection* choice = session ? editor.selection(session->path_id) : nullptr;
     if(choice && choice->host_path_id.valid()) {
-        auto ctx_path = project.file_table.resolve(choice->host_path_id);
-        auto ctx_uri_opt =
-            lsp::URI::from_file_path(std::string(project.file_table.display(choice->host_path_id)));
-        if(ctx_uri_opt) {
-            ext::ContextItem item;
-            item.label = llvm::sys::path::filename(ctx_path).str();
-            if(choice->occurrence.value_or(0) > 0) {
-                item.label = std::format("{} (#{})", item.label, *choice->occurrence + 1);
-            }
-            item.description = std::string(ctx_path);
-            item.uri = ctx_uri_opt->str();
-            item.occurrence = choice->occurrence;
-            if(!choice->command_hash.empty()) {
-                item.command_hash = choice->command_hash;
-            }
-            result.context = std::move(item);
+        auto shown = project.file_table.display(choice->host_path_id);
+        ext::ContextItem item;
+        item.label = llvm::sys::path::filename(shown).str();
+        if(choice->occurrence.value_or(0) > 0) {
+            item.label = std::format("{} (#{})", item.label, *choice->occurrence + 1);
         }
+        item.description = shown.str();
+        item.uri = feature::to_uri(shown);
+        item.occurrence = choice->occurrence;
+        if(!choice->command_hash.empty()) {
+            item.command_hash = choice->command_hash;
+        }
+        result.context = std::move(item);
     } else if(choice && !choice->command_hash.empty()) {
         auto& ws = project;
         ext::ContextItem item;

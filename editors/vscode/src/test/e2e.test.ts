@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import type { ClientHandle } from "../client";
@@ -99,6 +100,51 @@ suite("executable setting", function () {
         assert.strictEqual(resolveExecutable(absolute, base), absolute);
     });
 });
+
+// Symlinks need a privilege Windows runners lack.
+if (process.platform !== "win32") {
+    suite("second names", function () {
+        test("an editor on a second name moves to the open document", async function () {
+            this.timeout(30 * 1000);
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-alias-"));
+            fs.mkdirSync(path.join(root, "real"));
+            fs.writeFileSync(path.join(root, "real", "a.cpp"), "int a() { return 0; }\n");
+            fs.symlinkSync(path.join(root, "real"), path.join(root, "link"));
+            try {
+                const first = await vscode.workspace.openTextDocument(
+                    vscode.Uri.file(path.join(root, "real", "a.cpp")),
+                );
+                await vscode.window.showTextDocument(first);
+                const second = await vscode.workspace.openTextDocument(
+                    vscode.Uri.file(path.join(root, "link", "a.cpp")),
+                );
+                await vscode.window.showTextDocument(second, {
+                    selection: new vscode.Range(0, 4, 0, 5),
+                    preview: false,
+                });
+                const deadline = Date.now() + 10 * 1000;
+                const tabs = () =>
+                    vscode.window.tabGroups.all
+                        .flatMap((group) => group.tabs)
+                        .filter((tab) => tab.input instanceof vscode.TabInputText)
+                        .map((tab) => (tab.input as vscode.TabInputText).uri.toString());
+                const settled = () =>
+                    !tabs().includes(second.uri.toString()) &&
+                    vscode.window.activeTextEditor?.document === first;
+                while (!settled() && Date.now() < deadline) {
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                }
+                assert.ok(!tabs().includes(second.uri.toString()), "the second name's tab closes");
+                const active = vscode.window.activeTextEditor;
+                assert.strictEqual(active?.document.uri.toString(), first.uri.toString());
+                assert.deepStrictEqual(active.selection.start, new vscode.Position(0, 4));
+            } finally {
+                await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+                fs.rmSync(root, { recursive: true, force: true });
+            }
+        });
+    });
+}
 
 suite("clice E2E", function () {
     // The bundled variant runs the server staged under clice/ by .vscode-test.mjs;
