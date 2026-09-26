@@ -209,6 +209,7 @@ bool names_relative_path(unsigned id, llvm::StringRef value) {
         case OPT_idirafter:
         case OPT_isystem_after:
         case OPT_cxx_isystem:
+        case OPT_stdlibxx_isystem:
         case OPT_F:
         case OPT_iframework:
         case OPT_isysroot:
@@ -219,6 +220,9 @@ bool names_relative_path(unsigned id, llvm::StringRef value) {
         case OPT_gcc_toolchain:
         case OPT_gcc_install_dir_EQ:
         case OPT_cuda_path_EQ:
+        case OPT_hip_path_EQ:
+        case OPT_rocm_path_EQ:
+        case OPT_rocm_device_lib_path_EQ:
         case OPT_resource_dir:
         case OPT_config_system_dir_EQ:
         case OPT_config_user_dir_EQ:
@@ -228,6 +232,8 @@ bool names_relative_path(unsigned id, llvm::StringRef value) {
         case OPT_ivfsoverlay:
         case OPT_fsanitize_ignorelist_EQ:
         case OPT_fsanitize_system_ignorelist_EQ:
+        case OPT_fsanitize_coverage_allowlist:
+        case OPT_fsanitize_coverage_ignorelist:
         case OPT_fprofile_list_EQ:
         case OPT_fxray_attr_list:
         case OPT_fxray_always_instrument:

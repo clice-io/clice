@@ -26,12 +26,12 @@ namespace clice {
 
 using serde_raw = kota::codec::RawValue;
 
-/// Error response for feature requests on files with no open session.
 /// How the user knows a file a worker names by its identity.
 static llvm::StringRef shown(FileTable& files, llvm::StringRef identity) {
     return files.display(files.intern(Spelling::absolute(identity)));
 }
 
+/// Error response for feature requests on files with no open session.
 static kota::ipc::Error document_not_open() {
     return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams, "Document not open"};
 }
@@ -131,6 +131,11 @@ kota::task<std::optional<Features::Stop>> Features::nav_gate(const Ticket& ticke
 
 std::optional<index::IndexQuery::Cursor>
     Features::cursor_at(Fid path_id, const protocol::Position& position) const {
+    // A document that names no file (an `untitled:` buffer) has no place
+    // in the index.
+    if(!path_id.valid()) {
+        return std::nullopt;
+    }
     return query.symbol_at(path_id, position.line, position.character);
 }
 

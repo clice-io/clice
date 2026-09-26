@@ -20,13 +20,29 @@ test("address sanitizer entry compiles", async ({ session }) => {
 
 test("ignorelist beside the entry compiles", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    workspace.write("ignore.txt", "fun:skipped\n");
-    workspace.write("main.cpp", "int main() { return 0; }\n");
-    workspace.writeCDB(["main.cpp"], {
-        extraArgs: ["-fsanitize=address", "-fsanitize-ignorelist=ignore.txt"],
-    });
+    workspace.write("sub/ignore.txt", "fun:skipped\n");
+    workspace.write(
+        "sub/main.cpp",
+        "#include <vector>\nint main() { return std::vector<int>{1}.empty(); }\n",
+    );
+    workspace.write(
+        "compile_commands.json",
+        JSON.stringify([
+            {
+                directory: workspace.path("sub"),
+                file: "main.cpp",
+                arguments: [
+                    "clang++",
+                    "-fsanitize=address",
+                    "-fsanitize-ignorelist=ignore.txt",
+                    "-c",
+                    "main.cpp",
+                ],
+            },
+        ]),
+    );
     await client.initialize(workspace);
 
-    const [uri] = await client.openAndWait("main.cpp");
+    const [uri] = await client.openAndWait("sub/main.cpp");
     client.assertNoErrors(uri, "the list resolves in the entry's directory, as for clang");
 });

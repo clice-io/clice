@@ -170,7 +170,7 @@ std::vector<std::string> expand_options_files(llvm::ArrayRef<const char*> argume
                 if(!buffer) {
                     LOG_WARN("Cannot read nvcc options file {}: {}",
                              file_path,
-                             buffer.getError().message());
+                             buffer.error().message());
                     continue;
                 }
 

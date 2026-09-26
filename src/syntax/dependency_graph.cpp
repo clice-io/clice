@@ -849,9 +849,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     continue;
                 }
 
-                auto found = Spelling::absolute(resolved->path);
-                auto inc_path_id = file_table.intern(found);
-                file_table.spell_as(inc_path_id, found);
+                auto inc_path_id = file_table.intern_spelled(Spelling::absolute(resolved->path));
                 report.includes_resolved++;
 
                 if(cache_eligible) {

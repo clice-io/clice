@@ -115,14 +115,14 @@ BuildLoad load_build(Project& project,
         // registration order — which the persisted command sequences
         // follow — does not depend on the order files were opened in.
         auto listed = [&](const Spelling& source) {
-            return llvm::any_of(paths,
-                                [&](const Spelling& path) { return path.str() == source.str(); });
+            return llvm::is_contained(paths, source);
         };
         auto stable = llvm::to_vector(llvm::make_filter_range(nearby, [&](const Spelling& source) {
-            // Where the database sits, not what it links to: a
-            // compile_commands.json symlinked to a build tree outside
-            // still belongs to the root.
-            return path::under(CanonicalPath(source.parent()), root) && !listed(source);
+            // Where the database sits, as the walks below the root spell
+            // it, not what it links to: a compile_commands.json or a build
+            // directory symlinked to a tree outside still belongs to the
+            // root.
+            return path::under(llvm::StringRef(source), llvm::StringRef(root)) && !listed(source);
         }));
         auto key = [](const Spelling& source) {
             return std::tuple(

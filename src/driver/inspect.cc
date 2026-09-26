@@ -545,22 +545,19 @@ bool is_header_type(clang::driver::types::ID type) {
 /// Only the ancestors themselves are checked — scanning their
 /// subdirectories would let an unrelated sibling project's database win.
 CanonicalPath workspace_of(CanonicalRef start) {
-    for(CanonicalPath dir = start; !dir.empty();) {
+    CanonicalPath workspace = start;
+    path::walk_ancestors(start, [&](CanonicalRef dir) {
         bool marked = llvm::any_of(config_file_names,
                                    [&](llvm::StringRef marker) {
                                        return fs::exists(path::join(dir, marker));
                                    }) ||
                       fs::exists(path::join(dir, "compile_commands.json"));
         if(marked) {
-            return dir;
+            workspace = dir;
         }
-        auto parent = CanonicalRef(dir).parent();
-        if(parent.size() == dir.size()) {
-            break;
-        }
-        dir = std::move(parent);
-    }
-    return start;
+        return !marked;
+    });
+    return workspace;
 }
 
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
@@ -893,9 +890,7 @@ int run_inspect(const InspectOptions& opts) {
         for(auto& directory: directories) {
             auto identity = CanonicalPath(Spelling::absolute(directory.getKey()));
             for(auto& database: compile_commands_above(identity, root)) {
-                if(llvm::none_of(nearby, [&](const Spelling& known) {
-                       return known.str() == database.str();
-                   })) {
+                if(!llvm::is_contained(nearby, database)) {
                     nearby.push_back(database);
                 }
             }
@@ -931,7 +926,7 @@ int run_inspect(const InspectOptions& opts) {
         if(!buffer) {
             FileEntry entry;
             entry.error = "read_error";
-            entry.diagnostics = {buffer.getError().message()};
+            entry.diagnostics = {buffer.error().message()};
             output.files.emplace(rel, std::move(entry));
             continue;
         }

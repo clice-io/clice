@@ -1547,9 +1547,7 @@ llvm::SmallVector<Spelling> IndexStore::remembered_sources() {
     for(auto& entry: persisted.entries) {
         for(auto& source: entry.sources) {
             auto absolute = project.project_index.local(source);
-            if(llvm::none_of(sources, [&](const Spelling& known) {
-                   return known.str() == absolute.str();
-               })) {
+            if(!llvm::is_contained(sources, absolute)) {
                 sources.push_back(std::move(absolute));
             }
         }

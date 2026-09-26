@@ -825,8 +825,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         }
 
         Spelling file(file_ref, directory);
-        auto path_id = file_table.intern(file);
-        file_table.spell_as(path_id, file);
+        auto path_id = file_table.intern_spelled(file);
         llvm::StringRef spelling = file.str() != llvm::StringRef(file_table.resolve(path_id))
                                        ? strings.save(file.str())
                                        : llvm::StringRef();
@@ -1139,12 +1138,12 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         });
     };
 
-    /// Parse an edit list into structured args, absolutizing include paths
-    /// against `anchor` like the load pipeline. Unknown tokens
-    /// keep the user's spelling and stay renderable (the user asked for them
-    /// explicitly) — including input-classified ones: an edit cannot name
-    /// the entry's input, so such a token is really the separate value of an
-    /// option the table does not know.
+    /// Parse an edit list into structured args, anchoring path values at
+    /// `anchor` like the load pipeline. Unknown tokens keep the user's
+    /// spelling and stay renderable (the user asked for them explicitly) —
+    /// including input-classified ones: an edit cannot name the entry's
+    /// input, so such a token is really the separate value of an option the
+    /// table does not know.
     auto parse_edit = [&](llvm::ArrayRef<std::string> edit_flags,
                           const Spelling& anchor,
                           std::vector<LocalArg>& out) {

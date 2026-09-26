@@ -65,12 +65,11 @@ std::string join(Args&&... args) {
     return path.str().str();
 }
 
-/// Path identity on Windows is separator-agnostic and drive-case
-/// insensitive; LSP clients (vscode-uri) key documents by the
-/// lowercase-drive, forward-slash spelling, so that spelling is the
-/// canonical form for identity and URI emission. On POSIX identity is
-/// the raw bytes — '\' and "C:" are ordinary filename characters — and
-/// canonicalization must not touch paths there.
+/// Windows accepts either separator and either drive case; LSP clients
+/// (vscode-uri) key documents by the lowercase-drive, forward-slash
+/// spelling, so every path clice keeps or emits is spelled that way. On
+/// POSIX a path is its raw bytes — '\' and "C:" are ordinary filename
+/// characters — and canonicalization must not touch it.
 
 /// True when `p` deviates from the Windows canonical spelling.
 inline bool needs_canonical(llvm::StringRef p) {
@@ -122,8 +121,9 @@ class CanonicalPath;
 /// `.` segments or a trailing separator. `..` stays: the OS resolves it
 /// past symlinks, so only the identity (CanonicalPath) interprets it. Kept
 /// where a lookup depends on how a path was written — the directory a
-/// quoted include starts from, the file a rendered command names — and
-/// never compared: the identity answers which file it is.
+/// quoted include starts from, the file a rendered command names. Two
+/// spellings compare as text; only identities (CanonicalPath) tell whether
+/// they name one file.
 class Spelling {
 public:
     /// None: no path.
@@ -139,10 +139,6 @@ public:
 
     /// The directory command-line arguments are relative to.
     static Spelling cwd();
-
-    /// The file a portable name (path::portable) names in the checkout at
-    /// `workspace`.
-    static Spelling from_portable(llvm::StringRef name, CanonicalRef workspace);
 
     /// An identity spells itself.
     explicit Spelling(CanonicalRef identity);
@@ -167,6 +163,8 @@ public:
 
     /// The directory holding it, as spelled.
     Spelling parent() const;
+
+    friend bool operator==(const Spelling&, const Spelling&) = default;
 
 private:
     std::string text;
@@ -348,6 +346,22 @@ inline CanonicalPath CanonicalRef::entry(llvm::StringRef path) const {
     return CanonicalPath(CanonicalPath::Resolved{}, path);
 }
 
+namespace path {
+
+/// Visit the identity `start` and its ancestors, nearest first, until
+/// `visit` returns false.
+inline void walk_ancestors(CanonicalRef start, llvm::function_ref<bool(CanonicalRef)> visit) {
+    for(CanonicalPath dir = start; visit(dir);) {
+        auto parent = CanonicalRef(dir).parent();
+        if(parent.empty() || parent.size() == dir.size()) {
+            return;
+        }
+        dir = std::move(parent);
+    }
+}
+
+}  // namespace path
+
 }  // namespace clice
 
 template <clice::Canonical T>
@@ -509,14 +523,15 @@ namespace fs {
 
 /// A file's text (see without_bom), read whole: how clice reads every
 /// source, command and configuration file it does not track.
-inline llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> read_text(llvm::StringRef path) {
+inline std::expected<std::unique_ptr<llvm::MemoryBuffer>, std::error_code>
+    read_text(llvm::StringRef path) {
     auto buffer = llvm::MemoryBuffer::getFile(path);
     if(!buffer) {
-        return buffer;
+        return std::unexpected(buffer.getError());
     }
     auto text = without_bom((*buffer)->getBuffer());
     if(text.size() == (*buffer)->getBufferSize()) {
-        return buffer;
+        return std::move(*buffer);
     }
     return llvm::MemoryBuffer::getMemBufferCopy(text, path);
 }

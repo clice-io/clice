@@ -215,11 +215,6 @@ Spelling Spelling::cwd() {
     return absolute(directory);
 }
 
-Spelling Spelling::from_portable(llvm::StringRef name, CanonicalRef workspace) {
-    llvm::SmallString<256> storage;
-    return absolute(path::local(name, workspace, storage));
-}
-
 Spelling::Spelling(CanonicalRef identity) : text(identity.str()) {}
 
 Spelling Spelling::parent() const {

@@ -250,7 +250,8 @@ std::string ProjectIndex::portable(llvm::StringRef path) const {
 }
 
 Spelling ProjectIndex::local(llvm::StringRef name) const {
-    return Spelling::from_portable(name, workspace);
+    llvm::SmallString<256> storage;
+    return Spelling::absolute(path::local(name, workspace, storage));
 }
 
 std::string ProjectIndex::key_of(const FileTable& files, Fid file) const {

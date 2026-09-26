@@ -534,6 +534,10 @@ void LSPClient::register_document_sync() {
         auto path_id = srv.files.intern(*spelled);
         if(auto* alias = find_alias(path_id, path)) {
             take_alias(path_id, alias);
+            if(client_ready) {
+                peer.send_notification(
+                    protocol::PublishDiagnosticsParams{.uri = feature::to_uri(path)});
+            }
             return;
         }
         if(srv.files.shown_as(path_id) != path) {

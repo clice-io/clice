@@ -50,7 +50,7 @@ static std::optional<Spelling> setting_path(std::string value,
     if(path::is_absolute(value)) {
         return Spelling::absolute(value);
     }
-    if(anchor.str().empty()) {
+    if(anchor.empty()) {
         return std::nullopt;
     }
     return Spelling(value, anchor);
@@ -100,8 +100,7 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
         auto wildcard = ref.find_first_of(R"(*?[{\)", search_from);
         auto cut = ref.rfind('/', wildcard == llvm::StringRef::npos ? ref.size() : wildcard);
         auto dir = cut == llvm::StringRef::npos ? llvm::StringRef() : ref.take_front(cut + 1);
-        root =
-            CanonicalPath(path::is_absolute(dir) ? Spelling::absolute(dir) : Spelling(dir, anchor));
+        root = CanonicalPath(Spelling(dir, anchor));
         text = glob_escape(root);
         if(!text.ends_with('/')) {
             text += '/';
@@ -139,7 +138,7 @@ void Config::finalize(CanonicalRef workspace_root) {
 
     this->workspace_root = workspace_root;
     CanonicalRef root = this->workspace_root;
-    Spelling root_anchor = root.empty() ? Spelling() : Spelling(root);
+    Spelling root_anchor(root);
 
     if(p.cache_dir.empty() && !root.empty()) {
         p.cache_dir = path::join(root, ".clice");
@@ -171,7 +170,7 @@ void Config::finalize(CanonicalRef workspace_root) {
         // folder has nothing to anchor one at.
         auto anchor =
             rule.directory.empty() ? root_anchor : Spelling::absolute(std::string(rule.directory));
-        if(anchor.str().empty()) {
+        if(anchor.empty()) {
             LOG_GUIDANCE(
                 "Rules need a workspace folder to anchor their paths; a rule "
                 "without one is ignored");

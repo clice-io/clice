@@ -54,7 +54,7 @@ inline auto to_uri(llvm::StringRef file) -> std::string {
     file = path::canonical(file, storage);
     auto uri = kota::ipc::lsp::URI::from_file_path(std::string_view(file.data(), file.size()));
     assert(uri && "a URI names an absolute path");
-    return uri ? uri->str() : std::string();
+    return uri->str();
 }
 
 inline auto to_position(const LineMap& map, std::uint32_t offset)

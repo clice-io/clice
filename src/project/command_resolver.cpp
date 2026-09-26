@@ -141,17 +141,16 @@ void CommandResolver::load_mode_slices(
         if(entry.content_hash == 0 ||
            static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
             continue;
-        auto file = file_of(entry.file);
-        if(!file)
+        auto id = file_of(entry.file);
+        if(!id)
             continue;
-        auto id = *file;
         // The verdict is tied to the header's contents — a file edited
         // while the server was down must re-earn its trial.
-        auto disk = project.file_table.current(id);
+        auto disk = project.file_table.current(*id);
         if(!disk || disk->hash != entry.content_hash)
             continue;
-        header_verdicts[id] = {.mode = HeaderMode::NeedsContext,
-                               .content_hash = entry.content_hash};
+        header_verdicts[*id] = {.mode = HeaderMode::NeedsContext,
+                                .content_hash = entry.content_hash};
     }
 }
 

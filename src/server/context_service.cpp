@@ -130,7 +130,7 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     // own command.
     if(auto entries = ws.build.entries(path_id); !entries.empty()) {
         auto uri = feature::to_uri(ws.file_table.display(path_id));
-        for(std::size_t i = 0; i < entries.size(); ++i) {
+        for(std::size_t i = 0; i < entries.size(); i += 1) {
             auto applied =
                 ws.build.resolve(path_id, entries[i].config, CommandSource::CDBExact, path, path)
                     .config;

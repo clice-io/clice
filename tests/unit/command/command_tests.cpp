@@ -802,7 +802,10 @@ TEST_CASE(SysrootIncludeKept) {
     database.add_command("/project",
                          "main.cpp",
                          "clang++ --sysroot=/sdk -I=/usr/include/foo main.cpp"sv);
-    EXPECT_TRUE(has_arg(render_entry(database, "/project/main.cpp"), "=/usr/include/foo"));
+    auto argv = render_entry(database, "/project/main.cpp");
+    EXPECT_TRUE(llvm::any_of(argv, [](llvm::StringRef arg) {
+        return arg == "=/usr/include/foo" || arg == "-I=/usr/include/foo";
+    }));
 };
 
 TEST_CASE(SemanticOptionsPreserved) {

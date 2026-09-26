@@ -114,10 +114,8 @@ void Project::rescan_disk_file(Fid path_id) {
                                                 resolved_config,
                                                 dir_cache);
                 if(resolved) {
-                    auto found = Spelling::absolute(resolved->path);
-                    auto included = file_table.intern(found);
-                    file_table.spell_as(included, found);
-                    edges.push_back({included, include.conditional});
+                    edges.push_back({file_table.intern_spelled(Spelling::absolute(resolved->path)),
+                                     include.conditional});
                 }
             }
             dep_graph.set_includes(path_id, static_cast<std::uint32_t>(index), std::move(edges));
@@ -300,18 +298,16 @@ bool defines_project(CanonicalRef dir) {
 }
 
 CanonicalPath project_root_above(CanonicalRef start) {
-    for(CanonicalPath dir = start; !dir.empty();) {
+    CanonicalPath root;
+    path::walk_ancestors(start, [&](CanonicalRef dir) {
         Spelling spelled(dir);
         if(configured(spelled) || database_in(spelled) || database_in(Spelling("build", spelled))) {
-            return dir;
+            root = dir;
+            return false;
         }
-        auto parent = CanonicalRef(dir).parent();
-        if(parent.size() == dir.size()) {
-            break;
-        }
-        dir = std::move(parent);
-    }
-    return {};
+        return true;
+    });
+    return root;
 }
 
 llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,

@@ -164,6 +164,14 @@ struct FileTable {
         return fid;
     }
 
+    /// Intern a path the build reaches its file by, remembering how it
+    /// spells the file (spell_as).
+    Fid intern_spelled(const Spelling& path) {
+        auto fid = intern(path);
+        spell_as(fid, path);
+        return fid;
+    }
+
     /// An identity names its own file.
     Fid intern(CanonicalRef identity) {
         auto [it, inserted] =

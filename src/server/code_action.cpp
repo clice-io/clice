@@ -62,10 +62,12 @@ protocol::CodeAction render(std::string title, protocol::CodeActionKind kind, Fi
 
 /// How `header` is spelled in an include directive of `file`, the header
 /// by identity and the file as the build reaches it: its path below the
-/// file's directory (where a quoted include looks first), else the shortest path below one of the
-/// command's search directories (resolved, however the command spells them), angled past the quoted
-/// segment — whichever of these the command's lookup order actually resolves to `header`, since a
-/// shorter spelling can name a same-named file in an earlier directory.
+/// file's directory (where a quoted include looks first), else the
+/// shortest path below one of the command's search directories (resolved,
+/// however the command spells them), angled past the quoted segment —
+/// whichever of these the command's lookup order actually resolves to
+/// `header`, since a shorter spelling can name a same-named file in an
+/// earlier directory.
 std::optional<std::string> include_spelling(CanonicalRef header,
                                             const SearchConfig& search,
                                             const Spelling& file,
@@ -83,8 +85,6 @@ std::optional<std::string> include_spelling(CanonicalRef header,
     };
 
     std::vector<Candidate> candidates;
-    // Quoted names start from the directory the build reaches the file
-    // through, as clang's lookup does.
     auto directory = file.parent();
     if(auto relative = below(CanonicalPath(directory))) {
         candidates.push_back({*relative, false});

@@ -59,14 +59,12 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     return file;
 }
 
-/// Anchor a query's paths in the workspace: its place's path becomes
-/// absolute the way the command's own path arguments do, and must be an
-/// indexed file.
-/// Nullopt when the file is not indexed, which the caller answers as not
-/// found with the path noted.
-Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
-    // Path filters match the file table's names for files: a rooted one
-    // names its file however the command line spelled it.
+/// Anchor a query's paths in the workspace: a rooted path filter names
+/// its file by identity, however the command line spelled it, and the
+/// place's path becomes absolute the way the command's own path arguments
+/// do. False when the place's file is not indexed, which the caller
+/// answers as not found with the path noted.
+Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
     for(auto& wanted: query.paths) {
         if(path::is_absolute(wanted)) {
             wanted = CanonicalPath(Spelling::absolute(wanted)).str();
@@ -89,7 +87,7 @@ Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
 /// symbol, several ask the caller to disambiguate by id. A locator naming
 /// a path the index has no rows for answers as unknown and notes the path.
 Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQuery query) {
-    auto anchored = anchor_place(ctx, query);
+    auto anchored = anchor_paths(ctx, query);
     if(!anchored) {
         return std::unexpected(anchored.error());
     }
@@ -329,7 +327,7 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
         query->kinds.push_back(*parsed);
     }
     SymbolSearchResult result;
-    auto anchored = anchor_place(ctx, *query);
+    auto anchored = anchor_paths(ctx, *query);
     if(!anchored) {
         return std::unexpected(anchored.error());
     }

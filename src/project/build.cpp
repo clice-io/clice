@@ -47,9 +47,7 @@ llvm::SmallVector<Spelling> Build::declared_sources() const {
             continue;
         }
         for(auto& database: rule.compile_commands) {
-            if(llvm::none_of(result, [&](const Spelling& known) {
-                   return known.str() == database.str();
-               })) {
+            if(!llvm::is_contained(result, database)) {
                 result.push_back(database);
             }
         }
@@ -245,8 +243,11 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
         for(llvm::StringRef flag: item.flags) {
             // The rule's `${workspace}` put back, so a moved checkout
             // keeps the hash.
-            for(auto at = flag.find(root); !root.empty() && at != llvm::StringRef::npos;
-                at = flag.find(root)) {
+            while(!root.empty()) {
+                auto at = flag.find(root);
+                if(at == llvm::StringRef::npos) {
+                    break;
+                }
                 joined += flag.take_front(at);
                 joined += path::workspace_anchor;
                 flag = flag.drop_front(at + root.size());
@@ -425,8 +426,8 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
             auto type = it->type();
             if(type == llvm::sys::fs::file_type::directory_file) {
                 auto name = path::filename(spelled);
-                if(name == ".git" || (name == path::filename(cache_dir) &&
-                                      CanonicalPath(Spelling::absolute(spelled)) == cache_dir)) {
+                if(name == ".git" ||
+                   (name == path::filename(cache_dir) && root.entry(spelled) == cache_dir)) {
                     it.no_push();
                 }
                 continue;

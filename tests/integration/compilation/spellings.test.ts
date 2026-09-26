@@ -77,6 +77,7 @@ test("document without a file is not served", async ({ session }) => {
         textDocument: { uri: untitled, languageId: "cpp", version: 0, text: "int main() {}\n" },
     });
     await expect(client.hoverAt(untitled, 0, 5)).rejects.toThrow("Document not open");
+    expect(await client.referencesAt(untitled, 0, 5), "no place in the index").toEqual([]);
     const [main] = await client.openAndWait("main.cpp");
     client.assertNoErrors(main, "the server keeps serving files");
 });
