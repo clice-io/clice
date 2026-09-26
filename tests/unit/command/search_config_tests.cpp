@@ -15,7 +15,7 @@ SearchConfig extract(llvm::ArrayRef<const char*> args, llvm::StringRef directory
     FileTable file_table;
     CompilationDatabase db{file_table};
     db.add_command(directory, "main.cpp", args);
-    auto& entry = db.candidate_entries("main.cpp").front();
+    auto& entry = db.candidate_entries(path::join(directory, "main.cpp")).front();
     return extract_search_config(db.config(entry.config).args, directory);
 }
 

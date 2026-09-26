@@ -170,7 +170,7 @@ void MasterServer::initialize() {
     on_projects_changed.emit();
 }
 
-void MasterServer::initialize(llvm::StringRef root) {
+void MasterServer::initialize(const Spelling& root) {
     workspace_roots = {CanonicalPath(root)};
     files.spell_root(root);
     initialize();
@@ -195,7 +195,7 @@ void MasterServer::wire() {
     };
 
     pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
-        auto id = files.find(path);
+        auto id = files.find(Spelling::absolute(path));
         if(!id) {
             LOG_WARN("Evicted path not in pool: {}", path);
             return;
@@ -317,7 +317,7 @@ std::vector<CanonicalPath> MasterServer::taken_cache_dirs() const {
         // The rootless project opens no store.
         auto& cache_dir = project.project.config.project.cache_dir;
         if(!project.root.empty() && !cache_dir.empty()) {
-            dirs.push_back(CanonicalPath(cache_dir));
+            dirs.push_back(CanonicalPath(Spelling::absolute(cache_dir)));
         }
     };
     for(auto& project: projects) {
@@ -349,14 +349,15 @@ void MasterServer::open_session(Fid path_id, std::string text, int version) {
         // database a served project loads already (a build directory above
         // a generated file), stay that project's.
         auto path = files.resolve(path_id);
-        auto root = project_root_above(path::parent_path(path));
+        auto root = project_root_above(path.parent());
         auto covered = [&](auto& project) {
             if(!project->root.empty() && path::under(path, project->root) &&
                path::under(project->root, root)) {
                 return true;
             }
             auto& cdb = project->project.cdb;
-            return cdb.find_source(root) || cdb.find_source(path::join(root, "build"));
+            Spelling spelled(root);
+            return cdb.find_source(spelled) || cdb.find_source(Spelling("build", spelled));
         };
         if(!root.empty() && llvm::none_of(projects, covered)) {
             workspace_roots.push_back(std::move(root));
@@ -420,15 +421,14 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
     }
 }
 
-void MasterServer::change_folders(std::vector<std::string> removed,
-                                  std::vector<std::string> added) {
+void MasterServer::change_folders(std::vector<Spelling> removed, std::vector<Spelling> added) {
     for(auto& root: removed) {
         files.unspell_root(root);
     }
     for(auto& root: added) {
         files.spell_root(root);
     }
-    auto identities = [](llvm::ArrayRef<std::string> roots) {
+    auto identities = [](llvm::ArrayRef<Spelling> roots) {
         return llvm::to_vector(
             llvm::map_range(roots, [](auto& root) { return CanonicalPath(root); }));
     };
@@ -877,7 +877,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                 // reads its first message — because initialize() spawns
                 // background tasks that need the running loop context.
                 if(!root.empty()) {
-                    server.initialize(root);
+                    server.initialize(Spelling(root, Spelling::cwd()));
                 }
                 co_await kota::with_token(peer.run(), server.shutdown_token());
                 co_await server.shutdown_and_cleanup();
@@ -902,7 +902,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             // See the pipe-mode comment: pre-initialization must run
             // inside the loop.
             if(!root.empty()) {
-                server.initialize(root);
+                server.initialize(Spelling(root, Spelling::cwd()));
             }
             co_await kota::with_token(accept_connections(server, std::move(acceptor), connections),
                                       server.shutdown_token());

@@ -30,7 +30,7 @@ struct BuildLoad {
 BuildLoad load_build(Project& project,
                      CanonicalRef root,
                      llvm::StringRef configuration,
-                     llvm::ArrayRef<std::string> nearby = {});
+                     llvm::ArrayRef<Spelling> nearby = {});
 
 /// What load_project found and did.
 struct ProjectLoad {

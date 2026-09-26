@@ -50,16 +50,11 @@ inline bool apply_log_level(const std::string& level_str) {
     return true;
 }
 
-/// The workspace a batch subcommand names: the --workspace argument made
-/// absolute, or the current directory when it is empty, as spelled.
-inline std::string workspace_spelling(llvm::StringRef argument) {
-    llvm::SmallString<256> directory(argument);
-    if(directory.empty()) {
-        llvm::sys::fs::current_path(directory);
-    } else {
-        llvm::sys::fs::make_absolute(directory);
-    }
-    return std::string(directory);
+/// The workspace a batch subcommand names: the --workspace argument
+/// relative to the current directory, or the current directory when it is
+/// empty, as spelled.
+inline Spelling workspace_spelling(llvm::StringRef argument) {
+    return Spelling(argument, Spelling::cwd());
 }
 
 /// The workspace root of a batch subcommand.

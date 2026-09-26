@@ -262,7 +262,7 @@ bool ProjectIndex::bind_global(std::unique_ptr<llvm::MemoryBuffer> blob, FileTab
     // are inert.
     bound->remap.reserve(bound->paths.size());
     for(std::uint32_t i = 0; i < bound->paths.size(); i += 1) {
-        bound->remap.push_back(files.intern(to_ref(bound->paths[i])));
+        bound->remap.push_back(files.intern(Spelling::absolute(to_ref(bound->paths[i]))));
     }
     bound->buffer = std::move(blob);
     base = std::move(bound);
@@ -332,7 +332,7 @@ std::expected<void, llvm::StringRef>
     // stay mapped to it.
     next_persisted_id = blob.next_fv_id;
     for(std::size_t i = 0; i < count; i += 1) {
-        auto path_id = files.intern(to_ref(blob.fv_paths[i]));
+        auto path_id = files.intern(Spelling::absolute(to_ref(blob.fv_paths[i])));
         auto id = files.intern_version(path_id, blob.fv_hashes[i]);
         runtime_ids.try_emplace(blob.fv_ids[i], id);
         persisted_ids.try_emplace(id, blob.fv_ids[i]);

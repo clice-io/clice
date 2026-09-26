@@ -24,12 +24,12 @@ TEST_CASE(DefaultSourceKeepsOwnCommand) {
     CommandResolver resolver(project);
     project.config.rules.push_back(
         ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
 
-    auto main = project.file_table.intern(tmp.path("src/main.cpp"));
-    auto part = project.file_table.intern(tmp.path("src/part.cpp"));
-    auto header = project.file_table.intern(tmp.path("src/part.h"));
+    auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto part = project.file_table.intern(Spelling::absolute(tmp.path("src/part.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/part.h")));
     project.dep_graph.set_includes(main, 0, {{part}, {header}});
     project.dep_graph.build_reverse_map();
 
@@ -55,7 +55,7 @@ TEST_CASE(UnboundVerdictStaysLocal) {
     CommandResolver resolver(project);
     tmp.touch("h.h", "int x;\n");
     auto path = tmp.path("h.h");
-    auto id = project.file_table.intern(path);
+    auto id = project.file_table.intern(Spelling::absolute(path));
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext);
     ASSERT_TRUE(resolver.header_mode(id) == HeaderMode::NeedsContext);
@@ -79,7 +79,7 @@ TEST_CASE(ModeSliceContentGate) {
     CommandResolver resolver(project);
     tmp.touch("h.h", "int x;\n");
     auto path = tmp.path("h.h");
-    auto id = project.file_table.intern(path);
+    auto id = project.file_table.intern(Spelling::absolute(path));
     auto disk = project.file_table.current(id);
     ASSERT_TRUE(disk.has_value());
 
@@ -110,7 +110,7 @@ TEST_CASE(VerdictPersistenceMarksDirty) {
     FileTable files;
     Project project{files};
     CommandResolver resolver(project);
-    auto id = project.file_table.intern("/proj/h.h");
+    auto id = project.file_table.intern(Spelling::absolute("/proj/h.h"));
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
     ASSERT_TRUE(project.artifacts_dirty);

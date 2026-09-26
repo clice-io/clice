@@ -542,20 +542,22 @@ bool is_header_type(clang::driver::types::ID type) {
 /// the server would from the project root; `start` itself when none does.
 /// Only the ancestors themselves are checked — scanning their
 /// subdirectories would let an unrelated sibling project's database win.
-CanonicalPath workspace_of(llvm::StringRef start) {
-    std::string root = start.str();
-    path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
-        bool marked = llvm::any_of(config_file_names,
-                                   [&](llvm::StringRef marker) {
-                                       return fs::exists(path::join(dir, marker));
-                                   }) ||
-                      fs::exists(path::join(dir, "compile_commands.json"));
+CanonicalPath workspace_of(CanonicalRef start) {
+    for(CanonicalPath dir = start; !dir.empty();) {
+        bool marked =
+            llvm::any_of(config_file_names,
+                         [&](llvm::StringRef marker) { return fs::exists(path::join(dir, marker)); }) ||
+            fs::exists(path::join(dir, "compile_commands.json"));
         if(marked) {
-            root = dir.str();
+            return dir;
         }
-        return !marked;
-    });
-    return CanonicalPath(root);
+        auto parent = CanonicalRef(dir).parent();
+        if(parent.size() == dir.size()) {
+            break;
+        }
+        dir = std::move(parent);
+    }
+    return start;
 }
 
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
@@ -806,12 +808,7 @@ int run_inspect(const InspectOptions& opts) {
         }
     }
 
-    llvm::SmallString<256> abs_path(inputs[1]);
-    if(auto err = fs::make_absolute(abs_path)) {
-        LOG_ERROR("cannot resolve {}: {}", inputs[1], err.message());
-        return 1;
-    }
-    path::remove_dots(abs_path, /*remove_dot_dot=*/true);
+    Spelling abs_path(inputs[1], Spelling::cwd());
     if(!fs::exists(abs_path)) {
         LOG_ERROR("no such file or directory: {}", abs_path);
         return 1;
@@ -834,7 +831,7 @@ int run_inspect(const InspectOptions& opts) {
                 continue;
             }
             llvm::StringRef rel = it->path();
-            rel.consume_front(abs_path);
+            rel.consume_front(abs_path.str());
             rel.consume_front("/");
             rel.consume_front("\\");
             files.emplace_back(path::convert_to_slash(rel), it->path());
@@ -844,8 +841,8 @@ int run_inspect(const InspectOptions& opts) {
             return 1;
         }
     } else {
-        files.emplace_back(path::filename(abs_path).str(), std::string(abs_path));
-        directories.insert(path::parent_path(abs_path));
+        files.emplace_back(path::filename(abs_path.str()).str(), abs_path.str());
+        directories.insert(path::parent_path(abs_path.str()));
     }
 
     InspectOutput output;
@@ -868,8 +865,7 @@ int run_inspect(const InspectOptions& opts) {
     // give every file the command the server would use — the same loading
     // path as `clice serve`. The inspected tree belongs to the nearest
     // project at or above it.
-    llvm::StringRef unit_directory =
-        is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
+    auto unit_directory = is_dir ? abs_path : abs_path.parent();
     FileTable file_table;
     Project project{file_table};
     CommandResolver commands(project);
@@ -878,7 +874,7 @@ int run_inspect(const InspectOptions& opts) {
         return 1;
     }
     if(flags.empty()) {
-        auto root = workspace_of(unit_directory);
+        auto root = workspace_of(CanonicalPath(unit_directory));
         project.config = Config::load_from_workspace(root);
         auto requested = opts.configuration.value_or("");
         if(!check_requested_configuration(project.config, requested)) {
@@ -886,10 +882,13 @@ int run_inspect(const InspectOptions& opts) {
         }
         // What the server discovers when a file is opened: the databases
         // between each inspected directory and the root.
-        llvm::SmallVector<std::string> nearby;
+        llvm::SmallVector<Spelling> nearby;
         for(auto& directory: directories) {
-            for(auto& database: compile_commands_above(CanonicalPath(directory.getKey()), root)) {
-                if(!llvm::is_contained(nearby, database)) {
+            auto identity = CanonicalPath(Spelling::absolute(directory.getKey()));
+            for(auto& database: compile_commands_above(identity, root)) {
+                if(llvm::none_of(nearby, [&](const Spelling& known) {
+                       return known.str() == database.str();
+                   })) {
                     nearby.push_back(database);
                 }
             }
@@ -903,7 +902,7 @@ int run_inspect(const InspectOptions& opts) {
     if(is_dir && flags.empty()) {
         llvm::StringSet<> listed;
         for(auto& [rel, abs]: files) {
-            listed.insert(CanonicalPath(abs));
+            listed.insert(CanonicalPath(Spelling::absolute(abs)));
         }
         auto root = CanonicalPath(abs_path);
         for(auto member: project.build.members()) {

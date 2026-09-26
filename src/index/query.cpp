@@ -150,7 +150,7 @@ void IndexQuery::visit_overlay_files(const TUIndex& state,
         auto path = state.path(local_id);
         auto& shard = state.shard_of(local_id);
         Fid file;
-        if(auto known = files.find(path)) {
+        if(auto known = files.find(Spelling::absolute(path))) {
             if(live->is_open(*known) || (gate && gate->stale(*known, shard.content_hash()))) {
                 continue;
             }
@@ -862,7 +862,7 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
 
     if(query.position) {
         auto& place = *query.position;
-        auto path_id = files.find(place.path);
+        auto path_id = files.find(Spelling::absolute(place.path));
         if(!path_id) {
             return {};
         }

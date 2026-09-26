@@ -35,15 +35,15 @@ TEST_CASE(SourcePriorityBeatsProximity) {
     project.config.rules.push_back(
         ConfigRule{.patterns = {"lib/**"}, .compile_commands = {"lib/cmake"}});
     project.config.rules.push_back(ConfigRule{.compile_commands = {"cmake"}});
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
     for(auto source: project.build.declared_sources()) {
         project.cdb.load(source);
     }
 
-    auto header = project.file_table.intern(tmp.path("lib/x.h"));
-    auto near = project.file_table.intern(tmp.path("lib/near.cpp"));
-    auto far = project.file_table.intern(tmp.path("src/far.cpp"));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("lib/x.h")));
+    auto near = project.file_table.intern(Spelling::absolute(tmp.path("lib/near.cpp")));
+    auto far = project.file_table.intern(Spelling::absolute(tmp.path("src/far.cpp")));
     project.dep_graph.set_includes(near, 0, {{header}});
     project.dep_graph.set_includes(far, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -69,14 +69,14 @@ TEST_CASE(ProximityWithinSource) {
         .patterns = {"src/**", "other/**"},
         .default_command = std::string("clang++")
     });
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
 
-    auto header = project.file_table.intern(tmp.path("src/x.h"));
-    auto same_stem = project.file_table.intern(tmp.path("other/x.cpp"));
-    auto same_dir = project.file_table.intern(tmp.path("src/y.cpp"));
-    auto elsewhere = project.file_table.intern(tmp.path("other/z.cpp"));
-    auto not_compiled = project.file_table.intern(tmp.path("skip/w.cpp"));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/x.h")));
+    auto same_stem = project.file_table.intern(Spelling::absolute(tmp.path("other/x.cpp")));
+    auto same_dir = project.file_table.intern(Spelling::absolute(tmp.path("src/y.cpp")));
+    auto elsewhere = project.file_table.intern(Spelling::absolute(tmp.path("other/z.cpp")));
+    auto not_compiled = project.file_table.intern(Spelling::absolute(tmp.path("skip/w.cpp")));
     for(auto host: {same_stem, same_dir, elsewhere, not_compiled}) {
         project.dep_graph.set_includes(host, 0, {{header}});
     }
@@ -89,8 +89,8 @@ TEST_CASE(ProximityWithinSource) {
     EXPECT_EQ(ranked[2], elsewhere);
 
     /// Equal scores fall back to path order, so the ranking is stable.
-    auto first = project.file_table.intern(tmp.path("other/aaa.cpp"));
-    auto second = project.file_table.intern(tmp.path("other/bbb.cpp"));
+    auto first = project.file_table.intern(Spelling::absolute(tmp.path("other/aaa.cpp")));
+    auto second = project.file_table.intern(Spelling::absolute(tmp.path("other/bbb.cpp")));
     project.dep_graph.set_includes(second, 0, {{header}});
     project.dep_graph.set_includes(first, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -110,12 +110,12 @@ TEST_CASE(HostsMatchLanguage) {
     Project project{files};
     project.config.rules.push_back(
         ConfigRule{.patterns = {"c/**"}, .default_command = std::string("clang")});
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
 
-    auto hpp = project.file_table.intern(tmp.path("shared/types.hpp"));
-    auto plain = project.file_table.intern(tmp.path("shared/plain.h"));
-    auto impl = project.file_table.intern(tmp.path("c/impl.c"));
+    auto hpp = project.file_table.intern(Spelling::absolute(tmp.path("shared/types.hpp")));
+    auto plain = project.file_table.intern(Spelling::absolute(tmp.path("shared/plain.h")));
+    auto impl = project.file_table.intern(Spelling::absolute(tmp.path("c/impl.c")));
     project.dep_graph.set_includes(impl, 0, {{hpp}, {plain}});
     project.dep_graph.build_reverse_map();
 
@@ -124,8 +124,8 @@ TEST_CASE(HostsMatchLanguage) {
 
     /// A source borrows only its own language: a `.cl` or a `.m` next to
     /// the C unit would compile as C under its command.
-    auto kernel_cl = project.file_table.intern(tmp.path("c/kernel.cl"));
-    auto objc = project.file_table.intern(tmp.path("c/new.m"));
+    auto kernel_cl = project.file_table.intern(Spelling::absolute(tmp.path("c/kernel.cl")));
+    auto objc = project.file_table.intern(Spelling::absolute(tmp.path("c/new.m")));
     EXPECT_FALSE(command_lender(project, kernel_cl).has_value());
     EXPECT_FALSE(command_lender(project, objc).has_value());
 
@@ -133,10 +133,10 @@ TEST_CASE(HostsMatchLanguage) {
     tmp.touch("mac/impl.mm", "");
     project.config.rules.push_back(
         ConfigRule{.patterns = {"mac/**"}, .default_command = std::string("clang++")});
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
     project.commands_epoch += 1;
-    auto impl_mm = project.file_table.intern(tmp.path("mac/impl.mm"));
+    auto impl_mm = project.file_table.intern(Spelling::absolute(tmp.path("mac/impl.mm")));
     project.dep_graph.set_includes(impl_mm, 0, {{hpp}});
     project.dep_graph.build_reverse_map();
     EXPECT_EQ(ranked_hosts(project, hpp), llvm::SmallVector<Fid>{impl_mm});
@@ -145,26 +145,26 @@ TEST_CASE(HostsMatchLanguage) {
     tmp.touch("gpu/kernel.cu", "");
     project.config.rules.push_back(
         ConfigRule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
     project.commands_epoch += 1;
-    auto kernel = project.file_table.intern(tmp.path("gpu/kernel.cu"));
+    auto kernel = project.file_table.intern(Spelling::absolute(tmp.path("gpu/kernel.cu")));
     project.dep_graph.set_includes(kernel, 0, {{hpp}});
     project.dep_graph.build_reverse_map();
     EXPECT_EQ(ranked_hosts(project, hpp), (llvm::SmallVector<Fid>{kernel, impl_mm}));
 
     /// Only headers get that latitude: a C++ source borrowing the CUDA
     /// command would compile as CUDA.
-    auto gpu_header = project.file_table.intern(tmp.path("gpu/new.hpp"));
-    auto gpu_source = project.file_table.intern(tmp.path("gpu/new.cpp"));
+    auto gpu_header = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.hpp")));
+    auto gpu_source = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.cpp")));
     EXPECT_EQ(command_lender(project, gpu_header)->unit, kernel);
     EXPECT_FALSE(command_lender(project, gpu_source).has_value());
 
     /// A host offers only the commands that fit the header: with a C entry
     /// first and a C++ one second, a `.hpp` sees the second alone.
     tmp.touch("dual/impl.c", "");
-    auto dual = project.file_table.intern(tmp.path("dual/impl.c"));
-    auto dual_hpp = project.file_table.intern(tmp.path("dual/x.hpp"));
+    auto dual = project.file_table.intern(Spelling::absolute(tmp.path("dual/impl.c")));
+    auto dual_hpp = project.file_table.intern(Spelling::absolute(tmp.path("dual/x.hpp")));
     auto c_command = std::format("clang -x c {}", tmp.path("dual/impl.c"));
     auto cxx_command = std::format("clang++ -x c++ {}", tmp.path("dual/impl.c"));
     project.cdb.add_command(tmp.root.str(), tmp.path("dual/impl.c"), llvm::StringRef(c_command));
@@ -193,14 +193,14 @@ TEST_CASE(LenderSibling) {
     Project project{files};
     project.config.rules.push_back(
         ConfigRule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
 
-    auto header = project.file_table.intern(tmp.path("src/x.h"));
-    auto same_stem = project.file_table.intern(tmp.path("src/x.cpp"));
-    auto first = project.file_table.intern(tmp.path("src/aaa.cpp"));
-    auto other = project.file_table.intern(tmp.path("src/other.cpp"));
-    auto plain = project.file_table.intern(tmp.path("src/plain.c"));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/x.h")));
+    auto same_stem = project.file_table.intern(Spelling::absolute(tmp.path("src/x.cpp")));
+    auto first = project.file_table.intern(Spelling::absolute(tmp.path("src/aaa.cpp")));
+    auto other = project.file_table.intern(Spelling::absolute(tmp.path("src/other.cpp")));
+    auto plain = project.file_table.intern(Spelling::absolute(tmp.path("src/plain.c")));
     EXPECT_EQ(command_lender(project, header)->unit, same_stem);
     EXPECT_EQ(command_lender(project, other)->unit, first);
     EXPECT_FALSE(command_lender(project, plain).has_value());
@@ -214,7 +214,7 @@ TEST_CASE(LenderSearchDir) {
     tmp.touch("include/api/new.h", "");
     FileTable files;
     Project project{files};
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
@@ -225,13 +225,13 @@ TEST_CASE(LenderSearchDir) {
     auto searching = add("zzz/lib.cpp", "-Iinclude");
     auto near = add("include/near.cpp", "");
 
-    auto header = project.file_table.intern(tmp.path("include/api/new.h"));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.h")));
     auto lender = command_lender(project, header);
     ASSERT_TRUE(lender.has_value());
     EXPECT_EQ(lender->unit, searching.file);
     EXPECT_EQ(lender->config, searching.config);
 
-    auto source = project.file_table.intern(tmp.path("include/api/new.cpp"));
+    auto source = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.cpp")));
     EXPECT_EQ(command_lender(project, source)->unit, near.file);
 };
 
@@ -244,10 +244,10 @@ TEST_CASE(LenderIgnoresCommandless) {
     FileTable files;
     Project project{files};
     project.config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
     ASSERT_EQ(project.build.members().size(), 2u);
-    auto header = project.file_table.intern(tmp.path("src/new.h"));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/new.h")));
     EXPECT_FALSE(command_lender(project, header).has_value());
 };
 

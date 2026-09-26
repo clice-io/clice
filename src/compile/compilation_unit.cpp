@@ -96,7 +96,7 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
     /// named like a missing one, through its directory.
     llvm::SmallString<128> spelled(entry.getName());
     self->SM().getFileManager().makeAbsolutePath(spelled);
-    auto path = CanonicalPath(spelled).str();
+    auto path = CanonicalPath(Spelling::absolute(spelled)).str();
 
     /// Allocate the path in the storage.
     auto size = path.size();

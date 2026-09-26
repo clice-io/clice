@@ -35,6 +35,28 @@ static void substitute_workspace(std::string& value, llvm::StringRef workspace_r
     }
 }
 
+/// A path-valued setting as written: `${workspace}` substituted, a leading
+/// `~` expanded to the home directory, a relative one anchored at `anchor`.
+/// Nullopt for a relative one with no anchor to hold it (a rootless
+/// project's setting).
+static std::optional<Spelling> setting_path(std::string value,
+                                            const Spelling& anchor,
+                                            CanonicalRef workspace_root) {
+    substitute_workspace(value, workspace_root);
+    if(llvm::StringRef(value).starts_with("~")) {
+        llvm::SmallString<256> expanded;
+        llvm::sys::fs::expand_tilde(value, expanded);
+        value = std::string(expanded);
+    }
+    if(path::is_absolute(value)) {
+        return Spelling::absolute(value);
+    }
+    if(anchor.str().empty()) {
+        return std::nullopt;
+    }
+    return Spelling(value, anchor);
+}
+
 std::uint32_t default_stateless_worker_count() {
     // Config is constructed on every worker request (QueryParams /
     // build params carry one); query the core count once, not per request.
@@ -65,7 +87,7 @@ static std::string glob_escape(llvm::StringRef literal) {
 /// matches the files it holds — and the wildcard tail follows verbatim.
 /// A `**`-led pattern matches anywhere and enumerates from the workspace.
 static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
-                                                            llvm::StringRef anchor,
+                                                            const Spelling& anchor,
                                                             CanonicalRef workspace_root) {
     // A substituted workspace root is path, never glob syntax: the wildcard
     // search starts after it, and the literal prefix it lands in is escaped.
@@ -78,21 +100,9 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
     if(!ref.starts_with("**")) {
         auto wildcard = ref.find_first_of(R"(*?[{\)", search_from);
         auto cut = ref.rfind('/', wildcard == llvm::StringRef::npos ? ref.size() : wildcard);
-        llvm::SmallString<256> dir;
-        if(cut != llvm::StringRef::npos) {
-            dir = ref.take_front(cut + 1);
-        }
-        if(!path::is_rooted(dir)) {
-            llvm::SmallString<256> anchored(anchor);
-            if(!dir.empty()) {
-                path::append(anchored, dir);
-            }
-            dir = anchored;
-        }
-        // Without an anchor (a rootless project's own rule) a relative
-        // directory stays relative and matches no file.
-        root = path::is_rooted(dir) ? CanonicalPath(dir) : CanonicalPath();
-        text = glob_escape(root.empty() ? llvm::StringRef(dir) : llvm::StringRef(root));
+        auto dir = cut == llvm::StringRef::npos ? llvm::StringRef() : ref.take_front(cut + 1);
+        root = CanonicalPath(path::is_absolute(dir) ? Spelling::absolute(dir) : Spelling(dir, anchor));
+        text = glob_escape(root);
         if(!text.ends_with('/')) {
             text += '/';
         }
@@ -106,7 +116,7 @@ static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
     return CompiledRule::Pattern{.glob = std::move(*glob), .root = std::move(root)};
 }
 
-void Config::finalize(llvm::StringRef workspace_root) {
+void Config::finalize(CanonicalRef workspace_root) {
     auto& p = project;
 
     // Validation, not default-filling: zero workers or a zero memory
@@ -127,8 +137,9 @@ void Config::finalize(llvm::StringRef workspace_root) {
                 defaults.min_stateless_worker_count,
                 "min_stateless_worker_count");
 
-    this->workspace_root = CanonicalPath(workspace_root);
+    this->workspace_root = workspace_root;
     CanonicalRef root = this->workspace_root;
+    Spelling root_anchor = root.empty() ? Spelling() : Spelling(root);
 
     if(p.cache_dir.empty() && !root.empty()) {
         p.cache_dir = path::join(root, ".clice");
@@ -137,41 +148,34 @@ void Config::finalize(llvm::StringRef workspace_root) {
     if(p.logging_dir.empty() && !p.cache_dir.empty())
         p.logging_dir = path::join(p.cache_dir, "logs");
 
-    // Variable substitution on string fields; a path still relative after
-    // it came from initializationOptions (load() anchored a file's own)
-    // and resolves against the workspace root.
+    // A path still relative here came from initializationOptions (load()
+    // anchored a file's own) and resolves against the workspace root; the
+    // file table's name for it is the one kept, whatever the user wrote.
     for(std::string* dir: std::initializer_list<std::string*>{&p.cache_dir, &p.logging_dir}) {
-        substitute_workspace(*dir, root);
-        if(!dir->empty() && !root.empty() && !path::is_rooted(*dir)) {
-            *dir = path::join(root, *dir);
+        if(dir->empty()) {
+            continue;
         }
-        // One spelling per directory, whatever the user wrote (`./cache`,
-        // `sub/../cache`, a symlink, native separators): the one the file
-        // table names files by.
-        if(!dir->empty()) {
-            *dir = CanonicalPath(*dir).str();
+        auto spelled = setting_path(*dir, root_anchor, root);
+        if(!spelled) {
+            LOG_GUIDANCE("{} is relative in a project without a folder; ignored", *dir);
+            dir->clear();
+            continue;
         }
+        *dir = CanonicalPath(*spelled).str();
     }
-
-    auto anchored = [&](std::string value, llvm::StringRef anchor) {
-        substitute_workspace(value, root);
-        llvm::SmallString<256> full(value);
-        if(!path::is_rooted(full) && !anchor.empty()) {
-            full = anchor;
-            path::append(full, value);
-        }
-        path::remove_dots(full, /*remove_dot_dot=*/true);
-        std::string result(full);
-        path::canonicalize(result);
-        return result;
-    };
 
     compiled_rules.clear();
     auto compile = [&](const ConfigRule& rule) -> std::optional<CompiledRule> {
         // A rule read from a file anchors at the file's directory, one from
-        // initializationOptions at the workspace root.
-        std::string anchor = rule.directory.empty() ? root.str() : std::string(rule.directory);
-        path::canonicalize(anchor);
+        // initializationOptions at the workspace root; a project without a
+        // folder has nothing to anchor one at.
+        auto anchor = rule.directory.empty() ? root_anchor
+                                             : Spelling::absolute(std::string(rule.directory));
+        if(anchor.str().empty()) {
+            LOG_GUIDANCE("Rules need a workspace folder to anchor their paths; a rule "
+                         "without one is ignored");
+            return std::nullopt;
+        }
         CompiledRule compiled;
         for(auto& pattern: rule.patterns) {
             if(auto compiled_pattern = compile_pattern(pattern, anchor, root)) {
@@ -186,13 +190,12 @@ void Config::finalize(llvm::StringRef workspace_root) {
         }
         compiled.configuration = rule.configuration;
         for(auto& database: rule.compile_commands) {
-            auto full = anchored(database, anchor);
+            auto full = *setting_path(database, anchor, root);
             // The directory form is told from the file form by extension
             // everywhere else; only the filesystem knows a directory
             // spelled with a .json suffix.
-            if(fs::is_directory(full)) {
-                full = path::join(full, "compile_commands.json");
-                path::canonicalize(full);
+            if(fs::is_directory(full.str())) {
+                full = Spelling("compile_commands.json", full);
             }
             compiled.compile_commands.push_back(std::move(full));
         }
@@ -209,6 +212,11 @@ void Config::finalize(llvm::StringRef workspace_root) {
         compiled.directory = std::move(anchor);
         compiled.append.assign(rule.append.begin(), rule.append.end());
         compiled.remove.assign(rule.remove.begin(), rule.remove.end());
+        for(auto* flags: {&compiled.append, &compiled.remove}) {
+            for(auto& flag: *flags) {
+                substitute_workspace(flag, root);
+            }
+        }
         compiled.index = rule.index;
         compiled.lint = rule.lint;
         compiled.format = rule.format;
@@ -292,7 +300,7 @@ static ConfigIssue make_issue(ConfigIssue::Severity severity,
 }
 
 std::optional<Config> Config::load(llvm::StringRef path,
-                                   llvm::StringRef workspace_root,
+                                   CanonicalRef workspace_root,
                                    std::vector<ConfigIssue>* issues,
                                    bool finalized) {
     auto content = fs::read(path);
@@ -320,15 +328,14 @@ std::optional<Config> Config::load(llvm::StringRef path,
     }
 
     auto config = std::move(*result);
-    auto directory = CanonicalPath(path::parent_path(path));
+    auto directory = Spelling::absolute(path).parent();
     for(auto& rule: config.rules) {
         rule.directory = directory.str();
     }
     for(std::string* dir: std::initializer_list<std::string*>{&config.project.cache_dir,
                                                               &config.project.logging_dir}) {
-        substitute_workspace(*dir, workspace_root);
-        if(!dir->empty() && !path::is_rooted(*dir)) {
-            *dir = path::join(directory, *dir);
+        if(!dir->empty()) {
+            *dir = setting_path(*dir, directory, workspace_root)->str();
         }
     }
     if(finalized)
@@ -337,7 +344,7 @@ std::optional<Config> Config::load(llvm::StringRef path,
     return config;
 }
 
-std::optional<Config> Config::load_from_json(llvm::StringRef json, llvm::StringRef workspace_root) {
+std::optional<Config> Config::load_from_json(llvm::StringRef json, CanonicalRef workspace_root) {
     Config config{};
     auto result = kota::codec::json::from_string(json, config);
     if(!result) {
@@ -350,7 +357,7 @@ std::optional<Config> Config::load_from_json(llvm::StringRef json, llvm::StringR
     return config;
 }
 
-Config Config::load_from_workspace(llvm::StringRef workspace_root,
+Config Config::load_from_workspace(CanonicalRef workspace_root,
                                    std::vector<ConfigIssue>* issues,
                                    std::string* loaded_path,
                                    bool finalized) {
@@ -361,7 +368,7 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
         bool found = false;
         if(!workspace_root.empty()) {
             for(auto name: config_file_names) {
-                auto config_path = path::join(workspace_root, name);
+                auto config_path = path::join(llvm::StringRef(workspace_root), name);
                 if(!llvm::sys::fs::exists(config_path))
                     continue;
                 found = true;
@@ -403,7 +410,7 @@ static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
 }
 
 bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root) {
-    return !path::under(CanonicalPath(cache_dir), workspace_root) &&
+    return !path::under(CanonicalPath(Spelling::absolute(cache_dir)), workspace_root) &&
            live_owner(cache_dir_owner(cache_dir), workspace_root);
 }
 
@@ -412,7 +419,8 @@ void claim_cache_dir(llvm::StringRef cache_dir, CanonicalRef root) {
     // One inside the root is the root's, whatever it records — a copied
     // checkout carries the original's record along.
     if(owner == root.str() ||
-       (!path::under(CanonicalPath(cache_dir), root) && live_owner(owner, root))) {
+       (!path::under(CanonicalPath(Spelling::absolute(cache_dir)), root) &&
+        live_owner(owner, root))) {
         return;
     }
     if(auto written = fs::write(path::join(cache_dir, cache_owner_file), root.str() + "\n");

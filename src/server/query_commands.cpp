@@ -45,15 +45,15 @@ Lines lines_of(const index::Site& site) {
 
 /// The file a path names in the index. An error for a path that is not a
 /// file; nullopt (noted as unindexed) for one the index has no rows for.
-Outcome<std::optional<Fid>> indexed_file(Context& ctx, llvm::StringRef path) {
+Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     if(!llvm::sys::fs::is_regular_file(path)) {
-        return std::unexpected(std::format("no such file: {}", std::string_view(path)));
+        return std::unexpected(std::format("no such file: {}", path));
     }
     // Interning only names the file; whether the index holds rows for
     // it is the shard fetch's answer.
     auto file = ctx.project.file_table.intern(path);
     if(!ctx.project.project_index.shard(file)) {
-        ctx.unindexed.emplace_back(path);
+        ctx.unindexed.emplace_back(path.str());
         return std::nullopt;
     }
     return file;
@@ -68,13 +68,9 @@ Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
         return true;
     }
     auto& place = *query.position;
-    llvm::SmallString<256> absolute(
-        path::is_absolute(place.path) ? place.path
-                                      : path::join(ctx.project.config.workspace_root, place.path));
-    path::remove_dots(absolute, /*remove_dot_dot=*/true);
-    place.path = absolute.str();
-    path::canonicalize(place.path);
-    auto file = indexed_file(ctx, place.path);
+    Spelling spelled(place.path, Spelling(ctx.project.config.workspace_root));
+    place.path = spelled.str();
+    auto file = indexed_file(ctx, spelled);
     if(!file) {
         return std::unexpected(file.error());
     }
@@ -170,9 +166,9 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Edge> ed
 
 }  // namespace
 
-Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path) {
+Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path) {
     if(!llvm::sys::fs::is_regular_file(path)) {
-        return std::unexpected(std::format("no such file: {}", std::string_view(path)));
+        return std::unexpected(std::format("no such file: {}", path));
     }
     // The editor compiles such a header under a synthesized preamble, a
     // cache artifact a read-only reader cannot produce; the host's bare
@@ -185,9 +181,9 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path
     if(auto file = ctx.project.file_table.find(path); file && needs_context(*file)) {
         return std::unexpected(std::format(
             "{} compiles only under a synthesized header context, which needs an editor session",
-            std::string_view(path)));
+            path));
     }
-    CompileCommandResult result{.file = std::string(path)};
+    CompileCommandResult result{.file = path.str()};
     auto source = ctx.contexts.resolve_command(path, result.directory, result.arguments).source;
     switch(source) {
         case CommandSource::CDBExact: result.source = "database"; break;
@@ -240,7 +236,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
 }
 
 Outcome<FileDepsResult>
-    file_deps(Context& ctx, llvm::StringRef path, llvm::StringRef direction, int depth) {
+    file_deps(Context& ctx, const Spelling& path, llvm::StringRef direction, int depth) {
     if(!llvm::is_contained<llvm::StringRef>({"includes", "includers", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected includes, includers or both",
@@ -250,10 +246,10 @@ Outcome<FileDepsResult>
         return std::unexpected("depth must not be negative");
     }
     if(!llvm::sys::fs::is_regular_file(path)) {
-        return std::unexpected(std::format("no such file: {}", std::string_view(path)));
+        return std::unexpected(std::format("no such file: {}", path));
     }
     auto& ws = ctx.project;
-    FileDepsResult result{.file = std::string(path)};
+    FileDepsResult result{.file = path.str()};
     auto file = ws.file_table.find(path);
     if(!file) {
         return result;
@@ -271,9 +267,9 @@ Outcome<FileDepsResult>
     return result;
 }
 
-Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, llvm::StringRef path) {
+Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path) {
     if(!llvm::sys::fs::is_regular_file(path)) {
-        return std::unexpected(std::format("no such file: {}", std::string_view(path)));
+        return std::unexpected(std::format("no such file: {}", path));
     }
     auto& ws = ctx.project;
     ImpactAnalysisResult result;
@@ -376,7 +372,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
     };
 }
 
-Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, llvm::StringRef path) {
+Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& path) {
     auto is_document_level = [](SymbolKind kind) {
         return kind == SymbolKind::Namespace || kind == SymbolKind::Class ||
                kind == SymbolKind::Struct || kind == SymbolKind::Union ||

@@ -94,11 +94,8 @@ static std::string persisted_path(Project& project, llvm::StringRef path) {
     return path.str();
 }
 
-static std::string absolute_path(Project& project, llvm::StringRef persisted) {
-    if(path::is_absolute(persisted)) {
-        return persisted.str();
-    }
-    return path::join(project.config.workspace_root, persisted);
+static Spelling absolute_path(Project& project, llvm::StringRef persisted) {
+    return Spelling(persisted, Spelling(project.config.workspace_root));
 }
 
 CDBSnapshot build_cdb_snapshot(Project& project,
@@ -309,7 +306,7 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
             if(dep_path.empty())
                 continue;
             auto& state = deps.emplace_back();
-            state.path_id = project.file_table.intern(dep_path);
+            state.path_id = project.file_table.intern(Spelling::absolute(dep_path));
             state.missing = dep.missing;
             if(dep.hash != 0) {
                 state.version = project.file_table.intern_version(state.path_id, dep.hash);
@@ -351,7 +348,7 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         if(entry.deps.empty()) {
             continue;
         }
-        auto path_id = project.file_table.intern(source);
+        auto path_id = project.file_table.intern(Spelling::absolute(source));
         auto& st = project.pcm_cache[path_id];
         st.path = *pcm_path;
         st.key = entry.key;
@@ -389,7 +386,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     llvm::SmallVector<Fid> file_ids_map;
     file_ids_map.resize_for_overwrite(view.path_count());
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map[i] = project.file_table.intern(view.path(i));
+        file_ids_map[i] = project.file_table.intern(Spelling::absolute(view.path(i)));
     }
     auto tu_path_id = file_ids_map[main_local_id];
 
@@ -554,7 +551,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // on arrival.
     Report report;
     for(std::uint32_t i = 0; i < view.absent_count(); i += 1) {
-        auto fid = project.file_table.intern(view.absent(i));
+        auto fid = project.file_table.intern(Spelling::absolute(view.absent(i)));
         if(project.file_table.current(fid)) {
             report.add_reindex(tu_path_id);
         }
@@ -1553,8 +1550,8 @@ void IndexStore::retire_excluded(Report& report) {
     }
 }
 
-llvm::SmallVector<std::string> IndexStore::remembered_sources() {
-    llvm::SmallVector<std::string> sources;
+llvm::SmallVector<Spelling> IndexStore::remembered_sources() {
+    llvm::SmallVector<Spelling> sources;
     if(!project.index_db) {
         return sources;
     }
@@ -1567,7 +1564,8 @@ llvm::SmallVector<std::string> IndexStore::remembered_sources() {
     for(auto& entry: persisted.entries) {
         for(auto& source: entry.sources) {
             auto absolute = absolute_path(project, source);
-            if(!llvm::is_contained(sources, absolute)) {
+            if(llvm::none_of(sources,
+                             [&](const Spelling& known) { return known.str() == absolute.str(); })) {
                 sources.push_back(std::move(absolute));
             }
         }
@@ -1602,7 +1600,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         if(entry.hashes.empty()) {
             continue;
         }
-        auto server_id = project.file_table.intern(entry.file);
+        auto server_id = project.file_table.intern(Spelling::absolute(entry.file));
         cdb_ids.insert(server_id);
         auto it = before.find(entry.file);
         // `selected` guards the offline winner flip: the candidate multiset
@@ -1642,7 +1640,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         auto& old = *it->second;
-        auto server_id = project.file_table.intern(entry.file);
+        auto server_id = project.file_table.intern(Spelling::absolute(entry.file));
         if(!old.hashes.empty()) {
             // Its entries vanished. A default command that still claims it
             // is a command change; otherwise the retirement pass below
@@ -1661,7 +1659,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         std::string rules = entry.rules;
         std::string host_selected = entry.host_selected;
         if(entry.host.empty() && !old.host.empty()) {
-            auto host_id = project.file_table.intern(old.host);
+            auto host_id = project.file_table.intern(Spelling::absolute(old.host));
             CanonicalRef paths[] = {project.file_table.resolve(host_id),
                                     project.file_table.resolve(server_id)};
             rules = project.build.edit_hash(paths);
@@ -1687,7 +1685,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         if(old.host.empty()) {
             continue;
         }
-        auto host_id = project.file_table.intern(old.host);
+        auto host_id = project.file_table.intern(Spelling::absolute(old.host));
         if(project.build.commands(host_id).empty() || llvm::is_contained(changed_ids, host_id) ||
            old.host_selected != host_selected) {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
@@ -1735,7 +1733,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         if(old.hashes.empty() || old.sources.empty()) {
             continue;
         }
-        auto server_id = project.file_table.intern(old.file);
+        auto server_id = project.file_table.intern(Spelling::absolute(old.file));
         if(!project.build.commands(server_id).empty()) {
             continue;
         }
@@ -1757,10 +1755,10 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     // a vanished file's debt dies with its entry at the next save.
     for(auto& old: persisted.entries) {
         if(!old.hashes.empty() ||
-           !project.build.entries(project.file_table.intern(old.file)).empty()) {
+           !project.build.entries(project.file_table.intern(Spelling::absolute(old.file))).empty()) {
             continue;
         }
-        auto server_id = project.file_table.intern(old.file);
+        auto server_id = project.file_table.intern(Spelling::absolute(old.file));
         if(retired.contains(server_id) || project_index.manifests.contains(server_id) ||
            !fs::exists(old.file)) {
             continue;
@@ -1804,10 +1802,10 @@ bool IndexStore::file_version_stale(VersionID fv_id) {
     return stale;
 }
 
-bool IndexStore::need_update(llvm::StringRef file_path) {
+bool IndexStore::need_update(Fid file) {
     auto wave = project.file_table.wave();
     auto& project_index = project.project_index;
-    auto manifest_it = project_index.manifests.find(project.file_table.intern(file_path));
+    auto manifest_it = project_index.manifests.find(file);
     if(manifest_it == project_index.manifests.end())
         return true;
 

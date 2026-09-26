@@ -1,10 +1,12 @@
 #pragma once
 
-#include <string>
+#include <optional>
+
+#include "support/filesystem.h"
 
 namespace clice {
 
-/// Convert a file:// URI to a local file path.
-std::string uri_to_path(const std::string& uri);
+/// The file a `file:` URI names; nullopt for any other URI.
+std::optional<Spelling> uri_to_path(llvm::StringRef uri);
 
 }  // namespace clice

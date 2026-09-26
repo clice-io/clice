@@ -61,17 +61,6 @@ auto make_command() {
     return kota::deco::cli::command<FormatOptions>("clice format [OPTIONS] [<PATH>...]");
 }
 
-/// An argument as the build spells paths: absolute under the workspace,
-/// dot segments folded, canonical.
-std::string argument_path(llvm::StringRef root, llvm::StringRef argument) {
-    llvm::SmallString<256> absolute(path::is_absolute(argument) ? argument.str()
-                                                                : path::join(root, argument));
-    path::remove_dots(absolute, /*remove_dot_dot=*/true);
-    std::string result(absolute.str());
-    path::canonicalize(result);
-    return result;
-}
-
 int run_format(BatchFormatOptions options) {
     auto result = run_batch_format(options);
     std::print(stderr, "{}", result.output);
@@ -129,7 +118,7 @@ void add_format(kota::deco::cli::SubCommander& root, int& exit_code) {
                .check = static_cast<bool>(opts.check),
            };
            for(auto& argument: opts.paths.value_or(std::vector<std::string>{})) {
-               options.paths.push_back(argument_path(options.root, argument));
+               options.paths.emplace_back(argument, Spelling(options.root));
            }
            exit_code = run_format(std::move(options));
        })

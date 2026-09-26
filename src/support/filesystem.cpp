@@ -100,9 +100,50 @@ std::string lexical(llvm::StringRef spelled) {
 
 #endif
 
+/// `.` segments, duplicate and trailing separators dropped, canonically
+/// spelled; `..` kept.
+std::string normalized(llvm::StringRef absolute) {
+    llvm::SmallString<256> text(absolute);
+    path::remove_dots(text, /*remove_dot_dot=*/false);
+    std::string result(text);
+    path::canonicalize(result);
+    return result;
+}
+
 }  // namespace
 
-CanonicalPath::CanonicalPath(llvm::StringRef spelled) {
+Spelling::Spelling(llvm::StringRef text, const Spelling& base) {
+    if(path::is_absolute(text)) {
+        this->text = normalized(text);
+        return;
+    }
+    llvm::SmallString<256> joined(base.text);
+    path::append(joined, text);
+    this->text = normalized(joined);
+}
+
+Spelling Spelling::absolute(llvm::StringRef text) {
+    assert(path::is_absolute(text) && "an unanchored path");
+    Spelling result;
+    result.text = normalized(text);
+    return result;
+}
+
+Spelling Spelling::cwd() {
+    llvm::SmallString<256> directory;
+    llvm::sys::fs::current_path(directory);
+    return absolute(directory);
+}
+
+Spelling::Spelling(CanonicalRef identity) : text(identity.str()) {}
+
+Spelling Spelling::parent() const {
+    Spelling result;
+    result.text = path::parent_path(text).str();
+    return result;
+}
+
+CanonicalPath::CanonicalPath(const Spelling& spelled) {
     auto full = lexical(spelled);
     llvm::StringRef existing = full;
     auto real = resolve_existing(existing);

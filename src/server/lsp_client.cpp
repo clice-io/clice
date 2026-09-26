@@ -124,11 +124,15 @@ static void unversion(protocol::WorkspaceEdit& edit) {
 
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = uri_to_path(uri);
-    auto path_id = this->server.files.intern(path);
+    if(!path) {
+        // Not a file: no document of ours.
+        return ResolvedDoc{.project = this->server.projects.front()};
+    }
+    auto path_id = this->server.files.intern(*path);
     // A document waiting under a second name has a buffer of its own: the
     // session holds the first name's text, which answers nothing for it.
-    auto session = find_alias(path_id, path) ? nullptr : this->server.find_session(path_id);
-    return ResolvedDoc{std::move(path),
+    auto session = find_alias(path_id, *path) ? nullptr : this->server.find_session(path_id);
+    return ResolvedDoc{path->str(),
                        path_id,
                        std::move(session),
                        this->server.owner_of(path_id).shared_from_this()};
@@ -170,13 +174,17 @@ void LSPClient::register_lifecycle() {
         // support names its one root through rootUri.
         auto& init = params.lsp__initialize_params;
         auto& folders = params.workspace_folders_initialize_params.workspace_folders;
-        std::vector<std::string> roots;
+        std::vector<Spelling> roots;
         if(folders.has_value() && folders->has_value() && !(*folders)->empty()) {
             for(auto& folder: **folders) {
-                roots.push_back(uri_to_path(folder.uri));
+                if(auto root = uri_to_path(folder.uri)) {
+                    roots.push_back(std::move(*root));
+                }
             }
         } else if(init.root_uri.has_value()) {
-            roots.push_back(uri_to_path(*init.root_uri));
+            if(auto root = uri_to_path(*init.root_uri)) {
+                roots.push_back(std::move(*root));
+            }
         }
         srv.change_folders({}, std::move(roots));
 
@@ -322,13 +330,17 @@ void LSPClient::register_lifecycle() {
         if(past_shutdown(srv.lifecycle)) {
             return;
         }
-        std::vector<std::string> removed;
+        std::vector<Spelling> removed;
         for(auto& folder: params.event.removed) {
-            removed.push_back(uri_to_path(folder.uri));
+            if(auto root = uri_to_path(folder.uri)) {
+                removed.push_back(std::move(*root));
+            }
         }
-        std::vector<std::string> added;
+        std::vector<Spelling> added;
         for(auto& folder: params.event.added) {
-            added.push_back(uri_to_path(folder.uri));
+            if(auto root = uri_to_path(folder.uri)) {
+                added.push_back(std::move(*root));
+            }
         }
         srv.change_folders(std::move(removed), std::move(added));
     });
@@ -355,7 +367,12 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.foreground_pulse();
 
-        auto path = uri_to_path(params.text_document.uri);
+        auto spelled = uri_to_path(params.text_document.uri);
+        if(!spelled) {
+            LOG_INFO("didOpen: {} names no file; not served", params.text_document.uri);
+            return;
+        }
+        auto& path = spelled->str();
 
         // A didOpen racing ahead of the initialize handshake is a client
         // protocol violation, but sessions are plain state with no worker
@@ -367,7 +384,7 @@ void LSPClient::register_document_sync() {
             LOG_WARN("didOpen before the server is ready, accepting: {}", path);
         }
 
-        auto path_id = srv.files.intern(path);
+        auto path_id = srv.files.intern(*spelled);
         // One file, one buffer: a second document naming it through another
         // path (a symlink) would fold its own edits into the first one's.
         // The document opened first keeps it; this one waits with its own
@@ -450,8 +467,12 @@ void LSPClient::register_document_sync() {
         // clear is suppressed until the handshake completes — nothing was
         // pushed, and publishDiagnostics may not flow yet (push_output
         // drops the clear while !client_ready).
-        auto path = uri_to_path(params.text_document.uri);
-        auto path_id = srv.files.intern(path);
+        auto spelled = uri_to_path(params.text_document.uri);
+        if(!spelled) {
+            return;
+        }
+        auto& path = spelled->str();
+        auto path_id = srv.files.intern(*spelled);
         if(auto* alias = find_alias(path_id, path)) {
             take_alias(path_id, alias);
             return;
@@ -485,9 +506,12 @@ void LSPClient::register_document_sync() {
         srv.pool.foreground_pulse();
 
         auto path = uri_to_path(params.text_document.uri);
-        srv.saved(srv.files.intern(path));
+        if(!path) {
+            return;
+        }
+        srv.saved(srv.files.intern(*path));
 
-        LOG_DEBUG("didSave: {}", path);
+        LOG_DEBUG("didSave: {}", *path);
     });
 }
 
@@ -734,8 +758,12 @@ void LSPClient::register_extensions() {
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto path_id = this->server.files.intern(uri_to_path(params.uri));
-            co_return to_raw(this->server.query_contexts(path_id, params));
+            auto path = uri_to_path(params.uri);
+            if(!path) {
+                co_return to_raw(ext::QueryContextResult{});
+            }
+            co_return to_raw(
+                this->server.query_contexts(this->server.files.intern(*path), params));
         });
 
     peer.on_request(
@@ -750,8 +778,13 @@ void LSPClient::register_extensions() {
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto path_id = this->server.files.intern(uri_to_path(params.uri));
-            auto context_path_id = this->server.files.intern(uri_to_path(params.context_uri));
+            auto path = uri_to_path(params.uri);
+            auto context_path = uri_to_path(params.context_uri);
+            if(!path || !context_path) {
+                co_return to_raw(ext::SwitchContextResult{});
+            }
+            auto path_id = this->server.files.intern(*path);
+            auto context_path_id = this->server.files.intern(*context_path);
             // The session reset lives inside switch_context (single owner,
             // synchronous, no cross-file cascade — exempt from the event
             // pipeline; see the Invalidator charter).

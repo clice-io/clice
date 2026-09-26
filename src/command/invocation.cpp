@@ -13,6 +13,12 @@ std::unique_ptr<clang::CompilerInvocation>
                                llvm::StringRef directory,
                                llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs,
                                llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine> diagnostics) {
+    // The compile runs in its directory: files the driver checks and the
+    // frontend opens straight through the file system (sanitizer lists, VFS
+    // overlays) resolve there, as in the real build.
+    if(vfs && !directory.empty()) {
+        vfs->setCurrentWorkingDirectory(directory);
+    }
     std::unique_ptr<clang::CompilerInvocation> invocation;
     bool is_cc1 = arguments.size() >= 2 && llvm::StringRef(arguments[1]) == "-cc1";
     if(is_cc1) {

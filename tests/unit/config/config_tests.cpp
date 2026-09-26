@@ -73,7 +73,7 @@ void match_rules(const Config& config,
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{const_cast<Config&>(config), cdb, files};
-    for(auto& edit: build.edits(CanonicalPath(path)).edits) {
+    for(auto& edit: build.edits(CanonicalPath(Spelling::absolute(path))).edits) {
         auto& out = edit.kind == CommandEdit::Kind::Remove ? remove : append;
         out.insert(out.end(), edit.flags.begin(), edit.flags.end());
     }
@@ -89,8 +89,8 @@ TEST_CASE(CacheDirServesOneProject) {
     tmp.touch("a/main.cpp", "");
     tmp.touch("b/main.cpp", "");
     auto shared = tmp.path("shared");
-    CanonicalPath a(tmp.path("a"));
-    CanonicalPath b(tmp.path("b"));
+    CanonicalPath a(Spelling::absolute(tmp.path("a")));
+    CanonicalPath b(Spelling::absolute(tmp.path("b")));
     EXPECT_FALSE(owned_elsewhere(shared, b));
     claim_cache_dir(shared, a);
     EXPECT_FALSE(owned_elsewhere(shared, a));
@@ -102,7 +102,7 @@ TEST_CASE(CacheDirServesOneProject) {
     auto inner = path::join(a, ".clice");
     EXPECT_FALSE(owned_elsewhere(inner, a));
     claim_cache_dir(inner, a);
-    EXPECT_TRUE(owned_elsewhere(inner, CanonicalPath(path::join(a, "sub"))));
+    EXPECT_TRUE(owned_elsewhere(inner, CanonicalPath(Spelling::absolute(path::join(a, "sub")))));
 
     // An owner that no longer exists claims nothing.
     tmp.touch("moved/owner", tmp.path("gone") + "\n");
@@ -198,7 +198,7 @@ TEST_CASE(MatchRulesBasic) {
         .append = {"-std=c++20"},
         .remove = {"-std=c++17"},
     });
-    config.finalize("");
+    config.finalize(CanonicalPath(Spelling::absolute("/src")));
 
     std::vector<std::string> append, remove;
     match_rules(config, "/src/foo.cpp", append, remove);
@@ -214,7 +214,7 @@ TEST_CASE(MatchRulesNoMatch) {
         .patterns = {"**/*.cpp"},
         .append = {"-DFOO"},
     });
-    config.finalize("");
+    config.finalize(CanonicalPath(Spelling::absolute("/src")));
 
     std::vector<std::string> append, remove;
     match_rules(config, "/src/foo.h", append, remove);
@@ -232,7 +232,7 @@ TEST_CASE(MatchRulesMultiple) {
         .patterns = {"**/test_*.cpp"},
         .append = {"-DTEST"},
     });
-    config.finalize("");
+    config.finalize(CanonicalPath(Spelling::absolute("/src")));
 
     std::vector<std::string> append, remove;
     match_rules(config, "/src/test_foo.cpp", append, remove);
@@ -274,7 +274,7 @@ TEST_CASE(BornValidDefaults) {
 
 TEST_CASE(FinalizeDerivesPaths) {
     Config config;
-    config.finalize("/workspace");
+    config.finalize(CanonicalPath(Spelling::absolute("/workspace")));
     EXPECT_FALSE(config.project.cache_dir.empty());
     EXPECT_FALSE(config.project.logging_dir.empty());
     EXPECT_EQ(config.project.cache_dir_defaulted.value, true);
@@ -282,7 +282,7 @@ TEST_CASE(FinalizeDerivesPaths) {
 
 TEST_CASE(FinalizeEmptyWorkspace) {
     Config config;
-    config.finalize("");
+    config.finalize(CanonicalPath());
     EXPECT_TRUE(config.project.cache_dir.empty());
     EXPECT_TRUE(config.project.logging_dir.empty());
 }
@@ -293,7 +293,7 @@ TEST_CASE(FinalizePreservesSet) {
     config.project.enable_indexing = false;
     config.inlay_hints.parameters = false;
     config.inlay_hints.block_end = true;
-    config.finalize("/workspace");
+    config.finalize(CanonicalPath(Spelling::absolute("/workspace")));
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/custom");
     EXPECT_EQ(config.project.cache_dir_defaulted.value, false);
     EXPECT_EQ(config.project.enable_indexing.value, false);
@@ -312,7 +312,7 @@ TEST_CASE(LoadFromJson) {
             { "patterns": ["**/*.cpp"], "append": ["-DFOO"] }
         ]
     })",
-                                         "/workspace");
+                                         CanonicalPath(Spelling::absolute("/workspace")));
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(std::string_view(result->project.cache_dir), "/opt/cache");
     EXPECT_EQ(result->project.enable_indexing.value, false);
@@ -321,14 +321,15 @@ TEST_CASE(LoadFromJson) {
 }
 
 TEST_CASE(LoadFromJsonInvalid) {
-    auto result = Config::load_from_json("{not valid json", "/workspace");
+    auto result =
+        Config::load_from_json("{not valid json", CanonicalPath(Spelling::absolute("/workspace")));
     EXPECT_FALSE(result.has_value());
 }
 
 TEST_CASE(LoadMalformedToml) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\nbroken");
-    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str().str());
+    auto result = Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT_FALSE(result.has_value());
 }
 
@@ -342,13 +343,14 @@ cache_dir = "/opt/cache"
 index_dir = "/opt/index"
 worker_memory_limit = 4294967296
 )");
-    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str().str());
+    auto result = Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(std::string_view(result->project.cache_dir), "/opt/cache");
 }
 
 TEST_CASE(LoadMissingFile) {
-    auto result = Config::load("/nonexistent/clice.toml", "/workspace");
+    auto result =
+        Config::load("/nonexistent/clice.toml", CanonicalPath(Spelling::absolute("/workspace")));
     EXPECT_FALSE(result.has_value());
 }
 
@@ -363,11 +365,11 @@ TEST_CASE(WorkspaceVarSubst) {
     config.project.cache_dir = "${workspace}/cache";
     config.project.logging_dir = "${workspace}/logs";
     config.rules.push_back(ConfigRule{.compile_commands = {"${workspace}/build"}});
-    config.finalize(tmp.root.str());
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT_EQ(std::string_view(config.project.cache_dir), at("cache"));
     EXPECT_EQ(std::string_view(config.project.logging_dir), at("logs"));
     ASSERT_EQ(config.compiled_rules.size(), 1u);
-    EXPECT_EQ(config.compiled_rules[0].compile_commands[0], at("build"));
+    EXPECT_EQ(config.compiled_rules[0].compile_commands[0].str(), at("build"));
 }
 
 TEST_CASE(ParseRuleSources) {
@@ -406,6 +408,9 @@ TEST_CASE(AnchoredRules) {
         path::canonicalize(p);
         return p;
     };
+    auto identity = [&](llvm::StringRef relative) {
+        return CanonicalPath(Spelling::absolute(at(relative)));
+    };
     std::string root = tmp.root.str().str();
     path::canonicalize(root);
     tmp.touch("sub/clice.toml",
@@ -425,14 +430,14 @@ compile_commands = ["build", "{}"]
 )",
                           at("elsewhere/compile_commands.json")));
 
-    auto loaded = Config::load(tmp.path("sub/clice.toml"), root);
+    auto loaded = Config::load(tmp.path("sub/clice.toml"), CanonicalPath(Spelling::absolute(root)));
     ASSERT_TRUE(loaded.has_value());
     auto& config = *loaded;
 
     ASSERT_EQ(config.compiled_rules.size(), 3u);
-    EXPECT_EQ(config.compiled_rules[0].compile_commands[0], at("sub/out/debug"));
-    EXPECT_EQ(config.compiled_rules[0].directory, at("sub"));
-    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, CanonicalPath(at("sub/src")));
+    EXPECT_EQ(config.compiled_rules[0].compile_commands[0].str(), at("sub/out/debug"));
+    EXPECT_EQ(config.compiled_rules[0].directory.str(), at("sub"));
+    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, identity("sub/src"));
     EXPECT_TRUE(config.compiled_rules[0].declares_sources());
     /// The string spelling is tokenized, then `${workspace}` substituted
     /// per argument.
@@ -440,13 +445,14 @@ compile_commands = ["build", "{}"]
     EXPECT_EQ(config.compiled_rules[0].default_command[2], "-I" + at("include"));
     EXPECT_FALSE(config.compiled_rules[1].declares_sources());
     ASSERT_EQ(config.compiled_rules[1].patterns.size(), 4u);
-    EXPECT_EQ(config.compiled_rules[1].patterns[0].root, CanonicalPath(root));
-    EXPECT_EQ(config.compiled_rules[1].patterns[1].root, CanonicalPath(at("gen")));
-    EXPECT_EQ(config.compiled_rules[1].patterns[2].root, CanonicalPath(at("shared")));
-    EXPECT_EQ(config.compiled_rules[1].patterns[3].root, CanonicalPath(at("sub")));
+    EXPECT_EQ(config.compiled_rules[1].patterns[0].root, CanonicalPath(Spelling::absolute(root)));
+    EXPECT_EQ(config.compiled_rules[1].patterns[1].root, identity("gen"));
+    EXPECT_EQ(config.compiled_rules[1].patterns[2].root, identity("shared"));
+    EXPECT_EQ(config.compiled_rules[1].patterns[3].root, identity("sub"));
     EXPECT_TRUE(config.compiled_rules[2].patterns.empty());
-    EXPECT_EQ(config.compiled_rules[2].compile_commands[0], at("sub/build"));
-    EXPECT_EQ(config.compiled_rules[2].compile_commands[1], at("elsewhere/compile_commands.json"));
+    EXPECT_EQ(config.compiled_rules[2].compile_commands[0].str(), at("sub/build"));
+    EXPECT_EQ(config.compiled_rules[2].compile_commands[1].str(),
+              at("elsewhere/compile_commands.json"));
 
     auto tags = config.configurations();
     ASSERT_EQ(tags.size(), 1u);
@@ -454,18 +460,18 @@ compile_commands = ["build", "{}"]
 
     /// A relative pattern sees only files under its anchor; a bare `*`
     /// names the anchor's direct children.
-    EXPECT_EQ(config.matching_rules(CanonicalPath(at("sub/src/a.cpp")), "debug").size(), 2u);
-    EXPECT_EQ(config.matching_rules(CanonicalPath(at("sub/src/a.cpp")), "release").size(), 1u);
-    EXPECT_EQ(config.matching_rules(CanonicalPath(at("src/a.cpp")), "debug").size(), 1u);
-    EXPECT_EQ(config.matching_rules(CanonicalPath(at("sub/a.cpp")), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(identity("sub/src/a.cpp"), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(identity("sub/src/a.cpp"), "release").size(), 1u);
+    EXPECT_EQ(config.matching_rules(identity("src/a.cpp"), "debug").size(), 1u);
+    EXPECT_EQ(config.matching_rules(identity("sub/a.cpp"), "debug").size(), 2u);
     /// `**` and `${workspace}` patterns match the absolute path; `..`
     /// climbs out of the anchor, `*` stays within one segment.
-    auto hxx = config.matching_rules(CanonicalPath(at("other/tree/x.hxx")), "debug");
+    auto hxx = config.matching_rules(identity("other/tree/x.hxx"), "debug");
     ASSERT_EQ(hxx.size(), 2u);
     EXPECT_EQ(hxx[0]->append.size(), 2u);
-    EXPECT_EQ(config.matching_rules(CanonicalPath(at("gen/x.cpp")), "debug").size(), 2u);
-    EXPECT_EQ(config.matching_rules(CanonicalPath(at("shared/x.cpp")), "debug").size(), 2u);
-    EXPECT_EQ(config.matching_rules(CanonicalPath(at("shared/deep/x.cpp")), "debug").size(), 1u);
+    EXPECT_EQ(config.matching_rules(identity("gen/x.cpp"), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(identity("shared/x.cpp"), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(identity("shared/deep/x.cpp"), "debug").size(), 1u);
 }
 
 TEST_CASE(InitOptionsAnchorAtWorkspace) {
@@ -489,24 +495,29 @@ append = ["-DFROM_FILE"]
 compile_commands = ["../build"]
 )");
 
-    auto from_file = Config::load_from_workspace(root);
+    auto from_file = Config::load_from_workspace(CanonicalPath(Spelling::absolute(root)));
     ASSERT_EQ(from_file.compiled_rules.size(), 2u);
-    EXPECT_EQ(from_file.compiled_rules[0].patterns[0].root, CanonicalPath(at("src")));
-    EXPECT_EQ(from_file.compiled_rules[0].directory, at(".clice"));
-    EXPECT_EQ(from_file.compiled_rules[1].compile_commands[0], at("build"));
+    EXPECT_EQ(from_file.compiled_rules[0].patterns[0].root,
+              CanonicalPath(Spelling::absolute(at("src"))));
+    EXPECT_EQ(from_file.compiled_rules[0].directory.str(), at(".clice"));
+    EXPECT_EQ(from_file.compiled_rules[1].compile_commands[0].str(), at(".clice/../build"));
 
-    auto config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
+    auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(root)),
+                                              nullptr,
+                                              nullptr,
+                                              /*finalized=*/false);
     auto ov = kota::codec::json::from_string(
         R"({ "rules": [{ "patterns": ["src/**"], "compile_commands": ["cmake"] }, { "compile_commands": ["out"] }] })",
         config);
     ASSERT_TRUE(ov.has_value());
-    config.finalize(root);
+    config.finalize(CanonicalPath(Spelling::absolute(root)));
 
     ASSERT_EQ(config.compiled_rules.size(), 2u);
-    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, CanonicalPath(at("src")));
-    EXPECT_EQ(config.compiled_rules[0].compile_commands[0], at("cmake"));
-    EXPECT_EQ(config.compiled_rules[0].directory, root);
-    EXPECT_EQ(config.compiled_rules[1].compile_commands[0], at("out"));
+    EXPECT_EQ(config.compiled_rules[0].patterns[0].root,
+              CanonicalPath(Spelling::absolute(at("src"))));
+    EXPECT_EQ(config.compiled_rules[0].compile_commands[0].str(), at("cmake"));
+    EXPECT_EQ(config.compiled_rules[0].directory.str(), root);
+    EXPECT_EQ(config.compiled_rules[1].compile_commands[0].str(), at("out"));
 }
 
 TEST_CASE(RelativeProjectDirsAnchor) {
@@ -523,21 +534,21 @@ TEST_CASE(RelativeProjectDirsAnchor) {
     path::canonicalize(root);
     tmp.touch("sub/clice.toml", "[project]\ncache_dir = \"cache\"\n");
 
-    auto loaded = Config::load(tmp.path("sub/clice.toml"), root);
+    auto loaded = Config::load(tmp.path("sub/clice.toml"), CanonicalPath(Spelling::absolute(root)));
     ASSERT_TRUE(loaded.has_value());
     EXPECT_EQ(std::string_view(loaded->project.cache_dir), at("sub/cache"));
     EXPECT_EQ(std::string_view(loaded->project.logging_dir), at("sub/cache/logs"));
 
     Config config;
     config.project.logging_dir = "logs";
-    config.finalize(root);
+    config.finalize(CanonicalPath(Spelling::absolute(root)));
     EXPECT_EQ(std::string_view(config.project.logging_dir), at("logs"));
 }
 
 TEST_CASE(SourcesOffByDefault) {
     Config config;
     config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .append = {"-DX"}});
-    config.finalize("/ws");
+    config.finalize(CanonicalPath(Spelling::absolute("/ws")));
     EXPECT_FALSE(config.compiled_rules[0].declares_sources());
     EXPECT_TRUE(config.configurations().empty());
 }
@@ -556,7 +567,7 @@ TEST_CASE(InvalidGlobPattern) {
         .patterns = {"**/****.{c,cc}", "**/*.cpp"},
         .append = {"-DCPP"},
     });
-    config.finalize("");
+    config.finalize(CanonicalPath(Spelling::absolute("/src")));
     ASSERT_EQ(config.compiled_rules.size(), 2u);
     EXPECT_TRUE(config.compiled_rules[0].unmatchable);
     EXPECT_TRUE(config.compiled_rules[0].declares_sources());
@@ -570,8 +581,8 @@ TEST_CASE(InvalidGlobPattern) {
 
 TEST_CASE(ConfigPriorityJson) {
     // initializationOptions-sourced config should override an on-disk default.
-    auto from_json =
-        Config::load_from_json(R"({ "project": { "idle_timeout_ms": 42 } })", "/workspace");
+    auto from_json = Config::load_from_json(R"({ "project": { "idle_timeout_ms": 42 } })",
+                                            CanonicalPath(Spelling::absolute("/workspace")));
     EXPECT_TRUE(from_json.has_value());
     EXPECT_EQ(from_json->project.idle_timeout_ms.value, 42u);
     // Unset fields still receive defaults.
@@ -581,7 +592,7 @@ TEST_CASE(ConfigPriorityJson) {
 
 TEST_CASE(DefaultWorkspaceCache) {
     Config config;
-    config.finalize("/ws/root");
+    config.finalize(CanonicalPath(Spelling::absolute("/ws/root")));
 
     EXPECT_EQ(path::convert_to_slash(std::string_view(config.project.cache_dir)),
               "/ws/root/.clice");
@@ -591,18 +602,40 @@ TEST_CASE(DefaultWorkspaceCache) {
 
 TEST_CASE(WorkspaceSubstEmpty) {
     // Empty workspace_root must not rewrite "${workspace}" into "" and produce
-    // bogus paths like "/cache" — the placeholder should be left intact.
+    // bogus paths like "/cache": the directory stays relative, and a project
+    // without a folder has nothing to anchor it at, so it is dropped.
     Config config;
     config.project.cache_dir = "${workspace}/cache";
-    config.finalize("");
-    EXPECT_EQ(std::string_view(config.project.cache_dir), "${workspace}/cache");
+    config.finalize(CanonicalPath());
+    EXPECT_TRUE(config.project.cache_dir.empty());
+}
+
+TEST_CASE(RootlessRulesIgnored) {
+    // A server without folders has nothing to anchor a rule's paths at:
+    // the rule is dropped instead of matching against the process's cwd.
+    Config config;
+    config.rules.push_back(ConfigRule{.patterns = {"src/**"}, .append = {"-DX"}});
+    config.finalize(CanonicalPath());
+    EXPECT_TRUE(config.compiled_rules.empty());
+}
+
+TEST_CASE(HomeExpanded) {
+    // A leading `~` is the home directory, not a directory named `~`.
+    TempDir tmp;
+    Config config;
+    config.project.cache_dir = "~/clice-cache";
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    llvm::SmallString<256> home;
+    ASSERT_TRUE(llvm::sys::path::home_directory(home));
+    EXPECT_EQ(std::string_view(config.project.cache_dir),
+              CanonicalPath(Spelling("clice-cache", Spelling::absolute(home))).str());
 }
 
 TEST_CASE(WorkspaceSubstRepeated) {
     // Multiple ${workspace} occurrences in one string all get substituted.
     Config config;
     config.project.cache_dir = "${workspace}/a/${workspace}/b";
-    config.finalize("/root");
+    config.finalize(CanonicalPath(Spelling::absolute("/root")));
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/root/a/root/b");
 }
 
@@ -624,21 +657,21 @@ TEST_CASE(CompileCommandsList) {
                              "out", "build.json",
                              }
     });
-    config.finalize(tmp.root.str());
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     ASSERT_EQ(config.compiled_rules.size(), 1u);
     auto& databases = config.compiled_rules[0].compile_commands;
     ASSERT_EQ(databases.size(), 4u);
-    EXPECT_EQ(databases[0], at("build"));
-    EXPECT_EQ(databases[1], at("abs/path/compile_commands.json"));
-    EXPECT_EQ(databases[2], at("out"));
-    EXPECT_EQ(databases[3], at("build.json/compile_commands.json"));
+    EXPECT_EQ(databases[0].str(), at("build"));
+    EXPECT_EQ(databases[1].str(), at("abs/path/compile_commands.json"));
+    EXPECT_EQ(databases[2].str(), at("out"));
+    EXPECT_EQ(databases[3].str(), at("build.json/compile_commands.json"));
 }
 
 TEST_CASE(TomlErrorLocated) {
     // Malformed TOML (bad table header, missing close-bracket) must return nullopt.
     TempDir tmp;
     tmp.touch("clice.toml", "[project\ntest_hooks = true\n");
-    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str());
+    auto result = Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT_FALSE(result.has_value());
 }
 
@@ -649,7 +682,8 @@ TEST_CASE(SyntaxIssueReported) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\ntest_hooks = true\n");
     std::vector<ConfigIssue> issues;
-    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str(), &issues);
+    auto result =
+        Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)), &issues);
     EXPECT_FALSE(result.has_value());
     ASSERT_EQ(issues.size(), 1u);
     EXPECT_EQ(issues[0].severity, ConfigIssue::Severity::Error);
@@ -659,7 +693,8 @@ TEST_CASE(TypeIssueReported) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project]\ntest_hooks = \"yes\"\n");
     std::vector<ConfigIssue> issues;
-    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str(), &issues);
+    auto result =
+        Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)), &issues);
     EXPECT_FALSE(result.has_value());
     ASSERT_EQ(issues.size(), 1u);
     EXPECT_EQ(issues[0].severity, ConfigIssue::Severity::Error);
@@ -670,7 +705,8 @@ TEST_CASE(RemovedKeyIssueWarns) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project]\nworker_memory_limit = 4294967296\n");
     std::vector<ConfigIssue> issues;
-    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str(), &issues);
+    auto result =
+        Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)), &issues);
     EXPECT_TRUE(result.has_value());
     ASSERT_EQ(issues.size(), 1u);
     EXPECT_EQ(issues[0].severity, ConfigIssue::Severity::Warning);
@@ -683,7 +719,8 @@ TEST_CASE(UnknownFeatureKeyWarns) {
     TempDir tmp;
     tmp.touch("clice.toml", "[inlay_hints]\nblokc_end = true\n");
     std::vector<ConfigIssue> issues;
-    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str(), &issues);
+    auto result =
+        Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)), &issues);
     EXPECT_TRUE(result.has_value());
     ASSERT_EQ(issues.size(), 1u);
     EXPECT_EQ(issues[0].severity, ConfigIssue::Severity::Warning);
@@ -698,7 +735,7 @@ TEST_CASE(ZeroWorkerCountRejected) {
     config.project.stateful_worker_count = 0;
     config.project.stateless_worker_count = 0;
     config.project.min_stateless_worker_count = 0;
-    config.finalize("");
+    config.finalize(CanonicalPath());
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
     EXPECT_GE(config.project.stateless_worker_count.value, 2u);
     EXPECT_EQ(config.project.min_stateless_worker_count.value, 1u);
@@ -708,9 +745,11 @@ TEST_CASE(NullOptionRejected) {
     // `defaulted` means "may be absent", never "may be null": an explicit
     // JSON null on an option is a type error and fails the whole decode,
     // both flat and inside a feature section.
-    auto flat = Config::load_from_json(R"({ "project": { "test_hooks": null } })", "/ws");
+    auto flat = Config::load_from_json(R"({ "project": { "test_hooks": null } })",
+                                       CanonicalPath(Spelling::absolute("/ws")));
     EXPECT_FALSE(flat.has_value());
-    auto nested = Config::load_from_json(R"({ "inlay_hints": { "block_end": null } })", "/ws");
+    auto nested = Config::load_from_json(R"({ "inlay_hints": { "block_end": null } })",
+                                         CanonicalPath(Spelling::absolute("/ws")));
     EXPECT_FALSE(nested.has_value());
 }
 
@@ -719,7 +758,7 @@ TEST_CASE(WorkspaceMalformedFallback) {
     // not propagate the failure.
     TempDir tmp;
     tmp.touch("clice.toml", "[project\ninvalid");
-    auto config = Config::load_from_workspace(tmp.root.str());
+    auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
     // Defaults still applied.
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
     EXPECT_EQ(config.project.enable_indexing.value, true);
@@ -736,7 +775,7 @@ TEST_CASE(RuleOrderLaterRemoveWins) {
         .patterns = {"**/*.cpp"},
         .remove = {"-DFOO"},
     });
-    config.finalize("");
+    config.finalize(CanonicalPath(Spelling::absolute("/src")));
 
     // The edits stay in rule order; the remove takes effect against the
     // earlier append when the command is built, and against the base.
@@ -744,7 +783,7 @@ TEST_CASE(RuleOrderLaterRemoveWins) {
     CompilationDatabase cdb{files};
     cdb.add_command("/src", "/src/a.cpp", std::string_view("clang++ -DFOO a.cpp"));
     Build build{config, cdb, files};
-    auto edits = build.edits(CanonicalPath("/src/a.cpp"));
+    auto edits = build.edits(CanonicalPath(Spelling::absolute("/src/a.cpp")));
     ASSERT_EQ(edits.edits.size(), 2u);
     EXPECT_EQ(edits.edits[1].kind, CommandEdit::Kind::Remove);
     EXPECT_EQ(print_argv(render_entry(cdb, "/src/a.cpp", edits.options())),
@@ -763,7 +802,7 @@ TEST_CASE(RuleOrderLaterAppendWins) {
         .patterns = {"**/*.cpp"},
         .append = {"-O3"},
     });
-    config.finalize("");
+    config.finalize(CanonicalPath(Spelling::absolute("/src")));
 
     std::vector<std::string> append, remove;
     match_rules(config, "/src/a.cpp", append, remove);
@@ -788,7 +827,7 @@ patterns = ["**/*.cpp"]
 append = ["-DFROM_TOML"]
 )");
 
-    auto config = Config::load_from_workspace(tmp.root.str());
+    auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
     EXPECT_EQ(config.project.test_hooks.value, true);
     EXPECT_EQ(config.project.idle_timeout_ms.value, 16u);
@@ -797,7 +836,7 @@ append = ["-DFROM_TOML"]
     // Overlay only `idle_timeout_ms` via JSON.
     auto ov = kota::codec::json::from_string(R"({ "project": { "idle_timeout_ms": 99 } })", config);
     EXPECT_TRUE(ov.has_value());
-    config.finalize(tmp.root.str());
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
 
     // Overridden field.
     EXPECT_EQ(config.project.idle_timeout_ms.value, 99u);
@@ -824,7 +863,7 @@ block_end = true
 [code_completion]
 bundle_overloads = false
 )");
-    auto config = Config::load_from_workspace(tmp.root.str(),
+    auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)),
                                               nullptr,
                                               nullptr,
                                               /*finalized=*/false);
@@ -832,7 +871,7 @@ bundle_overloads = false
         R"({ "inlay_hints": { "parameters": false, "block_end": false }, "code_completion": { "limit": 5 } })",
         config);
     EXPECT_TRUE(ov.has_value());
-    config.finalize(tmp.root.str());
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
 
     // From the TOML layer.
     EXPECT_EQ(config.code_completion.bundle_overloads.value, false);
@@ -856,14 +895,14 @@ TEST_CASE(InitOptionsOverlayRulesReplace) {
 patterns = ["**/*.cpp"]
 append = ["-DTOML_ONLY"]
 )");
-    auto config = Config::load_from_workspace(tmp.root.str());
+    auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT_EQ(config.compiled_rules.size(), 1u);
 
     auto ov = kota::codec::json::from_string(
         R"({ "rules": [ { "patterns": ["**/*.cc"], "append": ["-DFROM_JSON"] } ] })",
         config);
     EXPECT_TRUE(ov.has_value());
-    config.finalize(tmp.root.str());
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
 
     EXPECT_EQ(config.rules.size(), 1u);
     EXPECT_EQ(config.rules[0].append[0], "-DFROM_JSON");

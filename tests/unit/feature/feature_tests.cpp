@@ -51,12 +51,14 @@ TEST_CASE(RoundTripIdentity) {
         if(!path.has_value()) {
             return bad;
         }
-        return pool.intern(*path);
+        return pool.intern(Spelling::absolute(*path));
     };
-    ASSERT_EQ(ingest(feature::to_uri("/proj/a.cpp")), pool.intern("/proj/a.cpp"));
+    ASSERT_EQ(ingest(feature::to_uri("/proj/a.cpp")),
+              pool.intern(Spelling::absolute("/proj/a.cpp")));
 #ifdef _WIN32
-    ASSERT_EQ(ingest(feature::to_uri(R"(C:\proj\a.cpp)")), pool.intern("c:/proj/a.cpp"));
-    ASSERT_EQ(ingest("file:///c%3A/proj/a.cpp"), pool.intern("c:/proj/a.cpp"));
+    ASSERT_EQ(ingest(feature::to_uri(R"(C:\proj\a.cpp)")),
+              pool.intern(Spelling::absolute("c:/proj/a.cpp")));
+    ASSERT_EQ(ingest("file:///c%3A/proj/a.cpp"), pool.intern(Spelling::absolute("c:/proj/a.cpp")));
 #endif
 }
 

@@ -17,3 +17,16 @@ test("address sanitizer entry compiles", async ({ session }) => {
     client.assertNoErrors(uri);
     expect((await client.documentLinks(uri))?.length).toBe(1);
 });
+
+test("ignorelist beside the entry compiles", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("ignore.txt", "fun:skipped\n");
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"], {
+        extraArgs: ["-fsanitize=address", "-fsanitize-ignorelist=ignore.txt"],
+    });
+    await client.initialize(workspace);
+
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertNoErrors(uri, "the list resolves in the entry's directory, as for clang");
+});

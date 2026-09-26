@@ -114,7 +114,59 @@ inline void canonicalize([[maybe_unused]] std::string& p) {
 }  // namespace path
 
 struct FileTable;
+class CanonicalRef;
 class CanonicalPath;
+
+/// A path the way an input wrote it, joined onto the directory the input's
+/// relative paths are relative to: absolute, canonically spelled, without
+/// `.` segments or a trailing separator. `..` stays: the OS resolves it
+/// past symlinks, so only the identity (CanonicalPath) interprets it. Kept
+/// where a lookup depends on how a path was written — the directory a
+/// quoted include starts from, the file a rendered command names — and
+/// never compared: the identity answers which file it is.
+class Spelling {
+public:
+    /// None: no path.
+    Spelling() = default;
+
+    /// `text` as an input wrote it, relative to `base`; absolute text
+    /// stands alone.
+    Spelling(llvm::StringRef text, const Spelling& base);
+
+    /// A path already absolute: clang's file names, the worker protocol,
+    /// persisted paths.
+    static Spelling absolute(llvm::StringRef text);
+
+    /// The directory command-line arguments are relative to.
+    static Spelling cwd();
+
+    /// An identity spells itself.
+    explicit Spelling(CanonicalRef identity);
+
+    operator llvm::StringRef() const {
+        return text;
+    }
+
+    /// For LLVM's file APIs; points into this object, so it lives for the
+    /// call it is passed to.
+    operator llvm::Twine() const {
+        return llvm::Twine(text);
+    }
+
+    const std::string& str() const {
+        return text;
+    }
+
+    bool empty() const {
+        return text.empty();
+    }
+
+    /// The directory holding it, as spelled.
+    Spelling parent() const;
+
+private:
+    std::string text;
+};
 
 /// A path naming a file or directory by its identity, the way the file
 /// table and the worker do: the name the OS gives its longest existing
@@ -186,7 +238,7 @@ public:
     CanonicalPath() = default;
 
     /// The identity of what `spelled` names.
-    explicit CanonicalPath(llvm::StringRef spelled);
+    explicit CanonicalPath(const Spelling& spelled);
 
     CanonicalPath(CanonicalRef ref) : text(ref.str()) {}
 
@@ -281,6 +333,14 @@ template <clice::Canonical T>
 struct std::formatter<T> : std::formatter<llvm::StringRef> {
     template <typename FormatContext>
     auto format(const T& value, FormatContext& ctx) const {
+        return std::formatter<llvm::StringRef>::format(llvm::StringRef(value), ctx);
+    }
+};
+
+template <>
+struct std::formatter<clice::Spelling> : std::formatter<llvm::StringRef> {
+    template <typename FormatContext>
+    auto format(const clice::Spelling& value, FormatContext& ctx) const {
         return std::formatter<llvm::StringRef>::format(llvm::StringRef(value), ctx);
     }
 };

@@ -42,7 +42,7 @@ bool vouched(FileTable& pool, llvm::StringRef path) {
     }
     auto uid = status.getUniqueID();
     return pool
-        .cached_hash(pool.intern(path),
+        .cached_hash(pool.intern(Spelling::absolute(path)),
                      status.getSize(),
                      fs::mtime_ns(status),
                      uid.getDevice(),
@@ -130,7 +130,7 @@ TEST_CASE(BackdatedEditDetected) {
     age_file(dep);
 
     FileTable pool;
-    pool.read(pool.intern(dep));
+    pool.read(pool.intern(Spelling::absolute(dep)));
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, consumed_hash(dep)}
@@ -151,7 +151,7 @@ TEST_CASE(TouchRepairsFastPath) {
     age_file(dep);
 
     FileTable pool;
-    pool.read(pool.intern(dep));
+    pool.read(pool.intern(Spelling::absolute(dep)));
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, consumed_hash(dep)}
@@ -198,7 +198,7 @@ TEST_CASE(StalePairRereads) {
 
     FileTable pool;
     age_file(dep);
-    pool.read(pool.intern(dep));
+    pool.read(pool.intern(Spelling::absolute(dep)));
 
     tmp.touch("dep.h", "int v2();\n");
     age_file(dep);
@@ -235,7 +235,7 @@ TEST_CASE(MissingTransitions) {
     // Appearing is a change, and the file table saw it.
     tmp.touch("ghost.h", "int f();\n");
     ASSERT_TRUE(changed(pool, snap));
-    ASSERT_FALSE(pool.seen_missing(pool.intern(dep)));
+    ASSERT_FALSE(pool.seen_missing(pool.intern(Spelling::absolute(dep))));
 }
 
 TEST_CASE(AbsentPlaceFilled) {

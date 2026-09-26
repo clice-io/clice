@@ -41,7 +41,7 @@ TEST_CASE(CDBTickDebounces) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     // Rewrite with one more entry: the first tick only records the pending
     // content, the second sees it stable and reloads.
@@ -55,7 +55,7 @@ TEST_CASE(CDBTickDebounces) {
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
     ASSERT_EQ(events[0].kind, FileEvent::Kind::CDBChanged);
-    auto lib_id = project.file_table.intern(tmp.path("lib.cpp"));
+    auto lib_id = project.file_table.intern(Spelling::absolute(tmp.path("lib.cpp")));
     ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{lib_id});
     ASSERT_TRUE(events[0].cdb.removed.empty());
 
@@ -76,7 +76,7 @@ TEST_CASE(CDBTickForceImmediate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
@@ -84,7 +84,7 @@ TEST_CASE(CDBTickForceImmediate) {
     }));
     auto events = tracker.tick_cdb(/*force=*/true);
     ASSERT_EQ(events.size(), 1u);
-    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
 }
 
@@ -97,7 +97,7 @@ TEST_CASE(CDBTickDiscoversLate) {
     Project project{files};
     SessionStore store;
     // No compile_commands.json at construction time.
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
 
     tmp.touch("compile_commands.json",
@@ -106,7 +106,7 @@ TEST_CASE(CDBTickDiscoversLate) {
     }));
     auto events = tracker.tick_cdb(/*force=*/true);
     ASSERT_EQ(events.size(), 1u);
-    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{main_id});
 }
 
@@ -123,7 +123,7 @@ TEST_CASE(CDBTickDeleteRecreate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     // Deletion (mid-regeneration): keep serving the loaded entries.
     fs::remove_all(tmp.path("compile_commands.json"));
@@ -136,7 +136,7 @@ TEST_CASE(CDBTickDeleteRecreate) {
     }));
     auto events = tracker.tick_cdb(/*force=*/true);
     ASSERT_EQ(events.size(), 1u);
-    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
 }
 
@@ -148,12 +148,12 @@ TEST_CASE(CDBTickRetriesFailedLoad) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto id = project.cdb.add_source(tmp.path("compile_commands.json"));
+    auto id = project.cdb.add_source(Spelling::absolute(tmp.path("compile_commands.json")));
     ASSERT_FALSE(project.cdb.load_source(id).has_value());
     llvm::sys::fs::file_status before;
     ASSERT_FALSE(
         static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     tmp.touch("compile_commands.json", "[]");
     int fd = 0;
@@ -190,10 +190,10 @@ TEST_CASE(CDBTickRelocates) {
         {tmp.root, tmp.path("only.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, original);
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
-    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
-    auto only_id = project.file_table.intern(tmp.path("only.cpp"));
-    auto root = *project.cdb.find_source(tmp.path("compile_commands.json"));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    auto only_id = project.file_table.intern(Spelling::absolute(tmp.path("only.cpp")));
+    auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
 
     fs::remove_all(tmp.path("compile_commands.json"));
     ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
@@ -205,7 +205,8 @@ TEST_CASE(CDBTickRelocates) {
                   {tmp.root, tmp.path("main.cpp"), {"-DMOVED"}}
     }));
     auto events = tracker.tick_cdb(/*force=*/true);
-    auto build = *project.cdb.find_source(tmp.path("build/compile_commands.json"));
+    auto build =
+        *project.cdb.find_source(Spelling::absolute(tmp.path("build/compile_commands.json")));
     ASSERT_EQ(events.size(), 1u);
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
     EXPECT_EQ(project.build.entries(main_id).front().source, build);
@@ -232,10 +233,10 @@ TEST_CASE(CDBDeletedBeforeWatch) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    auto id = *project.cdb.find_source(tmp.path("compile_commands.json"));
+    auto id = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
     ASSERT_TRUE(project.cdb.present(id));
     fs::remove_all(tmp.path("compile_commands.json"));
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT_TRUE(tracker.tick_cdb().empty());
     EXPECT_TRUE(tracker.tick_cdb().empty());
     EXPECT_FALSE(project.cdb.present(id));
@@ -257,11 +258,11 @@ TEST_CASE(ResponseRewriteBeforeWatch) {
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
     }));
     tmp.touch("flags.rsp", "-DTWO\n");
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT_TRUE(tracker.tick_cdb().empty());
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
-    auto main = project.file_table.intern(tmp.path("main.cpp"));
+    auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     EXPECT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main});
     EXPECT_TRUE(tracker.tick_cdb().empty());
 }
@@ -281,7 +282,7 @@ TEST_CASE(CDBTickRenameOver) {
                   build_cdb_json({
                       {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
         }));
-        FileTracker tracker(project, store, CanonicalPath(tmp.root));
+        FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
         llvm::sys::fs::file_status before;
         ASSERT_FALSE(
             static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
@@ -306,7 +307,7 @@ TEST_CASE(CDBTickRenameOver) {
         ASSERT_TRUE(tracker.tick_cdb().empty());
         auto events = tracker.tick_cdb();
         ASSERT_EQ(events.size(), 1u);
-        auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+        auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
         ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
     }
 }
@@ -320,11 +321,11 @@ TEST_CASE(CDBDiscoverRetriesRegistered) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
-    auto id = project.cdb.add_source(tmp.path("a/compile_commands.json"));
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
-    auto main = project.file_table.intern(tmp.path("a/main.cpp"));
+    auto id = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    auto main = project.file_table.intern(Spelling::absolute(tmp.path("a/main.cpp")));
     EXPECT_TRUE(tracker.discover_around(main).empty());
 
     tmp.touch("a/compile_commands.json",
@@ -357,16 +358,16 @@ TEST_CASE(CDBTickFollowsRetarget) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto id = project.cdb.add_source(database);
+    auto id = project.cdb.add_source(Spelling::absolute(database));
     ASSERT_TRUE(project.cdb.load_source(id).has_value());
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     fs::remove(database);
     ASSERT_EQ(::symlink(tmp.path("release.json").c_str(), database.c_str()), 0);
     ASSERT_TRUE(tracker.tick_cdb().empty());
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
-    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
 }
 #endif
@@ -382,22 +383,23 @@ TEST_CASE(CDBTickDiscoversAround) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
     tmp.touch("a/b/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/b/main.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
-    auto main_id = project.file_table.intern(tmp.path("a/b/main.cpp"));
-    auto other_id = project.file_table.intern(tmp.path("a/other.cpp"));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("a/b/main.cpp")));
+    auto other_id = project.file_table.intern(Spelling::absolute(tmp.path("a/other.cpp")));
 
     auto events = tracker.discover_around(main_id);
     ASSERT_EQ(events.size(), 1u);
     ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{main_id});
     EXPECT_TRUE(tracker.discover_around(main_id).empty());
     EXPECT_TRUE(tracker.discover_around(other_id).empty());
-    auto outside = project.file_table.intern(path::join(path::parent_path(tmp.root), "x.cpp"));
+    auto outside = project.file_table.intern(
+        Spelling::absolute(path::join(path::parent_path(tmp.root), "x.cpp")));
     EXPECT_TRUE(tracker.discover_around(outside).empty());
 
     store.open(other_id);
@@ -425,10 +427,10 @@ TEST_CASE(CDBTickPhantomReplacement) {
         {tmp.root, tmp.path("main.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, original);
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
-    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
-    auto other_id = project.file_table.intern(tmp.path("other.cpp"));
-    auto root = *project.cdb.find_source(tmp.path("compile_commands.json"));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    auto other_id = project.file_table.intern(Spelling::absolute(tmp.path("other.cpp")));
+    auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
 
     fs::remove_all(tmp.path("compile_commands.json"));
     ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
@@ -458,11 +460,11 @@ TEST_CASE(CDBTickCoalescesSources) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
-    auto a = project.cdb.add_source(tmp.path("a/compile_commands.json"));
-    auto b = project.cdb.add_source(tmp.path("b/compile_commands.json"));
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    auto a = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
+    auto b = project.cdb.add_source(Spelling::absolute(tmp.path("b/compile_commands.json")));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     tmp.touch("a/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/main.cpp"), {}}
@@ -496,12 +498,12 @@ TEST_CASE(CDBRewriteBeforeWatch) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DLONGER"}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     ASSERT_TRUE(tracker.tick_cdb().empty());
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
-    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
     ASSERT_TRUE(tracker.tick_cdb().empty());
 }
@@ -525,7 +527,7 @@ TEST_CASE(CDBSameStampRewrite) {
     auto stamp = std::chrono::system_clock::now() + std::chrono::hours(1);
     set_mtime(database, stamp);
     ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     ASSERT_TRUE(tracker.tick_cdb().empty());
 
     tmp.touch("compile_commands.json",
@@ -537,7 +539,7 @@ TEST_CASE(CDBSameStampRewrite) {
     ASSERT_TRUE(tracker.tick_cdb().empty());
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
-    auto main_id = project.file_table.intern(tmp.path("main.cpp"));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
     ASSERT_TRUE(tracker.tick_cdb().empty());
 }
@@ -560,7 +562,7 @@ TEST_CASE(CDBTrustedStampQuiet) {
     auto stamp = std::chrono::system_clock::now() - std::chrono::hours(1);
     set_mtime(database, stamp);
     ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     ASSERT_TRUE(tracker.tick_cdb().empty());
     ASSERT_TRUE(tracker.tick_cdb().empty());
 
@@ -590,11 +592,11 @@ TEST_CASE(WorkspaceTickStateMachine) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto tu = project.file_table.intern(tmp.path("main.cpp"));
-    auto header = project.file_table.intern(tmp.path("header.h"));
+    auto tu = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
     project.dep_graph.set_includes(tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     auto body = [&]() -> kota::task<> {
         // A first look is no change, even for main.cpp missing on disk.
@@ -655,15 +657,15 @@ TEST_CASE(WorkspaceTickKeepsListedMember) {
     SessionStore store;
     project.config.rules.push_back(
         ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("src/both.cpp"), {}}
     }));
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
-    auto both = project.file_table.intern(tmp.path("src/both.cpp"));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    auto both = project.file_table.intern(Spelling::absolute(tmp.path("src/both.cpp")));
     project.dep_graph.set_includes(both, 0, {});
     project.dep_graph.build_reverse_map();
     auto body = [&]() -> kota::task<> {
@@ -693,11 +695,11 @@ TEST_CASE(WorkspaceTickSeesOpen) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern(tmp.path("header.h"));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
     project.dep_graph.set_includes(header, 0, {});
     project.dep_graph.build_reverse_map();
     store.open(header);
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     auto body = [&]() -> kota::task<> {
         EXPECT_TRUE((co_await sweep(tracker, files)).empty());
@@ -734,12 +736,12 @@ TEST_CASE(WorkspaceTickAfterScan) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern(tmp.path("header.h"));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
     project.dep_graph.set_includes(header, 0, {});
     project.dep_graph.build_reverse_map();
     project.file_table.read(header);
     tmp.touch("header.h", R"(int x = 2222;)");
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     auto body = [&]() -> kota::task<> {
         auto first = co_await sweep(tracker, files);
@@ -766,11 +768,11 @@ TEST_CASE(AnyLookReportsChange) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern(tmp.path("header.h"));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
     project.dep_graph.set_includes(header, 0, {});
     project.dep_graph.build_reverse_map();
     project.file_table.read(header);
-    FileTracker tracker(project, store, CanonicalPath(tmp.root));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     tmp.touch("header.h", R"(int x = 2222;)");
     project.rescan_disk_file(header);
 

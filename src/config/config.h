@@ -284,12 +284,12 @@ struct CompiledRule {
     std::string configuration;
     /// Absolute paths of the declared databases, in priority order; an
     /// existing directory resolved to the compile_commands.json under it.
-    std::vector<std::string> compile_commands;
+    std::vector<Spelling> compile_commands;
     /// The command's argv (a string spelling tokenized with the host's
     /// shell rules), `${workspace}` substituted; empty means none.
     /// `directory` is its working directory.
     std::vector<std::string> default_command;
-    std::string directory;
+    Spelling directory;
     std::vector<std::string> append;
     std::vector<std::string> remove;
     bool index = true;
@@ -390,7 +390,7 @@ struct Config {
     /// cache/logging directories, ${workspace} substitution, path
     /// canonicalization and anchoring, and rule compilation. Run once per
     /// load, after every source has been overlaid.
-    void finalize(llvm::StringRef workspace_root);
+    void finalize(CanonicalRef workspace_root);
 
     /// After finalize: move off a cache directory another project owns
     /// (owned_elsewhere) to the default one under the workspace root.
@@ -414,19 +414,19 @@ struct Config {
     /// logging_dir, ...) must be computed only once, from the final merged
     /// values.
     static std::optional<Config> load(llvm::StringRef path,
-                                      llvm::StringRef workspace_root,
+                                      CanonicalRef workspace_root,
                                       std::vector<ConfigIssue>* issues = nullptr,
                                       bool finalized = true);
 
     /// Try to load configuration from a JSON string (e.g. initializationOptions).
     static std::optional<Config> load_from_json(llvm::StringRef json,
-                                                llvm::StringRef workspace_root);
+                                                CanonicalRef workspace_root);
 
     /// Load config from the workspace, trying standard locations.
     /// Returns a default config if no file is found. `loaded_path`, when
     /// provided, receives the path of the config file that was found (even
     /// if it failed to parse), or stays empty. `finalized` as in load().
-    static Config load_from_workspace(llvm::StringRef workspace_root,
+    static Config load_from_workspace(CanonicalRef workspace_root,
                                       std::vector<ConfigIssue>* issues = nullptr,
                                       std::string* loaded_path = nullptr,
                                       bool finalized = true);

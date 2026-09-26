@@ -169,7 +169,7 @@ public:
     /// paths: what discovery registers at startup before anything is
     /// opened, so a nested project's units keep their index across
     /// sessions instead of being dropped as unlisted and rebuilt.
-    llvm::SmallVector<std::string> remembered_sources();
+    llvm::SmallVector<Spelling> remembered_sources();
 
     /// Load the global blob, adopt every resolvable manifest, fetch the
     /// shard blobs the contributions expect, and sweep the rest.
@@ -210,7 +210,7 @@ public:
     /// Check whether a file needs re-indexing: no manifest, or a stale
     /// FileVersion among its dependencies. Valid only within one round:
     /// the verdicts are cleared by begin_round(), never here.
-    bool need_update(llvm::StringRef file_path);
+    bool need_update(Fid file);
 
     /// Shard blobs whose write has not durably completed: dirty since the
     /// last save plus the batch a running save is committing. The gauge

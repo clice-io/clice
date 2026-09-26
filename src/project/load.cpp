@@ -78,7 +78,10 @@ ProjectLoad load_project(Project& project,
     if(scan_tree) {
         project.build.reset_active(configuration);
         if(!project.build.declares_sources()) {
-            auto below = compile_commands_below(root, cfg.cache_dir);
+            auto below = compile_commands_below(
+                root,
+                cfg.cache_dir.empty() ? CanonicalPath()
+                                      : CanonicalPath(Spelling::absolute(cfg.cache_dir)));
             nearby.insert(nearby.end(), below.begin(), below.end());
         }
     }
@@ -95,17 +98,14 @@ ProjectLoad load_project(Project& project,
 BuildLoad load_build(Project& project,
                      CanonicalRef root,
                      llvm::StringRef configuration,
-                     llvm::ArrayRef<std::string> nearby) {
+                     llvm::ArrayRef<Spelling> nearby) {
     BuildLoad load;
     project.cdb.set_workspace_root(root);
     project.build.reset_active(configuration);
 
     ScopedTimer cdb_timer;
     std::size_t entries = 0;
-    llvm::SmallVector<std::string> paths;
-    for(auto declared: project.build.declared_sources()) {
-        paths.push_back(declared.str());
-    }
+    auto paths = project.build.declared_sources();
     if(!project.build.declares_sources()) {
         paths = discover_compile_commands(root);
         // Registered whether still there or not, like a declared one: the
@@ -113,19 +113,23 @@ BuildLoad load_build(Project& project,
         // serving meanwhile. Sorted like Build::source_order ranks them, so
         // registration order — which the persisted command sequences
         // follow — does not depend on the order files were opened in.
+        auto listed = [&](const Spelling& source) {
+            return llvm::any_of(paths,
+                                [&](const Spelling& path) { return path.str() == source.str(); });
+        };
         auto stable =
-            llvm::to_vector(llvm::make_filter_range(nearby, [&](const std::string& source) {
+            llvm::to_vector(llvm::make_filter_range(nearby, [&](const Spelling& source) {
                 // Where the database sits, not what it links to: a
                 // compile_commands.json symlinked to a build tree outside
                 // still belongs to the root.
-                return path::under(CanonicalPath(path::parent_path(source)), root) &&
-                       !llvm::is_contained(paths, source);
+                return path::under(CanonicalPath(source.parent()), root) && !listed(source);
             }));
-        std::ranges::sort(stable, {}, [](const std::string& source) {
-            return std::tuple(llvm::count_if(source, [](char c) { return path::is_separator(c); }),
+        auto key = [](const Spelling& source) {
+            return std::tuple(llvm::count_if(source.str(), [](char c) { return path::is_separator(c); }),
                               llvm::StringRef(source));
-        });
-        auto duplicates = std::ranges::unique(stable);
+        };
+        std::ranges::sort(stable, {}, key);
+        auto duplicates = std::ranges::unique(stable, {}, &Spelling::str);
         stable.erase(duplicates.begin(), duplicates.end());
         paths.append(stable.begin(), stable.end());
         if(paths.size() > 1) {
@@ -135,7 +139,8 @@ BuildLoad load_build(Project& project,
                 "instead, declare each on a tagged rule: [[rules]] configuration = \"...\" "
                 "compile_commands = [\"...\"]",
                 paths.size(),
-                llvm::join(paths, ", "));
+                llvm::join(llvm::map_range(paths, [](const Spelling& path) { return path.str(); }),
+                           ", "));
         }
     }
     for(auto& path: paths) {

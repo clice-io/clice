@@ -36,7 +36,7 @@ struct ContextsData {
 Resolution EditorContext::resolve_command(llvm::StringRef path,
                                           std::string& directory,
                                           std::vector<std::string>& arguments) {
-    auto path_id = project.file_table.intern(path);
+    auto path_id = project.file_table.intern(Spelling::absolute(path));
     auto resolution = commands.resolve_command(path,
                                                directory,
                                                arguments,
@@ -125,14 +125,14 @@ void EditorContext::load() {
             auto host = resolve(entry.host);
             if(host.empty())
                 continue;
-            saved.host_path_id = project.file_table.intern(host);
+            saved.host_path_id = project.file_table.intern(Spelling::absolute(host));
         }
         if(entry.occurrence != ~0u) {
             saved.occurrence = entry.occurrence;
         }
         saved.command_hash = entry.command_hash;
         saved.base_hash = entry.base_hash;
-        selections[project.file_table.intern(file)] = std::move(saved);
+        selections[project.file_table.intern(Spelling::absolute(file))] = std::move(saved);
     }
 }
 

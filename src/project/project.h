@@ -316,30 +316,30 @@ struct Project {
 /// the workspace root's, then those of its direct subdirectories in name
 /// order. Empty when none exists yet — the CDBWatcher keeps looking on
 /// its CDB poll.
-llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspace_root);
+llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root);
 
 /// Every `compile_commands.json` under `workspace_root` (`.git` and the
 /// cache directory skipped): what the one-shot batch commands, which
 /// open no file, discover instead of waiting for a didOpen.
-llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_root,
-                                                      llvm::StringRef cache_dir);
+llvm::SmallVector<Spelling> compile_commands_below(CanonicalRef workspace_root,
+                                                   CanonicalRef cache_dir);
 
 /// Whether `dir` is a project of its own: it holds a configuration file,
 /// or a compile_commands.json where startup discovery looks
 /// (discover_compile_commands).
-bool defines_project(llvm::StringRef dir);
+bool defines_project(CanonicalRef dir);
 
 /// The nearest directory at or above `start` holding a configuration file
 /// or a compile_commands.json, directly or in its build/ directory: the
 /// root of the project a file outside every served folder belongs to.
 /// Empty when no ancestor has either.
-CanonicalPath project_root_above(llvm::StringRef start);
+CanonicalPath project_root_above(CanonicalRef start);
 
 /// The `compile_commands.json` files in `start` and its ancestors up to
 /// `workspace_root`, nearest first: the databases a file deeper in the
 /// tree than startup discovery looks may compile from.
-llvm::SmallVector<std::string> compile_commands_above(CanonicalRef start,
-                                                      CanonicalRef workspace_root);
+llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
+                                                   CanonicalRef workspace_root);
 
 /// Capture a staleness snapshot from a build's reported inputs, interning
 /// the consumed versions into the shared table.

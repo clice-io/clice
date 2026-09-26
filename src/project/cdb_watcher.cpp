@@ -23,7 +23,7 @@ CDBWatcher::Hashes CDBWatcher::loaded(SourceID id) const {
 }
 
 Fid CDBWatcher::database(SourceID id) {
-    return project.file_table.intern(CanonicalPath(project.cdb.source_path(id)));
+    return project.file_table.intern(CanonicalPath(Spelling::absolute(project.cdb.source_path(id))));
 }
 
 CDBWatcher::Hashes CDBWatcher::look(SourceID id) {

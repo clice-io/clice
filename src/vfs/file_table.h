@@ -148,33 +148,36 @@ struct FileTable {
     llvm::StringMap<Fid> ids;
 
     /// The file a path names: every spelling of it — through symlinks,
-    /// `.`/`..` segments — interns to the fid of its resolved path, which
-    /// is also what resolve() gives back. The worker reports the paths its
-    /// compiles read resolved the same way, so both sides of the boundary
-    /// name one file by one fid. A spelling stays bound to the file it first
+    /// `.`/`..` segments, and on Windows case variants, junctions and
+    /// subst drives — interns to the fid of its identity, which is also
+    /// what resolve() gives back. The worker names the files its compiles
+    /// read by the same identity, so both sides of the boundary name one
+    /// file by one fid. A spelling stays bound to the file it first
     /// resolved to: one that must follow a retargeted symlink (a database
     /// path) is resolved by its caller.
-    Fid intern(llvm::StringRef path) {
-        llvm::SmallString<256> storage;
-        path = path::canonical(path, storage);
-        if(auto it = ids.find(path); it != ids.end()) {
+    Fid intern(const Spelling& path) {
+        if(auto it = ids.find(path.str()); it != ids.end()) {
             return it->second;
         }
-        CanonicalPath real(path);
+        auto fid = intern(CanonicalPath(path));
+        ids.try_emplace(path.str(), fid);
+        return fid;
+    }
+
+    /// An identity names its own file.
+    Fid intern(CanonicalRef identity) {
         auto [it, inserted] =
-            ids.try_emplace(real, Fid{static_cast<std::uint32_t>(spellings.size())});
+            ids.try_emplace(identity, Fid{static_cast<std::uint32_t>(spellings.size())});
         if(inserted) {
             // Allocate with null terminator so that resolve().data() is safe
             // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
-            const std::size_t n = real.size();
+            const std::size_t n = identity.size();
             char* buf = allocator.Allocate<char>(n + 1);
-            std::ranges::copy(real.str(), buf);
+            std::ranges::copy(llvm::StringRef(identity), buf);
             buf[n] = '\0';
             spellings.push_back(llvm::StringRef(buf, n));
         }
-        auto fid = it->second;
-        ids.try_emplace(path, fid);
-        return fid;
+        return it->second;
     }
 
     CanonicalRef resolve(Fid fid) const {
@@ -182,12 +185,9 @@ struct FileTable {
         return CanonicalRef(spellings[fid.raw]);
     }
 
-    /// Look up a path without interning it, applying the same
-    /// normalization as intern().
-    std::optional<Fid> find(llvm::StringRef path) const {
-        llvm::SmallString<256> storage;
-        path = path::canonical(path, storage);
-        auto it = ids.find(path);
+    /// Look up a path without interning it.
+    std::optional<Fid> find(const Spelling& path) const {
+        auto it = ids.find(path.str());
         if(it == ids.end()) {
             it = ids.find(CanonicalPath(path));
         }
@@ -197,22 +197,43 @@ struct FileTable {
         return it->second;
     }
 
-    /// The spelling a user knows a file by, when it differs from its
-    /// resolved path: the one its open document was opened under, else
-    /// the path under the spelling of a root it lies in (a workspace
-    /// opened through a symlink). Everything the user is shown — URIs,
-    /// query output — names files this way; identity never does.
+    /// The path the build reaches a file by, when it differs from its
+    /// identity: its database entry's spelling, or the directory an include
+    /// lookup found it through; the first one recorded holds. A quoted
+    /// include searches from this path's directory, as clang's does from
+    /// the name it opened the includer under.
+    void spell_as(Fid fid, const Spelling& path) {
+        if(llvm::StringRef(path) != llvm::StringRef(resolve(fid)) &&
+           spelled.try_emplace(fid, save(path.str())).second) {
+            root_displays.erase(fid);
+        }
+    }
+
+    Spelling spelling(Fid fid) const {
+        if(auto it = spelled.find(fid); it != spelled.end()) {
+            return Spelling::absolute(it->second);
+        }
+        return Spelling(resolve(fid));
+    }
+
+    /// The path a user knows a file by: the one its open document was
+    /// opened under, else the build's spelling of it, under the spelling of
+    /// a root it lies in (a workspace opened through a symlink). Everything
+    /// the user is shown — URIs, query output — names files this way;
+    /// identity never does.
     llvm::StringRef display(Fid fid) const {
         if(auto it = shown.find(fid); it != shown.end()) {
             return it->second;
         }
-        auto path = resolve(fid);
-        for(auto& [real, spelled]: spelled_roots) {
-            if(path::under(path, real)) {
+        llvm::StringRef path = resolve(fid);
+        if(auto it = spelled.find(fid); it != spelled.end()) {
+            path = it->second;
+        }
+        for(auto& [real, spelled_root]: spelled_roots) {
+            if(path::under(path, llvm::StringRef(real))) {
                 auto [it, inserted] = root_displays.try_emplace(fid);
                 if(inserted) {
-                    it->second =
-                        save(spelled + llvm::StringRef(path).drop_front(real.size()).str());
+                    it->second = save(spelled_root + path.drop_front(real.size()).str());
                 }
                 return it->second;
             }
@@ -222,7 +243,7 @@ struct FileTable {
 
     /// A path as display() would show the file it names.
     llvm::StringRef display(llvm::StringRef path) const {
-        if(auto fid = find(path)) {
+        if(auto fid = find(Spelling::absolute(path))) {
             return display(*fid);
         }
         return path;
@@ -244,25 +265,22 @@ struct FileTable {
     }
 
     /// Files under `root` show under this spelling of it.
-    void spell_root(llvm::StringRef root) {
-        auto spelled = root.str();
-        path::canonicalize(spelled);
-        CanonicalPath real(spelled);
-        if(real.str() != spelled) {
-            spelled_roots.emplace_back(std::move(real), std::move(spelled));
+    void spell_root(const Spelling& root) {
+        CanonicalPath real(root);
+        if(real.str() != root.str()) {
+            spelled_roots.emplace_back(std::move(real), root.str());
             root_displays.clear();
         }
     }
 
     /// Stop showing files under a spelling spell_root recorded.
-    void unspell_root(llvm::StringRef root) {
-        auto spelled = root.str();
-        path::canonicalize(spelled);
-        llvm::erase_if(spelled_roots, [&](auto& entry) { return entry.second == spelled; });
+    void unspell_root(const Spelling& root) {
+        llvm::erase_if(spelled_roots, [&](auto& entry) { return entry.second == root.str(); });
         root_displays.clear();
     }
 
     llvm::DenseMap<Fid, llvm::StringRef> shown;
+    llvm::DenseMap<Fid, llvm::StringRef> spelled;
     llvm::SmallVector<std::pair<CanonicalPath, std::string>> spelled_roots;
     mutable llvm::DenseMap<Fid, llvm::StringRef> root_displays;
     mutable llvm::BumpPtrAllocator display_storage;

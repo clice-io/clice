@@ -106,7 +106,7 @@ void ServerLiveSources::each_preamble(
         // gating is needed on top. The blob stores clang's native path
         // (backslashes on Windows) while the table normalizes separators,
         // so compare through the table's lookup, not raw strings.
-        if(project.file_table.find(state->path(state->path_count() - 1)) != file ||
+        if(project.file_table.find(Spelling::absolute(state->path(state->path_count() - 1))) != file ||
            !state->matches_prefix(session.text)) {
             return true;
         }

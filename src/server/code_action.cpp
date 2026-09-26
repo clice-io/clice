@@ -60,16 +60,16 @@ protocol::CodeAction render(std::string title, protocol::CodeActionKind kind, Fi
     };
 }
 
-/// How `header` is spelled in an include directive of `file`, both resolved
-/// paths: its path below the file's own directory (where a quoted include
-/// looks first), else the shortest path below one of the command's search
+/// How `header` is spelled in an include directive of `file`, the header
+/// by identity and the file as the build reaches it: its path below the
+/// file's directory (where a quoted include looks first), else the shortest path below one of the command's search
 /// directories (resolved, however the command spells them), angled past
 /// the quoted segment — whichever of these the command's lookup order
 /// actually resolves to `header`, since a shorter spelling can name a
 /// same-named file in an earlier directory.
 std::optional<std::string> include_spelling(CanonicalRef header,
                                             const SearchConfig& search,
-                                            CanonicalRef file,
+                                            const Spelling& file,
                                             DirListingCache& dir_cache) {
     auto below = [&](CanonicalRef root) -> std::optional<llvm::StringRef> {
         if(root.empty() || !path::under(header, root) || header.size() <= root.size()) {
@@ -84,13 +84,15 @@ std::optional<std::string> include_spelling(CanonicalRef header,
     };
 
     std::vector<Candidate> candidates;
+    // Quoted names start from the directory the build reaches the file
+    // through, as clang's lookup does.
     auto directory = file.parent();
-    if(auto relative = below(directory)) {
+    if(auto relative = below(CanonicalPath(directory))) {
         candidates.push_back({*relative, false});
     }
     std::vector<CanonicalPath> dirs;
     for(auto& dir: search.dirs) {
-        dirs.push_back(CanonicalPath(dir.path));
+        dirs.push_back(CanonicalPath(Spelling::absolute(dir.path)));
     }
     for(auto [index, dir]: llvm::enumerate(dirs)) {
         if(auto relative = below(dir)) {
@@ -108,7 +110,7 @@ std::optional<std::string> include_spelling(CanonicalRef header,
                                         0,
                                         search,
                                         dir_cache);
-        if(resolved && CanonicalPath(resolved->path) == header) {
+        if(resolved && CanonicalPath(Spelling::absolute(resolved->path)) == header) {
             return candidate.angled ? std::format("<{}>", candidate.name)
                                     : std::format("\"{}\"", candidate.name);
         }
@@ -292,7 +294,10 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         llvm::StringRef text = session->text;
         std::string before = request.offset == text.size() && !text.ends_with('\n') ? "\n" : "";
         for(const auto& header: headers) {
-            if(auto spelling = include_spelling(header, search, path, dir_cache)) {
+            if(auto spelling = include_spelling(header,
+                                                search,
+                                                project.file_table.spelling(path_id),
+                                                dir_cache)) {
                 emit(std::format("Add #include {}", *spelling),
                      action.kind,
                      {

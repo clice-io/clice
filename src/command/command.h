@@ -186,6 +186,10 @@ struct CommandEdit {
 
     Kind kind;
     std::vector<std::string> flags;
+
+    /// Where the rule's relative paths are relative to: its configuration
+    /// file's directory.
+    Spelling directory;
 };
 
 /// Config-rule edits applied on top of a base config (structured, no
@@ -295,9 +299,9 @@ public:
     /// Register a database file, or look up its id when already known;
     /// `path` may name a directory holding compile_commands.json. Nothing
     /// is read until load_source().
-    SourceID add_source(llvm::StringRef path);
+    SourceID add_source(const Spelling& path);
 
-    std::optional<SourceID> find_source(llvm::StringRef path) const;
+    std::optional<SourceID> find_source(const Spelling& path) const;
 
     llvm::StringRef source_path(SourceID id) const;
 
@@ -397,7 +401,7 @@ public:
     /// spelling). `directory` is its working directory. Nullopt (logged
     /// once) when the spelling is not a compile command — blank, or a
     /// launcher with nothing to launch.
-    std::optional<ConfigID> intern_command(llvm::StringRef directory,
+    std::optional<ConfigID> intern_command(const Spelling& directory,
                                            llvm::ArrayRef<const char*> arguments);
 
     /// Derive the language of `file` compiled under `id`: walk the
@@ -476,16 +480,16 @@ private:
     /// dedup). `file` is the entry's normalized path used to pick the input
     /// slot among the command's inputs; invalid synthesizes the slot at the
     /// end.
-    std::optional<ConfigID> normalize(llvm::StringRef directory,
+    std::optional<ConfigID> normalize(const Spelling& directory,
                                       Fid file,
                                       llvm::ArrayRef<const char*> arguments);
 
-    std::optional<ConfigID> normalize(llvm::StringRef directory, Fid file, llvm::StringRef command);
+    std::optional<ConfigID> normalize(const Spelling& directory, Fid file, llvm::StringRef command);
 
     /// Expand @file tokens in place, driver-mode aware (CL commands
     /// tokenize with Windows rules).
     void expand_response_files(llvm::SmallVectorImpl<const char*>& tokens,
-                               llvm::StringRef directory,
+                               const Spelling& directory,
                                CompilerFamily family,
                                llvm::StringSaver& saver,
                                unsigned depth = 0);
@@ -501,7 +505,7 @@ private:
     /// source, ordinal).
     void rebuild_entry_list();
 
-    std::optional<CompilationEntry> append_test_command(llvm::StringRef file,
+    std::optional<CompilationEntry> append_test_command(Fid file,
                                                         std::optional<ConfigID> normalized);
 
     std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();

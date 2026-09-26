@@ -189,7 +189,7 @@ struct CompilationParams {
         for(auto& [file, content]: files) {
             add_remapped_file(file, content);
             // Named the way CompilationUnitRef::file_path names it.
-            synthesized.insert(CanonicalPath(file).str());
+            synthesized.insert(CanonicalPath(Spelling::absolute(file)).str());
         }
     }
 

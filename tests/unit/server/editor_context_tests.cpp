@@ -25,9 +25,9 @@ struct HostedHeader {
                   build_cdb_json({
                       {tmp.root, tmp.path("host.cpp"), {"-DHOSTED"}}
         }));
-        host = project.file_table.intern(tmp.path("host.cpp"));
+        host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
         header_path = tmp.path("h.h");
-        header = project.file_table.intern(header_path);
+        header = project.file_table.intern(Spelling::absolute(header_path));
         project.dep_graph.set_includes(host, 0, {{header}});
         project.dep_graph.build_reverse_map();
 
@@ -78,7 +78,7 @@ TEST_CASE(GuessedTracksEditorOnly) {
     ContextsBlob blob;
     EditorContext editor(project, commands, blob);
     auto path = tmp.path("lonely.cpp");
-    auto file = project.file_table.intern(path);
+    auto file = project.file_table.intern(Spelling::absolute(path));
     std::string directory;
     std::vector<std::string> arguments;
 
@@ -115,7 +115,7 @@ TEST_CASE(PinSteersEditorOnly) {
                   {tmp.root, path, {"-DSECOND"}}
     }));
 
-    auto file = project.file_table.intern(path);
+    auto file = project.file_table.intern(Spelling::absolute(path));
     auto candidates = project.cdb.candidate_entries(path);
     ASSERT_EQ(candidates.size(), 2u);
     // Pin the non-default candidate (candidate order is content-decided,
@@ -155,7 +155,7 @@ TEST_CASE(PinBaseSurvivesRules) {
                   {tmp.root, path, {"-DSECOND"}}
     }));
 
-    auto file = project.file_table.intern(path);
+    auto file = project.file_table.intern(Spelling::absolute(path));
     auto candidates = project.cdb.candidate_entries(path);
     ASSERT_EQ(candidates.size(), 2u);
     auto define_of = [&](ConfigID config) -> llvm::StringRef {
@@ -195,8 +195,8 @@ TEST_CASE(ValidateKeepsValidChoice) {
                   {tmp.root, tmp.path("host.cpp"), {}}
     }));
 
-    auto host = project.file_table.intern(tmp.path("host.cpp"));
-    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
     resolver.selections[header] = Selection{host, std::nullopt, ""};
@@ -222,8 +222,8 @@ TEST_CASE(ValidateDropsGoneOccurrence) {
                   {tmp.root, tmp.path("host.cpp"), {}}
     }));
 
-    auto host = project.file_table.intern(tmp.path("host.cpp"));
-    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
     resolver.selections[header] = Selection{host, 1, ""};
@@ -248,9 +248,9 @@ TEST_CASE(ValidateDropsStaleChoice) {
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
 
-    auto host = project.file_table.intern(tmp.path("host.cpp"));
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto main_file = project.file_table.intern(tmp.path("main.cpp"));
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    auto main_file = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
 
     // A host pin whose CDB entry disappeared while the server was down.
     // The drop must dirty the contexts blob, or the stale choice

@@ -59,7 +59,7 @@ void merge_into_workspace() {
 
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(project.file_table.intern(view.path(i)));
+        file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
     }
     ASSERT_TRUE(project.project_index.merge(view, file_ids_map));
     main_id = file_ids_map[view.path_count() - 1];
@@ -94,7 +94,7 @@ std::vector<std::string> reference_files(index::SymbolHash hash) {
 }
 
 TEST_CASE(PendingReasonUpgrade) {
-    auto file = project.file_table.intern("/proj/upgrade.cpp");
+    auto file = project.file_table.intern(Spelling::absolute("/proj/upgrade.cpp"));
     ASSERT_FALSE(indexer.pending_reason(file).has_value());
 
     indexer.enqueue(file, ReindexReason::DepsOnly);
