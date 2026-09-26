@@ -165,11 +165,12 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     params.version = alias.buffer.version;
     if(owner && owner->text == alias.buffer.text) {
         alias.warned = false;
+        // Until the owner's compile lands there is nothing to share, and
+        // a divergence warning must not outlive the divergence.
         auto projection = project.ast.projections.projection(owner->path_id);
-        if(!projection || !projection->output.has_value()) {
-            return;
+        if(projection && projection->output.has_value()) {
+            params.diagnostics = format_diagnostics(*projection->output);
         }
-        params.diagnostics = format_diagnostics(*projection->output);
     } else {
         auto first = server.files.display(alias.buffer.path_id);
         auto message = std::format(

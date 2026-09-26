@@ -794,11 +794,11 @@ TEST_CASE(Resolve, skip = !CIEnvironment) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
 
-    /// A platform-native absolute include dir: a POSIX spelling would be
-    /// re-anchored (and separator-normalized) on Windows.
+    /// A platform-native absolute include dir, rendered the way every path
+    /// value is spelled.
     TempDir tmp;
-    auto inc = tmp.path("inc");
-    auto inc_flag = "-I" + inc;
+    auto inc_flag = "-I" + tmp.path("inc");
+    auto inc = Spelling::absolute(tmp.path("inc")).str();
 
     Fixture f;
     auto ref =

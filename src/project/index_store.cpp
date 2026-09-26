@@ -103,7 +103,13 @@ CDBSnapshot build_cdb_snapshot(Project& project,
         std::vector<std::string> sources;
         for(auto& candidate: candidates) {
             hashes.push_back(project.cdb.entry_hash_hex(candidate.config));
-            auto source = project.project_index.portable(project.cdb.source_path(candidate.source));
+            auto database = project.cdb.source_path(candidate.source);
+            // Commands added by hand come from no database a later session
+            // could miss.
+            if(database.empty()) {
+                continue;
+            }
+            auto source = project.project_index.portable(database);
             if(!llvm::is_contained(sources, source)) {
                 sources.push_back(std::move(source));
             }

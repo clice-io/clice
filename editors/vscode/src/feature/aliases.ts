@@ -38,12 +38,16 @@ function requestedSelection(editor: vscode.TextEditor): Promise<vscode.Selection
     });
 }
 
+/// Set while a redirect runs: showing the first document activates it,
+/// which must not redirect back to the second name still open.
+let redirecting = false;
+
 /// VS Code opens a file reached through a symlink, a junction or a subst
 /// drive as a second document with its own buffer; the server answers one
 /// buffer per file. An editor showing such a second name is replaced by the
 /// one already open, at the same selection.
 async function redirect(editor: vscode.TextEditor | undefined) {
-    if (!editor) {
+    if (!editor || redirecting) {
         return;
     }
     const opened = editor.document;
@@ -60,20 +64,31 @@ async function redirect(editor: vscode.TextEditor | undefined) {
     if (!first) {
         return;
     }
-    const tab = vscode.window.tabGroups.all
-        .flatMap((group) => group.tabs)
-        .find(
-            (candidate) =>
-                candidate.input instanceof vscode.TabInputText &&
-                candidate.input.uri.toString() === opened.uri.toString(),
-        );
-    const selection = await requestedSelection(editor);
-    const viewColumn = editor.viewColumn;
-    const shown = await vscode.window.showTextDocument(first, { viewColumn, preview: false });
-    shown.selection = selection;
-    shown.revealRange(selection);
-    if (tab) {
-        await vscode.window.tabGroups.close(tab);
+    redirecting = true;
+    try {
+        const selection = await requestedSelection(editor);
+        // The user moved on meanwhile, or started editing the second name.
+        if (vscode.window.activeTextEditor !== editor || opened.isDirty) {
+            return;
+        }
+        const tab = vscode.window.tabGroups.all
+            .find((group) => group.viewColumn === editor.viewColumn)
+            ?.tabs.find(
+                (candidate) =>
+                    candidate.input instanceof vscode.TabInputText &&
+                    candidate.input.uri.toString() === opened.uri.toString(),
+            );
+        const shown = await vscode.window.showTextDocument(first, {
+            viewColumn: editor.viewColumn,
+            preview: false,
+        });
+        shown.selection = selection;
+        shown.revealRange(selection);
+        if (tab) {
+            await vscode.window.tabGroups.close(tab);
+        }
+    } finally {
+        redirecting = false;
     }
 }
 

@@ -95,7 +95,16 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
     /// read. A file only memory holds (a header context's fragment) is
     /// named like a missing one, through its directory.
     llvm::SmallString<128> spelled(entry.getName());
-    self->SM().getFileManager().makeAbsolutePath(spelled);
+    auto& files = self->SM().getFileManager();
+    files.makeAbsolutePath(spelled);
+    // An -ivfsoverlay can name a file by a path only the overlay knows;
+    // the file read is the one it redirects to.
+    if(auto& vfs = files.getVirtualFileSystem(); llvm::isa<llvm::vfs::RedirectingFileSystem>(vfs)) {
+        llvm::SmallString<128> redirected;
+        if(!vfs.getRealPath(spelled, redirected)) {
+            spelled = redirected;
+        }
+    }
     auto path = CanonicalPath(Spelling::absolute(spelled)).str();
 
     /// Allocate the path in the storage.

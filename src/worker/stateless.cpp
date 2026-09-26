@@ -336,12 +336,11 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
                 continue;
             }
             // Matched like clang-tidy does: against the name the lookup
-            // reached the header by, not its identity.
-            auto name = unit.context().getSourceManager().getFileEntryRefForID(raw.fid)->getName();
-            if(!keep || !keep->match(name)) {
-                continue;
-            }
-            if(drop && drop->match(name)) {
+            // reached the header by, not its identity; a buffer no file
+            // backs is kept.
+            auto entry = unit.context().getSourceManager().getFileEntryRefForID(raw.fid);
+            if(entry && (!keep || !keep->match(entry->getName()) ||
+                         (drop && drop->match(entry->getName())))) {
                 continue;
             }
         }

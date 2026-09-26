@@ -286,7 +286,8 @@ test("moved checkout keeps its index", ({ session }) => {
     expect(ids(after), "a macro and a file-local symbol keep their ids").toEqual(first);
 });
 
-test.skipIf(process.platform === "win32")(
+// Only Linux file systems take a name that is not UTF-8.
+test.skipIf(process.platform !== "linux")(
     "a path that is not UTF-8 still sees command edits",
     ({ session }) => {
         const ws = session.tmpdir();

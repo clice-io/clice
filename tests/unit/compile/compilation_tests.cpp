@@ -69,6 +69,43 @@ int x = FROM_GEN;
     ASSERT_TRUE(built.diagnostics().empty());
 }
 
+TEST_CASE(OverlayNamesRedirectedFile) {
+    /// A header an -ivfsoverlay maps under a virtual name is a dependency
+    /// under the name of the file actually read.
+    TempDir tmp;
+    tmp.touch("real/config.h", "#define FROM_REAL 1\n");
+    tmp.touch("main.cpp", "#include <config.h>\nint x = FROM_REAL;\n");
+    auto overlay = std::format(R"({{
+  "version": 0,
+  "use-external-names": false,
+  "roots": [{{
+    "name": "{}",
+    "type": "directory",
+    "contents": [{{ "name": "config.h", "type": "file", "external-contents": "{}" }}]
+  }}]
+}})",
+                               path::convert_to_slash(tmp.path("virtual")),
+                               path::convert_to_slash(tmp.path("real/config.h")));
+    tmp.touch("overlay.yaml", overlay);
+
+    std::vector<std::string> owned = {"clang++",
+                                      "-std=c++20",
+                                      "-ivfsoverlay",
+                                      tmp.path("overlay.yaml"),
+                                      "-I" + tmp.path("virtual"),
+                                      tmp.path("main.cpp")};
+    for(auto& arg: owned) {
+        params.arguments.push_back(arg.c_str());
+    }
+    params.directory = tmp.root.str().str();
+
+    auto built = clice::compile(params);
+    ASSERT_TRUE(built.completed());
+    ASSERT_TRUE(built.diagnostics().empty());
+    auto real = CanonicalPath(Spelling::absolute(tmp.path("real/config.h"))).str();
+    EXPECT_TRUE(llvm::any_of(built.deps(), [&](const DepFile& dep) { return dep.path == real; }));
+}
+
 TEST_CASE(StopCompilation) {
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
 

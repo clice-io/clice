@@ -901,6 +901,17 @@ std::vector<index::Site> Features::gather(
     return sites;
 }
 
+/// Whether two projects' answers name one entity: the same id, or the
+/// same name declared at the same place — an id hashing its file differs
+/// between a project compiling the file from inside its root and one
+/// compiling it from outside (Features::Source).
+static bool same_entity(const index::IndexQuery::Located& lhs,
+                        const index::IndexQuery::Located& rhs) {
+    return lhs.symbol.hash == rhs.symbol.hash ||
+           (lhs.symbol.name == rhs.symbol.name && lhs.site.file == rhs.site.file &&
+            lhs.site.range == rhs.site.range);
+}
+
 /// Fold one project's graph neighbours into `into`: the sites it may
 /// answer for (`keep`), one neighbour per symbol, a neighbour left with
 /// no site dropped.
@@ -913,7 +924,7 @@ static void merge_edges(std::vector<index::IndexQuery::Edge>& into,
             continue;
         }
         auto known = llvm::find_if(into, [&](const index::IndexQuery::Edge& other) {
-            return other.symbol.symbol.hash == edge.symbol.symbol.hash;
+            return same_entity(other.symbol, edge.symbol);
         });
         if(known == into.end()) {
             into.push_back(std::move(edge));
@@ -930,7 +941,7 @@ static void merge_located(std::vector<index::IndexQuery::Located>& into,
                           llvm::function_ref<bool(Fid)> keep) {
     for(auto& one: located) {
         if(keep(one.site.file) && llvm::none_of(into, [&](const index::IndexQuery::Located& other) {
-               return other.symbol.hash == one.symbol.hash;
+               return same_entity(other, one);
            })) {
             into.push_back(std::move(one));
         }

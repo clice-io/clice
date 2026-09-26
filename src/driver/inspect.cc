@@ -984,7 +984,7 @@ int run_inspect(const InspectOptions& opts) {
                                 llvm::MemoryBuffer::getMemBufferCopy(source.source.content));
             }
             auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
-                llvm::vfs::getRealFileSystem());
+                llvm::vfs::createPhysicalFileSystem());
             overlay->pushOverlay(memory);
 
             SharedScanCache cache;
