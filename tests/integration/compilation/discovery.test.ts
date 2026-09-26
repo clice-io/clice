@@ -240,6 +240,33 @@ test("batch indexing finds nested projects", ({ session }) => {
     expect(run.stdout).toContain("Indexed 3 translation units in");
 });
 
+test.skipIf(process.platform === "win32")(
+    "batch indexing finds a linked build tree",
+    ({ session }) => {
+        const workspace = session.tmpdir();
+        const outside = session.tmpdir();
+        workspace.write("sub/main.cpp", "int main() { return 0; }\n");
+        outside.write(
+            "build/compile_commands.json",
+            JSON.stringify([
+                {
+                    directory: workspace.path("sub"),
+                    file: workspace.path("sub/main.cpp"),
+                    arguments: ["clang++", "-c", workspace.path("sub/main.cpp")],
+                },
+            ]),
+        );
+        fs.symlinkSync(outside.path("build"), workspace.path("sub/build"));
+        const run = spawnSync(
+            cliceExecutable(),
+            ["index", "--workspace", workspace.root, "--workers", "2"],
+            { encoding: "utf8", timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+        );
+        expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+        expect(run.stdout).toContain("Indexed 1 translation unit in");
+    },
+);
+
 test("header hosts match the language", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write(

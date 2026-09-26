@@ -21,7 +21,6 @@
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
-#include "kota/ipc/lsp/uri.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -29,7 +28,6 @@
 
 namespace clice {
 
-namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 /// A quarantined document must not hide behind empty diagnostics: publish
@@ -461,8 +459,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
     ScopedTimer timer;
     auto file_path = std::string(project.file_table.resolve(path_id));
-    auto uri = lsp::URI::from_file_path(file_path);
-    std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
     LOG_INFO("compile round: starting path_id={} gen={}", path_id, gen);
 
@@ -482,7 +478,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.path = file_path;
         params.version = session->version;
         params.text = session->text;
-        auto resolution = contexts.resolve_command(file_path, params.directory, params.arguments);
+        params.workspace = project.config.workspace_root.str();
+        auto resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
         auto source = resolution.source;
         auto* synthesized = resolution.synthesized.get();
 
@@ -516,13 +513,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                        synthesized)) {
             case DependResult::Ready: break;
             case DependResult::Failed:
-                LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
+                LOG_WARN("Dependency preparation failed for {}, skipping compile", file_path);
                 co_return RoundOutcome::Failed;
             case DependResult::Cancelled: co_return RoundOutcome::Stale;
         }
 
         if(session->generation != gen) {
-            LOG_INFO("compile round: superseded before PCH for {}", uri_str);
+            LOG_INFO("compile round: superseded before PCH for {}", file_path);
             co_return RoundOutcome::Stale;
         }
 
@@ -589,7 +586,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         project.fill_pcm_deps(params.pcms, path_id);
 
         if(session->generation != gen) {
-            LOG_INFO("compile round: superseded before send for {}", uri_str);
+            LOG_INFO("compile round: superseded before send for {}", file_path);
             co_return RoundOutcome::Stale;
         }
 
@@ -600,7 +597,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // WAS the probe's attempt. A probe whose PCH build survived
         // (streak unchanged) continues to the compile.
         if(session->quarantine.active() && session->quarantine.grew(flight)) {
-            LOG_WARN("compile round: {} quarantined during dependency prep", uri_str);
+            LOG_WARN("compile round: {} quarantined during dependency prep", file_path);
             session->quarantine.spend_probe();
             publish_quarantined(session, source, suffix_line_limit);
             co_return RoundOutcome::Failed;
@@ -655,20 +652,20 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         if(session->generation != gen) {
-            LOG_INFO("compile round: superseded reply for {}", uri_str);
+            LOG_INFO("compile round: superseded reply for {}", file_path);
             co_return RoundOutcome::Stale;
         }
 
         if(!result.has_value()) {
             if(worker::is_operational_error(result.error())) {
-                LOG_WARN("Compile did not complete for {}: {}", uri_str, result.error().message);
+                LOG_WARN("Compile did not complete for {}: {}", file_path, result.error().message);
             } else {
                 // The worker accepts arbitrary user code; a non-operational
                 // failure at this layer is IPC/worker breakage, never a
                 // user-code problem.
                 LOG_ANOMALY(CompileFail,
                             "Compile failed for {}: {}",
-                            uri_str,
+                            file_path,
                             result.error().message);
             }
             // A death while consuming a prebuilt pair may be the pair's
@@ -684,7 +681,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                adopted_pch.has_value() && !params.pch.first.empty()) {
                 LOG_WARN("Compile crashed consuming PCH pair {} for {}; retracting the pair",
                          *adopted_pch,
-                         uri_str);
+                         file_path);
                 pch.blame(*adopted_pch);
             }
             // A quarantined document announces itself instead of hiding
@@ -720,7 +717,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         if(result.value().pch_suspect && adopted_pch.has_value() && !params.pch.first.empty()) {
             LOG_WARN("Compile blamed PCH pair {} for {}; retracting the pair",
                      *adopted_pch,
-                     uri_str);
+                     file_path);
             // Retract unconditionally — a blamed pair never survives, even
             // when the retry budget is spent — but rerun only once. The
             // strike ledger bounds the cross-round shape: this round lands
@@ -750,7 +747,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // way a PCH rebuild cannot fix.
         if(result.value().status != worker::CompileStatus::Done) {
             LOG_WARN("Compile produced no result for {} (status={})",
-                     uri_str,
+                     file_path,
                      static_cast<int>(result.value().status));
             // The projection stays non-current: the next request
             // recompiles instead of trusting the phantom product. Publish
@@ -778,7 +775,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // run without includer context — they are never published,
         // including on this path.
         if(trial_round && !ctx.current()) {
-            LOG_INFO("Discarding invalidated self-containment probe for {}", uri_str);
+            LOG_INFO("Discarding invalidated self-containment probe for {}", file_path);
             co_return RoundOutcome::Stale;
         }
 
@@ -799,7 +796,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             contexts.commands.record_header_mode(path_id, HeaderMode::SelfContained);
 
             if(indicates_missing_context(diagnostics)) {
-                LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
+                LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
                 // Scored on the buffer: a restart keeps it only for the
                 // same text on disk.
                 contexts.commands.record_header_mode(path_id,

@@ -133,8 +133,10 @@ namespace clice::index {
 /// names are keyed by their entity; v15: the global blob is columnar in
 /// hash order with a stable path table and pins its search blob, so it
 /// is read in place; v16: entity hashes follow clang 23's node kinds;
-/// v17: file versions carry no stat stamps).
-constexpr inline std::uint32_t index_format_version = 17;
+/// v17: file versions carry no stat stamps; v18: files under the
+/// workspace root are named, and hashed into symbols, by their portable
+/// names).
+constexpr inline std::uint32_t index_format_version = 18;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

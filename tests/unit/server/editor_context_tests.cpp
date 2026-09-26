@@ -25,9 +25,9 @@ struct HostedHeader {
                   build_cdb_json({
                       {tmp.root, tmp.path("host.cpp"), {"-DHOSTED"}}
         }));
-        host = project.file_table.intern(tmp.path("host.cpp"));
+        host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
         header_path = tmp.path("h.h");
-        header = project.file_table.intern(header_path);
+        header = project.file_table.intern(Spelling::absolute(header_path));
         project.dep_graph.set_includes(host, 0, {{header}});
         project.dep_graph.build_reverse_map();
 
@@ -48,21 +48,21 @@ TEST_CASE(EditorCachesContext) {
     std::string directory;
     std::vector<std::string> arguments;
 
-    auto background = fx.commands.resolve_command(fx.header_path, directory, arguments);
+    auto background = fx.commands.resolve_command(fx.header, directory, arguments);
     ASSERT_EQ(background.source, CommandSource::IncludeGraph);
     ASSERT_EQ(background.host, fx.host);
     ASSERT_TRUE(background.synthesized != nullptr);
     ASSERT_TRUE(llvm::is_contained(arguments, background.synthesized->prefix));
     ASSERT_TRUE(editor.header_contexts.empty());
 
-    auto resolution = editor.resolve_command(fx.header_path, directory, arguments);
+    auto resolution = editor.resolve_command(fx.header, directory, arguments);
     ASSERT_EQ(resolution.source, CommandSource::IncludeGraph);
     auto* context = editor.header_context(fx.header);
     ASSERT_TRUE(context != nullptr);
     ASSERT_TRUE(resolution.synthesized == context->synthesized);
     ASSERT_FALSE(blob.dirty);
 
-    auto reused = editor.resolve_command(fx.header_path, directory, arguments);
+    auto reused = editor.resolve_command(fx.header, directory, arguments);
     ASSERT_TRUE(reused.synthesized == context->synthesized);
 }
 
@@ -78,14 +78,14 @@ TEST_CASE(GuessedTracksEditorOnly) {
     ContextsBlob blob;
     EditorContext editor(project, commands, blob);
     auto path = tmp.path("lonely.cpp");
-    auto file = project.file_table.intern(path);
+    auto file = project.file_table.intern(Spelling::absolute(path));
     std::string directory;
     std::vector<std::string> arguments;
 
-    commands.resolve_command(path, directory, arguments);
+    commands.resolve_command(file, directory, arguments);
     ASSERT_FALSE(editor.guessed_commands.contains(file));
 
-    ASSERT_EQ(editor.resolve_command(path, directory, arguments).source, CommandSource::Fallback);
+    ASSERT_EQ(editor.resolve_command(file, directory, arguments).source, CommandSource::Fallback);
     ASSERT_TRUE(editor.guessed_commands.contains(file));
 
     write_cdb(tmp,
@@ -93,9 +93,9 @@ TEST_CASE(GuessedTracksEditorOnly) {
               build_cdb_json({
                   {tmp.root, path, {}}
     }));
-    commands.resolve_command(path, directory, arguments);
+    commands.resolve_command(file, directory, arguments);
     ASSERT_TRUE(editor.guessed_commands.contains(file));
-    ASSERT_EQ(editor.resolve_command(path, directory, arguments).source, CommandSource::CDBExact);
+    ASSERT_EQ(editor.resolve_command(file, directory, arguments).source, CommandSource::CDBExact);
     ASSERT_FALSE(editor.guessed_commands.contains(file));
 }
 
@@ -115,7 +115,7 @@ TEST_CASE(PinSteersEditorOnly) {
                   {tmp.root, path, {"-DSECOND"}}
     }));
 
-    auto file = project.file_table.intern(path);
+    auto file = project.file_table.intern(Spelling::absolute(path));
     auto candidates = project.cdb.candidate_entries(path);
     ASSERT_EQ(candidates.size(), 2u);
     // Pin the non-default candidate (candidate order is content-decided,
@@ -130,12 +130,12 @@ TEST_CASE(PinSteersEditorOnly) {
     // An editor resolution honors the pinned CDB entry...
     std::string directory;
     std::vector<std::string> arguments;
-    resolver.resolve_command(path, directory, arguments);
+    resolver.resolve_command(file, directory, arguments);
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(pinned)));
 
     // ...but background indexing must never see user choices.
     arguments.clear();
-    commands.resolve_command(path, directory, arguments);
+    commands.resolve_command(file, directory, arguments);
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
 }
 
@@ -155,7 +155,7 @@ TEST_CASE(PinBaseSurvivesRules) {
                   {tmp.root, path, {"-DSECOND"}}
     }));
 
-    auto file = project.file_table.intern(path);
+    auto file = project.file_table.intern(Spelling::absolute(path));
     auto candidates = project.cdb.candidate_entries(path);
     ASSERT_EQ(candidates.size(), 2u);
     auto define_of = [&](ConfigID config) -> llvm::StringRef {
@@ -170,13 +170,13 @@ TEST_CASE(PinBaseSurvivesRules) {
         Selection{Fid{}, std::nullopt, "0123456789abcdef", project.cdb.entry_hash_hex(pinned)};
     std::string directory;
     std::vector<std::string> arguments;
-    resolver.resolve_command(path, directory, arguments);
+    resolver.resolve_command(file, directory, arguments);
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(pinned)));
 
     // ...while the same stale hash without a base falls back to the default.
     resolver.selections[file] = Selection{Fid{}, std::nullopt, "0123456789abcdef", ""};
     arguments.clear();
-    resolver.resolve_command(path, directory, arguments);
+    resolver.resolve_command(file, directory, arguments);
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
 }
 
@@ -195,8 +195,8 @@ TEST_CASE(ValidateKeepsValidChoice) {
                   {tmp.root, tmp.path("host.cpp"), {}}
     }));
 
-    auto host = project.file_table.intern(tmp.path("host.cpp"));
-    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
     resolver.selections[header] = Selection{host, std::nullopt, ""};
@@ -222,8 +222,8 @@ TEST_CASE(ValidateDropsGoneOccurrence) {
                   {tmp.root, tmp.path("host.cpp"), {}}
     }));
 
-    auto host = project.file_table.intern(tmp.path("host.cpp"));
-    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
     resolver.selections[header] = Selection{host, 1, ""};
@@ -248,9 +248,9 @@ TEST_CASE(ValidateDropsStaleChoice) {
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
 
-    auto host = project.file_table.intern(tmp.path("host.cpp"));
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto main_file = project.file_table.intern(tmp.path("main.cpp"));
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    auto main_file = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
 
     // A host pin whose CDB entry disappeared while the server was down.
     // The drop must dirty the contexts blob, or the stale choice

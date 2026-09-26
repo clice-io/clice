@@ -321,7 +321,7 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
     plan.tidy = stack.project.build.lintable(file);
     plan.index = with_index && stack.project.build.indexed(file);
     if(plan.tidy) {
-        plan.tidy_params = tidy::resolve_tidy_params(file);
+        plan.tidy_params = tidy::resolve_tidy_params(stack.project.file_table.display(path_id));
     }
 
     // One budget-free retry: a worker crash or preemption says nothing
@@ -349,8 +349,8 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
                                  [&](const worker::TidyDiagnostic& d) {
                                      auto& files = stack.project.file_table;
                                      return d.check == "clang-diagnostic-error" ||
-                                            stack.project.build.lintable(
-                                                files.resolve(files.intern(d.file)));
+                                            stack.project.build.lintable(files.resolve(
+                                                files.intern(Spelling::absolute(d.file))));
                                  });
             break;
         }
@@ -521,7 +521,7 @@ bool formats(llvm::StringRef path) {
 /// `format = false`.
 std::vector<CanonicalPath> project_files(Project& project,
                                          llvm::ArrayRef<Fid> members,
-                                         llvm::ArrayRef<std::string> databases) {
+                                         llvm::ArrayRef<Spelling> databases) {
     auto& build = project.build;
     auto& files = project.file_table;
 
@@ -532,11 +532,13 @@ std::vector<CanonicalPath> project_files(Project& project,
             skipped_dirs.push_back(std::move(dir));
         }
     };
-    skip(CanonicalPath(project.config.project.cache_dir));
+    if(!project.config.project.cache_dir.empty()) {
+        skip(CanonicalPath(Spelling::absolute(project.config.project.cache_dir)));
+    }
     // A database at the workspace root, or above it, is a copy of the
     // build's or the build of a larger tree, not a build tree of its own.
     for(auto& database: databases) {
-        auto directory = CanonicalPath(path::parent_path(database));
+        auto directory = CanonicalPath(database.parent());
         if(directory != root && path::under(directory, root)) {
             skip(std::move(directory));
         }
@@ -547,7 +549,7 @@ std::vector<CanonicalPath> project_files(Project& project,
             auto ref = build.resolve(member, command.config, command.source, path, path);
             auto search = project.cdb.search_config(ref);
             for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
-                skip(CanonicalPath(dir.path));
+                skip(CanonicalPath(Spelling::absolute(dir.path)));
             }
         }
     }
@@ -715,14 +717,6 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     std::vector<CanonicalPath> files;
     std::vector<CanonicalPath> directories;
     CanonicalRef root = project.config.workspace_root;
-    // Rewriting follows links even where a path's identity does not
-    // (Windows): the bytes clang-format replaces are the link's target's.
-    auto real = [](llvm::StringRef path) {
-        llvm::SmallString<256> target;
-        llvm::sys::fs::real_path(path, target);
-        return CanonicalPath(target);
-    };
-    auto real_root = real(root);
     for(auto& path: options.paths) {
         if(llvm::sys::fs::is_directory(path)) {
             directories.push_back(CanonicalPath(path));
@@ -738,9 +732,9 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             // Rewritten where its bytes are — clang-format's in-place mode
             // replaces a symlink with a regular file — which has to be the
             // workspace's too.
-            auto target = real(path);
-            if(!path::under(target, real_root)) {
-                if(path::under(CanonicalPath(path::parent_path(path)), root)) {
+            auto target = CanonicalPath(path);
+            if(!path::under(target, root)) {
+                if(path::under(CanonicalPath(path.parent()), root)) {
                     result.exit_code = 2;
                     result.error = std::format("{}: links outside the workspace", path);
                     return result;
@@ -754,12 +748,12 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         // Like the other batch commands, which open no file: every
         // database under the workspace applies when no rule names one,
         // and one that cannot be loaded makes the file set incomplete.
-        llvm::SmallVector<std::string> databases;
-        for(auto declared: project.build.declared_sources()) {
-            databases.push_back(declared.str());
-        }
+        auto databases = project.build.declared_sources();
         if(databases.empty()) {
-            databases = compile_commands_below(options.root, project.config.project.cache_dir);
+            auto& cache_dir = project.config.project.cache_dir;
+            databases = compile_commands_below(
+                options.root,
+                cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(cache_dir)));
         }
         auto load = load_build(project, options.root, configuration, databases);
         for(auto& database: databases) {
@@ -779,8 +773,8 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             }
             // A symlink into the workspace is the workspace's; one pointing
             // out of it is not.
-            if(auto target = real(path); path::under(target, real_root)) {
-                files.push_back(std::move(target));
+            if(path::under(path, root)) {
+                files.push_back(std::move(path));
             }
         }
     }

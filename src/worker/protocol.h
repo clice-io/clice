@@ -116,6 +116,8 @@ struct CompileParams {
     int version;
     std::string text;
     std::string directory;
+    /// See CompilationParams::workspace.
+    std::string workspace;
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
@@ -176,6 +178,8 @@ struct CompileResult {
 struct BuildPCHParams {
     std::string file;
     std::string directory;
+    /// See CompilationParams::workspace.
+    std::string workspace;
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.
@@ -215,6 +219,8 @@ struct BuildPCMParams {
 struct TURunParams {
     std::string file;
     std::string directory;
+    /// See CompilationParams::workspace.
+    std::string workspace;
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
     /// a header context's synthesized fragments.

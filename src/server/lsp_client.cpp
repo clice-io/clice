@@ -10,6 +10,7 @@
 
 #include "version.h"
 #include "command/argument_parser.h"
+#include "feature/feature.h"
 #include "semantic/symbol.h"
 #include "server/editor_context.h"
 #include "server/extension.h"
@@ -26,7 +27,6 @@
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
-#include "kota/ipc/lsp/uri.h"
 #include "kota/meta/enum.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
@@ -34,7 +34,6 @@
 namespace clice {
 
 namespace protocol = kota::ipc::protocol;
-namespace lsp = kota::ipc::lsp;
 namespace refl = kota::meta;
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::JsonPeer::RequestContext;
@@ -124,14 +123,21 @@ static void unversion(protocol::WorkspaceEdit& edit) {
 
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = uri_to_path(uri);
-    auto path_id = this->server.files.intern(path);
-    // A document waiting under a second name has a buffer of its own: the
-    // session holds the first name's text, which answers nothing for it.
-    auto session = find_alias(path_id, path) ? nullptr : this->server.find_session(path_id);
-    return ResolvedDoc{std::move(path),
-                       path_id,
-                       std::move(session),
-                       this->server.owner_of(path_id).shared_from_this()};
+    if(!path) {
+        // Not a file: no document of ours.
+        return ResolvedDoc{.project = this->server.projects.front()};
+    }
+    auto path_id = this->server.files.intern(*path);
+    auto project = this->server.owner_of(path_id).shared_from_this();
+    // A document under a second name has a buffer of its own: it is the
+    // file — its session, its index rows — only while both hold the same
+    // text.
+    auto session = this->server.find_session(path_id);
+    if(auto* alias = find_alias(path_id, *path);
+       alias && session && alias->buffer.text != session->text) {
+        return ResolvedDoc{.path = path->str(), .project = std::move(project)};
+    }
+    return ResolvedDoc{path->str(), path_id, std::move(session), std::move(project)};
 }
 
 LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spelling) {
@@ -143,6 +149,63 @@ LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spe
         return document.spelling == spelling;
     });
     return alias != it->second.end() ? &*alias : nullptr;
+}
+
+kota::ipc::Error LSPClient::unserved(llvm::StringRef spelling) {
+    auto path_id =
+        spelling.empty() ? std::nullopt : server.files.find(Spelling::absolute(spelling));
+    return path_id && find_alias(*path_id, spelling) ? content_modified() : document_not_open();
+}
+
+void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, ProjectServer& project) {
+    if(!client_ready) {
+        return;
+    }
+    protocol::PublishDiagnosticsParams params;
+    params.uri = feature::to_uri(alias.spelling);
+    params.version = alias.buffer.version;
+    if(owner && owner->text == alias.buffer.text) {
+        // Shared once the owner's compile caught up with the text; until
+        // then only a divergence warning is taken down.
+        auto projection = project.ast.projections.projection(owner->path_id);
+        if(projection && projection->output && projection->output->version == owner->version) {
+            params.diagnostics = format_diagnostics(*projection->output);
+        } else if(!alias.warned) {
+            return;
+        }
+        alias.warned = false;
+    } else {
+        auto first = server.files.display(alias.buffer.path_id);
+        auto message = std::format(
+            "This file is also open as {}, which clice analyzes; edits here are not "
+            "analyzed until the texts agree. Close one of the two.",
+            first);
+        protocol::Diagnostic diagnostic;
+        diagnostic.severity = protocol::DiagnosticSeverity::Warning;
+        diagnostic.source = "clice";
+        diagnostic.message = message;
+        params.diagnostics.push_back(std::move(diagnostic));
+        if(!alias.warned) {
+            alias.warned = true;
+            peer.send_notification(protocol::ShowMessageParams{
+                .type = protocol::MessageType::Warning,
+                .message = std::move(message),
+            });
+        }
+    }
+    peer.send_notification(params);
+}
+
+void LSPClient::publish_aliases(Fid path_id) {
+    auto it = aliases.find(path_id);
+    if(it == aliases.end()) {
+        return;
+    }
+    auto& project = server.owner_of(path_id);
+    auto session = server.find_session(path_id);
+    for(auto& alias: it->second) {
+        publish_alias(alias, session.get(), project);
+    }
 }
 
 LSPClient::AliasDocument LSPClient::take_alias(Fid path_id, AliasDocument* alias) {
@@ -170,13 +233,17 @@ void LSPClient::register_lifecycle() {
         // support names its one root through rootUri.
         auto& init = params.lsp__initialize_params;
         auto& folders = params.workspace_folders_initialize_params.workspace_folders;
-        std::vector<std::string> roots;
+        std::vector<Spelling> roots;
         if(folders.has_value() && folders->has_value() && !(*folders)->empty()) {
             for(auto& folder: **folders) {
-                roots.push_back(uri_to_path(folder.uri));
+                if(auto root = uri_to_path(folder.uri)) {
+                    roots.push_back(std::move(*root));
+                }
             }
         } else if(init.root_uri.has_value()) {
-            roots.push_back(uri_to_path(*init.root_uri));
+            if(auto root = uri_to_path(*init.root_uri)) {
+                roots.push_back(std::move(*root));
+            }
         }
         srv.change_folders({}, std::move(roots));
 
@@ -322,13 +389,17 @@ void LSPClient::register_lifecycle() {
         if(past_shutdown(srv.lifecycle)) {
             return;
         }
-        std::vector<std::string> removed;
+        std::vector<Spelling> removed;
         for(auto& folder: params.event.removed) {
-            removed.push_back(uri_to_path(folder.uri));
+            if(auto root = uri_to_path(folder.uri)) {
+                removed.push_back(std::move(*root));
+            }
         }
-        std::vector<std::string> added;
+        std::vector<Spelling> added;
         for(auto& folder: params.event.added) {
-            added.push_back(uri_to_path(folder.uri));
+            if(auto root = uri_to_path(folder.uri)) {
+                added.push_back(std::move(*root));
+            }
         }
         srv.change_folders(std::move(removed), std::move(added));
     });
@@ -355,7 +426,12 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.foreground_pulse();
 
-        auto path = uri_to_path(params.text_document.uri);
+        auto spelled = uri_to_path(params.text_document.uri);
+        if(!spelled) {
+            LOG_INFO("didOpen: {} names no file; not served", params.text_document.uri);
+            return;
+        }
+        auto& path = spelled->str();
 
         // A didOpen racing ahead of the initialize handshake is a client
         // protocol violation, but sessions are plain state with no worker
@@ -367,7 +443,7 @@ void LSPClient::register_document_sync() {
             LOG_WARN("didOpen before the server is ready, accepting: {}", path);
         }
 
-        auto path_id = srv.files.intern(path);
+        auto path_id = srv.files.intern(*spelled);
         // One file, one buffer: a second document naming it through another
         // path (a symlink) would fold its own edits into the first one's.
         // The document opened first keeps it; this one waits with its own
@@ -376,9 +452,11 @@ void LSPClient::register_document_sync() {
             LOG_WARN("didOpen: {} is already open as {}; serving that one", path, *owner);
             auto& alias = aliases[path_id].emplace_back(
                 AliasDocument{.spelling = path, .buffer = {.path_id = path_id}});
-            srv.owner_of(path_id).sessions.apply_open(alias.buffer,
-                                                      params.text_document.text,
-                                                      params.text_document.version);
+            auto& project = srv.owner_of(path_id);
+            project.sessions.apply_open(alias.buffer,
+                                        params.text_document.text,
+                                        params.text_document.version);
+            publish_alias(alias, srv.find_session(path_id).get(), project);
             return;
         }
         srv.files.show_as(path_id, path);
@@ -393,11 +471,21 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.foreground_pulse();
 
-        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        // The edit reaches a second name's buffer whether or not it still
+        // agrees with the first name's.
+        auto spelled = uri_to_path(params.text_document.uri);
+        if(!spelled) {
+            return;
+        }
+        auto& path = spelled->str();
+        auto path_id = srv.files.intern(*spelled);
+        auto project = srv.owner_of(path_id).shared_from_this();
+        auto session = srv.find_session(path_id);
         if(auto* alias = find_alias(path_id, path)) {
             project->sessions.apply_change(alias->buffer,
                                            params.content_changes,
                                            params.text_document.version);
+            publish_alias(*alias, srv.find_session(path_id).get(), *project);
             return;
         }
         if(!session) {
@@ -421,6 +509,7 @@ void LSPClient::register_document_sync() {
         project->sessions.apply_change(*session,
                                        params.content_changes,
                                        params.text_document.version);
+        publish_aliases(path_id);
 
         // The edit just made any in-flight compile stale. Supersede it now
         // instead of waiting for the next AST-backed request to observe
@@ -450,10 +539,23 @@ void LSPClient::register_document_sync() {
         // clear is suppressed until the handshake completes — nothing was
         // pushed, and publishDiagnostics may not flow yet (push_output
         // drops the clear while !client_ready).
-        auto path = uri_to_path(params.text_document.uri);
-        auto path_id = srv.files.intern(path);
+        auto spelled = uri_to_path(params.text_document.uri);
+        if(!spelled) {
+            return;
+        }
+        auto& path = spelled->str();
+        auto path_id = srv.files.intern(*spelled);
+        // A second name's diagnostics end with it, whether it closes or
+        // takes the file over.
+        auto clear_alias = [&](llvm::StringRef spelling) {
+            if(client_ready) {
+                peer.send_notification(
+                    protocol::PublishDiagnosticsParams{.uri = feature::to_uri(spelling)});
+            }
+        };
         if(auto* alias = find_alias(path_id, path)) {
             take_alias(path_id, alias);
+            clear_alias(path);
             return;
         }
         if(srv.files.shown_as(path_id) != path) {
@@ -469,6 +571,7 @@ void LSPClient::register_document_sync() {
         // A document still open under another name takes the file over.
         if(auto it = aliases.find(path_id); it != aliases.end()) {
             auto next = take_alias(path_id, &it->second.front());
+            clear_alias(next.spelling);
             srv.files.show_as(path_id, next.spelling);
             srv.open_session(path_id, std::move(next.buffer.text), next.buffer.version);
         }
@@ -485,9 +588,12 @@ void LSPClient::register_document_sync() {
         srv.pool.foreground_pulse();
 
         auto path = uri_to_path(params.text_document.uri);
-        srv.saved(srv.files.intern(path));
+        if(!path) {
+            return;
+        }
+        srv.saved(srv.files.intern(*path));
 
-        LOG_DEBUG("didSave: {}", path);
+        LOG_DEBUG("didSave: {}", *path);
     });
 }
 
@@ -497,7 +603,7 @@ void LSPClient::register_language_features() {
         auto [path, path_id, session, project] =
             resolve_uri(params.text_document_position_params.text_document.uri);
         if(!session)
-            co_return kota::outcome_error(document_not_open());
+            co_return kota::outcome_error(unserved(path));
         co_return co_await project->features.hover(session,
                                                    params.text_document_position_params.position,
                                                    ctx.cancellation);
@@ -508,7 +614,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(document_not_open());
+                co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.semantic_tokens(session, ctx.cancellation);
         });
 
@@ -517,7 +623,7 @@ void LSPClient::register_language_features() {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
-            co_return kota::outcome_error(document_not_open());
+            co_return kota::outcome_error(unserved(path));
         co_return co_await project->features.inlay_hints(session, params.range, ctx.cancellation);
     });
 
@@ -526,7 +632,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(document_not_open());
+                co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.folding_range(session, ctx.cancellation);
         });
 
@@ -535,7 +641,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(document_not_open());
+                co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.document_symbol(session, ctx.cancellation);
         });
 
@@ -544,7 +650,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(document_not_open());
+                co_return kota::outcome_error(unserved(path));
             auto links = co_await project->features.document_links(session, ctx.cancellation);
             if(!links.has_value())
                 co_return kota::outcome_error(std::move(links.error()));
@@ -556,7 +662,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(document_not_open());
+                co_return kota::outcome_error(unserved(path));
             auto actions = co_await project->features.code_action(
                 session,
                 params.range,
@@ -629,7 +735,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session, project] =
                 resolve_uri(params.text_document_position_params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(document_not_open());
+                co_return kota::outcome_error(unserved(path));
             llvm::StringRef trigger;
             if(params.context && params.context->trigger_character) {
                 trigger = *params.context->trigger_character;
@@ -647,7 +753,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session, project] =
                 resolve_uri(params.text_document_position_params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(document_not_open());
+                co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.signature_help(
                 session,
                 params.text_document_position_params.position,
@@ -659,7 +765,7 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(document_not_open());
+                co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.formatting(session, ctx.cancellation);
         });
 
@@ -668,7 +774,7 @@ void LSPClient::register_language_features() {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
-            co_return kota::outcome_error(document_not_open());
+            co_return kota::outcome_error(unserved(path));
         co_return co_await project->features.range_formatting(session,
                                                               params.range,
                                                               ctx.cancellation);
@@ -734,8 +840,11 @@ void LSPClient::register_extensions() {
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto path_id = this->server.files.intern(uri_to_path(params.uri));
-            co_return to_raw(this->server.query_contexts(path_id, params));
+            auto path = uri_to_path(params.uri);
+            if(!path) {
+                co_return to_raw(ext::QueryContextResult{});
+            }
+            co_return to_raw(this->server.query_contexts(this->server.files.intern(*path), params));
         });
 
     peer.on_request(
@@ -750,8 +859,13 @@ void LSPClient::register_extensions() {
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto path_id = this->server.files.intern(uri_to_path(params.uri));
-            auto context_path_id = this->server.files.intern(uri_to_path(params.context_uri));
+            auto path = uri_to_path(params.uri);
+            auto context_path = uri_to_path(params.context_uri);
+            if(!path || !context_path) {
+                co_return to_raw(ext::SwitchContextResult{});
+            }
+            auto path_id = this->server.files.intern(*path);
+            auto context_path_id = this->server.files.intern(*context_path);
             // The session reset lives inside switch_context (single owner,
             // synchronous, no cross-file cascade — exempt from the event
             // pipeline; see the Invalidator charter).
@@ -935,13 +1049,9 @@ void LSPClient::publish_config_diagnostics() {
     }
 
     for(auto& [file, diagnostics]: by_file) {
-        auto uri = lsp::URI::from_file_path(file.str());
-        if(!uri) {
-            LOG_WARN("Cannot build URI for config file {}", file.str());
-            continue;
-        }
         protocol::PublishDiagnosticsParams params;
-        params.uri = uri->str();
+        params.uri = feature::to_uri(
+            server.files.display(server.files.intern(Spelling::absolute(file.str()))));
         params.diagnostics = std::move(diagnostics);
         peer.send_notification(params);
     }
@@ -960,15 +1070,12 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     }
     auto& output = *projection->output;
 
-    auto file_path = std::string(server.files.display(session.path_id));
-    auto uri = lsp::URI::from_file_path(file_path);
-    std::string uri_str = uri.has_value() ? uri->str() : file_path;
-
     protocol::PublishDiagnosticsParams params;
-    params.uri = uri_str;
+    params.uri = feature::to_uri(server.files.display(session.path_id));
     params.version = output.version;
     params.diagnostics = format_diagnostics(output);
     peer.send_notification(params);
+    publish_aliases(session.path_id);
 
     // Two cases make the client re-pull whole-document results it already
     // holds: index projections served while this compile was pending

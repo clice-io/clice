@@ -43,8 +43,8 @@ TEST_CASE(HardlinkFirstBindReads) {
     age(a);
 
     FileTable pool;
-    auto a_id = pool.intern(a);
-    auto b_id = pool.intern(b);
+    auto a_id = pool.intern(Spelling::absolute(a));
+    auto b_id = pool.intern(Spelling::absolute(b));
     auto read = pool.read(a_id);
     ASSERT_TRUE(read.has_value());
 
@@ -91,7 +91,7 @@ TEST_CASE(RenameSaveRebinds) {
     age(f);
 
     FileTable pool;
-    auto fid = pool.intern(f);
+    auto fid = pool.intern(Spelling::absolute(f));
     auto first = pool.read(fid);
     ASSERT_TRUE(first.has_value());
 
@@ -128,7 +128,7 @@ TEST_CASE(FastPathChecksIdentity) {
     age(f);
 
     FileTable pool;
-    auto fid = pool.intern(f);
+    auto fid = pool.intern(Spelling::absolute(f));
     auto read = pool.read(fid);
     ASSERT_TRUE(read.has_value());
     auto vid = pool.intern_version(fid, read->hash);
@@ -149,16 +149,16 @@ TEST_CASE(SymlinkShownAsSpelled) {
     TempDir tmp;
     tmp.touch("real/a.h", "");
     ASSERT_EQ(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()), 0);
-    auto real = CanonicalPath(tmp.path("real/a.h"));
+    auto real = CanonicalPath(Spelling::absolute(tmp.path("real/a.h")));
     auto link = tmp.path("link/a.h");
 
     FileTable pool;
-    auto fid = pool.intern(link);
+    auto fid = pool.intern(Spelling::absolute(link));
     ASSERT_EQ(pool.intern(real), fid);
     ASSERT_EQ(pool.resolve(fid), real);
     ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
 
-    pool.spell_root(tmp.path("link"));
+    pool.spell_root(Spelling::absolute(tmp.path("link")));
     ASSERT_EQ(pool.display(fid), link);
 
     pool.show_as(fid, real);
@@ -166,7 +166,7 @@ TEST_CASE(SymlinkShownAsSpelled) {
     pool.unshow(fid);
     ASSERT_EQ(pool.display(fid), link);
 
-    pool.unspell_root(tmp.path("link"));
+    pool.unspell_root(Spelling::absolute(tmp.path("link")));
     ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
 }
 
@@ -180,7 +180,7 @@ TEST_CASE(PairNeedsLiveIdentity) {
     age(f);
 
     FileTable pool;
-    auto fid = pool.intern(f);
+    auto fid = pool.intern(Spelling::absolute(f));
     auto read = pool.read(fid);
     ASSERT_TRUE(read.has_value());
     ASSERT_FALSE(
@@ -198,7 +198,7 @@ TEST_CASE(FreshReadNotVouched) {
     auto f = tmp.path("f.h");
 
     FileTable pool;
-    auto fid = pool.intern(f);
+    auto fid = pool.intern(Spelling::absolute(f));
     auto read = pool.read(fid);
     ASSERT_TRUE(read.has_value());
     auto vid = pool.intern_version(fid, read->hash);
@@ -236,6 +236,24 @@ TEST_CASE(CompileFSDropsBom) {
     ASSERT_TRUE(bool(buffer));
     ASSERT_EQ((*buffer)->getBuffer(), "int x;\n");
     ASSERT_EQ((*file)->status()->getSize(), 7u);
+}
+
+TEST_CASE(BinaryReadKeepsBom) {
+    // `#embed` data, PCH and PCM files are bytes, served as they are.
+    TempDir tmp;
+    tmp.touch("data.bin",
+              "\xEF\xBB\xBF"
+              "AB");
+    auto path = tmp.path("data.bin");
+    ThreadSafeFS vfs;
+    auto file = vfs.openFileForReadBinary(path);
+    ASSERT_TRUE(bool(file));
+    ASSERT_EQ((*file)->status()->getSize(), 5u);
+    auto buffer = (*file)->getBuffer(path, -1, true, false);
+    ASSERT_TRUE(bool(buffer));
+    ASSERT_EQ((*buffer)->getBuffer(),
+              "\xEF\xBB\xBF"
+              "AB");
 }
 
 TEST_CASE(ListingSeesNewFile) {
@@ -312,6 +330,22 @@ TEST_CASE(CanonicalSpelling) {
     EXPECT_FALSE(path::needs_canonical("/usr/x.h"));
 }
 
+TEST_CASE(PortableNames) {
+    // Under the workspace a path is named relative to it, anywhere else it
+    // keeps its own name; a name reads back in whichever checkout holds it.
+    llvm::SmallString<64> storage;
+    EXPECT_EQ(path::portable("/w/src/a.cpp", "/w", storage), "${workspace}/src/a.cpp");
+    EXPECT_EQ(path::portable("/w", "/w", storage), "${workspace}");
+    EXPECT_EQ(path::portable("/a.cpp", "/", storage), "${workspace}/a.cpp");
+    EXPECT_EQ(path::portable("/wx/a.cpp", "/w", storage), "/wx/a.cpp");
+    EXPECT_EQ(path::portable("/w/a.cpp", "", storage), "/w/a.cpp");
+
+    EXPECT_EQ(path::local("${workspace}/src/a.cpp", "/moved", storage), "/moved/src/a.cpp");
+    EXPECT_EQ(path::local("${workspace}", "/moved", storage), "/moved");
+    EXPECT_EQ(path::local("${workspace}/a.cpp", "/", storage), "/a.cpp");
+    EXPECT_EQ(path::local("/wx/a.cpp", "/moved", storage), "/wx/a.cpp");
+}
+
 #ifdef _WIN32
 TEST_CASE(WindowsSpellingsCollapse) {
     // VS Code sends lowercase drive URIs while the CDB and clang report
@@ -319,19 +353,35 @@ TEST_CASE(WindowsSpellingsCollapse) {
     // and resolves to the client-facing form, or every CDB lookup misses
     // and compiles fall back to guessed commands.
     FileTable pool;
-    EXPECT_EQ(pool.intern("c:/a/b.h"), pool.intern(R"(C:\a\b.h)"));
-    EXPECT_EQ(pool.resolve(pool.intern("C:/a/b.h")).str(), "c:/a/b.h");
-    EXPECT_EQ(pool.find(R"(c:\a\b.h)"), pool.find("C:/a/b.h"));
+    EXPECT_EQ(pool.intern(Spelling::absolute("c:/a/b.h")),
+              pool.intern(Spelling::absolute(R"(C:\a\b.h)")));
+    EXPECT_EQ(pool.resolve(pool.intern(Spelling::absolute("C:/a/b.h"))).str(), "c:/a/b.h");
+    EXPECT_EQ(pool.find(Spelling::absolute(R"(c:\a\b.h)")),
+              pool.find(Spelling::absolute("C:/a/b.h")));
+}
+
+TEST_CASE(WindowsCaseVariantsMerge) {
+    // The worker names a file by the OS's final name for it, in on-disk
+    // case; a spelling in another case interning to a second fid splits
+    // the file's dependencies and index rows between the two.
+    TempDir tmp;
+    tmp.touch("Real/File.h", "");
+    FileTable pool;
+    auto fid = pool.intern(Spelling::absolute(tmp.path("real/file.H")));
+    EXPECT_EQ(pool.intern(Spelling::absolute(tmp.path("Real/File.h"))), fid);
+    EXPECT_TRUE(llvm::StringRef(pool.resolve(fid)).ends_with("/Real/File.h"));
 }
 #else
 TEST_CASE(PosixBytesPreserved) {
     // '\' and "C:" are ordinary filename characters on POSIX; identity is
     // the raw bytes and the Windows rewrite must not touch them.
     FileTable pool;
-    EXPECT_NE(pool.intern(R"(a\b)"), pool.intern("a/b"));
-    EXPECT_NE(pool.intern("C:/x.h"), pool.intern("c:/x.h"));
-    EXPECT_NE(pool.intern("/c/x.h"), pool.intern("/C/x.h"));
-    EXPECT_EQ(pool.resolve(pool.intern(R"(a\b)")).str(), R"(a\b)");
+    EXPECT_NE(pool.intern(Spelling::absolute(R"(/w/a\b)")),
+              pool.intern(Spelling::absolute("/w/a/b")));
+    EXPECT_NE(pool.intern(Spelling::absolute("/w/C:/x.h")),
+              pool.intern(Spelling::absolute("/w/c:/x.h")));
+    EXPECT_NE(pool.intern(Spelling::absolute("/c/x.h")), pool.intern(Spelling::absolute("/C/x.h")));
+    EXPECT_EQ(pool.resolve(pool.intern(Spelling::absolute(R"(/w/a\b)"))).str(), R"(/w/a\b)");
 }
 #endif
 

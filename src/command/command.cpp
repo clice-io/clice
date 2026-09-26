@@ -51,7 +51,7 @@ namespace ranges = std::ranges;
 /// Version salt of the persistent command identity: entry hashes change
 /// wholesale on schema changes even when old and new renders happen to
 /// produce the same bytes.
-constexpr llvm::StringRef identity_salt = "clice-cmd-v8";
+constexpr llvm::StringRef identity_salt = "clice-cmd-v9";
 
 /// Pre-dedup form of an argument: value storage owned locally until the
 /// config wins insertion into the pool.
@@ -61,6 +61,16 @@ struct LocalArg {
     const char* spelling = nullptr;
     llvm::SmallVector<const char*, 2> values;
 };
+
+/// `value` spelled against `anchor` when it names a path (names_path),
+/// else `value` itself.
+llvm::StringRef
+    anchored(unsigned id, llvm::StringRef value, const Spelling& anchor, StringSet& strings) {
+    if(!names_path(id, value)) {
+        return value;
+    }
+    return strings.save(Spelling(value, anchor).str());
+}
 
 ArgClass classify(unsigned id, llvm::ArrayRef<const char*> values) {
     /// -fmodule-file has two shapes: `name=path` names a prebuilt module
@@ -236,8 +246,8 @@ CompilationDatabase::CompilationDatabase(FileTable& files) :
 
 CompilationDatabase::~CompilationDatabase() = default;
 
-void CompilationDatabase::set_workspace_root(llvm::StringRef root) {
-    workspace_root = root.str();
+void CompilationDatabase::set_workspace_root(CanonicalRef root) {
+    workspace_root = root;
 }
 
 const CompileConfig& CompilationDatabase::config(ConfigID id) const {
@@ -274,7 +284,7 @@ ConfigID CompilationDatabase::save_config(CompileConfig config, llvm::ArrayRef<A
     return ConfigID(id);
 }
 
-std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory,
+std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory,
                                                        Fid file,
                                                        llvm::ArrayRef<const char*> arguments) {
     if(arguments.empty()) {
@@ -293,9 +303,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory
     }
 
     CompileConfig config;
-    llvm::SmallString<256> canonical_dir;
-    config.directory =
-        directory.empty() ? "" : strings.save(path::canonical(directory, canonical_dir)).data();
+    config.directory = strings.save(directory.str()).data();
     config.driver = strings.save(arguments[0]).data();
     arguments = arguments.drop_front();
 
@@ -361,23 +369,20 @@ std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory
         staged.push_back(parsed);
     }
 
-    /// Does this token name the entry's file? Compared through the file
-    /// table (canonical spelling + dot removal), relative tokens resolved
-    /// against the entry directory — and as spelled, for entries interned
-    /// under a relative spelling (tests, hand-built databases).
+    /// Relative paths of the command resolve where the compile runs: the
+    /// entry directory, moved by `-working-directory`.
+    auto anchor = directory;
+    for(auto& parsed: staged) {
+        if(parsed && parsed->values.size() == 1 &&
+           (parsed->id == option::OPT_working_directory ||
+            parsed->id == option::OPT_working_directory_EQ)) {
+            anchor = Spelling(parsed->values[0], directory);
+        }
+    }
+
+    /// Does this token name the entry's file? Compared by identity.
     auto matches_entry = [&](llvm::StringRef token) {
-        if(!file.valid() || token.empty()) {
-            return false;
-        }
-        llvm::SmallString<256> abs;
-        if(path::is_absolute(token)) {
-            abs = token;
-        } else {
-            abs = directory;
-            path::append(abs, token);
-        }
-        path::remove_dots(abs, /*remove_dot_dot=*/true);
-        return file_table.intern(abs) == file || file_table.intern(token) == file;
+        return file.valid() && !token.empty() && file_table.find(Spelling(token, anchor)) == file;
     };
 
     /// A per-file selector naming the entry file forces its language and
@@ -492,13 +497,14 @@ std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory
         }
         local.cls = classify(id, local.values);
 
-        /// Include-path values absolutize against the entry directory, so
-        /// the config keeps meaning when consumed away from it.
-        if(is_include_path_option(id) && local.values.size() == 1) {
-            llvm::StringRef value(local.values[0]);
-            if(!value.empty() && !path::is_absolute(value)) {
-                local.values[0] = strings.save(path::join(directory, value)).data();
-            }
+        /// Path values absolutize where the compile runs, so the config
+        /// keeps meaning when consumed away from it: the toolchain probe
+        /// runs elsewhere.
+        // The working directory itself is relative to the entry's.
+        bool working =
+            id == option::OPT_working_directory || id == option::OPT_working_directory_EQ;
+        for(auto& value: local.values) {
+            value = anchored(id, value, working ? directory : anchor, strings).data();
         }
 
         args.push_back(std::move(local));
@@ -522,7 +528,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory
     return save_config(config, local_args);
 }
 
-std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory,
+std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory,
                                                        Fid file,
                                                        llvm::StringRef command) {
     llvm::BumpPtrAllocator local;
@@ -544,7 +550,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(llvm::StringRef directory
 }
 
 void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char*>& tokens,
-                                                llvm::StringRef directory,
+                                                const Spelling& directory,
                                                 CompilerFamily family,
                                                 llvm::StringSaver& saver,
                                                 unsigned depth) {
@@ -561,8 +567,7 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
             continue;
         }
 
-        llvm::StringRef spec = ref.drop_front();
-        std::string full = path::is_absolute(spec) ? spec.str() : path::join(directory, spec);
+        Spelling full(ref.drop_front(), directory);
         auto file = file_table.intern(full);
         auto observed = read_file_observed(file_table.resolve(file).data());
         if(observed) {
@@ -613,7 +618,23 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
         out += '\0';
     };
 
-    append(cfg.driver);
+    llvm::BumpPtrAllocator allocator;
+    llvm::StringSaver saver(allocator);
+    auto render_portable = [&](const Arg& arg) {
+        llvm::SmallVector<const char*, 2> values;
+        for(const char* value: arg.values) {
+            llvm::SmallString<256> storage;
+            auto name = path::portable(value, workspace_root, storage);
+            values.push_back(name.data() == value ? value : saver.save(name).data());
+        }
+        render_arg({.opt_id = arg.opt_id, .cls = arg.cls, .values = values}, append);
+    };
+
+    // A compiler named by path is spelled like every other path first.
+    auto driver = path::is_absolute(cfg.driver) ? Spelling::absolute(cfg.driver).str()
+                                                : std::string(cfg.driver);
+    llvm::SmallString<256> storage;
+    append(path::portable(driver, workspace_root, storage));
     if(cfg.subcommand) {
         append(cfg.subcommand);
     }
@@ -621,7 +642,7 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
         switch(arg.cls) {
             case ArgClass::Semantic:
             case ArgClass::UserContent:
-            case ArgClass::Diagnostics: render_arg(arg, append); break;
+            case ArgClass::Diagnostics: render_portable(arg); break;
             case ArgClass::Unknown: append(arg.spelling); break;
             case ArgClass::Input: append("\x01input"); break;
             case ArgClass::Codegen:
@@ -640,7 +661,8 @@ std::uint64_t CompilationDatabase::entry_hash(ConfigID id) {
     buf += identity_salt;
     buf += '\0';
     render_identity(id, buf);
-    buf += config(id).directory;
+    llvm::SmallString<256> storage;
+    buf += path::portable(config(id).directory, workspace_root, storage);
     it->second = hash_bytes(buf);
     return it->second;
 }
@@ -659,36 +681,39 @@ void CompilationDatabase::rebuild_entry_list() {
     });
 }
 
-/// The registered spelling of a source: the database file itself (a path
-/// without the .json extension names a directory, existing or not, holding
-/// compile_commands.json), absolute, dot-free and canonical, so every
-/// spelling of one file finds the same source.
-static std::string source_key(llvm::StringRef path) {
-    llvm::SmallString<256> file(path);
-    if(path::extension(file) != ".json") {
-        path::append(file, "compile_commands.json");
+/// The registered path of a source: the database file (a path without the
+/// .json extension names a directory, existing or not, holding
+/// compile_commands.json) in the identity of the directory holding it —
+/// every spelling of that directory finds the same source, while a
+/// database file symlinked elsewhere is still read through the link. So
+/// is a directory that is itself a symlink (build -> out/debug): switching
+/// the link switches the database.
+static Spelling source_key(const Spelling& path) {
+    auto file =
+        path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
+    auto directory = file.parent();
+    if(llvm::sys::fs::is_symlink_file(directory.str())) {
+        return Spelling(
+            path::filename(file.str()),
+            Spelling(path::filename(directory.str()), Spelling(CanonicalPath(directory.parent()))));
     }
-    fs::make_absolute(file);
-    path::remove_dots(file, /*remove_dot_dot=*/true);
-    std::string canonical(file);
-    path::canonicalize(canonical);
-    return canonical;
+    return Spelling(path::filename(file.str()), Spelling(CanonicalPath(directory)));
 }
 
-SourceID CompilationDatabase::add_source(llvm::StringRef path) {
+SourceID CompilationDatabase::add_source(const Spelling& path) {
     auto key = source_key(path);
     if(auto existing = find_source(key)) {
         return *existing;
     }
     auto file = file_table.intern(key);
-    source_files.push_back({.path = std::move(key), .inputs = {{.file = file}}});
+    source_files.push_back({.path = key.str(), .inputs = {{.file = file}}});
     return SourceID(source_files.size() - 1);
 }
 
-std::optional<SourceID> CompilationDatabase::find_source(llvm::StringRef path) const {
+std::optional<SourceID> CompilationDatabase::find_source(const Spelling& path) const {
     auto key = source_key(path);
     for(std::size_t i = 0; i < source_files.size(); i += 1) {
-        if(source_files[i].path == key) {
+        if(source_files[i].path == key.str()) {
             return SourceID(i);
         }
     }
@@ -716,7 +741,7 @@ bool CompilationDatabase::loaded(SourceID id) const {
 }
 
 std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
-    return load_source(add_source(path));
+    return load_source(add_source(Spelling::absolute(path)));
 }
 
 std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
@@ -752,7 +777,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // entries before the cut still swap in) — the CDB poll's two-tick
     // settle debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
-    auto database = file_table.intern(CanonicalPath(source.path));
+    auto database = file_table.intern(CanonicalPath(Spelling::absolute(source.path)));
     file_table.observe(database, observed->obs);
     source.inputs = {
         {.file = database, .hash = observed->obs.hash}
@@ -760,6 +785,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     loading = id;
     auto recording = llvm::make_scope_exit([&] { loading.reset(); });
 
+    llvm::StringMap<Spelling> working_dirs;
     std::uint32_t index = 0;
     for(auto element: arr) {
         auto skip = llvm::make_scope_exit([&] { index += 1; });
@@ -793,20 +819,19 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
 
-        llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
-        llvm::StringRef file_ref(file_sv.data(), file_sv.size());
-
         // A relative `directory` anchors to the CDB file's own location —
         // self-contained, so every consumer of the same file (server,
         // batch, inspect) resolves it identically.
-        llvm::SmallString<256> dir_abs;
-        if(!path::is_absolute(dir_ref)) {
-            dir_abs = path::parent_path(path);
-            fs::make_absolute(dir_abs);
-            path::append(dir_abs, dir_ref);
-            path::remove_dots(dir_abs, /*remove_dot_dot=*/true);
-            dir_ref = dir_abs;
+        Spelling directory(llvm::StringRef(dir_sv.data(), dir_sv.size()),
+                           Spelling::absolute(path).parent());
+        // The compile runs in the directory itself, whichever way the
+        // database spells it: its identity keys the command.
+        auto [known, fresh] = working_dirs.try_emplace(directory.str());
+        if(fresh) {
+            known->second = Spelling(CanonicalPath(directory));
         }
+        auto& working = known->second;
+        llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
         // Skip non-C-family files (e.g. .rc, .asm, .def) that some build
         // systems emit into compile_commands.json.
@@ -814,22 +839,10 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
 
-        // Resolve relative file paths against the directory and drop . and
-        // .. segments: clang reports realpath'd spellings, and an entry
-        // interned with dot segments would never match them.
-        llvm::SmallString<256> file_abs;
-        if(path::is_absolute(file_ref)) {
-            file_abs = file_ref;
-        } else {
-            file_abs = dir_ref;
-            path::append(file_abs, file_ref);
-        }
-        path::remove_dots(file_abs, /*remove_dot_dot=*/true);
-        auto path_id = file_table.intern(file_abs);
-        llvm::SmallString<256> storage;
-        auto spelled = path::canonical(file_abs, storage);
-        llvm::StringRef spelling = spelled != llvm::StringRef(file_table.resolve(path_id))
-                                       ? strings.save(spelled)
+        Spelling file(file_ref, directory);
+        auto path_id = file_table.intern_spelled(file);
+        llvm::StringRef spelling = file.str() != llvm::StringRef(file_table.resolve(path_id))
+                                       ? strings.save(file.str())
                                        : llvm::StringRef();
 
         std::optional<ConfigID> normalized;
@@ -851,7 +864,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             if(malformed || args.empty()) {
                 continue;
             }
-            normalized = normalize(dir_ref, path_id, args);
+            normalized = normalize(working, path_id, args);
         } else {
             std::string_view cmd_sv;
             if(obj["command"].get_string().get(cmd_sv)) {
@@ -862,7 +875,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                     index);
                 continue;
             }
-            normalized = normalize(dir_ref, path_id, llvm::StringRef(cmd_sv.data(), cmd_sv.size()));
+            normalized = normalize(working, path_id, llvm::StringRef(cmd_sv.data(), cmd_sv.size()));
         }
 
         if(!normalized) {
@@ -955,7 +968,7 @@ llvm::ArrayRef<CompilationEntry> CompilationDatabase::candidate_entries(Fid path
 }
 
 llvm::ArrayRef<CompilationEntry> CompilationDatabase::candidate_entries(llvm::StringRef file) {
-    return candidate_entries(file_table.intern(file));
+    return candidate_entries(file_table.intern(Spelling::absolute(file)));
 }
 
 bool CompilationDatabase::has_entry(llvm::StringRef file) {
@@ -992,7 +1005,8 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         return id;
     }
 
-    /// Rule-set identity for the memo: the exact edit content.
+    /// Rule-set identity for the memo: the exact edit content and the
+    /// directory each edit's relative paths are anchored at.
     std::string rule_key;
     auto append_section = [&](llvm::ArrayRef<std::string> section) {
         for(auto& item: section) {
@@ -1003,6 +1017,8 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     };
     for(auto& edit: options.edits) {
         rule_key += edit.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
+        rule_key += edit.directory.str();
+        rule_key += '\0';
         append_section(edit.flags);
     }
     append_section(options.extra_prepend);
@@ -1048,7 +1064,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     /// patterns view the translated spellings, which therefore outlive
     /// every match below.
     std::deque<std::vector<std::string>> remove_storage;
-    auto parse_removes = [&](llvm::ArrayRef<std::string> flags) {
+    auto parse_removes = [&](llvm::ArrayRef<std::string> flags, const Spelling& anchor) {
         std::vector<std::string> remove_source(flags.begin(), flags.end());
         if(is_nvcc) {
             /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
@@ -1103,8 +1119,17 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         }
         std::vector<kota::option::ParsedArg> removes;
         for(auto& parsed: option::table().parse(remove_flags, remove_parse_options)) {
-            if(parsed.has_value()) {
-                removes.push_back(*parsed);
+            if(!parsed.has_value()) {
+                continue;
+            }
+            auto& remove = removes.emplace_back(*parsed);
+            // Anchored like the base command's paths, so a relative value
+            // names the file the rule's configuration means; the `*`
+            // wildcard stays a wildcard.
+            for(auto& value: remove.values) {
+                if(value != "*") {
+                    value = anchored(remove.id, value, anchor, strings);
+                }
             }
         }
         return removes;
@@ -1134,13 +1159,15 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         });
     };
 
-    /// Parse an edit list into structured args, absolutizing include paths
-    /// against the config's directory like the load pipeline. Unknown tokens
-    /// keep the user's spelling and stay renderable (the user asked for them
-    /// explicitly) — including input-classified ones: an edit cannot name
-    /// the entry's input, so such a token is really the separate value of an
-    /// option the table does not know.
-    auto parse_edit = [&](llvm::ArrayRef<std::string> edit_flags, std::vector<LocalArg>& out) {
+    /// Parse an edit list into structured args, anchoring path values at
+    /// `anchor` like the load pipeline. Unknown tokens keep the user's
+    /// spelling and stay renderable (the user asked for them explicitly) —
+    /// including input-classified ones: an edit cannot name the entry's
+    /// input, so such a token is really the separate value of an option the
+    /// table does not know.
+    auto parse_edit = [&](llvm::ArrayRef<std::string> edit_flags,
+                          const Spelling& anchor,
+                          std::vector<LocalArg>& out) {
         std::vector<std::string> flags(edit_flags.begin(), edit_flags.end());
         for(auto& parsed: option::table().parse(flags, remove_parse_options)) {
             if(!parsed.has_value()) {
@@ -1167,11 +1194,8 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                 local.values.push_back(strings.save(value).data());
             }
             local.cls = classify(arg.id, local.values);
-            if(is_include_path_option(arg.id) && local.values.size() == 1) {
-                llvm::StringRef value(local.values[0]);
-                if(!value.empty() && !path::is_absolute(value)) {
-                    local.values[0] = strings.save(path::join(directory, value)).data();
-                }
+            for(auto& value: local.values) {
+                value = anchored(arg.id, value, anchor, strings).data();
             }
             out.push_back(std::move(local));
         }
@@ -1181,7 +1205,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     std::vector<LocalArg> append_args;
     for(auto& edit: options.edits) {
         if(edit.kind == CommandEdit::Kind::Remove) {
-            auto removes = parse_removes(edit.flags);
+            auto removes = parse_removes(edit.flags, edit.directory);
             // A remove reaches the appends before it, so a later rule can
             // take back what an earlier one added.
             llvm::erase_if(append_args, [&](const LocalArg& local) {
@@ -1191,13 +1215,16 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
             });
             remove_args.insert(remove_args.end(), removes.begin(), removes.end());
         } else {
-            parse_edit(translate_rule_flags(edit.flags, /*edit=*/true), append_args);
+            parse_edit(translate_rule_flags(edit.flags, /*edit=*/true),
+                       edit.directory,
+                       append_args);
         }
     }
-    parse_edit(options.extra_append, append_args);
+    auto entry_directory = Spelling::absolute(directory);
+    parse_edit(options.extra_append, entry_directory, append_args);
 
     std::vector<LocalArg> prepend_args;
-    parse_edit(options.extra_prepend, prepend_args);
+    parse_edit(options.extra_prepend, entry_directory, prepend_args);
 
     auto matches_remove = [&](const Arg& arg) {
         return llvm::any_of(remove_args, [&](const kota::option::ParsedArg& remove) {
@@ -1255,7 +1282,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     return result_id;
 }
 
-std::optional<ConfigID> CompilationDatabase::intern_command(llvm::StringRef directory,
+std::optional<ConfigID> CompilationDatabase::intern_command(const Spelling& directory,
                                                             llvm::ArrayRef<const char*> arguments) {
     std::string key = directory.str();
     for(const char* argument: arguments) {
@@ -1454,8 +1481,7 @@ SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
 #ifdef CLICE_ENABLE_TEST
 
 std::optional<CompilationEntry>
-    CompilationDatabase::append_test_command(llvm::StringRef file,
-                                             std::optional<ConfigID> normalized) {
+    CompilationDatabase::append_test_command(Fid file, std::optional<ConfigID> normalized) {
     if(!normalized) {
         return std::nullopt;
     }
@@ -1469,7 +1495,7 @@ std::optional<CompilationEntry>
     }
     auto id = SourceID(anonymous - source_files.begin());
     auto& source = *anonymous;
-    CompilationEntry entry{.file = file_table.intern(file),
+    CompilationEntry entry{.file = file,
                            .config = *normalized,
                            .source = id,
                            .ordinal = static_cast<std::uint32_t>(source.entries.size())};
@@ -1482,13 +1508,17 @@ std::optional<CompilationEntry>
     CompilationDatabase::add_command(llvm::StringRef directory,
                                      llvm::StringRef file,
                                      llvm::ArrayRef<const char*> arguments) {
-    return append_test_command(file, normalize(directory, file_table.intern(file), arguments));
+    auto base = Spelling::absolute(directory);
+    auto fid = file_table.intern(Spelling(file, base));
+    return append_test_command(fid, normalize(base, fid, arguments));
 }
 
 std::optional<CompilationEntry> CompilationDatabase::add_command(llvm::StringRef directory,
                                                                  llvm::StringRef file,
                                                                  llvm::StringRef command) {
-    return append_test_command(file, normalize(directory, file_table.intern(file), command));
+    auto base = Spelling::absolute(directory);
+    auto fid = file_table.intern(Spelling(file, base));
+    return append_test_command(fid, normalize(base, fid, command));
 }
 
 #endif

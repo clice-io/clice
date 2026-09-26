@@ -373,7 +373,7 @@ IndexStats collect_stats(Project& project) {
 
     stats.shards.reserve(project.project_index.shards.size());
     for(auto& [path_id, shard]: project.project_index.shards) {
-        ShardStat stat{.path = project.file_table.resolve(path_id),
+        ShardStat stat{.path = project.file_table.display(path_id),
                        .bytes = shard.bytes().size(),
                        .variants = shard.variants().size()};
         shard.for_each_occurrence([&](const index::Occurrence&) {
@@ -629,7 +629,7 @@ int run_show_symbol(Project& project, llvm::StringRef wanted) {
                          kota::meta::enum_name(symbol->scope, "External"),
                          symbol->file == index::no_file
                              ? llvm::StringRef("-")
-                             : llvm::StringRef(project.file_table.resolve(Fid{symbol->file})),
+                             : project.file_table.display(Fid{symbol->file}),
                          project.project_index.reference_count(hash));
         } else {
             std::println("  scope=local (not in the global table)");
@@ -648,7 +648,7 @@ int run_show_symbol(Project& project, llvm::StringRef wanted) {
         for(auto& [path_id, shard]: project.project_index.shards) {
             auto count = [&](RelationKind kind, std::size_t Counts::* field) {
                 shard.lookup(hash, kind, [&](const index::Relation&) {
-                    per_file[project.file_table.resolve(path_id).str()].*field += 1;
+                    per_file[project.file_table.display(path_id).str()].*field += 1;
                     return true;
                 });
             };
@@ -689,7 +689,7 @@ int run_show_file(Project& project, llvm::StringRef argument) {
     if(auto it = project.project_index.contributions.find(*file);
        it != project.project_index.contributions.end()) {
         for(auto& [tu, hash]: it->second) {
-            contributors[hash].push_back(project.file_table.resolve(tu));
+            contributors[hash].push_back(project.file_table.display(tu));
         }
     }
     auto variants = shard.variants();
@@ -750,7 +750,7 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
     }
     auto& manifest = manifest_it->second;
     auto version_path = [&](VersionID fv) {
-        return files.resolve(files.version(fv).fid);
+        return files.display(files.version(fv).fid);
     };
     std::println("translation unit {}", path);
     std::println("  built at {}  generation={}  content hash={}",
@@ -820,7 +820,8 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
                return;
            logging::stderr_logger("index", logging::options);
 
-           auto ws = workspace_root(opts.workspace.value_or(""));
+           auto spelling = workspace_spelling(opts.workspace.value_or(""));
+           CanonicalPath ws(spelling);
            auto configuration = opts.configuration.value_or("");
            std::size_t modes = (opts.show_symbol ? 1 : 0) + (opts.show_file ? 1 : 0) +
                                (opts.show_tu ? 1 : 0) + (opts.stats || opts.variants ? 1 : 0);
@@ -832,6 +833,8 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
            }
            if(opts.show_symbol || opts.show_file || opts.show_tu || opts.stats || opts.variants) {
                FileTable files;
+               // Answers name files under the workspace as the command line does.
+               files.spell_root(spelling);
                Project project{files};
                CommandResolver commands{project};
                auto loaded = load_index(project, commands, ws, configuration, /*with_build=*/false);

@@ -13,6 +13,7 @@ import {
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
 import { getSetting, Setting, workspaceDirectory } from "./setting";
+import { registerAliasRedirect } from "./feature/aliases";
 import { registerBuildConfiguration } from "./feature/configuration";
 import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
@@ -326,6 +327,7 @@ export async function activate(context: ExtensionContext) {
     registerBuildConfiguration(client, context);
     registerCompilationContext(client, context);
     registerConflictCheck(client, context);
+    registerAliasRedirect(context);
 
     await startServer(context);
 

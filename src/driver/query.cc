@@ -218,7 +218,7 @@ Reply answer(Project& project,
 
     auto method = opts.method.value_or("");
     auto path = opts.path.value_or("");
-    auto absolute = path.empty() ? std::string() : inspected_path(project, path);
+    auto absolute = path.empty() ? Spelling() : inspected_path(project, path);
     auto direction = opts.direction.value_or("both");
     auto kind_list = opts.kind.value_or("");
     llvm::SmallVector<llvm::StringRef> kind_refs;
@@ -256,7 +256,7 @@ Reply answer(Project& project,
         if(query && opts.path) {
             auto file = project.file_table.intern(absolute);
             if(!project.project_index.shard(file)) {
-                ctx.unindexed.emplace_back(absolute);
+                ctx.unindexed.emplace_back(absolute.str());
                 return std::unexpected("symbol not found");
             }
         }

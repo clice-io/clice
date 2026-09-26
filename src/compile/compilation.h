@@ -158,6 +158,11 @@ struct CompilationParams {
 
     std::string directory;
 
+    /// The workspace root: hashes that outlive the checkout's location
+    /// name the unit's files relative to it (path::portable). Empty for
+    /// none.
+    std::string workspace;
+
     /// Responsible for storing the arguments.
     std::vector<const char*> arguments;
 
@@ -188,11 +193,8 @@ struct CompilationParams {
     void add_synthesized(const SynthesizedFiles& files) {
         for(auto& [file, content]: files) {
             add_remapped_file(file, content);
-            // Spelled the way CompilationUnitRef::file_path spells a file no
-            // disk holds: the separators are the native ones.
-            llvm::SmallString<256> key(file);
-            path::remove_dots(key, /*remove_dot_dot=*/true);
-            synthesized.insert(key);
+            // Named the way CompilationUnitRef::file_path names it.
+            synthesized.insert(CanonicalPath(Spelling::absolute(file)).str());
         }
     }
 

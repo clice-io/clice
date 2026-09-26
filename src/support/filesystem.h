@@ -65,12 +65,11 @@ std::string join(Args&&... args) {
     return path.str().str();
 }
 
-/// Path identity on Windows is separator-agnostic and drive-case
-/// insensitive; LSP clients (vscode-uri) key documents by the
-/// lowercase-drive, forward-slash spelling, so that spelling is the
-/// canonical form for identity and URI emission. On POSIX identity is
-/// the raw bytes — '\' and "C:" are ordinary filename characters — and
-/// canonicalization must not touch paths there.
+/// Windows accepts either separator and either drive case; LSP clients
+/// (vscode-uri) key documents by the lowercase-drive, forward-slash
+/// spelling, so every path clice keeps or emits is spelled that way. On
+/// POSIX a path is its raw bytes — '\' and "C:" are ordinary filename
+/// characters — and canonicalization must not touch it.
 
 /// True when `p` deviates from the Windows canonical spelling.
 inline bool needs_canonical(llvm::StringRef p) {
@@ -114,14 +113,70 @@ inline void canonicalize([[maybe_unused]] std::string& p) {
 }  // namespace path
 
 struct FileTable;
+class CanonicalRef;
 class CanonicalPath;
 
+/// A path the way an input wrote it, joined onto the directory the input's
+/// relative paths are relative to: absolute, canonically spelled, without
+/// `.` segments or a trailing separator. `..` stays: the OS resolves it
+/// past symlinks, so only the identity (CanonicalPath) interprets it. Kept
+/// where a lookup depends on how a path was written — the directory a
+/// quoted include starts from, the file a rendered command names. Two
+/// spellings compare as text; only identities (CanonicalPath) tell whether
+/// they name one file.
+class Spelling {
+public:
+    /// None: no path.
+    Spelling() = default;
+
+    /// `text` as an input wrote it, relative to `base`; absolute text
+    /// stands alone.
+    Spelling(llvm::StringRef text, const Spelling& base);
+
+    /// A path already absolute: clang's file names, the worker protocol,
+    /// persisted paths.
+    static Spelling absolute(llvm::StringRef text);
+
+    /// The directory command-line arguments are relative to.
+    static Spelling cwd();
+
+    /// An identity spells itself.
+    explicit Spelling(CanonicalRef identity);
+
+    operator llvm::StringRef() const {
+        return text;
+    }
+
+    /// For LLVM's file APIs; points into this object, so it lives for the
+    /// call it is passed to.
+    operator llvm::Twine() const {
+        return llvm::Twine(text);
+    }
+
+    const std::string& str() const {
+        return text;
+    }
+
+    bool empty() const {
+        return text.empty();
+    }
+
+    /// The directory holding it, as spelled.
+    Spelling parent() const;
+
+    friend bool operator==(const Spelling&, const Spelling&) = default;
+
+private:
+    std::string text;
+};
+
 /// A path naming a file or directory by its identity, the way the file
-/// table does: the symlinks of its longest existing prefix resolved, the
-/// rest appended as spelled, `.`/`..` removed, canonically spelled. Two
-/// spellings of one file compare equal whether it exists yet or not. On
-/// Windows the canonical spelling alone is the identity: nothing is
-/// resolved, so neither case variants nor links through junctions merge.
+/// table and the worker do: the name the OS gives its longest existing
+/// prefix, the rest appended as spelled with `.`/`..` removed, canonically
+/// spelled. The OS's name follows symlinks everywhere; on Windows it also
+/// carries the on-disk case and follows junctions and subst drives, which
+/// is exactly what clang merges into one file there. Two spellings of one
+/// file compare equal whether it exists yet or not.
 ///
 /// Only resolution (CanonicalPath's constructor), the file table and the
 /// derivations below (parent(), and entry() on its caller's word) make
@@ -185,7 +240,7 @@ public:
     CanonicalPath() = default;
 
     /// The identity of what `spelled` names.
-    explicit CanonicalPath(llvm::StringRef spelled);
+    explicit CanonicalPath(const Spelling& spelled);
 
     CanonicalPath(CanonicalRef ref) : text(ref.str()) {}
 
@@ -251,6 +306,24 @@ std::strong_ordering operator<=>(const L& lhs, const R& rhs) = delete;
 
 namespace path {
 
+/// How configuration and persisted names spell the workspace root.
+constexpr inline llvm::StringRef workspace_anchor = "${workspace}";
+
+/// The name records that outlive the checkout's location give a path:
+/// `${workspace}/rel` under the workspace root, so the index database and
+/// the hashes of symbols and commands survive a move of the checkout; any
+/// other path, and every path without a workspace, stays as it is. Points
+/// into `p` or `storage`.
+llvm::StringRef portable(llvm::StringRef p,
+                         llvm::StringRef workspace,
+                         llvm::SmallVectorImpl<char>& storage);
+
+/// The path a portable name names in the checkout at `workspace`. Points
+/// into `name` or `storage`.
+llvm::StringRef local(llvm::StringRef name,
+                      llvm::StringRef workspace,
+                      llvm::SmallVectorImpl<char>& storage);
+
 /// Whether the identity `p` is `root` or lies under it.
 template <Canonical P, Canonical R>
 bool under(const P& p, const R& root) {
@@ -273,29 +346,21 @@ inline CanonicalPath CanonicalRef::entry(llvm::StringRef path) const {
     return CanonicalPath(CanonicalPath::Resolved{}, path);
 }
 
-inline CanonicalPath::CanonicalPath(llvm::StringRef spelled) {
-#ifdef _WIN32
-    llvm::SmallString<256> dotless(spelled);
-    path::remove_dots(dotless, /*remove_dot_dot=*/true);
-    text = std::string(dotless);
-    path::canonicalize(text);
-#else
-    llvm::SmallString<256> real;
-    llvm::StringRef existing = spelled;
-    while(llvm::sys::fs::real_path(existing, real)) {
-        auto parent = path::parent_path(existing);
-        if(parent.empty() || parent.size() == existing.size()) {
-            text = spelled.str();
+namespace path {
+
+/// Visit the identity `start` and its ancestors, nearest first, until
+/// `visit` returns false.
+inline void walk_ancestors(CanonicalRef start, llvm::function_ref<bool(CanonicalRef)> visit) {
+    for(CanonicalPath dir = start; visit(dir);) {
+        auto parent = CanonicalRef(dir).parent();
+        if(parent.empty() || parent.size() == dir.size()) {
             return;
         }
-        existing = parent;
+        dir = std::move(parent);
     }
-    real += spelled.drop_front(existing.size());
-    // The unresolved tail may still climb (`missing/../cache`).
-    path::remove_dots(real, /*remove_dot_dot=*/true);
-    text = std::string(real);
-#endif
 }
+
+}  // namespace path
 
 }  // namespace clice
 
@@ -303,6 +368,14 @@ template <clice::Canonical T>
 struct std::formatter<T> : std::formatter<llvm::StringRef> {
     template <typename FormatContext>
     auto format(const T& value, FormatContext& ctx) const {
+        return std::formatter<llvm::StringRef>::format(llvm::StringRef(value), ctx);
+    }
+};
+
+template <>
+struct std::formatter<clice::Spelling> : std::formatter<llvm::StringRef> {
+    template <typename FormatContext>
+    auto format(const clice::Spelling& value, FormatContext& ctx) const {
         return std::formatter<llvm::StringRef>::format(llvm::StringRef(value), ctx);
     }
 };
@@ -446,6 +519,25 @@ inline llvm::StringRef without_bom(llvm::StringRef bytes) {
     return text;
 }
 
+namespace fs {
+
+/// A file's text (see without_bom), read whole: how clice reads every
+/// source, command and configuration file it does not track.
+inline std::expected<std::unique_ptr<llvm::MemoryBuffer>, std::error_code>
+    read_text(llvm::StringRef path) {
+    auto buffer = llvm::MemoryBuffer::getFile(path);
+    if(!buffer) {
+        return std::unexpected(buffer.getError());
+    }
+    auto text = without_bom((*buffer)->getBuffer());
+    if(text.size() == (*buffer)->getBufferSize()) {
+        return std::move(*buffer);
+    }
+    return llvm::MemoryBuffer::getMemBufferCopy(text, path);
+}
+
+}  // namespace fs
+
 class ThreadSafeFS : public vfs::ProxyFileSystem {
 public:
     explicit ThreadSafeFS() : ProxyFileSystem(vfs::createPhysicalFileSystem()) {}
@@ -508,51 +600,24 @@ public:
         std::unique_ptr<llvm::MemoryBuffer> buffer;
     };
 
-    llvm::ErrorOr<vfs::Status> status(const llvm::Twine& path) override {
-        auto status = getUnderlyingFS().status(path);
-        if(!status || status->getType() != llvm::sys::fs::file_type::regular_file ||
-           status->getSize() < 3 || skips(status->getName())) {
-            return status;
-        }
-        llvm::SmallString<256> absolute;
-        path.toVector(absolute);
-        if(getUnderlyingFS().makeAbsolute(absolute) || !starts_with_bom(absolute)) {
-            return status;
-        }
-        return vfs::Status::copyWithNewSize(*status, status->getSize() - 3);
-    }
+    /// The size of the text: clang checks what it reads against it, and a
+    /// PCH records it for every input. Status carries no use, so a binary
+    /// use of a file clang only stat'ed first gets the text: `#embed` after
+    /// `__has_embed` probed the same file reads it without the mark.
+    llvm::ErrorOr<vfs::Status> status(const llvm::Twine& path) override;
 
-    llvm::ErrorOr<std::unique_ptr<vfs::File>> openFileForRead(const llvm::Twine& InPath) override {
-        llvm::SmallString<128> Path;
-        InPath.toVector(Path);
-
-        auto file = getUnderlyingFS().openFileForRead(Path);
-        if(!file || skips(Path)) {
+    llvm::ErrorOr<std::unique_ptr<vfs::File>> openFileForRead(const llvm::Twine& path) override {
+        auto file = getUnderlyingFS().openFileForRead(path);
+        if(!file) {
             return file;
         }
         return std::make_unique<VolatileFile>(std::move(*file));
     }
 
-private:
-    /// Built artifacts are served as they are.
-    static bool skips(llvm::StringRef path) {
-        return path::filename(path).ends_with(".pch");
-    }
-
-    static bool starts_with_bom(llvm::StringRef path) {
-        auto fd = llvm::sys::fs::openNativeFileForRead(path);
-        if(!fd) {
-            llvm::consumeError(fd.takeError());
-            return false;
-        }
-        char head[3];
-        auto read = llvm::sys::fs::readNativeFile(*fd, head);
-        llvm::sys::fs::closeFile(*fd);
-        if(!read) {
-            llvm::consumeError(read.takeError());
-            return false;
-        }
-        return *read == 3 && without_bom(llvm::StringRef(head, 3)).empty();
+    /// Bytes stay bytes: `#embed` data, PCH and PCM files.
+    llvm::ErrorOr<std::unique_ptr<vfs::File>>
+        openFileForReadBinary(const llvm::Twine& path) override {
+        return getUnderlyingFS().openFileForReadBinary(path);
     }
 };
 

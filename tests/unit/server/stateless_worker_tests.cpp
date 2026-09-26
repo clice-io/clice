@@ -181,17 +181,13 @@ TEST_CASE(BuildPCMRequest) {
             EXPECT_TRUE(build.build_at > 0);
             // The module source itself must be a hashed dependency: the PCM
             // cache key embeds no content, so the deps snapshot is the only
-            // thing that can see an offline edit of the interface. Deps are
-            // canonicalized through real_path (on macOS the temp dir sits
-            // behind the /var -> /private/var symlink), so compare against
-            // the canonical spelling.
-            llvm::SmallString<256> canonical;
-            if(llvm::sys::fs::real_path(src, canonical)) {
-                canonical = src;
-            }
+            // thing that can see an offline edit of the interface. Deps name
+            // files by identity (on macOS the temp dir sits behind the
+            // /var -> /private/var symlink).
+            auto identity = CanonicalPath(Spelling::absolute(src)).str();
             bool source_dep = false;
             for(auto& dep: build.deps) {
-                if(dep.path == canonical) {
+                if(dep.path == identity) {
                     source_dep = dep.hash != 0;
                 }
             }

@@ -13,7 +13,7 @@ Config tagged(const TempDir& tmp) {
     config.default_configuration = "release";
     config.rules.push_back(ConfigRule{.configuration = "debug", .compile_commands = {"debug"}});
     config.rules.push_back(ConfigRule{.configuration = "release", .compile_commands = {"release"}});
-    config.finalize(tmp.root.str());
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     return config;
 }
 
@@ -29,7 +29,7 @@ TEST_CASE(FallbackDefaultElseFirst) {
 
     Config untagged;
     untagged.rules.push_back(ConfigRule{.compile_commands = {"."}});
-    untagged.finalize(tmp.root.str());
+    untagged.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT_TRUE(fallback_configuration(untagged).empty());
 };
 
@@ -91,7 +91,7 @@ TEST_CASE(UntaggedIgnoresSelection) {
     TempDir tmp;
     Config config;
     config.rules.push_back(ConfigRule{.compile_commands = {"."}});
-    config.finalize(tmp.root.str());
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     ASSERT_TRUE(write_selection(config.project.cache_dir, "release").has_value());
     EXPECT_TRUE(resolve_configuration(config, "").empty());
     EXPECT_TRUE(resolve_configuration(config, "release").empty());

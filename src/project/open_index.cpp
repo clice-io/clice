@@ -12,14 +12,8 @@
 
 namespace clice {
 
-std::string inspected_path(const Project& project, llvm::StringRef argument) {
-    llvm::SmallString<256> absolute(path::is_absolute(argument)
-                                        ? argument.str()
-                                        : path::join(project.config.workspace_root, argument));
-    path::remove_dots(absolute, /*remove_dot_dot=*/true);
-    std::string result(absolute.str());
-    path::canonicalize(result);
-    return result;
+Spelling inspected_path(const Project& project, llvm::StringRef argument) {
+    return Spelling(argument, Spelling(project.config.workspace_root));
 }
 
 namespace {
@@ -49,6 +43,7 @@ bool open_database(Project& project, CanonicalRef root, llvm::StringRef requeste
         return false;
     }
     project.config = std::move(config);
+    project.project_index.workspace = root;
     project.store.emplace(std::move(*store));
     project.build.reset_active(configuration);
     project.index_db = index::open_database(*project.store, configuration, /*read_only=*/true);

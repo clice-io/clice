@@ -95,18 +95,18 @@ index::ProjectIndex build_project(clice::FileTable& pool,
                                   llvm::StringRef path,
                                   llvm::StringRef tu) {
     index::ProjectIndex project;
-    auto path_id = pool.intern(path);
+    auto path_id = pool.intern(Spelling::absolute(path));
     auto fv = pool.intern_version(path_id, 0xabcd);
 
     index::TUManifest manifest;
-    manifest.tu_fv = pool.intern_version(pool.intern(tu), 0x1111);
+    manifest.tu_fv = pool.intern_version(pool.intern(Spelling::absolute(tu)), 0x1111);
     manifest.nodes = {
         {fv.raw, ~0u, 3}
     };
     manifest.contributions = {
         {fv, 777}
     };
-    project.apply_manifest(pool, pool.intern(tu), std::move(manifest));
+    project.apply_manifest(pool, pool.intern(Spelling::absolute(tu)), std::move(manifest));
 
     auto& symbol = project.touch(42);
     symbol.name = "sym";
@@ -126,7 +126,8 @@ TEST_CASE(GlobalRoundTripRemap) {
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     project.global_generation = 9;
-    auto& manifest = project.manifests.find(pool.intern("/proj/tu.cpp"))->second;
+    auto& manifest =
+        project.manifests.find(pool.intern(Spelling::absolute("/proj/tu.cpp")))->second;
     manifest.global_gen = 9;
 
     llvm::SmallString<1024> buf;
@@ -137,12 +138,12 @@ TEST_CASE(GlobalRoundTripRemap) {
     // different pool id; both the FileVersion table and the loaded bitmap
     // must follow the path, not the id.
     clice::FileTable fresh;
-    fresh.intern("/proj/opened-first.cpp");
+    fresh.intern(Spelling::absolute("/proj/opened-first.cpp"));
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
 
-    auto id = fresh.find("/proj/used.h");
+    auto id = fresh.find(Spelling::absolute("/proj/used.h"));
     ASSERT_TRUE(id.has_value());
     ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42), id->raw));
     ASSERT_EQ(loaded.reference_count(42), 1u);
@@ -150,7 +151,8 @@ TEST_CASE(GlobalRoundTripRemap) {
     ASSERT_EQ(loaded.global_generation, 9u);
 
     // The blob pins the TU's manifest at the stamp it was saved under.
-    auto tu_fv = fresh.version_ids.find({*fresh.find("/proj/tu.cpp"), std::uint64_t(0x1111)});
+    auto tu_fv = fresh.version_ids.find(
+        {*fresh.find(Spelling::absolute("/proj/tu.cpp")), std::uint64_t(0x1111)});
     ASSERT_TRUE(tu_fv != fresh.version_ids.end());
     ASSERT_EQ(pins.size(), std::size_t(1));
     ASSERT_EQ(pins.find(tu_fv->second)->second, 9u);
@@ -164,7 +166,7 @@ TEST_CASE(GlobalRebaseKeepsChanges) {
     // never landed gives its rows back.
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
-    auto other = pool.intern("/proj/other.h");
+    auto other = pool.intern(Spelling::absolute("/proj/other.h"));
 
     std::string first;
     llvm::raw_string_ostream first_os(first);
@@ -194,7 +196,8 @@ TEST_CASE(GlobalRebaseKeepsChanges) {
     ASSERT_TRUE(loaded.load_global(third, fresh, pins));
     ASSERT_EQ(loaded.symbol_count(), 2u);
     ASSERT_EQ(loaded.reference_count(42), 2u);
-    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42), fresh.find("/proj/other.h")->raw));
+    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42),
+                                   fresh.find(Spelling::absolute("/proj/other.h"))->raw));
 }
 
 TEST_CASE(GlobalCollectsGarbage) {
@@ -202,7 +205,7 @@ TEST_CASE(GlobalCollectsGarbage) {
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     // Interned but referenced by no manifest — must not reach disk. The
     // shared table keeps it: other consumers may still anchor on it.
-    auto dead_id = pool.intern("/proj/dead.h");
+    auto dead_id = pool.intern(Spelling::absolute("/proj/dead.h"));
     pool.intern_version(dead_id, 0xdead);
 
     llvm::SmallString<1024> buf;
@@ -214,8 +217,8 @@ TEST_CASE(GlobalCollectsGarbage) {
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
-    ASSERT_FALSE(fresh.find("/proj/dead.h").has_value());
-    ASSERT_TRUE(fresh.find("/proj/used.h").has_value());
+    ASSERT_FALSE(fresh.find(Spelling::absolute("/proj/dead.h")).has_value());
+    ASSERT_TRUE(fresh.find(Spelling::absolute("/proj/used.h")).has_value());
 }
 
 TEST_CASE(GlobalVersionGate) {
@@ -316,7 +319,8 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     index::ProjectIndex loaded;
     ASSERT_TRUE(loaded.load_global(bytes_of(*valid), pool, pins));
     ASSERT_TRUE(loaded.identity_of(42).has_value());
-    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42), pool.find("/proj/ref.h")->raw));
+    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42),
+                                   pool.find(Spelling::absolute("/proj/ref.h"))->raw));
 
     // A malformed image after columns that decoded fine: the reject must
     // leave no partial state — file versions or symbols — that later
@@ -333,7 +337,7 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     ASSERT_FALSE(rejecting.load_global(bytes_of(*corrupt), untouched, pins).has_value());
     ASSERT_EQ(rejecting.symbol_count(), 0u);
     ASSERT_TRUE(untouched.versions.empty());
-    ASSERT_FALSE(untouched.find("/proj/partial.h").has_value());
+    ASSERT_FALSE(untouched.find(Spelling::absolute("/proj/partial.h")).has_value());
 }
 
 TEST_CASE(UncoveredBitmapIdRejected) {
@@ -440,7 +444,7 @@ TEST_CASE(GlobalBadCounterRejected) {
 TEST_CASE(GlobalRoundTripSymbolFacts) {
     clice::FileTable pool;
     index::ProjectIndex project;
-    auto file = pool.intern("/proj/facts.h");
+    auto file = pool.intern(Spelling::absolute("/proj/facts.h"));
     auto& parent = project.touch(7);
     parent.name = "ns";
     parent.kind = SymbolKind::Namespace;
@@ -458,7 +462,7 @@ TEST_CASE(GlobalRoundTripSymbolFacts) {
 
     // The file column follows the path across pools like the bitmaps do.
     clice::FileTable fresh;
-    fresh.intern("/proj/opened-first.cpp");
+    fresh.intern(Spelling::absolute("/proj/opened-first.cpp"));
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
@@ -469,7 +473,7 @@ TEST_CASE(GlobalRoundTripSymbolFacts) {
     ASSERT_EQ(restored->parent, 7u);
     ASSERT_EQ(static_cast<std::uint16_t>(restored->flags),
               static_cast<std::uint16_t>(symbol.flags));
-    auto moved = fresh.find("/proj/facts.h");
+    auto moved = fresh.find(Spelling::absolute("/proj/facts.h"));
     ASSERT_TRUE(moved.has_value());
     ASSERT_EQ(restored->file, moved->raw);
     ASSERT_EQ(loaded.identity_of(7)->file, index::no_file);
@@ -585,11 +589,13 @@ TEST_CASE(UnknownFileVersionsDetected) {
     ASSERT_TRUE(bytes.has_value());
 
     clice::FileTable pool;
-    pool.intern_version(pool.intern("/proj/opened-first.cpp"), 0x9);
+    pool.intern_version(pool.intern(Spelling::absolute("/proj/opened-first.cpp")), 0x9);
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     ASSERT_TRUE(loaded.load_global(bytes_of(*bytes), pool, pins));
-    auto known = pool.version_ids.find({*pool.find("/proj/a.h"), std::uint64_t(0x1)})->second;
+    auto known =
+        pool.version_ids.find({*pool.find(Spelling::absolute("/proj/a.h")), std::uint64_t(0x1)})
+            ->second;
 
     index::TUManifest manifest;
     manifest.tu_fv = VersionID{3};
@@ -622,9 +628,10 @@ TEST_CASE(SharedTableLineages) {
     first.serialize_global(first_os, first_pool);
 
     clice::FileTable second_pool;
-    second_pool.intern_version(second_pool.intern("/app/pad.cpp"), 0x5);
+    second_pool.intern_version(second_pool.intern(Spelling::absolute("/app/pad.cpp")), 0x5);
     auto second = build_project(second_pool, "/lib/used.h", "/app/tu.cpp");
-    auto& written = second.manifests.find(second_pool.intern("/app/tu.cpp"))->second;
+    auto& written =
+        second.manifests.find(second_pool.intern(Spelling::absolute("/app/tu.cpp")))->second;
     auto persisted = second.export_manifest(written);
     std::string second_bytes;
     llvm::raw_string_ostream second_os(second_bytes);
@@ -640,12 +647,13 @@ TEST_CASE(SharedTableLineages) {
 
     // The header both index is one version of the shared table.
     ASSERT_EQ(shared.versions.size(), std::size_t(3));
-    auto header = shared.version_ids.find({*shared.find("/lib/used.h"), std::uint64_t(0xabcd)});
+    auto header = shared.version_ids.find(
+        {*shared.find(Spelling::absolute("/lib/used.h")), std::uint64_t(0xabcd)});
     ASSERT_TRUE(header != shared.version_ids.end());
 
     auto imported = persisted;
     ASSERT_TRUE(second_loaded.import_manifest(imported));
-    ASSERT_EQ(shared.version(imported.tu_fv).fid, *shared.find("/app/tu.cpp"));
+    ASSERT_EQ(shared.version(imported.tu_fv).fid, *shared.find(Spelling::absolute("/app/tu.cpp")));
     ASSERT_EQ(imported.contributions[0].first, header->second);
     ASSERT_EQ(second_pins.size(), std::size_t(1));
     ASSERT_TRUE(second_pins.contains(imported.tu_fv));

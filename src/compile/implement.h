@@ -64,6 +64,9 @@ struct CompilationUnitRef::Self {
 
     std::shared_ptr<std::atomic_bool> stop;
 
+    /// See CompilationParams::workspace.
+    std::string workspace;
+
     llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> remapped_buffers;
 
     /// See CompilationParams::synthesized.

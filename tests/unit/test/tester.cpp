@@ -325,7 +325,7 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     }
 
     auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
-    auto entry = database.add_command("fake", src_path, command);
+    auto entry = database.add_command(TestVFS::root(), src_path, command);
     assert(entry && "no entry after add_command");
     CommandRef ref{entry->file,
                    entry->config,
@@ -340,12 +340,12 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
+    Spelling main(file_table.resolve(entry->file));
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {
-            params.add_remapped_file(file, source.content);
+            params.add_remapped_file(main, source.content);
         } else {
-            std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
-            params.add_remapped_file(path, source.content);
+            params.add_remapped_file(Spelling(file, main.parent()), source.content);
         }
     }
 }

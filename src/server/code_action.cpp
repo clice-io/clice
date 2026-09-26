@@ -60,16 +60,17 @@ protocol::CodeAction render(std::string title, protocol::CodeActionKind kind, Fi
     };
 }
 
-/// How `header` is spelled in an include directive of `file`, both resolved
-/// paths: its path below the file's own directory (where a quoted include
-/// looks first), else the shortest path below one of the command's search
-/// directories (resolved, however the command spells them), angled past
-/// the quoted segment — whichever of these the command's lookup order
-/// actually resolves to `header`, since a shorter spelling can name a
-/// same-named file in an earlier directory.
+/// How `header` is spelled in an include directive of `file`, the header
+/// by identity and the file as the build reaches it: its path below the
+/// file's directory (where a quoted include looks first), else the
+/// shortest path below one of the command's search directories (resolved,
+/// however the command spells them), angled past the quoted segment —
+/// whichever of these the command's lookup order actually resolves to
+/// `header`, since a shorter spelling can name a same-named file in an
+/// earlier directory.
 std::optional<std::string> include_spelling(CanonicalRef header,
                                             const SearchConfig& search,
-                                            CanonicalRef file,
+                                            const Spelling& file,
                                             DirListingCache& dir_cache) {
     auto below = [&](CanonicalRef root) -> std::optional<llvm::StringRef> {
         if(root.empty() || !path::under(header, root) || header.size() <= root.size()) {
@@ -85,12 +86,12 @@ std::optional<std::string> include_spelling(CanonicalRef header,
 
     std::vector<Candidate> candidates;
     auto directory = file.parent();
-    if(auto relative = below(directory)) {
+    if(auto relative = below(CanonicalPath(directory))) {
         candidates.push_back({*relative, false});
     }
     std::vector<CanonicalPath> dirs;
     for(auto& dir: search.dirs) {
-        dirs.push_back(CanonicalPath(dir.path));
+        dirs.push_back(CanonicalPath(Spelling::absolute(dir.path)));
     }
     for(auto [index, dir]: llvm::enumerate(dirs)) {
         if(auto relative = below(dir)) {
@@ -108,7 +109,7 @@ std::optional<std::string> include_spelling(CanonicalRef header,
                                         0,
                                         search,
                                         dir_cache);
-        if(resolved && CanonicalPath(resolved->path) == header) {
+        if(resolved && CanonicalPath(Spelling::absolute(resolved->path)) == header) {
             return candidate.angled ? std::format("<{}>", candidate.name)
                                     : std::format("\"{}\"", candidate.name);
         }
@@ -142,8 +143,8 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     }
 
     auto path_id = session->path_id;
-    auto path = project.file_table.resolve(path_id);
-    auto uri = feature::to_uri(project.file_table.display(path_id));
+    auto path = project.file_table.display(path_id);
+    auto uri = feature::to_uri(path);
     auto map = session->line_map();
 
     /// The action rendered over main-file replacements, all of them or
@@ -188,7 +189,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         if(!text || !host.valid()) {
             return;
         }
-        auto host_path = project.file_table.resolve(host);
+        auto host_path = project.file_table.display(host);
         auto host_session = sessions.find(host);
         auto formatted = feature::format_snippet(host_path, *text);
 
@@ -232,8 +233,8 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             std::string content;
             if(host_session) {
                 content = host_session->text;
-            } else if(auto read = fs::read(host_path)) {
-                content = without_bom(*read).str();
+            } else if(auto read = fs::read_text(host_path)) {
+                content = (*read)->getBuffer().str();
             } else {
                 return;
             }
@@ -249,7 +250,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             std::format("{} in {}", action.title, llvm::sys::path::filename(host_path)),
             std::move(action.kind),
             FileEdit{
-                .uri = feature::to_uri(project.file_table.display(host_path)),
+                .uri = feature::to_uri(host_path),
                 .version = host_session ? std::optional(host_session->version) : std::nullopt,
                 .edits = {std::move(edit)},
             }));
@@ -285,14 +286,17 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         }
         std::string directory;
         std::vector<std::string> arguments;
-        auto ref = contexts.resolve_command(path, directory, arguments).ref;
+        auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
         auto search = project.cdb.search_config(ref);
         DirListingCache dir_cache;
         dir_cache.shared = &project.file_table;
         llvm::StringRef text = session->text;
         std::string before = request.offset == text.size() && !text.ends_with('\n') ? "\n" : "";
         for(const auto& header: headers) {
-            if(auto spelling = include_spelling(header, search, path, dir_cache)) {
+            if(auto spelling = include_spelling(header,
+                                                search,
+                                                project.file_table.spelling(path_id),
+                                                dir_cache)) {
                 emit(std::format("Add #include {}", *spelling),
                      action.kind,
                      {

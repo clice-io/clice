@@ -118,12 +118,10 @@ public:
     /// Get the file offset of the file location.
     auto file_offset(clang::SourceLocation location) -> std::uint32_t;
 
-    /// Get the canonical path of the file entry: absolutized against the
-    /// compile's working directory and resolved through the compiler's
-    /// VFS, falling back to the absolute path with dot segments removed.
-    /// Symlinked spellings of a file resolve to one path; hardlinked
-    /// spellings each keep their own. The result is guaranteed to be
-    /// null-terminated.
+    /// The identity of the file entry (CanonicalPath), absolutized against
+    /// the compile's working directory: symlinked spellings of a file
+    /// resolve to one path; hardlinked spellings each keep their own. The
+    /// result is guaranteed to be null-terminated.
     auto file_path(clang::FileEntryRef entry) -> llvm::StringRef;
 
     /// Same, for the file entry backing `fid`. The fid must be valid and
@@ -131,6 +129,9 @@ public:
     /// <command line>, <scratch space>) have none — callers must filter
     /// them out first, see `is_builtin_file`.
     auto file_path(clang::FileID fid) -> llvm::StringRef;
+
+    /// See CompilationParams::workspace.
+    auto workspace() -> llvm::StringRef;
 
     /// Get the file content of the file ID.
     auto file_content(clang::FileID fid) -> llvm::StringRef;

@@ -66,7 +66,7 @@ public:
     /// The databases the active view compiles from, in priority order:
     /// the sources of every matching-or-not active rule, deduplicated.
     /// Empty when no rule declares one — discovery's cue.
-    llvm::SmallVector<llvm::StringRef> declared_sources() const;
+    llvm::SmallVector<Spelling> declared_sources() const;
 
     /// Every registered source in the priority order `path` sees: the
     /// sources of rules matching the file first, then those of the other
@@ -107,7 +107,7 @@ public:
     /// The builtin fallback command of a file the build does not compile
     /// (CommandSource::Fallback): the driver follows the language clang
     /// assigns to the file's extension, an ambiguous `.h` counting as C++.
-    ConfigID builtin(llvm::StringRef path);
+    ConfigID builtin(CanonicalRef path);
 
     /// Apply the edits of `paths` (and a run's extras) to `base`: the
     /// effective command of `file`, whose language is derived from the
@@ -122,7 +122,8 @@ public:
                        llvm::ArrayRef<std::string> extra_append = {});
 
     /// Hash of the edits for `paths`, empty when none apply: the rules'
-    /// part of a file's persisted command identity.
+    /// part of a file's persisted command identity, the workspace root
+    /// taken as `${workspace}`.
     std::string edit_hash(llvm::ArrayRef<CanonicalRef> paths) const;
 
     /// Every translation unit of the build: files with entries, plus the

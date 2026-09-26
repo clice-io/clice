@@ -1,6 +1,7 @@
 /// Files saved as "UTF-8 with BOM": every part of the server sees their text
 /// without the mark, as an editor shows and sends it.
 
+import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
 import { expect, test } from "../fixtures.ts";
 
@@ -46,4 +47,18 @@ test("a marked host keeps the header context", async ({ session }) => {
     await client.openAndWait("main.cpp");
     const [utilsUri] = await client.openAndWait("utils.h");
     client.assertCleanCompile(utilsUri);
+});
+
+test("embedded data keeps the mark", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    fs.writeFileSync(workspace.path("data.bin"), Buffer.from([0xef, 0xbb, 0xbf, 0x41, 0x42]));
+    workspace.write(
+        "main.cpp",
+        'constexpr unsigned char data[] = {\n#embed "data.bin"\n};\nstatic_assert(sizeof(data) == 5);\n',
+    );
+    workspace.writeCDB(["main.cpp"], { std: "c++26" });
+    await client.initialize(workspace);
+
+    const [main] = await client.openAndWait("main.cpp");
+    client.assertNoErrors(main, "`#embed` reads the file's bytes");
 });

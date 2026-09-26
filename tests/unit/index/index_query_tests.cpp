@@ -68,7 +68,7 @@ void merge_into_workspace() {
     auto& project_index = project.project_index;
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(project.file_table.intern(view.path(i)));
+        file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
     }
     llvm::SmallVector<index::SymbolHash> added;
     ASSERT_TRUE(project_index.merge(view, file_ids_map, &added));

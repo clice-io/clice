@@ -17,3 +17,32 @@ test("address sanitizer entry compiles", async ({ session }) => {
     client.assertNoErrors(uri);
     expect((await client.documentLinks(uri))?.length).toBe(1);
 });
+
+test("ignorelist beside the entry compiles", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("sub/ignore.txt", "fun:skipped\n");
+    workspace.write(
+        "sub/main.cpp",
+        "#include <vector>\nint main() { return std::vector<int>{1}.empty(); }\n",
+    );
+    workspace.write(
+        "compile_commands.json",
+        JSON.stringify([
+            {
+                directory: workspace.path("sub"),
+                file: "main.cpp",
+                arguments: [
+                    "clang++",
+                    "-fsanitize=address",
+                    "-fsanitize-ignorelist=ignore.txt",
+                    "-c",
+                    "main.cpp",
+                ],
+            },
+        ]),
+    );
+    await client.initialize(workspace);
+
+    const [uri] = await client.openAndWait("sub/main.cpp");
+    client.assertNoErrors(uri, "the list resolves in the entry's directory, as for clang");
+});

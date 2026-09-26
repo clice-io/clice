@@ -31,7 +31,7 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
     }
     auto includer_path = file_table.resolve(chain[chain.size() - 2]);
     auto target_path = file_table.resolve(target_id);
-    auto buf = llvm::MemoryBuffer::getFile(includer_path);
+    auto buf = fs::read_text(includer_path);
     if(!buf) {
         return 0;
     }
@@ -39,7 +39,7 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
         [](llvm::StringRef, bool, bool, llvm::StringRef) -> std::optional<std::string> {
         return std::nullopt;
     };
-    return count_include_occurrences(without_bom((*buf)->getBuffer()),
+    return count_include_occurrences((*buf)->getBuffer(),
                                      includer_path,
                                      target_path,
                                      null_resolver);
@@ -97,7 +97,8 @@ void Project::rescan_disk_file(Fid path_id) {
 
         DirListingCache dir_cache;
         dir_cache.shared = &file_table;
-        auto dir = llvm::sys::path::parent_path(path);
+        auto spelled_dir = file_table.spelling(path_id).parent();
+        llvm::StringRef dir = spelled_dir;
         auto entries = resolve_dir(dir, dir_cache);
         for(auto [index, ref]: llvm::enumerate(refs)) {
             auto search_config = cdb.search_config(ref);
@@ -113,7 +114,8 @@ void Project::rescan_disk_file(Fid path_id) {
                                                 resolved_config,
                                                 dir_cache);
                 if(resolved) {
-                    edges.push_back({file_table.intern(resolved->path), include.conditional});
+                    edges.push_back({file_table.intern_spelled(Spelling::absolute(resolved->path)),
+                                     include.conditional});
                 }
             }
             dep_graph.set_includes(path_id, static_cast<std::uint32_t>(index), std::move(edges));
@@ -213,42 +215,47 @@ Project::ProviderChanges Project::rebuild_dependency_graph() {
     return changes;
 }
 
-static std::string database_in(llvm::StringRef dir) {
-    auto candidate = path::join(dir, "compile_commands.json");
-    return llvm::sys::fs::exists(candidate) ? candidate : std::string();
+static std::optional<Spelling> database_in(const Spelling& dir) {
+    Spelling candidate("compile_commands.json", dir);
+    if(!llvm::sys::fs::exists(candidate)) {
+        return std::nullopt;
+    }
+    return candidate;
 }
 
-llvm::SmallVector<std::string> discover_compile_commands(llvm::StringRef workspace_root) {
-    llvm::SmallVector<std::string> found;
+llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root) {
+    llvm::SmallVector<Spelling> found;
     if(workspace_root.empty()) {
         return found;
     }
-    if(auto database = database_in(workspace_root); !database.empty()) {
-        found.push_back(std::move(database));
+    Spelling root(workspace_root);
+    if(auto database = database_in(root)) {
+        found.push_back(std::move(*database));
     }
 
     // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
-    llvm::SmallVector<std::string> subdirectories;
+    llvm::SmallVector<Spelling> subdirectories;
     std::error_code ec;
     for(llvm::sys::fs::directory_iterator it(workspace_root, ec), end; it != end && !ec;
         it.increment(ec)) {
-        if(it->type() == llvm::sys::fs::file_type::directory_file) {
-            subdirectories.push_back(it->path());
+        // A symlinked build directory is a build directory too.
+        if(llvm::sys::fs::is_directory(it->path())) {
+            subdirectories.push_back(Spelling::absolute(it->path()));
         }
     }
-    std::ranges::sort(subdirectories);
+    std::ranges::sort(subdirectories, {}, &Spelling::str);
     for(auto& subdirectory: subdirectories) {
-        if(auto database = database_in(subdirectory); !database.empty()) {
-            found.push_back(std::move(database));
+        if(auto database = database_in(subdirectory)) {
+            found.push_back(std::move(*database));
         }
     }
     return found;
 }
 
-llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_root,
-                                                      llvm::StringRef cache_dir) {
-    llvm::SmallVector<std::string> found;
+llvm::SmallVector<Spelling> compile_commands_below(CanonicalRef workspace_root,
+                                                   CanonicalRef cache_dir) {
+    llvm::SmallVector<Spelling> found;
     std::error_code ec;
     for(llvm::sys::fs::recursive_directory_iterator
             it(workspace_root, ec, /*follow_symlinks=*/false),
@@ -260,48 +267,55 @@ llvm::SmallVector<std::string> compile_commands_below(llvm::StringRef workspace_
             ec.clear();
             continue;
         }
-        llvm::SmallString<256> storage;
-        auto entry_path = path::canonical(it->path(), storage);
-        if(it->type() == llvm::sys::fs::file_type::directory_file) {
-            if(path::filename(entry_path) == ".git" || entry_path == cache_dir) {
+        auto entry = Spelling::absolute(it->path());
+        auto type = it->type();
+        if(type == llvm::sys::fs::file_type::directory_file) {
+            if(path::filename(entry.str()) == ".git" || workspace_root.entry(entry) == cache_dir) {
                 it.no_push();
             }
-        } else if(path::filename(entry_path) == "compile_commands.json") {
-            found.push_back(entry_path.str());
+        } else if(path::filename(entry.str()) == "compile_commands.json") {
+            found.push_back(std::move(entry));
+        } else if(type == llvm::sys::fs::file_type::symlink_file &&
+                  llvm::sys::fs::is_directory(entry)) {
+            // Not walked into (links may cycle), but a build directory
+            // symlinked elsewhere keeps its database.
+            if(auto database = database_in(entry)) {
+                found.push_back(std::move(*database));
+            }
         }
     }
     return found;
 }
 
-static bool configured(llvm::StringRef dir) {
+static bool configured(const Spelling& dir) {
     return llvm::any_of(config_file_names, [&](llvm::StringRef name) {
-        return llvm::sys::fs::exists(path::join(dir, name));
+        return llvm::sys::fs::exists(Spelling(name, dir));
     });
 }
 
-bool defines_project(llvm::StringRef dir) {
-    return configured(dir) || !discover_compile_commands(dir).empty();
+bool defines_project(CanonicalRef dir) {
+    return configured(Spelling(dir)) || !discover_compile_commands(dir).empty();
 }
 
-CanonicalPath project_root_above(llvm::StringRef start) {
-    CanonicalPath found;
-    path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
-        if(configured(dir) || !database_in(dir).empty() ||
-           !database_in(path::join(dir, "build")).empty()) {
-            found = CanonicalPath(dir);
+CanonicalPath project_root_above(CanonicalRef start) {
+    CanonicalPath root;
+    path::walk_ancestors(start, [&](CanonicalRef dir) {
+        Spelling spelled(dir);
+        if(configured(spelled) || database_in(spelled) || database_in(Spelling("build", spelled))) {
+            root = dir;
             return false;
         }
         return true;
     });
-    return found;
+    return root;
 }
 
-llvm::SmallVector<std::string> compile_commands_above(CanonicalRef start,
-                                                      CanonicalRef workspace_root) {
-    llvm::SmallVector<std::string> found;
+llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
+                                                   CanonicalRef workspace_root) {
+    llvm::SmallVector<Spelling> found;
     path::walk_ancestors(start, workspace_root, [&](llvm::StringRef dir) {
-        if(auto database = database_in(dir); !database.empty()) {
-            found.push_back(std::move(database));
+        if(auto database = database_in(Spelling::absolute(dir))) {
+            found.push_back(std::move(*database));
         }
         return true;
     });
@@ -319,7 +333,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
     snap.reserve(deps.size());
     for(const auto& file: deps) {
         auto& dep = snap.emplace_back();
-        dep.path_id = files.intern(file.path);
+        dep.path_id = files.intern(Spelling::absolute(file.path));
         auto hash = file.hash;
 
         // A place a failed lookup looked: the build saw nothing there,

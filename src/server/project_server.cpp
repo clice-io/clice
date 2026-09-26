@@ -107,8 +107,10 @@ void ProjectServer::configure(llvm::StringRef init_options,
     // then none.
     auto& cache_dir = project.config.project.cache_dir;
     auto taken = [&] {
-        return llvm::is_contained(taken_cache_dirs, CanonicalPath(cache_dir)) ||
-               owned_elsewhere(cache_dir, root);
+        return !cache_dir.empty() &&
+               (llvm::is_contained(taken_cache_dirs,
+                                   CanonicalPath(Spelling::absolute(cache_dir))) ||
+                owned_elsewhere(cache_dir, root));
     };
     if(!root.empty() && taken()) {
         std::string requested = cache_dir;

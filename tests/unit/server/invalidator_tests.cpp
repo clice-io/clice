@@ -87,9 +87,9 @@ TEST_CASE(NewProviderDirtiesImporters) {
 
     Project project{files};
     SessionStore store;
-    auto iface = project.file_table.intern(tmp.path("m.cppm"));
-    auto closed = project.file_table.intern("/proj/closed.cpp");
-    auto open = project.file_table.intern("/proj/open.cpp");
+    auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cppm")));
+    auto closed = project.file_table.intern(Spelling::absolute("/proj/closed.cpp"));
+    auto open = project.file_table.intern(Spelling::absolute("/proj/open.cpp"));
     store.open(open);
 
     CommandResolver commands(project);
@@ -130,8 +130,8 @@ TEST_CASE(ReloadProviderCascades) {
               build_cdb_json({
                   {tmp.root, tmp.path("m.cppm"), {}}
     }));
-    auto iface = project.file_table.intern(tmp.path("m.cppm"));
-    auto retired = project.file_table.intern(tmp.path("old.cpp"));
+    auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cppm")));
+    auto retired = project.file_table.intern(Spelling::absolute(tmp.path("old.cpp")));
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -158,7 +158,7 @@ TEST_CASE(DiskRemovedDropsProvider) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto iface = project.file_table.intern("/proj/m.cppm");
+    auto iface = project.file_table.intern(Spelling::absolute("/proj/m.cppm"));
     project.dep_graph.add_module("m", iface);
 
     CommandResolver commands(project);
@@ -181,7 +181,7 @@ TEST_CASE(DiskChangeSparesSession) {
 
     Project project{files};
     SessionStore store;
-    auto saved = project.file_table.intern(tmp.path("a.h"));
+    auto saved = project.file_table.intern(Spelling::absolute(tmp.path("a.h")));
     auto session = store.open(saved);
     store.apply_open(*session, "int x;", 1);
 
@@ -208,9 +208,9 @@ TEST_CASE(CascadeSplitsOpenClosed) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto mod = project.file_table.intern("/proj/m.cppm");
-    auto open_user = project.file_table.intern("/proj/open_user.cppm");
-    auto closed_user = project.file_table.intern("/proj/closed_user.cppm");
+    auto mod = project.file_table.intern(Spelling::absolute("/proj/m.cppm"));
+    auto open_user = project.file_table.intern(Spelling::absolute("/proj/open_user.cppm"));
+    auto closed_user = project.file_table.intern(Spelling::absolute("/proj/closed_user.cppm"));
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -241,12 +241,12 @@ TEST_CASE(ChainHitAndMiss) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto saved = project.file_table.intern("/proj/inner.h");
-    auto other = project.file_table.intern("/proj/other.h");
-    auto hit = project.file_table.intern("/proj/hit.h");
-    auto miss = project.file_table.intern("/proj/miss.h");
+    auto saved = project.file_table.intern(Spelling::absolute("/proj/inner.h"));
+    auto other = project.file_table.intern(Spelling::absolute("/proj/other.h"));
+    auto hit = project.file_table.intern(Spelling::absolute("/proj/hit.h"));
+    auto miss = project.file_table.intern(Spelling::absolute("/proj/miss.h"));
 
-    auto closed = project.file_table.intern("/proj/closed.h");
+    auto closed = project.file_table.intern(Spelling::absolute("/proj/closed.h"));
     store.open(hit);
     store.open(miss);
 
@@ -279,9 +279,9 @@ TEST_CASE(SaveMarksDependents) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern("/proj/h.h");
-    auto open_tu = project.file_table.intern("/proj/a.cpp");
-    auto closed_tu = project.file_table.intern("/proj/b.cpp");
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto open_tu = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed_tu = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     project.dep_graph.set_includes(open_tu, 0, {{header}});
     project.dep_graph.set_includes(closed_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -306,9 +306,9 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern("/proj/h.h");
-    auto middle = project.file_table.intern("/proj/g.h");
-    auto root = project.file_table.intern("/proj/c.cpp");
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto middle = project.file_table.intern(Spelling::absolute("/proj/g.h"));
+    auto root = project.file_table.intern(Spelling::absolute("/proj/c.cpp"));
     project.dep_graph.set_includes(middle, 0, {{header}});
     project.dep_graph.set_includes(root, 0, {{middle}});
     project.dep_graph.build_reverse_map();
@@ -336,9 +336,9 @@ TEST_CASE(BatchSeesEarlierEdges) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto known = project.file_table.intern(tmp.path("a.cpp"));
-    auto added = project.file_table.intern(tmp.path("b.cpp"));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    auto known = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
+    auto added = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     project.dep_graph.set_includes(known, 0, {{header}});
     project.dep_graph.set_includes(added, 0, {});
     project.dep_graph.build_reverse_map();
@@ -365,9 +365,9 @@ TEST_CASE(RemovalThenChangeKeepsClear) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern(tmp.path("h.h"));
-    auto removed = project.file_table.intern(tmp.path("gone.cpp"));
-    auto kept = project.file_table.intern(tmp.path("kept.cpp"));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    auto removed = project.file_table.intern(Spelling::absolute(tmp.path("gone.cpp")));
+    auto kept = project.file_table.intern(Spelling::absolute(tmp.path("kept.cpp")));
     project.dep_graph.set_includes(removed, 0, {{header}});
     project.dep_graph.set_includes(kept, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -397,7 +397,7 @@ TEST_CASE(RescanKeepsGuardedProvider) {
 
     Project project{files};
     SessionStore store;
-    auto iface = project.file_table.intern(tmp.path("m.cpp"));
+    auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cpp")));
     project.dep_graph.update_module_decl(iface, "m");
 
     auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cpp"));
@@ -419,8 +419,8 @@ TEST_CASE(CrashMarksLostDirty) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto first = project.file_table.intern("/proj/a.cpp");
-    auto second = project.file_table.intern("/proj/b.cpp");
+    auto first = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto second = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     store.open(first);
     store.open(second);
 
@@ -444,7 +444,7 @@ TEST_CASE(EvictionMarksLost) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto file = project.file_table.intern("/proj/a.cpp");
+    auto file = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
     store.open(file);
 
     CommandResolver commands(project);
@@ -464,7 +464,7 @@ TEST_CASE(BatchChangesDeduplicate) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto saved = project.file_table.intern("/proj/a.h");
+    auto saved = project.file_table.intern(Spelling::absolute("/proj/a.h"));
     store.open(saved);
 
     CommandResolver commands(project);
@@ -482,9 +482,9 @@ TEST_CASE(DiskChangeClosedCascades) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern("/proj/h.h");
-    auto open_tu = project.file_table.intern("/proj/a.cpp");
-    auto closed_tu = project.file_table.intern("/proj/b.cpp");
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto open_tu = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed_tu = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     project.dep_graph.set_includes(open_tu, 0, {{header}});
     project.dep_graph.set_includes(closed_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -515,9 +515,9 @@ TEST_CASE(DiskChangeOpenCascades) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern("/proj/h.h");
-    auto open_tu = project.file_table.intern("/proj/a.cpp");
-    auto closed_tu = project.file_table.intern("/proj/b.cpp");
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto open_tu = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed_tu = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     project.dep_graph.set_includes(open_tu, 0, {{header}});
     project.dep_graph.set_includes(closed_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -542,9 +542,9 @@ TEST_CASE(CompiledIncluderCascades) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern("/proj/m.h");
-    auto scanned = project.file_table.intern("/proj/a.cpp");
-    auto compiled = project.file_table.intern("/proj/b.cpp");
+    auto header = project.file_table.intern(Spelling::absolute("/proj/m.h"));
+    auto scanned = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto compiled = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     project.dep_graph.set_includes(scanned, 0, {{header}});
     project.dep_graph.set_includes(compiled, 0, {});
     project.dep_graph.build_reverse_map();
@@ -568,9 +568,9 @@ TEST_CASE(ModuleReadHeaderCascades) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern("/proj/gmf.h");
-    auto mod = project.file_table.intern("/proj/m.cppm");
-    auto user = project.file_table.intern("/proj/user.cpp");
+    auto header = project.file_table.intern(Spelling::absolute("/proj/gmf.h"));
+    auto mod = project.file_table.intern(Spelling::absolute("/proj/m.cppm"));
+    auto user = project.file_table.intern(Spelling::absolute("/proj/user.cpp"));
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -596,9 +596,9 @@ TEST_CASE(AppearedHeaderCascades) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern("/proj/gen.h");
-    auto closed = project.file_table.intern("/proj/b.cpp");
-    auto open = project.file_table.intern("/proj/a.cpp");
+    auto header = project.file_table.intern(Spelling::absolute("/proj/gen.h"));
+    auto closed = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
+    auto open = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
     project.project_index.probed[header].insert(closed);
     store.open(open);
 
@@ -620,9 +620,9 @@ TEST_CASE(DiskRemovedScrubsSourceRole) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern("/proj/h.h");
-    auto removed_tu = project.file_table.intern("/proj/gone.cpp");
-    auto other_tu = project.file_table.intern("/proj/kept.cpp");
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto removed_tu = project.file_table.intern(Spelling::absolute("/proj/gone.cpp"));
+    auto other_tu = project.file_table.intern(Spelling::absolute("/proj/kept.cpp"));
     project.dep_graph.set_includes(removed_tu, 0, {{header}});
     project.dep_graph.set_includes(other_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -654,7 +654,7 @@ TEST_CASE(RemoveRecreateBatchOrder) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto file = project.file_table.intern("/proj/a.cpp");
+    auto file = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
     project.dep_graph.set_includes(file, 0, {});
     project.dep_graph.build_reverse_map();
     CommandResolver commands(project);
@@ -697,7 +697,7 @@ TEST_CASE(EntryChangeThenRemoval) {
         {tmp.root, tmp.path("a.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, json);
-    auto file = project.file_table.intern(tmp.path("a.cpp"));
+    auto file = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -730,8 +730,8 @@ TEST_CASE(CDBAddedScansAndEnqueues) {
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, project.cdb, json);
-    auto main_id = project.file_table.intern(tmp.path("src/main.cpp"));
-    auto header_id = project.file_table.intern(tmp.path("inc/header.h"));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("inc/header.h")));
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -765,8 +765,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
         {tmp.root, tmp.path("b.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, json);
-    auto open_id = project.file_table.intern(tmp.path("a.cpp"));
-    auto closed_id = project.file_table.intern(tmp.path("b.cpp"));
+    auto open_id = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
+    auto closed_id = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     store.open(open_id);
     project.project_index.shards[open_id];
     project.project_index.shards[closed_id];
@@ -806,7 +806,7 @@ TEST_CASE(CDBAddedOpenMarksDirty) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto file = project.file_table.intern("/proj/a.cpp");
+    auto file = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
     store.open(file);
 
     CommandResolver commands(project);
@@ -831,10 +831,10 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto host = project.file_table.intern("/proj/host.cpp");
-    auto open_header = project.file_table.intern("/proj/open.h");
-    auto closed_header = project.file_table.intern("/proj/closed.h");
-    auto other_header = project.file_table.intern("/proj/other.h");
+    auto host = project.file_table.intern(Spelling::absolute("/proj/host.cpp"));
+    auto open_header = project.file_table.intern(Spelling::absolute("/proj/open.h"));
+    auto closed_header = project.file_table.intern(Spelling::absolute("/proj/closed.h"));
+    auto other_header = project.file_table.intern(Spelling::absolute("/proj/other.h"));
     store.open(open_header);
     project.project_index.shards[closed_header];
 
@@ -874,8 +874,8 @@ TEST_CASE(CDBDropsBorrowedIndex) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto host = project.file_table.intern("/proj/host.cpp");
-    auto header = project.file_table.intern("/proj/header.h");
+    auto host = project.file_table.intern(Spelling::absolute("/proj/host.cpp"));
+    auto header = project.file_table.intern(Spelling::absolute("/proj/header.h"));
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -900,9 +900,9 @@ TEST_CASE(CDBBorrowersByServing) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto host = project.file_table.intern("/proj/host.cpp");
-    auto served = project.file_table.intern("/proj/served.h");
-    auto compiled = project.file_table.intern("/proj/compiled.h");
+    auto host = project.file_table.intern(Spelling::absolute("/proj/host.cpp"));
+    auto served = project.file_table.intern(Spelling::absolute("/proj/served.h"));
+    auto compiled = project.file_table.intern(Spelling::absolute("/proj/compiled.h"));
     store.open(served)->serving = ServingMode::IndexOnly;
     store.open(compiled);
 
@@ -929,9 +929,9 @@ TEST_CASE(CDBChangedCascadesModule) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto mod = project.file_table.intern("/proj/m.cppm");
-    auto open_user = project.file_table.intern("/proj/open_user.cppm");
-    auto closed_user = project.file_table.intern("/proj/closed_user.cppm");
+    auto mod = project.file_table.intern(Spelling::absolute("/proj/m.cppm"));
+    auto open_user = project.file_table.intern(Spelling::absolute("/proj/open_user.cppm"));
+    auto closed_user = project.file_table.intern(Spelling::absolute("/proj/closed_user.cppm"));
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -968,9 +968,9 @@ TEST_CASE(DiskRemovedReindexesIncluders) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto header = project.file_table.intern("/proj/h.h");
-    auto open_tu = project.file_table.intern("/proj/a.cpp");
-    auto closed_tu = project.file_table.intern("/proj/b.cpp");
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto open_tu = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed_tu = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     project.dep_graph.set_includes(open_tu, 0, {{header}});
     project.dep_graph.set_includes(closed_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
@@ -1002,15 +1002,15 @@ TEST_CASE(CDBRemovedDropsSourceRole) {
     SessionStore store;
     // The pre-reload graph still shows gone.cpp as an includer; the CDB has
     // already been reloaded without it.
-    auto gone_id = project.file_table.intern(tmp.path("gone.cpp"));
-    auto header_id = project.file_table.intern(tmp.path("inc/h.h"));
+    auto gone_id = project.file_table.intern(Spelling::absolute(tmp.path("gone.cpp")));
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("inc/h.h")));
     project.dep_graph.set_includes(gone_id, 0, {{header_id}});
     project.dep_graph.build_reverse_map();
     auto json = build_cdb_json({
         {tmp.root, tmp.path("kept.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, json);
-    auto kept_id = project.file_table.intern(tmp.path("kept.cpp"));
+    auto kept_id = project.file_table.intern(Spelling::absolute(tmp.path("kept.cpp")));
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -1044,9 +1044,9 @@ TEST_CASE(CDBRemovedStillClaimed) {
     Project project{files};
     SessionStore store;
     project.config.rules.push_back(ConfigRule{.default_command = std::string("clang++")});
-    project.config.finalize(tmp.root.str());
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
-    auto gone_id = project.file_table.intern(tmp.path("gone.cpp"));
+    auto gone_id = project.file_table.intern(Spelling::absolute(tmp.path("gone.cpp")));
     auto json = build_cdb_json({
         {tmp.root, tmp.path("kept.cpp"), {}}
     });
@@ -1085,8 +1085,8 @@ TEST_CASE(BatchDiskEventsDeduplicate) {
     FileTable files;
     Project project{files};
     SessionStore store;
-    auto first = project.file_table.intern("/proj/a.h");
-    auto second = project.file_table.intern("/proj/b.h");
+    auto first = project.file_table.intern(Spelling::absolute("/proj/a.h"));
+    auto second = project.file_table.intern(Spelling::absolute("/proj/b.h"));
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -1123,8 +1123,8 @@ TEST_CASE(SurvivingEdgeKeepsChoice) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    auto host = project.file_table.intern(tmp.path("host.cpp"));
-    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
 
@@ -1152,8 +1152,8 @@ TEST_CASE(RemovedEdgeDropsChoice) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    auto host = project.file_table.intern(tmp.path("host.cpp"));
-    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     project.dep_graph.set_includes(host, 0, {});
     project.dep_graph.build_reverse_map();
 
@@ -1190,8 +1190,8 @@ TEST_CASE(VanishedOccurrenceDropsChoice) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    auto host = project.file_table.intern(tmp.path("host.cpp"));
-    auto header = project.file_table.intern(tmp.path("h.h"));
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     project.dep_graph.set_includes(host, 0, {{header}});
     project.dep_graph.build_reverse_map();
 

@@ -312,6 +312,16 @@ TEST_CASE(OptionsFileExpanded) {
     fs::remove(*second);
 }
 
+TEST_CASE(OptionsFileMarkSkipped) {
+    // A byte order mark does not glue itself to the first option.
+    auto file = fs::createTemporaryFile("clice-nvcc", "rsp");
+    ASSERT_TRUE(file.has_value());
+    ASSERT_TRUE(fs::write(*file, "\xEF\xBB\xBF-DMARKED=1\n"));
+    auto joined = llvm::join(translate({"nvcc", "--options-file", file->c_str()}), " ");
+    EXPECT_TRUE(llvm::StringRef(joined).contains("-D MARKED=1"));
+    fs::remove(*file);
+}
+
 TEST_CASE(StdNormalized) {
     EXPECT_TRUE(contains(translate({"nvcc", "-std", "c++17"}), "-std=c++17"));
     EXPECT_TRUE(contains(translate({"nvcc", "--std=c++20"}), "-std=c++20"));

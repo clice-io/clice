@@ -6,7 +6,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { waitUntil, type CliceClient } from "@clice/tools/client";
-import { canonicalUri, type Workspace } from "@clice/tools/workspace";
+import { canonicalUri, Workspace } from "@clice/tools/workspace";
 import { URI } from "vscode-uri";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
@@ -52,6 +52,13 @@ function runClice(...args: string[]) {
 
 function runIndex(ws: Workspace) {
     return runClice("index", "--workspace", ws.root, "--workers", "2");
+}
+
+/// How many translation units a batch index run indexed.
+function indexedUnits(ws: Workspace): number {
+    const run = runIndex(ws);
+    expect(run.status, run.stderr).toBe(0);
+    return Number(/Indexed (\d+) translation unit/.exec(run.stdout)?.[1]);
 }
 
 function query<T>(
@@ -202,6 +209,31 @@ test.skipIf(process.platform === "win32")("compile command through a symlink", (
     );
 });
 
+test.skipIf(process.platform === "win32")(
+    "a header lends from the include that finds it",
+    ({ session }) => {
+        const ws = session.tmpdir();
+        ws.write("a/main.cpp", "int main() { return 0; }\n");
+        ws.write("vendor/b.cpp", "int b() { return 0; }\n");
+        ws.write("vendor/real/orphan.h", "int orphan();\n");
+        fs.symlinkSync(ws.path("vendor/real"), ws.path("a/inc"));
+        ws.writeEntries([
+            ["a/main.cpp", ["-DFROM_A", `-I${ws.path("a/inc")}`]],
+            ["vendor/b.cpp", ["-DFROM_B"]],
+        ]);
+        ws.pinCacheDir();
+        expect(runIndex(ws).status).toBe(0);
+
+        const command = query<{ arguments: string[] }>(
+            ws,
+            "compileCommand",
+            "--path",
+            "a/inc/orphan.h",
+        );
+        expect(command.result?.arguments, "a's search reaches the header").toContain("FROM_A");
+    },
+);
+
 test("answers for a file only its own symbols name", ({ session }) => {
     // Nothing in the global table references the file, so only the
     // fetch of its own shard can answer for it.
@@ -221,6 +253,59 @@ test("answers for a file only its own symbols name", ({ session }) => {
     expect(onLine.result?.symbols.map((s) => s.name)).toEqual(["helper"]);
     expect(onLine.stale).toEqual([]);
 });
+
+test("moved checkout keeps its index", ({ session }) => {
+    const parent = session.tmpdir();
+    const before = new Workspace(parent.path("before"));
+    const after = new Workspace(parent.path("after"));
+    // Written the way a build generator writes it: every path absolute.
+    const writeCDB = (ws: Workspace) => {
+        ws.writeCDB(["src/a.cpp", "src/b.cpp"], { extraArgs: [`-I${ws.path("inc")}`] });
+    };
+    before.write("inc/util.h", "#pragma once\n#define UTIL_LIMIT 4\n");
+    before.write(
+        "src/a.cpp",
+        '#include "util.h"\nstatic int helper() { return UTIL_LIMIT; }\nint use_a() { return helper(); }\n',
+    );
+    before.write("src/b.cpp", '#include "util.h"\nint use_b() { return UTIL_LIMIT; }\n');
+    before.pinCacheDir();
+    writeCDB(before);
+    const ids = (ws: Workspace) =>
+        ["UTIL_LIMIT", "src/a.cpp:2"].map(
+            (text) =>
+                query<{ symbols: { symbolId: string }[] }>(ws, "symbolSearch", "--query", text)
+                    .result?.symbols[0]?.symbolId,
+        );
+    expect(indexedUnits(before)).toBe(2);
+    const first = ids(before);
+    expect(first.every((id) => id !== undefined)).toBe(true);
+
+    fs.renameSync(before.root, after.root);
+    writeCDB(after);
+    expect(indexedUnits(after), "the moved index is current").toBe(0);
+    expect(ids(after), "a macro and a file-local symbol keep their ids").toEqual(first);
+});
+
+// Only Linux file systems take a name that is not UTF-8.
+test.skipIf(process.platform !== "linux")(
+    "a path that is not UTF-8 still sees command edits",
+    ({ session }) => {
+        const ws = session.tmpdir();
+        const target = Buffer.concat([
+            Buffer.from(`${ws.root}/`),
+            Buffer.from([0xff]),
+            Buffer.from(".cpp"),
+        ]);
+        fs.writeFileSync(target, "int f() { return X; }\n");
+        fs.symlinkSync(target, ws.path("a.cpp"));
+        ws.pinCacheDir();
+        ws.writeCDB(["a.cpp"], { extraArgs: ["-DX=1"] });
+        expect(indexedUnits(ws)).toBe(1);
+
+        ws.writeCDB(["a.cpp"], { extraArgs: ["-DX=2"] });
+        expect(indexedUnits(ws), "the edited command reindexes the file").toBe(1);
+    },
+);
 
 test("rejects bad questions", ({ session }) => {
     const ws = writeProject(session);

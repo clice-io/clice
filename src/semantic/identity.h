@@ -35,8 +35,8 @@ public:
     std::uint64_t entity(const clang::NamedDecl* decl);
 
     /// The entity of a macro: its name and where the `#define` sits, as the
-    /// canonical path of the file and the offset in it. A builtin or
-    /// command-line macro has no file and is its name alone.
+    /// file's portable name (path::portable) and the offset in it. A
+    /// builtin or command-line macro has no file and is its name alone.
     std::uint64_t entity(llvm::StringRef name, clang::SourceLocation definition);
 
     /// The entity of a named module, from its full name.
@@ -67,6 +67,7 @@ private:
     void add_location(Hasher& hasher, clang::SourceLocation location);
     void add_macro_history(Hasher& hasher, clang::SourceLocation location);
     void add_path(Hasher& hasher, clang::SourceLocation location);
+    void add_file(Hasher& hasher, clang::FileID fid);
     void add_declaration_name(Hasher& hasher, clang::DeclarationName name);
     void add_type(Hasher& hasher, clang::QualType type);
     void add_expr(Hasher& hasher, const clang::Expr* expr);

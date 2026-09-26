@@ -170,22 +170,12 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     bool is_simple =
         filename.find('/') == llvm::StringRef::npos && filename.find('\\') == llvm::StringRef::npos;
 
-    // Check if filename contains "." or ".." components that need normalization.
-    // Only these produce non-canonical paths after path::append.
-    bool needs_normalize = !is_simple && (filename.find("..") != llvm::StringRef::npos ||
-                                          filename.find("./") != llvm::StringRef::npos ||
-                                          filename.find(".\\") != llvm::StringRef::npos ||
-                                          filename.find("\\.") != llvm::StringRef::npos);
-
+    // The candidate keeps `..` as written: the OS resolves it past a
+    // symlinked directory, where a lexical collapse would name another file.
     llvm::SmallString<256> candidate;
-
-    // Helper: build candidate path + normalize if needed.
     auto make_candidate = [&](llvm::StringRef dir, llvm::StringRef fname) {
         candidate = dir;
         llvm::sys::path::append(candidate, fname);
-        if(needs_normalize) {
-            llvm::sys::path::remove_dots(candidate, /*remove_dot_dot=*/true);
-        }
     };
 
     // 2. For #include_next, start from found_dir_idx + 1.

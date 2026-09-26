@@ -27,7 +27,7 @@ General-purpose utilities and infrastructure shared by all other modules.
 
 ### `src/vfs/` — File Identity and Versions
 
-- `FileTable`: Internalizes file paths as stable `Fid` identifiers used throughout the system, and owns the shared per-file facts derived from them — the last observation of each file on disk, content versions, scan results, directory listings. The two-layer freshness check (stat fast path, then content hash) lives here once and is shared by every consumer: PCH validation, index staleness, and disk polling. Every look that finds other content than the last one is reported as a change, whoever looked.
+- `FileTable`: Internalizes file paths as stable `Fid` identifiers used throughout the system, and owns the shared per-file facts derived from them — the last observation of each file on disk, content versions, scan results, directory listings. A file has one `Fid` however a path spells it: it is identified by the name the operating system gives it (through symlinks, and on Windows through letter case, junctions and subst drives), and shown to the user under the name the user knows it by — the open document's, else the build's. The two-layer freshness check (stat fast path, then content hash) lives here once and is shared by every consumer: PCH validation, index staleness, and disk polling. Every look that finds other content than the last one is reported as a change, whoever looked.
 
 ### `src/config/` — Configuration
 

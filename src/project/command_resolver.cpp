@@ -132,23 +132,25 @@ void CommandResolver::dump_mode_slices(std::vector<CacheModeEntry>& modes,
     }
 }
 
-void CommandResolver::load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
-                                       llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
+void CommandResolver::load_mode_slices(
+    llvm::ArrayRef<CacheModeEntry> modes,
+    llvm::function_ref<std::optional<Fid>(std::uint32_t)> file_of) {
     for(auto& entry: modes) {
-        auto file = resolve(entry.file);
         // The writer never emits unbound (hash 0) verdicts; an entry
         // carrying one is corrupt and must not bypass the content gate.
-        if(file.empty() || entry.content_hash == 0 ||
+        if(entry.content_hash == 0 ||
            static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
             continue;
-        auto id = project.file_table.intern(file);
+        auto id = file_of(entry.file);
+        if(!id)
+            continue;
         // The verdict is tied to the header's contents — a file edited
         // while the server was down must re-earn its trial.
-        auto disk = project.file_table.current(id);
+        auto disk = project.file_table.current(*id);
         if(!disk || disk->hash != entry.content_hash)
             continue;
-        header_verdicts[id] = {.mode = HeaderMode::NeedsContext,
-                               .content_hash = entry.content_hash};
+        header_verdicts[*id] = {.mode = HeaderMode::NeedsContext,
+                                .content_hash = entry.content_hash};
     }
 }
 
@@ -254,11 +256,10 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
     return true;
 }
 
-Resolution CommandResolver::resolve_command(llvm::StringRef spelled,
+Resolution CommandResolver::resolve_command(Fid path_id,
                                             std::string& directory,
                                             std::vector<std::string>& arguments,
                                             const CommandRequest& request) {
-    auto path_id = project.file_table.intern(spelled);
     auto path = project.file_table.resolve(path_id);
     llvm::SmallVector<llvm::StringRef, 4> tried;
     Resolution resolution;
@@ -441,9 +442,10 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
         if(!result) {
             return std::nullopt;
         }
-        // Normalize through the file table: resolve_include builds native
-        // separators, but chain paths compared against it are table-normalized.
-        return std::string(project.file_table.resolve(project.file_table.intern(result->path)));
+        // Chain files are named by the build's spelling of each, so a
+        // resolution matches the next one exactly when it is that file.
+        auto found = project.file_table.intern(Spelling::absolute(result->path));
+        return project.file_table.spelling(found).str();
     };
 
     // Read the chain files (all but the target) from disk. The synthesized
@@ -451,9 +453,11 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
     // open files must not be depended upon by other files. The versions
     // name the bytes just read — the bytes the synthesized context embeds.
     std::vector<std::string> chain_contents;
+    std::vector<Spelling> chain_paths;
     llvm::SmallVector<ChainEntry> chain_entries;
     DepsSnapshot deps;
     chain_contents.reserve(chain.size() - 1);
+    chain_paths.reserve(chain.size() - 1);
     chain_entries.reserve(chain.size() - 1);
     deps.reserve(chain.size());
     for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
@@ -464,7 +468,8 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
             return std::nullopt;
         }
         chain_contents.emplace_back(observed->content->getBuffer());
-        chain_entries.push_back({cur_path, chain_contents.back()});
+        chain_paths.push_back(project.file_table.spelling(chain[i]));
+        chain_entries.push_back({chain_paths.back(), chain_contents.back()});
         project.file_table.observe(chain[i], observed->obs);
         deps.push_back(
             {.path_id = chain[i],
@@ -486,8 +491,9 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
                                                                      target_observed->obs.hash)});
     }
 
+    auto target_spelling = project.file_table.spelling(chain.back());
     auto synthesized =
-        synthesize_context(chain_entries, target_path, resolver, occurrence, target_content);
+        synthesize_context(chain_entries, target_spelling, resolver, occurrence, target_content);
     if(!synthesized) {
         LOG_WARN("resolve_header_context: cannot match include chain for {} (host={})",
                  target_path,

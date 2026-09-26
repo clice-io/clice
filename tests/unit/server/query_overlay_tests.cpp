@@ -76,7 +76,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     st.state = nullptr;
 
     main_path = std::string(full_index.path(full_index.path_count() - 1));
-    auto path_id = project.file_table.intern(main_path);
+    auto path_id = project.file_table.intern(Spelling::absolute(main_path));
     session = session_store.open(path_id);
 
     auto it = sources.all_files.find(llvm::sys::path::filename(main_path));
@@ -122,7 +122,7 @@ std::string header_path(llvm::StringRef basename) {
 void merge_disk_index() {
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
-        file_ids_map.push_back(project.file_table.intern(full_index.path(i)));
+        file_ids_map.push_back(project.file_table.intern(Spelling::absolute(full_index.path(i))));
     }
     ASSERT_TRUE(project.project_index.merge(full_index, file_ids_map));
 
@@ -291,7 +291,7 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     // Opening the header makes its session authoritative: overlay rows
     // for it describe the disk snapshot and would map onto the edited
     // buffer at wrong lines, so they must vanish from results.
-    session_store.open(project.file_table.intern(header_path("foo.h")));
+    session_store.open(project.file_table.intern(Spelling::absolute(header_path("foo.h"))));
 
     auto locations = relations("ref", RelationKind::Reference);
     ASSERT_EQ(locations.size(), 1);
@@ -340,7 +340,7 @@ Derived instance;
 
     // Once derived.h is open, its session owns the type relations spelled
     // there; the overlay's disk-snapshot rows must stop contributing.
-    session_store.open(project.file_table.intern(header_path("derived.h")));
+    session_store.open(project.file_table.intern(Spelling::absolute(header_path("derived.h"))));
     supertypes = index_query.type_hierarchy(derived, {.subtypes = false}).supertypes;
     EXPECT_EQ(supertypes.size(), 0);
 }
@@ -360,7 +360,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     // The disk was seen holding other text for the header: its overlay
     // rows describe text that no longer exists (freshness contract,
     // clause 2), exactly like a shard contribution.
-    project.file_table.observe(project.file_table.intern(header_path("foo.h")),
+    project.file_table.observe(project.file_table.intern(Spelling::absolute(header_path("foo.h"))),
                                DiskObservation{.hash = 1});
     EXPECT_FALSE(index_query.first_site(hash_of("foo"), RelationKind::Definition).has_value());
 }
@@ -418,7 +418,7 @@ TEST_CASE(AsciiPreviewFromDisk) {
     llvm::StringRef text = "int value = 1;\nint other = value;\n";
     dir.touch("preview.cpp", text);
     auto path = dir.path("preview.cpp");
-    auto path_id = project.file_table.intern(path);
+    auto path_id = project.file_table.intern(Spelling::absolute(path));
 
     index::SymbolHash sym = 777;
     index::FileIndex rows;
@@ -477,7 +477,7 @@ int main() { return 0; }
     // file-local macro identities — its rows must stay scoped to the
     // file that built the blob.
     auto other_path = std::string(llvm::sys::path::parent_path(main_path)) + "/other.cpp";
-    auto other = session_store.open(project.file_table.intern(other_path));
+    auto other = session_store.open(project.file_table.intern(Spelling::absolute(other_path)));
     other->text = session->text;
     other->line_starts = session->line_starts;
     auto& other_entry = projections.entries[other->path_id];
@@ -542,7 +542,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     };
     relation.set_definition_range({0, 3});
     fake.relations[foo].push_back(relation);
-    auto header_id = project.file_table.intern(header_path("foo.h"));
+    auto header_id = project.file_table.intern(Spelling::absolute(header_path("foo.h")));
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(fake, {}, "xxx\n", os);

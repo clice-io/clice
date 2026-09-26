@@ -106,8 +106,10 @@ public:
 
     /// A lookup that found nothing still consulted the disk: a file created
     /// at any place it looked changes what the compile sees. Every such
-    /// place — the includer's directory for a quoted name, then each search
-    /// directory the lookup walks — is recorded as an absent input.
+    /// place — the directory the includer was opened from, for a quoted
+    /// name, then each search directory the lookup walks — is recorded as
+    /// an absent input, spelled as clang looked: `..` resolves past a
+    /// symlinked directory.
     void add_absent(llvm::StringRef name, bool angled, clang::SourceLocation location) {
         auto& absent = unit->absent;
         auto& files = unit->instance->getFileManager();
@@ -115,16 +117,15 @@ public:
             llvm::SmallString<256> candidate(directory);
             path::append(candidate, name);
             files.makeAbsolutePath(candidate);
-            path::remove_dots(candidate, /*remove_dot_dot=*/true);
-            absent.insert(candidate);
+            absent.insert(Spelling::absolute(candidate).str());
         };
         if(path::is_absolute(name)) {
-            absent.insert(name);
+            absent.insert(Spelling::absolute(name).str());
             return;
         }
         if(!angled) {
             if(auto includer = unit->SM().getFileEntryRefForID(unit.file_id(location))) {
-                add(path::parent_path(unit.file_path(*includer)));
+                add(includer->getDir().getName());
             }
         }
         auto& search = unit->instance->getPreprocessor().getHeaderSearchInfo();

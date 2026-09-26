@@ -6,15 +6,16 @@ namespace clice {
 
 namespace lsp = kota::ipc::lsp;
 
-std::string uri_to_path(const std::string& uri) {
-    auto parsed = lsp::URI::parse(uri);
-    if(parsed.has_value()) {
-        auto path = parsed->file_path();
-        if(path.has_value()) {
-            return std::move(*path);
-        }
+std::optional<Spelling> uri_to_path(llvm::StringRef uri) {
+    auto parsed = lsp::URI::parse(uri.str());
+    if(!parsed) {
+        return std::nullopt;
     }
-    return uri;
+    auto path = parsed->file_path();
+    if(!path || !path::is_absolute(*path)) {
+        return std::nullopt;
+    }
+    return Spelling::absolute(*path);
 }
 
 }  // namespace clice

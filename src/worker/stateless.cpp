@@ -142,6 +142,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     CompilationParams cp;
     cp.kind = CompilationKind::Preamble;
     fill_args(cp, params.directory, params.arguments);
+    cp.workspace = params.workspace;
     cp.add_remapped_file(params.file, params.content, params.preamble_bound);
     cp.add_synthesized(params.synthesized);
     cp.stop = stop;
@@ -334,10 +335,12 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             if(raw.in_system && !params.tidy_system_headers) {
                 continue;
             }
-            if(!keep || !keep->match(file)) {
-                continue;
-            }
-            if(drop && drop->match(file)) {
+            // Matched like clang-tidy does: against the name the lookup
+            // reached the header by, not its identity; a buffer no file
+            // backs is kept.
+            auto entry = unit.context().getSourceManager().getFileEntryRefForID(raw.fid);
+            if(entry && (!keep || !keep->match(entry->getName()) ||
+                         (drop && drop->match(entry->getName())))) {
                 continue;
             }
         }
@@ -371,6 +374,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     // Indexing kind.
     cp.kind = params.tidy ? CompilationKind::Content : CompilationKind::Indexing;
     fill_args(cp, params.directory, params.arguments);
+    cp.workspace = params.workspace;
     cp.add_synthesized(params.synthesized);
     for(auto& [name, path]: params.pcms) {
         cp.pcms.try_emplace(name, path);

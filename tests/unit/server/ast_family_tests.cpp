@@ -58,7 +58,7 @@ struct Stack {
     }
 
     std::shared_ptr<Session> open(llvm::StringRef path, std::string text) {
-        auto session = sessions.open(project.file_table.intern(path));
+        auto session = sessions.open(project.file_table.intern(Spelling::absolute(path)));
         session->text = std::move(text);
         session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
         return session;
@@ -950,7 +950,7 @@ TEST_CASE(PoisonPreambleBudget) {
 
     auto make_session = [&] {
         auto session = std::make_shared<Session>();
-        session->path_id = stack.project.file_table.intern(src);
+        session->path_id = stack.project.file_table.intern(Spelling::absolute(src));
         session->text = "#pragma clang __debug crash\n";
         return session;
     };
@@ -1091,7 +1091,7 @@ TEST_CASE(StaleDepsNoAdopt) {
 
     auto make_session = [&] {
         auto session = std::make_shared<Session>();
-        session->path_id = stack.project.file_table.intern(src);
+        session->path_id = stack.project.file_table.intern(Spelling::absolute(src));
         session->text = "#include \"dep.h\"\nint x;\n";
         return session;
     };

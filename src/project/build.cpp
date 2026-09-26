@@ -40,14 +40,14 @@ bool Build::declares_sources() const {
     });
 }
 
-llvm::SmallVector<llvm::StringRef> Build::declared_sources() const {
-    llvm::SmallVector<llvm::StringRef> result;
+llvm::SmallVector<Spelling> Build::declared_sources() const {
+    llvm::SmallVector<Spelling> result;
     for(auto& rule: config.compiled_rules) {
         if(!rule_active(rule, active)) {
             continue;
         }
         for(auto& database: rule.compile_commands) {
-            if(!llvm::is_contained(result, llvm::StringRef(database))) {
+            if(!llvm::is_contained(result, database)) {
                 result.push_back(database);
             }
         }
@@ -159,10 +159,14 @@ Edits Build::edits(llvm::ArrayRef<CanonicalRef> paths) const {
             continue;
         }
         if(!rule.remove.empty()) {
-            result.edits.push_back({.kind = CommandEdit::Kind::Remove, .flags = rule.remove});
+            result.edits.push_back({.kind = CommandEdit::Kind::Remove,
+                                    .flags = rule.remove,
+                                    .directory = rule.directory});
         }
         if(!rule.append.empty()) {
-            result.edits.push_back({.kind = CommandEdit::Kind::Append, .flags = rule.append});
+            result.edits.push_back({.kind = CommandEdit::Kind::Append,
+                                    .flags = rule.append,
+                                    .directory = rule.directory});
         }
     }
     return result;
@@ -190,7 +194,7 @@ std::optional<ConfigID> Build::default_command(CanonicalRef path) {
     return rule ? command_of(*rule) : std::nullopt;
 }
 
-ConfigID Build::builtin(llvm::StringRef path) {
+ConfigID Build::builtin(CanonicalRef path) {
     // Every C++ spelling (.cc, .cxx, .C, .hh) gets clang++, and so does the
     // ambiguous .h; C, Objective-C and unknown extensions get clang.
     namespace types = clang::driver::types;
@@ -211,7 +215,8 @@ ConfigID Build::builtin(llvm::StringRef path) {
     } else {
         arguments = {"clang"};
     }
-    return *cdb.intern_command("", arguments);
+    // Run from the file's own directory, like a compile nobody wrote down.
+    return *cdb.intern_command(Spelling(path.parent()), arguments);
 }
 
 CommandRef Build::resolve(Fid file,
@@ -231,10 +236,25 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
     if(edit.empty()) {
         return {};
     }
+    llvm::StringRef root = config.workspace_root;
     std::string joined;
     for(auto& item: edit.edits) {
         joined += item.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
-        for(auto& flag: item.flags) {
+        llvm::SmallString<256> storage;
+        joined += path::portable(item.directory.str(), root, storage);
+        joined += '\0';
+        for(llvm::StringRef flag: item.flags) {
+            // The rule's `${workspace}` put back, so a moved checkout
+            // keeps the hash.
+            while(!root.empty()) {
+                auto at = flag.find(root);
+                if(at == llvm::StringRef::npos) {
+                    break;
+                }
+                joined += flag.take_front(at);
+                joined += path::workspace_anchor;
+                flag = flag.drop_front(at + root.size());
+            }
             joined += flag;
             joined += '\0';
         }
@@ -387,7 +407,9 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
     });
 
     llvm::DenseSet<Fid> seen(out.begin(), out.end());
-    CanonicalPath cache_dir(config.project.cache_dir);
+    auto cache_dir = config.project.cache_dir.empty()
+                         ? CanonicalPath()
+                         : CanonicalPath(Spelling::absolute(config.project.cache_dir));
     for(auto root: roots) {
         std::error_code ec;
         for(llvm::sys::fs::recursive_directory_iterator it(root, ec, /*follow_symlinks=*/false),
@@ -408,14 +430,14 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
             if(type == llvm::sys::fs::file_type::directory_file) {
                 auto name = path::filename(spelled);
                 if(name == ".git" ||
-                   (name == path::filename(cache_dir) && CanonicalPath(spelled) == cache_dir)) {
+                   (name == path::filename(cache_dir) && root.entry(spelled) == cache_dir)) {
                     it.no_push();
                 }
                 continue;
             }
             auto entry_path = type == llvm::sys::fs::file_type::regular_file
                                   ? root.entry(spelled)
-                                  : CanonicalPath(spelled);
+                                  : CanonicalPath(Spelling::absolute(spelled));
             auto matched = matching(entry_path);
             if(!llvm::any_of(claimants, [&](const CompiledRule* rule) {
                    return llvm::is_contained(matched, rule);

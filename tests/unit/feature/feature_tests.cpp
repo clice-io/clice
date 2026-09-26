@@ -22,12 +22,6 @@ TEST_CASE(WindowsBackslashPath) {
     ASSERT_EQ(feature::to_uri(R"(F:\C++\cmake\clice\main.cpp)"),
               "file:///f:/C++/cmake/clice/main.cpp");
 }
-
-TEST_CASE(FormedUriDriveLowered) {
-    // The already-a-URI branch canonicalizes too: an uppercase drive must
-    // not leak through no matter which shape a caller hands in.
-    ASSERT_EQ(feature::to_uri("file:///C:/x.cpp"), "file:///c:/x.cpp");
-}
 #endif
 
 TEST_CASE(PlusStaysLiteral) {
@@ -51,26 +45,19 @@ TEST_CASE(RoundTripIdentity) {
         if(!path.has_value()) {
             return bad;
         }
-        return pool.intern(*path);
+        return pool.intern(Spelling::absolute(*path));
     };
-    ASSERT_EQ(ingest(feature::to_uri("/proj/a.cpp")), pool.intern("/proj/a.cpp"));
+    ASSERT_EQ(ingest(feature::to_uri("/proj/a.cpp")),
+              pool.intern(Spelling::absolute("/proj/a.cpp")));
 #ifdef _WIN32
-    ASSERT_EQ(ingest(feature::to_uri(R"(C:\proj\a.cpp)")), pool.intern("c:/proj/a.cpp"));
-    ASSERT_EQ(ingest("file:///c%3A/proj/a.cpp"), pool.intern("c:/proj/a.cpp"));
+    ASSERT_EQ(ingest(feature::to_uri(R"(C:\proj\a.cpp)")),
+              pool.intern(Spelling::absolute("c:/proj/a.cpp")));
+    ASSERT_EQ(ingest("file:///c%3A/proj/a.cpp"), pool.intern(Spelling::absolute("c:/proj/a.cpp")));
 #endif
 }
 
 TEST_CASE(PosixPath) {
     ASSERT_EQ(feature::to_uri("/home/user/main.cpp"), "file:///home/user/main.cpp");
-}
-
-TEST_CASE(FormedUri) {
-    ASSERT_EQ(feature::to_uri("file:///home/user/main.cpp"), "file:///home/user/main.cpp");
-}
-
-TEST_CASE(RelativePath) {
-    // Neither an absolute path nor a URI: returned verbatim.
-    ASSERT_EQ(feature::to_uri("include/test.h"), "include/test.h");
 }
 
 TEST_CASE(PathWithSpaces) {

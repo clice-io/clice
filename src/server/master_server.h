@@ -106,7 +106,7 @@ public:
     /// sized for all of them, and load the projects. Documents opened
     /// before move to the projects routing picks for them.
     void initialize();
-    void initialize(llvm::StringRef root);
+    void initialize(const Spelling& root);
 
     kota::task<> shutdown_and_cleanup();
 
@@ -134,7 +134,7 @@ public:
     /// open documents of a project that stops serving move to the project
     /// routing picks for them now. A folder both removed and added (a
     /// rename) keeps serving.
-    void change_folders(std::vector<std::string> removed, std::vector<std::string> added);
+    void change_folders(std::vector<Spelling> removed, std::vector<Spelling> added);
 
     /// A project's indexing progress moved: fold every project's round
     /// into index_progress and wake the transports.

@@ -33,11 +33,10 @@ struct ContextsData {
 
 }  // namespace
 
-Resolution EditorContext::resolve_command(llvm::StringRef path,
+Resolution EditorContext::resolve_command(Fid path_id,
                                           std::string& directory,
                                           std::vector<std::string>& arguments) {
-    auto path_id = project.file_table.intern(path);
-    auto resolution = commands.resolve_command(path,
+    auto resolution = commands.resolve_command(path_id,
                                                directory,
                                                arguments,
                                                {
@@ -76,11 +75,11 @@ std::string EditorContext::serialize() const {
     ContextsData data;
     llvm::StringMap<std::uint32_t> index_map;
     auto intern = [&](Fid fid) -> std::uint32_t {
-        auto path = project.file_table.resolve(fid);
+        auto path = project.project_index.portable(project.file_table.resolve(fid));
         auto [it, inserted] =
             index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
         if(inserted) {
-            data.paths.push_back(path.str());
+            data.paths.push_back(path);
         }
         return it->second;
     };
@@ -125,14 +124,14 @@ void EditorContext::load() {
             auto host = resolve(entry.host);
             if(host.empty())
                 continue;
-            saved.host_path_id = project.file_table.intern(host);
+            saved.host_path_id = project.file_table.intern(project.project_index.local(host));
         }
         if(entry.occurrence != ~0u) {
             saved.occurrence = entry.occurrence;
         }
         saved.command_hash = entry.command_hash;
         saved.base_hash = entry.base_hash;
-        selections[project.file_table.intern(file)] = std::move(saved);
+        selections[project.file_table.intern(project.project_index.local(file))] = std::move(saved);
     }
 }
 

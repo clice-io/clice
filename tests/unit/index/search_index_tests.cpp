@@ -1,6 +1,7 @@
 #include <string>
 #include <vector>
 
+#include "test/temp_dir.h"
 #include "test/test.h"
 #include "index/search_index.h"
 #include "index/symbol_query.h"
@@ -126,7 +127,7 @@ std::vector<std::string> names(const Corpus& corpus,
         out.push_back("error: " + query.error());
         return out;
     }
-    for(auto& hit: built.search(*query, limit).hits) {
+    for(auto& hit: built.search(*query, limit, {}).hits) {
         out.push_back(corpus.name_of(hit.hash));
     }
     return out;
@@ -148,9 +149,9 @@ TEST_CASE(Loads) {
     SearchIndex empty;
     EXPECT_FALSE(empty.load(llvm::MemoryBuffer::getMemBufferCopy("junk")));
     EXPECT_FALSE(empty.loaded());
-    EXPECT_TRUE(empty.search(*SymbolQuery::parse("foo"), 10).hits.empty());
-    EXPECT_TRUE(built.search(*SymbolQuery::parse("foo"), 100).exhausted);
-    EXPECT_FALSE(built.search(*SymbolQuery::parse("foo"), 2).exhausted);
+    EXPECT_TRUE(empty.search(*SymbolQuery::parse("foo"), 10, {}).hits.empty());
+    EXPECT_TRUE(built.search(*SymbolQuery::parse("foo"), 100, {}).exhausted);
+    EXPECT_FALSE(built.search(*SymbolQuery::parse("foo"), 2, {}).exhausted);
 }
 
 TEST_CASE(DamagedPosting) {
@@ -361,6 +362,30 @@ TEST_CASE(MatchesFullScan) {
         }
         EXPECT_EQ(names(corpus, built, text, 5), expected);
     }
+}
+
+TEST_CASE(PortablePathsFiltered) {
+    // The index names files under the workspace relative to it; a path
+    // filter sees them where the checkout sits now.
+    TempDir tmp;
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    Corpus corpus;
+    corpus.add("inside",
+               SymbolKind::Function,
+               SymbolFlags::HasDefinition,
+               1,
+               "${workspace}/src/a.cpp");
+    corpus.add("outside", SymbolKind::Function, SymbolFlags::HasDefinition, 1, "/opt/b.h");
+    auto built = corpus.build();
+    auto found = [&](const std::string& text) {
+        Names out;
+        for(auto& hit: built.search(*SymbolQuery::parse(text), 10, root).hits) {
+            out.push_back(corpus.name_of(hit.hash));
+        }
+        return out;
+    };
+    EXPECT_EQ(found(std::format("side path:{}/src/", root.str())), Names{"inside"});
+    EXPECT_EQ(found("side path:/opt/"), Names{"outside"});
 }
 
 };  // TEST_SUITE(SearchIndex)

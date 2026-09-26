@@ -29,8 +29,10 @@ namespace clice {
 /// `-include-pch`, see clangd#856). The entry's directory governs
 /// relative paths the way an explicit -working-directory does: an
 /// explicit one wins, but its own relative value resolves from the
-/// entry's directory, like the real driver run from there. Null when
-/// clang rejects the arguments; `diagnostics` received what it said.
+/// entry's directory, like the real driver run from there: `vfs` is moved
+/// there, so it must be one the caller owns, never the process's (whose
+/// working directory is every thread's). Null when clang rejects the
+/// arguments; `diagnostics` received what it said.
 std::unique_ptr<clang::CompilerInvocation>
     create_compiler_invocation(llvm::ArrayRef<const char*> arguments,
                                llvm::StringRef directory,

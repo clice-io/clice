@@ -460,13 +460,10 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 unique_dirs.insert(dir.path);
             }
         }
-        // Also prefetch parent directories of source files (for quoted include resolution).
+        // Also prefetch the directories quoted includes of source files
+        // start from.
         for(auto& entry: cdb.entries()) {
-            auto file_path = file_table.resolve(entry.file);
-            auto dir = llvm::sys::path::parent_path(file_path);
-            if(!dir.empty()) {
-                unique_dirs.insert(dir);
-            }
+            unique_dirs.insert(file_table.spelling(entry.file).parent().str());
         }
 
         pending_dir_tasks.reserve(unique_dirs.size());
@@ -702,7 +699,10 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             }
 
             auto& resolved_config = rc_it->second;
-            auto includer_dir = llvm::sys::path::parent_path(scan_result.path);
+            // Quoted includes start from the directory the build reaches
+            // the includer through, as clang's do.
+            auto includer_spelling = file_table.spelling(scan_result.path_id).parent();
+            llvm::StringRef includer_dir = includer_spelling;
             auto* includer_entries = resolve_dir(includer_dir, dir_cache, &wave_stat_counters);
 
             // Look up the found_dir_idx for this file (stored when it was discovered).
@@ -849,7 +849,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     continue;
                 }
 
-                auto inc_path_id = file_table.intern(resolved->path);
+                auto inc_path_id = file_table.intern_spelled(Spelling::absolute(resolved->path));
                 report.includes_resolved++;
 
                 if(cache_eligible) {

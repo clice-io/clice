@@ -185,7 +185,7 @@ public:
     /// A null gate never withholds; null live sources are the disk-only
     /// view of headless tools: every file answers as if closed.
     IndexQuery(const ProjectIndex& index,
-               const FileTable& files,
+               FileTable& files,
                const FreshnessGate* gate,
                const LiveSources* live);
 
@@ -435,7 +435,7 @@ private:
                                                std::unique_ptr<llvm::MemoryBuffer>& storage) const;
 
     const ProjectIndex& index;
-    const FileTable& files;
+    FileTable& files;
     const FreshnessGate* gate;
     const LiveSources* live;
 };

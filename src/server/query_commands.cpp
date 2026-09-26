@@ -45,36 +45,38 @@ Lines lines_of(const index::Site& site) {
 
 /// The file a path names in the index. An error for a path that is not a
 /// file; nullopt (noted as unindexed) for one the index has no rows for.
-Outcome<std::optional<Fid>> indexed_file(Context& ctx, llvm::StringRef path) {
+Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     if(!llvm::sys::fs::is_regular_file(path)) {
-        return std::unexpected(std::format("no such file: {}", std::string_view(path)));
+        return std::unexpected(std::format("no such file: {}", path));
     }
     // Interning only names the file; whether the index holds rows for
     // it is the shard fetch's answer.
     auto file = ctx.project.file_table.intern(path);
     if(!ctx.project.project_index.shard(file)) {
-        ctx.unindexed.emplace_back(path);
+        ctx.unindexed.emplace_back(path.str());
         return std::nullopt;
     }
     return file;
 }
 
-/// Anchor a query's place in the workspace: its path becomes absolute the
-/// way the command's own path arguments do, and must be an indexed file.
-/// Nullopt when the file is not indexed, which the caller answers as not
-/// found with the path noted.
-Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
+/// Anchor a query's paths in the workspace: a rooted path filter names
+/// its file by identity, however the command line spelled it, and the
+/// place's path becomes absolute the way the command's own path arguments
+/// do. False when the place's file is not indexed, which the caller
+/// answers as not found with the path noted.
+Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
+    for(auto& wanted: query.paths) {
+        if(path::is_absolute(wanted)) {
+            wanted = CanonicalPath(Spelling::absolute(wanted)).str();
+        }
+    }
     if(!query.position) {
         return true;
     }
     auto& place = *query.position;
-    llvm::SmallString<256> absolute(
-        path::is_absolute(place.path) ? place.path
-                                      : path::join(ctx.project.config.workspace_root, place.path));
-    path::remove_dots(absolute, /*remove_dot_dot=*/true);
-    place.path = absolute.str();
-    path::canonicalize(place.path);
-    auto file = indexed_file(ctx, place.path);
+    Spelling spelled(place.path, Spelling(ctx.project.config.workspace_root));
+    place.path = spelled.str();
+    auto file = indexed_file(ctx, spelled);
     if(!file) {
         return std::unexpected(file.error());
     }
@@ -85,7 +87,7 @@ Outcome<bool> anchor_place(Context& ctx, index::SymbolQuery& query) {
 /// symbol, several ask the caller to disambiguate by id. A locator naming
 /// a path the index has no rows for answers as unknown and notes the path.
 Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQuery query) {
-    auto anchored = anchor_place(ctx, query);
+    auto anchored = anchor_paths(ctx, query);
     if(!anchored) {
         return std::unexpected(anchored.error());
     }
@@ -133,7 +135,7 @@ std::vector<DepEntry> collect_deps(Project& ws,
                 continue;
             }
             queue.push_back({next, depth + 1});
-            entries.push_back({.path = ws.file_table.resolve(next).str(), .depth = depth + 1});
+            entries.push_back({.path = ws.file_table.display(next).str(), .depth = depth + 1});
         }
     }
     return entries;
@@ -170,9 +172,9 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Edge> ed
 
 }  // namespace
 
-Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path) {
+Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path) {
     if(!llvm::sys::fs::is_regular_file(path)) {
-        return std::unexpected(std::format("no such file: {}", std::string_view(path)));
+        return std::unexpected(std::format("no such file: {}", path));
     }
     // The editor compiles such a header under a synthesized preamble, a
     // cache artifact a read-only reader cannot produce; the host's bare
@@ -182,13 +184,14 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path
         return ctx.contexts.commands.header_mode(file) == HeaderMode::NeedsContext ||
                (choice && choice->host_path_id.valid() && choice->occurrence.has_value());
     };
-    if(auto file = ctx.project.file_table.find(path); file && needs_context(*file)) {
+    auto file = ctx.project.file_table.intern(path);
+    if(needs_context(file)) {
         return std::unexpected(std::format(
             "{} compiles only under a synthesized header context, which needs an editor session",
-            std::string_view(path)));
+            path));
     }
-    CompileCommandResult result{.file = std::string(path)};
-    auto source = ctx.contexts.resolve_command(path, result.directory, result.arguments).source;
+    CompileCommandResult result{.file = path.str()};
+    auto source = ctx.contexts.resolve_command(file, result.directory, result.arguments).source;
     switch(source) {
         case CommandSource::CDBExact: result.source = "database"; break;
         case CommandSource::IncludeGraph: result.source = "host"; break;
@@ -220,7 +223,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
         if(filter != "all" && filter != kind) {
             continue;
         }
-        FileInfo info{.path = file_path.str(), .kind = kind.str()};
+        FileInfo info{.path = ws.file_table.display(member).str(), .kind = kind.str()};
         if(!module_name.empty()) {
             info.module_name = module_name.str();
         }
@@ -231,7 +234,8 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
             auto path = ws.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header_path(path)) {
                 seen.insert(path_id);
-                result.files.push_back({.path = path.str(), .kind = "header"});
+                result.files.push_back(
+                    {.path = ws.file_table.display(path_id).str(), .kind = "header"});
             }
         }
     }
@@ -240,7 +244,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
 }
 
 Outcome<FileDepsResult>
-    file_deps(Context& ctx, llvm::StringRef path, llvm::StringRef direction, int depth) {
+    file_deps(Context& ctx, const Spelling& path, llvm::StringRef direction, int depth) {
     if(!llvm::is_contained<llvm::StringRef>({"includes", "includers", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected includes, includers or both",
@@ -250,14 +254,15 @@ Outcome<FileDepsResult>
         return std::unexpected("depth must not be negative");
     }
     if(!llvm::sys::fs::is_regular_file(path)) {
-        return std::unexpected(std::format("no such file: {}", std::string_view(path)));
+        return std::unexpected(std::format("no such file: {}", path));
     }
     auto& ws = ctx.project;
-    FileDepsResult result{.file = std::string(path)};
+    FileDepsResult result{.file = path.str()};
     auto file = ws.file_table.find(path);
     if(!file) {
         return result;
     }
+    result.file = ws.file_table.display(*file).str();
     if(direction != "includers") {
         result.includes = collect_deps(ws, *file, depth, [&](Fid id) {
             return ws.dep_graph.get_all_includes(id);
@@ -271,9 +276,9 @@ Outcome<FileDepsResult>
     return result;
 }
 
-Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, llvm::StringRef path) {
+Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path) {
     if(!llvm::sys::fs::is_regular_file(path)) {
-        return std::unexpected(std::format("no such file: {}", std::string_view(path)));
+        return std::unexpected(std::format("no such file: {}", path));
     }
     auto& ws = ctx.project;
     ImpactAnalysisResult result;
@@ -284,13 +289,13 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, llvm::StringRef path
     auto direct = ws.dep_graph.get_includers(*file);
     llvm::DenseSet<Fid> seen{*file};
     for(auto includer: direct) {
-        result.direct_dependents.push_back(ws.file_table.resolve(includer).str());
+        result.direct_dependents.push_back(ws.file_table.display(includer).str());
         seen.insert(includer);
     }
     auto hosts = ws.dep_graph.find_host_sources(*file);
     for(auto host: hosts) {
         if(seen.insert(host).second) {
-            result.transitive_dependents.push_back(ws.file_table.resolve(host).str());
+            result.transitive_dependents.push_back(ws.file_table.display(host).str());
         }
     }
     for(auto host: hosts) {
@@ -322,7 +327,7 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
         query->kinds.push_back(*parsed);
     }
     SymbolSearchResult result;
-    auto anchored = anchor_place(ctx, *query);
+    auto anchored = anchor_paths(ctx, *query);
     if(!anchored) {
         return std::unexpected(anchored.error());
     }
@@ -338,7 +343,9 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
             }
             return !query->paths.empty() &&
                    llvm::none_of(query->paths, [&](const std::string& wanted) {
-                       return index::path_matches(wanted, hit.site.path);
+                       return hit.site.file.valid() &&
+                              index::path_matches(wanted,
+                                                  ctx.project.file_table.resolve(hit.site.file));
                    });
         });
         if(located.size() > limit) {
@@ -376,7 +383,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
     };
 }
 
-Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, llvm::StringRef path) {
+Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& path) {
     auto is_document_level = [](SymbolKind kind) {
         return kind == SymbolKind::Namespace || kind == SymbolKind::Class ||
                kind == SymbolKind::Struct || kind == SymbolKind::Union ||

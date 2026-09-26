@@ -40,9 +40,9 @@ std::optional<LoadedIndex> load_index(Project& project,
                                       llvm::StringRef requested_configuration,
                                       bool with_build);
 
-/// An inspected file as the index keys it: a relative argument names a
-/// file under the workspace, whatever the process working directory, and
-/// dot segments are folded the way the compiler's paths were.
-std::string inspected_path(const Project& project, llvm::StringRef argument);
+/// An inspected file as the command line names it: a relative argument
+/// names a file under the workspace, whatever the process working
+/// directory.
+Spelling inspected_path(const Project& project, llvm::StringRef argument);
 
 }  // namespace clice

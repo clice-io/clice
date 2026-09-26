@@ -51,11 +51,11 @@ std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
                                          std::unique_ptr<llvm::MemoryBuffer>& storage) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
+    auto buffer = fs::read_text(path);
     if(!buffer) {
         return std::nullopt;
     }
-    auto text = without_bom((*buffer)->getBuffer());
+    auto text = (*buffer)->getBuffer();
     if(llvm::xxh3_64bits(text) != shard.content_hash()) {
         return std::nullopt;
     }
@@ -110,7 +110,7 @@ bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
 }
 
 IndexQuery::IndexQuery(const ProjectIndex& index,
-                       const FileTable& files,
+                       FileTable& files,
                        const FreshnessGate* gate,
                        const LiveSources* live) :
     index(index), files(files), gate(gate), live(live) {}
@@ -147,19 +147,14 @@ void IndexQuery::visit_overlay_files(const TUIndex& state,
         if(local_id == main_id) {
             continue;
         }
-        auto path = state.path(local_id);
         auto& shard = state.shard_of(local_id);
-        Fid file;
-        if(auto known = files.find(path)) {
-            if(live->is_open(*known) || (gate && gate->stale(*known, shard.content_hash()))) {
-                continue;
-            }
-            file = *known;
-            path = files.display(file);
+        auto file = files.intern(Spelling::absolute(state.path(local_id)));
+        if(live->is_open(file) || (gate && gate->stale(file, shard.content_hash()))) {
+            continue;
         }
         RowSource source{.kind = RowSource::Kind::Overlay,
                          .file = file,
-                         .path = path,
+                         .path = files.display(file),
                          .rows = &shard,
                          .coords = shard_coordinates(shard)};
         if(!visitor(source)) {
@@ -700,7 +695,7 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
                                                  std::size_t limit) const {
     std::vector<Ranked> hits;
     llvm::DenseSet<SymbolHash> seen;
-    auto indexed = index.search_index.search(query, limit);
+    auto indexed = index.search_index.search(query, limit, index.workspace);
     // A damaged index answers incompletely, a missing one not at all:
     // until the rebuild the whole table is judged row by row instead.
     bool scan_table = index.search_index.damaged() || !index.search_index.loaded();
@@ -862,7 +857,7 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
 
     if(query.position) {
         auto& place = *query.position;
-        auto path_id = files.find(place.path);
+        auto path_id = files.find(Spelling::absolute(place.path));
         if(!path_id) {
             return {};
         }

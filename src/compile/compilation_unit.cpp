@@ -87,28 +87,25 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
         return it->second;
     }
 
-    auto& fm = self->SM().getFileManager();
-
-    /// Absolutize against the compile's working directory first, then
-    /// resolve through the compiler's VFS so remapped and in-memory
-    /// files canonicalize like on-disk ones. Symlinked spellings of a
-    /// file collapse into one path here; hardlinked spellings do not
-    /// (`real_path` does not fold them), and the cache is keyed by the
-    /// spelling-level FileEntryRef so each keeps its own path — the
-    /// dependency set must cover every spelling the compile read.
-    llvm::SmallString<128> path(entry.getName());
-    fm.makeAbsolutePath(path);
-
-    llvm::SmallString<128> real;
-    if(auto error = fm.getVirtualFileSystem().getRealPath(path, real)) {
-        /// The VFS cannot resolve it; keep the absolute path with dot
-        /// segments removed rather than a raw spelling — consumers stat
-        /// these paths from a different working directory.
-        path::remove_dots(path, /*remove_dot_dot=*/true);
-    } else {
-        path = real;
+    /// Absolutized against the compile's working directory, then named by
+    /// the identity the master interns: symlinked spellings of a file
+    /// collapse into one path here, hardlinked ones do not, and the cache
+    /// is keyed by the spelling-level FileEntryRef so each keeps its own
+    /// path — the dependency set must cover every spelling the compile
+    /// read. A file only memory holds (a header context's fragment) is
+    /// named like a missing one, through its directory.
+    llvm::SmallString<128> spelled(entry.getName());
+    auto& files = self->SM().getFileManager();
+    files.makeAbsolutePath(spelled);
+    // An -ivfsoverlay can name a file by a path only the overlay knows;
+    // the file read is the one it redirects to.
+    if(auto& vfs = files.getVirtualFileSystem(); llvm::isa<llvm::vfs::RedirectingFileSystem>(vfs)) {
+        llvm::SmallString<128> redirected;
+        if(!vfs.getRealPath(spelled, redirected)) {
+            spelled = redirected;
+        }
     }
-    assert(!path.empty() && "Invalid file path");
+    auto path = CanonicalPath(Spelling::absolute(spelled)).str();
 
     /// Allocate the path in the storage.
     auto size = path.size();
@@ -133,6 +130,10 @@ auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
     }
 
     return file_path(*entry);
+}
+
+auto CompilationUnitRef::workspace() -> llvm::StringRef {
+    return self->workspace;
 }
 
 auto CompilationUnitRef::file_content(clang::FileID fid) -> llvm::StringRef {
@@ -315,9 +316,10 @@ std::vector<DepFile> CompilationUnitRef::deps() {
     /// single annotation token). Processing the directive loaded the file
     /// into the SourceManager's content cache, so this looks up the very
     /// buffer the build consumed; only an existence-only probe whose
-    /// content was never read loads it here instead. An unreadable file
-    /// hashes as 0 and the snapshot capture falls back to a
-    /// build_at-guarded disk hash.
+    /// content was never read loads it here instead. An embedded file's
+    /// buffer holds its bytes, hashed as text like every dependency. An
+    /// unreadable file hashes as 0 and the snapshot capture falls back to
+    /// a build_at-guarded disk hash.
     auto add_file = [&](clang::OptionalFileEntryRef file) {
         if(!file) {
             return;
@@ -329,7 +331,7 @@ std::vector<DepFile> CompilationUnitRef::deps() {
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
             if(auto buffer = self->SM().getMemoryBufferForFileOrNone(*file)) {
-                it->second = llvm::xxh3_64bits(buffer->getBuffer());
+                it->second = llvm::xxh3_64bits(without_bom(buffer->getBuffer()));
             }
         }
     };

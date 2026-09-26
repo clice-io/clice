@@ -373,7 +373,7 @@ export module m1;
     EXPECT_EQ(graph.lookup_module("m1").size(), 1u);
     EXPECT_EQ(graph.lookup_module("m2").size(), 1u);
 
-    auto file = file_table.intern(tmp.path("src/m.cppm"));
+    auto file = file_table.intern(Spelling::absolute(tmp.path("src/m.cppm")));
     auto candidates = cdb.candidate_entries(file);
     ASSERT_EQ(candidates.size(), 2u);
     llvm::SmallVector<CommandRef> v2_units = {
@@ -516,7 +516,8 @@ TEST_CASE(ConditionalIncludes) {
     // Verify conditional flag.
     bool found_unconditional = false;
     bool found_conditional = false;
-    auto includes = graph.get_includes(cdb.files().intern(tmp.path("src/main.cpp")), 0);
+    auto includes =
+        graph.get_includes(cdb.files().intern(Spelling::absolute(tmp.path("src/main.cpp"))), 0);
     for(auto edge: includes) {
         if(edge.conditional) {
             found_conditional = true;

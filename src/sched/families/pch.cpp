@@ -160,6 +160,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     worker::BuildPCHParams bp;
     bp.file = std::move(request.file);
     bp.directory = std::move(request.directory);
+    bp.workspace = project.config.workspace_root.str();
     bp.arguments = std::move(request.arguments);
     bp.content = std::move(request.content);
     bp.preamble_bound = request.preamble_bound;

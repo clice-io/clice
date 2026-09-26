@@ -59,7 +59,7 @@ std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
 llvm::SmallVector<Fid> intern_paths(const index::TUIndex& view, clice::FileTable& pool) {
     llvm::SmallVector<Fid> ids;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        ids.push_back(pool.intern(view.path(i)));
+        ids.push_back(pool.intern(Spelling::absolute(view.path(i))));
     }
     return ids;
 }
@@ -117,7 +117,8 @@ TEST_CASE(MergeUnionsSymbolFacts) {
     ASSERT_TRUE(declared.has_value());
     ASSERT_EQ(declared->parent, find_symbol(project, "lib"));
     ASSERT_FALSE(index::has_flag(declared->flags, index::SymbolFlags::HasDefinition));
-    auto header = pool.find(view.path(0).ends_with("shared.h") ? view.path(0) : view.path(1));
+    auto header = pool.find(
+        Spelling::absolute(view.path(0).ends_with("shared.h") ? view.path(0) : view.path(1)));
     ASSERT_TRUE(header.has_value());
     ASSERT_EQ(declared->file, header->raw);
 
@@ -141,7 +142,8 @@ TEST_CASE(MergeUnionsSymbolFacts) {
     ASSERT_TRUE(defined.has_value());
     ASSERT_TRUE(index::has_flag(defined->flags, index::SymbolFlags::HasDefinition));
     ASSERT_TRUE(index::has_flag(defined->flags, index::SymbolFlags::Deprecated));
-    auto definition = pool.find(definer_view.path(definer_view.path_count() - 1));
+    auto definition =
+        pool.find(Spelling::absolute(definer_view.path(definer_view.path_count() - 1)));
     ASSERT_TRUE(definition.has_value());
     ASSERT_EQ(defined->file, definition->raw);
     ASSERT_EQ(project.reference_count(hash), 3u);
@@ -161,7 +163,7 @@ TEST_CASE(MergeUnionsSymbolFacts) {
     auto mover_view = index::TUIndex::from_bytes(mover_wire);
     ASSERT_TRUE(mover_view.loaded());
     ASSERT_TRUE(project.merge(mover_view, intern_paths(mover_view, pool)));
-    auto moved = pool.find(mover_view.path(mover_view.path_count() - 1));
+    auto moved = pool.find(Spelling::absolute(mover_view.path(mover_view.path_count() - 1)));
     ASSERT_TRUE(moved.has_value());
     ASSERT_EQ(project.identity_of(hash)->file, moved->raw);
 }
@@ -397,7 +399,7 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
     auto symbol = find_symbol(loaded, "global_value");
     ASSERT_TRUE(symbol != 0);
     auto main_path = pool.resolve(file_ids_map[view.path_count() - 1]);
-    auto fresh_id = fresh.find(main_path);
+    auto fresh_id = fresh.find(Spelling::absolute(main_path));
     ASSERT_TRUE(fresh_id.has_value());
     ASSERT_TRUE(llvm::is_contained(reference_files(loaded, symbol), fresh_id->raw));
 }
@@ -431,27 +433,28 @@ TEST_CASE(LazyShardsStayPut) {
     std::string shard;
     llvm::raw_string_ostream shard_os(shard);
     index::write_shard(rows, {}, content, shard_os);
+    clice::FileTable files;
+    index::ProjectIndex project;
     for(std::uint32_t i = 0; i < count; i += 1) {
-        puts.push_back(
-            {index::IndexBlobKind::Shard, index::blob_key(std::format("/proj/f{}.cpp", i)), shard});
+        auto file = files.intern(Spelling::absolute(std::format("/proj/f{}.cpp", i)));
+        puts.push_back({index::IndexBlobKind::Shard, project.key_of(files, file), shard});
     }
     ASSERT_TRUE(db->write(puts, {}).empty());
     ASSERT_TRUE(db->advance_read_snapshot().has_value());
 
-    clice::FileTable files;
-    index::ProjectIndex project;
     ASSERT_TRUE(project.open(*db, files));
-    auto first = files.intern("/proj/f0.cpp");
+    auto first = files.intern(Spelling::absolute("/proj/f0.cpp"));
     const auto* held = project.shard(first);
     ASSERT_TRUE(held != nullptr);
     for(std::uint32_t i = 1; i < count; i += 1) {
-        ASSERT_TRUE(project.shard(files.intern(std::format("/proj/f{}.cpp", i))) != nullptr);
+        ASSERT_TRUE(project.shard(files.intern(
+                        Spelling::absolute(std::format("/proj/f{}.cpp", i)))) != nullptr);
     }
     ASSERT_TRUE(project.shard(first) == held);
     ASSERT_EQ(held->content_hash(), llvm::xxh3_64bits(content));
     // A file the database holds no rows for is asked once and stays absent.
-    ASSERT_TRUE(project.shard(files.intern("/proj/none.cpp")) == nullptr);
-    ASSERT_TRUE(project.shard(files.intern("/proj/none.cpp")) == nullptr);
+    ASSERT_TRUE(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
+    ASSERT_TRUE(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
 }
 
 };  // TEST_SUITE(ProjectIndex)

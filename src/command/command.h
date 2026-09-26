@@ -186,6 +186,10 @@ struct CommandEdit {
 
     Kind kind;
     std::vector<std::string> flags;
+
+    /// Where the rule's relative paths are relative to: its configuration
+    /// file's directory.
+    Spelling directory;
 };
 
 /// Config-rule edits applied on top of a base config (structured, no
@@ -284,9 +288,10 @@ public:
     CompilationDatabase(const CompilationDatabase&) = delete;
     CompilationDatabase& operator=(const CompilationDatabase&) = delete;
 
-    /// Where probes of cwd-insensitive configs run. Set before load; empty
-    /// means the process working directory.
-    void set_workspace_root(llvm::StringRef root);
+    /// Where probes of cwd-insensitive configs run, and what entry hashes
+    /// name the paths under relative to (path::portable). Set before load;
+    /// empty means the process working directory, and absolute paths.
+    void set_workspace_root(CanonicalRef root);
 
     FileTable& files() {
         return file_table;
@@ -295,9 +300,9 @@ public:
     /// Register a database file, or look up its id when already known;
     /// `path` may name a directory holding compile_commands.json. Nothing
     /// is read until load_source().
-    SourceID add_source(llvm::StringRef path);
+    SourceID add_source(const Spelling& path);
 
-    std::optional<SourceID> find_source(llvm::StringRef path) const;
+    std::optional<SourceID> find_source(const Spelling& path) const;
 
     llvm::StringRef source_path(SourceID id) const;
 
@@ -397,7 +402,7 @@ public:
     /// spelling). `directory` is its working directory. Nullopt (logged
     /// once) when the spelling is not a compile command — blank, or a
     /// launcher with nothing to launch.
-    std::optional<ConfigID> intern_command(llvm::StringRef directory,
+    std::optional<ConfigID> intern_command(const Spelling& directory,
                                            llvm::ArrayRef<const char*> arguments);
 
     /// Derive the language of `file` compiled under `id`: walk the
@@ -411,7 +416,9 @@ public:
     llvm::StringRef forced_language(ConfigID id) const;
 
     /// Identity hash of a config (Frontend view + slot position + directory
-    /// + schema salt). The CDB diff identity, the index snapshot command
+    /// + schema salt), with the directory and the option values under the
+    /// workspace root taken by their portable names so a moved checkout
+    /// keeps it. The CDB diff identity, the index snapshot command
     /// identity, and — computed over a rules-applied config — the pin
     /// identity of clice/switchContext.
     std::uint64_t entry_hash(ConfigID id);
@@ -476,16 +483,16 @@ private:
     /// dedup). `file` is the entry's normalized path used to pick the input
     /// slot among the command's inputs; invalid synthesizes the slot at the
     /// end.
-    std::optional<ConfigID> normalize(llvm::StringRef directory,
+    std::optional<ConfigID> normalize(const Spelling& directory,
                                       Fid file,
                                       llvm::ArrayRef<const char*> arguments);
 
-    std::optional<ConfigID> normalize(llvm::StringRef directory, Fid file, llvm::StringRef command);
+    std::optional<ConfigID> normalize(const Spelling& directory, Fid file, llvm::StringRef command);
 
     /// Expand @file tokens in place, driver-mode aware (CL commands
     /// tokenize with Windows rules).
     void expand_response_files(llvm::SmallVectorImpl<const char*>& tokens,
-                               llvm::StringRef directory,
+                               const Spelling& directory,
                                CompilerFamily family,
                                llvm::StringSaver& saver,
                                unsigned depth = 0);
@@ -501,7 +508,7 @@ private:
     /// source, ordinal).
     void rebuild_entry_list();
 
-    std::optional<CompilationEntry> append_test_command(llvm::StringRef file,
+    std::optional<CompilationEntry> append_test_command(Fid file,
                                                         std::optional<ConfigID> normalized);
 
     std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();
@@ -538,7 +545,7 @@ private:
     /// of it (CompilationEntry::spelling), else its identity.
     llvm::StringRef input_path(Fid file) const;
 
-    std::string workspace_root;
+    CanonicalPath workspace_root;
 
     /// Derivation memos, append-only alongside the pools.
     llvm::DenseMap<std::uint32_t, std::uint64_t> entry_hashes;

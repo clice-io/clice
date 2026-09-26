@@ -159,7 +159,7 @@ struct TypeHierarchyResult {
 
 /// The file's compile command as the editor would use it: pins and header
 /// context included. Needs the build.
-Outcome<CompileCommandResult> compile_command(Context& ctx, llvm::StringRef path);
+Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path);
 
 /// The build's files, `filter` one of all, source, header, module. Needs
 /// the build.
@@ -169,11 +169,11 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter);
 /// includes, includers, both; `depth` levels at most, 0 meaning unbounded.
 /// Needs the build.
 Outcome<FileDepsResult>
-    file_deps(Context& ctx, llvm::StringRef path, llvm::StringRef direction, int depth);
+    file_deps(Context& ctx, const Spelling& path, llvm::StringRef direction, int depth);
 
 /// What a change to `path` reaches: its direct includers, the sources
 /// hosting it, and the modules among them. Needs the build.
-Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, llvm::StringRef path);
+Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path);
 
 /// The symbols a name query (index/symbol_query.h) matches, best first,
 /// at most `limit` of them, narrowed to `kinds` (SymbolKind names) when
@@ -192,7 +192,7 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
 Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator);
 
 /// The document-level symbols defined in the file.
-Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, llvm::StringRef path);
+Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& path);
 
 Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator);
 
