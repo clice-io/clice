@@ -25,18 +25,21 @@ if(NOT MSVC)
     add_compile_options(-ffunction-sections -fdata-sections)
 endif()
 
-# Keyed on the target OS, not the compiler frontend: CI links Windows with
-# GNU-driver clang++ + lld-link, where the frontend variant is "GNU" but the
-# linker still speaks MSVC-style /OPT flags (see the Debug /OPT:NOICF below).
-if(WIN32)
-    string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:REF")
-    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,/OPT:REF")
-elseif(APPLE)
+if(APPLE)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-dead_strip")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-dead_strip")
 else()
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -static-libgcc -Wl,--gc-sections")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--gc-sections")
+endif()
+
+# CRoaring's C files define the inline functions of its headers (C99
+# `extern inline`), and C++ code calling them emits them again as COMDATs.
+# ELF lets the strong definition win over the COMDAT copies; COFF reports
+# both, so MinGW links take the first.
+if(MINGW)
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--allow-multiple-definition")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--allow-multiple-definition")
 endif()
 
 # Releases deliberately do NOT enable LTO yet. LLVM 22 removed the old
@@ -56,10 +59,7 @@ endif()
 # friendly flags below instead. icf=safe (not =all) so address-taken
 # functions keep C++ pointer identity.
 if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    if(WIN32)
-        # SAFEICF, not ICF: plain /OPT:ICF folds address-taken functions.
-        set(CLICE_LINK_OPT_FLAGS "-Wl,/OPT:SAFEICF")
-    elseif(APPLE)
+    if(APPLE)
         # --keep-icf-stabs: without it dsymutil cannot see ICF-folded symbols,
         # so they would be missing from the dSYM (and thus from GSYM).
         set(CLICE_LINK_OPT_FLAGS "-Wl,--icf=safe" "-Wl,--keep-icf-stabs")
@@ -79,39 +79,17 @@ if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     endif()
 endif()
 
+# Debug builds are ASan builds where xclang has the ASan libclang to link
+# (cmake/llvm.cmake).
+include("${PROJECT_SOURCE_DIR}/cmake/llvm.cmake")
+set(CLICE_ENABLE_ASAN OFF)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    clice_asan_available(CLICE_ENABLE_ASAN)
+endif()
+if(CLICE_ENABLE_ASAN)
     add_compile_options(-fsanitize=address)
-
-    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-        # clang-cl (MSVC frontend): manually link ASan runtime since clang-cl
-        # doesn't handle -fsanitize=address linking automatically.
-        execute_process(
-            COMMAND ${CMAKE_CXX_COMPILER} --print-resource-dir
-            OUTPUT_VARIABLE CLANG_RESOURCE_DIR
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-        set(ASAN_LIB_PATH "${CLANG_RESOURCE_DIR}/lib/windows")
-        link_directories(${ASAN_LIB_PATH})
-
-        set(ASAN_LINK_FLAGS "")
-        list(APPEND ASAN_LINK_FLAGS "clang_rt.asan_dynamic-x86_64.lib")
-        list(APPEND ASAN_LINK_FLAGS "/wholearchive:clang_rt.asan_dynamic_runtime_thunk-x86_64.lib")
-
-        foreach(flag ${ASAN_LINK_FLAGS})
-            string(APPEND CMAKE_EXE_LINKER_FLAGS " ${flag}")
-            string(APPEND CMAKE_SHARED_LINKER_FLAGS " ${flag}")
-            string(APPEND CMAKE_MODULE_LINKER_FLAGS " ${flag}")
-        endforeach()
-    else()
-        string(APPEND CMAKE_EXE_LINKER_FLAGS " -fsanitize=address")
-        string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fsanitize=address")
-    endif()
-
-    if(WIN32)
-        # Disable Identical COMDAT Folding in Debug to avoid ASan ODR false positives.
-        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:NOICF")
-        string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,/OPT:NOICF")
-    endif()
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -fsanitize=address")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fsanitize=address")
 endif()
 
 include("${PROJECT_SOURCE_DIR}/cmake/package.cmake")

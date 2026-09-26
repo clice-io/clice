@@ -64,8 +64,8 @@ logs to releases by the commit hash; the release notes state the hash.
    first to regenerate the packages.
 3. Write the release notes on the GitHub release page (the download table
    format from the nightly notes is a good template).
-4. Verify: assets present (6 packages + 4 symbol archives + 2 PDB zips +
-   6 vsix), Marketplace shows the new stable version.
+4. Verify: assets present (6 packages + 6 symbol archives + 6 vsix),
+   Marketplace shows the new stable version.
 
 ## Plumbing changes
 
@@ -81,7 +81,7 @@ Ask the user for the log (worker `.log` from the session log directory —
 printed at startup in the editor's clice output panel, by default
 `~/.cache/clice/<workspace>-<hash>/logs/<session>/`, falling back to the
 workspace `.clice/logs/` when no home directory is available). The crash section starts with `clice <version> <target>` —
-download that release's `*.symbols.tar.xz` (GSYM) and run:
+download that release's `*.symbols.tar.xz` (`.zip` for Windows; GSYM) and run:
 
 ```bash
 python scripts/symbolize.py crash.log --symbols clice.gsym

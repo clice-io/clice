@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.30)
 
-# Cross-compilation support via CLICE_TARGET_TRIPLE.
-# Examples:
+# The compiler is xclang's clang (pixi.toml), whose config files pick the
+# target's sysroot, libc++, compiler-rt and linker: a cross build names
+# only its target, through CLICE_TARGET_TRIPLE:
 #   -DCLICE_TARGET_TRIPLE=x86_64-apple-darwin       (macOS x64 from arm64)
 #   -DCLICE_TARGET_TRIPLE=aarch64-unknown-linux-gnu (Linux arm64 from x64)
-#   -DCLICE_TARGET_TRIPLE=aarch64-pc-windows-msvc   (Windows arm64 from x64)
+#   -DCLICE_TARGET_TRIPLE=aarch64-w64-mingw32       (Windows arm64 from x64)
 if(DEFINED CLICE_TARGET_TRIPLE)
     if(CLICE_TARGET_TRIPLE MATCHES "^x86_64-apple-darwin")
         set(CMAKE_OSX_ARCHITECTURES "x86_64" CACHE STRING "")
@@ -13,14 +14,11 @@ if(DEFINED CLICE_TARGET_TRIPLE)
         set(CMAKE_SYSTEM_PROCESSOR aarch64)
         set(CMAKE_C_COMPILER_TARGET "aarch64-unknown-linux-gnu" CACHE STRING "")
         set(CMAKE_CXX_COMPILER_TARGET "aarch64-unknown-linux-gnu" CACHE STRING "")
-        if(DEFINED ENV{CONDA_PREFIX} AND NOT DEFINED CMAKE_SYSROOT)
-            set(CMAKE_SYSROOT "$ENV{CONDA_PREFIX}/aarch64-conda-linux-gnu/sysroot" CACHE PATH "")
-        endif()
-    elseif(CLICE_TARGET_TRIPLE MATCHES "^aarch64-.*-windows")
+    elseif(CLICE_TARGET_TRIPLE MATCHES "^aarch64-w64-mingw32")
         set(CMAKE_SYSTEM_NAME Windows)
         set(CMAKE_SYSTEM_PROCESSOR ARM64)
-        set(CMAKE_C_COMPILER_TARGET "aarch64-pc-windows-msvc" CACHE STRING "")
-        set(CMAKE_CXX_COMPILER_TARGET "aarch64-pc-windows-msvc" CACHE STRING "")
+        set(CMAKE_C_COMPILER_TARGET "aarch64-w64-mingw32" CACHE STRING "")
+        set(CMAKE_CXX_COMPILER_TARGET "aarch64-w64-mingw32" CACHE STRING "")
     endif()
 endif()
 
@@ -97,28 +95,11 @@ foreach(lang C CXX)
         CACHE STRING "" FORCE)
 endforeach()
 
-if(WIN32)
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "")
-    set(CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=lld-link")
-    set(CMAKE_SHARED_LINKER_FLAGS_INIT "-fuse-ld=lld-link")
-    set(CMAKE_MODULE_LINKER_FLAGS_INIT "-fuse-ld=lld-link")
-else()
-    set(CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=lld")
-    set(CMAKE_SHARED_LINKER_FLAGS_INIT "-fuse-ld=lld")
-    set(CMAKE_MODULE_LINKER_FLAGS_INIT "-fuse-ld=lld")
-endif()
+# lld on macOS too, where xclang's config files would leave the system ld.
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=lld")
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "-fuse-ld=lld")
+set(CMAKE_MODULE_LINKER_FLAGS_INIT "-fuse-ld=lld")
 
 if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "")
-
-    # conda-forge clang's bundled config files (<triple>-clang++.cfg)
-    # inject -L/-rpath pointing into the conda env at link time, binding
-    # binaries to conda's @rpath libc++ — they then fail to load outside
-    # the build machine. Disable config files; the standard library is the
-    # LLVM package's libc++ (cmake/llvm.cmake).
-    string(APPEND CMAKE_C_FLAGS_INIT " --no-default-config")
-    string(APPEND CMAKE_CXX_FLAGS_INIT " --no-default-config")
-    string(APPEND CMAKE_EXE_LINKER_FLAGS_INIT " --no-default-config")
-    string(APPEND CMAKE_SHARED_LINKER_FLAGS_INIT " --no-default-config")
-    string(APPEND CMAKE_MODULE_LINKER_FLAGS_INIT " --no-default-config")
 endif()

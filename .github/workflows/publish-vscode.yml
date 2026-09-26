@@ -68,13 +68,13 @@ jobs:
             ext: tar.gz
             build_artifact: cross-build-x86_64-apple-darwin
           - vsce_target: win32-x64
-            triple: x86_64-pc-windows-msvc
+            triple: x86_64-w64-mingw32
             ext: zip
             build_artifact: native-build-windows-2025-RelWithDebInfo
           - vsce_target: win32-arm64
-            triple: aarch64-pc-windows-msvc
+            triple: aarch64-w64-mingw32
             ext: zip
-            build_artifact: cross-build-aarch64-pc-windows-msvc
+            build_artifact: cross-build-aarch64-w64-mingw32
 
     runs-on: ubuntu-latest
 
@@ -107,8 +107,7 @@ jobs:
             mv /tmp/server/clice "$DEST"
           else
             mkdir -p "$DEST/bin" "$DEST/lib"
-            # Only the executable: test builds keep unit_tests and (on
-            # Windows) a huge PDB next to it.
+            # Only the executable: test builds keep unit_tests next to it.
             for f in clice clice.exe; do
               if [ -f "/tmp/server/bin/$f" ]; then cp "/tmp/server/bin/$f" "$DEST/bin/"; fi
             done

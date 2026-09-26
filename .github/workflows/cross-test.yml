@@ -23,7 +23,6 @@ jobs:
       test_os: ubuntu-24.04-arm
       target_triple: aarch64-unknown-linux-gnu
       target_name: aarch64-unknown-linux-gnu
-      pixi_env: cross-linux-arm64
       asset_name: clice.aarch64-unknown-linux-gnu.tar.gz
 
   windows-arm64:
@@ -31,7 +30,6 @@ jobs:
     with:
       build_os: windows-2025
       test_os: windows-11-arm
-      target_triple: aarch64-pc-windows-msvc
-      target_name: aarch64-pc-windows-msvc
-      asset_name: clice.aarch64-pc-windows-msvc.zip
-      pixi_env: cross-windows-arm64
+      target_triple: aarch64-w64-mingw32
+      target_name: aarch64-w64-mingw32
+      asset_name: clice.aarch64-w64-mingw32.zip

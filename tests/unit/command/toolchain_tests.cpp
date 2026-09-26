@@ -391,6 +391,19 @@ Target: x86_64-unknown-linux-gnu
     EXPECT_TRUE(Toolchain::parse_cc1("clang version 22.0.0\nno cc1 line here").empty());
 }
 
+TEST_CASE(ParseCC1MultiCall) {
+    // A multi-call llvm names the tool before -cc1.
+    auto args = Toolchain::parse_cc1(
+        R"( "/opt/xclang/bin/llvm" "clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "a.cpp")");
+
+    std::vector<std::string> expected = {"/opt/xclang/bin/llvm",
+                                         "-cc1",
+                                         "-triple",
+                                         "x86_64-unknown-linux-gnu",
+                                         "a.cpp"};
+    EXPECT_EQ(args, expected);
+}
+
 TEST_CASE(ParseCC1DropsUnknown) {
     // A newer external driver may emit cc1 flags our linked clang does not
     // know; they must be dropped together with their values (greedy_unknown)

@@ -195,12 +195,15 @@ std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
         llvm::cl::TokenizeGNUCommandLine(line, saver, args);
 
         using namespace std::string_view_literals;
-        if(args.size() < 2 || args[1] != "-cc1"sv)
+        // A multi-call llvm (LLVM_TOOL_LLVM_DRIVER_BUILD, as in xclang) runs
+        // cc1 as `llvm clang -cc1`: the tool's name comes before -cc1.
+        std::size_t cc1 = args.size() > 2 && args[1] != "-cc1"sv && args[2] == "-cc1"sv ? 2 : 1;
+        if(args.size() <= cc1 || args[cc1] != "-cc1"sv)
             continue;
 
         std::vector<std::string> cc1_args;
         cc1_args.emplace_back(args[0]);
-        cc1_args.emplace_back(args[1]);
+        cc1_args.emplace_back(args[cc1]);
 
         // Parse with CC1 visibility: the external driver may be newer than the
         // linked clang, so flags it emits that our cc1 does not understand
@@ -210,7 +213,7 @@ std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
         // through to preserve the exact spelling the driver emitted.
         // FIXME: Long-term we should unify the command pipeline so the driver
         // version always matches the embedded LLVM.
-        std::vector<std::string> raw(args.begin() + 2, args.end());
+        std::vector<std::string> raw(args.begin() + cc1 + 1, args.end());
         auto options =
             kota::option::ParseOptions{.greedy_unknown = true, .visibility = option::CC1Option};
         for(auto& r: option::table().parse(raw, options)) {
