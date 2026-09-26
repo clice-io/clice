@@ -780,7 +780,7 @@ TEST_CASE(WorkingDirectoryAnchorsIncludes) {
     });
     ASSERT_TRUE(working != database.config(config).args.end());
     auto value = path::convert_to_slash(working->values[0]);
-    EXPECT_TRUE(path::is_absolute(value) && llvm::StringRef(value).ends_with("/project/build"));
+    EXPECT_TRUE(path::is_rooted(value) && llvm::StringRef(value).ends_with("/project/build"));
 };
 
 TEST_CASE(BareFileValueAnchored) {
