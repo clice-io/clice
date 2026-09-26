@@ -286,27 +286,38 @@ private:
     std::optional<protocol::Hover> resolve_preamble_hover(Session& session,
                                                           const protocol::Position& position);
 
-    /// The peers declaring `symbol` in a file this project declares it in,
-    /// or in `anchor`, the file it was found in.
-    llvm::SmallVector<const index::IndexQuery*> peers_of(index::SymbolHash symbol, Fid anchor);
+    /// A project asked about a symbol, and the symbol as that project
+    /// names it: an id hashing its file (a macro, a file-local name) takes
+    /// the file relative to the compiling project's root, so a project
+    /// compiling the file from outside its root names it by another id.
+    struct Source {
+        const index::IndexQuery* query;
+        index::SymbolHash symbol;
+    };
+
+    /// The peers knowing the entity `symbol` names here: declaring it in a
+    /// file this project declares it in, or in `anchor`, the file it was
+    /// found in — under the same id or, at the same place in a file this
+    /// project declares it in, under another.
+    llvm::SmallVector<Source> peers_of(index::SymbolHash symbol, Fid anchor);
 
     /// This project's query, then the peers of `symbol` (peers_of).
-    llvm::SmallVector<const index::IndexQuery*> sources(index::SymbolHash symbol, Fid anchor);
+    llvm::SmallVector<Source> sources(index::SymbolHash symbol, Fid anchor);
 
     /// Whether `from`'s rows for `file` stand among the answers of `asked`:
     /// any project's for a closed file; for an open one only the project
     /// serving its buffer — the others hold its disk rows, which the buffer
     /// superseded — unless that project is not asked.
-    bool answers_for(const index::IndexQuery& from,
-                     Fid file,
-                     llvm::ArrayRef<const index::IndexQuery*> asked) const;
+    bool answers_for(const index::IndexQuery& from, Fid file, llvm::ArrayRef<Source> asked) const;
 
-    /// `ask`'s sites from every source of `symbol` (sources), in the files
-    /// each may answer for (answers_for), deduplicated.
-    std::vector<index::Site>
-        gather(index::SymbolHash symbol,
-               Fid anchor,
-               llvm::function_ref<std::vector<index::Site>(const index::IndexQuery&)> ask);
+    /// `ask`'s sites from every source of `symbol` (sources), each asked
+    /// under its own id, in the files each may answer for (answers_for),
+    /// deduplicated.
+    std::vector<index::Site> gather(
+        index::SymbolHash symbol,
+        Fid anchor,
+        llvm::function_ref<std::vector<index::Site>(const index::IndexQuery&, index::SymbolHash)>
+            ask);
 
     ASTFamily& ast;
     Dispatcher& dispatcher;

@@ -428,6 +428,26 @@ test("references cross folders", async ({ session }) => {
     expect(await client.waitForReference(lib, 1, 5, workspace.uri("app/main.cpp"))).toBe(true);
 });
 
+test("shared macro references cross folders", async ({ session }) => {
+    // The macro's id takes its header relative to the library's root in
+    // the library and absolute in the application; the two meet at its
+    // definition.
+    const { client, workspace } = session.tmp();
+    libraryAndApp(workspace);
+    workspace.write("lib/include/lib.h", "#pragma once\n#define LIB_LIMIT 4\nint lib_fn();\n");
+    workspace.write("lib/src/lib.cpp", '#include "lib.h"\nint lib_fn() { return LIB_LIMIT; }\n');
+    workspace.write(
+        "app/main.cpp",
+        '#include "lib.h"\nint main() { return LIB_LIMIT + lib_fn(); }\n',
+    );
+    await client.initialize(workspace, { folders: ["app", "lib"] });
+
+    const [lib] = await client.openAndWait("lib/src/lib.cpp");
+    expect(await client.waitForIndex(lib, "main")).toBe(true);
+    const column = "int lib_fn() { return ".length + 1;
+    expect(await client.waitForReference(lib, 1, column, workspace.uri("app/main.cpp"))).toBe(true);
+});
+
 test("hierarchies cross folders", async ({ session }) => {
     const { client, workspace } = session.tmp();
     libraryAndApp(workspace);
