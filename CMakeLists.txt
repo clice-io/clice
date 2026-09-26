@@ -33,6 +33,15 @@ else()
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--gc-sections")
 endif()
 
+# CRoaring's C files define the inline functions of its headers (C99
+# `extern inline`), and C++ code calling them emits them again as COMDATs.
+# ELF lets the strong definition win over the COMDAT copies; COFF reports
+# both, so MinGW links take the first.
+if(MINGW)
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--allow-multiple-definition")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--allow-multiple-definition")
+endif()
+
 # Releases deliberately do NOT enable LTO yet. LLVM 22 removed the old
 # toolchain blocker, but enabling remains deferred until the cancellation
 # regression suite has been validated under ThinLTO.
