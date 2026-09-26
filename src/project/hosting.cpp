@@ -72,6 +72,7 @@ const LenderIndex& lender_index(Project& project) {
     index.search_dirs.clear();
     auto members = project.build.members();
     std::ranges::sort(members, {}, [&](Fid unit) { return project.file_table.resolve(unit); });
+    llvm::StringMap<CanonicalPath> identities;
     for(auto member: members) {
         // A member a rule claims with a default command that is no compile
         // command has none.
@@ -83,9 +84,11 @@ const LenderIndex& lender_index(Project& project) {
                 .language = language_of(ref),
             });
             for(auto& search_dir: project.cdb.search_config(ref).dirs) {
-                auto canonical = search_dir.path;
-                path::canonicalize(canonical);
-                index.search_dirs[canonical].push_back(position);
+                auto [it, inserted] = identities.try_emplace(search_dir.path);
+                if(inserted) {
+                    it->second = CanonicalPath(Spelling::absolute(search_dir.path));
+                }
+                index.search_dirs[it->second].push_back(position);
             }
         }
     }

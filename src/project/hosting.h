@@ -43,7 +43,7 @@ struct Lender {
 
 /// The commands the build's units can lend — every command of every
 /// member, by unit path — and the header search directories they cover,
-/// as indexes into `commands`. Rebuilt when Project::commands_epoch
+/// by identity, as indexes into `commands`. Rebuilt when Project::commands_epoch
 /// moves, so a resolution scans no unit.
 struct LenderIndex {
     struct Command {

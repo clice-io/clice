@@ -335,10 +335,13 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             if(raw.in_system && !params.tidy_system_headers) {
                 continue;
             }
-            if(!keep || !keep->match(file)) {
+            // Matched like clang-tidy does: against the name the lookup
+            // reached the header by, not its identity.
+            auto name = unit.context().getSourceManager().getFileEntryRefForID(raw.fid)->getName();
+            if(!keep || !keep->match(name)) {
                 continue;
             }
-            if(drop && drop->match(file)) {
+            if(drop && drop->match(name)) {
                 continue;
             }
         }

@@ -209,6 +209,31 @@ test.skipIf(process.platform === "win32")("compile command through a symlink", (
     );
 });
 
+test.skipIf(process.platform === "win32")(
+    "a header lends from the include that finds it",
+    ({ session }) => {
+        const ws = session.tmpdir();
+        ws.write("a/main.cpp", "int main() { return 0; }\n");
+        ws.write("vendor/b.cpp", "int b() { return 0; }\n");
+        ws.write("vendor/real/orphan.h", "int orphan();\n");
+        fs.symlinkSync(ws.path("vendor/real"), ws.path("a/inc"));
+        ws.writeEntries([
+            ["a/main.cpp", ["-DFROM_A", `-I${ws.path("a/inc")}`]],
+            ["vendor/b.cpp", ["-DFROM_B"]],
+        ]);
+        ws.pinCacheDir();
+        expect(runIndex(ws).status).toBe(0);
+
+        const command = query<{ arguments: string[] }>(
+            ws,
+            "compileCommand",
+            "--path",
+            "a/inc/orphan.h",
+        );
+        expect(command.result?.arguments, "a's search reaches the header").toContain("FROM_A");
+    },
+);
+
 test("answers for a file only its own symbols name", ({ session }) => {
     // Nothing in the global table references the file, so only the
     // fetch of its own shard can answer for it.

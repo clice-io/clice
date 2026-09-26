@@ -404,7 +404,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
     }
 
     worker::FormatParams wp;
-    wp.file = path;
+    wp.file = project.file_table.display(session.path_id);
     wp.text = session.text;
 
     if(range) {

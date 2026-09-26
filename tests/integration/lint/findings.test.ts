@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
 import type { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
@@ -175,3 +176,28 @@ test("index rule keeps excluded units out of the index", ({ session }) => {
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Translation units: 1");
 });
+
+test.skipIf(process.platform === "win32")(
+    "header filter matches the include's spelling",
+    ({ session }) => {
+        const ws = session.tmpdir();
+        ws.pinCacheDir();
+        ws.write(
+            ".clang-tidy",
+            'Checks: "-*,bugprone-integer-division"\nHeaderFilterRegex: "inc/"\n',
+        );
+        ws.write(
+            "vendor/real/common.h",
+            "#pragma once\ninline double rate(int a, int b) { return a / b; }\n",
+        );
+        fs.symlinkSync(ws.path("vendor/real"), ws.path("inc"));
+        ws.write("a.cpp", '#include "common.h"\ndouble run_a() { return rate(1, 2); }\n');
+        ws.writeCDB(["a.cpp"], { extraArgs: ["-Iinc"] });
+
+        const run = runLint(ws);
+        expect(run.status, `stderr: ${run.stderr}`).toBe(1);
+        const lines = findings(run.stdout);
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toContain("common.h:2:");
+    },
+);

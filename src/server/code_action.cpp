@@ -143,8 +143,8 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     }
 
     auto path_id = session->path_id;
-    auto path = project.file_table.resolve(path_id);
-    auto uri = feature::to_uri(project.file_table.display(path_id));
+    auto path = project.file_table.display(path_id);
+    auto uri = feature::to_uri(path);
     auto map = session->line_map();
 
     /// The action rendered over main-file replacements, all of them or
@@ -189,7 +189,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         if(!text || !host.valid()) {
             return;
         }
-        auto host_path = project.file_table.resolve(host);
+        auto host_path = project.file_table.display(host);
         auto host_session = sessions.find(host);
         auto formatted = feature::format_snippet(host_path, *text);
 
@@ -250,7 +250,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             std::format("{} in {}", action.title, llvm::sys::path::filename(host_path)),
             std::move(action.kind),
             FileEdit{
-                .uri = feature::to_uri(project.file_table.display(host)),
+                .uri = feature::to_uri(host_path),
                 .version = host_session ? std::optional(host_session->version) : std::nullopt,
                 .edits = {std::move(edit)},
             }));
