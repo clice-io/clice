@@ -101,4 +101,6 @@ export function registerAliasRedirect(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor((editor) => void redirect(editor)),
     );
+    // A restored window may already show a second name.
+    void redirect(vscode.window.activeTextEditor);
 }

@@ -630,7 +630,8 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
         render_arg({.opt_id = arg.opt_id, .cls = arg.cls, .values = values}, append);
     };
 
-    append(cfg.driver);
+    llvm::SmallString<256> driver;
+    append(path::portable(cfg.driver, workspace_root, driver));
     if(cfg.subcommand) {
         append(cfg.subcommand);
     }

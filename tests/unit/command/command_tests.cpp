@@ -806,6 +806,26 @@ TEST_CASE(BareFileValueAnchored) {
     EXPECT_TRUE(llvm::is_contained(values, "x.cfg"));
 };
 
+TEST_CASE(EntryHashSurvivesMove) {
+    /// Paths under the workspace — the compiler, the directory, path
+    /// options — hash by their portable names: a moved checkout keeps its
+    /// commands' identity.
+    auto hash = [](const TempDir& workspace) {
+        FileTable file_table;
+        CompilationDatabase database{file_table};
+        database.set_workspace_root(CanonicalPath(Spelling::absolute(workspace.root)));
+        auto driver = workspace.path("tools/clang++");
+        auto include = "-I" + workspace.path("inc");
+        auto entry = database.add_command(workspace.root,
+                                          workspace.path("main.cpp"),
+                                          {driver.c_str(), include.c_str(), "main.cpp"});
+        return database.entry_hash(entry->config);
+    };
+    TempDir before;
+    TempDir after;
+    EXPECT_EQ(hash(before), hash(after));
+};
+
 TEST_CASE(SysrootIncludeKept) {
     /// A leading `=` names the sysroot, which clang substitutes.
     FileTable file_table;

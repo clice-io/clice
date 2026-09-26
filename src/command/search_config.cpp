@@ -23,18 +23,22 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     std::vector<SearchDir> system;
     std::vector<SearchDir> after;
 
-    // A leading `=` names the sysroot: -isysroot, else --sysroot.
+    // A leading `=` names the sysroot: the last -isysroot, else the last
+    // --sysroot.
+    std::string_view isysroot;
     std::string_view sysroot;
     for(auto& arg: args) {
         if(arg.values.empty()) {
             continue;
         }
         if(arg.opt_id == OPT_isysroot) {
-            sysroot = arg.values[0];
-        } else if(sysroot.empty() &&
-                  (arg.opt_id == OPT__sysroot_EQ || arg.opt_id == OPT__sysroot)) {
+            isysroot = arg.values[0];
+        } else if(arg.opt_id == OPT__sysroot_EQ || arg.opt_id == OPT__sysroot) {
             sysroot = arg.values[0];
         }
+    }
+    if(!isysroot.empty()) {
+        sysroot = isysroot;
     }
     auto base = Spelling::absolute(directory);
     auto make_absolute = [&](std::string_view path) -> std::string {

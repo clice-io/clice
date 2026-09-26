@@ -216,6 +216,27 @@ TEST_CASE(DirafterDeduplication) {
     EXPECT_EQ(config.dirs[1].path, spelled(tmp, "extra"));
 }
 
+TEST_CASE(LastSysrootWins) {
+    /// Like clang: the last --sysroot, unless an -isysroot names another.
+    TempDir tmp;
+    auto first = "--sysroot=" + tmp.path("one");
+    auto second = "--sysroot=" + tmp.path("two");
+    std::vector<const char*> args = {"clang++",
+                                     first.c_str(),
+                                     second.c_str(),
+                                     "-I=/inc",
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root.str());
+    ASSERT_EQ(config.dirs.size(), 1u);
+    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "two/inc"));
+
+    auto isysroot = tmp.path("three");
+    args = {"clang++", "-isysroot", isysroot.c_str(), second.c_str(), "-I=/inc", "main.cpp"};
+    config = extract(args, tmp.root.str());
+    ASSERT_EQ(config.dirs.size(), 1u);
+    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "three/inc"));
+}
+
 };  // TEST_SUITE(ExtractSearchConfig)
 
 }  // namespace
