@@ -630,8 +630,11 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
         render_arg({.opt_id = arg.opt_id, .cls = arg.cls, .values = values}, append);
     };
 
-    llvm::SmallString<256> driver;
-    append(path::portable(cfg.driver, workspace_root, driver));
+    // A compiler named by path is spelled like every other path first.
+    auto driver = path::is_absolute(cfg.driver) ? Spelling::absolute(cfg.driver).str()
+                                                : std::string(cfg.driver);
+    llvm::SmallString<256> storage;
+    append(path::portable(driver, workspace_root, storage));
     if(cfg.subcommand) {
         append(cfg.subcommand);
     }
