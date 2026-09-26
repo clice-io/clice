@@ -304,11 +304,11 @@ std::optional<Config> Config::load(llvm::StringRef path,
                                    CanonicalRef workspace_root,
                                    std::vector<ConfigIssue>* issues,
                                    bool finalized) {
-    auto content = fs::read(path);
+    auto content = fs::read_text(path);
     if(!content)
         return std::nullopt;
 
-    auto result = kota::codec::toml::from_string<Config>(*content);
+    auto result = kota::codec::toml::from_string<Config>((*content)->getBuffer());
     if(!result) {
         LOG_ERROR("Invalid clice.toml {}: {}", path, result.error().to_string());
         if(issues)
@@ -321,7 +321,8 @@ std::optional<Config> Config::load(llvm::StringRef path,
     // misspelled option silently doing nothing) as Warning issues.
     if(issues) {
         Config probe{};
-        if(auto strict = kota::codec::toml::from_string<DenyUnknownKeys>(*content, probe);
+        if(auto strict =
+               kota::codec::toml::from_string<DenyUnknownKeys>((*content)->getBuffer(), probe);
            !strict) {
             LOG_WARN("clice.toml {}: {}", path, strict.error().to_string());
             issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, strict.error()));

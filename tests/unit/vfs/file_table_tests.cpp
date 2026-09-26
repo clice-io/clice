@@ -238,6 +238,24 @@ TEST_CASE(CompileFSDropsBom) {
     ASSERT_EQ((*file)->status()->getSize(), 7u);
 }
 
+TEST_CASE(BinaryReadKeepsBom) {
+    // `#embed` data, PCH and PCM files are bytes, served as they are.
+    TempDir tmp;
+    tmp.touch("data.bin",
+              "\xEF\xBB\xBF"
+              "AB");
+    auto path = tmp.path("data.bin");
+    ThreadSafeFS vfs;
+    auto file = vfs.openFileForReadBinary(path);
+    ASSERT_TRUE(bool(file));
+    ASSERT_EQ((*file)->status()->getSize(), 5u);
+    auto buffer = (*file)->getBuffer(path, -1, true, false);
+    ASSERT_TRUE(bool(buffer));
+    ASSERT_EQ((*buffer)->getBuffer(),
+              "\xEF\xBB\xBF"
+              "AB");
+}
+
 TEST_CASE(ListingSeesNewFile) {
     // An external generator dropping a header into a cached directory
     // produces no event; the directory's own mtime is the anchor that

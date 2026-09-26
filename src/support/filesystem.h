@@ -505,6 +505,24 @@ inline llvm::StringRef without_bom(llvm::StringRef bytes) {
     return text;
 }
 
+namespace fs {
+
+/// A file's text (see without_bom), read whole: how clice reads every
+/// source, command and configuration file it does not track.
+inline llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> read_text(llvm::StringRef path) {
+    auto buffer = llvm::MemoryBuffer::getFile(path);
+    if(!buffer) {
+        return buffer;
+    }
+    auto text = without_bom((*buffer)->getBuffer());
+    if(text.size() == (*buffer)->getBufferSize()) {
+        return buffer;
+    }
+    return llvm::MemoryBuffer::getMemBufferCopy(text, path);
+}
+
+}  // namespace fs
+
 class ThreadSafeFS : public vfs::ProxyFileSystem {
 public:
     explicit ThreadSafeFS() : ProxyFileSystem(vfs::createPhysicalFileSystem()) {}
@@ -567,51 +585,24 @@ public:
         std::unique_ptr<llvm::MemoryBuffer> buffer;
     };
 
-    llvm::ErrorOr<vfs::Status> status(const llvm::Twine& path) override {
-        auto status = getUnderlyingFS().status(path);
-        if(!status || status->getType() != llvm::sys::fs::file_type::regular_file ||
-           status->getSize() < 3 || skips(status->getName())) {
-            return status;
-        }
-        llvm::SmallString<256> absolute;
-        path.toVector(absolute);
-        if(getUnderlyingFS().makeAbsolute(absolute) || !starts_with_bom(absolute)) {
-            return status;
-        }
-        return vfs::Status::copyWithNewSize(*status, status->getSize() - 3);
-    }
+    /// The size of the text: clang checks what it reads against it, and a
+    /// PCH records it for every input. Status carries no use, so a binary
+    /// use of a file clang only stat'ed first gets the text: `#embed` after
+    /// `__has_embed` probed the same file reads it without the mark.
+    llvm::ErrorOr<vfs::Status> status(const llvm::Twine& path) override;
 
-    llvm::ErrorOr<std::unique_ptr<vfs::File>> openFileForRead(const llvm::Twine& InPath) override {
-        llvm::SmallString<128> Path;
-        InPath.toVector(Path);
-
-        auto file = getUnderlyingFS().openFileForRead(Path);
-        if(!file || skips(Path)) {
+    llvm::ErrorOr<std::unique_ptr<vfs::File>> openFileForRead(const llvm::Twine& path) override {
+        auto file = getUnderlyingFS().openFileForRead(path);
+        if(!file) {
             return file;
         }
         return std::make_unique<VolatileFile>(std::move(*file));
     }
 
-private:
-    /// Built artifacts are served as they are.
-    static bool skips(llvm::StringRef path) {
-        return path::filename(path).ends_with(".pch");
-    }
-
-    static bool starts_with_bom(llvm::StringRef path) {
-        auto fd = llvm::sys::fs::openNativeFileForRead(path);
-        if(!fd) {
-            llvm::consumeError(fd.takeError());
-            return false;
-        }
-        char head[3];
-        auto read = llvm::sys::fs::readNativeFile(*fd, head);
-        llvm::sys::fs::closeFile(*fd);
-        if(!read) {
-            llvm::consumeError(read.takeError());
-            return false;
-        }
-        return *read == 3 && without_bom(llvm::StringRef(head, 3)).empty();
+    /// Bytes stay bytes: `#embed` data, PCH and PCM files.
+    llvm::ErrorOr<std::unique_ptr<vfs::File>>
+        openFileForReadBinary(const llvm::Twine& path) override {
+        return getUnderlyingFS().openFileForReadBinary(path);
     }
 };
 

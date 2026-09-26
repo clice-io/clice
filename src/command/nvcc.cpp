@@ -166,7 +166,7 @@ std::vector<std::string> expand_options_files(llvm::ArrayRef<const char*> argume
             split_list(value, files);
             for(llvm::StringRef file: files) {
                 auto file_path = absolutize(file, directory);
-                auto buffer = llvm::MemoryBuffer::getFile(file_path);
+                auto buffer = fs::read_text(file_path);
                 if(!buffer) {
                     LOG_WARN("Cannot read nvcc options file {}: {}",
                              file_path,

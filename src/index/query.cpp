@@ -51,11 +51,11 @@ std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
                                          std::unique_ptr<llvm::MemoryBuffer>& storage) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
+    auto buffer = fs::read_text(path);
     if(!buffer) {
         return std::nullopt;
     }
-    auto text = without_bom((*buffer)->getBuffer());
+    auto text = (*buffer)->getBuffer();
     if(llvm::xxh3_64bits(text) != shard.content_hash()) {
         return std::nullopt;
     }

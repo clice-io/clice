@@ -233,8 +233,8 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             std::string content;
             if(host_session) {
                 content = host_session->text;
-            } else if(auto read = fs::read(host_path)) {
-                content = without_bom(*read).str();
+            } else if(auto read = fs::read_text(host_path)) {
+                content = (*read)->getBuffer().str();
             } else {
                 return;
             }

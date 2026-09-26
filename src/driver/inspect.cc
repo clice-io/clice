@@ -923,7 +923,7 @@ int run_inspect(const InspectOptions& opts) {
     // and module/feature errors below land on stable entries.
     std::vector<SourceFile> sources;
     for(auto& [rel, abs]: files) {
-        auto buffer = llvm::MemoryBuffer::getFile(abs);
+        auto buffer = fs::read_text(abs);
         if(!buffer) {
             FileEntry entry;
             entry.error = "read_error";
@@ -935,7 +935,7 @@ int run_inspect(const InspectOptions& opts) {
         // code may legitimately contain `§` (in strings or comments) and
         // must reach the compiler verbatim.
         AnnotatedSource source;
-        auto text = without_bom((*buffer)->getBuffer());
+        auto text = (*buffer)->getBuffer();
         if(opts.annotations) {
             source = AnnotatedSource::from(text);
         } else {

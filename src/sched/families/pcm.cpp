@@ -204,11 +204,10 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // module's current content: unlike pch_key (which embeds the
     // preamble text), pcm_key is content-free, and a blocked budget
     // must unlock the moment the poison is edited.
-    auto content = llvm::MemoryBuffer::getFile(file_path);
-    auto budget_key =
-        std::format("{}-{:016x}",
-                    pcm_key,
-                    content ? llvm::xxh3_64bits(without_bom((*content)->getBuffer())) : 0);
+    auto content = fs::read_text(file_path);
+    auto budget_key = std::format("{}-{:016x}",
+                                  pcm_key,
+                                  content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0);
     if(build_crashes.blocked(budget_key)) {
         LOG_WARN("PCM build for module {} refused: key {} keeps crashing workers",
                  module_name,

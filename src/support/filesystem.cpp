@@ -1,6 +1,10 @@
 #include "support/filesystem.h"
 
+#include <mutex>
 #include <optional>
+#include <tuple>
+
+#include "llvm/ADT/DenseMap.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -100,6 +104,46 @@ std::string lexical(llvm::StringRef spelled) {
 
 #endif
 
+bool read_starts_with_bom(llvm::StringRef path) {
+    auto fd = llvm::sys::fs::openNativeFileForRead(path);
+    if(!fd) {
+        llvm::consumeError(fd.takeError());
+        return false;
+    }
+    char head[3];
+    auto read = llvm::sys::fs::readNativeFile(*fd, head);
+    llvm::sys::fs::closeFile(*fd);
+    if(!read) {
+        llvm::consumeError(read.takeError());
+        return false;
+    }
+    return *read == 3 && without_bom(llvm::StringRef(head, 3)).empty();
+}
+
+/// Whether the file a status describes starts with the mark, peeked once
+/// per (file, size, mtime): adding or removing the mark changes the size,
+/// so a verdict holds as long as clang's own size-and-mtime check of what
+/// it read.
+bool starts_with_bom(const vfs::Status& status, llvm::StringRef path) {
+    using Key = std::tuple<std::uint64_t, std::uint64_t, std::uint64_t, std::int64_t>;
+    static std::mutex mutex;
+    static llvm::DenseMap<Key, bool> verdicts;
+    Key key{status.getUniqueID().getDevice(),
+            status.getUniqueID().getFile(),
+            status.getSize(),
+            status.getLastModificationTime().time_since_epoch().count()};
+    {
+        std::lock_guard lock(mutex);
+        if(auto it = verdicts.find(key); it != verdicts.end()) {
+            return it->second;
+        }
+    }
+    auto verdict = read_starts_with_bom(path);
+    std::lock_guard lock(mutex);
+    verdicts.try_emplace(key, verdict);
+    return verdict;
+}
+
 /// `.` segments, duplicate and trailing separators dropped, canonically
 /// spelled; `..` kept.
 std::string normalized(llvm::StringRef absolute) {
@@ -176,6 +220,20 @@ Spelling Spelling::parent() const {
     Spelling result;
     result.text = path::parent_path(text).str();
     return result;
+}
+
+llvm::ErrorOr<vfs::Status> ThreadSafeFS::status(const llvm::Twine& path) {
+    auto status = getUnderlyingFS().status(path);
+    if(!status || status->getType() != llvm::sys::fs::file_type::regular_file ||
+       status->getSize() < 3) {
+        return status;
+    }
+    llvm::SmallString<256> absolute;
+    path.toVector(absolute);
+    if(getUnderlyingFS().makeAbsolute(absolute) || !starts_with_bom(*status, absolute)) {
+        return status;
+    }
+    return vfs::Status::copyWithNewSize(*status, status->getSize() - 3);
 }
 
 CanonicalPath::CanonicalPath(const Spelling& spelled) {

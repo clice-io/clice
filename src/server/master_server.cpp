@@ -80,10 +80,10 @@ static void log_configuration(const ProjectServer& project, llvm::StringRef init
     if(project.config_path.empty()) {
         LOG_INFO("Configuration file: Missing (project {})", project.root);
     } else {
-        auto raw = fs::read(project.config_path);
+        auto text = fs::read_text(project.config_path);
         LOG_INFO("Configuration file {}:\n{}",
                  project.config_path,
-                 raw ? *raw : std::string("<unreadable>"));
+                 text ? (*text)->getBuffer() : llvm::StringRef("<unreadable>"));
     }
     if(init_options.empty()) {
         LOG_INFO("initializationOptions: Missing");

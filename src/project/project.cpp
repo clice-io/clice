@@ -31,7 +31,7 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
     }
     auto includer_path = file_table.resolve(chain[chain.size() - 2]);
     auto target_path = file_table.resolve(target_id);
-    auto buf = llvm::MemoryBuffer::getFile(includer_path);
+    auto buf = fs::read_text(includer_path);
     if(!buf) {
         return 0;
     }
@@ -39,7 +39,7 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
         [](llvm::StringRef, bool, bool, llvm::StringRef) -> std::optional<std::string> {
         return std::nullopt;
     };
-    return count_include_occurrences(without_bom((*buf)->getBuffer()),
+    return count_include_occurrences((*buf)->getBuffer(),
                                      includer_path,
                                      target_path,
                                      null_resolver);
