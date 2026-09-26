@@ -479,7 +479,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.version = session->version;
         params.text = session->text;
         params.workspace = project.config.workspace_root.str();
-        auto resolution = contexts.resolve_command(file_path, params.directory, params.arguments);
+        auto resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
         auto source = resolution.source;
         auto* synthesized = resolution.synthesized.get();
 

@@ -62,6 +62,16 @@ struct LocalArg {
     llvm::SmallVector<const char*, 2> values;
 };
 
+/// `value` anchored at `anchor` when it names a relative path
+/// (names_relative_path), else `value` itself.
+llvm::StringRef
+    anchored(unsigned id, llvm::StringRef value, const Spelling& anchor, StringSet& strings) {
+    if(!names_relative_path(id, value)) {
+        return value;
+    }
+    return strings.save(Spelling(value, anchor).str());
+}
+
 ArgClass classify(unsigned id, llvm::ArrayRef<const char*> values) {
     /// -fmodule-file has two shapes: `name=path` names a prebuilt module
     /// (clice builds its own PCMs — irrelevant), a bare path is a header
@@ -487,14 +497,11 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
         }
         local.cls = classify(id, local.values);
 
-        /// Include-path values absolutize where the compile runs, so the
-        /// config keeps meaning when consumed away from it; a leading `=`
-        /// is the sysroot, which clang substitutes.
-        if(is_include_path_option(id) && local.values.size() == 1) {
-            llvm::StringRef value(local.values[0]);
-            if(!value.empty() && !value.starts_with("=") && !path::is_absolute(value)) {
-                local.values[0] = strings.save(Spelling(value, anchor).str()).data();
-            }
+        /// Path values absolutize where the compile runs, so the config
+        /// keeps meaning when consumed away from it: the toolchain probe
+        /// runs elsewhere.
+        for(auto& value: local.values) {
+            value = anchored(id, value, anchor, strings).data();
         }
 
         args.push_back(std::move(local));
@@ -1099,12 +1106,10 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                 continue;
             }
             auto& remove = removes.emplace_back(*parsed);
-            // Anchored like the base command's include paths, so a relative
-            // value names the directory the rule's file means.
-            if(is_include_path_option(remove.id) && remove.values.size() == 1 &&
-               !remove.values[0].empty() && !remove.values[0].starts_with("=") &&
-               !path::is_absolute(remove.values[0])) {
-                remove.values[0] = strings.save(Spelling(remove.values[0], anchor).str());
+            // Anchored like the base command's paths, so a relative value
+            // names the file the rule's configuration means.
+            for(auto& value: remove.values) {
+                value = anchored(remove.id, value, anchor, strings);
             }
         }
         return removes;
@@ -1169,11 +1174,8 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                 local.values.push_back(strings.save(value).data());
             }
             local.cls = classify(arg.id, local.values);
-            if(is_include_path_option(arg.id) && local.values.size() == 1) {
-                llvm::StringRef value(local.values[0]);
-                if(!value.empty() && !value.starts_with("=") && !path::is_absolute(value)) {
-                    local.values[0] = strings.save(Spelling(value, anchor).str()).data();
-                }
+            for(auto& value: local.values) {
+                value = anchored(arg.id, value, anchor, strings).data();
             }
             out.push_back(std::move(local));
         }

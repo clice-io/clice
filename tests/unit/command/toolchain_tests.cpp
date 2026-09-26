@@ -349,24 +349,26 @@ TEST_CASE(KeyTracksSemantics) {
 }
 
 TEST_CASE(KeyTracksConfigFile) {
-    /// A relative --config resolves against the compilation directory, so
+    /// A --config path resolves against the compilation directory, so
     /// identical commands in different directories must not share a probe.
     Fixture f;
-    auto a = f.add("/fake/a", "/tmp/a.cpp", {"clang++", "--config", "clang.cfg", "/tmp/a.cpp"});
-    auto b = f.add("/fake/b", "/tmp/b.cpp", {"clang++", "--config", "clang.cfg", "/tmp/b.cpp"});
+    auto a = f.add("/fake/a", "/tmp/a.cpp", {"clang++", "--config", "sub/clang.cfg", "/tmp/a.cpp"});
+    auto b = f.add("/fake/b", "/tmp/b.cpp", {"clang++", "--config", "sub/clang.cfg", "/tmp/b.cpp"});
     EXPECT_NE(f.key(a), f.key(b));
 
-    /// An absolute config file is directory-independent. Both paths are
+    /// An absolute config file and a bare name, which clang searches in its
+    /// configuration directories, are directory-independent. Paths are
     /// platform-native absolute (POSIX spellings are not absolute on
     /// Windows), and the driver is absolute too: a bare driver name is
     /// never cwd-exempt on Windows and would tie the key to the directory
     /// on its own.
     TempDir tmp;
-    auto cfg = "--config=" + tmp.path("clang.cfg");
     auto driver = tmp.path("clang++");
-    auto c = f.add("/fake/a", "/tmp/c.cpp", {driver.c_str(), cfg.c_str(), "/tmp/c.cpp"});
-    auto d = f.add("/fake/b", "/tmp/d.cpp", {driver.c_str(), cfg.c_str(), "/tmp/d.cpp"});
-    EXPECT_EQ(f.key(c), f.key(d));
+    for(auto cfg: {"--config=" + tmp.path("clang.cfg"), std::string("--config=clang.cfg")}) {
+        auto c = f.add("/fake/a", "/tmp/c.cpp", {driver.c_str(), cfg.c_str(), "/tmp/c.cpp"});
+        auto d = f.add("/fake/b", "/tmp/d.cpp", {driver.c_str(), cfg.c_str(), "/tmp/d.cpp"});
+        EXPECT_EQ(f.key(c), f.key(d));
+    }
 }
 
 TEST_CASE(QueryEmptyArgs) {

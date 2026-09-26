@@ -196,10 +196,7 @@ void MasterServer::wire() {
 
     pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
         auto id = files.find(Spelling::absolute(path));
-        if(!id) {
-            LOG_WARN("Evicted path not in pool: {}", path);
-            return;
-        }
+        assert(id && "an evicted document the master never sent");
         // Owner-table upkeep is pool-domain state and stays here; the
         // session-side consequence (the worker's AST is gone, same as a
         // crash) goes through the event pipeline like any invalidation.

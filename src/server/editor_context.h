@@ -59,7 +59,7 @@ struct EditorContext {
 
     /// Resolve an open file's command: its pin and cached header context
     /// layered over the project's resolution.
-    Resolution resolve_command(llvm::StringRef path,
+    Resolution resolve_command(Fid path_id,
                                std::string& directory,
                                std::vector<std::string>& arguments);
 

@@ -250,7 +250,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             std::format("{} in {}", action.title, llvm::sys::path::filename(host_path)),
             std::move(action.kind),
             FileEdit{
-                .uri = feature::to_uri(project.file_table.display(host_path)),
+                .uri = feature::to_uri(project.file_table.display(host)),
                 .version = host_session ? std::optional(host_session->version) : std::nullopt,
                 .edits = {std::move(edit)},
             }));
@@ -286,7 +286,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         }
         std::string directory;
         std::vector<std::string> arguments;
-        auto ref = contexts.resolve_command(path, directory, arguments).ref;
+        auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
         auto search = project.cdb.search_config(ref);
         DirListingCache dir_cache;
         dir_cache.shared = &project.file_table;

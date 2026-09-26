@@ -119,9 +119,8 @@ public:
     /// Tries, in order: the pinned host, the file's own command, a header
     /// context through the include graph, a default command, a lender and
     /// finally the builtin command — so it always succeeds. Emits a
-    /// per-file decision log (tiers tried, tier hit, command hash). Any
-    /// spelling of the file will do.
-    Resolution resolve_command(llvm::StringRef spelled,
+    /// per-file decision log (tiers tried, tier hit, command hash).
+    Resolution resolve_command(Fid path_id,
                                std::string& directory,
                                std::vector<std::string>& arguments,
                                const CommandRequest& request = {});

@@ -5,6 +5,8 @@
 #include <string_view>
 #include <utility>
 
+#include "support/filesystem.h"
+
 #include <kota/deco/option.h>
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringTable.h"
@@ -195,12 +197,46 @@ bool is_user_content_option(unsigned id) {
     }
 }
 
-bool is_include_path_option(unsigned id) {
+bool names_relative_path(unsigned id, llvm::StringRef value) {
+    if(value.empty() || value.starts_with("=") || value.starts_with("$SYSROOT") ||
+       path::is_rooted(value)) {
+        return false;
+    }
     switch(id) {
         case OPT_I:
         case OPT_isystem:
         case OPT_iquote:
-        case OPT_idirafter: return true;
+        case OPT_idirafter:
+        case OPT_isystem_after:
+        case OPT_cxx_isystem:
+        case OPT_F:
+        case OPT_iframework:
+        case OPT_isysroot:
+        case OPT__sysroot_EQ:
+        case OPT__SLASH_imsvc:
+        case OPT__SLASH_winsysroot:
+        case OPT_B:
+        case OPT_gcc_toolchain:
+        case OPT_gcc_install_dir_EQ:
+        case OPT_cuda_path_EQ:
+        case OPT_resource_dir:
+        case OPT_config_system_dir_EQ:
+        case OPT_config_user_dir_EQ:
+        case OPT_fprebuilt_module_path:
+        case OPT_fmodules_cache_path:
+        case OPT_fmodule_map_file:
+        case OPT_ivfsoverlay:
+        case OPT_fsanitize_ignorelist_EQ:
+        case OPT_fsanitize_system_ignorelist_EQ:
+        case OPT_fprofile_list_EQ:
+        case OPT_fxray_attr_list:
+        case OPT_fxray_always_instrument:
+        case OPT_fxray_never_instrument:
+        case OPT_fprofile_instr_use_EQ:
+        case OPT_fprofile_use_EQ:
+        case OPT_fprofile_sample_use_EQ:
+        case OPT_fprofile_remapping_file_EQ: return true;
+        case OPT_config: return value.contains('/') || value.contains('\\');
         default: return false;
     }
 }

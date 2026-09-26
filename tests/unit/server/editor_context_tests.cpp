@@ -48,21 +48,21 @@ TEST_CASE(EditorCachesContext) {
     std::string directory;
     std::vector<std::string> arguments;
 
-    auto background = fx.commands.resolve_command(fx.header_path, directory, arguments);
+    auto background = fx.commands.resolve_command(fx.header, directory, arguments);
     ASSERT_EQ(background.source, CommandSource::IncludeGraph);
     ASSERT_EQ(background.host, fx.host);
     ASSERT_TRUE(background.synthesized != nullptr);
     ASSERT_TRUE(llvm::is_contained(arguments, background.synthesized->prefix));
     ASSERT_TRUE(editor.header_contexts.empty());
 
-    auto resolution = editor.resolve_command(fx.header_path, directory, arguments);
+    auto resolution = editor.resolve_command(fx.header, directory, arguments);
     ASSERT_EQ(resolution.source, CommandSource::IncludeGraph);
     auto* context = editor.header_context(fx.header);
     ASSERT_TRUE(context != nullptr);
     ASSERT_TRUE(resolution.synthesized == context->synthesized);
     ASSERT_FALSE(blob.dirty);
 
-    auto reused = editor.resolve_command(fx.header_path, directory, arguments);
+    auto reused = editor.resolve_command(fx.header, directory, arguments);
     ASSERT_TRUE(reused.synthesized == context->synthesized);
 }
 
@@ -82,10 +82,10 @@ TEST_CASE(GuessedTracksEditorOnly) {
     std::string directory;
     std::vector<std::string> arguments;
 
-    commands.resolve_command(path, directory, arguments);
+    commands.resolve_command(file, directory, arguments);
     ASSERT_FALSE(editor.guessed_commands.contains(file));
 
-    ASSERT_EQ(editor.resolve_command(path, directory, arguments).source, CommandSource::Fallback);
+    ASSERT_EQ(editor.resolve_command(file, directory, arguments).source, CommandSource::Fallback);
     ASSERT_TRUE(editor.guessed_commands.contains(file));
 
     write_cdb(tmp,
@@ -93,9 +93,9 @@ TEST_CASE(GuessedTracksEditorOnly) {
               build_cdb_json({
                   {tmp.root, path, {}}
     }));
-    commands.resolve_command(path, directory, arguments);
+    commands.resolve_command(file, directory, arguments);
     ASSERT_TRUE(editor.guessed_commands.contains(file));
-    ASSERT_EQ(editor.resolve_command(path, directory, arguments).source, CommandSource::CDBExact);
+    ASSERT_EQ(editor.resolve_command(file, directory, arguments).source, CommandSource::CDBExact);
     ASSERT_FALSE(editor.guessed_commands.contains(file));
 }
 
@@ -130,12 +130,12 @@ TEST_CASE(PinSteersEditorOnly) {
     // An editor resolution honors the pinned CDB entry...
     std::string directory;
     std::vector<std::string> arguments;
-    resolver.resolve_command(path, directory, arguments);
+    resolver.resolve_command(file, directory, arguments);
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(pinned)));
 
     // ...but background indexing must never see user choices.
     arguments.clear();
-    commands.resolve_command(path, directory, arguments);
+    commands.resolve_command(file, directory, arguments);
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
 }
 
@@ -170,13 +170,13 @@ TEST_CASE(PinBaseSurvivesRules) {
         Selection{Fid{}, std::nullopt, "0123456789abcdef", project.cdb.entry_hash_hex(pinned)};
     std::string directory;
     std::vector<std::string> arguments;
-    resolver.resolve_command(path, directory, arguments);
+    resolver.resolve_command(file, directory, arguments);
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(pinned)));
 
     // ...while the same stale hash without a base falls back to the default.
     resolver.selections[file] = Selection{Fid{}, std::nullopt, "0123456789abcdef", ""};
     arguments.clear();
-    resolver.resolve_command(path, directory, arguments);
+    resolver.resolve_command(file, directory, arguments);
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
 }
 

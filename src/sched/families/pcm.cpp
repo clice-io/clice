@@ -37,10 +37,9 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id, std::optional<llvm::St
     // The same resolution the real build uses (run() below): a module unit
     // scanned with a different command than it compiles with would edge
     // against a different dependency set.
-    auto file_path = project.file_table.resolve(path_id);
     std::string directory;
     std::vector<std::string> arguments;
-    commands.resolve_command(file_path, directory, arguments);
+    commands.resolve_command(path_id, directory, arguments);
 
     std::vector<const char*> argv;
     argv.reserve(arguments.size());
@@ -153,7 +152,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     worker::BuildPCMParams bp;
     bp.file = file_path;
-    commands.resolve_command(file_path, bp.directory, bp.arguments);
+    commands.resolve_command(path_id, bp.directory, bp.arguments);
 
     if(!project.store) {
         LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", module_name);

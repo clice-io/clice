@@ -35,11 +35,10 @@ TEST_CASE(DefaultSourceKeepsOwnCommand) {
 
     std::string directory;
     std::vector<std::string> arguments;
-    EXPECT_EQ(resolver.resolve_command(tmp.path("src/part.cpp"), directory, arguments).source,
-              CommandSource::Default);
+    EXPECT_EQ(resolver.resolve_command(part, directory, arguments).source, CommandSource::Default);
     EXPECT_TRUE(
         llvm::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
-    auto header_resolution = resolver.resolve_command(tmp.path("src/part.h"), directory, arguments);
+    auto header_resolution = resolver.resolve_command(header, directory, arguments);
     EXPECT_EQ(header_resolution.source, CommandSource::IncludeGraph);
     EXPECT_EQ(header_resolution.host, main);
 }

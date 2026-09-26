@@ -192,7 +192,13 @@ Spelling::Spelling(llvm::StringRef text, const Spelling& base) {
         return;
     }
     llvm::SmallString<256> joined(base.text);
-    path::append(joined, text);
+    if(path::is_rooted(text)) {
+        // Windows resolves a rooted `\x` on the current drive, the base's.
+        joined = path::root_name(base.text);
+        joined += text;
+    } else {
+        path::append(joined, text);
+    }
     this->text = normalized(joined);
 }
 

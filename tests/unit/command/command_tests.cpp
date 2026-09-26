@@ -774,6 +774,27 @@ TEST_CASE(WorkingDirectoryAnchorsIncludes) {
     EXPECT_TRUE(has_arg(render_entry(database, "/project/main.cpp"), "/project/build/include"));
 };
 
+TEST_CASE(BareFileValueAnchored) {
+    /// A file an option reads is relative to the entry directory with or
+    /// without a separator; the toolchain probe runs elsewhere. A bare
+    /// `--config` name is clang's to search in its configuration
+    /// directories.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/project",
+                         "main.cpp",
+                         "clang++ -fsanitize-ignorelist=ignore.txt --config=x.cfg main.cpp"sv);
+    auto config = database.candidate_entries("/project/main.cpp").front().config;
+    llvm::SmallVector<std::string> values;
+    for(auto& arg: database.config(config).args) {
+        for(llvm::StringRef value: arg.values) {
+            values.push_back(path::convert_to_slash(value));
+        }
+    }
+    EXPECT_TRUE(llvm::is_contained(values, "/project/ignore.txt"));
+    EXPECT_TRUE(llvm::is_contained(values, "x.cfg"));
+};
+
 TEST_CASE(SysrootIncludeKept) {
     /// A leading `=` names the sysroot, which clang substitutes.
     FileTable file_table;

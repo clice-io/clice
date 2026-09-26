@@ -27,6 +27,11 @@ namespace clice {
 using serde_raw = kota::codec::RawValue;
 
 /// Error response for feature requests on files with no open session.
+/// How the user knows a file a worker names by its identity.
+static llvm::StringRef shown(FileTable& files, llvm::StringRef identity) {
+    return files.display(files.intern(Spelling::absolute(identity)));
+}
+
 static kota::ipc::Error document_not_open() {
     return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams, "Document not open"};
 }
@@ -260,7 +265,7 @@ std::vector<protocol::Location>
         /// Link ranges are half-open; contains() would also accept end.
         if(*offset >= link.range.begin && *offset < link.range.end) {
             locations.push_back(protocol::Location{
-                .uri = feature::to_uri(project.file_table.display(link.target)),
+                .uri = feature::to_uri(shown(project.file_table, link.target)),
                 .range = protocol::Range{},
             });
             break;
@@ -297,7 +302,7 @@ std::optional<protocol::Hover>
         feature::HoverInfo info;
         info.name = name.str();
         info.kind = SymbolKind::Header;
-        info.definition = project.file_table.display(link.target).str();
+        info.definition = shown(project.file_table, link.target).str();
         info.symbol_range = link.range;
 
         auto hover = feature::to_protocol_hover(info, project.config.hover, map);
@@ -322,9 +327,9 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             if(!range)
                 continue;
             protocol::DocumentLink out{.range = *range};
-            auto shown = project.file_table.display(link.target);
-            out.target = feature::to_uri(shown);
-            out.tooltip = shown.str();
+            auto path = shown(project.file_table, link.target);
+            out.target = feature::to_uri(path);
+            out.tooltip = path.str();
             links.push_back(std::move(out));
         }
     };
@@ -444,7 +449,7 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
                 if(*offset >= link.range.begin && *offset < link.range.end) {
                     std::vector<protocol::Location> locations{
                         protocol::Location{
-                                           .uri = feature::to_uri(project.file_table.display(link.target)),
+                                           .uri = feature::to_uri(shown(project.file_table, link.target)),
                                            .range = protocol::Range{},
                                            }
                     };
@@ -733,7 +738,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
             std::vector<std::string> arguments;
             // Editor use: candidates must come from the same command (host
             // choice, chosen CDB entry) the open buffer compiles under.
-            auto ref = contexts.resolve_command(path, directory, arguments).ref;
+            auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
 
             auto search_config = project.cdb.search_config(ref);
             DirListingCache dir_cache;

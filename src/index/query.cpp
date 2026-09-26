@@ -110,7 +110,7 @@ bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
 }
 
 IndexQuery::IndexQuery(const ProjectIndex& index,
-                       const FileTable& files,
+                       FileTable& files,
                        const FreshnessGate* gate,
                        const LiveSources* live) :
     index(index), files(files), gate(gate), live(live) {}
@@ -147,19 +147,14 @@ void IndexQuery::visit_overlay_files(const TUIndex& state,
         if(local_id == main_id) {
             continue;
         }
-        auto path = state.path(local_id);
         auto& shard = state.shard_of(local_id);
-        Fid file;
-        if(auto known = files.find(Spelling::absolute(path))) {
-            if(live->is_open(*known) || (gate && gate->stale(*known, shard.content_hash()))) {
-                continue;
-            }
-            file = *known;
-            path = files.display(file);
+        auto file = files.intern(Spelling::absolute(state.path(local_id)));
+        if(live->is_open(file) || (gate && gate->stale(file, shard.content_hash()))) {
+            continue;
         }
         RowSource source{.kind = RowSource::Kind::Overlay,
                          .file = file,
-                         .path = path,
+                         .path = files.display(file),
                          .rows = &shard,
                          .coords = shard_coordinates(shard)};
         if(!visitor(source)) {

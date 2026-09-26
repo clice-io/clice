@@ -54,6 +54,13 @@ function runIndex(ws: Workspace) {
     return runClice("index", "--workspace", ws.root, "--workers", "2");
 }
 
+/// How many translation units a batch index run indexed.
+function indexedUnits(ws: Workspace): number {
+    const run = runIndex(ws);
+    expect(run.status, run.stderr).toBe(0);
+    return Number(/Indexed (\d+) translation unit/.exec(run.stdout)?.[1]);
+}
+
 function query<T>(
     ws: Workspace,
     method: string,
@@ -238,26 +245,41 @@ test("moved checkout keeps its index", ({ session }) => {
     before.write("src/b.cpp", '#include "util.h"\nint use_b() { return UTIL_LIMIT; }\n');
     before.pinCacheDir();
     writeCDB(before);
-    const indexed = (ws: Workspace) => {
-        const run = runIndex(ws);
-        expect(run.status, run.stderr).toBe(0);
-        return Number(/Indexed (\d+) translation unit/.exec(run.stdout)?.[1]);
-    };
     const ids = (ws: Workspace) =>
         ["UTIL_LIMIT", "src/a.cpp:2"].map(
             (text) =>
                 query<{ symbols: { symbolId: string }[] }>(ws, "symbolSearch", "--query", text)
                     .result?.symbols[0]?.symbolId,
         );
-    expect(indexed(before)).toBe(2);
+    expect(indexedUnits(before)).toBe(2);
     const first = ids(before);
     expect(first.every((id) => id !== undefined)).toBe(true);
 
     fs.renameSync(before.root, after.root);
     writeCDB(after);
-    expect(indexed(after), "the moved index is current").toBe(0);
+    expect(indexedUnits(after), "the moved index is current").toBe(0);
     expect(ids(after), "a macro and a file-local symbol keep their ids").toEqual(first);
 });
+
+test.skipIf(process.platform === "win32")(
+    "a path that is not UTF-8 still sees command edits",
+    ({ session }) => {
+        const ws = session.tmpdir();
+        const target = Buffer.concat([
+            Buffer.from(`${ws.root}/`),
+            Buffer.from([0xff]),
+            Buffer.from(".cpp"),
+        ]);
+        fs.writeFileSync(target, "int f() { return X; }\n");
+        fs.symlinkSync(target, ws.path("a.cpp"));
+        ws.pinCacheDir();
+        ws.writeCDB(["a.cpp"], { extraArgs: ["-DX=1"] });
+        expect(indexedUnits(ws)).toBe(1);
+
+        ws.writeCDB(["a.cpp"], { extraArgs: ["-DX=2"] });
+        expect(indexedUnits(ws), "the edited command reindexes the file").toBe(1);
+    },
+);
 
 test("rejects bad questions", ({ session }) => {
     const ws = writeProject(session);

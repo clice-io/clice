@@ -1559,15 +1559,27 @@ llvm::SmallVector<Spelling> IndexStore::remembered_sources() {
 
 void IndexStore::reconcile_cdb_snapshot(Report& report) {
     auto blob = project.index_db->read(index::IndexBlobKind::CDB, "cdb");
-    CDBSnapshot persisted;
-    if(!blob ||
-       !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
+    if(!blob) {
         // Unknown baseline: nothing to diff against. Dirty the snapshot so
         // the next save recreates it even when it commits nothing else —
         // after a crash that lost only the CDB blob, waiting for an
         // unrelated dirtying merge would leave offline command edits
         // undetectable across every following session.
         cdb_dirty = true;
+        return;
+    }
+    CDBSnapshot persisted;
+    if(!kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
+        LOG_ERROR(
+            "Index cache at {} cannot tell which commands built it (is a path not "
+            "UTF-8?); reindexing every file",
+            std::string_view(project.config.project.cache_dir));
+        cdb_dirty = true;
+        llvm::SmallVector<Fid> units(llvm::make_first_range(project.project_index.manifests));
+        for(auto unit: units) {
+            drop_index_into(unit, report);
+            report.add_reindex(unit);
+        }
         return;
     }
     persisted_cdb_snapshot = blob.buffer->getBuffer().str();

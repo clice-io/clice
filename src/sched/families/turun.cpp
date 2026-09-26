@@ -74,7 +74,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // params.arguments (dependency scan, worker parse) sees one truth.
     auto extras = tidy::command_extra_args(params.tidy_extra_args, params.tidy_extra_args_before);
     auto resolved =
-        commands.resolve_command(file_path,
+        commands.resolve_command(path_id,
                                  params.directory,
                                  params.arguments,
                                  {.extra_prepend = extras.prepend, .extra_append = extras.append});

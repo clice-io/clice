@@ -702,27 +702,8 @@ bool search_env_all_absolute() {
     return result;
 }
 
-/// Options whose value names a filesystem location the driver resolves
-/// itself — a relative value ties the probe to the working directory even
-/// when it carries no separator (--sysroot=sdk).
-bool is_path_taking_option(unsigned id) {
-    switch(id) {
-        case option::OPT__sysroot_EQ:
-        case option::OPT__sysroot:
-        case option::OPT_isysroot:
-        case option::OPT_B:
-        case option::OPT_gcc_toolchain:
-        case option::OPT_gcc_install_dir_EQ:
-        case option::OPT_cuda_path_EQ:
-        case option::OPT_resource_dir:
-        case option::OPT_resource_dir_EQ:
-        case option::OPT_config:
-        case option::OPT_config_system_dir_EQ:
-        case option::OPT_config_user_dir_EQ: return true;
-        default: return false;
-    }
-}
-
+/// Whether an option clang does not know may name a path relative to the
+/// working directory: nothing tells, so any relative-looking value does.
 bool relative_suspect(llvm::StringRef value) {
     if(value.empty() || path::is_absolute(value)) {
         return false;
@@ -882,23 +863,17 @@ Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
         path::is_absolute(driver) || (!driver.contains('/') && !driver.contains('\\'));
 #endif
 
+    /// A known option's path values were anchored when the command was
+    /// read (names_relative_path); only an unknown one can still hold a
+    /// relative path.
     bool values_clean = true;
     for(auto& arg: config.args) {
-        if(!in_probe_view(arg, config.family)) {
+        if(arg.opt_id != option::OPT_UNKNOWN || !in_probe_view(arg, config.family)) {
             continue;
         }
-        if(arg.opt_id == option::OPT_UNKNOWN) {
-            llvm::StringRef spelling(arg.spelling);
-            if(relative_suspect(spelling.substr(spelling.find('=') + 1))) {
-                values_clean = false;
-            }
-            continue;
-        }
-        for(llvm::StringRef value: arg.values) {
-            if(relative_suspect(value) ||
-               (is_path_taking_option(arg.opt_id) && !path::is_absolute(value))) {
-                values_clean = false;
-            }
+        llvm::StringRef spelling(arg.spelling);
+        if(relative_suspect(spelling.substr(spelling.find('=') + 1))) {
+            values_clean = false;
         }
     }
 
@@ -939,7 +914,7 @@ Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
     return out;
 }
 
-Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config, bool cwd_sensitive) {
+Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config) {
     ProbeArgv out;
     out.argv.push_back(config.driver);
     if(config.subcommand) {
@@ -963,33 +938,6 @@ Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config, bool cwd
             out.argv.push_back(arg.spelling);
             continue;
         }
-
-        /// A cwd-sensitive probe cannot rely on the working directory for
-        /// the in-process driver branches — relative path values absolutize
-        /// here (the subprocess branches also run with cwd = directory,
-        /// which resolves everything else, e.g. driver config files).
-        if(cwd_sensitive) {
-            Arg adjusted = arg;
-            llvm::SmallVector<const char*, 2> values;
-            bool changed = false;
-            for(llvm::StringRef value: arg.values) {
-                bool pathy =
-                    relative_suspect(value) || (is_path_taking_option(arg.opt_id) &&
-                                                !path::is_absolute(value) && !value.empty());
-                if(pathy) {
-                    values.push_back(db.strings.save(path::join(config.directory, value)).data());
-                    changed = true;
-                } else {
-                    values.push_back(value.data());
-                }
-            }
-            if(changed) {
-                adjusted.values = values;
-                render_arg(adjusted, emit);
-                continue;
-            }
-        }
-
         render_arg(arg, emit);
     }
 
@@ -1170,7 +1118,7 @@ Toolchain::ProbeAdmission Toolchain::admit_probe(ConfigID id, InputKind input) {
     }
 
     auto& config = db.config(id);
-    auto argv = probe_argv(config, pk.cwd_sensitive);
+    auto argv = probe_argv(config);
     admission.kind = ProbeAdmission::Kind::Ready;
     admission.spec.argv = std::move(argv.argv);
     admission.spec.slot = argv.slot;

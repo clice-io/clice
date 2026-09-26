@@ -573,6 +573,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
                                         const std::string& file,
                                         llvm::ArrayRef<std::string> flags,
                                         llvm::StringRef flags_directory,
+                                        FileTable& files,
                                         CommandResolver* commands) {
     namespace types = clang::driver::types;
     auto type = suffix_type(file);
@@ -614,8 +615,11 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         return command;
     }
 
-    command.synthesized =
-        commands->resolve_command(file, command.directory, command.arguments).synthesized;
+    command.synthesized = commands
+                              ->resolve_command(files.intern(Spelling::absolute(file)),
+                                                command.directory,
+                                                command.arguments)
+                              .synthesized;
     return command;
 }
 
@@ -952,6 +956,7 @@ int run_inspect(const InspectOptions& opts) {
                                     file.abs,
                                     flags,
                                     unit_directory,
+                                    file_table,
                                     flags.empty() ? &commands : nullptr);
         if(command) {
             command->workspace = project.config.workspace_root.str();

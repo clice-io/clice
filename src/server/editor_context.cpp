@@ -33,11 +33,10 @@ struct ContextsData {
 
 }  // namespace
 
-Resolution EditorContext::resolve_command(llvm::StringRef path,
+Resolution EditorContext::resolve_command(Fid path_id,
                                           std::string& directory,
                                           std::vector<std::string>& arguments) {
-    auto path_id = project.file_table.intern(Spelling::absolute(path));
-    auto resolution = commands.resolve_command(path,
+    auto resolution = commands.resolve_command(path_id,
                                                directory,
                                                arguments,
                                                {

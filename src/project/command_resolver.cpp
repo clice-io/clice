@@ -257,11 +257,10 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
     return true;
 }
 
-Resolution CommandResolver::resolve_command(llvm::StringRef spelled,
+Resolution CommandResolver::resolve_command(Fid path_id,
                                             std::string& directory,
                                             std::vector<std::string>& arguments,
                                             const CommandRequest& request) {
-    auto path_id = project.file_table.intern(Spelling::absolute(spelled));
     auto path = project.file_table.resolve(path_id);
     llvm::SmallVector<llvm::StringRef, 4> tried;
     Resolution resolution;

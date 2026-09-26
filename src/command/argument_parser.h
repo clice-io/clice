@@ -68,9 +68,12 @@ bool is_discarded_option(unsigned id);
 /// shared canonical command: -I, -D, -U, -include, -isystem, -iquote, -idirafter.
 bool is_user_content_option(unsigned id);
 
-/// Subset of user-content options that are include-path flags
-/// (-I, -isystem, -iquote, -idirafter) — used for path absolutization.
-bool is_include_path_option(unsigned id);
+/// Whether `value` of option `id` names a file or directory relative to
+/// the directory the command runs in, which every reader of the command
+/// anchors it at. A leading `=` or `$SYSROOT` is the sysroot, which clang
+/// substitutes; a bare `--config` name is searched in clang's
+/// configuration directories.
+bool names_relative_path(unsigned id, llvm::StringRef value);
 
 /// Check if this is the -Xclang pass-through option.
 bool is_xclang_option(unsigned id);

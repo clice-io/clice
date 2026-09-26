@@ -113,14 +113,12 @@ private:
 
     /// The probe argv: driver (+ subcommand) + non-user-content args, with
     /// the input slot position recorded for the temp-file insertion.
-    /// Relative path-suspect values of cwd-sensitive configs absolutize
-    /// against the directory (the in-process driver cannot change cwd).
     struct ProbeArgv {
         std::vector<const char*> argv;
         std::size_t slot = 0;
     };
 
-    ProbeArgv probe_argv(const CompileConfig& config, bool cwd_sensitive);
+    ProbeArgv probe_argv(const CompileConfig& config);
 
     /// Parse raw probe output into a Resolved entry for `id`, re-attaching
     /// the config's user-content args and replacing external resource dirs.

@@ -241,14 +241,6 @@ struct FileTable {
         return path;
     }
 
-    /// A path as display() would show the file it names.
-    llvm::StringRef display(llvm::StringRef path) const {
-        if(auto fid = find(Spelling::absolute(path))) {
-            return display(*fid);
-        }
-        return path;
-    }
-
     /// An open document names its file this way until it closes.
     void show_as(Fid fid, llvm::StringRef spelling) {
         shown[fid] = save(spelling);

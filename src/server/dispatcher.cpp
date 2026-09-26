@@ -305,7 +305,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     Params wp;
     wp.file = path;
     wp.text = session.text;
-    auto resolution = contexts.resolve_command(path, wp.directory, wp.arguments);
+    auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
     if(resolution.synthesized) {
         wp.synthesized = resolution.synthesized->files;
         resolution.synthesized->append_suffix_include(wp.text);

@@ -186,13 +186,14 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path
         return ctx.contexts.commands.header_mode(file) == HeaderMode::NeedsContext ||
                (choice && choice->host_path_id.valid() && choice->occurrence.has_value());
     };
-    if(auto file = ctx.project.file_table.find(path); file && needs_context(*file)) {
+    auto file = ctx.project.file_table.intern(path);
+    if(needs_context(file)) {
         return std::unexpected(std::format(
             "{} compiles only under a synthesized header context, which needs an editor session",
             path));
     }
     CompileCommandResult result{.file = path.str()};
-    auto source = ctx.contexts.resolve_command(path, result.directory, result.arguments).source;
+    auto source = ctx.contexts.resolve_command(file, result.directory, result.arguments).source;
     switch(source) {
         case CommandSource::CDBExact: result.source = "database"; break;
         case CommandSource::IncludeGraph: result.source = "host"; break;
