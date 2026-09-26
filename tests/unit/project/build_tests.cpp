@@ -506,6 +506,23 @@ TEST_CASE(DiscoverSymlinkedBuild) {
     ASSERT_EQ(below.size(), 1u);
     EXPECT_EQ(below[0].str(), expected);
 };
+
+TEST_CASE(LinkedBuildKeyedByLink) {
+    /// A build directory symlinked elsewhere stays one database however it
+    /// is retargeted: switching the link switches the commands.
+    TempDir tmp;
+    tmp.touch("out/debug/compile_commands.json", "[]");
+    tmp.touch("out/release/compile_commands.json", "[]");
+    ASSERT_EQ(::symlink(tmp.path("out/debug").c_str(), tmp.path("build").c_str()), 0);
+    FileTable files;
+    CompilationDatabase cdb{files};
+    auto build = Spelling::absolute(tmp.path("build"));
+    auto first = cdb.add_source(build);
+
+    ASSERT_EQ(::unlink(tmp.path("build").c_str()), 0);
+    ASSERT_EQ(::symlink(tmp.path("out/release").c_str(), tmp.path("build").c_str()), 0);
+    EXPECT_EQ(cdb.add_source(build), first);
+};
 #endif
 
 TEST_CASE(ProjectRootAbove) {

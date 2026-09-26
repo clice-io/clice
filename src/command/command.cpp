@@ -500,8 +500,11 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
         /// Path values absolutize where the compile runs, so the config
         /// keeps meaning when consumed away from it: the toolchain probe
         /// runs elsewhere.
+        // The working directory itself is relative to the entry's.
+        bool working =
+            id == option::OPT_working_directory || id == option::OPT_working_directory_EQ;
         for(auto& value: local.values) {
-            value = anchored(id, value, anchor, strings).data();
+            value = anchored(id, value, working ? directory : anchor, strings).data();
         }
 
         args.push_back(std::move(local));
@@ -678,11 +681,19 @@ void CompilationDatabase::rebuild_entry_list() {
 /// .json extension names a directory, existing or not, holding
 /// compile_commands.json) in the identity of the directory holding it —
 /// every spelling of that directory finds the same source, while a
-/// database file symlinked elsewhere is still read through the link.
+/// database file symlinked elsewhere is still read through the link. So
+/// is a directory that is itself a symlink (build -> out/debug): switching
+/// the link switches the database.
 static Spelling source_key(const Spelling& path) {
     auto file =
         path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
-    return Spelling(path::filename(file.str()), Spelling(CanonicalPath(file.parent())));
+    auto directory = file.parent();
+    if(llvm::sys::fs::is_symlink_file(directory.str())) {
+        return Spelling(
+            path::filename(file.str()),
+            Spelling(path::filename(directory.str()), Spelling(CanonicalPath(directory.parent()))));
+    }
+    return Spelling(path::filename(file.str()), Spelling(CanonicalPath(directory)));
 }
 
 SourceID CompilationDatabase::add_source(const Spelling& path) {

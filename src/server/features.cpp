@@ -846,6 +846,7 @@ llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol,
         return sites;
     };
     auto own = declared(query, symbol);
+    auto info = query.symbol_info(symbol);
     llvm::SmallVector<Fid> files{anchor};
     for(auto& site: own) {
         files.push_back(site.file);
@@ -857,9 +858,15 @@ llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol,
             relevant.push_back({peer, symbol});
             continue;
         }
+        // The same name at the same place: a file compiled under other
+        // flags can hold another declaration there.
         for(auto& site: own) {
             auto cursor = peer->symbol_at(site.file, site.range.begin);
-            if(cursor && cursor->site.range == site.range) {
+            if(!cursor || cursor->site.range != site.range) {
+                continue;
+            }
+            auto named = peer->symbol_info(cursor->symbol);
+            if(info && named && named->name == info->name && named->kind == info->kind) {
                 relevant.push_back({peer, cursor->symbol});
                 break;
             }

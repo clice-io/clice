@@ -164,13 +164,15 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     params.uri = feature::to_uri(alias.spelling);
     params.version = alias.buffer.version;
     if(owner && owner->text == alias.buffer.text) {
-        alias.warned = false;
-        // Until the owner's compile lands there is nothing to share, and
-        // a divergence warning must not outlive the divergence.
+        // Shared once the owner's compile caught up with the text; until
+        // then only a divergence warning is taken down.
         auto projection = project.ast.projections.projection(owner->path_id);
-        if(projection && projection->output.has_value()) {
+        if(projection && projection->output && projection->output->version == owner->version) {
             params.diagnostics = format_diagnostics(*projection->output);
+        } else if(!alias.warned) {
+            return;
         }
+        alias.warned = false;
     } else {
         auto first = server.files.display(alias.buffer.path_id);
         auto message = std::format(
@@ -533,12 +535,17 @@ void LSPClient::register_document_sync() {
         }
         auto& path = spelled->str();
         auto path_id = srv.files.intern(*spelled);
-        if(auto* alias = find_alias(path_id, path)) {
-            take_alias(path_id, alias);
+        // A second name's diagnostics end with it, whether it closes or
+        // takes the file over.
+        auto clear_alias = [&](llvm::StringRef spelling) {
             if(client_ready) {
                 peer.send_notification(
-                    protocol::PublishDiagnosticsParams{.uri = feature::to_uri(path)});
+                    protocol::PublishDiagnosticsParams{.uri = feature::to_uri(spelling)});
             }
+        };
+        if(auto* alias = find_alias(path_id, path)) {
+            take_alias(path_id, alias);
+            clear_alias(path);
             return;
         }
         if(srv.files.shown_as(path_id) != path) {
@@ -554,6 +561,7 @@ void LSPClient::register_document_sync() {
         // A document still open under another name takes the file over.
         if(auto it = aliases.find(path_id); it != aliases.end()) {
             auto next = take_alias(path_id, &it->second.front());
+            clear_alias(next.spelling);
             srv.files.show_as(path_id, next.spelling);
             srv.open_session(path_id, std::move(next.buffer.text), next.buffer.version);
         }

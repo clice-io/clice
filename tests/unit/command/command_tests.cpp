@@ -772,6 +772,15 @@ TEST_CASE(WorkingDirectoryAnchorsIncludes) {
                          "main.cpp",
                          "clang++ -working-directory build -Iinclude main.cpp"sv);
     EXPECT_TRUE(has_arg(render_entry(database, "/project/main.cpp"), "/project/build/include"));
+    /// The directory itself is anchored too, so no reader depends on
+    /// where it runs.
+    auto config = database.candidate_entries("/project/main.cpp").front().config;
+    auto working = llvm::find_if(database.config(config).args, [](const Arg& arg) {
+        return arg.opt_id == option::OPT_working_directory;
+    });
+    ASSERT_TRUE(working != database.config(config).args.end());
+    auto value = path::convert_to_slash(working->values[0]);
+    EXPECT_TRUE(path::is_absolute(value) && llvm::StringRef(value).ends_with("/project/build"));
 };
 
 TEST_CASE(BareFileValueAnchored) {

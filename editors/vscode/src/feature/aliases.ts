@@ -67,28 +67,33 @@ async function redirect(editor: vscode.TextEditor | undefined) {
     redirecting = true;
     try {
         const selection = await requestedSelection(editor);
-        // The user moved on meanwhile, or started editing the second name.
-        if (vscode.window.activeTextEditor !== editor || opened.isDirty) {
-            return;
-        }
-        const tab = vscode.window.tabGroups.all
-            .find((group) => group.viewColumn === editor.viewColumn)
-            ?.tabs.find(
-                (candidate) =>
-                    candidate.input instanceof vscode.TabInputText &&
-                    candidate.input.uri.toString() === opened.uri.toString(),
-            );
-        const shown = await vscode.window.showTextDocument(first, {
-            viewColumn: editor.viewColumn,
-            preview: false,
-        });
-        shown.selection = selection;
-        shown.revealRange(selection);
-        if (tab) {
-            await vscode.window.tabGroups.close(tab);
+        // Unless the user moved on meanwhile, or started editing the second
+        // name.
+        if (vscode.window.activeTextEditor === editor && !opened.isDirty) {
+            const tab = vscode.window.tabGroups.all
+                .find((group) => group.viewColumn === editor.viewColumn)
+                ?.tabs.find(
+                    (candidate) =>
+                        candidate.input instanceof vscode.TabInputText &&
+                        candidate.input.uri.toString() === opened.uri.toString(),
+                );
+            const shown = await vscode.window.showTextDocument(first, {
+                viewColumn: editor.viewColumn,
+                preview: false,
+            });
+            shown.selection = selection;
+            shown.revealRange(selection);
+            if (tab) {
+                await vscode.window.tabGroups.close(tab);
+            }
         }
     } finally {
         redirecting = false;
+    }
+    // An editor the user turned to meanwhile was not looked at.
+    const active = vscode.window.activeTextEditor;
+    if (active && active !== editor && active.document !== first) {
+        await redirect(active);
     }
 }
 
