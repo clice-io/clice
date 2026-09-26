@@ -175,7 +175,9 @@ def check_pe(binary: Path) -> list[str]:
     for dll in dlls:
         if dll.lower().startswith(PE_FORBIDDEN_PREFIXES):
             violations.append(f"runtime DLL dependency: {dll}")
-    violations.extend(assert_parsed(len(dlls), "llvm-readobj --coff-imports", "imported DLLs"))
+    violations.extend(
+        assert_parsed(len(dlls), "llvm-readobj --coff-imports", "imported DLLs")
+    )
     return violations
 
 
