@@ -168,11 +168,16 @@ function(_check_llvm_manifest install_path)
         string(APPEND _mismatch "\n  target: package ${XCLANG_TARGET_TRIPLE}, this build ${_triple}")
     endif()
     # The release archives hold ThinLTO bitcode, which only the LLVM that
-    # wrote it is sure to read.
+    # wrote it is sure to read, and were built against xclang's libc++ and
+    # runtimes, which its config files select: the compiler is xclang's
+    # clang of that version, whose --version names the repository.
+    execute_process(COMMAND "${CMAKE_CXX_COMPILER}" --version
+        OUTPUT_VARIABLE _compiler_version ERROR_QUIET)
     if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
-            OR NOT CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL XCLANG_LLVM_VERSION)
+            OR NOT CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL XCLANG_LLVM_VERSION
+            OR NOT _compiler_version MATCHES "clice-io/xclang")
         string(APPEND _mismatch "\n  compiler: package xclang ${XCLANG_LLVM_VERSION}, this build "
-            "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+            "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION} (${CMAKE_CXX_COMPILER})")
     endif()
     if(NOT XCLANG_ASAN STREQUAL _expected_asan)
         string(APPEND _mismatch "\n  ASan: package ${XCLANG_ASAN}, this build ${_expected_asan}")
