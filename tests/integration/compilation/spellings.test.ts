@@ -1,6 +1,8 @@
 /// How the build spells a path decides where a lookup starts: a quoted
 /// include from the directory its includer was reached through, `..` past a
-/// symlinked directory. Results name files the way the build reaches them.
+/// symlinked directory. Results name a file the way the user opened it —
+/// its document, else its own path under the workspace folder — never the
+/// way a lookup reached it.
 
 import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
@@ -38,7 +40,7 @@ posix("parent segment past a symlinked directory", async ({ session }) => {
     expect(hosts.total, "the header clang includes has a host").toBe(1);
 });
 
-posix("header named through its include directory", async ({ session }) => {
+posix("header found through a symlinked directory", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("vendor/real/utils.h", "inline int get_x(int p) { return p; }\n");
     fs.symlinkSync(workspace.path("vendor/real"), workspace.path("inc"));
@@ -48,9 +50,63 @@ posix("header named through its include directory", async ({ session }) => {
 
     const [main] = await client.openAndWait("main.cpp");
     const targets = await client.definitionUris(main, 1, 21);
-    expect(targets).toEqual([workspace.uri("inc/utils.h")]);
+    expect(targets, "named by its own path").toEqual([workspace.uri("vendor/real/utils.h")]);
     const [header] = await client.openAndWait("inc/utils.h");
-    expect(await client.hoverAt(header, 0, 12), "the build's name is served").not.toBeNull();
+    expect(await client.hoverAt(header, 0, 12), "the lookup's name is served").not.toBeNull();
+});
+
+test("build that climbs out of its directory", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("include/lib.h", "int lib_fn(int);\n");
+    workspace.write("common/c.h", "inline int common_fn() { return 1; }\n");
+    workspace.write(
+        "src/main.cpp",
+        '#include "lib.h"\n#include "../common/c.h"\nint main() { return lib_fn(common_fn()); }\n',
+    );
+    workspace.write(
+        "build/compile_commands.json",
+        JSON.stringify([
+            {
+                directory: workspace.path("build"),
+                file: "../src/main.cpp",
+                arguments: ["clang++", "-std=c++20", "-I../include", "-c", "../src/main.cpp"],
+            },
+        ]),
+    );
+    await client.initialize(workspace);
+
+    const [main] = await client.openAndWait("src/main.cpp");
+    const links = ((await client.documentLinks(main)) ?? []).map((link) => link.target);
+    expect(links).toEqual([workspace.uri("include/lib.h"), workspace.uri("common/c.h")]);
+    expect(await client.definitionUris(main, 2, 23)).toEqual([workspace.uri("include/lib.h")]);
+    expect(await client.waitForIndex(main, "common_fn")).toBe(true);
+    const symbols = (await client.workspaceSymbols("common_fn")) ?? [];
+    expect(symbols.map((symbol) => ("location" in symbol ? symbol.location.uri : ""))).toEqual([
+        workspace.uri("common/c.h"),
+    ]);
+});
+
+posix("folder opened through a symlink", async ({ session }) => {
+    const real = session.tmpdir();
+    const outer = session.tmpdir();
+    fs.symlinkSync(real.root, outer.path("ws"));
+    const workspace = new Workspace(outer.path("ws"));
+    workspace.write("inc/early.h", "int early();\n");
+    workspace.write("inc/late.h", "int late();\n");
+    workspace.write(
+        "main.cpp",
+        '#include "early.h"\nint first();\n#include "late.h"\nint main() { return early() + late(); }\n',
+    );
+    workspace.writeCDB(["main.cpp"], { extraArgs: ["-Iinc"] });
+    const client = await session.spawn(workspace).initialize(workspace);
+
+    const [main] = await client.openAndWait("main.cpp");
+    expect(await client.definitionUris(main, 0, 12)).toEqual([workspace.uri("inc/early.h")]);
+    expect(await client.definitionUris(main, 2, 12), "past the preamble").toEqual([
+        workspace.uri("inc/late.h"),
+    ]);
+    const hover = await client.hoverAt(main, 2, 12);
+    expect(JSON.stringify(hover?.contents)).toContain(workspace.path("inc/late.h"));
 });
 
 test("folder spelled with a trailing slash", async ({ session }) => {

@@ -73,6 +73,10 @@ test.skipIf(process.platform === "win32")("second name for an open file", async 
         typeof d.message === "string" ? d.message : d.message.value,
     );
     expect(warnings).toEqual([expect.stringContaining("also open as")]);
+    expect(client.diagnostics.get(second)?.[0]?.range, "at the document's start").toEqual({
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: 0 },
+    });
     await expect(client.hoverAt(second, 0, 5)).rejects.toThrow("Document changed");
     expect(await client.referencesAt(second, 0, 5), "no rows answer for other text").toEqual([]);
     const cleared = client.armDiagnostics(second);

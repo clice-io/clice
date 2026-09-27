@@ -211,9 +211,8 @@ struct FileTable {
     /// include searches from this path's directory, as clang's does from
     /// the name it opened the includer under.
     void spell_as(Fid fid, const Spelling& path) {
-        if(llvm::StringRef(path) != llvm::StringRef(resolve(fid)) &&
-           spelled.try_emplace(fid, save(path.str())).second) {
-            root_displays.erase(fid);
+        if(llvm::StringRef(path) != llvm::StringRef(resolve(fid))) {
+            spelled.try_emplace(fid, path.str());
         }
     }
 
@@ -225,71 +224,47 @@ struct FileTable {
     }
 
     /// The path a user knows a file by: the one its open document was
-    /// opened under, else the build's spelling of it, under the spelling of
-    /// a root it lies in (a workspace opened through a symlink). Everything
-    /// the user is shown — URIs, query output — names files this way;
-    /// identity never does.
-    llvm::StringRef display(Fid fid) const {
+    /// opened under, else its identity under the workspace folder it lies
+    /// in. Everything the user is shown — URIs, query output — names files
+    /// this way; a lookup spelling (spelling()) never does.
+    std::string display(Fid fid) const {
         if(auto it = shown.find(fid); it != shown.end()) {
             return it->second;
         }
-        llvm::StringRef path = resolve(fid);
-        if(auto it = spelled.find(fid); it != spelled.end()) {
-            path = it->second;
-        }
-        for(auto& [real, spelled_root]: spelled_roots) {
-            if(path::under(path, llvm::StringRef(real))) {
-                auto [it, inserted] = root_displays.try_emplace(fid);
-                if(inserted) {
-                    it->second = save(spelled_root + path.drop_front(real.size()).str());
-                }
-                return it->second;
-            }
-        }
-        return path;
+        return display(resolve(fid));
     }
+
+    /// A path by its identity, under the spelling of the workspace folder
+    /// it lies in (a folder opened through a symlink) or as it is outside
+    /// every folder.
+    std::string display(CanonicalRef identity) const;
 
     /// An open document names its file this way until it closes.
     void show_as(Fid fid, llvm::StringRef spelling) {
-        shown[fid] = save(spelling);
+        shown[fid] = spelling.str();
     }
 
     /// The spelling the file's open document was opened under, if one is.
     std::optional<llvm::StringRef> shown_as(Fid fid) const {
         auto it = shown.find(fid);
-        return it != shown.end() ? std::optional(it->second) : std::nullopt;
+        return it != shown.end() ? std::optional<llvm::StringRef>(it->second) : std::nullopt;
     }
 
     void unshow(Fid fid) {
         shown.erase(fid);
     }
 
-    /// Files under `root` show under this spelling of it.
-    void spell_root(const Spelling& root) {
-        CanonicalPath real(root);
-        if(real.str() != root.str()) {
-            spelled_roots.emplace_back(std::move(real), root.str());
-            root_displays.clear();
-        }
-    }
+    /// Files under the workspace folder `root` show under this spelling of
+    /// it, its `..` segments folded away while the folded path still names
+    /// the same directory.
+    void spell_root(const Spelling& root);
 
     /// Stop showing files under a spelling spell_root recorded.
-    void unspell_root(const Spelling& root) {
-        llvm::erase_if(spelled_roots, [&](auto& entry) { return entry.second == root.str(); });
-        root_displays.clear();
-    }
+    void unspell_root(const Spelling& root);
 
-    llvm::DenseMap<Fid, llvm::StringRef> shown;
-    llvm::DenseMap<Fid, llvm::StringRef> spelled;
-    llvm::SmallVector<std::pair<CanonicalPath, std::string>> spelled_roots;
-    mutable llvm::DenseMap<Fid, llvm::StringRef> root_displays;
-    mutable llvm::BumpPtrAllocator display_storage;
-
-    llvm::StringRef save(llvm::StringRef text) const {
-        auto* buf = display_storage.Allocate<char>(text.size());
-        std::ranges::copy(text, buf);
-        return llvm::StringRef(buf, text.size());
-    }
+    llvm::DenseMap<Fid, std::string> shown;
+    llvm::DenseMap<Fid, std::string> spelled;
+    llvm::SmallVector<std::pair<CanonicalPath, Spelling>> spelled_roots;
 
     /// Entities: on-disk files merged by filesystem UniqueID, the way
     /// clang's FileManager merges FileEntries — hardlinked or symlinked

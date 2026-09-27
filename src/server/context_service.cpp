@@ -105,7 +105,7 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
                 }
                 item.command_hash = hash;
             }
-            item.description = host_shown.str();
+            item.description = host_shown;
             item.uri = host_uri;
 
             // A guard-less header can be included several times by
@@ -141,7 +141,8 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
             auto desc = flags_label(ws, applied);
             ext::ContextItem item;
             item.label = desc.empty() ? std::format("config #{}", i) : desc;
-            item.description = ws.cdb.config(applied).directory;
+            item.description = ws.file_table.display(
+                CanonicalPath(Spelling::absolute(ws.cdb.config(applied).directory)));
             item.uri = uri;
             item.command_hash = std::move(hash);
             all_items.push_back(std::move(item));
@@ -162,7 +163,7 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
         if(choice->occurrence.value_or(0) > 0) {
             item.label = std::format("{} (#{})", item.label, *choice->occurrence + 1);
         }
-        item.description = shown.str();
+        item.description = shown;
         item.uri = feature::to_uri(shown);
         item.occurrence = choice->occurrence;
         if(!choice->command_hash.empty()) {
@@ -186,7 +187,8 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
                 if(!desc.empty()) {
                     item.label = std::move(desc);
                 }
-                item.description = ws.cdb.config(applied).directory;
+                item.description = ws.file_table.display(
+                    CanonicalPath(Spelling::absolute(ws.cdb.config(applied).directory)));
                 break;
             }
         }

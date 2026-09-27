@@ -27,8 +27,18 @@ namespace clice {
 using serde_raw = kota::codec::RawValue;
 
 /// How the user knows a file a worker names by its identity.
-static llvm::StringRef shown(FileTable& files, llvm::StringRef identity) {
+static std::string shown(FileTable& files, llvm::StringRef identity) {
     return files.display(files.intern(Spelling::absolute(identity)));
+}
+
+/// The link whose argument covers `offset`. Link ranges are half-open;
+/// contains() would also accept end.
+const static feature::DocumentLink* link_at(llvm::ArrayRef<feature::DocumentLink> links,
+                                            std::uint32_t offset) {
+    auto it = llvm::find_if(links, [&](const feature::DocumentLink& link) {
+        return offset >= link.range.begin && offset < link.range.end;
+    });
+    return it != links.end() ? &*it : nullptr;
 }
 
 /// Error response for feature requests on files with no open session.
@@ -252,70 +262,51 @@ std::vector<feature::DocumentLink> Features::find_preamble_links(const Session& 
     return state ? state->links() : std::vector<feature::DocumentLink>{};
 }
 
-std::vector<protocol::Location>
-    Features::resolve_directive_definition(Session& session, const protocol::Position& position) {
-    std::vector<protocol::Location> locations;
-
-    // Preamble include lines: compiled into the PCH, invisible to the
-    // worker's AST — the PCH's stored links carry the targets.
-    auto links = find_preamble_links(session);
-    if(links.empty())
-        return locations;
-
-    auto offset = session.line_map().to_offset(position);
-    if(!offset)
-        return locations;
-
-    for(auto& link: links) {
-        /// Link ranges are half-open; contains() would also accept end.
-        if(*offset >= link.range.begin && *offset < link.range.end) {
-            locations.push_back(protocol::Location{
-                .uri = feature::to_uri(shown(project.file_table, link.target)),
-                .range = protocol::Range{},
-            });
-            break;
-        }
-    }
-    return locations;
+std::vector<protocol::Location> Features::directive_definition(const feature::DocumentLink& link) {
+    return {
+        protocol::Location{
+                           .uri = feature::to_uri(shown(project.file_table, link.target)),
+                           .range = protocol::Range{},
+                           }
+    };
 }
 
-std::optional<protocol::Hover>
-    Features::resolve_preamble_hover(Session& session, const protocol::Position& position) {
-    auto links = find_preamble_links(session);
-    if(links.empty())
+std::optional<protocol::Hover> Features::directive_hover(const Session& session,
+                                                         const feature::DocumentLink& link) {
+    if(link.range.end > session.text.size()) {
         return std::nullopt;
-
-    auto map = session.line_map();
-    auto offset = map.to_offset(position);
-    if(!offset)
-        return std::nullopt;
-
-    for(const auto& link: links) {
-        if(*offset < link.range.begin || *offset >= link.range.end)
-            continue;
-
-        if(link.range.end > session.text.size())
-            return std::nullopt;
-
-        llvm::StringRef name(session.text.data() + link.range.begin, link.range.length());
-        name = name.trim();
-        if(name.size() >= 2 && ((name.front() == '"' && name.back() == '"') ||
-                                (name.front() == '<' && name.back() == '>'))) {
-            name = name.drop_front().drop_back();
-        }
-
-        feature::HoverInfo info;
-        info.name = name.str();
-        info.kind = SymbolKind::Header;
-        info.definition = shown(project.file_table, link.target).str();
-        info.symbol_range = link.range;
-
-        auto hover = feature::to_protocol_hover(info, project.config.hover, map);
-        if(!hover.range)
-            return std::nullopt;
-        return hover;
     }
-    return std::nullopt;
+    llvm::StringRef name(session.text.data() + link.range.begin, link.range.length());
+    name = name.trim();
+    if(name.size() >= 2 && ((name.front() == '"' && name.back() == '"') ||
+                            (name.front() == '<' && name.back() == '>'))) {
+        name = name.drop_front().drop_back();
+    }
+
+    feature::HoverInfo info;
+    info.name = name.str();
+    info.kind = SymbolKind::Header;
+    info.definition = shown(project.file_table, link.target);
+    info.symbol_range = link.range;
+
+    auto hover = feature::to_protocol_hover(info, project.config.hover, session.line_map());
+    if(!hover.range) {
+        return std::nullopt;
+    }
+    return hover;
+}
+
+kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
+    Features::directive_links(const Ticket& ticket, std::optional<kota::cancellation_token> token) {
+    auto result = co_await dispatcher.document_links(ticket, std::move(token));
+    if(!result.has_value()) {
+        co_return kota::outcome_error(std::move(result.error()));
+    }
+    // The preamble is compiled into the PCH, so the worker's AST only
+    // covers the rest of the file — merge the preamble's links in front.
+    auto links = find_preamble_links(*ticket.session);
+    links.insert(links.end(), result->begin(), result->end());
+    co_return links;
 }
 
 kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
@@ -334,7 +325,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             protocol::DocumentLink out{.range = *range};
             auto path = shown(project.file_table, link.target);
             out.target = feature::to_uri(path);
-            out.tooltip = path.str();
+            out.tooltip = std::move(path);
             links.push_back(std::move(out));
         }
     };
@@ -364,14 +355,11 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         case Route::Ast: break;
     }
 
-    auto result = co_await dispatcher.document_links(ticket, std::move(token));
+    auto result = co_await directive_links(ticket, std::move(token));
     if(!result.has_value())
         co_return kota::outcome_error(std::move(result.error()));
 
-    // The preamble is compiled into the PCH, so the worker's AST only
-    // covers the rest of the file — merge the preamble's links in front.
     std::vector<protocol::DocumentLink> links;
-    convert(find_preamble_links(*session), links);
     convert(result.value(), links);
     co_return links;
 }
@@ -394,9 +382,11 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
     // mid-flight (the round landed as bounded staleness): the cached
     // links may describe a pre-edit preamble — skip, and let the index and
     // worker paths below answer.
-    if(session && ast.projections.current(path_id)) {
-        if(auto directive = resolve_directive_definition(*session, position); !directive.empty()) {
-            co_return to_raw(directive);
+    auto offset = session ? session->line_map().to_offset(position) : std::nullopt;
+    if(offset && ast.projections.current(path_id)) {
+        auto links = find_preamble_links(*session);
+        if(auto* link = link_at(links, *offset)) {
+            co_return to_raw(directive_definition(*link));
         }
     }
 
@@ -450,52 +440,36 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
         if(!query.shard_matching(session->path_id, session->text)) {
             co_return serde_raw{"[]"};
         }
-        if(auto offset = session->line_map().to_offset(position)) {
+        if(offset) {
             auto links = feature::index_document_links(session->text,
                                                        index_lang_options(*session),
                                                        query.include_edges(session->path_id));
-            for(const auto& link: links) {
-                if(*offset >= link.range.begin && *offset < link.range.end) {
-                    std::vector<protocol::Location> locations{
-                        protocol::Location{
-                                           .uri = feature::to_uri(shown(project.file_table, link.target)),
-                                           .range = protocol::Range{},
-                                           }
-                    };
-                    co_return to_raw(locations);
-                }
+            if(auto* link = link_at(links, *offset)) {
+                co_return to_raw(directive_definition(*link));
             }
         }
         co_return serde_raw{"[]"};
     }
 
-    auto raw = co_await dispatcher.query(worker::QueryKind::GoToDefinition,
-                                         ticket,
-                                         position,
-                                         {},
-                                         std::move(token));
+    auto links = co_await directive_links(ticket, std::move(token));
     // A dispatch error is final: a ContentModified in particular must not
     // be replaced by an index answer computed on the newer buffer.
-    if(!raw.has_value()) {
-        co_return kota::outcome_error(std::move(raw.error()));
+    if(!links.has_value()) {
+        co_return kota::outcome_error(std::move(links.error()));
     }
-    if(!to_lsp::is_empty(raw.value())) {
-        co_return std::move(raw.value());
+    if(auto* link = offset ? link_at(*links, *offset) : nullptr) {
+        co_return to_raw(directive_definition(*link));
     }
 
     // The dispatch compiled a dirty buffer: retry against the refreshed
-    // projection and preamble links, but only when the compile actually
-    // completed — a failed compile leaves the projection non-current and
-    // the caches stale.
+    // projection, but only when the compile actually completed — a failed
+    // compile leaves the projection non-current and the caches stale.
     if(ast.projections.current(path_id)) {
         if(auto retry = index_definition(); !retry.empty()) {
             co_return to_raw(retry);
         }
-        if(auto directive = resolve_directive_definition(*session, position); !directive.empty()) {
-            co_return to_raw(directive);
-        }
     }
-    co_return std::move(raw);
+    co_return serde_raw{"[]"};
 }
 
 Features::RawResult Features::hover(std::shared_ptr<Session> session,
@@ -528,14 +502,26 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
         case Route::Ast: break;
     }
 
-    /// Like document_links, the preamble and the worker's AST are disjoint, so merge the two
-    /// sources.
+    // A directive's card names its target, which the worker knows only by
+    // identity: this side answers it, from the links.
+    auto offset = session->line_map().to_offset(position);
+    auto argument = offset ? feature::find_directive_argument(session->text,
+                                                              *offset,
+                                                              &index_lang_options(*session))
+                           : std::nullopt;
+    if(argument && argument->begin <= *offset) {
+        auto links = co_await directive_links(ticket, std::move(token));
+        if(!links.has_value()) {
+            co_return kota::outcome_error(std::move(links.error()));
+        }
+        auto* link = link_at(*links, *offset);
+        auto hover = link ? directive_hover(*session, *link) : std::nullopt;
+        co_return hover ? to_raw(*hover) : serde_raw{"null"};
+    }
+
     auto raw =
         co_await dispatcher.query(worker::QueryKind::Hover, ticket, position, {}, std::move(token));
     if(raw.has_value() && to_lsp::is_null(raw.value()) && ast.projections.current(path_id)) {
-        if(auto hover = resolve_preamble_hover(*session, position)) {
-            co_return to_raw(*hover);
-        }
         // The preamble region is the one place a null from the AST is not
         // authoritative — it is compiled into the PCH and invisible to
         // the worker (a `#define` there has no node). The index card
@@ -546,7 +532,6 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
         if(projection && projection->pch_key) {
             if(auto it = project.pch_cache.find(*projection->pch_key);
                it != project.pch_cache.end()) {
-                auto offset = session->line_map().to_offset(position);
                 if(offset && *offset < it->second.bound) {
                     if(auto card = index_card()) {
                         co_return std::move(*card);

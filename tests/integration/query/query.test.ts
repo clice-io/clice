@@ -191,6 +191,29 @@ test("answers from the persisted index", ({ session }) => {
     expect(deps.result?.includes.map((d) => asUri(d.path))).toEqual([ws.uri("a.h")]);
 });
 
+test("workspace spelled with a climb", ({ session }) => {
+    const ws = writeProject(session);
+    ws.mkdir("build");
+    expect(runIndex(ws).status).toBe(0);
+    const ask = <T>(method: string, ...args: string[]): Answer<T> => {
+        const run = spawnSync(
+            cliceExecutable(),
+            ["query", "--workspace", "..", "--method", method, ...args],
+            { cwd: ws.path("build"), encoding: "utf8", timeout: 120_000 },
+        );
+        expect(run.stdout, `stderr: ${run.stderr}`).not.toBe("");
+        return JSON.parse(run.stdout) as Answer<T>;
+    };
+
+    const animal = ask<{ definition: { file: string } }>("definition", "--name", "Animal");
+    expect(asUri(animal.result!.definition.file)).toBe(ws.uri("a.h"));
+    const files = ask<{ files: { path: string }[] }>("projectFiles");
+    expect(files.result?.files.map((file) => asUri(file.path)).sort()).toEqual([
+        ws.uri("a.h"),
+        ws.uri("main.cpp"),
+    ]);
+});
+
 test.skipIf(process.platform === "win32")("compile command through a symlink", ({ session }) => {
     const ws = session.tmpdir();
     ws.write("real/main.cpp", "int main() { return 0; }\n");

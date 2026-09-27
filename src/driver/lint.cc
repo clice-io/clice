@@ -62,7 +62,7 @@ void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
     }
 }
 
-int run_lint(CanonicalPath root,
+int run_lint(Spelling root,
              std::string configuration,
              std::uint32_t workers,
              bool with_index,
@@ -116,7 +116,7 @@ void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* s
            }
            logging::stderr_logger("lint", logging::options);
 
-           exit_code = run_lint(workspace_root(opts.workspace.value_or("")),
+           exit_code = run_lint(workspace_spelling(opts.workspace.value_or("")),
                                 opts.configuration.value_or(""),
                                 opts.workers.value_or(0),
                                 static_cast<bool>(opts.index),

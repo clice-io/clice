@@ -1,4 +1,11 @@
-#ifndef _WIN32
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
+#include "llvm/ADT/ScopeExit.h"
+#include "llvm/Support/ConvertUTF.h"
+#else
 #include <unistd.h>
 #endif
 
@@ -145,7 +152,8 @@ TEST_CASE(FastPathChecksIdentity) {
 
 TEST_CASE(SymlinkShownAsSpelled) {
     // A file is its resolved path; results name it the way the user does:
-    // the open document's spelling, else the workspace root's.
+    // the open document's spelling, else the workspace root's — never the
+    // spelling an include lookup reached it by.
     TempDir tmp;
     tmp.touch("real/a.h", "");
     ASSERT_EQ(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()), 0);
@@ -153,7 +161,7 @@ TEST_CASE(SymlinkShownAsSpelled) {
     auto link = tmp.path("link/a.h");
 
     FileTable pool;
-    auto fid = pool.intern(Spelling::absolute(link));
+    auto fid = pool.intern_spelled(Spelling::absolute(link));
     ASSERT_EQ(pool.intern(real), fid);
     ASSERT_EQ(pool.resolve(fid), real);
     ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
@@ -168,6 +176,29 @@ TEST_CASE(SymlinkShownAsSpelled) {
 
     pool.unspell_root(Spelling::absolute(tmp.path("link")));
     ASSERT_EQ(pool.display(fid), llvm::StringRef(real));
+}
+
+TEST_CASE(RootClimbPastSymlink) {
+    // A folder spelled with `..` shows without the climb while the folded
+    // text names the same directory, under the symlink it went through;
+    // a climb out of a symlinked directory lands elsewhere than its text
+    // says, and the folder shows by its identity.
+    TempDir tmp;
+    tmp.touch("real/proj/inc/h.h", "");
+    tmp.mkdir("real/proj/build");
+    tmp.mkdir("other");
+    ASSERT_EQ(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()), 0);
+    ASSERT_EQ(::symlink(tmp.path("real/proj/build").c_str(), tmp.path("other/build").c_str()), 0);
+    auto header = Spelling::absolute(tmp.path("real/proj/inc/h.h"));
+
+    FileTable through;
+    through.spell_root(Spelling::absolute(tmp.path("link/proj/build/..")));
+    ASSERT_EQ(through.display(through.intern(header)), tmp.path("link/proj/inc/h.h"));
+
+    FileTable out;
+    out.spell_root(Spelling::absolute(tmp.path("other/build/..")));
+    auto fid = out.intern(header);
+    ASSERT_EQ(out.display(fid), out.resolve(fid).str());
 }
 
 TEST_CASE(PairNeedsLiveIdentity) {
@@ -313,6 +344,32 @@ TEST_CASE(WarmListingReused) {
     ASSERT_EQ(counters.dir_hits, 1u);
 }
 
+TEST_CASE(LookupSpellingNotShown) {
+    // A Meson-style build reaches a header through `build/../include`: the
+    // lookup keeps that spelling, the user is shown the file itself.
+    TempDir tmp;
+    tmp.touch("include/lib.h", "");
+    tmp.mkdir("build");
+    auto spelled = Spelling::absolute(tmp.path("build/../include/lib.h"));
+
+    FileTable pool;
+    auto fid = pool.intern_spelled(spelled);
+    ASSERT_EQ(pool.spelling(fid).str(), spelled.str());
+    ASSERT_EQ(pool.display(fid), pool.resolve(fid).str());
+}
+
+TEST_CASE(RootDotDotFolded) {
+    // `--workspace ..` run in the build directory names its parent.
+    TempDir tmp;
+    tmp.touch("proj/inc/h.h", "");
+    tmp.mkdir("proj/build");
+
+    FileTable pool;
+    pool.spell_root(Spelling::absolute(tmp.path("proj/build/..")));
+    auto fid = pool.intern(Spelling::absolute(tmp.path("proj/inc/h.h")));
+    ASSERT_EQ(pool.display(fid), pool.resolve(fid).str());
+}
+
 TEST_CASE(CanonicalSpelling) {
     // The rewrite itself is platform-independent and testable anywhere;
     // only its application is Windows-gated.
@@ -358,6 +415,31 @@ TEST_CASE(WindowsSpellingsCollapse) {
     EXPECT_EQ(pool.resolve(pool.intern(Spelling::absolute("C:/a/b.h"))).str(), "c:/a/b.h");
     EXPECT_EQ(pool.find(Spelling::absolute(R"(c:\a\b.h)")),
               pool.find(Spelling::absolute("C:/a/b.h")));
+}
+
+TEST_CASE(DriveRootSpelled) {
+    // A subst drive opened at its root: the folder's spelling ends in its
+    // separator, and the rest of a path joins it without a second one.
+    TempDir tmp;
+    tmp.touch("inc/h.h", "");
+    auto taken = ::GetLogicalDrives();
+    auto letter = 'Z';
+    while(letter > 'D' && (taken & (1u << (letter - 'A')))) {
+        letter -= 1;
+    }
+    ASSERT_TRUE(letter > 'D');
+    std::wstring device{static_cast<wchar_t>(letter), L':'};
+    std::wstring target;
+    ASSERT_TRUE(llvm::ConvertUTF8toWide(tmp.root.str(), target));
+    ASSERT_TRUE(::DefineDosDeviceW(0, device.c_str(), target.c_str()));
+    auto undefine = llvm::make_scope_exit(
+        [&] { ::DefineDosDeviceW(DDD_REMOVE_DEFINITION, device.c_str(), nullptr); });
+    std::string drive{static_cast<char>(llvm::toLower(letter)), ':', '/'};
+
+    FileTable pool;
+    pool.spell_root(Spelling::absolute(drive));
+    auto fid = pool.intern(Spelling::absolute(tmp.path("inc/h.h")));
+    ASSERT_EQ(pool.display(fid), drive + "inc/h.h");
 }
 
 TEST_CASE(WindowsCaseVariantsMerge) {

@@ -321,28 +321,6 @@ TEST_CASE(CodeActionReturnsEmpty) {
     ASSERT_TRUE(test_done);
 }
 
-TEST_CASE(GoToDefinitionWithoutCompile) {
-    WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::GoToDefinition;
-        params.path = "/tmp/test.cpp";
-        params.offset = 0;
-
-        auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        // No document: the shared with_ast default is "null".
-        EXPECT_EQ(result.value().data, std::string("null"));
-        test_done = true;
-    });
-
-    ASSERT_TRUE(test_done);
-}
-
 TEST_CASE(SemanticTokensWithoutCompile) {
     WorkerHandle w;
     ASSERT_TRUE(w.spawn(true));
@@ -484,27 +462,17 @@ TEST_CASE(MultipleSequentialRequests) {
         auto r2 = co_await w.peer->send_request(cap);
         EXPECT_TRUE(r2.has_value());
 
-        // 'foo' in 'return foo(0);' at line 4, char 11
-        // lines: "int foo(int x) {\n"=17, "    return x + 1;\n"=18, "}\n"=2, "int main() {\n"=14
-        // offset = 17+18+2+14+11 = 62
-        worker::QueryParams gdp;
-        gdp.kind = worker::QueryKind::GoToDefinition;
-        gdp.path = src;
-        gdp.offset = 62;
-        auto r3 = co_await w.peer->send_request(gdp);
-        EXPECT_TRUE(r3.has_value());
-
         worker::QueryParams stp;
         stp.kind = worker::QueryKind::SemanticTokens;
         stp.path = src;
-        auto r4 = co_await w.peer->send_request(stp);
-        EXPECT_TRUE(r4.has_value());
+        auto r3 = co_await w.peer->send_request(stp);
+        EXPECT_TRUE(r3.has_value());
 
         worker::QueryParams frp;
         frp.kind = worker::QueryKind::FoldingRange;
         frp.path = src;
-        auto r5 = co_await w.peer->send_request(frp);
-        EXPECT_TRUE(r5.has_value());
+        auto r4 = co_await w.peer->send_request(frp);
+        EXPECT_TRUE(r4.has_value());
 
         test_done = true;
     });

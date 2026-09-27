@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 
 #include "syntax/token.h"
@@ -30,7 +31,7 @@ struct LineColumn {
 /// file as the user knows it (FileTable::display).
 struct Site {
     Fid file;
-    llvm::StringRef path;
+    std::string path;
     LocalSourceRange range;
     LineColumn begin;
     LineColumn end;

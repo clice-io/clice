@@ -85,8 +85,9 @@ public:
                        std::optional<kota::cancellation_token> token = {});
 
     /// Go-to-definition, assembled across all providers: preamble directive
-    /// targets, the index, and the worker's AST, with an index/directive
-    /// retry after the dispatch's compile refreshes a dirty session.
+    /// targets, the index, and the directives the worker's AST sees, with
+    /// an index retry after the dispatch's compile refreshes a dirty
+    /// session.
     /// @param session may be null (document not open).
     /// @param token the request's cancellation token, forwarded to the
     /// worker sends (see Dispatcher::query).
@@ -275,16 +276,17 @@ private:
     /// there is no PCH or its preamble no longer matches the buffer.
     std::vector<feature::DocumentLink> find_preamble_links(const Session& session);
 
-    /// Resolve go-to-definition on a preamble include line that the worker
-    /// AST cannot see: the include is compiled into the PCH, so the target
-    /// is answered from the PCH's cached preamble links. Module names go
-    /// through the ordinary index pipeline, not this path.
-    std::vector<protocol::Location>
-        resolve_directive_definition(Session& session, const protocol::Position& position);
+    /// The include-like directive links of a session's whole buffer: the
+    /// PCH's cached preamble links, then the worker's AST's for the rest.
+    /// Module names go through the ordinary index pipeline, not these.
+    kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
+        directive_links(const Ticket& ticket, std::optional<kota::cancellation_token> token);
 
-    /// Resolve hover on a preamble include from the links cached with the PCH.
-    std::optional<protocol::Hover> resolve_preamble_hover(Session& session,
-                                                          const protocol::Position& position);
+    /// Go-to-definition and hover on a directive's argument, naming its
+    /// target the way the user knows the file.
+    std::vector<protocol::Location> directive_definition(const feature::DocumentLink& link);
+    std::optional<protocol::Hover> directive_hover(const Session& session,
+                                                   const feature::DocumentLink& link);
 
     /// A project asked about a symbol, and the symbol as that project
     /// names it: an id hashing its file (a macro, a file-local name) takes

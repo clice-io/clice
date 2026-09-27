@@ -158,12 +158,13 @@ struct BatchLifetime {
 /// the session file logger, and the worker pool. `log_tag` names the log
 /// files after the subcommand.
 bool start_batch(BatchStack& stack,
-                 CanonicalRef root,
+                 const Spelling& root,
                  std::uint32_t workers,
                  llvm::StringRef self_path,
                  llvm::StringRef log_tag) {
     auto& project = stack.project;
-    project.config = Config::load_from_workspace(root);
+    stack.files.spell_root(root);
+    project.config = Config::load_from_workspace(CanonicalPath(root));
     auto& cfg = project.config.project;
     cfg.idle_timeout_ms.value = 0;
     if(workers != 0) {
@@ -224,7 +225,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     auto report = bootstrap_project(project,
                                     stack.sched.store,
                                     stack.sched.pump,
-                                    options.root,
+                                    project.config.workspace_root,
                                     options.configuration,
                                     /*read_only_index=*/false,
                                     /*scan_tree=*/true);
@@ -275,7 +276,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
     result.symbol_count = project.project_index.symbol_count();
     for(auto file: stack.sched.pump.failed()) {
-        result.failed.emplace_back(project.file_table.resolve(file));
+        result.failed.emplace_back(project.file_table.display(file));
     }
     std::ranges::sort(result.failed);
     // The shutdown save was the last retry for failed writes; whatever is
@@ -434,7 +435,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     auto report = bootstrap_project(project,
                                     stack.sched.store,
                                     stack.sched.pump,
-                                    options.root,
+                                    project.config.workspace_root,
                                     options.configuration,
                                     /*read_only_index=*/!options.with_index,
                                     /*scan_tree=*/true);
@@ -470,6 +471,15 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     LintSweep sweep;
     co_await kota::with_token(run_lint_sweep(stack, options, tus, sweep), lifetime.token());
     // What landed is the report, whole or cut short by an interruption.
+    auto shown = [&files = project.file_table](std::string& file) {
+        file = files.display(files.intern(Spelling::absolute(file)));
+    };
+    for(auto& finding: sweep.findings) {
+        shown(finding.file);
+        for(auto& note: finding.notes) {
+            shown(note.file);
+        }
+    }
     merge_findings(sweep.findings);
     result.findings = std::move(sweep.findings);
     if(options.with_index && !lifetime.stop_requested) {

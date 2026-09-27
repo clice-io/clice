@@ -53,7 +53,7 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     // it is the shard fetch's answer.
     auto file = ctx.project.file_table.intern(path);
     if(!ctx.project.project_index.shard(file)) {
-        ctx.unindexed.emplace_back(path.str());
+        ctx.unindexed.emplace_back(ctx.project.file_table.display(file));
         return std::nullopt;
     }
     return file;
@@ -135,7 +135,7 @@ std::vector<DepEntry> collect_deps(Project& ws,
                 continue;
             }
             queue.push_back({next, depth + 1});
-            entries.push_back({.path = ws.file_table.display(next).str(), .depth = depth + 1});
+            entries.push_back({.path = ws.file_table.display(next), .depth = depth + 1});
         }
     }
     return entries;
@@ -190,8 +190,10 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path
             "{} compiles only under a synthesized header context, which needs an editor session",
             path));
     }
-    CompileCommandResult result{.file = path.str()};
+    auto& files = ctx.project.file_table;
+    CompileCommandResult result{.file = files.display(file)};
     auto source = ctx.contexts.resolve_command(file, result.directory, result.arguments).source;
+    result.directory = files.display(CanonicalPath(Spelling::absolute(result.directory)));
     switch(source) {
         case CommandSource::CDBExact: result.source = "database"; break;
         case CommandSource::IncludeGraph: result.source = "host"; break;
@@ -223,7 +225,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
         if(filter != "all" && filter != kind) {
             continue;
         }
-        FileInfo info{.path = ws.file_table.display(member).str(), .kind = kind.str()};
+        FileInfo info{.path = ws.file_table.display(member), .kind = kind.str()};
         if(!module_name.empty()) {
             info.module_name = module_name.str();
         }
@@ -234,8 +236,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
             auto path = ws.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header_path(path)) {
                 seen.insert(path_id);
-                result.files.push_back(
-                    {.path = ws.file_table.display(path_id).str(), .kind = "header"});
+                result.files.push_back({.path = ws.file_table.display(path_id), .kind = "header"});
             }
         }
     }
@@ -262,7 +263,7 @@ Outcome<FileDepsResult>
     if(!file) {
         return result;
     }
-    result.file = ws.file_table.display(*file).str();
+    result.file = ws.file_table.display(*file);
     if(direction != "includers") {
         result.includes = collect_deps(ws, *file, depth, [&](Fid id) {
             return ws.dep_graph.get_all_includes(id);
@@ -289,13 +290,13 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     auto direct = ws.dep_graph.get_includers(*file);
     llvm::DenseSet<Fid> seen{*file};
     for(auto includer: direct) {
-        result.direct_dependents.push_back(ws.file_table.display(includer).str());
+        result.direct_dependents.push_back(ws.file_table.display(includer));
         seen.insert(includer);
     }
     auto hosts = ws.dep_graph.find_host_sources(*file);
     for(auto host: hosts) {
         if(seen.insert(host).second) {
-            result.transitive_dependents.push_back(ws.file_table.display(host).str());
+            result.transitive_dependents.push_back(ws.file_table.display(host));
         }
     }
     for(auto host: hosts) {

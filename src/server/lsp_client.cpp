@@ -181,6 +181,10 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
             "analyzed until the texts agree. Close one of the two.",
             first);
         protocol::Diagnostic diagnostic;
+        diagnostic.range = protocol::Range{
+            .start = protocol::Position{.line = 0, .character = 0},
+            .end = protocol::Position{.line = 0, .character = 0},
+        };
         diagnostic.severity = protocol::DiagnosticSeverity::Warning;
         diagnostic.source = "clice";
         diagnostic.message = message;

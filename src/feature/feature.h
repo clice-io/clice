@@ -396,12 +396,6 @@ auto find_directive_argument(llvm::StringRef content,
                              const clang::LangOptions* lang_opts)
     -> std::optional<LocalSourceRange>;
 
-/// Go-to-definition on an include directive: when `offset` falls on the
-/// argument of an #include or __has_include in the main file, the
-/// resolved file's location (at its start). Empty otherwise.
-auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
-    -> std::vector<protocol::Location>;
-
 /// Scan the main file's condition directives. `open_stack` seeds the
 /// nesting state (from a preceding preamble scan) and `resume_offset` is
 /// where the scanned content starts — pending inactive levels from the

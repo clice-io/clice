@@ -43,7 +43,7 @@ struct RowSource {
 
     Kind kind;
     Fid file;
-    llvm::StringRef path;
+    std::string path;
     const Shard* rows;
     Coordinates coords;
 

@@ -256,7 +256,7 @@ Reply answer(Project& project,
         if(query && opts.path) {
             auto file = project.file_table.intern(absolute);
             if(!project.project_index.shard(file)) {
-                ctx.unindexed.emplace_back(absolute.str());
+                ctx.unindexed.emplace_back(project.file_table.display(file));
                 return std::unexpected("symbol not found");
             }
         }
@@ -302,10 +302,10 @@ Reply answer(Project& project,
 /// gate, so only units whose inputs changed are recompiled — and an
 /// absent index gets built from nothing. Returns the units that failed
 /// to index.
-std::expected<std::vector<std::string>, std::string> refresh(CanonicalRef root,
+std::expected<std::vector<std::string>, std::string> refresh(const Spelling& workspace,
                                                              llvm::StringRef configuration,
                                                              const char* self_path) {
-    auto config = Config::load_from_workspace(root);
+    auto config = Config::load_from_workspace(CanonicalPath(workspace));
     if(!check_requested_configuration(config, configuration)) {
         return std::unexpected(
             std::format("unknown configuration '{}'", std::string_view(configuration)));
@@ -334,7 +334,7 @@ std::expected<std::vector<std::string>, std::string> refresh(CanonicalRef root,
                      progress.failed);
     };
     auto result = run_batch_index({
-        .root = root,
+        .root = workspace,
         .configuration = configuration.str(),
         .self_path = self_path,
         .on_progress = report_progress,
@@ -362,7 +362,7 @@ int run_query(const QueryOptions& opts, const char* self_path) {
     auto configuration = opts.configuration.value_or("");
     std::vector<std::string> failed;
     if(opts.fresh) {
-        auto refreshed = refresh(root, configuration, self_path);
+        auto refreshed = refresh(spelling, configuration, self_path);
         if(!refreshed) {
             print_json(Failure{.error = refreshed.error()});
             return 1;

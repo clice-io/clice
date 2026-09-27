@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import type { Workspace } from "@clice/tools/workspace";
+import { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 function runLint(ws: Workspace, ...flags: string[]) {
@@ -176,6 +176,31 @@ test("index rule keeps excluded units out of the index", ({ session }) => {
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Translation units: 1");
 });
+
+test.skipIf(process.platform === "win32")(
+    "findings name files under the workspace spelling",
+    ({ session }) => {
+        const real = session.tmpdir();
+        const outer = session.tmpdir();
+        fs.symlinkSync(real.root, outer.path("ws"));
+        const ws = new Workspace(outer.path("ws"));
+        ws.pinCacheDir();
+        ws.write(
+            ".clang-tidy",
+            'Checks: "-*,bugprone-argument-comment"\nHeaderFilterRegex: ".*"\n',
+        );
+        ws.write("common.h", "#pragma once\nvoid call(bool enabled);\n");
+        ws.write("main.cpp", '#include "common.h"\nvoid run() { call(/*disabled=*/true); }\n');
+        ws.writeCDB(["main.cpp"]);
+
+        const run = runLint(ws);
+        expect(run.status, `stderr: ${run.stderr}`).toBe(1);
+        const lines = findings(run.stdout);
+        expect(lines).toHaveLength(2);
+        expect(lines[0]!.startsWith(`${ws.path("main.cpp")}:2:`), lines[0]).toBe(true);
+        expect(lines[1]!.startsWith(`${ws.path("common.h")}:2:`), lines[1]).toBe(true);
+    },
+);
 
 test.skipIf(process.platform === "win32")(
     "header filter matches the include's spelling",

@@ -90,7 +90,10 @@ void ProjectServer::configure(llvm::StringRef init_options,
     project.config =
         Config::load_from_workspace(root, &config_issues, &config_path, /*finalized=*/false);
     for(auto& issue: config_issues) {
-        LOG_GUIDANCE("Configuration problem in {}: {}", issue.file, issue.message);
+        LOG_GUIDANCE(
+            "Configuration problem in {}: {}",
+            project.file_table.display(project.file_table.intern(Spelling::absolute(issue.file))),
+            issue.message);
     }
     std::string own_cache_dir = project.config.project.cache_dir;
     if(!init_options.empty()) {
@@ -168,7 +171,7 @@ void ProjectServer::start() {
             LOG_GUIDANCE(
                 "No compile_commands.json found in workspace {}. Compile commands will be "
                 "guessed; see https://clice.io/en/guide/quick-start for setup.",
-                root);
+                project.file_table.display(root));
         }
     }
 

@@ -88,7 +88,6 @@ inline bool is_transport_error(const protocol::Error& error) {
 /// Kind of AST query dispatched to a stateful worker.
 enum class QueryKind : uint8_t {
     Hover,
-    GoToDefinition,
     SemanticTokens,
     InlayHints,
     FoldingRange,
@@ -100,7 +99,7 @@ enum class QueryKind : uint8_t {
 struct QueryParams {
     QueryKind kind;
     std::string path;
-    uint32_t offset = 0;  ///< Byte offset for position-sensitive queries (Hover, GoToDefinition).
+    uint32_t offset = 0;     ///< Byte offset for position-sensitive queries (Hover).
     LocalSourceRange range;  ///< Byte range for range-sensitive queries (InlayHints).
 
     /// The workspace config, carried whole on every request — the worker

@@ -395,12 +395,6 @@ void StatefulWorker::register_handlers() {
                     auto result = feature::hover(doc.unit, params.offset, params.config.hover);
                     return result ? to_raw(*result) : kota::codec::RawValue{"null"};
                 });
-            case K::GoToDefinition:
-                // Include directives only; symbol definitions are served
-                // from the index by the master.
-                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
-                    return to_raw(feature::include_definition(doc.unit, params.offset));
-                });
             case K::SemanticTokens:
                 co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
                     // The preamble share from the compile params, then

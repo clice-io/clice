@@ -23,7 +23,9 @@ struct BatchProgress {
 };
 
 struct BatchOptions {
-    CanonicalPath root;
+    /// The workspace as the command line spells it; the result names files
+    /// under this spelling.
+    Spelling root;
 
     /// The build configuration to activate (`--configuration`); empty
     /// takes the persisted selection, else the default.
@@ -85,7 +87,9 @@ struct BatchResult {
 BatchResult run_batch_index(const BatchOptions& options);
 
 struct BatchLintOptions {
-    CanonicalPath root;
+    /// The workspace as the command line spells it; findings name files
+    /// under this spelling.
+    Spelling root;
 
     /// The build configuration to activate (`--configuration`); empty
     /// takes the persisted selection, else the default.

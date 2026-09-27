@@ -169,35 +169,13 @@ ABCDE
     EXPECT_LINK(0, "0", TestVFS::path("data.bin"));
 }
 
-TEST_CASE(IncludeDefinition) {
-    add_file("test.h", "#pragma once\n");
-    add_main("main.cpp", R"(
-#include §(arg)⟦"test.h"⟧
-§(inside)
-int x = 0;
-)");
-    ASSERT_TRUE(compile());
+TEST_CASE(MissingInclude) {
+    run(R"cpp(
+#[main.cpp]
+#include "missing.h"
+)cpp");
 
-    // Inside the include argument: the included file's location.
-    auto arg = range("arg", "main.cpp");
-    auto locations = feature::include_definition(*unit, arg.begin + 1);
-    ASSERT_EQ(locations.size(), 1u);
-    EXPECT_NE(locations[0].uri.find("test.h"), std::string::npos);
-    EXPECT_EQ(locations[0].range.start.line, 0u);
-
-    // Outside any include argument: empty.
-    EXPECT_TRUE(feature::include_definition(*unit, point("inside")).empty());
-}
-
-TEST_CASE(MissingIncludeDefinition) {
-    add_main("main.cpp", R"(
-/* error-ok */
-#include §(arg)⟦"missing.h"§⟧
-)");
-    ASSERT_TRUE(compile());
-
-    auto arg = range("arg", "main.cpp");
-    EXPECT_TRUE(feature::include_definition(*unit, arg.begin + 1).empty());
+    ASSERT_TRUE(links.empty());
 }
 
 };  // TEST_SUITE(document_link)
