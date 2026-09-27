@@ -553,8 +553,9 @@ public:
         if(!typed || !whole) {
             return;
         }
-        bool call_follows =
-            llvm::StringRef(content).drop_front(prefix.whole.end).ltrim(" \t").starts_with("(");
+        // Call or template arguments already written after the name.
+        auto after = llvm::StringRef(content).drop_front(prefix.whole.end).ltrim();
+        bool arguments_follow = after.starts_with("(") || after.starts_with("<");
 
         std::vector<CollectedItem> collected;
         collected.reserve(candidate_count);
@@ -664,8 +665,14 @@ public:
                     auto& pattern = *candidate.Pattern;
                     auto label = pattern.getAllTypedText();
                     auto head = pattern_head(pattern);
-                    // An override declaration carries the method it overrides.
+                    // A pattern carrying a method is an override declaration
+                    // in a class body, or in a method body a call of the
+                    // overridden method — a duplicate of the method's own
+                    // candidate that would change which function is called.
                     if(candidate.Declaration) {
+                        if(!llvm::isa<clang::CXXRecordDecl>(sema.CurContext)) {
+                            break;
+                        }
                         add({
                             .label = label,
                             .kind = protocol::CompletionItemKind::Method,
@@ -774,7 +781,8 @@ public:
                                                   llvm::isa<clang::ClassTemplateDecl,
                                                             clang::TypeAliasTemplateDecl,
                                                             clang::VarTemplateDecl>(declaration);
-                        if(client.snippets && (arguments || template_arguments)) {
+                        if(client.snippets && !arguments_follow &&
+                           (arguments || template_arguments)) {
                             item.insert = build_snippet(*ccs);
                             item.snippet = !item.insert.empty();
                         }
@@ -782,9 +790,11 @@ public:
 
                     // A call gets its parentheses unless it has them already
                     // or the name is not being called here.
-                    bool callable_here = candidate.FunctionCanBeCall && !candidate.DeclaringEntity;
+                    bool callable_here = candidate.FunctionCanBeCall &&
+                                         !candidate.DeclaringEntity &&
+                                         !context.isUsingDeclaration();
                     if(options.insert_paren_in_function_call && !item.snippet && callable_here &&
-                       !call_follows &&
+                       !arguments_follow &&
                        (kind == protocol::CompletionItemKind::Function ||
                         kind == protocol::CompletionItemKind::Method)) {
                         if(client.snippets) {
@@ -818,6 +828,11 @@ public:
             deduped.reserve(collected.size());
 
             for(auto& entry: collected) {
+                // The variants of one statement share their keyword.
+                if(entry.item.kind == protocol::CompletionItemKind::Snippet) {
+                    deduped.push_back(std::move(entry));
+                    continue;
+                }
                 auto [it, inserted] = label_index.try_emplace(entry.item.label, deduped.size());
                 if(inserted) {
                     deduped.push_back(std::move(entry));

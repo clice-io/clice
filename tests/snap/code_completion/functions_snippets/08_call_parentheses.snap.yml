@@ -4,14 +4,26 @@ input_file: functions_snippets/08_call_parentheses.cpp
 ---
 default:
   bare:
-  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "13:12-13:17" }
+  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "20:12-20:17" }
 
   followed:
-  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "14:12-14:17" }
+  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "21:12-21:17" }
+
+  template_arguments:
+  - { label: "convert", kind: Function, detail: "(T value)", description: "int", edit: "22:12-22:17" }
+
+  using_declaration:
+  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "25:10-25:15" }
 
 configured:
   bare:
-  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "13:12-13:17", insert: "compute($0)", snippet: true }
+  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "20:12-20:17", insert: "compute($0)", snippet: true }
 
   followed:
-  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "14:12-14:17" }
+  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "21:12-21:17" }
+
+  template_arguments:
+  - { label: "convert", kind: Function, detail: "(T value)", description: "int", edit: "22:12-22:17" }
+
+  using_declaration:
+  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "25:10-25:15" }

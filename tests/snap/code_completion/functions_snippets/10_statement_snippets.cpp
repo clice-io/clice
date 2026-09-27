@@ -10,4 +10,5 @@
 // The completion prefix dangles as an unfinished statement.
 void bar() {
     whi§(pos);
+    fo§(variants);
 }
