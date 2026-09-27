@@ -340,6 +340,30 @@ tests/snap/code_completion/member_access/11_designated_initializer.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**不可访问的成员**
+
+私有和受保护的成员不会出现在无法使用它们的位置
+
+```snap
+tests/snap/code_completion/member_access/12_inaccessible_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**析构函数标签**
+
+无论类位于哪个命名空间，析构函数都补全为 `~` 加上不带限定的类名
+
+```snap
+tests/snap/code_completion/member_access/13_destructor_label.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] `->`——指针成员访问（带有 Clang 修正）
@@ -392,14 +416,21 @@ tests/snap/code_completion/member_access/11_designated_initializer.cpp
 
 ## 重写与类外定义
 
-- [ ] 虚函数重写补全，包含完整签名和 `override` 关键字
+<!-- BEGIN GENERATED ITEMS: override_completion -->
 
-  ```cpp
-  struct Base { virtual void draw(int x, int y) const; };
-  struct Derived : Base {
-      ^  // suggest: void draw(int x, int y) const override
-  };
-  ```
+<!-- BEGIN CAPABILITY: supported -->
+
+**重写声明**
+
+在派生类中，基类的虚函数补全为完整的重写声明，包括返回类型和 `override`；在重写函数内部，该名称按其自身补全，而不是补全为对基类版本的调用
+
+```snap
+tests/snap/code_completion/override_completion/01_override_declaration.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 - [ ] 遍历完整的继承层次结构以查找重写候选项（[clangd#226](https://github.com/clangd/clangd/issues/226)、[clangd#2374](https://github.com/clangd/clangd/issues/2374)）
 
@@ -584,12 +615,59 @@ tests/snap/code_completion/symbols/12_dependent_scope.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**必需的限定符**
+
+仅凭名称无法指到的枚举项会带上所需的限定符补全，并按不带限定的名称匹配
+
+```snap
+tests/snap/code_completion/symbols/13_required_qualifier.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**局部变量隐藏函数**
+
+局部变量隐藏同名函数时，提供的候选项是该局部变量，而不是被隐藏的函数
+
+```snap
+tests/snap/code_completion/symbols/14_hidden_by_local.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**构造函数模板**
+
+与其他构造函数一样，构造函数模板补全为不带限定的类名
+
+```snap
+tests/snap/code_completion/symbols/15_constructor_template.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**跨命名空间的重载**
+
+作用域内来自不同命名空间的同名函数合并为一项，并计入全部重载
+
+```snap
+tests/snap/code_completion/symbols/16_overloads_across_scopes.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] 限定名称查找（`std::`）
-- [x] 实参依赖查找（ADL）候选项
+- [ ] 实参依赖查找（ADL）候选项
 - [x] 宏补全——候选集包含对象式宏和函数式宏
-- [ ] 带占位符的代码片段模式（函数体、控制流）
 - [ ] C++ 属性补全
 
   ```cpp
@@ -706,15 +784,43 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**调用括号**
+
+补全函数调用时会插入圆括号并把光标放在括号之间，除非名称后面已经写了实参，或者此处并不是调用
+
+```snap
+tests/snap/code_completion/functions_snippets/08_call_parentheses.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板实参占位符**
+
+类模板为每个没有默认值的模板形参插入一个占位符
+
+```snap
+tests/snap/code_completion/functions_snippets/09_template_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**语句关键字**
+
+语句关键字作为关键字补全；开启该选项后会插入整条语句，并为每个组成部分提供占位符
+
+```snap
+tests/snap/code_completion/functions_snippets/10_statement_snippets.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
-
-- [ ] 模板实参占位符（`enable_template_arguments_snippet`）
-- [ ] 自动插入圆括号（`insert_paren_in_function_call`）
-- [ ] 向后检查是否已有圆括号或方括号，避免重复插入
-
-  ```cpp
-  foo^(10, 20);  // should NOT insert another pair of parens → foo(10, 20)
-  ```
 
 - [ ] 根据上下文调整代码片段：在函数指针上下文中仅插入名称，不插入调用语法
 
@@ -749,12 +855,6 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
   ```cpp
   struct Widget { Widget(int w, int h); };
   auto p = std::make_unique<Widget>(^  // show "(int w, int h)"
-  ```
-
-- [ ] 支持 `InsertReplaceEdit`（在单词中间进行代码补全时，同时提供插入范围和替换范围）
-
-  ```cpp
-  refact^orize  // insert: "refactoring^orize", replace: "refactoring"
   ```
 
 - [ ] 没有占位符时设置 `InsertTextFormat::PlainText`
@@ -869,6 +969,30 @@ tests/snap/code_completion/filtering_ranking/04_case_insensitive.cpp
 
 ```snap
 tests/snap/code_completion/filtering_ranking/05_prefix_beats_subsequence.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**单词中间的补全**
+
+在单词中间补全时同时提供两种范围：编辑器可以在单词剩余部分之前插入，也可以替换整个单词
+
+```snap
+tests/snap/code_completion/filtering_ranking/06_inside_a_word.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**非 ASCII 前缀**
+
+由非 ASCII 标识符字符组成的前缀会被替换，而不是在其前面插入
+
+```snap
+tests/snap/code_completion/filtering_ranking/07_unicode_prefix.cpp
 ```
 
 <!-- END CAPABILITY -->

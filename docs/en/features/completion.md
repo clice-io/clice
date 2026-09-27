@@ -362,6 +362,31 @@ tests/snap/code_completion/member_access/11_designated_initializer.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Inaccessible members**
+
+Private and protected members are not offered where they cannot be used
+
+```snap
+tests/snap/code_completion/member_access/12_inaccessible_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Destructor labels**
+
+A destructor completes as `~` and the bare class name, whatever namespace
+the class lives in
+
+```snap
+tests/snap/code_completion/member_access/13_destructor_label.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] `->` — pointer member access (with Clang fixup)
@@ -415,6 +440,21 @@ tests/snap/code_completion/member_access/11_designated_initializer.cpp
 ## Override and out-of-line definitions
 
 <!-- BEGIN GENERATED ITEMS: override_completion -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Override declarations**
+
+Inside a derived class, a base class's virtual function completes as a
+whole override declaration, return type and `override` included; inside
+the override, the name completes as itself, not as a call of the base
+version
+
+```snap
+tests/snap/code_completion/override_completion/01_override_declaration.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -610,6 +650,58 @@ tests/snap/code_completion/symbols/12_dependent_scope.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Required qualifier**
+
+An enumerator the bare name does not reach completes with the qualifier it
+needs, matched against the bare name
+
+```snap
+tests/snap/code_completion/symbols/13_required_qualifier.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Local hiding a function**
+
+A local that hides a same-named function is the candidate offered, not the
+function it hides
+
+```snap
+tests/snap/code_completion/symbols/14_hidden_by_local.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Constructor templates**
+
+A constructor template completes as the bare class name, like any other
+constructor
+
+```snap
+tests/snap/code_completion/symbols/15_constructor_template.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Overloads across namespaces**
+
+Same-named functions from different namespaces in scope bundle into one
+entry that counts all of them
+
+```snap
+tests/snap/code_completion/symbols/16_overloads_across_scopes.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] Qualified name lookup (`std::`)
@@ -729,6 +821,45 @@ A trailing `...` shows in the parameter detail
 
 ```snap
 tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Call parentheses**
+
+A completed call gets its parentheses with the cursor between them, unless
+arguments already follow the name or it is not being called
+
+```snap
+tests/snap/code_completion/functions_snippets/08_call_parentheses.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Template argument placeholders**
+
+A class template inserts a placeholder per template parameter without a
+default
+
+```snap
+tests/snap/code_completion/functions_snippets/09_template_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Statement keywords**
+
+Statement keywords complete as keywords; the option inserts the whole
+statement with a placeholder for each part
+
+```snap
+tests/snap/code_completion/functions_snippets/10_statement_snippets.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -887,6 +1018,32 @@ For prefix `fo`, `format_output` is a true prefix and outscores
 
 ```snap
 tests/snap/code_completion/filtering_ranking/05_prefix_beats_subsequence.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Completion inside a word**
+
+Completing in the middle of a word offers both ranges: the editor either
+inserts before the rest of the word or replaces the whole word
+
+```snap
+tests/snap/code_completion/filtering_ranking/06_inside_a_word.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Non-ASCII prefix**
+
+A prefix made of non-ASCII identifier characters is replaced, not
+inserted before
+
+```snap
+tests/snap/code_completion/filtering_ranking/07_unicode_prefix.cpp
 ```
 
 <!-- END CAPABILITY -->
