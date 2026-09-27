@@ -908,6 +908,14 @@ public:
         if(auto* var = llvm::dyn_cast_or_null<clang::VarDecl>(decl);
            var && var->getInit() && var->mightBeUsableInConstantExpressions(context)) {
             value = evaluate(var->getInit());
+            /// Sema converts the initializer only once the variable's type is
+            /// known (`static constexpr I invalid = -1`); an `auto` variable
+            /// takes the initializer's own type.
+            if(value && !var->getType()->getContainedAutoType()) {
+                auto type = substitute(var->getType());
+                value = type->isDependentType() ? std::nullopt
+                                                : convert_integral(context, *value, type);
+            }
         } else if(auto* enumerator = llvm::dyn_cast_or_null<clang::EnumConstantDecl>(decl)) {
             /// Sema leaves the enumerators of an enumeration inside a
             /// template uncomputed.

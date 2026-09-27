@@ -4729,6 +4729,37 @@ TEST_CASE(DecltypeDeducedTemplateCall) {
     EXPECT_TRUE(input->isDependentType());
 }
 
+TEST_CASE(DependentTypedMemberValue) {
+    /// `invalid` converts to `unsigned char` once `I` is known: 255, not -1.
+    run(R"code(
+        template <typename Tag, typename I = unsigned char>
+        struct Id {
+            static constexpr I invalid = -1;
+        };
+
+        template <typename T, int N = Id<T>::invalid>
+        struct P {
+            using type = char;
+        };
+
+        template <typename T>
+        struct P<T, -1> {
+            using type = int;
+        };
+
+        template <typename T>
+        struct P<T, 255> {
+            using type = long;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<X>::type;
+            using expect = long;
+        };
+    )code");
+}
+
 TEST_CASE(DecltypeCallNeedsADL) {
     /// Argument-dependent lookup finds `N::make` at instantiation; the one
     /// ordinary candidate is not the callee.
