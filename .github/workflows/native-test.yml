@@ -52,35 +52,17 @@ jobs:
       # Pull requests only restore: every push saving its own copy churns
       # the repository's 50 GB cache pool faster than the next run can reuse
       # it. Saved from main below, once per merge.
-      # Scoped per xclang build of this machine's platform: on Windows the
-      # compiler ccache hashes is xclang's launcher (clang++.exe starts
-      # llvm.exe), the same bytes in every release, so its compiler check
-      # cannot tell two builds apart, and clang rejects a precompiled
-      # header from another one.
-      - name: Compiler cache scope
-        id: ccache-scope
-        shell: bash
-        run: |
-          case "$RUNNER_OS-$RUNNER_ARCH" in
-            Linux-X64) subdir=linux-64 ;; Linux-ARM64) subdir=linux-aarch64 ;;
-            macOS-X64) subdir=osx-64 ;; macOS-ARM64) subdir=osx-arm64 ;;
-            Windows-X64) subdir=win-64 ;; Windows-ARM64) subdir=win-arm64 ;;
-            *) echo "::error::no conda platform for $RUNNER_OS-$RUNNER_ARCH"; exit 1 ;;
-          esac
-          scope=$(grep -om1 "/$subdir/xclang-[^/ ]*\.conda" pixi.lock | sed 's|.*/||')
-          if [ -z "$scope" ]; then
-            echo "::error::no xclang package for $subdir in pixi.lock"
-            exit 1
-          fi
-          echo "scope=$scope" >> "$GITHUB_OUTPUT"
-
+      # Keyed on pixi.lock: on Windows the compiler ccache hashes is xclang's
+      # launcher (clang++.exe starts llvm.exe), the same bytes in every
+      # release, so a new toolchain must not reuse the old one's objects
+      # and precompiled headers.
       - name: Restore compiler cache
         uses: actions/cache/restore@v6
         with:
           path: .cache/ccache
-          key: ${{ runner.os }}-${{ steps.ccache-scope.outputs.scope }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
+          key: ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ steps.ccache-scope.outputs.scope }}-${{ matrix.build_type }}-native-ccache-
+            ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-${{ matrix.build_type }}-native-ccache-
 
       - name: Zero cache stats
         run: pixi run -- ccache --zero-stats
@@ -93,7 +75,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: .cache/ccache
-          key: ${{ runner.os }}-${{ steps.ccache-scope.outputs.scope }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
+          key: ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
 
       # Process start-up is the fixed cost every test-suite process pays
       # (inspect runs, servers, workers); the two build types differ in
