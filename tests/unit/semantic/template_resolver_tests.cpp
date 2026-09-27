@@ -4674,6 +4674,61 @@ TEST_CASE(MemberValueDefault) {
     )code");
 }
 
+TEST_CASE(DecltypeExplicitTemplateCall) {
+    run(R"code(
+        template <typename U>
+        struct Result {
+            using type = char;
+        };
+
+        template <typename U>
+        struct Result<U*> {
+            using type = int;
+        };
+
+        template <typename U>
+        Result<U> make();
+
+        template <typename X>
+        struct test {
+            using input = typename decltype(::make<X*>())::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(DecltypeDeducedTemplateCall) {
+    /// `U` is deduced from the argument, which is not modeled; the call
+    /// stays untyped rather than reading `Result<U>` as the primary.
+    add_main("main.cpp", R"code(
+        template <typename U>
+        struct Result {
+            using type = char;
+        };
+
+        template <typename U>
+        struct Result<U*> {
+            using type = int;
+        };
+
+        template <typename U>
+        Result<U> make(U);
+
+        template <typename X>
+        struct test {
+            using input = typename decltype(::make(static_cast<X*>(nullptr)))::type;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+}
+
 TEST_CASE(DecltypeCallNeedsADL) {
     /// Argument-dependent lookup finds `N::make` at instantiation; the one
     /// ordinary candidate is not the callee.

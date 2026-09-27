@@ -210,6 +210,37 @@ struct PackParmCollector : clang::RecursiveASTVisitor<PackParmCollector> {
     }
 };
 
+/// Does `type` still refer to a parameter of `params`?
+bool mentions_parameters(clang::QualType type, const clang::TemplateParameterList* params) {
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::TemplateParameterList* params = nullptr;
+        bool found = false;
+
+        bool owns(const clang::NamedDecl* decl) const {
+            return decl && llvm::is_contained(*params, decl);
+        }
+
+        bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
+            found |= T->getDecl() ? owns(T->getDecl()) : T->getDepth() == params->getDepth();
+            return !found;
+        }
+
+        bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
+            found |= owns(expr->getDecl());
+            return !found;
+        }
+
+        bool TraverseTemplateName(clang::TemplateName name) {
+            found |= owns(name.getAsTemplateDecl());
+            return !found && RecursiveASTVisitor::TraverseTemplateName(name);
+        }
+    } finder;
+
+    finder.params = params;
+    finder.TraverseType(type);
+    return finder.found;
+}
+
 /// Helper to extract underlying type from a Decl.
 clang::QualType get_decl_type(clang::Decl* decl) {
     if(!decl)
@@ -899,16 +930,7 @@ public:
         auto frames = stack.size();
         clang::QualType type;
         if(auto* call = llvm::dyn_cast<clang::CallExpr>(expr)) {
-            /// Argument-dependent lookup adds candidates only instantiation
-            /// sees; the ordinary set proves nothing about the callee.
-            auto* ULE = llvm::dyn_cast<clang::UnresolvedLookupExpr>(
-                call->getCallee()->IgnoreParenImpCasts());
-            if(auto candidates = call_candidates(call);
-               candidates.size() == 1 && !(ULE && ULE->requiresADL())) {
-                if(auto* function = as_function(candidates.front())) {
-                    type = substitute(function->getReturnType());
-                }
-            }
+            type = call_type(call);
         } else if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(referenced_decl(expr))) {
             type = value->getType();
             /// A function parameter pack (`Box<Ts>... boxes`) is declared
@@ -920,6 +942,57 @@ public:
         }
         stack.truncate(frames);
         return type.isNull() ? type : resolve(type);
+    }
+
+    /// The type a call returns, before resolution; the frames it pushes
+    /// stay for the caller to truncate. A function template's own
+    /// parameters are bound from the call's explicit template arguments; one
+    /// left to deduction from the call's arguments, which is not modeled,
+    /// leaves the call untyped.
+    clang::QualType call_type(const clang::CallExpr* call) {
+        auto* callee = call->getCallee()->IgnoreParenImpCasts();
+        /// Argument-dependent lookup adds candidates only instantiation
+        /// sees; the ordinary set proves nothing about the callee.
+        if(auto* ULE = llvm::dyn_cast<clang::UnresolvedLookupExpr>(callee);
+           ULE && ULE->requiresADL()) {
+            return clang::QualType();
+        }
+        auto candidates = call_candidates(call);
+        auto* function = candidates.size() == 1 ? as_function(candidates.front()) : nullptr;
+        if(!function) {
+            return clang::QualType();
+        }
+        auto* FTD = function->getDescribedFunctionTemplate();
+        if(!FTD) {
+            return substitute(function->getReturnType());
+        }
+
+        /// A pack parameter would need its explicit arguments grouped;
+        /// leave it to the unbound case below.
+        auto* params = FTD->getTemplateParameters();
+        llvm::SmallVector<clang::TemplateArgument, 4> bound;
+        if(!params->hasParameterPack()) {
+            for(auto& argument: explicit_arguments(callee)) {
+                bound.push_back(argument.getArgument());
+            }
+        }
+        stack.push(FTD, params, bound);
+        auto type = substitute(function->getReturnType());
+        return mentions_parameters(type, params) ? clang::QualType() : type;
+    }
+
+    static llvm::ArrayRef<clang::TemplateArgumentLoc>
+        explicit_arguments(const clang::Expr* callee) {
+        if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
+            return OE->template_arguments();
+        }
+        if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {
+            return DSDRE->template_arguments();
+        }
+        if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
+            return DSME->template_arguments();
+        }
+        return {};
     }
 
     /// The declaration a name or member expression refers to; the frames
