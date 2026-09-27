@@ -2736,9 +2736,8 @@ TEST_CASE(AtomicReference) {
 }
 
 TEST_CASE(ConstrainedPartial) {
-    /// `requires false` cannot be evaluated here; the structurally matching
-    /// partial is unverifiable and the member must stay unresolved.
-    add_main("main.cpp", R"code(
+    /// A constraint that folds to false removes the partial.
+    run(R"code(
         template <typename T>
         struct P {
             using type = void;
@@ -2756,15 +2755,6 @@ TEST_CASE(ConstrainedPartial) {
             using expect = void;
         };
     )code");
-    ASSERT_TRUE(compile());
-
-    InputFinder finder(*unit);
-    finder.TraverseAST(unit->context());
-
-    auto input = unit->resolver().resolve(finder.input);
-    ASSERT_FALSE(input.isNull());
-    EXPECT_TRUE(input->isDependentType());
-    EXPECT_FALSE(input->isBuiltinType());
 }
 
 TEST_CASE(BoolArrayBound) {
@@ -2940,7 +2930,8 @@ TEST_CASE(RecordOfMemberAlias) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto* record = unit->resolver().resolve_record(finder.input);
+    auto* record =
+        llvm::dyn_cast_or_null<clang::CXXRecordDecl>(unit->resolver().resolve_tag(finder.input));
     ASSERT_TRUE(record != nullptr);
     EXPECT_TRUE(record->getName() == "Vec");
     EXPECT_TRUE(record->getDescribedClassTemplate() != nullptr);
@@ -2966,7 +2957,7 @@ TEST_CASE(RecordOfPartialPattern) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto* record = unit->resolver().resolve_record(finder.input);
+    auto* record = unit->resolver().resolve_tag(finder.input);
     ASSERT_TRUE(record != nullptr);
     EXPECT_TRUE(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record));
 }
@@ -2984,7 +2975,7 @@ TEST_CASE(RecordOfParameter) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    EXPECT_TRUE(unit->resolver().resolve_record(finder.input) == nullptr);
+    EXPECT_TRUE(unit->resolver().resolve_tag(finder.input) == nullptr);
 }
 
 TEST_CASE(MixedPackCandidate) {
@@ -4080,6 +4071,417 @@ TEST_CASE(DependentTemplateHead) {
     auto input = unit->resolver().resolve(finder.input);
     ASSERT_FALSE(input.isNull());
     EXPECT_TRUE(input->isDependentType());
+}
+
+TEST_CASE(CompoundValueMatch) {
+    run(R"code(
+        template <int A, int B>
+        struct trait {
+            using type = void;
+        };
+
+        template <int N>
+        struct trait<N, N + 1> {
+            using type = int;
+        };
+
+        template <int X>
+        struct test {
+            using input = typename trait<X, X + 1>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(CompoundValueUnverified) {
+    /// `X + 2` is not provably `X + 1`; neither the partial nor the
+    /// primary may be chosen.
+    add_main("main.cpp", R"code(
+        template <int A, int B>
+        struct trait {
+            using type = void;
+        };
+
+        template <int N>
+        struct trait<N, N + 1> {
+            using type = int;
+        };
+
+        template <int X>
+        struct test {
+            using input = typename trait<X, X + 2>::type;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+}
+
+TEST_CASE(CompoundValueConcrete) {
+    run(R"code(
+        template <int A, int B>
+        struct trait {
+            using type = void;
+        };
+
+        template <int N>
+        struct trait<N, N + 1> {
+            using type = int;
+        };
+
+        template <typename T, int A, int B>
+        struct apply {
+            using type = typename trait<A, B>::type;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename apply<X, 3, 5>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(ConstrainedTruePartial) {
+    run(R"code(
+        template <typename T>
+        struct P {
+            using type = void;
+        };
+
+        template <typename T>
+            requires true
+        struct P<T*> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<X*>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(ConstrainedValuePartial) {
+    run(R"code(
+        template <int N>
+        struct P {
+            using type = void;
+        };
+
+        template <int N>
+            requires (N > 0)
+        struct P<N> {
+            using type = int;
+        };
+
+        template <typename T, int N>
+        struct apply {
+            using type = typename P<N>::type;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename apply<X, -1>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(ConstrainedUnknownDegrades) {
+    /// A concept on a dependent argument cannot be decided without Sema.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        concept small = sizeof(T) < 4;
+
+        template <typename T>
+        struct P {
+            using type = void;
+        };
+
+        template <small T>
+        struct P<T*> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<X*>::type;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+}
+
+TEST_CASE(ConstrainedBeatsUnconstrained) {
+    run(R"code(
+        template <typename T>
+        struct P {
+            using type = void;
+        };
+
+        template <typename T>
+        struct P<T*> {
+            using type = char;
+        };
+
+        template <typename T>
+            requires true
+        struct P<T*> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<X*>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(AmbiguousBaseMember) {
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Left {
+            using type = int;
+        };
+
+        template <typename T>
+        struct Right {
+            using type = char;
+        };
+
+        template <typename T>
+        struct Combined : Left<T>, Right<T> {};
+
+        template <typename X>
+        struct test {
+            using input = typename Combined<X>::type;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+}
+
+TEST_CASE(DiamondBaseMember) {
+    run(R"code(
+        template <typename T>
+        struct Root {
+            using type = T;
+        };
+
+        template <typename T>
+        struct Left : Root<T> {};
+
+        template <typename T>
+        struct Right : Root<T> {};
+
+        template <typename T>
+        struct Joined : Left<T>, Right<T> {};
+
+        template <typename X>
+        struct test {
+            using input = typename Joined<X>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(NestedClassMember) {
+    run(R"code(
+        template <typename T>
+        struct Host {
+            struct Nested {
+                using value = T*;
+            };
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename Host<X>::Nested::value;
+            using expect = X*;
+        };
+    )code");
+}
+
+TEST_CASE(PlainRecordMember) {
+    run(R"code(
+        struct Plain {
+            using value = int;
+        };
+
+        template <typename T>
+        struct Holder {
+            using type = Plain;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename Holder<X>::type::value;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(ExplicitSpecializationMember) {
+    run(R"code(
+        template <typename T>
+        struct Box {
+            using inner = void;
+        };
+
+        template <>
+        struct Box<int> {
+            using inner = char;
+        };
+
+        template <typename T>
+        struct Holder {
+            using type = Box<int>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename Holder<X>::type::inner;
+            using expect = char;
+        };
+    )code");
+}
+
+TEST_CASE(DecltypeCallScope) {
+    run(R"code(
+        template <typename T>
+        struct Holder {
+            using type = T;
+        };
+
+        template <typename T>
+        struct Factory {};
+
+        template <typename T>
+        struct Factory<T*> {
+            static Holder<T> make();
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename decltype(Factory<X*>::make())::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(MemberChainLookup) {
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Leaf {
+            int leaf;
+        };
+
+        template <typename T>
+        struct Box {};
+
+        template <typename T>
+        struct Box<T*> {
+            Leaf<T> inner;
+        };
+
+        template <typename X>
+        int two_hops(Box<X*> box) {
+            return box.inner.leaf;
+        }
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CXXDependentScopeMemberExpr* outer = nullptr;
+
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
+            if(expr->getMember().getAsString() == "leaf") {
+                outer = expr;
+            }
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.outer != nullptr);
+
+    auto members = unit->resolver().lookup(finder.outer);
+    ASSERT_EQ(std::ranges::distance(members), 1);
+    EXPECT_TRUE(llvm::isa<clang::FieldDecl>(members.front()));
+}
+
+TEST_CASE(MemberValueDefault) {
+    run(R"code(
+        template <typename T>
+        struct Config {
+            static const int stages = 2;
+        };
+
+        template <typename A, int S = Config<A>::stages>
+        struct Gemm {
+            using type = void;
+        };
+
+        template <typename A>
+        struct Gemm<A, 2> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename Gemm<X>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(ResolvedCallee) {
+    /// Only value-dependent: clang resolved the callee itself.
+    add_main("main.cpp", R"code(
+        void take(int first, int second);
+
+        template <int N>
+        void call() {
+            take(N, 1);
+        }
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* expr = nullptr;
+
+        bool VisitCallExpr(clang::CallExpr* e) {
+            expr = e;
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    auto candidates = unit->resolver().lookup(finder.expr);
+    ASSERT_EQ(candidates.size(), 1u);
+    EXPECT_TRUE(candidates.front()->getName() == "take");
 }
 
 TEST_CASE(BrokenCodeSweep) {

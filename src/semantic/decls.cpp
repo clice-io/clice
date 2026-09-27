@@ -82,8 +82,8 @@ namespace {
 /// The pattern an undeclared specialization would be instantiated from:
 /// match the partial specializations against the written arguments the way
 /// real instantiation would. Falls back to the primary template when no
-/// partial matches, the match is ambiguous, or the winner is constrained
-/// (constraint satisfaction needs Sema).
+/// partial matches, the match is ambiguous, or the winner's match could not
+/// be verified (see deduce_arguments).
 template <typename Partial, typename Spec>
 const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
     auto* primary = spec->getSpecializedTemplate();
@@ -93,19 +93,17 @@ const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
     llvm::SmallVector<Partial*> partials;
     primary->getPartialSpecializations(partials);
 
-    auto matches = [&](Partial* partial) {
-        llvm::SmallVector<clang::TemplateArgument> deduced;
-        return types::deduce_arguments(context,
-                                       partial->getTemplateParameters(),
-                                       partial->getTemplateArgs().asArray(),
-                                       arguments,
-                                       deduced);
-    };
-
-    llvm::SmallVector<Partial*, 4> matched;
+    llvm::SmallVector<types::PartialMatch<Partial>, 4> matched;
     for(auto* partial: partials) {
-        if(matches(partial)) {
-            matched.push_back(partial);
+        llvm::SmallVector<clang::TemplateArgument> deduced;
+        auto deduction = types::deduce_arguments(context,
+                                                 partial->getTemplateParameters(),
+                                                 partial->getTemplateArgs().asArray(),
+                                                 arguments,
+                                                 deduced);
+        if(deduction != types::Deduction::Failed) {
+            matched.push_back(
+                {.partial = partial, .verified = deduction == types::Deduction::Matched});
         }
     }
 

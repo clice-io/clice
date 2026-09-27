@@ -24,11 +24,13 @@ public:
 
     clang::QualType resolve(clang::QualType type);
 
-    /// The class definition `type` denotes once resolved. A dependent
+    /// The class or enumeration `type` denotes once resolved. A dependent
     /// specialization yields the pattern real instantiation would use: the
-    /// matching partial specialization, else the primary template. Null
-    /// when the type does not resolve to a class.
-    clang::CXXRecordDecl* resolve_record(clang::QualType type);
+    /// matching partial specialization, else the primary template. A
+    /// concrete specialization is the specialization itself, which the TU
+    /// may never have instantiated — only Sema can give it a definition.
+    /// Null when the type does not resolve to a class or enumeration.
+    clang::TagDecl* resolve_tag(clang::QualType type);
 
     using lookup_result = clang::DeclContext::lookup_result;
 
@@ -55,15 +57,17 @@ public:
     /// members of matching partial specializations.
     lookup_result lookup(const clang::UnresolvedMemberExpr* expr);
 
-    /// Resolve a dependent call's candidate set, filtered down to overloads
-    /// whose parameter list can accept the call's argument count. Full
-    /// overload resolution needs conversion rules (Sema territory); arity is
-    /// the safe, conversion-free subset of it.
-    llvm::SmallVector<clang::NamedDecl*, 4> lookup(const clang::CallExpr* expr);
+    /// A dependent call's candidate set: the callee clang resolved itself
+    /// when it did, else the resolved overload set filtered down to
+    /// overloads whose parameter list can accept the call's argument count.
+    /// Full overload resolution needs conversion rules (Sema territory);
+    /// arity is the safe, conversion-free subset of it.
+    llvm::SmallVector<const clang::NamedDecl*, 4> lookup(const clang::CallExpr* expr);
 
     /// Resolve the base type through pseudo-instantiation, then look the
     /// member up in the resolved record (e.g. `this->foo()` inherited from
-    /// `Base<T>`).
+    /// `Base<T>`). A base that is itself a dependent member access or call
+    /// (`box.inner.leaf`) is resolved to the type it evaluates to first.
     lookup_result lookup(const clang::CXXDependentScopeMemberExpr* expr);
 
     lookup_result lookup(const clang::UnresolvedUsingValueDecl* decl) {

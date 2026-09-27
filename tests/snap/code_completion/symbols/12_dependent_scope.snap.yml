@@ -2,6 +2,10 @@
 created_at: 2026-09-21
 input_file: symbols/12_dependent_scope.cpp
 ---
+enumeration:
+- { label: "Fast", kind: EnumMember, description: "Modes::Mode", edit: "40:29-40:29" }
+- { label: "Slow", kind: EnumMember, description: "Modes::Mode", edit: "40:29-40:29" }
+
 nested:
 - { label: "Vec", kind: Class, edit: "29:37-29:37" }
 - { label: "capacity", kind: Variable, description: "int", edit: "29:37-29:37" }

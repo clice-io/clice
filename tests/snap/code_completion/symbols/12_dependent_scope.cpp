@@ -3,9 +3,9 @@
 /// - status: supported
 /// - diagnostics: expected
 ///
-/// `::` after a dependent member type lists that type's members, and after
-/// a dependent specialization the members of its matching partial
-/// specialization
+/// `::` after a dependent member type lists that type's members, after a
+/// dependent specialization the members of its matching partial
+/// specialization, and after a dependent member enumeration its enumerators
 
 // The qualified-ids are left dangling at the points.
 template <typename T>
@@ -29,4 +29,14 @@ template <typename T>
 void bar() {
     int a = Vec<Vec<T>>::value_type::§(nested);
     int b = Traits<T*>::§(partial);
+}
+
+template <typename T>
+struct Modes {
+    enum class Mode { Fast, Slow };
+};
+
+template <typename T>
+void baz() {
+    auto m = Modes<T>::Mode::§(enumeration);
 }

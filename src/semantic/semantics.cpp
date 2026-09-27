@@ -1655,7 +1655,7 @@ void stmt_references(const clang::Stmt* S,
     if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(S)) {
         /// As a callee, the candidate set shrinks to the overloads that can
         /// accept the call's argument count.
-        llvm::SmallVector<clang::NamedDecl*, 4> candidates;
+        llvm::SmallVector<const clang::NamedDecl*, 4> candidates;
         if(call && resolver) {
             candidates = resolver->lookup(call);
         } else {

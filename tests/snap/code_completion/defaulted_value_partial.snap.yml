@@ -1,0 +1,14 @@
+---
+created_at: 2026-09-27
+input_file: defaulted_value_partial.cpp
+---
+member:
+- { label: "Gemm", kind: Class, edit: "27:6-27:6" }
+- { label: "partial_only", kind: Field, description: "int", edit: "27:6-27:6" }
+- { label: "partial_stages", kind: Variable, description: "const int", edit: "27:6-27:6" }
+- { label: "template", kind: Keyword, edit: "27:6-27:6" }
+
+scope:
+- { label: "Gemm", kind: Class, edit: "28:7-28:7" }
+- { label: "partial_only", kind: Field, description: "int", edit: "28:7-28:7" }
+- { label: "partial_stages", kind: Variable, description: "const int", edit: "28:7-28:7" }

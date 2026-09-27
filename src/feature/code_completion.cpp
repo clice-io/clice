@@ -22,6 +22,7 @@
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
 #include "clang/Sema/DeclSpec.h"
+#include "clang/Sema/Designator.h"
 #include "clang/Sema/HeuristicResolver.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaCodeCompletion.h"
@@ -301,7 +302,9 @@ public:
     /// When pseudo-instantiation reaches a class Sema did not, run the
     /// completion again against that class. Returns whether the nested run
     /// produced the reply, which is then in `output`.
-    bool complete_resolved(clang::Sema& sema, clang::CodeCompletionContext& context) {
+    bool complete_resolved(clang::Sema& sema,
+                           clang::CodeCompletionContext& context,
+                           llvm::ArrayRef<clang::CodeCompletionResult> candidates) {
         using Kind = clang::CodeCompletionContext::Kind;
         auto kind = context.getKind();
         auto& ast = sema.getASTContext();
@@ -313,16 +316,30 @@ public:
             return lhs && rhs && lhs->getCanonicalDecl() == rhs->getCanonicalDecl();
         };
 
-        /// Sema's reply is replaced only when the nested run finds
-        /// something; otherwise `output` keeps what an earlier callback
-        /// left there.
+        /// What a nested run may list the members of. A concrete
+        /// specialization is instantiated first, as a written `X<int> x; x.`
+        /// would be; one that does not instantiate, or a pattern without a
+        /// definition, has nothing to list.
+        auto definition = [&](clang::TagDecl* tag) -> clang::TagDecl* {
+            if(!tag->isDependentContext() &&
+               !sema.isCompleteType(loc, ast.getCanonicalTagType(tag))) {
+                return nullptr;
+            }
+            return tag->getDefinition();
+        };
+
+        /// Sema's reply is replaced once the nested run offers candidates,
+        /// even when the typed prefix then filters every one of them out; a
+        /// nested run offering none keeps what an earlier callback left in
+        /// `output`.
         auto run = [&](auto complete) {
             std::vector<protocol::CompletionItem> previous;
             previous.swap(output);
             resolving = true;
+            resolved_candidates = false;
             complete();
             resolving = false;
-            if(output.empty()) {
+            if(!resolved_candidates) {
                 output.swap(previous);
                 return false;
             }
@@ -336,12 +353,31 @@ public:
             if(base.isNull() || !base->isDependentType()) {
                 return false;
             }
-            auto* record = resolver.resolve_record(base);
-            if(!record || same(record, clang::HeuristicResolver(ast).resolveTypeToTagDecl(base))) {
+            auto* tag = resolver.resolve_tag(base);
+            if(!tag || same(tag, clang::HeuristicResolver(ast).resolveTypeToTagDecl(base))) {
                 return false;
             }
-
+            auto* record = llvm::dyn_cast_or_null<clang::CXXRecordDecl>(definition(tag));
+            if(!record) {
+                return false;
+            }
             auto type = ast.getQualifiedType(ast.getCanonicalTagType(record), base.getQualifiers());
+
+            /// A designated initializer (`{ .§ }`) reports the same context
+            /// as a member access but offers fields only, while a member
+            /// access on a dependent base always offers more (the class
+            /// name, the `template` keyword).
+            bool designator =
+                !candidates.empty() && std::ranges::all_of(candidates, [](const auto& candidate) {
+                    return candidate.Kind == clang::CodeCompletionResult::RK_Declaration &&
+                           llvm::isa<clang::FieldDecl>(candidate.Declaration);
+                });
+            if(designator) {
+                return run([&] {
+                    sema.CodeCompletion().CodeCompleteDesignator(type, {}, clang::Designation());
+                });
+            }
+
             auto* object = new (ast) clang::OpaqueValueExpr(loc, type, clang::VK_LValue);
             return run([&] {
                 sema.CodeCompletion().CodeCompleteMemberReferenceExpr(scope,
@@ -363,17 +399,36 @@ public:
             if(NNS.getKind() != clang::NestedNameSpecifier::Kind::Type || !NNS.isDependent()) {
                 return false;
             }
-            auto* record = resolver.resolve_record(clang::QualType(NNS.getAsType(), 0));
+            auto* tag = resolver.resolve_tag(clang::QualType(NNS.getAsType(), 0));
             auto* entered = llvm::dyn_cast_or_null<clang::TagDecl>(
                 sema.computeDeclContext(**spec, /*EnteringContext=*/true));
-            if(!record || same(record, entered)) {
+            if(!tag || same(tag, entered)) {
                 return false;
+            }
+            tag = definition(tag);
+            if(!tag) {
+                return false;
+            }
+
+            /// Sema computes no declaration context for an enumeration
+            /// inside a template; offer its enumerators directly.
+            if(auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(tag)) {
+                std::vector<clang::CodeCompletionResult> enumerators;
+                for(auto* enumerator: enumeration->enumerators()) {
+                    enumerators.emplace_back(enumerator, clang::CCP_Constant);
+                }
+                return run([&] {
+                    ProcessCodeCompleteResults(sema,
+                                               context,
+                                               enumerators.data(),
+                                               enumerators.size());
+                });
             }
 
             clang::CXXScopeSpec resolved;
             resolved.MakeTrivial(
                 ast,
-                clang::NestedNameSpecifier(ast.getCanonicalTagType(record).getTypePtr()),
+                clang::NestedNameSpecifier(ast.getCanonicalTagType(tag).getTypePtr()),
                 (*spec)->getRange());
             return run([&] {
                 sema.CodeCompletion().CodeCompleteQualifiedId(scope,
@@ -398,7 +453,9 @@ public:
             return;
         }
 
-        if(!resolving && complete_resolved(sema, context)) {
+        if(resolving) {
+            resolved_candidates |= candidate_count > 0;
+        } else if(complete_resolved(sema, context, {candidates, candidate_count})) {
             return;
         }
 
@@ -679,6 +736,7 @@ private:
     const CodeCompletionOptions& options;
     clang::CodeCompletionTUInfo info;
     bool resolving = false;
+    bool resolved_candidates = false;
 };
 
 }  // namespace

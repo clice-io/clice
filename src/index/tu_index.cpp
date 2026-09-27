@@ -575,16 +575,19 @@ public:
                 if(auto* def = CRD->getDefinition()) {
                     for(auto& base: CRD->bases()) {
                         // FIXME: Handle dependent base class.
-                        if(auto target = types::decl_of(base.getType())) {
-                            add_pair_relation(def,
-                                              RelationKind::Base,
-                                              target,
-                                              base.getSourceRange());
-                            add_pair_relation(target,
-                                              RelationKind::Derived,
-                                              def,
-                                              base.getSourceRange());
+                        auto target = types::decl_of(base.getType());
+                        /// A base that is a template parameter (`struct D : T`)
+                        /// names no class until instantiation.
+                        if(!target ||
+                           llvm::isa<clang::TemplateTypeParmDecl, clang::TemplateTemplateParmDecl>(
+                               target)) {
+                            continue;
                         }
+                        add_pair_relation(def, RelationKind::Base, target, base.getSourceRange());
+                        add_pair_relation(target,
+                                          RelationKind::Derived,
+                                          def,
+                                          base.getSourceRange());
                     }
                 }
             }
