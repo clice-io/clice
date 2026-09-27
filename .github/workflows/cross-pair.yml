@@ -49,14 +49,21 @@ jobs:
           environments: ${{ inputs.pixi_env }}
 
       # Restore only; saved below, after the build, on pushes to main.
-      # Scoped per xclang build: on Windows the compiler ccache hashes is
-      # xclang's launcher (clang++.exe starts llvm.exe), the same bytes in
-      # every release, so its compiler check cannot tell two releases
-      # apart, and clang rejects a precompiled header from another one.
+      # Scoped per xclang build of this machine's platform: on Windows the
+      # compiler ccache hashes is xclang's launcher (clang++.exe starts
+      # llvm.exe), the same bytes in every release, so its compiler check
+      # cannot tell two builds apart, and clang rejects a precompiled
+      # header from another one.
       - name: Compiler cache scope
         id: ccache-scope
         shell: bash
-        run: echo "scope=$(grep -om1 'xclang-[0-9.]*-[a-z0-9_]*\.conda' pixi.lock)" >> "$GITHUB_OUTPUT"
+        run: |
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-X64) subdir=linux-64 ;; Linux-ARM64) subdir=linux-aarch64 ;;
+            macOS-X64) subdir=osx-64 ;; macOS-ARM64) subdir=osx-arm64 ;;
+            Windows-X64) subdir=win-64 ;; Windows-ARM64) subdir=win-arm64 ;;
+          esac
+          echo "scope=$(grep -om1 "/$subdir/xclang-[^/ ]*\.conda" pixi.lock | sed 's|.*/||')" >> "$GITHUB_OUTPUT"
 
       - name: Restore compiler cache
         uses: actions/cache/restore@v6
