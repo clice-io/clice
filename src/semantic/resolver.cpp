@@ -874,7 +874,8 @@ public:
         }
 
         std::optional<llvm::APSInt> value;
-        if(auto* var = llvm::dyn_cast_or_null<clang::VarDecl>(decl); var && var->getInit()) {
+        if(auto* var = llvm::dyn_cast_or_null<clang::VarDecl>(decl);
+           var && var->getInit() && var->mightBeUsableInConstantExpressions(context)) {
             value = evaluate(var->getInit());
         } else if(auto* enumerator = llvm::dyn_cast_or_null<clang::EnumConstantDecl>(decl)) {
             /// Sema leaves the enumerators of an enumeration inside a
@@ -898,7 +899,12 @@ public:
         auto frames = stack.size();
         clang::QualType type;
         if(auto* call = llvm::dyn_cast<clang::CallExpr>(expr)) {
-            if(auto candidates = call_candidates(call); candidates.size() == 1) {
+            /// Argument-dependent lookup adds candidates only instantiation
+            /// sees; the ordinary set proves nothing about the callee.
+            auto* ULE = llvm::dyn_cast<clang::UnresolvedLookupExpr>(
+                call->getCallee()->IgnoreParenImpCasts());
+            if(auto candidates = call_candidates(call);
+               candidates.size() == 1 && !(ULE && ULE->requiresADL())) {
                 if(auto* function = as_function(candidates.front())) {
                     type = substitute(function->getReturnType());
                 }

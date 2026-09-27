@@ -4606,6 +4606,77 @@ TEST_CASE(MemberValueDefault) {
     )code");
 }
 
+TEST_CASE(DecltypeCallNeedsADL) {
+    /// Argument-dependent lookup finds `N::make` at instantiation; the one
+    /// ordinary candidate is not the callee.
+    add_main("main.cpp", R"code(
+        struct Wrong {
+            using type = int;
+        };
+
+        Wrong make(...);
+
+        namespace N {
+        template <typename T>
+        struct Arg {};
+
+        struct Right {
+            using type = char;
+        };
+
+        template <typename T>
+        Right make(Arg<T>);
+        }  // namespace N
+
+        template <typename X>
+        struct test {
+            using input = typename decltype(make(N::Arg<X>{}))::type;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+}
+
+TEST_CASE(MutableValueDefault) {
+    /// A non-const static member is no constant expression; the default
+    /// stays unknown instead of reading its initializer.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Config {
+            static inline int stages = 2;
+        };
+
+        template <typename A, int S = Config<A>::stages>
+        struct Gemm {
+            using type = void;
+        };
+
+        template <typename A>
+        struct Gemm<A, 2> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename Gemm<X>::type;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+}
+
 TEST_CASE(ResolvedCallee) {
     /// Only value-dependent: clang resolved the callee itself.
     add_main("main.cpp", R"code(

@@ -302,6 +302,32 @@ tests/snap/code_completion/member_access/09_dependent_pointee.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**指向具体特化的别名**
+
+依赖别名指向某个具体特化时，补全该特化实例化后的成员
+
+若文件本身从未实例化该特化，补全时会将其实例化，因此成员带有具体的实参类型；若有与这些实参匹配的偏特化，成员则来自该偏特化。
+
+```snap
+tests/snap/code_completion/member_access/10_concrete_alias_target.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**指定初始化器的字段**
+
+`{ .` 列出正在初始化的聚合体的字段，若聚合体是依赖类型，则列出与之匹配的偏特化的字段
+
+```snap
+tests/snap/code_completion/member_access/11_designated_initializer.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] `->`——指针成员访问（带有 Clang 修正）
@@ -538,7 +564,7 @@ tests/snap/code_completion/symbols/11_using_declaration.cpp
 
 **依赖作用域限定符**
 
-`::` 位于依赖成员类型之后时列出该类型的成员，位于依赖模板特化之后时则列出与之匹配的偏特化的成员
+`::` 位于依赖成员类型之后时列出该类型的成员，位于依赖模板特化之后时列出与之匹配的偏特化的成员，位于依赖的成员枚举之后时则列出其枚举项
 
 ```snap
 tests/snap/code_completion/symbols/12_dependent_scope.cpp

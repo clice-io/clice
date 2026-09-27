@@ -319,6 +319,36 @@ tests/snap/code_completion/member_access/09_dependent_pointee.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Concrete alias target**
+
+A dependent alias that names a concrete specialization completes the
+members that specialization instantiates to
+
+The specialization is instantiated for the completion when the file never
+did, so its members carry the concrete argument types, and a partial
+specialization matching the arguments supplies them.
+
+```snap
+tests/snap/code_completion/member_access/10_concrete_alias_target.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Designated initializer fields**
+
+`{ .` lists the fields of the aggregate being initialized, those of a
+matching partial specialization for a dependent one
+
+```snap
+tests/snap/code_completion/member_access/11_designated_initializer.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] `->` — pointer member access (with Clang fixup)
@@ -562,9 +592,9 @@ tests/snap/code_completion/symbols/11_using_declaration.cpp
 
 **Dependent scope qualifier**
 
-`::` after a dependent member type lists that type's members, and after
-a dependent specialization the members of its matching partial
-specialization
+`::` after a dependent member type lists that type's members, after a
+dependent specialization the members of its matching partial
+specialization, and after a dependent member enumeration its enumerators
 
 ```snap
 tests/snap/code_completion/symbols/12_dependent_scope.cpp
