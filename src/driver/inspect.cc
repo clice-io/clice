@@ -280,9 +280,11 @@ std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit,
 /// the completion offset.
 std::optional<kota::codec::RawValue> run_code_completion(CompilationParams& params,
                                                          llvm::StringRef config) {
+    // The replies of an editor client that takes everything an item can carry.
     return to_raw_json(
         feature::code_complete(params,
-                               *parse_feature_config<feature::CodeCompletionOptions>(config)));
+                               *parse_feature_config<feature::CodeCompletionOptions>(config),
+                               {.snippets = true, .insert_replace = true}));
 }
 
 std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& params,

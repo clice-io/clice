@@ -584,7 +584,7 @@ TEST_CASE(QuarantineBlocksBuilds) {
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
-        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {});
+        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
         // The gate's message, not the empty pool's: without the gate this
@@ -728,7 +728,7 @@ TEST_CASE(PCHCrashBlocksBuild) {
         opts.stateful_count = 0;
         CO_ASSERT_TRUE(stack.pool.start(opts));
 
-        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {});
+        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
         // One inherited strike plus both deaths of the doomed PCH build.

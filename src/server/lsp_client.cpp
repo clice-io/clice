@@ -263,6 +263,16 @@ void LSPClient::register_lifecycle() {
                 ws_caps.workspace_edit.has_value() && ws_caps.workspace_edit->document_changes;
         }
 
+        if(init.capabilities.text_document.has_value() &&
+           init.capabilities.text_document->completion.has_value() &&
+           init.capabilities.text_document->completion->completion_item.has_value()) {
+            auto& item = *init.capabilities.text_document->completion->completion_item;
+            completion_client = {
+                .snippets = item.snippet_support,
+                .insert_replace = item.insert_replace_support,
+            };
+        }
+
         if(init.initialization_options.has_value()) {
             auto json =
                 kota::codec::json::to_string<kota::ipc::lsp_config>(*init.initialization_options);
@@ -747,6 +757,7 @@ void LSPClient::register_language_features() {
             co_return co_await project->features.completion(
                 session,
                 params.text_document_position_params.position,
+                completion_client,
                 trigger,
                 ctx.cancellation);
         });

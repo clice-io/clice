@@ -294,6 +294,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
                                               llvm::StringRef label,
                                               const Ticket& ticket,
                                               protocol::Position position,
+                                              Params wp,
                                               std::optional<kota::cancellation_token> token) {
     auto& session = *ticket.session;
     auto path_id = session.path_id;
@@ -306,7 +307,6 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     }
     auto flight = session.quarantine.begin_flight();
 
-    Params wp;
     wp.file = path;
     wp.text = session.text;
     auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
@@ -387,22 +387,25 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
 
 Dispatcher::RawResult Dispatcher::completion(const Ticket& ticket,
                                              const protocol::Position& position,
+                                             const feature::CompletionClient& client,
                                              std::optional<kota::cancellation_token> token) {
-    return interactive<worker::CompletionParams>(evidence_kind(EvidenceKind::Completion),
-                                                 "Completion",
-                                                 ticket,
-                                                 position,
-                                                 std::move(token));
+    return interactive(evidence_kind(EvidenceKind::Completion),
+                       "Completion",
+                       ticket,
+                       position,
+                       worker::CompletionParams{.client = client},
+                       std::move(token));
 }
 
 Dispatcher::RawResult Dispatcher::signature_help(const Ticket& ticket,
                                                  const protocol::Position& position,
                                                  std::optional<kota::cancellation_token> token) {
-    return interactive<worker::SignatureHelpParams>(evidence_kind(EvidenceKind::SignatureHelp),
-                                                    "SignatureHelp",
-                                                    ticket,
-                                                    position,
-                                                    std::move(token));
+    return interactive(evidence_kind(EvidenceKind::SignatureHelp),
+                       "SignatureHelp",
+                       ticket,
+                       position,
+                       worker::SignatureHelpParams{},
+                       std::move(token));
 }
 
 Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,

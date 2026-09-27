@@ -414,14 +414,9 @@ tests/snap/code_completion/member_access/11_designated_initializer.cpp
 
 ## Override and out-of-line definitions
 
-- [ ] Virtual function override completion with full signature and `override` keyword
+<!-- BEGIN GENERATED ITEMS: override_completion -->
 
-  ```cpp
-  struct Base { virtual void draw(int x, int y) const; };
-  struct Derived : Base {
-      ^  // suggest: void draw(int x, int y) const override
-  };
-  ```
+<!-- END GENERATED ITEMS -->
 
 - [ ] Full inheritance hierarchy traversal for override candidates ([clangd#226](https://github.com/clangd/clangd/issues/226), [clangd#2374](https://github.com/clangd/clangd/issues/2374))
 
@@ -618,9 +613,8 @@ tests/snap/code_completion/symbols/12_dependent_scope.cpp
 <!-- END GENERATED ITEMS -->
 
 - [x] Qualified name lookup (`std::`)
-- [x] Argument-dependent lookup (ADL) candidates
+- [ ] Argument-dependent lookup (ADL) candidates
 - [x] Macro completion — object-like and function-like macros in the candidate set
-- [ ] Snippet patterns with placeholders (function bodies, control flow)
 - [ ] C++ attribute completion
 
   ```cpp
@@ -741,14 +735,6 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
 
 <!-- END GENERATED ITEMS -->
 
-- [ ] Template argument placeholders (`enable_template_arguments_snippet`)
-- [ ] Auto-insert parentheses (`insert_paren_in_function_call`)
-- [ ] Look-ahead for existing parentheses/brackets to avoid duplicate insertion
-
-  ```cpp
-  foo^(10, 20);  // should NOT insert another pair of parens → foo(10, 20)
-  ```
-
 - [ ] Context-sensitive snippet: insert name only (no call syntax) in function pointer contexts
 
   ```cpp
@@ -782,12 +768,6 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
   ```cpp
   struct Widget { Widget(int w, int h); };
   auto p = std::make_unique<Widget>(^  // show "(int w, int h)"
-  ```
-
-- [ ] `InsertReplaceEdit` support (provide both insert and replace ranges for mid-word completion)
-
-  ```cpp
-  refact^orize  // insert: "refactoring^orize", replace: "refactoring"
   ```
 
 - [ ] Set `InsertTextFormat::PlainText` when no placeholders are present

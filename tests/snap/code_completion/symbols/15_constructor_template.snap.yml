@@ -1,0 +1,12 @@
+---
+created_at: 2026-09-27
+input_file: symbols/15_constructor_template.cpp
+---
+default:
+  pos:
+  - { label: "Wrapper", kind: Class, detail: "<typename T>", edit: "19:9-19:12" }
+
+configured:
+  pos:
+  - { label: "Wrapper", kind: Class, detail: "<typename T>", edit: "19:9-19:12" }
+  - { label: "Wrapper", kind: Constructor, detail: "<typename T>(U value)", edit: "19:9-19:12" }

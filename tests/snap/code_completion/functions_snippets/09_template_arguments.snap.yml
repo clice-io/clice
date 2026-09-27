@@ -1,0 +1,11 @@
+---
+created_at: 2026-09-27
+input_file: functions_snippets/09_template_arguments.cpp
+---
+default:
+  pos:
+  - { label: "Buffer", kind: Class, detail: "<typename T>", edit: "14:4-14:7" }
+
+configured:
+  pos:
+  - { label: "Buffer", kind: Class, detail: "<typename T>", edit: "14:4-14:7", insert: "Buffer<${1:typename T}>", snippet: true }

@@ -1,0 +1,11 @@
+---
+created_at: 2026-09-27
+input_file: functions_snippets/10_statement_snippets.cpp
+---
+default:
+  pos:
+  - { label: "while", kind: Keyword, edit: "11:4-11:7" }
+
+configured:
+  pos:
+  - { label: "while", kind: Snippet, detail: " (condition) { statements }", edit: "11:4-11:7", insert: "while (${1:condition}) {\n${2:statements}\n}", snippet: true }

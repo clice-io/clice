@@ -1,0 +1,17 @@
+---
+created_at: 2026-09-27
+input_file: functions_snippets/08_call_parentheses.cpp
+---
+default:
+  bare:
+  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "13:12-13:17" }
+
+  followed:
+  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "14:12-14:17" }
+
+configured:
+  bare:
+  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "13:12-13:17", insert: "compute($0)", snippet: true }
+
+  followed:
+  - { label: "compute", kind: Function, detail: "(int x)", description: "int", edit: "14:12-14:17" }

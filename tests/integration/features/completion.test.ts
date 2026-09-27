@@ -335,3 +335,41 @@ test("buffer aware module deps", async ({ session }) => {
     const errors = client.errors(uri);
     expect(errors.length, `Expected no errors, got: ${JSON.stringify(errors)}`).toBe(0);
 });
+
+/// Snippets reach only clients that declare snippet support.
+test("snippets follow client support", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "int compute(int x);\nvoid f() { compu; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    const initializationOptions = {
+        code_completion: {
+            bundle_overloads: false,
+            enable_function_arguments_snippet: true,
+            insert_paren_in_function_call: true,
+        },
+    };
+    await client.initialize(workspace, { initializationOptions });
+
+    const find = async (target: typeof client) => {
+        const [uri] = await target.openAndWait("main.cpp");
+        const result = await target.completionAt(uri, 1, 16);
+        const items = Array.isArray(result) ? result : (result?.items ?? []);
+        return items.find((item) => item.label === "compute");
+    };
+
+    const plain = await find(client);
+    expect(plain?.insertTextFormat).not.toBe(proto.InsertTextFormat.Snippet);
+    expect(plain?.textEdit?.newText).toBe("compute()");
+    await client.shutdown();
+
+    const snippets = session.spawn(workspace);
+    await snippets.initialize(workspace, {
+        initializationOptions,
+        capabilities: {
+            textDocument: { completion: { completionItem: { snippetSupport: true } } },
+        },
+    });
+    const placeholders = await find(snippets);
+    expect(placeholders?.insertTextFormat).toBe(proto.InsertTextFormat.Snippet);
+    expect(placeholders?.textEdit?.newText).toBe("compute(${1:int x})");
+});

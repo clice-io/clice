@@ -81,6 +81,7 @@ public:
     /// AST round may not have seen yet.
     RawResult completion(const Ticket& ticket,
                          const protocol::Position& position,
+                         const feature::CompletionClient& client,
                          std::optional<kota::cancellation_token> token = {});
     RawResult signature_help(const Ticket& ticket,
                              const protocol::Position& position,
@@ -106,11 +107,13 @@ private:
 
     /// Shared body of the interactive builds: identical inputs and
     /// quarantine passage, different wire type, evidence slot and label.
+    /// `wp` arrives with the fields particular to its request filled in.
     template <typename Params>
     RawResult interactive(std::uint8_t evidence,
                           llvm::StringRef label,
                           const Ticket& ticket,
                           protocol::Position position,
+                          Params wp,
                           std::optional<kota::cancellation_token> token);
 
     /// A quarantine refusal of a content-carrying build announces the

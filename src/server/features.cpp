@@ -667,6 +667,7 @@ Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,
 
 Features::RawResult Features::completion(std::shared_ptr<Session> session,
                                          const protocol::Position& position,
+                                         const feature::CompletionClient& client,
                                          llvm::StringRef trigger_character,
                                          std::optional<kota::cancellation_token> token) {
     auto pause = pump.scoped_pause();
@@ -798,7 +799,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
         }
     }
 
-    co_return co_await dispatcher.completion(ticket, position, std::move(token));
+    co_return co_await dispatcher.completion(ticket, position, client, std::move(token));
 }
 
 Features::RawResult Features::signature_help(std::shared_ptr<Session> session,

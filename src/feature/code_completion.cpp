@@ -14,6 +14,7 @@
 #include "support/fuzzy_matcher.h"
 
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/raw_ostream.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
@@ -31,31 +32,48 @@ namespace clice::feature {
 
 namespace {
 
+/// Bytes of multi-byte UTF-8 sequences count too: clang accepts extended
+/// characters in identifiers.
+bool is_identifier_char(char c) {
+    return clang::isAsciiIdentifierContinue(c) || static_cast<unsigned char>(c) >= 0x80;
+}
+
+/// The identifier the completion point sits in.
 struct CompletionPrefix {
-    LocalSourceRange range;
+    /// From its start to the cursor: what candidates are matched against.
+    LocalSourceRange typed;
+
+    /// Through its end: what a chosen candidate replaces.
+    LocalSourceRange whole;
+
     llvm::StringRef spelling;
 
     static auto from(llvm::StringRef content, std::uint32_t offset) -> CompletionPrefix {
         assert(offset <= content.size());
 
         auto start = offset;
-        while(start > 0 && clang::isAsciiIdentifierContinue(content[start - 1])) {
-            --start;
+        while(start > 0 && is_identifier_char(content[start - 1])) {
+            start -= 1;
         }
 
         auto end = offset;
-        while(end < content.size() && clang::isAsciiIdentifierContinue(content[end])) {
-            ++end;
+        while(end < content.size() && is_identifier_char(content[end])) {
+            end += 1;
         }
 
         return CompletionPrefix{
-            .range = LocalSourceRange(start, end),
+            .typed = LocalSourceRange(start, offset),
+            .whole = LocalSourceRange(start, end),
             .spelling = content.substr(start, offset - start),
         };
     }
 };
 
 auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKind {
+    if(auto* function = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl)) {
+        decl = function->getTemplatedDecl();
+    }
+
     if(llvm::isa<clang::NamespaceDecl, clang::NamespaceAliasDecl>(decl)) {
         return protocol::CompletionItemKind::Module;
     }
@@ -64,14 +82,11 @@ auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKi
         return protocol::CompletionItemKind::Constructor;
     }
 
-    if(llvm::isa<clang::CXXMethodDecl,
-                 clang::CXXConversionDecl,
-                 clang::CXXDestructorDecl,
-                 clang::CXXDeductionGuideDecl>(decl)) {
+    if(llvm::isa<clang::CXXMethodDecl, clang::CXXConversionDecl, clang::CXXDestructorDecl>(decl)) {
         return protocol::CompletionItemKind::Method;
     }
 
-    if(llvm::isa<clang::FunctionDecl, clang::FunctionTemplateDecl>(decl)) {
+    if(llvm::isa<clang::FunctionDecl>(decl)) {
         return protocol::CompletionItemKind::Function;
     }
 
@@ -199,9 +214,23 @@ auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
     return signature;
 }
 
+/// Text a snippet takes literally: `$` and `\` would otherwise start or
+/// escape a snippet construct, and inside a placeholder `}` would end it.
+auto escape_snippet(llvm::StringRef text, bool placeholder = false) -> std::string {
+    std::string escaped;
+    for(char c: text) {
+        if(c == '$' || c == '\\' || (placeholder && c == '}')) {
+            escaped += '\\';
+        }
+        escaped += c;
+    }
+    return escaped;
+}
+
 /// Build a snippet string from a CodeCompletionString.
 /// Produces e.g. "funcName(${1:int x}, ${2:float y})" for functions,
-/// or "ClassName<${1:T}>" for class templates.
+/// "ClassName<${1:T}>" for class templates, or a whole statement for a
+/// keyword pattern. Empty when there is nothing to fill in.
 auto build_snippet(const clang::CodeCompletionString& ccs) -> std::string {
     std::string snippet;
     unsigned placeholder_index = 0;
@@ -209,44 +238,61 @@ auto build_snippet(const clang::CodeCompletionString& ccs) -> std::string {
     for(const auto& chunk: ccs) {
         using CK = clang::CodeCompletionString::ChunkKind;
         switch(chunk.Kind) {
-            case CK::CK_TypedText:
-                if(chunk.Text) {
-                    snippet += chunk.Text;
-                }
-                break;
             case CK::CK_Placeholder:
-                if(chunk.Text) {
-                    snippet += std::format("${{{0}:{1}}}", ++placeholder_index, chunk.Text);
-                }
+                placeholder_index += 1;
+                snippet += std::format("${{{}:{}}}",
+                                       placeholder_index,
+                                       escape_snippet(chunk.Text, /*placeholder=*/true));
                 break;
-            case CK::CK_LeftParen: snippet += '('; break;
-            case CK::CK_RightParen: snippet += ')'; break;
-            case CK::CK_LeftAngle: snippet += '<'; break;
-            case CK::CK_RightAngle: snippet += '>'; break;
-            case CK::CK_Comma: snippet += ", "; break;
-            case CK::CK_Text:
-                if(chunk.Text) {
-                    snippet += chunk.Text;
-                }
-                break;
+            // Default arguments and display-only chunks are not inserted.
             case CK::CK_Optional:
-                // Optional chunks contain default arguments — skip for snippet.
-                break;
             case CK::CK_Informative:
             case CK::CK_ResultType:
-            case CK::CK_CurrentParameter:
-                // Display-only chunks, not part of insertion.
-                break;
-            default: break;
+            case CK::CK_CurrentParameter: break;
+            default: snippet += escape_snippet(chunk.Text); break;
         }
     }
 
-    // If no placeholders were generated, return empty to signal plain text.
     if(placeholder_index == 0) {
         return {};
     }
 
     return snippet;
+}
+
+/// A pattern's text through its typed text, the part inserted without
+/// snippets: `if` for the if statement, the whole declaration for an
+/// override.
+auto pattern_head(const clang::CodeCompletionString& ccs) -> std::string {
+    std::string head;
+    for(const auto& chunk: ccs) {
+        using CK = clang::CodeCompletionString::ChunkKind;
+        if(chunk.Kind == CK::CK_Optional || chunk.Kind == CK::CK_Informative ||
+           chunk.Kind == CK::CK_ResultType) {
+            continue;
+        }
+        head += chunk.Text;
+        if(chunk.Kind == CK::CK_TypedText) {
+            break;
+        }
+    }
+    return head;
+}
+
+/// A pattern's text after its typed text, placeholders shown by name:
+/// tells apart the two `for` statements.
+auto pattern_tail(const clang::CodeCompletionString& ccs) -> std::string {
+    std::string tail;
+    bool typed = false;
+    for(const auto& chunk: ccs) {
+        using CK = clang::CodeCompletionString::ChunkKind;
+        if(chunk.Kind == CK::CK_TypedText) {
+            typed = true;
+        } else if(typed && chunk.Kind != CK::CK_Optional && chunk.Kind != CK::CK_Informative) {
+            tail += chunk.Kind == CK::CK_VerticalSpace ? " " : chunk.Text;
+        }
+    }
+    return tail;
 }
 
 /// Extract the return type from a CodeCompletionString.
@@ -258,6 +304,27 @@ auto extract_return_type(const clang::CodeCompletionString& ccs) -> std::string 
     }
     return {};
 }
+
+/// One candidate as the item it becomes, before matching and bundling.
+struct Candidate {
+    std::string label;
+    protocol::CompletionItemKind kind;
+
+    /// What accepting inserts; the label when empty.
+    std::string insert;
+    bool snippet = false;
+
+    /// What the typed prefix is matched against; the label when empty.
+    std::string filter;
+
+    /// Overload bundle the candidate joins; none when empty.
+    std::string bundle;
+
+    std::string signature;
+    std::string return_type;
+    bool deprecated = false;
+    bool macro = false;
+};
 
 struct OverloadItem {
     protocol::CompletionItem item;
@@ -273,20 +340,22 @@ struct CollectedItem {
 
 class CodeCompletionCollector final : public clang::CodeCompleteConsumer {
 public:
-    /// Sema surfaces macro candidates only on request; everything else
-    /// keeps clang's defaults.
+    /// Sema surfaces macro candidates and statement keywords only on
+    /// request: `if`, `for` and the like exist only as code patterns.
     static clang::CodeCompleteOptions sema_options() {
         clang::CodeCompleteOptions options;
         options.IncludeMacros = 1;
+        options.IncludeCodePatterns = 1;
         return options;
     }
 
     CodeCompletionCollector(std::uint32_t offset,
                             PositionEncoding encoding,
                             std::vector<protocol::CompletionItem>& output,
-                            const CodeCompletionOptions& options) :
+                            const CodeCompletionOptions& options,
+                            const CompletionClient& client) :
         clang::CodeCompleteConsumer(sema_options()), offset(offset), encoding(encoding),
-        output(output), options(options),
+        output(output), options(options), client(client),
         info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
@@ -469,16 +538,23 @@ public:
             return;
         }
 
+        // Clang's copy of the buffer carries a NUL at the completion
+        // point; edits and look-ahead read the text as the user has it.
         auto& source_manager = sema.getSourceManager();
-        auto content = source_manager.getBufferData(source_manager.getMainFileID());
+        auto buffer = source_manager.getBufferData(source_manager.getMainFileID());
+        auto point = source_manager.getFileOffset(sema.getPreprocessor().getCodeCompletionLoc());
+        auto content = buffer.take_front(point).str() + buffer.drop_front(point + 1).str();
         auto prefix = CompletionPrefix::from(content, offset);
         FuzzyMatcher matcher(prefix.spelling);
 
         LineMap map(content, encoding);
-        auto range = to_range(map, prefix.range);
-        if(!range)
+        auto typed = to_range(map, prefix.typed);
+        auto whole = to_range(map, prefix.whole);
+        if(!typed || !whole) {
             return;
-        auto replace_range = *range;
+        }
+        bool call_follows =
+            llvm::StringRef(content).drop_front(prefix.whole.end).ltrim(" \t").starts_with("(");
 
         std::vector<CollectedItem> collected;
         collected.reserve(candidate_count);
@@ -489,72 +565,72 @@ public:
 
         bool prefix_starts_with_underscore = prefix.spelling.starts_with("_");
 
-        auto build_item = [&](llvm::StringRef label,
-                              protocol::CompletionItemKind kind,
-                              llvm::StringRef insert,
-                              bool is_snippet = false) {
+        auto build_item = [&](const Candidate& candidate, float score) {
             protocol::CompletionItem item{
-                .label = label.str(),
+                .label = candidate.label,
             };
-            item.kind = kind;
-
-            protocol::TextEdit edit{
-                .range = replace_range,
-                .new_text = insert.empty() ? label.str() : insert.str(),
-            };
-            item.text_edit = std::move(edit);
-            if(is_snippet) {
+            item.kind = candidate.kind;
+            auto text = candidate.insert.empty() ? candidate.label : candidate.insert;
+            if(client.insert_replace && prefix.whole != prefix.typed) {
+                item.text_edit = protocol::InsertReplaceEdit{
+                    .new_text = std::move(text),
+                    .insert = *typed,
+                    .replace = *whole,
+                };
+            } else {
+                item.text_edit = protocol::TextEdit{
+                    .range = *whole,
+                    .new_text = std::move(text),
+                };
+            }
+            if(candidate.snippet) {
                 item.insert_text_format = protocol::InsertTextFormat::Snippet;
+            }
+            if(!candidate.filter.empty()) {
+                item.filter_text = candidate.filter;
+            }
+            // Clients sort ascending; scores lie in (0, 2].
+            item.sort_text = std::format("{:.4f}", 2.0F - score);
+            if(!candidate.signature.empty() || !candidate.return_type.empty()) {
+                protocol::CompletionItemLabelDetails details;
+                if(!candidate.signature.empty()) {
+                    details.detail = candidate.signature;
+                }
+                if(!candidate.return_type.empty()) {
+                    details.description = candidate.return_type;
+                }
+                item.label_details = std::move(details);
+            }
+            if(candidate.deprecated) {
+                item.tags = std::vector{protocol::CompletionItemTag::Deprecated};
             }
             return item;
         };
 
-        auto try_add = [&](llvm::StringRef label,
-                           protocol::CompletionItemKind kind,
-                           llvm::StringRef insert_text,
-                           llvm::StringRef overload_key,
-                           llvm::StringRef signature = {},
-                           llvm::StringRef return_type = {},
-                           bool is_snippet = false,
-                           bool is_deprecated = false,
-                           bool is_macro = false) {
-            if(label.empty()) {
+        auto add = [&](const Candidate& candidate) {
+            llvm::StringRef filter = candidate.filter.empty() ? candidate.label : candidate.filter;
+            if(filter.empty()) {
                 return;
             }
 
             // Filter out _/__ prefixed internal symbols unless user typed _.
-            if(!prefix_starts_with_underscore && label.starts_with("_")) {
+            if(!prefix_starts_with_underscore && filter.starts_with("_")) {
                 return;
             }
 
-            auto score = matcher.match(label);
+            auto score = matcher.match(filter);
             if(!score.has_value()) {
                 return;
             }
 
-            int priority = dedup_priority(kind, is_macro);
+            int priority = dedup_priority(candidate.kind, candidate.macro);
 
-            if(!overload_key.empty()) {
+            if(!candidate.bundle.empty()) {
                 auto [it, inserted] =
-                    overload_index.try_emplace(overload_key.str(), overloads.size());
+                    overload_index.try_emplace(candidate.bundle, overloads.size());
                 if(inserted) {
-                    auto item = build_item(label, kind, insert_text, is_snippet);
-                    item.sort_text = std::format("{}", *score);
-                    if(!signature.empty() || !return_type.empty()) {
-                        protocol::CompletionItemLabelDetails details;
-                        if(!signature.empty()) {
-                            details.detail = signature.str();
-                        }
-                        if(!return_type.empty()) {
-                            details.description = return_type.str();
-                        }
-                        item.label_details = std::move(details);
-                    }
-                    if(is_deprecated) {
-                        item.tags = std::vector{protocol::CompletionItemTag::Deprecated};
-                    }
                     overloads.push_back({
-                        .item = std::move(item),
+                        .item = build_item(candidate, *score),
                         .score = *score,
                         .count = 1,
                         .dedup_priority = priority,
@@ -564,42 +640,58 @@ public:
                     existing.count += 1;
                     if(*score > existing.score) {
                         existing.score = *score;
-                        existing.item.sort_text = std::format("{}", *score);
+                        existing.item.sort_text = std::format("{:.4f}", 2.0F - *score);
                     }
                 }
                 return;
             }
 
-            auto item = build_item(label, kind, insert_text, is_snippet);
-            item.sort_text = std::format("{}", *score);
-            if(!signature.empty() || !return_type.empty()) {
-                protocol::CompletionItemLabelDetails details;
-                if(!signature.empty()) {
-                    details.detail = signature.str();
-                }
-                if(!return_type.empty()) {
-                    details.description = return_type.str();
-                }
-                item.label_details = std::move(details);
-            }
-            if(is_deprecated) {
-                item.tags = std::vector{protocol::CompletionItemTag::Deprecated};
-            }
-            collected.push_back({.item = std::move(item), .dedup_priority = priority});
+            collected.push_back(
+                {.item = build_item(candidate, *score), .dedup_priority = priority});
         };
+
+        bool keyword_snippets = options.enable_keyword_snippet && client.snippets;
+        llvm::StringSet<> plain_patterns;
 
         for(auto& candidate: llvm::make_range(candidates, candidates + candidate_count)) {
             switch(candidate.Kind) {
                 case clang::CodeCompletionResult::RK_Keyword:
-                    try_add(candidate.Keyword,
-                            protocol::CompletionItemKind::Keyword,
-                            candidate.Keyword,
-                            "");
+                    add({.label = candidate.Keyword,
+                         .kind = protocol::CompletionItemKind::Keyword});
                     break;
 
                 case clang::CodeCompletionResult::RK_Pattern: {
-                    auto text = candidate.Pattern->getAllTypedText();
-                    try_add(text, protocol::CompletionItemKind::Snippet, text, "");
+                    auto& pattern = *candidate.Pattern;
+                    auto label = pattern.getAllTypedText();
+                    auto head = pattern_head(pattern);
+                    // An override declaration carries the method it overrides.
+                    if(candidate.Declaration) {
+                        add({
+                            .label = label,
+                            .kind = protocol::CompletionItemKind::Method,
+                            .insert = head,
+                        });
+                        break;
+                    }
+                    if(keyword_snippets) {
+                        auto snippet = build_snippet(pattern);
+                        bool has_snippet = !snippet.empty();
+                        add({
+                            .label = label,
+                            .kind = protocol::CompletionItemKind::Snippet,
+                            .insert = has_snippet ? std::move(snippet) : head,
+                            .snippet = has_snippet,
+                            .signature = pattern_tail(pattern),
+                        });
+                    } else if(plain_patterns.insert(head).second) {
+                        // Without its placeholders a pattern is its keyword;
+                        // the variants of one statement collapse.
+                        add({
+                            .label = label,
+                            .kind = protocol::CompletionItemKind::Keyword,
+                            .insert = head,
+                        });
+                    }
                     break;
                 }
 
@@ -607,68 +699,66 @@ public:
                     auto* info = sema.getPreprocessor().getMacroInfo(candidate.Macro);
                     bool function_like = info && info->isFunctionLike();
 
-                    std::string signature;
-                    std::string snippet;
+                    Candidate item{
+                        .label = candidate.Macro->getName().str(),
+                        .kind = function_like ? protocol::CompletionItemKind::Function
+                                              : protocol::CompletionItemKind::Constant,
+                        .macro = true,
+                    };
                     if(auto* ccs =
                            candidate.CreateCodeCompletionString(sema,
                                                                 context,
                                                                 getAllocator(),
                                                                 getCodeCompletionTUInfo(),
                                                                 /*IncludeBriefComments=*/false)) {
-                        signature = extract_signature(*ccs);
-                        if(function_like && options.enable_function_arguments_snippet) {
-                            snippet = build_snippet(*ccs);
+                        item.signature = extract_signature(*ccs);
+                        if(function_like && options.enable_function_arguments_snippet &&
+                           client.snippets) {
+                            item.insert = build_snippet(*ccs);
+                            item.snippet = !item.insert.empty();
                         }
                     }
-
-                    bool has_snippet = !snippet.empty();
-                    auto name = candidate.Macro->getName();
-                    try_add(name,
-                            function_like ? protocol::CompletionItemKind::Function
-                                          : protocol::CompletionItemKind::Constant,
-                            has_snippet ? llvm::StringRef(snippet) : name,
-                            "",
-                            signature,
-                            {},
-                            has_snippet,
-                            /*is_deprecated=*/false,
-                            /*is_macro=*/true);
+                    add(item);
                     break;
                 }
 
                 case clang::CodeCompletionResult::RK_Declaration: {
                     auto* declaration = candidate.Declaration;
-                    if(!declaration) {
+                    // A hidden declaration is not what its name means here.
+                    if(!declaration || candidate.Hidden ||
+                       candidate.Availability == CXAvailability_NotAccessible) {
                         break;
                     }
 
-                    auto kind = completion_kind(declaration);
-
-                    // For constructors and deduction guides, use the class name
-                    // (without template args) instead of the full type name.
-                    // e.g. "vector" instead of "vector<_Tp, _Alloc>".
-                    std::string label;
-                    if(auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(declaration)) {
-                        label = ctor->getParent()->getName().str();
-                    } else if(auto* guide =
-                                  llvm::dyn_cast<clang::CXXDeductionGuideDecl>(declaration)) {
-                        label = guide->getDeducedTemplate()->getName().str();
-                    } else {
-                        label = display::name_of(declaration, {.qualified = false});
+                    // A qualifier clang does not mark informative must be
+                    // written: the name alone does not reach the
+                    // declaration (a scoped enumerator outside its enum).
+                    std::string qualifier;
+                    if(candidate.Qualifier && !candidate.QualifierIsInformative) {
+                        llvm::raw_string_ostream stream(qualifier);
+                        candidate.Qualifier.print(stream, sema.getPrintingPolicy());
                     }
 
-                    llvm::SmallString<256> qualified_name;
+                    auto kind = completion_kind(declaration);
+                    auto name = display::name_of(declaration,
+                                                 {
+                                                     .suppress_ctor_template_args = true,
+                                                     .qualified = false,
+                                                 });
+                    Candidate item{
+                        .label = qualifier + name,
+                        .kind = kind,
+                        .filter = qualifier.empty() ? std::string() : name,
+                        .deprecated = candidate.Availability == CXAvailability_Deprecated,
+                    };
+
                     bool is_callable = kind == protocol::CompletionItemKind::Function ||
                                        kind == protocol::CompletionItemKind::Method ||
                                        kind == protocol::CompletionItemKind::Constructor;
                     if(options.bundle_overloads && is_callable) {
-                        llvm::raw_svector_ostream stream(qualified_name);
-                        declaration->printQualifiedName(stream);
+                        item.bundle = item.label;
                     }
 
-                    std::string signature;
-                    std::string return_type;
-                    std::string snippet;
                     auto* ccs =
                         candidate.CreateCodeCompletionString(sema,
                                                              context,
@@ -676,26 +766,36 @@ public:
                                                              getCodeCompletionTUInfo(),
                                                              /*IncludeBriefComments=*/false);
                     if(ccs) {
-                        signature = extract_signature(*ccs);
-                        return_type = extract_return_type(*ccs);
-                        // Generate snippet for non-bundled callables.
-                        if(is_callable && !options.bundle_overloads &&
-                           options.enable_function_arguments_snippet) {
-                            snippet = build_snippet(*ccs);
+                        item.signature = extract_signature(*ccs);
+                        item.return_type = extract_return_type(*ccs);
+                        bool arguments = is_callable && !options.bundle_overloads &&
+                                         options.enable_function_arguments_snippet;
+                        bool template_arguments = options.enable_template_arguments_snippet &&
+                                                  llvm::isa<clang::ClassTemplateDecl,
+                                                            clang::TypeAliasTemplateDecl,
+                                                            clang::VarTemplateDecl>(declaration);
+                        if(client.snippets && (arguments || template_arguments)) {
+                            item.insert = build_snippet(*ccs);
+                            item.snippet = !item.insert.empty();
                         }
                     }
 
-                    bool has_snippet = !snippet.empty();
-                    auto insert = has_snippet ? llvm::StringRef(snippet) : llvm::StringRef(label);
-                    bool deprecated = candidate.Availability == CXAvailability_Deprecated;
-                    try_add(label,
-                            kind,
-                            insert,
-                            qualified_name.str(),
-                            signature,
-                            return_type,
-                            has_snippet,
-                            deprecated);
+                    // A call gets its parentheses unless it has them already
+                    // or the name is not being called here.
+                    bool callable_here = candidate.FunctionCanBeCall && !candidate.DeclaringEntity;
+                    if(options.insert_paren_in_function_call && !item.snippet && callable_here &&
+                       !call_follows &&
+                       (kind == protocol::CompletionItemKind::Function ||
+                        kind == protocol::CompletionItemKind::Method)) {
+                        if(client.snippets) {
+                            item.insert = escape_snippet(item.label) + "($0)";
+                            item.snippet = true;
+                        } else {
+                            item.insert = item.label + "()";
+                        }
+                    }
+
+                    add(item);
                     break;
                 }
             }
@@ -740,6 +840,7 @@ private:
     PositionEncoding encoding;
     std::vector<protocol::CompletionItem>& output;
     const CodeCompletionOptions& options;
+    const CompletionClient& client;
     clang::CodeCompletionTUInfo info;
     bool resolving = false;
     bool resolved_candidates = false;
@@ -749,13 +850,14 @@ private:
 
 auto code_complete(CompilationParams& params,
                    const CodeCompletionOptions& options,
+                   const CompletionClient& client,
                    PositionEncoding encoding) -> std::vector<protocol::CompletionItem> {
     std::vector<protocol::CompletionItem> items;
 
     auto& [file, offset] = params.completion;
     (void)file;
 
-    auto* consumer = new CodeCompletionCollector(offset, encoding, items, options);
+    auto* consumer = new CodeCompletionCollector(offset, encoding, items, options, client);
     auto unit = complete(params, consumer);
     (void)unit;
 

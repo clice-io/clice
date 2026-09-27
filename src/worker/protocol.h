@@ -261,6 +261,8 @@ struct CompletionParams {
     /// The workspace config, carried whole — the worker holds no config
     /// state and a config change simply shows up on the next request.
     Config config;
+
+    feature::CompletionClient client;
 };
 
 /// Signature help over unsaved buffer content; same inputs as completion.

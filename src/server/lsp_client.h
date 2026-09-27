@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "feature/feature.h"
 #include "server/session.h"
 #include "support/signal.h"
 #include "vfs/file_table.h"
@@ -96,6 +97,9 @@ private:
     bool semantic_tokens_refresh = false;
     bool inlay_hint_refresh = false;
     bool folding_range_refresh = false;
+
+    /// What the client takes from a completion item.
+    feature::CompletionClient completion_client;
 
     /// Whether the client applies versioned document changes (the
     /// workspace/workspaceEdit.documentChanges capability): code action

@@ -1,0 +1,6 @@
+---
+created_at: 2026-09-27
+input_file: override_completion/01_override_declaration.cpp
+---
+pos:
+- { label: "draw(int x, int y) const override", kind: Method, edit: "14:4-14:6", insert: "int draw(int x, int y) const override" }
