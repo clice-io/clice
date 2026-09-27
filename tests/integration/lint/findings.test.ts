@@ -203,6 +203,23 @@ test.skipIf(process.platform === "win32")(
 );
 
 test.skipIf(process.platform === "win32")(
+    "configuration found from the database's name",
+    ({ session }) => {
+        const ws = session.tmpdir();
+        ws.pinCacheDir();
+        ws.write(".clang-tidy", 'Checks: "-*"\n');
+        ws.write("vendor/.clang-tidy", 'Checks: "-*,bugprone-integer-division"\n');
+        ws.write("vendor/real/main.cpp", "double rate(int a, int b) { return a / b; }\n");
+        fs.symlinkSync(ws.path("vendor/real"), ws.path("src"));
+        ws.writeCDB(["src/main.cpp"]);
+
+        const run = runLint(ws);
+        expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+        expect(findings(run.stdout)).toEqual([]);
+    },
+);
+
+test.skipIf(process.platform === "win32")(
     "header filter matches the include's spelling",
     ({ session }) => {
         const ws = session.tmpdir();

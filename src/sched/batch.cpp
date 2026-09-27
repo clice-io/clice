@@ -322,7 +322,7 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
     plan.tidy = stack.project.build.lintable(file);
     plan.index = with_index && stack.project.build.indexed(file);
     if(plan.tidy) {
-        plan.tidy_params = tidy::resolve_tidy_params(stack.project.file_table.display(path_id));
+        plan.tidy_params = tidy::resolve_tidy_params(stack.project.file_table.spelling(path_id));
     }
 
     // One budget-free retry: a worker crash or preemption says nothing

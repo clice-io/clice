@@ -510,13 +510,14 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
                                                               &index_lang_options(*session))
                            : std::nullopt;
     if(argument && argument->begin <= *offset) {
-        auto links = co_await directive_links(ticket, std::move(token));
+        auto links = co_await directive_links(ticket, token);
         if(!links.has_value()) {
             co_return kota::outcome_error(std::move(links.error()));
         }
-        auto* link = link_at(*links, *offset);
-        auto hover = link ? directive_hover(*session, *link) : std::nullopt;
-        co_return hover ? to_raw(*hover) : serde_raw{"null"};
+        if(auto* link = link_at(*links, *offset)) {
+            auto hover = directive_hover(*session, *link);
+            co_return hover ? to_raw(*hover) : serde_raw{"null"};
+        }
     }
 
     auto raw =

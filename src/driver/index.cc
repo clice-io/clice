@@ -673,7 +673,8 @@ int run_show_file(Project& project, llvm::StringRef argument) {
     auto shard_it =
         file ? project.project_index.shards.find(*file) : project.project_index.shards.end();
     if(shard_it == project.project_index.shards.end()) {
-        std::println("No rows for {} in the index.", path);
+        std::println("No rows for {} in the index.",
+                     project.file_table.display(CanonicalPath(path)));
         return 1;
     }
     auto& shard = shard_it->second;
@@ -745,7 +746,7 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
     auto& project_index = project.project_index;
     auto manifest_it = tu ? project_index.manifests.find(*tu) : project_index.manifests.end();
     if(manifest_it == project_index.manifests.end()) {
-        std::println("No manifest for {} in the index.", path);
+        std::println("No manifest for {} in the index.", files.display(CanonicalPath(path)));
         return 1;
     }
     auto& manifest = manifest_it->second;

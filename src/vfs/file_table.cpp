@@ -60,16 +60,12 @@ std::optional<ObservedFile> read_file_observed(const char* path) {
     return result;
 }
 
-namespace {
-
 /// `path` with its `..` segments resolved as text.
-Spelling fold(const Spelling& path) {
+static Spelling fold(const Spelling& path) {
     llvm::SmallString<256> text(path.str());
     path::remove_dots(text, /*remove_dot_dot=*/true);
     return Spelling::absolute(text);
 }
-
-}  // namespace
 
 std::string FileTable::display(CanonicalRef identity) const {
     for(auto& [real, root]: spelled_roots) {
