@@ -373,6 +373,12 @@ public:
                            llvm::isa<clang::FieldDecl>(candidate.Declaration);
                 });
             if(designator) {
+                /// Sema reports nothing at all for a class without fields;
+                /// the resolved reply is still empty, not Sema's.
+                if(record->fields().empty()) {
+                    output.clear();
+                    return true;
+                }
                 return run([&] {
                     sema.CodeCompletion().CodeCompleteDesignator(type, {}, clang::Designation());
                 });

@@ -904,7 +904,13 @@ public:
                 }
             }
         } else if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(referenced_decl(expr))) {
-            type = substitute(value->getType());
+            type = value->getType();
+            /// A function parameter pack (`Box<Ts>... boxes`) is declared
+            /// with the expansion; a use of it has the pattern's type.
+            if(auto* PET = type->getAs<clang::PackExpansionType>()) {
+                type = PET->getPattern();
+            }
+            type = substitute(type);
         }
         stack.truncate(frames);
         return type.isNull() ? type : resolve(type);
@@ -984,16 +990,19 @@ public:
         return lookup(base, name);
     }
 
-    /// A dependent member access; its base may itself be one whose type
-    /// clang left unknown (`box.inner.leaf`).
+    /// A dependent member access. Clang leaves the base type unknown when
+    /// the base is itself a dependent member access or call
+    /// (`box.inner.leaf`); that base is resolved to what it evaluates to.
     lookup_result lookup_member(const clang::CXXDependentScopeMemberExpr* expr) {
-        clang::QualType base;
-        if(!expr->isImplicitAccess()) {
-            base = type_of(expr->getBase());
+        auto base = expr->getBaseType();
+        if(!expr->isImplicitAccess() &&
+           base->isSpecificBuiltinType(clang::BuiltinType::Dependent)) {
+            /// An expression never has reference type; the declaration it
+            /// names may (`Box<T>& get()`).
+            if(auto type = type_of(expr->getBase()); !type.isNull()) {
+                base = type.getNonReferenceType();
+            }
         }
-        /// An expression never has reference type; the declaration it
-        /// names may (`Box<T>& box`).
-        base = base.isNull() ? expr->getBaseType() : base.getNonReferenceType();
         return lookup_member(base, expr->isArrow(), expr->getMemberNameInfo().getName());
     }
 

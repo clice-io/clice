@@ -765,6 +765,17 @@ struct Folder {
         return type->isDependentType() ? value : convert_integral(context, value, type);
     }
 
+    /// Sema promotes the operands of an arithmetic node whose type is known;
+    /// under a still-dependent one (`-Config<T>::n`) the folding applies the
+    /// integral promotion itself.
+    llvm::APSInt promoted(const llvm::APSInt& value, clang::QualType type) {
+        auto width = context.getIntWidth(context.IntTy);
+        if(!type->isDependentType() || value.getBitWidth() >= width) {
+            return value;
+        }
+        return llvm::APSInt(value.extend(width), /*isUnsigned=*/false);
+    }
+
     std::optional<llvm::APSInt> fold(const clang::Expr* expr) {
         if(!expr->isValueDependent()) {
             return expr->getIntegerConstantExpr(context);
@@ -781,6 +792,7 @@ struct Folder {
             if(!value) {
                 return std::nullopt;
             }
+            *value = promoted(*value, unary->getType());
             switch(unary->getOpcode()) {
                 case clang::UO_Plus: break;
                 case clang::UO_Minus: *value = -*value; break;
@@ -812,28 +824,24 @@ struct Folder {
     std::optional<llvm::APSInt> fold_binary(const clang::BinaryOperator* binary) {
         auto op = binary->getOpcode();
         auto lhs = fold(binary->getLHS());
-
-        /// Either operand of a logical operator can settle it alone
-        /// (`unknown && false`); folding has no side effects to preserve.
-        if(op == clang::BO_LAnd || op == clang::BO_LOr) {
-            bool absorbing = op == clang::BO_LOr;
-            if(lhs && lhs->getBoolValue() == absorbing) {
-                return typed(truth(absorbing), binary->getType());
-            }
-            auto rhs = fold(binary->getRHS());
-            if(rhs && rhs->getBoolValue() == absorbing) {
-                return typed(truth(absorbing), binary->getType());
-            }
-            if(!lhs || !rhs) {
-                return std::nullopt;
-            }
-            return typed(truth(!absorbing), binary->getType());
-        }
-
         auto rhs = fold(binary->getRHS());
+
+        /// An operand that does not fold may stand for a substitution
+        /// failure, which leaves the whole expression false: `false` settles
+        /// `&&` regardless, `true` settles `||` only beside a known operand.
+        if(op == clang::BO_LAnd && ((lhs && lhs->isZero()) || (rhs && rhs->isZero()))) {
+            return typed(truth(false), binary->getType());
+        }
         if(!lhs || !rhs) {
             return std::nullopt;
         }
+        if(op == clang::BO_LAnd || op == clang::BO_LOr) {
+            return typed(truth(op == clang::BO_LAnd ? lhs->getBoolValue() && rhs->getBoolValue()
+                                                    : lhs->getBoolValue() || rhs->getBoolValue()),
+                         binary->getType());
+        }
+        lhs = promoted(*lhs, binary->getType());
+        rhs = promoted(*rhs, binary->getType());
 
         if(op == clang::BO_Shl || op == clang::BO_Shr) {
             if(rhs->isNegative() || rhs->uge(lhs->getBitWidth())) {
@@ -954,6 +962,32 @@ bool same_expression(clang::ASTContext& context,
     return false;
 }
 
+/// Whether a constraint is satisfied. Its top-level `&&` and `||`
+/// (through parentheses) join separately checked atomic constraints, so a
+/// satisfied disjunct settles a disjunction and an unsatisfied conjunct a
+/// conjunction, whatever the other side.
+std::optional<bool>
+    satisfaction(clang::ASTContext& context,
+                 const clang::Expr* constraint,
+                 llvm::function_ref<std::optional<llvm::APSInt>(const clang::Expr*)> value_of) {
+    constraint = constraint->IgnoreParens();
+    if(auto* binary = llvm::dyn_cast<clang::BinaryOperator>(constraint);
+       binary && binary->isLogicalOp()) {
+        auto lhs = satisfaction(context, binary->getLHS(), value_of);
+        auto rhs = satisfaction(context, binary->getRHS(), value_of);
+        bool absorbing = binary->getOpcode() == clang::BO_LOr;
+        if((lhs && *lhs == absorbing) || (rhs && *rhs == absorbing)) {
+            return absorbing;
+        }
+        if(!lhs || !rhs) {
+            return std::nullopt;
+        }
+        return !absorbing;
+    }
+    auto value = evaluate_integral(context, constraint, value_of);
+    return value ? std::optional(value->getBoolValue()) : std::nullopt;
+}
+
 }  // namespace
 
 std::optional<llvm::APSInt> convert_integral(clang::ASTContext& context,
@@ -1031,10 +1065,10 @@ Deduction deduce_arguments(clang::ASTContext& context,
     llvm::SmallVector<clang::AssociatedConstraint, 2> constraints;
     params->getAssociatedConstraints(constraints);
     for(auto& constraint: constraints) {
-        auto satisfied = evaluate_integral(context, constraint.ConstraintExpr, value_of);
+        auto satisfied = satisfaction(context, constraint.ConstraintExpr, value_of);
         if(!satisfied) {
             verdict = Deduction::Unverified;
-        } else if(satisfied->isZero()) {
+        } else if(!*satisfied) {
             return Deduction::Failed;
         }
     }

@@ -4251,6 +4251,92 @@ TEST_CASE(ConstrainedBeatsUnconstrained) {
     )code");
 }
 
+TEST_CASE(ConstraintDisjunction) {
+    /// A satisfied disjunct settles the disjunction even beside one that
+    /// cannot be decided.
+    run(R"code(
+        template <typename T>
+        concept small = sizeof(T) < 4;
+
+        template <typename T, int N>
+        struct P {
+            using type = void;
+        };
+
+        template <typename T, int N>
+            requires (N > 0) || small<T>
+        struct P<T*, N> {
+            using type = int;
+        };
+
+        template <typename T, int N>
+        struct apply {
+            using type = typename P<T*, N>::type;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename apply<X, 1>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(AtomicConstraintUnverified) {
+    /// Inside one atomic constraint an operand that does not fold may be a
+    /// substitution failure, so `|| true` proves nothing.
+    add_main("main.cpp", R"code(
+        template <typename T, typename U>
+        struct P {
+            using type = char;
+        };
+
+        template <typename T, typename U>
+            requires (bool(sizeof(typename U::missing) || true))
+        struct P<T*, U> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<X*, int>::type;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+}
+
+TEST_CASE(PromotedDependentValue) {
+    run(R"code(
+        template <typename T>
+        struct Config {
+            static constexpr unsigned char n = 1;
+        };
+
+        template <typename T, int N = -Config<T>::n>
+        struct P {
+            using type = char;
+        };
+
+        template <typename T>
+        struct P<T, -1> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<X>::type;
+            using expect = int;
+        };
+    )code");
+}
+
 TEST_CASE(AmbiguousBaseMember) {
     add_main("main.cpp", R"code(
         template <typename T>
@@ -4426,6 +4512,71 @@ TEST_CASE(MemberChainLookup) {
     ASSERT_TRUE(finder.outer != nullptr);
 
     auto members = unit->resolver().lookup(finder.outer);
+    ASSERT_EQ(std::ranges::distance(members), 1);
+    EXPECT_TRUE(llvm::isa<clang::FieldDecl>(members.front()));
+}
+
+TEST_CASE(PackParameterMember) {
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Box {
+            T value;
+        };
+
+        template <typename... Ts>
+        void use(Ts... values);
+
+        template <typename... Ts>
+        void unwrap(Box<Ts>... boxes) {
+            use(boxes.value...);
+        }
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CXXDependentScopeMemberExpr* expr = nullptr;
+
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
+            expr = e;
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    auto members = unit->resolver().lookup(finder.expr);
+    ASSERT_EQ(std::ranges::distance(members), 1);
+    EXPECT_TRUE(llvm::isa<clang::FieldDecl>(members.front()));
+}
+
+TEST_CASE(ReferenceParameterMember) {
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Gauge {
+            T level;
+        };
+
+        template <typename T>
+        T read(Gauge<T>& gauge) {
+            return gauge.level;
+        }
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CXXDependentScopeMemberExpr* expr = nullptr;
+
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
+            expr = e;
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    auto members = unit->resolver().lookup(finder.expr);
     ASSERT_EQ(std::ranges::distance(members), 1);
     EXPECT_TRUE(llvm::isa<clang::FieldDecl>(members.front()));
 }
