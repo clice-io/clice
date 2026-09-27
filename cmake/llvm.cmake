@@ -97,18 +97,28 @@ function(setup_llvm LLVM_VERSION)
 
     # A downloaded archive stays cached in LLVM_INSTALL_PATH. One of another
     # xclang release gives way to this release's: the manifest check cannot
-    # tell apart two revisions of the same LLVM version.
+    # tell apart two revisions of the same LLVM version. A path given by hand
+    # stays. Build trees from before the download was recorded
+    # (CLICE_LLVM_DOWNLOAD) go by where CPM puts downloads.
+    set(_stale OFF)
     if(DEFINED LLVM_INSTALL_PATH AND NOT LLVM_INSTALL_PATH STREQUAL ""
             AND NOT CLICE_LLVM_RELEASE STREQUAL LLVM_VERSION)
-        cmake_path(IS_PREFIX CPM_SOURCE_CACHE "${LLVM_INSTALL_PATH}" NORMALIZE _in_cache)
-        if(_in_cache)
-            message(STATUS "LLVM at ${LLVM_INSTALL_PATH} is not xclang ${LLVM_VERSION}, downloading")
-            unset(LLVM_INSTALL_PATH)
-            unset(LLVM_INSTALL_PATH CACHE)
-            # find_package would take these over the new archive's paths.
-            unset(LLVM_DIR CACHE)
-            unset(Clang_DIR CACHE)
+        if(DEFINED CACHE{CLICE_LLVM_DOWNLOAD})
+            if(LLVM_INSTALL_PATH STREQUAL CLICE_LLVM_DOWNLOAD)
+                set(_stale ON)
+            endif()
+        else()
+            cmake_path(IS_PREFIX CPM_SOURCE_CACHE "${LLVM_INSTALL_PATH}" NORMALIZE _in_cache)
+            cmake_path(IS_PREFIX FETCHCONTENT_BASE_DIR "${LLVM_INSTALL_PATH}" NORMALIZE _in_deps)
+            if(_in_cache OR _in_deps)
+                set(_stale ON)
+            endif()
         endif()
+    endif()
+    if(_stale)
+        message(STATUS "LLVM at ${LLVM_INSTALL_PATH} is not xclang ${LLVM_VERSION}, downloading")
+        unset(LLVM_INSTALL_PATH)
+        unset(LLVM_INSTALL_PATH CACHE)
     endif()
 
     if(NOT DEFINED LLVM_INSTALL_PATH OR LLVM_INSTALL_PATH STREQUAL "")
@@ -116,7 +126,8 @@ function(setup_llvm LLVM_VERSION)
             message(FATAL_ERROR "LLVM_INSTALL_PATH must be set in offline mode")
         endif()
         _download_llvm("${LLVM_VERSION}")
-        set(CLICE_LLVM_RELEASE "${LLVM_VERSION}" CACHE INTERNAL "xclang release of the downloaded LLVM")
+        set(CLICE_LLVM_DOWNLOAD "${LLVM_INSTALL_PATH}" CACHE INTERNAL "LLVM_INSTALL_PATH as downloaded")
+        set(CLICE_LLVM_RELEASE "${LLVM_VERSION}" CACHE INTERNAL "xclang release of CLICE_LLVM_DOWNLOAD")
     endif()
 
     set(LLVM_INSTALL_PATH "${LLVM_INSTALL_PATH}" CACHE PATH "LLVM install" FORCE)
@@ -126,6 +137,10 @@ function(setup_llvm LLVM_VERSION)
     # LLVMConfig.cmake finds the archive's zlib and zstd through the prefix
     # path.
     list(PREPEND CMAKE_PREFIX_PATH "${LLVM_INSTALL_PATH}")
+    # find_package takes cached package directories over PATHS: a build tree
+    # whose LLVM_INSTALL_PATH changed would keep the old one's.
+    set(LLVM_DIR "${LLVM_INSTALL_PATH}/lib/cmake/llvm" CACHE PATH "LLVM's CMake package" FORCE)
+    set(Clang_DIR "${LLVM_INSTALL_PATH}/lib/cmake/clang" CACHE PATH "Clang's CMake package" FORCE)
     find_package(LLVM REQUIRED CONFIG
         PATHS "${LLVM_INSTALL_PATH}/lib/cmake/llvm" NO_DEFAULT_PATH)
     find_package(Clang REQUIRED CONFIG
