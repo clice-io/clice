@@ -34,7 +34,7 @@ pixi run cmake-config RelWithDebInfo ON
 pixi run cmake-build RelWithDebInfo
 ```
 
-An existing build directory keeps the compiler it detected, and the manifest check then compares the new archive with the old compiler; it also keeps `LLVM_INSTALL_PATH`, `LLVM_DIR` and `Clang_DIR` of the old archive. A release re-published under the same tag is invisible to CPM's cache: delete `~/.cache/clice/cpm/llvm_prebuilt/` first.
+An existing build directory keeps the compiler it detected, and the manifest check then compares the new archive with the old compiler. A downloaded archive of another release gives way to this one's (`CLICE_LLVM_RELEASE` in the cache); an `LLVM_INSTALL_PATH` given by hand stays. A release re-published under the same tag is invisible to CPM's cache: delete `~/.cache/clice/cpm/llvm_prebuilt/` first.
 
 Compilation will likely fail — that's what Step 3 addresses.
 

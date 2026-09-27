@@ -95,11 +95,28 @@ function(setup_llvm LLVM_VERSION)
         endif()
     endif()
 
+    # A downloaded archive stays cached in LLVM_INSTALL_PATH. One of another
+    # xclang release gives way to this release's: the manifest check cannot
+    # tell apart two revisions of the same LLVM version.
+    if(DEFINED LLVM_INSTALL_PATH AND NOT LLVM_INSTALL_PATH STREQUAL ""
+            AND NOT CLICE_LLVM_RELEASE STREQUAL LLVM_VERSION)
+        cmake_path(IS_PREFIX CPM_SOURCE_CACHE "${LLVM_INSTALL_PATH}" NORMALIZE _in_cache)
+        if(_in_cache)
+            message(STATUS "LLVM at ${LLVM_INSTALL_PATH} is not xclang ${LLVM_VERSION}, downloading")
+            unset(LLVM_INSTALL_PATH)
+            unset(LLVM_INSTALL_PATH CACHE)
+            # find_package would take these over the new archive's paths.
+            unset(LLVM_DIR CACHE)
+            unset(Clang_DIR CACHE)
+        endif()
+    endif()
+
     if(NOT DEFINED LLVM_INSTALL_PATH OR LLVM_INSTALL_PATH STREQUAL "")
         if(CLICE_OFFLINE_BUILD)
             message(FATAL_ERROR "LLVM_INSTALL_PATH must be set in offline mode")
         endif()
         _download_llvm("${LLVM_VERSION}")
+        set(CLICE_LLVM_RELEASE "${LLVM_VERSION}" CACHE INTERNAL "xclang release of the downloaded LLVM")
     endif()
 
     set(LLVM_INSTALL_PATH "${LLVM_INSTALL_PATH}" CACHE PATH "LLVM install" FORCE)
