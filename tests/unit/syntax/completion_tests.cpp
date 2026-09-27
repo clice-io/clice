@@ -190,6 +190,13 @@ TEST_CASE(IncludeReplaceSpan) {
     EXPECT_EQ(ctx.replace.end, 18u);
 }
 
+TEST_CASE(IncludeNameWithSpaces) {
+    auto closed = detect_completion_context("#include \"my header.h\"", 12);
+    EXPECT_EQ(closed.replace.end, 21u);
+    auto open = detect_completion_context("#include \"my header.h", 12);
+    EXPECT_EQ(open.replace.end, 12u);
+}
+
 TEST_CASE(ImportReplaceSpan) {
     auto ctx = detect_completion_context("import std.io", 10);
     EXPECT_EQ(ctx.replace.begin, 7u);

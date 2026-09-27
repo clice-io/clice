@@ -100,9 +100,14 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         }
         auto slash = argument.rfind('/');
         auto component = slash == llvm::StringRef::npos ? argument : argument.drop_front(slash + 1);
+        // A closed directive may name a file with spaces; an unclosed one
+        // ends its name at the first space.
+        char closer = kind == CompletionContext::IncludeQuoted ? '"' : '>';
+        auto line = text.slice(offset, text.find_first_of("\r\n", offset));
+        bool closed = line.contains(closer);
         auto end = offset;
-        while(end < text.size() && !llvm::StringRef("/\">").contains(text[end]) &&
-              !clang::isWhitespace(text[end])) {
+        while(end < offset + line.size() && text[end] != '/' && text[end] != closer &&
+              (closed || !clang::isWhitespace(text[end]))) {
             end += 1;
         }
         return {kind,

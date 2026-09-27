@@ -337,6 +337,12 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     }
     auto wait_ms = timer.ms_f();
 
+    // A reply on the carried buffer is still useful; a recovery probe spent
+    // on it is not — the edit that armed the probe replaced that buffer.
+    if(!ticket.fresh() && session.quarantine.active()) {
+        co_return kota::outcome_error(content_modified());
+    }
+
     lsp::LineMap map(wp.text);
     wp.offset = clamped_offset(map, position);
     if(resolution.synthesized) {
