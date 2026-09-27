@@ -65,6 +65,14 @@ export class Workspace {
         return canonicalUri(URI.file(this.path(rel)).toString());
     }
 
+    /// How the server spells a workspace path in text (hover cards, CLI
+    /// output): forward slashes and, on Windows, a lowercase drive letter.
+    displayPath(rel = ""): string {
+        return this.path(rel)
+            .replaceAll("\\", "/")
+            .replace(/^[A-Za-z]:/, (drive) => drive.toLowerCase());
+    }
+
     exists(rel: string): boolean {
         return fs.existsSync(this.path(rel));
     }
