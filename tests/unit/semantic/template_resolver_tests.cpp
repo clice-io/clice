@@ -4337,6 +4337,74 @@ TEST_CASE(PromotedDependentValue) {
     )code");
 }
 
+TEST_CASE(DependentConditionalValue) {
+    /// The branches of a dependent `?:` meet in their common type: `-1`
+    /// becomes unsigned, so the value is not `-1`.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Config {
+            static constexpr bool flag = true;
+        };
+
+        template <typename T, long long N = (Config<T>::flag ? -1 : 0u)>
+        struct P {
+            using type = char;
+        };
+
+        template <typename T>
+        struct P<T, -1> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<X>::type;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_FALSE(input->isSpecificBuiltinType(clang::BuiltinType::Int));
+}
+
+TEST_CASE(SignedOverflowValue) {
+    /// An overflowing default is no constant; the partial it would select
+    /// must not be chosen.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Config {
+            static constexpr int top = 2147483647;
+        };
+
+        template <typename T, int N = Config<T>::top + 1>
+        struct P {
+            using type = char;
+        };
+
+        template <typename T>
+        struct P<T, -2147483647 - 1> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<X>::type;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_FALSE(input->isSpecificBuiltinType(clang::BuiltinType::Int));
+}
+
 TEST_CASE(AmbiguousBaseMember) {
     add_main("main.cpp", R"code(
         template <typename T>

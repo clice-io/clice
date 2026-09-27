@@ -795,7 +795,13 @@ struct Folder {
             *value = promoted(*value, unary->getType());
             switch(unary->getOpcode()) {
                 case clang::UO_Plus: break;
-                case clang::UO_Minus: *value = -*value; break;
+                case clang::UO_Minus: {
+                    if(value->isSigned() && value->isMinSignedValue()) {
+                        return std::nullopt;
+                    }
+                    *value = -*value;
+                    break;
+                }
                 case clang::UO_Not: *value = ~*value; break;
                 case clang::UO_LNot: *value = truth(value->isZero()); break;
                 default: return std::nullopt;
@@ -812,9 +818,31 @@ struct Folder {
             if(!condition) {
                 return std::nullopt;
             }
-            auto value = fold(condition->isZero() ? conditional->getFalseExpr()
-                                                  : conditional->getTrueExpr());
-            return value ? typed(*value, conditional->getType()) : std::nullopt;
+            auto* chosen =
+                condition->isZero() ? conditional->getFalseExpr() : conditional->getTrueExpr();
+            auto value = fold(chosen);
+            if(!value) {
+                return std::nullopt;
+            }
+            auto type = conditional->getType();
+            if(!type->isDependentType()) {
+                return typed(*value, type);
+            }
+
+            /// Under a still-dependent type Sema has not brought the branches
+            /// to their common type; the other branch must already agree.
+            auto other = fold(chosen == conditional->getTrueExpr() ? conditional->getFalseExpr()
+                                                                   : conditional->getTrueExpr());
+            if(!other) {
+                return std::nullopt;
+            }
+            auto result = promoted(*value, type);
+            auto rest = promoted(*other, type);
+            if(result.getBitWidth() != rest.getBitWidth() ||
+               result.isUnsigned() != rest.isUnsigned()) {
+                return std::nullopt;
+            }
+            return result;
         }
 
         auto value = value_of(expr);
@@ -858,19 +886,35 @@ struct Folder {
             return std::nullopt;
         }
 
+        /// Signed overflow leaves the expression no constant at all.
+        bool overflow = false;
+        bool is_signed = lhs->isSigned();
+        auto signed_result = [](llvm::APInt value) {
+            return llvm::APSInt(std::move(value), /*isUnsigned=*/false);
+        };
         llvm::APSInt result;
         switch(op) {
-            case clang::BO_Mul: result = *lhs * *rhs; break;
+            case clang::BO_Mul: {
+                result = is_signed ? signed_result(lhs->smul_ov(*rhs, overflow)) : *lhs * *rhs;
+                break;
+            }
             case clang::BO_Div:
             case clang::BO_Rem: {
                 if(rhs->isZero()) {
                     return std::nullopt;
                 }
+                overflow = is_signed && lhs->isMinSignedValue() && rhs->isAllOnes();
                 result = op == clang::BO_Div ? *lhs / *rhs : *lhs % *rhs;
                 break;
             }
-            case clang::BO_Add: result = *lhs + *rhs; break;
-            case clang::BO_Sub: result = *lhs - *rhs; break;
+            case clang::BO_Add: {
+                result = is_signed ? signed_result(lhs->sadd_ov(*rhs, overflow)) : *lhs + *rhs;
+                break;
+            }
+            case clang::BO_Sub: {
+                result = is_signed ? signed_result(lhs->ssub_ov(*rhs, overflow)) : *lhs - *rhs;
+                break;
+            }
             case clang::BO_And: result = *lhs & *rhs; break;
             case clang::BO_Xor: result = *lhs ^ *rhs; break;
             case clang::BO_Or: result = *lhs | *rhs; break;
@@ -881,6 +925,9 @@ struct Folder {
             case clang::BO_EQ: result = truth(*lhs == *rhs); break;
             case clang::BO_NE: result = truth(*lhs != *rhs); break;
             default: return std::nullopt;
+        }
+        if(overflow) {
+            return std::nullopt;
         }
         return typed(result, binary->getType());
     }
