@@ -1,5 +1,6 @@
 #include "server/dispatcher.h"
 
+#include <type_traits>
 #include <utility>
 
 #include "server/editor_context.h"
@@ -297,6 +298,9 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     auto& session = *ticket.session;
     auto path_id = session.path_id;
     auto path = std::string(project.file_table.resolve(path_id));
+    // A completion reply stays useful after an edit: the client filters it
+    // by what was typed meanwhile.
+    constexpr bool snapshot = std::is_same_v<Params, worker::CompletionParams>;
 
     // This build compiles the same content the quarantine watches.
     QuarantineGate entry(session.quarantine, evidence, QuarantineGate::Scope::Content);
@@ -337,9 +341,9 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     }
     auto wait_ms = timer.ms_f();
 
-    // A reply on the carried buffer is still useful; a recovery probe spent
-    // on it is not — the edit that armed the probe replaced that buffer.
-    if(!ticket.fresh() && session.quarantine.active()) {
+    // Nor is a recovery probe spent on the carried buffer: the edit that
+    // armed it replaced that buffer.
+    if(!ticket.fresh() && (!snapshot || session.quarantine.active())) {
         co_return kota::outcome_error(content_modified());
     }
 
@@ -365,7 +369,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
             session.quarantine.on_kind_crash(evidence, worker::death_of(error));
         },
         {.token = std::move(token)});
-    result = land(ticket, evidence, label, std::move(result), /*snapshot=*/true);
+    result = land(ticket, evidence, label, std::move(result), snapshot);
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",

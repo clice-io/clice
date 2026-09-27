@@ -54,6 +54,14 @@ test("include completion closes directive", async ({ session }) => {
         range: { start: { line: 0, character: 10 }, end: { line: 0, character: 15 } },
         newText: 'myheader.h"',
     });
+
+    // Picked in an earlier path component, a header ends the path there.
+    client.change(uri, 3, '#include "my/rest.h"');
+    item = itemsOf(await client.completionAt(uri, 0, 12)).find((i) => i.label === "myheader.h");
+    expect(editOf(item)).toEqual({
+        range: { start: { line: 0, character: 10 }, end: { line: 0, character: 20 } },
+        newText: 'myheader.h"',
+    });
 });
 
 /// Sources and other non-header files on the search path are not candidates.

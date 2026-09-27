@@ -4,6 +4,7 @@
 #include "syntax/include_resolver.h"
 #include "syntax/lexer.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
@@ -24,17 +25,29 @@ bool is_module_name_char(char c) {
     return is_identifier_char(c) || c == '.' || c == ':';
 }
 
-/// The header filter of clang's own include completion, so both
-/// completion paths list the same files: header extensions everywhere,
-/// extensionless files (the standard library's, Qt's, frameworks') only
-/// where such headers live.
+/// Clang's own include-completion filter widened by the fragment
+/// extensions projects include (`.inl`, `.ipp`, `.def`, ...): header
+/// extensions everywhere, extensionless files (the standard library's,
+/// Qt's, frameworks') only where such headers live.
 bool looks_like_header(llvm::StringRef name,
                        llvm::StringRef dir,
                        llvm::StringRef search_dir,
                        bool system) {
-    if(name.ends_with_insensitive(".h") || name.ends_with_insensitive(".hh") ||
-       name.ends_with_insensitive(".hpp") || name.ends_with_insensitive(".hxx") ||
-       name.ends_with_insensitive(".inc")) {
+    auto extension = llvm::sys::path::extension(name).lower();
+    if(llvm::is_contained({".h",
+                           ".hh",
+                           ".hpp",
+                           ".hxx",
+                           ".h++",
+                           ".inc",
+                           ".inl",
+                           ".ipp",
+                           ".tcc",
+                           ".tpp",
+                           ".txx",
+                           ".def",
+                           ".cuh"},
+                          extension)) {
         return true;
     }
     if(name.contains('.')) {

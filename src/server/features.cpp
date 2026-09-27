@@ -745,17 +745,25 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
                                                     angled,
                                                     dir_cache);
 
-            // A header closes the directive, a directory continues the
-            // path; the delimiter the candidate ends with replaces one
-            // already there instead of doubling it.
-            auto edit = [&](llvm::StringRef name, char delimiter) {
+            // A directory continues the path, replacing a `/` already
+            // there; a header ends it and closes the directive, replacing
+            // the rest of the path through a closing delimiter already there.
+            llvm::StringRef text = session->text;
+            char closer = angled ? '>' : '"';
+            auto line_end = std::min(text.find_first_of("\r\n", pctx.replace.end), text.size());
+            auto close = text.slice(pctx.replace.end, line_end).find(closer);
+            auto edit = [&](const IncludeCandidate& candidate) {
                 auto end = pctx.replace.end;
-                if(end < session->text.size() && session->text[end] == delimiter) {
-                    end += 1;
+                if(candidate.is_directory) {
+                    if(text.substr(end).starts_with("/")) {
+                        end += 1;
+                    }
+                } else if(close != llvm::StringRef::npos) {
+                    end += close + 1;
                 }
                 return protocol::TextEdit{
                     .range = *map.to_range(pctx.replace.begin, end),
-                    .new_text = name.str() + delimiter,
+                    .new_text = candidate.name + (candidate.is_directory ? '/' : closer),
                 };
             };
             std::vector<protocol::CompletionItem> items;
@@ -764,7 +772,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
                 protocol::CompletionItem item;
                 item.label = c.is_directory ? c.name + "/" : c.name;
                 item.kind = protocol::CompletionItemKind::File;
-                item.text_edit = edit(c.name, c.is_directory ? '/' : angled ? '>' : '"');
+                item.text_edit = edit(c);
                 items.push_back(std::move(item));
             }
             auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(items);

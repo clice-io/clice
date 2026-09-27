@@ -891,7 +891,9 @@ kota::task<std::optional<std::string>>
                 projections.set_pch_key(path_id, std::nullopt);
             }
             co_return std::nullopt;
-        case PCHPlan::Verdict::Defer: co_return plan.previous;
+        // The adopted PCH may by now belong to a newer buffer than a
+        // stale request's; without the license it cannot tell.
+        case PCHPlan::Verdict::Defer: co_return license() ? plan.previous : std::nullopt;
         case PCHPlan::Verdict::Acquire: break;
     }
     auto pch_key = plan.request.pch_key;
