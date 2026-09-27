@@ -39,7 +39,7 @@ ninja = "*"
 # and the sysroots of all six targets (glibc 2.17, mingw-w64, macOS runtimes
 # on Xcode's SDK), so a cross build needs nothing else. Its version is the
 # one of the libclang cmake/llvm.cmake downloads.
-xclang = "==23.1.2.2"
+xclang = "==23.1.2.3"
 # cmake/archive.cmake pipes tar through xz for the symbol archives.
 xz = ">=5.8.1,<6"
 
@@ -77,7 +77,7 @@ gcc = "==15.2.0"
 gxx = "==15.2.0"
 # The symbolization round-trip test replays the release strip/GSYM flow
 # (linux-only, like the crash tests it builds on) with xclang's LLVM tools.
-xclang = "==23.1.2.2"
+xclang = "==23.1.2.3"
 
 # The NVCC toolchain tests drive a real nvcc; cudart is the runtime the
 # probe compiles against and curand is included unconditionally by clang's
@@ -92,16 +92,16 @@ libcurand-dev = "*"
 # The linux-aarch64 cross-test job runs the integration suite on a native
 # arm64 runner, so the symbolization test needs the same tools there.
 [feature.test.target.linux-aarch64.dependencies]
-xclang = "==23.1.2.2"
+xclang = "==23.1.2.3"
 
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
 # LLVM cannot parse.  Providing upstream clang + lld in PATH prevents
 # fallback to /usr/bin/clang++ and satisfies toolchain.cmake's -fuse-ld=lld.
 [feature.test.target.osx-64.dependencies]
-xclang = "==23.1.2.2"
+xclang = "==23.1.2.3"
 
 [feature.test.target.osx-arm64.dependencies]
-xclang = "==23.1.2.2"
+xclang = "==23.1.2.3"
 
 # Debug builds are ASAN-instrumented; macOS links the ASAN runtime as a
 # dylib resolved against the build env, which artifact-based test jobs
@@ -253,10 +253,10 @@ platforms = ["linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 # Same mitigation as feature.test: editor-prepare configures fixtures with
 # toolchain.cmake's -fuse-ld=lld, which Apple system clang rejects.
 [feature.editor.target.osx-arm64.dependencies]
-xclang = "==23.1.2.2"
+xclang = "==23.1.2.3"
 
 [feature.editor.target.osx-64.dependencies]
-xclang = "==23.1.2.2"
+xclang = "==23.1.2.3"
 
 # Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]

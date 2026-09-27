@@ -257,6 +257,52 @@ TEST_CASE(SignatureHelpRequest) {
     ASSERT_TRUE(test_done);
 }
 
+// #701: ordering two constructor templates of a class template whose pack
+// follows another parameter crashed clang (xclang patches/0001).
+TEST_CASE(ConstructorTemplatesOfClassTemplate) {
+    std::string text = R"(template <int> struct index {};
+template <class, class...> struct V {
+  template <int I> V(index<I>);
+  template <class = void> V(index<0>);
+  void f() { V(); }
+};
+)";
+    TempDir tmp;
+    tmp.touch("ctor_templates.cpp", text);
+    auto src = tmp.path("ctor_templates.cpp");
+    auto offset = static_cast<uint32_t>(text.find("V();") + 2);
+
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn());
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        worker::CompletionParams completion;
+        completion.file = src;
+        completion.text = text;
+        completion.directory = "/tmp";
+        completion.arguments = make_args(src);
+        completion.offset = offset;
+        auto completed = co_await w.peer->send_request(completion);
+        EXPECT_TRUE(completed.has_value());
+
+        worker::SignatureHelpParams help;
+        help.file = src;
+        help.text = text;
+        help.directory = "/tmp";
+        help.arguments = make_args(src);
+        help.offset = offset;
+        auto helped = co_await w.peer->send_request(help);
+        EXPECT_TRUE(helped.has_value());
+
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ASSERT_TRUE(test_done);
+}
+
 TEST_CASE(MultipleStatelessRequests) {
     TempDir tmp;
     std::vector<std::string> paths;
