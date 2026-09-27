@@ -36,6 +36,10 @@ TEST_CASE(PostfixDecrement) {
     EXPECT_FALSE(follows_access_operator("while (x-->", 11));
 }
 
+TEST_CASE(NonAsciiOperand) {
+    EXPECT_TRUE(follows_access_operator("vé2.", 5));
+}
+
 TEST_CASE(CursorBeforeOperator) {
     // Only the text up to the cursor counts.
     EXPECT_FALSE(follows_access_operator("w.x", 1));
@@ -176,6 +180,24 @@ TEST_CASE(ImportCursorMidLine) {
     auto ctx = detect_completion_context("import std.io", 10);
     EXPECT_EQ(ctx.kind, CompletionContext::Import);
     EXPECT_EQ(ctx.prefix, "std");
+}
+
+TEST_CASE(IncludeReplaceSpan) {
+    // The last path component through its untyped rest, delimiter excluded.
+    auto ctx = detect_completion_context("#include <sys/ty.h>", 16);
+    EXPECT_EQ(ctx.prefix, "sys/ty");
+    EXPECT_EQ(ctx.replace.begin, 14u);
+    EXPECT_EQ(ctx.replace.end, 18u);
+}
+
+TEST_CASE(ImportReplaceSpan) {
+    auto ctx = detect_completion_context("import std.io", 10);
+    EXPECT_EQ(ctx.replace.begin, 7u);
+    EXPECT_EQ(ctx.replace.end, 13u);
+}
+
+TEST_CASE(ImportMemberAccess) {
+    EXPECT_EQ(detect_completion_context("import->x", 8).kind, CompletionContext::None);
 }
 
 };  // TEST_SUITE(DetectCompletionContext)

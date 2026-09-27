@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "syntax/token.h"
 #include "vfs/file_table.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -13,7 +14,7 @@ namespace clice {
 
 class DependencyGraph;
 
-struct ResolvedSearchConfig;
+struct SearchConfig;
 struct DirListingCache;
 
 /// What kind of preamble-level completion is being requested.
@@ -28,6 +29,10 @@ enum class CompletionContext : std::uint8_t {
 struct PreambleCompletionContext {
     CompletionContext kind = CompletionContext::None;
     std::string prefix;
+
+    /// What a chosen candidate replaces: the name under the cursor — of an
+    /// include, its last path component — typed part and untyped rest.
+    LocalSourceRange replace;
 };
 
 /// Detect whether the cursor is inside a #include or import directive.
@@ -51,13 +56,14 @@ struct IncludeCandidate {
     bool is_directory = false;
 };
 
-/// Return file/directory names matching a prefix in the given search paths.
-/// @param resolved  Pre-resolved search directories with cached directory listings.
-/// @param angled_start  Index where angled (<>) search dirs begin.
-/// @param prefix    Partially-typed include path (e.g. "vec" or "sys/").
-/// @param angled    True for <> includes, false for "" includes.
-/// @param dir_cache  Shared directory listing cache (for subdirectory lookups).
-std::vector<IncludeCandidate> complete_include_path(const ResolvedSearchConfig& resolved,
+/// Return header and directory names matching a prefix in the given search paths.
+/// @param config        The command's search directories.
+/// @param includer_dir  Directory of the file being edited, searched first by "" includes.
+/// @param prefix        Partially-typed include path (e.g. "vec" or "sys/").
+/// @param angled        True for <> includes, false for "" includes.
+/// @param dir_cache     Directory listing cache.
+std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
+                                                    llvm::StringRef includer_dir,
                                                     llvm::StringRef prefix,
                                                     bool angled,
                                                     DirListingCache& dir_cache);

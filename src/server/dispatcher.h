@@ -118,9 +118,15 @@ private:
     kota::ipc::Error refuse(const std::shared_ptr<Session>& session);
 
     /// The single exit of every dispatch: a fresh reply settles the kind's
-    /// ledger, a stale one never leaves as a value.
+    /// ledger, a stale one never leaves as a value — unless it is a
+    /// `snapshot` reply, which describes the buffer the request carried
+    /// and which the client reconciles with the edits made meanwhile.
     template <typename Outcome>
-    Outcome land(const Ticket& ticket, std::uint8_t kind, llvm::StringRef label, Outcome result);
+    Outcome land(const Ticket& ticket,
+                 std::uint8_t kind,
+                 llvm::StringRef label,
+                 Outcome result,
+                 bool snapshot = false);
 
     Project& project;
     EditorContext& contexts;

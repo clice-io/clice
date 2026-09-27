@@ -111,7 +111,8 @@ template <typename Outcome>
 Outcome Dispatcher::land(const Ticket& ticket,
                          std::uint8_t kind,
                          llvm::StringRef label,
-                         Outcome result) {
+                         Outcome result,
+                         bool snapshot) {
     auto& session = *ticket.session;
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
@@ -129,6 +130,9 @@ Outcome Dispatcher::land(const Ticket& ticket,
     // settles only when fresh. Leaving quarantine here clears the published
     // diagnostic: no compile runs to overwrite it.
     if(!ticket.fresh()) {
+        if(snapshot) {
+            return result;
+        }
         return Outcome{kota::outcome_error(content_modified())};
     }
     bool was_active = session.quarantine.active();
@@ -306,15 +310,12 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     wp.file = path;
     wp.text = session.text;
     auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
-    if(resolution.synthesized) {
-        wp.synthesized = resolution.synthesized->files;
-        resolution.synthesized->append_suffix_include(wp.text);
-    }
     wp.config = project.config;
 
     ScopedTimer timer;
     ASTFamily::StatelessInputs inputs;
     if(!co_await ast.prepare_stateless_inputs(ticket,
+                                              wp.text,
                                               wp.directory,
                                               wp.arguments,
                                               resolution.synthesized.get(),
@@ -336,12 +337,12 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     }
     auto wait_ms = timer.ms_f();
 
-    if(!ticket.fresh()) {
-        co_return kota::outcome_error(content_modified());
-    }
-
     lsp::LineMap map(wp.text);
     wp.offset = clamped_offset(map, position);
+    if(resolution.synthesized) {
+        wp.synthesized = resolution.synthesized->files;
+        resolution.synthesized->append_suffix_include(wp.text);
+    }
 
     // The license is re-taken here: the entry gate's answer may have been
     // spent by a concurrent recovery during the dependency awaits.
@@ -358,7 +359,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
             session.quarantine.on_kind_crash(evidence, worker::death_of(error));
         },
         {.token = std::move(token)});
-    result = land(ticket, evidence, label, std::move(result));
+    result = land(ticket, evidence, label, std::move(result), /*snapshot=*/true);
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",

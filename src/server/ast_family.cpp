@@ -870,28 +870,28 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     std::unreachable();
 }
 
-kota::task<bool> ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
-                                       std::uint64_t license_generation,
-                                       std::uint64_t license_epoch,
-                                       const std::string& directory,
-                                       const std::vector<std::string>& arguments,
-                                       const SynthesizedContext* synthesized) {
+kota::task<std::optional<std::string>>
+    ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
+                          llvm::StringRef text,
+                          std::uint64_t license_generation,
+                          std::uint64_t license_epoch,
+                          const std::string& directory,
+                          const std::vector<std::string>& arguments,
+                          const SynthesizedContext* synthesized) {
     auto path_id = session->path_id;
     auto license = [&] {
         return session->generation == license_generation &&
                projections.epoch(path_id) == license_epoch;
     };
-    // A request invalidated during its earlier awaits (module
-    // dependencies) must not touch the adopted key at all: the reset
-    // branch below writes it before the first suspension point.
-    if(!license()) {
-        co_return false;
-    }
 
-    auto plan = plan_pch(path_id, session->text, directory, arguments, synthesized);
+    auto plan = plan_pch(path_id, text, directory, arguments, synthesized);
     switch(plan.verdict) {
-        case PCHPlan::Verdict::None: projections.set_pch_key(path_id, std::nullopt); co_return true;
-        case PCHPlan::Verdict::Defer: co_return plan.previous.has_value();
+        case PCHPlan::Verdict::None:
+            if(license()) {
+                projections.set_pch_key(path_id, std::nullopt);
+            }
+            co_return std::nullopt;
+        case PCHPlan::Verdict::Defer: co_return plan.previous;
         case PCHPlan::Verdict::Acquire: break;
     }
     auto pch_key = plan.request.pch_key;
@@ -902,26 +902,27 @@ kota::task<bool> ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
         session->quarantine.on_kind_crash(evidence_kind(EvidenceKind::PCH), death);
     });
     if(outcome != PCHFamily::Outcome::Ready) {
-        co_return false;
+        co_return std::nullopt;
     }
 
     // Adoption is gated on the round outcome, never on leftover cache
     // paths, and on this request's own license: a supersede or a
     // Lost-type invalidation while we waited means the resolved command
     // may describe nothing — neither the key write nor the evidence
-    // wash belongs to this request anymore.
-    if(!license()) {
-        co_return false;
+    // wash belongs to this request anymore. The request itself still
+    // compiles against the artifact: it was planned from the text it sends.
+    if(license()) {
+        projections.set_pch_key(path_id, pch_key);
+        // Adopting a proven-good artifact disproves the session's PCH strikes
+        // as surely as building one — but only its own; every consumer washes
+        // for itself.
+        session->quarantine.on_kind_land(evidence_kind(EvidenceKind::PCH));
     }
-    projections.set_pch_key(path_id, pch_key);
-    // Adopting a proven-good artifact disproves the session's PCH strikes
-    // as surely as building one — but only its own; every consumer washes
-    // for itself.
-    session->quarantine.on_kind_land(evidence_kind(EvidenceKind::PCH));
-    co_return true;
+    co_return pch_key;
 }
 
 kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
+                                                     llvm::StringRef text,
                                                      const std::string& directory,
                                                      const std::vector<std::string>& arguments,
                                                      const SynthesizedContext* synthesized,
@@ -941,7 +942,7 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    auto scan_text = session->text;
+    auto scan_text = text.str();
     if(synthesized) {
         synthesized->append_suffix_include(scan_text);
     }
@@ -955,16 +956,15 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     }
 
     if(readonly != ReadonlyMode::On) {
-        auto pch_ok = co_await ensure_pch(session,
-                                          ticket.generation,
-                                          license_epoch,
-                                          directory,
-                                          arguments,
-                                          synthesized);
-        auto projection = projections.projection(path_id);
-        if(pch_ok && projection && projection->pch_key.has_value()) {
-            if(auto pch_it = project.pch_cache.find(*projection->pch_key);
-               pch_it != project.pch_cache.end()) {
+        auto pch_key = co_await ensure_pch(session,
+                                           text,
+                                           ticket.generation,
+                                           license_epoch,
+                                           directory,
+                                           arguments,
+                                           synthesized);
+        if(pch_key) {
+            if(auto pch_it = project.pch_cache.find(*pch_key); pch_it != project.pch_cache.end()) {
                 inputs.pch = {pch_it->second.path, pch_it->second.bound};
             }
         }

@@ -738,16 +738,33 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
             auto search_config = project.cdb.search_config(ref);
             DirListingCache dir_cache;
             dir_cache.shared = &project.file_table;
-            auto resolved = resolve_search_config(search_config, dir_cache);
             bool angled = (pctx.kind == CompletionContext::IncludeAngled);
-            auto candidates = complete_include_path(resolved, pctx.prefix, angled, dir_cache);
+            auto candidates = complete_include_path(search_config,
+                                                    path::parent_path(path),
+                                                    pctx.prefix,
+                                                    angled,
+                                                    dir_cache);
 
+            // A header closes the directive, a directory continues the
+            // path; the delimiter the candidate ends with replaces one
+            // already there instead of doubling it.
+            auto edit = [&](llvm::StringRef name, char delimiter) {
+                auto end = pctx.replace.end;
+                if(end < session->text.size() && session->text[end] == delimiter) {
+                    end += 1;
+                }
+                return protocol::TextEdit{
+                    .range = *map.to_range(pctx.replace.begin, end),
+                    .new_text = name.str() + delimiter,
+                };
+            };
             std::vector<protocol::CompletionItem> items;
             items.reserve(candidates.size());
             for(auto& c: candidates) {
                 protocol::CompletionItem item;
                 item.label = c.is_directory ? c.name + "/" : c.name;
                 item.kind = protocol::CompletionItemKind::File;
+                item.text_edit = edit(c.name, c.is_directory ? '/' : angled ? '>' : '"');
                 items.push_back(std::move(item));
             }
             auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(items);
@@ -762,7 +779,10 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
                 protocol::CompletionItem item;
                 item.label = name;
                 item.kind = protocol::CompletionItemKind::Module;
-                item.insert_text = name + ";";
+                item.text_edit = protocol::TextEdit{
+                    .range = *map.to_range(pctx.replace.begin, pctx.replace.end),
+                    .new_text = name + ";",
+                };
                 items.push_back(std::move(item));
             }
             auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(items);

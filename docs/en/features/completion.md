@@ -2,7 +2,7 @@
 
 ## Include paths
 
-Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no compilation needed). Quoted completion searches the configured include directories, not the includer's own directory (unless it is on the include path).
+Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no compilation needed). Quoted completion searches the includer's own directory first, then the configured include directories. Only files that look like headers are candidates: header extensions everywhere, extensionless files in system directories and other places such headers live.
 
 <!-- BEGIN GENERATED ITEMS: include_path_completion -->
 
@@ -994,19 +994,17 @@ Not yet implemented. Completion items do not include documentation.
 
 ## Trigger characters
 
-Registered: `. < > : " / *`. Space (` `) is planned but not yet merged ([#460](https://github.com/clice-io/clice/pull/460)).
+Registered: `. < > : " /` and space.
 
-| Character | Context         | Behavior                                                                                                  |
-| --------- | --------------- | --------------------------------------------------------------------------------------------------------- |
-| `.`       | Member access   | Semantic completion                                                                                       |
-| `->`      | Pointer member  | `[ ]` Not yet working — dot-to-arrow fix-its not propagated                                               |
-| `::`      | Via `:` trigger | Scope completion                                                                                          |
-| `<`       | `#include <`    | Include path completion                                                                                   |
-| `>`       | Template close  | Semantic completion                                                                                       |
-| `"`       | `#include "`    | Include path completion                                                                                   |
-| `/`       | Path separator  | Include path continuation                                                                                 |
-| `*`       | Pointer deref   | Semantic completion                                                                                       |
-| ` `       | After `import`  | Module name completion (extension-gated) — **pending [#460](https://github.com/clice-io/clice/pull/460)** |
+| Character | Context        | Behavior                                            |
+| --------- | -------------- | --------------------------------------------------- |
+| `.`       | Member access  | Semantic completion                                 |
+| `>`       | Via `->`       | Pointer member completion; any other `>` is ignored |
+| `:`       | Via `::`       | Scope completion                                    |
+| `<`       | `#include <`   | Include path completion                             |
+| `"`       | `#include "`   | Include path completion                             |
+| `/`       | Path separator | Include path continuation                           |
+| ` `       | After `import` | Module name completion (extension-gated)            |
 
 ## Protocol
 

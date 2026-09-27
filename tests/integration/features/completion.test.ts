@@ -25,6 +25,73 @@ test("include completion quoted", async ({ session }) => {
     client.close(uri);
 });
 
+function itemsOf(
+    result: proto.CompletionItem[] | proto.CompletionList | null,
+): proto.CompletionItem[] {
+    return Array.isArray(result) ? result : (result?.items ?? []);
+}
+
+function editOf(item: proto.CompletionItem | undefined): proto.TextEdit | undefined {
+    const edit = item?.textEdit;
+    return edit !== undefined && "range" in edit ? edit : undefined;
+}
+
+/// A header candidate closes the directive, replacing a delimiter already there.
+test("include completion closes directive", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+
+    client.change(uri, 1, '#include "my');
+    let item = itemsOf(await client.completionAt(uri, 0, 12)).find((i) => i.label === "myheader.h");
+    expect(editOf(item)).toEqual({
+        range: { start: { line: 0, character: 10 }, end: { line: 0, character: 12 } },
+        newText: 'myheader.h"',
+    });
+
+    client.change(uri, 2, '#include "myhe"');
+    item = itemsOf(await client.completionAt(uri, 0, 12)).find((i) => i.label === "myheader.h");
+    expect(editOf(item)).toEqual({
+        range: { start: { line: 0, character: 10 }, end: { line: 0, character: 15 } },
+        newText: 'myheader.h"',
+    });
+});
+
+/// Sources and other non-header files on the search path are not candidates.
+test("include completion lists headers", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+
+    client.change(uri, 1, '#include "');
+    const labels = labelsOf(await client.completionAt(uri, 0, 10));
+    expect(labels).toContain("myheader.h");
+    expect(labels).toContain("subdir/");
+    expect(labels).not.toContain("main.cpp");
+    expect(labels).not.toContain("compile_commands.json");
+});
+
+/// A quoted include finds headers next to the file without any -I.
+test("include completion sibling headers", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("src/main.cpp", "int main() {}\n");
+    workspace.write("src/local.h", "#pragma once\n");
+    workspace.writeCDB(["src/main.cpp"]);
+    await client.initialize(workspace);
+
+    const [uri] = await client.openAndWait("src/main.cpp");
+    client.change(uri, 1, '#include "lo');
+    expect(labelsOf(await client.completionAt(uri, 0, 12))).toContain("local.h");
+});
+
+/// An identifier named `import` opening a line is not an import statement.
+test("import identifier member access", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+    client.change(uri, 1, "struct S { int member; };\nvoid f(S* import) {\nimport->\n}");
+
+    const result = await client.completionAt(uri, 2, 8, { triggerCharacter: ">" });
+    expect(labelsOf(result)).toContain("member");
+});
+
 /// Completion for #include "subdir/ should list files in subdir.
 test("include completion subdirectory", async ({ session }) => {
     const { client } = await session("include_completion");
@@ -111,6 +178,10 @@ test("import completion basic", async ({ session }) => {
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
     expect(labels, `Expected 'A' in completion labels, got: ${labels.join(", ")}`).toContain("A");
+    expect(editOf(itemsOf(result).find((i) => i.label === "A"))).toEqual({
+        range: { start: { line: 0, character: 7 }, end: { line: 0, character: 7 } },
+        newText: "A;",
+    });
 });
 
 /// Space-triggered completion on an import line lists modules.
