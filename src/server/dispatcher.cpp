@@ -298,10 +298,6 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     auto& session = *ticket.session;
     auto path_id = session.path_id;
     auto path = std::string(project.file_table.resolve(path_id));
-    // A completion reply stays useful after an edit: the client filters it
-    // by what was typed meanwhile.
-    constexpr bool snapshot = std::is_same_v<Params, worker::CompletionParams>;
-
     // This build compiles the same content the quarantine watches.
     QuarantineGate entry(session.quarantine, evidence, QuarantineGate::Scope::Content);
     if(entry.refused()) {
@@ -341,14 +337,22 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     }
     auto wait_ms = timer.ms_f();
 
-    // Nor is a recovery probe spent on the carried buffer: the edit that
-    // armed it replaced that buffer.
-    if(!ticket.fresh() && (!snapshot || session.quarantine.active())) {
+    lsp::LineMap map(wp.text);
+    wp.offset = clamped_offset(map, position);
+
+    // A completion reply stays useful after edits at or past the cursor:
+    // its ranges still hold, and the client filters it by what was typed
+    // meanwhile. It never spends a recovery probe, though: the edit that
+    // armed the probe replaced the carried buffer.
+    auto carried = wp.text.substr(0, wp.offset);
+    auto snapshot = [&] {
+        return std::is_same_v<Params, worker::CompletionParams> && !session.quarantine.active() &&
+               session.text.starts_with(carried);
+    };
+    if(!ticket.fresh() && !snapshot()) {
         co_return kota::outcome_error(content_modified());
     }
 
-    lsp::LineMap map(wp.text);
-    wp.offset = clamped_offset(map, position);
     if(resolution.synthesized) {
         wp.synthesized = resolution.synthesized->files;
         resolution.synthesized->append_suffix_include(wp.text);
@@ -369,7 +373,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
             session.quarantine.on_kind_crash(evidence, worker::death_of(error));
         },
         {.token = std::move(token)});
-    result = land(ticket, evidence, label, std::move(result), snapshot);
+    result = land(ticket, evidence, label, std::move(result), snapshot());
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
