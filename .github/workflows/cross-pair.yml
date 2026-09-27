@@ -62,8 +62,14 @@ jobs:
             Linux-X64) subdir=linux-64 ;; Linux-ARM64) subdir=linux-aarch64 ;;
             macOS-X64) subdir=osx-64 ;; macOS-ARM64) subdir=osx-arm64 ;;
             Windows-X64) subdir=win-64 ;; Windows-ARM64) subdir=win-arm64 ;;
+            *) echo "::error::no conda platform for $RUNNER_OS-$RUNNER_ARCH"; exit 1 ;;
           esac
-          echo "scope=$(grep -om1 "/$subdir/xclang-[^/ ]*\.conda" pixi.lock | sed 's|.*/||')" >> "$GITHUB_OUTPUT"
+          scope=$(grep -om1 "/$subdir/xclang-[^/ ]*\.conda" pixi.lock | sed 's|.*/||')
+          if [ -z "$scope" ]; then
+            echo "::error::no xclang package for $subdir in pixi.lock"
+            exit 1
+          fi
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
 
       - name: Restore compiler cache
         uses: actions/cache/restore@v6
