@@ -3,6 +3,7 @@
 /// apply, the kind filter, and the index-backed actions that only exist
 /// with a project index.
 
+import * as fs from "node:fs";
 import type * as proto from "vscode-languageserver-protocol";
 import { SETTLE_TIME, sleep } from "@clice/tools/client";
 import { applyTextEdits, editsFor } from "@clice/tools/client/edits";
@@ -111,6 +112,38 @@ test("definitions vetted and placed through the index", async ({ session }) => {
     client.close(header);
     client.close(uri);
 });
+
+test.skipIf(process.platform === "win32")(
+    "closed host formats by the database's name",
+    async ({ session }) => {
+        const workspace = session.tmpdir();
+        workspace.write(".clang-format", "BasedOnStyle: LLVM\n");
+        workspace.write(
+            "vendor/.clang-format",
+            "BasedOnStyle: LLVM\nAllowShortFunctionsOnASingleLine: None\n",
+        );
+        workspace.write("widget.h", "#pragma once\nstruct Widget {\n  void a();\n};\n");
+        workspace.write("vendor/real/main.cpp", '#include "widget.h"\nint main() { return 0; }\n');
+        fs.symlinkSync(workspace.path("vendor/real"), workspace.path("src"));
+        workspace.writeCDB(["src/main.cpp"], { extraArgs: [`-I${workspace.root}`] });
+        const client = await session.spawn(workspace).initialize(workspace);
+        const [header] = await client.openAndWait("widget.h");
+
+        const actions = actionsOf(
+            await client.codeActions(header, {
+                start: { line: 1, character: 7 },
+                end: { line: 1, character: 7 },
+            }),
+        );
+        const host = actions.find(
+            (action) => action.title === "Define missing members of 'Widget' in main.cpp",
+        );
+        expect(host).toBeDefined();
+        const [edit] = editsFor(host!, workspace.uri("vendor/real/main.cpp"));
+        expect(edit!.newText).toBe("\nvoid Widget::a() {}\n");
+        client.close(header);
+    },
+);
 
 test("plain changes for a client without versioned edits", async ({ session }) => {
     const workspace = session.tmpdir();

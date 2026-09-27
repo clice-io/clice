@@ -191,7 +191,9 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         }
         auto host_path = project.file_table.display(host);
         auto host_session = sessions.find(host);
-        auto formatted = feature::format_snippet(host_path, *text);
+        auto formatted = feature::format_snippet(
+            host_session ? host_path : project.file_table.spelling(host).str(),
+            *text);
 
         // After the last definition of the container's members in the
         // host's serving rows, in the coordinates that source vouches
