@@ -2,7 +2,7 @@
 
 ## 包含路径
 
-由 `<`、`"`、`/` 字符触发。在构建 AST 之前处理（在 Preamble 层面处理，无需编译）。引号内的补全会搜索已配置的包含目录，不会搜索包含方文件自身所在的目录（除非该目录位于包含路径中）。
+由 `<`、`"`、`/` 字符触发。在构建 AST 之前处理（在 Preamble 层面处理，无需编译）。引号内的补全先搜索包含方文件自身所在的目录，再搜索已配置的包含目录。只有看起来像头文件的文件才会成为候选：任何目录下带头文件扩展名的文件，以及系统目录等存放此类头文件的位置中不带扩展名的文件。
 
 <!-- BEGIN GENERATED ITEMS: include_path_completion -->
 
@@ -26,6 +26,18 @@ tests/snap/code_completion/include_path_completion/01_include_quoted.cpp
 
 ```snap
 tests/snap/code_completion/include_path_completion/02_include_angled.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**闭合定界符**
+
+接受头文件候选时会补上闭合定界符；光标后已有的定界符会被替换，不会重复
+
+```snap
+tests/snap/code_completion/include_path_completion/03_closing_delimiter.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -957,19 +969,17 @@ tests/snap/code_completion/filtering_ranking/05_prefix_beats_subsequence.cpp
 
 ## 触发字符
 
-已注册：`. < > : " / *`。空格（` `）的支持处于计划中，但尚未合并（[#460](https://github.com/clice-io/clice/pull/460)）。
+已注册：`. < > : " /` 和空格。
 
-| 字符 | 上下文           | 行为                                                                                    |
-| ---- | ---------------- | --------------------------------------------------------------------------------------- |
-| `.`  | 成员访问         | 语义补全                                                                                |
-| `->` | 通过指针访问成员 | `[ ]` 不支持——尚未传递将点号改为箭头的修复建议                                          |
-| `::` | 通过 `:` 触发    | 作用域补全                                                                              |
-| `<`  | `#include <`     | 包含路径补全                                                                            |
-| `>`  | 模板闭合         | 语义补全                                                                                |
-| `"`  | `#include "`     | 包含路径补全                                                                            |
-| `/`  | 路径分隔符       | 继续补全包含路径                                                                        |
-| `*`  | 指针解引用       | 语义补全                                                                                |
-| ` `  | `import` 之后    | 模块名补全（受扩展限制）——**计划中 [#460](https://github.com/clice-io/clice/pull/460)** |
+| 字符 | 上下文         | 行为                                |
+| ---- | -------------- | ----------------------------------- |
+| `.`  | 成员访问       | 语义补全                            |
+| `>`  | 通过 `->` 触发 | 指针成员补全；其他位置的 `>` 不触发 |
+| `:`  | 通过 `::` 触发 | 作用域补全                          |
+| `<`  | `#include <`   | 包含路径补全                        |
+| `"`  | `#include "`   | 包含路径补全                        |
+| `/`  | 路径分隔符     | 继续补全包含路径                    |
+| ` `  | `import` 之后  | 模块名补全（受扩展限制）            |
 
 ## 协议
 

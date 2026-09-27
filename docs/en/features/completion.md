@@ -31,6 +31,19 @@ tests/snap/code_completion/include_path_completion/02_include_angled.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Closing delimiter**
+
+Accepting a header closes the directive, replacing a delimiter already
+typed after the cursor instead of doubling it
+
+```snap
+tests/snap/code_completion/include_path_completion/03_closing_delimiter.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 **Trigger contexts**
