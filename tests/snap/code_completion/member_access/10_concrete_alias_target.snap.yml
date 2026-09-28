@@ -4,15 +4,14 @@ input_file: member_access/10_concrete_alias_target.cpp
 ---
 plain:
 - { label: "Box", kind: Class, edit: "36:6-36:6" }
-- { label: "guarded", kind: Field, description: "int", edit: "36:6-36:6" }
 - { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "36:6-36:6" }
 - { label: "template", kind: Keyword, edit: "36:6-36:6" }
 - { label: "value", kind: Field, description: "int", edit: "36:6-36:6" }
-- { label: "~Box<int>", kind: Method, detail: "()", description: "void", edit: "36:6-36:6" }
+- { label: "~Box", kind: Method, detail: "()", description: "void", edit: "36:6-36:6" }
 
 pointer:
 - { label: "Box", kind: Class, edit: "38:6-38:6" }
 - { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "38:6-38:6" }
 - { label: "pointee", kind: Field, description: "char *", edit: "38:6-38:6" }
 - { label: "template", kind: Keyword, edit: "38:6-38:6" }
-- { label: "~Box<char *>", kind: Method, detail: "()", description: "void", edit: "38:6-38:6" }
+- { label: "~Box", kind: Method, detail: "()", description: "void", edit: "38:6-38:6" }
