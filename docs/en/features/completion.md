@@ -843,7 +843,7 @@ tests/snap/code_completion/functions_snippets/08_call_parentheses.cpp
 **Template argument placeholders**
 
 A class template inserts a placeholder per template parameter without a
-default
+default, and empty brackets when every parameter has one
 
 ```snap
 tests/snap/code_completion/functions_snippets/09_template_arguments.cpp

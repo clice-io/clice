@@ -572,6 +572,10 @@ public:
             };
             item.kind = candidate.kind;
             auto text = candidate.insert.empty() ? candidate.label : candidate.insert;
+            // A statement spanning lines follows the indentation it lands at.
+            if(text.find('\n') != std::string::npos) {
+                item.insert_text_mode = protocol::InsertTextMode::AdjustIndentation;
+            }
             if(client.insert_replace && prefix.whole != prefix.typed) {
                 item.text_edit = protocol::InsertReplaceEdit{
                     .new_text = std::move(text),
@@ -785,6 +789,11 @@ public:
                            (arguments || template_arguments)) {
                             item.insert = build_snippet(*ccs);
                             item.snippet = !item.insert.empty();
+                            // Every parameter defaulted: nothing to fill in,
+                            // but the name alone does not name a type.
+                            if(template_arguments && !item.snippet) {
+                                item.insert = item.label + "<>";
+                            }
                         }
                     }
 

@@ -800,7 +800,7 @@ tests/snap/code_completion/functions_snippets/08_call_parentheses.cpp
 
 **模板实参占位符**
 
-类模板为每个没有默认值的模板形参插入一个占位符
+类模板为每个没有默认值的模板形参插入一个占位符；所有形参都有默认值时插入一对空的尖括号
 
 ```snap
 tests/snap/code_completion/functions_snippets/09_template_arguments.cpp

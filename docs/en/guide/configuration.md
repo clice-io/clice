@@ -296,7 +296,7 @@ The `[code_completion]` section controls completion item assembly.
 | ------------------------ | ------ | ------- |
 | `enable_keyword_snippet` | `bool` | `false` |
 
-Complete keywords as snippets (not yet implemented).
+Complete statements such as `if` and `for` as snippets with placeholders for their parts; otherwise only the keyword is inserted. Ignored for clients without snippet support.
 
 </div>
 
@@ -306,7 +306,7 @@ Complete keywords as snippets (not yet implemented).
 | ----------------------------------- | ------ | ------- |
 | `enable_function_arguments_snippet` | `bool` | `false` |
 
-Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet.
+Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet. Ignored for clients without snippet support.
 
 </div>
 
@@ -316,7 +316,7 @@ Insert function arguments as a snippet when completing a call. For functions thi
 | ----------------------------------- | ------ | ------- |
 | `enable_template_arguments_snippet` | `bool` | `false` |
 
-Insert template arguments as a snippet on completion (not yet implemented).
+Insert template arguments as a snippet when completing a class, alias or variable template. Ignored for clients without snippet support.
 
 </div>
 
@@ -326,7 +326,7 @@ Insert template arguments as a snippet on completion (not yet implemented).
 | ------------------------------- | ------ | ------- |
 | `insert_paren_in_function_call` | `bool` | `false` |
 
-Insert parentheses when completing a function call (not yet implemented).
+Insert parentheses when completing a function call, unless the name is already followed by one; with snippet support the cursor lands between them.
 
 </div>
 
