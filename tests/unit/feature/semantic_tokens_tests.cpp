@@ -163,8 +163,37 @@ TEST_CASE(PreambleDefineUnderPch) {
     EXPECT_TOKEN("d1", SymbolKind::Directive);
     EXPECT_TOKEN("m0", SymbolKind::Macro);
     EXPECT_TOKEN("k0", SymbolKind::Primitive);
-    EXPECT_TOKEN("k1", SymbolKind::Keyword);
+    EXPECT_TOKEN("k1", SymbolKind::Keyword, SymbolModifiers::to_mask(SymbolModifiers::ControlFlow));
     EXPECT_TOKEN("c0", SymbolKind::Comment);
+}
+
+TEST_CASE(ControlFlowKeywords) {
+    // Control-transfer keywords carry ControlFlow; specifiers, `= default`
+    // and a directive name spelled as a keyword (`#if`) stay plain.
+    run_utf8(R"cpp(
+struct Base {
+    §(v0)⟦virtual⟧ ~Base() = §(f0)⟦default⟧;
+};
+
+§(d0)⟦#if⟧ 1
+int pick(int x) {
+    §(i0)⟦if⟧(x > 0) {
+        §(r0)⟦return⟧ 1;
+    } §(e0)⟦else⟧ {
+        §(t0)⟦throw⟧ x;
+    }
+}
+#endif
+)cpp");
+
+    auto control_flow = SymbolModifiers::to_mask(SymbolModifiers::ControlFlow);
+    EXPECT_TOKEN("i0", SymbolKind::Keyword, control_flow);
+    EXPECT_TOKEN("r0", SymbolKind::Keyword, control_flow);
+    EXPECT_TOKEN("e0", SymbolKind::Keyword, control_flow);
+    EXPECT_TOKEN("t0", SymbolKind::Keyword, control_flow);
+    EXPECT_TOKEN("v0", SymbolKind::Keyword);
+    EXPECT_TOKEN("f0", SymbolKind::Keyword);
+    EXPECT_TOKEN("d0", SymbolKind::Directive);
 }
 
 TEST_CASE(ModuleDeclarationUnderPch) {

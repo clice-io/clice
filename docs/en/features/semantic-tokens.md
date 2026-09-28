@@ -706,6 +706,19 @@ tests/snap/semantic_tokens/token_modifiers/10_user_defined_operator.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Control flow**
+
+Keywords that transfer control carry the control-flow modifier; other
+keywords, `default` in either role included, stay plain
+
+```snap
+tests/snap/semantic_tokens/token_modifiers/11_control_flow.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Conflict & Ambiguity

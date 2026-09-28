@@ -206,6 +206,10 @@
       {
         "id": "inactive",
         "description": "Token inside a preprocessor-inactive region (e.g. an #if 0 branch). The clice extension dims these regions; other clients can style the modifier directly."
+      },
+      {
+        "id": "controlFlow",
+        "description": "Keyword that transfers control (e.g. if, return, throw, co_await)."
       }
     ],
     "views": {

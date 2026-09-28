@@ -685,6 +685,18 @@ tests/snap/semantic_tokens/token_modifiers/10_user_defined_operator.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**控制流**
+
+转移控制的关键字带有控制流修饰符；其他关键字（包括两种用法下的 `default`）保持普通
+
+```snap
+tests/snap/semantic_tokens/token_modifiers/11_control_flow.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 冲突与歧义
