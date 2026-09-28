@@ -260,23 +260,23 @@ auto build_snippet(const clang::CodeCompletionString& ccs) -> std::string {
     return snippet;
 }
 
-/// A pattern's text through its typed text, the part inserted without
-/// snippets: `if` for the if statement, the whole declaration for an
-/// override.
-auto pattern_head(const clang::CodeCompletionString& ccs) -> std::string {
-    std::string head;
+/// A pattern's inserted text, whole or only through its typed text — the
+/// part inserted without snippets: `if` for the if statement, the whole
+/// declaration for an override.
+auto pattern_text(const clang::CodeCompletionString& ccs, bool whole) -> std::string {
+    std::string text;
     for(const auto& chunk: ccs) {
         using CK = clang::CodeCompletionString::ChunkKind;
         if(chunk.Kind == CK::CK_Optional || chunk.Kind == CK::CK_Informative ||
            chunk.Kind == CK::CK_ResultType) {
             continue;
         }
-        head += chunk.Text;
-        if(chunk.Kind == CK::CK_TypedText) {
+        text += chunk.Text;
+        if(!whole && chunk.Kind == CK::CK_TypedText) {
             break;
         }
     }
-    return head;
+    return text;
 }
 
 /// A pattern's text after its typed text, placeholders shown by name:
@@ -668,7 +668,7 @@ public:
                 case clang::CodeCompletionResult::RK_Pattern: {
                     auto& pattern = *candidate.Pattern;
                     auto label = pattern.getAllTypedText();
-                    auto head = pattern_head(pattern);
+                    auto head = pattern_text(pattern, /*whole=*/false);
                     // A pattern carrying a method is an override declaration
                     // in a class body, or in a method body a call of the
                     // overridden method — a duplicate of the method's own
@@ -680,7 +680,7 @@ public:
                         add({
                             .label = label,
                             .kind = protocol::CompletionItemKind::Method,
-                            .insert = head,
+                            .insert = head + ";",
                         });
                         break;
                     }
@@ -690,7 +690,8 @@ public:
                         add({
                             .label = label,
                             .kind = protocol::CompletionItemKind::Snippet,
-                            .insert = has_snippet ? std::move(snippet) : head,
+                            .insert = has_snippet ? std::move(snippet)
+                                                  : pattern_text(pattern, /*whole=*/true),
                             .snippet = has_snippet,
                             .signature = pattern_tail(pattern),
                         });

@@ -6,4 +6,4 @@ inside_override:
 - { label: "draw", kind: Method, detail: "(int x, int y)", description: "int", edit: "21:15-21:18" }
 
 pos:
-- { label: "draw(int x, int y) const override", kind: Method, edit: "16:4-16:6", insert: "int draw(int x, int y) const override" }
+- { label: "draw(int x, int y) const override", kind: Method, edit: "16:4-16:6", insert: "int draw(int x, int y) const override;" }
