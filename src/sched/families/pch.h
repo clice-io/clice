@@ -134,6 +134,9 @@ public:
     std::function<std::size_t()> open_documents;
 
 private:
+    /// Forget an entry and retract the pairs it names.
+    void drop(llvm::StringMap<PCHState>::iterator entry);
+
     /// One PCH round: run one attempt and retire the stash once a current
     /// round lands a verdict.
     kota::task<RoundOutcome> run(RoundContext& ctx, std::uint64_t key_id);

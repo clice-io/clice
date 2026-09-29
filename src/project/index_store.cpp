@@ -189,7 +189,9 @@ struct CacheDepEntry {
 
 struct CachePCHEntry {
     std::string key;
-    std::string blob;  // CacheStore key in the "pch" namespace
+    /// CacheStore key in the "pch" namespace; absent in records written
+    /// before pairs had names of their own.
+    std::optional<std::string> blob;
     std::uint32_t bound;
     std::vector<CacheDepEntry> deps;
 };
@@ -316,20 +318,24 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         if(!pch_format_ok) {
             break;
         }
-        auto pch_path = project.store->lookup("pch", entry.blob);
+        if(!entry.blob) {
+            project.store->invalidate("pch", entry.key);
+            continue;
+        }
+        auto pch_path = project.store->lookup("pch", *entry.blob);
         if(!pch_path)
             continue;
         // A PCH without its pch.idx envelope is an incomplete pair
         // (crash between the two commits): drop it so the next compile
         // rebuilds both.
-        auto index_path = project.store->lookup_aux("pch", entry.blob);
+        auto index_path = project.store->lookup_aux("pch", *entry.blob);
         if(!index_path) {
-            project.store->invalidate("pch", entry.blob);
+            project.store->invalidate("pch", *entry.blob);
             continue;
         }
 
         auto& st = project.pch_cache[entry.key];
-        st.blob = std::move(entry.blob);
+        st.blob = std::move(*entry.blob);
         st.path = *pch_path;
         st.bound = entry.bound;
         st.deps = load_deps(entry.deps);

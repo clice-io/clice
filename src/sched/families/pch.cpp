@@ -121,7 +121,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
             // Blob evicted by the store's LRU: drop the metadata too, or
             // the content-keyed map grows for the server's lifetime.
             if(!in_store) {
-                project.pch_cache.erase(pch_key);
+                drop(it);
             }
         }
     }
@@ -254,17 +254,20 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     }
     if(!committed.value().index_path.has_value()) {
         LOG_WARN("Failed to commit pch.idx envelope for {}", bp.file);
-        // A rebuild of an existing key just had its blobs retracted from
-        // the store; the entry's paths now dangle and a settled entry
-        // would revalidate as a hit against deleted blobs. Drop it.
-        project.pch_cache.erase(pch_key);
+        // The previous pair is stale (that is why it was rebuilt): drop
+        // it rather than let it revalidate against its old deps.
+        if(auto it = project.pch_cache.find(pch_key); it != project.pch_cache.end()) {
+            drop(it);
+        }
         co_return RoundOutcome::Failed;
     }
     if(!committed.value().state) {
         LOG_WARN("Freshly committed pch.idx envelope for {} is unreadable", bp.file);
-        // The commit job retracted the pair; drop the entry for the same
-        // dangling-paths reason as above.
-        project.pch_cache.erase(pch_key);
+        // The commit job retracted the new pair; the previous one is stale
+        // for the same reason as above.
+        if(auto it = project.pch_cache.find(pch_key); it != project.pch_cache.end()) {
+            drop(it);
+        }
         co_return RoundOutcome::Failed;
     }
 
@@ -274,10 +277,10 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     build_crashes.on_land(pch_key);
 
     auto& st = project.pch_cache[pch_key];
-    if(!st.blob.empty()) {
-        project.store->invalidate("pch", st.blob);
+    if(!st.superseded.empty()) {
+        project.store->invalidate("pch", st.superseded);
     }
-    st.blob = std::move(blob);
+    st.superseded = std::exchange(st.blob, std::move(blob));
     st.path = *committed.value().pch_path;
     st.bound = request.preamble_bound;
     st.deps =
@@ -315,19 +318,29 @@ bool PCHFamily::building(llvm::StringRef pch_key) const {
     return it != ids.end() && graph.is_compiling(node(it->second));
 }
 
+void PCHFamily::drop(llvm::StringMap<PCHState>::iterator entry) {
+    if(project.store) {
+        for(auto& blob: {entry->second.blob, entry->second.superseded}) {
+            if(!blob.empty()) {
+                project.store->invalidate("pch", blob);
+            }
+        }
+    }
+    project.pch_cache.erase(entry);
+}
+
 void PCHFamily::invalidate(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
     if(it == project.pch_cache.end()) {
         return;
     }
-    if(project.store) {
-        project.store->invalidate("pch", it->second.blob);
-    }
     // An in-flight rebuild owns the entry; its commit publishes a fresh
     // pair in place of the retracted one, so only a settled entry is
     // dropped.
     if(!building(pch_key)) {
-        project.pch_cache.erase(it);
+        drop(it);
+    } else if(project.store) {
+        project.store->invalidate("pch", it->second.blob);
     }
 }
 

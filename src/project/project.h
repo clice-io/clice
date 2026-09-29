@@ -140,6 +140,11 @@ struct PCHState {
     /// replace a mapped file.
     std::string blob;
 
+    /// The pair the latest build replaced, kept for one more build: a
+    /// consumer that took its path just before the replacement may not
+    /// have opened it yet.
+    std::string superseded;
+
     std::string path;
     std::uint32_t bound = 0;
     DepsSnapshot deps;
