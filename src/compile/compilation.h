@@ -221,6 +221,11 @@ CompilationUnit compile(CompilationParams& params);
 /// Build PCH from given file path and content.
 CompilationUnit compile(CompilationParams& params, PCHInfo& out);
 
+/// How a PCH built by compile() checks its inputs when loaded: by size
+/// alone. Keys of cached PCHs include it, so a blob built under another
+/// rule is never reused.
+constexpr inline llvm::StringRef pch_input_check = "size";
+
 /// Build PCM from given file path and content.
 CompilationUnit compile(CompilationParams& params, PCMInfo& out);
 

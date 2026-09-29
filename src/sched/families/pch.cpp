@@ -109,7 +109,8 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
                 // themselves are not pinned, so metadata surviving a
                 // crashed flush or a concurrent writer's republish is
                 // trusted on its deps alone (see CacheStore's FIXME);
-                // clang's own validation backstops.
+                // clang's own validation, which checks input sizes only,
+                // backstops.
                 pch_miss = "deps_changed";
             } else {
                 LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.file);

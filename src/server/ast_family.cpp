@@ -84,6 +84,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // records still vouched for the old content.
     auto preamble_text = text.substr(0, bound);
     auto pch_key = cache_key({clang::getClangFullVersion(),
+                              pch_input_check,
                               project.build.active_configuration(),
                               directory,
                               path::parent_path(path),
