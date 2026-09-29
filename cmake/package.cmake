@@ -96,8 +96,9 @@ target_link_libraries(lmdb PUBLIC Threads::Threads)
 
 # mimalloc — the allocator of the Windows executable (src/mimalloc.cc). The
 # UCRT heap hands freed memory back to the system between requests, and
-# every request then faults it in again.
-if(WIN32)
+# every request then faults it in again. Windows builds are MinGW on the
+# UCRT, the runtime src/mimalloc.cc hands foreign blocks back to.
+if(MINGW)
     set(MI_BUILD_SHARED OFF CACHE INTERNAL "" FORCE)
     set(MI_BUILD_OBJECT OFF CACHE INTERNAL "" FORCE)
     set(MI_BUILD_TESTS OFF CACHE INTERNAL "" FORCE)
