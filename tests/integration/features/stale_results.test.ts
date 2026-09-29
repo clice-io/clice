@@ -32,6 +32,9 @@ import { test, expect } from "../fixtures.ts";
 // so an edit reliably lands while the request still waits on the compile.
 const SLOW = Array.from({ length: 200_000 }, (_, i) => `int v${i};`).join("\n") + "\n";
 const EDIT_SUPERSEDE_DELAY = 300;
+// Completion skips most of the work a full build does and can finish the
+// body within EDIT_SUPERSEDE_DELAY on a fast machine.
+const COMPLETION_EDIT_DELAY = 30;
 
 test("edit mid-flight answers ContentModified", async ({ session }) => {
     const { client, workspace } = session.tmp();
@@ -91,7 +94,7 @@ test("edit mid-flight still completes", async ({ session }) => {
     const [uri] = client.open("slow.cpp");
     const line = body.split("\n").length - 1;
     const pending = client.completionAt(uri, line, "int probe = extra_".length);
-    await sleep(EDIT_SUPERSEDE_DELAY);
+    await sleep(COMPLETION_EDIT_DELAY);
     client.change(uri, 1, body + "v");
 
     const reply = await pending;
@@ -99,7 +102,7 @@ test("edit mid-flight still completes", async ({ session }) => {
     expect(items.map((item) => item.label)).toContain("extra_value");
 
     const moved = client.completionAt(uri, line, "int probe = extra_".length);
-    await sleep(EDIT_SUPERSEDE_DELAY);
+    await sleep(COMPLETION_EDIT_DELAY);
     client.change(uri, 2, "int moved;\n" + body);
     await expect(moved).rejects.toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
 }, 300_000);
