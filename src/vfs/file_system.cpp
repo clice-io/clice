@@ -472,8 +472,7 @@ private:
         std::shared_ptr<const llvm::MemoryBuffer> buffer;
     };
 
-    /// PCHs of the documents a worker serves in turn. On Windows a kept
-    /// mapping also keeps a retracted PCH on disk until the next start.
+    /// PCHs of the documents a worker serves in turn.
     constexpr static std::size_t capacity = 8;
 
     std::mutex mutex;

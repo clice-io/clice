@@ -95,12 +95,12 @@ inline std::expected<void, std::error_code> rename(llvm::StringRef from, llvm::S
     return std::expected<void, std::error_code>();
 }
 
-/// Remove a file or an empty directory. Unlike llvm::sys::fs::remove, a
+/// Remove a file or an empty directory; a missing one is no error. Unlike llvm::sys::fs::remove, a
 /// file another process still maps goes on Windows as well: its name
 /// disappears at once and its content once the last mapping is gone, as
 /// on POSIX. Workers keep PCH blobs mapped across compiles, and the
 /// store retracts and replaces those blobs under them.
-std::error_code remove(const llvm::Twine& path, bool ignore_non_existing = true);
+std::error_code remove(const llvm::Twine& path);
 
 /// Recursively remove a directory tree using plain filesystem primitives.
 /// Use this instead of llvm::sys::fs::remove_directories: on Windows that

@@ -21,7 +21,7 @@ std::error_code widenPath(const Twine& path8,
 
 namespace clice::fs {
 
-std::error_code remove(const llvm::Twine& path, bool ignore_non_existing) {
+std::error_code remove(const llvm::Twine& path) {
 #ifdef _WIN32
     llvm::SmallVector<wchar_t, 256> wide;
     if(auto error = llvm::sys::windows::widenPath(path, wide)) {
@@ -37,7 +37,7 @@ std::error_code remove(const llvm::Twine& path, bool ignore_non_existing) {
                                   nullptr);
     if(handle == INVALID_HANDLE_VALUE) {
         auto error = llvm::mapWindowsError(::GetLastError());
-        if(ignore_non_existing && error == std::errc::no_such_file_or_directory) {
+        if(error == std::errc::no_such_file_or_directory) {
             return {};
         }
         return error;
@@ -56,7 +56,7 @@ std::error_code remove(const llvm::Twine& path, bool ignore_non_existing) {
     }
     return llvm::mapWindowsError(::GetLastError());
 #else
-    return llvm::sys::fs::remove(path, ignore_non_existing);
+    return llvm::sys::fs::remove(path);
 #endif
 }
 
