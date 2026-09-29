@@ -1,5 +1,6 @@
 #include "vfs/file_system.h"
 
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <tuple>
@@ -130,6 +131,13 @@ std::uint64_t filetime(const FILETIME& time) {
 }
 
 StatusResult handle_status(HANDLE handle) {
+    switch(::GetFileType(handle)) {
+        case FILE_TYPE_DISK: break;
+        case FILE_TYPE_CHAR:
+            return llvm::sys::fs::file_status(llvm::sys::fs::file_type::character_file);
+        case FILE_TYPE_PIPE: return llvm::sys::fs::file_status(llvm::sys::fs::file_type::fifo_file);
+        default: return std::unexpected(llvm::mapWindowsError(::GetLastError()));
+    }
     FILE_REMOTE_PROTOCOL_INFO remote;
     if(::GetFileInformationByHandleEx(handle, FileRemoteProtocolInfo, &remote, sizeof(remote))) {
         llvm::sys::fs::file_status status;
@@ -139,10 +147,16 @@ StatusResult handle_status(HANDLE handle) {
         return status;
     }
     BY_HANDLE_FILE_INFORMATION info;
-    FILE_ID_INFO id;
-    if(!::GetFileInformationByHandle(handle, &info) ||
-       !::GetFileInformationByHandleEx(handle, FileIdInfo, &id, sizeof(id))) {
+    if(!::GetFileInformationByHandle(handle, &info)) {
         return std::unexpected(llvm::mapWindowsError(::GetLastError()));
+    }
+    FILE_ID_INFO id;
+    if(!::GetFileInformationByHandleEx(handle, FileIdInfo, &id, sizeof(id))) {
+        // A file system with 64-bit IDs only: the by-name query reports
+        // the same ID widened.
+        id = {.VolumeSerialNumber = info.dwVolumeSerialNumber, .FileId = {}};
+        auto index = (std::uint64_t(info.nFileIndexHigh) << 32) | info.nFileIndexLow;
+        std::memcpy(id.FileId.Identifier, &index, sizeof(index));
     }
     return make_status(info.dwFileAttributes,
                        filetime(info.ftLastAccessTime),
