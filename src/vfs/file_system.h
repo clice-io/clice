@@ -87,12 +87,12 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path)
 /// volumes keep LLVM's scheme, their file IDs can be reused.
 std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRef path);
 
-/// Keep the mapping of a PCH or PCM from clice's store for the process's
-/// later compiles: Windows pages every fresh mapping in fault by fault, on
-/// every compile. The store gives each build a name of its own and never
-/// rewrites one, so a kept mapping stays the file's bytes. Only store
-/// artifacts qualify: on Windows a held mapping stops anyone from
-/// rewriting the file.
+/// Keep the mapping of a PCH from clice's store for the process's later
+/// compiles: Windows pages every fresh mapping in fault by fault, on every
+/// compile. The store gives each PCH build a name of its own and never
+/// rewrites one, so a kept mapping stays the file's bytes. Nothing else
+/// qualifies — a PCM is rebuilt under the name it had — since on Windows a
+/// held mapping stops anyone from replacing the file.
 void keep_mapped(llvm::StringRef path);
 
 /// The file system one compile sees: the disk, each file served the way

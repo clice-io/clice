@@ -393,8 +393,9 @@ private:
         std::shared_ptr<const llvm::MemoryBuffer> buffer;
     };
 
-    /// A compile loads one PCH and the PCMs of its imports.
-    constexpr static std::size_t capacity = 32;
+    /// PCHs of the documents a worker serves in turn. On Windows a kept
+    /// mapping also keeps a retracted PCH on disk until the next start.
+    constexpr static std::size_t capacity = 8;
 
     std::mutex mutex;
     std::vector<Entry> entries;

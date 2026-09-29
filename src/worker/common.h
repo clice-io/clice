@@ -26,8 +26,8 @@ inline void fill_args(CompilationParams& cp,
     }
 }
 
-/// Hand a compile the master's PCH and PCMs. They come from clice's store,
-/// so the process keeps their mappings for later compiles.
+/// Hand a compile the master's PCH and PCMs. The PCH comes from clice's
+/// store, so the process keeps its mapping for later compiles.
 inline void use_artifacts(CompilationParams& cp,
                           const std::pair<std::string, std::uint32_t>& pch,
                           const std::unordered_map<std::string, std::string>& pcms) {
@@ -37,7 +37,6 @@ inline void use_artifacts(CompilationParams& cp,
     }
     for(auto& [name, path]: pcms) {
         cp.pcms.try_emplace(name, path);
-        vfs::keep_mapped(path);
     }
 }
 
