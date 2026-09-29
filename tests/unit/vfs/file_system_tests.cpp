@@ -2,6 +2,8 @@
 #include <unistd.h>
 #endif
 
+#include <string>
+
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "vfs/file_system.h"
@@ -106,6 +108,32 @@ TEST_CASE(KeptTextFollowsEdits) {
 
     tmp.touch("a.h", "int y = 1;\n");
     ASSERT_EQ(read()->getBuffer(), "int y = 1;\n");
+}
+
+TEST_CASE(KeptMappingShared) {
+    // A store artifact's mapping serves every later compile while the file
+    // stats the same; any other file is mapped afresh.
+    TempDir tmp;
+    tmp.touch("a.pch", std::string(64 * 1024, 'x'));
+    tmp.touch("b.pch", std::string(64 * 1024, 'x'));
+    vfs::keep_mapped(tmp.path("a.pch"));
+
+    auto map = [&](llvm::StringRef name) {
+        vfs::View view;
+        auto path = tmp.path(name);
+        auto file = view.openFileForReadBinary(path);
+        EXPECT_TRUE(bool(file));
+        auto buffer = (*file)->getBuffer(path, -1, false, false);
+        EXPECT_TRUE(bool(buffer));
+        return std::move(*buffer);
+    };
+    ASSERT_TRUE(map("a.pch")->getBufferStart() == map("a.pch")->getBufferStart());
+    ASSERT_FALSE(map("b.pch")->getBufferStart() == map("b.pch")->getBufferStart());
+#ifndef _WIN32
+    // Windows refuses to rewrite a mapped file; elsewhere a rewrite is seen.
+    tmp.touch("a.pch", std::string(32 * 1024, 'y'));
+    ASSERT_EQ(map("a.pch")->getBuffer(), std::string(32 * 1024, 'y'));
+#endif
 }
 
 };  // TEST_SUITE(FileSystem)

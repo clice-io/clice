@@ -225,9 +225,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
     CompilationParams cp;
     cp.kind = CompilationKind::ModuleInterface;
     fill_args(cp, params.directory, params.arguments);
-    for(auto& [name, path]: params.pcms) {
-        cp.pcms.try_emplace(name, path);
-    }
+    use_artifacts(cp, {}, params.pcms);
     cp.stop = stop;
 
     auto output = artifact_output("PCM", params.output_path, "clice-pcm", "pcm");
@@ -376,9 +374,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     fill_args(cp, params.directory, params.arguments);
     cp.workspace = params.workspace;
     cp.add_synthesized(params.synthesized);
-    for(auto& [name, path]: params.pcms) {
-        cp.pcms.try_emplace(name, path);
-    }
+    use_artifacts(cp, {}, params.pcms);
     if(params.tidy) {
         // The command-affecting extra args are already in params.arguments
         // (applied at driver resolution); the copies here feed the
@@ -447,12 +443,7 @@ static kota::codec::RawValue handle_completion(const worker::CompletionParams& p
     CompilationParams cp;
     cp.kind = CompilationKind::Completion;
     fill_args(cp, params.directory, params.arguments);
-    if(!params.pch.first.empty()) {
-        cp.pch = params.pch;
-    }
-    for(auto& [name, path]: params.pcms) {
-        cp.pcms.try_emplace(name, path);
-    }
+    use_artifacts(cp, params.pch, params.pcms);
     cp.add_remapped_file(params.file, params.text);
     cp.add_synthesized(params.synthesized);
     cp.completion = {params.file, params.offset};
@@ -471,12 +462,7 @@ static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpPa
     CompilationParams cp;
     cp.kind = CompilationKind::Completion;
     fill_args(cp, params.directory, params.arguments);
-    if(!params.pch.first.empty()) {
-        cp.pch = params.pch;
-    }
-    for(auto& [name, path]: params.pcms) {
-        cp.pcms.try_emplace(name, path);
-    }
+    use_artifacts(cp, params.pch, params.pcms);
     cp.add_remapped_file(params.file, params.text);
     cp.add_synthesized(params.synthesized);
     cp.completion = {params.file, params.offset};

@@ -254,25 +254,24 @@ bool same_file_state(const llvm::sys::fs::file_status& a, const llvm::sys::fs::f
            a.getUniqueID() == b.getUniqueID();
 }
 
-/// Serves a text the process keeps to one compile.
-class SharedText : public llvm::MemoryBuffer {
+/// Serves a buffer the process keeps to one compile.
+class SharedBuffer : public llvm::MemoryBuffer {
 public:
-    explicit SharedText(std::shared_ptr<const llvm::MemoryBuffer> text) : text(std::move(text)) {
-        init(this->text->getBufferStart(),
-             this->text->getBufferEnd(),
-             /*RequiresNullTerminator=*/true);
+    SharedBuffer(std::shared_ptr<const llvm::MemoryBuffer> owner, bool requires_terminator) :
+        owner(std::move(owner)) {
+        init(this->owner->getBufferStart(), this->owner->getBufferEnd(), requires_terminator);
     }
 
     llvm::StringRef getBufferIdentifier() const override {
-        return text->getBufferIdentifier();
+        return owner->getBufferIdentifier();
     }
 
     BufferKind getBufferKind() const override {
-        return MemoryBuffer_Malloc;
+        return owner->getBufferKind();
     }
 
 private:
-    std::shared_ptr<const llvm::MemoryBuffer> text;
+    std::shared_ptr<const llvm::MemoryBuffer> owner;
 };
 
 /// Source texts kept across the compiles of a process, by the path they
@@ -345,6 +344,67 @@ TextCache& texts() {
     return cache;
 }
 
+/// Mappings of the artifacts keep_mapped() named, most recently named
+/// first. A mapping is used while the file stats as it did when mapped.
+class MappedArtifacts {
+public:
+    void keep(llvm::StringRef path) {
+        std::lock_guard lock(mutex);
+        auto it = std::ranges::find(entries, path, &Entry::path);
+        if(it == entries.end()) {
+            entries.insert(entries.begin(), Entry{.path = path.str()});
+            if(entries.size() > capacity) {
+                entries.pop_back();
+            }
+        } else {
+            std::rotate(entries.begin(), it, it + 1);
+        }
+    }
+
+    /// The mapping of the file `handle` opens at `path`, kept when `path`
+    /// was named; nullptr when it was not.
+    std::shared_ptr<const llvm::MemoryBuffer> map(llvm::StringRef path,
+                                                  llvm::sys::fs::file_t handle,
+                                                  const llvm::sys::fs::file_status& status) {
+        std::lock_guard lock(mutex);
+        auto it = std::ranges::find(entries, path, &Entry::path);
+        if(it == entries.end()) {
+            return nullptr;
+        }
+        if(!it->buffer || !same_file_state(it->status, status)) {
+            auto mapped = llvm::MemoryBuffer::getOpenFile(handle,
+                                                          path,
+                                                          status.getSize(),
+                                                          /*RequiresNullTerminator=*/false,
+                                                          /*IsVolatile=*/false);
+            if(!mapped) {
+                return nullptr;
+            }
+            it->status = status;
+            it->buffer = std::move(*mapped);
+        }
+        return it->buffer;
+    }
+
+private:
+    struct Entry {
+        std::string path;
+        llvm::sys::fs::file_status status;
+        std::shared_ptr<const llvm::MemoryBuffer> buffer;
+    };
+
+    /// A compile loads one PCH and the PCMs of its imports.
+    constexpr static std::size_t capacity = 32;
+
+    std::mutex mutex;
+    std::vector<Entry> entries;
+};
+
+MappedArtifacts& mapped() {
+    static MappedArtifacts artifacts;
+    return artifacts;
+}
+
 /// A source file served from the process's texts.
 class CachedText : public llvm::vfs::File {
 public:
@@ -358,7 +418,7 @@ public:
 
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
         getBuffer(const llvm::Twine&, int64_t, bool, bool) override {
-        return std::make_unique<SharedText>(entry.text);
+        return std::make_unique<SharedBuffer>(entry.text, true);
     }
 
     llvm::ErrorOr<std::string> getName() override {
@@ -380,14 +440,15 @@ private:
 /// read the way clang asks.
 class DiskFile : public llvm::vfs::File {
 public:
-    /// A source file names the path it is kept under in `text_key`; a
-    /// binary file has none.
+    /// `key` is the absolute path the process keeps the file's text or
+    /// mapping under.
     DiskFile(llvm::sys::fs::file_t handle,
              std::string name,
              std::string real_name,
-             std::string text_key) :
-        handle(handle), name(std::move(name)), real_name(std::move(real_name)),
-        text_key(std::move(text_key)) {}
+             std::string key,
+             bool text) :
+        handle(handle), name(std::move(name)), real_name(std::move(real_name)), key(std::move(key)),
+        is_text(text) {}
 
     ~DiskFile() override {
         close();
@@ -399,7 +460,7 @@ public:
             return status.error();
         }
         auto result = llvm::vfs::Status::copyWithNewName(*status, name);
-        if(text_key.empty() || result.getType() != llvm::sys::fs::file_type::regular_file) {
+        if(!is_text || result.getType() != llvm::sys::fs::file_type::regular_file) {
             return result;
         }
         if(auto error = load_text()) {
@@ -412,7 +473,14 @@ public:
                                                                  int64_t size,
                                                                  bool requires_terminator,
                                                                  bool is_volatile) override {
-        if(text_key.empty()) {
+        if(!is_text) {
+            if(!requires_terminator && !is_volatile) {
+                if(auto status = handle_status(handle)) {
+                    if(auto kept = mapped().map(key, handle, *status)) {
+                        return std::make_unique<SharedBuffer>(std::move(kept), false);
+                    }
+                }
+            }
             return llvm::MemoryBuffer::getOpenFile(handle,
                                                    buffer_name,
                                                    size,
@@ -422,7 +490,7 @@ public:
         if(auto error = load_text()) {
             return error;
         }
-        return std::make_unique<SharedText>(text);
+        return std::make_unique<SharedBuffer>(text, true);
     }
 
     llvm::ErrorOr<std::string> getName() override {
@@ -452,7 +520,7 @@ private:
         auto after = handle_status(handle);
         if(before && after && after->type() == llvm::sys::fs::file_type::regular_file &&
            same_file_state(*before, *after) && fs::settled(fs::mtime_ns(*after))) {
-            texts().insert(text_key, {.status = *after, .real_name = real_name, .text = text});
+            texts().insert(key, {.status = *after, .real_name = real_name, .text = text});
         }
         return {};
     }
@@ -460,7 +528,8 @@ private:
     llvm::sys::fs::file_t handle;
     std::string name;
     std::string real_name;
-    std::string text_key;
+    std::string key;
+    bool is_text;
     std::shared_ptr<const llvm::MemoryBuffer> text;
 };
 
@@ -579,7 +648,12 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
     return std::make_unique<DiskFile>(*handle,
                                       path.str(),
                                       real_name.str().str(),
-                                      text ? absolute.str().str() : std::string());
+                                      absolute.str().str(),
+                                      text);
+}
+
+void keep_mapped(llvm::StringRef path) {
+    mapped().keep(path);
 }
 
 }  // namespace clice::vfs

@@ -6,6 +6,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "compile/compilation.h"
@@ -43,7 +44,7 @@ struct DocumentEntry {
     std::string directory;
     std::vector<std::string> arguments;
     std::pair<std::string, uint32_t> pch;
-    llvm::StringMap<std::string> pcms;
+    std::unordered_map<std::string, std::string> pcms;
     std::vector<std::uint8_t> open_conditionals;
     std::vector<std::uint32_t> preamble_inactive_regions;
 
@@ -222,10 +223,7 @@ void StatefulWorker::register_handlers() {
             doc->pch = params.pch;
             doc->open_conditionals = params.open_conditionals;
             doc->preamble_inactive_regions = params.preamble_inactive_regions;
-            doc->pcms.clear();
-            for(auto& [name, pcm_path]: params.pcms) {
-                doc->pcms.try_emplace(name, pcm_path);
-            }
+            doc->pcms = params.pcms;
 
             // The old AST describes the text this request just replaced: drop
             // it before the cancellable await, or a cancellation landing while
@@ -252,14 +250,9 @@ void StatefulWorker::register_handlers() {
                     cp.kind = CompilationKind::Content;
                     fill_args(cp, doc->directory, doc->arguments);
                     cp.workspace = params.workspace;
-                    if(!doc->pch.first.empty()) {
-                        cp.pch = doc->pch;
-                    }
+                    use_artifacts(cp, doc->pch, doc->pcms);
                     cp.add_remapped_file(params.path, doc->text);
                     cp.add_synthesized(params.synthesized);
-                    for(auto& entry: doc->pcms) {
-                        cp.pcms.try_emplace(entry.getKey(), entry.getValue());
-                    }
                     cp.stop = stop;
 
                     doc->unit = compile(cp);
@@ -290,7 +283,7 @@ void StatefulWorker::register_handlers() {
                                     return false;
                                 }
                                 return std::ranges::none_of(doc->pcms, [&](auto& entry) {
-                                    return message.contains(entry.getValue());
+                                    return message.contains(entry.second);
                                 });
                             });
                     }
