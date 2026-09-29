@@ -93,3 +93,21 @@ else()
 endif()
 find_package(Threads REQUIRED)
 target_link_libraries(lmdb PUBLIC Threads::Threads)
+
+# mimalloc — the allocator of the Windows executable (src/mimalloc.cc). The
+# UCRT heap hands freed memory back to the system between requests, and
+# every request then faults it in again.
+if(WIN32)
+    set(MI_BUILD_SHARED OFF CACHE INTERNAL "" FORCE)
+    set(MI_BUILD_OBJECT OFF CACHE INTERNAL "" FORCE)
+    set(MI_BUILD_TESTS OFF CACHE INTERNAL "" FORCE)
+    set(MI_OVERRIDE OFF CACHE INTERNAL "" FORCE)
+    set(MI_INSTALL_TOPLEVEL OFF CACHE INTERNAL "" FORCE)
+    set(MI_SKIP_COLLECT_ON_EXIT ON CACHE INTERNAL "" FORCE)
+    CPMAddPackage(
+        NAME mimalloc
+        GIT_REPOSITORY https://github.com/microsoft/mimalloc.git
+        GIT_TAG v3.5.3
+        GIT_SHALLOW TRUE
+    )
+endif()
