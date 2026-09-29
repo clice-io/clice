@@ -332,6 +332,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
 
     DepsSnapshot snap;
     snap.reserve(deps.size());
+    vfs::StatusBatch statuses;
     for(const auto& file: deps) {
         auto& dep = snap.emplace_back();
         dep.path_id = files.intern(Spelling::absolute(file.path));
@@ -346,7 +347,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             continue;
         }
 
-        auto status = vfs::status(file.path);
+        auto status = statuses.status(file.path);
         if(!status) {
             // A file the build read that is gone already: record the
             // absence, reappearing counts as a change. Still-missing

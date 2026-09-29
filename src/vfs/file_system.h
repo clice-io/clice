@@ -5,6 +5,7 @@
 #include <memory>
 #include <system_error>
 
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -87,6 +88,30 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path)
 /// volumes keep LLVM's scheme, their file IDs can be reused.
 std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRef path);
 
+/// The file statuses of one operation (a dependency check, a compile). On
+/// Windows a directory asked about often enough within the operation is
+/// listed once, and its entries answer the rest: one listing costs about
+/// what a few statuses by name do. A name the listing lacks, a reparse
+/// point, a remote or oversized directory take vfs::status. Elsewhere
+/// every status is vfs::status.
+class StatusBatch {
+public:
+    std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRef path);
+
+#ifdef _WIN32
+
+private:
+    struct Directory {
+        unsigned asked = 0;
+        bool listed = false;
+        /// Empty when the directory could not be listed.
+        llvm::StringMap<llvm::sys::fs::file_status> entries;
+    };
+
+    llvm::StringMap<Directory> directories;
+#endif
+};
+
 /// Keep the mapping of a PCH from clice's store for the process's later
 /// compiles: Windows pages every fresh mapping in fault by fault, on every
 /// compile. The store gives each PCH build a name of its own and never
@@ -119,6 +144,8 @@ public:
 
 private:
     llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> open(const llvm::Twine& path, bool text);
+
+    StatusBatch statuses;
 };
 
 }  // namespace vfs

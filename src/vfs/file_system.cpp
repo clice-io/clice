@@ -20,6 +20,7 @@
 #define NOMINMAX
 #include <windows.h>
 
+#include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/WindowsError.h"
 
 namespace llvm::sys::windows {
@@ -234,6 +235,72 @@ StatusResult by_path(llvm::StringRef path) {
     }
     auto close = llvm::make_scope_exit([&] { ::CloseHandle(handle); });
     return handle_status(handle);
+}
+
+/// A directory asked about this often within one operation is listed.
+constexpr unsigned list_after = 8;
+
+/// A directory with more entries is not listed: the few names asked
+/// about it would pay for all of them.
+constexpr std::size_t list_limit = 4096;
+
+/// The statuses of a directory's entries in the ID scheme by_path() uses,
+/// reparse points left out; empty when it cannot be listed.
+llvm::StringMap<llvm::sys::fs::file_status> list_statuses(llvm::StringRef dir) {
+    llvm::StringMap<llvm::sys::fs::file_status> entries;
+    llvm::SmallVector<wchar_t, 256> wide;
+    if(llvm::sys::windows::widenPath(dir, wide)) {
+        return entries;
+    }
+    wide.push_back(L'\0');
+    HANDLE handle = ::CreateFileW(wide.data(),
+                                  FILE_LIST_DIRECTORY,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                  nullptr,
+                                  OPEN_EXISTING,
+                                  FILE_FLAG_BACKUP_SEMANTICS,
+                                  nullptr);
+    if(handle == INVALID_HANDLE_VALUE) {
+        return entries;
+    }
+    auto close = llvm::make_scope_exit([&] { ::CloseHandle(handle); });
+    FILE_REMOTE_PROTOCOL_INFO remote;
+    FILE_ID_INFO id;
+    if(::GetFileInformationByHandleEx(handle, FileRemoteProtocolInfo, &remote, sizeof(remote)) ||
+       !::GetFileInformationByHandleEx(handle, FileIdInfo, &id, sizeof(id))) {
+        return entries;
+    }
+
+    alignas(8) static thread_local char buffer[64 * 1024];
+    auto kind = FileIdExtdDirectoryRestartInfo;
+    while(::GetFileInformationByHandleEx(handle, kind, buffer, sizeof(buffer))) {
+        kind = FileIdExtdDirectoryInfo;
+        for(auto* entry = reinterpret_cast<FILE_ID_EXTD_DIR_INFO*>(buffer);;
+            entry = reinterpret_cast<FILE_ID_EXTD_DIR_INFO*>(reinterpret_cast<char*>(entry) +
+                                                             entry->NextEntryOffset)) {
+            std::wstring_view name(entry->FileName, entry->FileNameLength / sizeof(wchar_t));
+            std::string utf8;
+            if(!(entry->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && name != L"." &&
+               name != L".." && llvm::convertWideToUTF8(name, utf8)) {
+                entries.try_emplace(utf8,
+                                    make_status(entry->FileAttributes,
+                                                entry->LastAccessTime.QuadPart,
+                                                entry->LastWriteTime.QuadPart,
+                                                entry->EndOfFile.QuadPart,
+                                                id.VolumeSerialNumber,
+                                                entry->FileId,
+                                                /*links=*/1));
+            }
+            if(entries.size() > list_limit) {
+                entries.clear();
+                return entries;
+            }
+            if(entry->NextEntryOffset == 0) {
+                break;
+            }
+        }
+    }
+    return entries;
 }
 
 #else
@@ -598,13 +665,33 @@ std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRe
 #endif
 }
 
+std::expected<llvm::sys::fs::file_status, std::error_code>
+    StatusBatch::status(llvm::StringRef path) {
+#ifdef _WIN32
+    auto& directory = directories[llvm::sys::path::parent_path(path)];
+    if(!directory.listed) {
+        directory.asked += 1;
+        if(directory.asked < list_after) {
+            return vfs::status(path);
+        }
+        directory.listed = true;
+        directory.entries = list_statuses(llvm::sys::path::parent_path(path));
+    }
+    if(auto it = directory.entries.find(llvm::sys::path::filename(path));
+       it != directory.entries.end()) {
+        return it->second;
+    }
+#endif
+    return vfs::status(path);
+}
+
 llvm::ErrorOr<llvm::vfs::Status> View::status(const llvm::Twine& path) {
     llvm::SmallString<256> absolute;
     path.toVector(absolute);
     if(auto error = getUnderlyingFS().makeAbsolute(absolute)) {
         return error;
     }
-    auto status = vfs::status(absolute);
+    auto status = statuses.status(absolute);
     if(!status) {
         return status.error();
     }
@@ -632,7 +719,7 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
         return error;
     }
     if(text) {
-        auto status = vfs::status(absolute);
+        auto status = statuses.status(absolute);
         if(!status) {
             return status.error();
         }

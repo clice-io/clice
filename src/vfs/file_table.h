@@ -530,6 +530,7 @@ struct FileTable {
     /// deps_changed chain, an index need_update batch) opens a Wave, and
     /// every version is settled at most once inside it.
     llvm::DenseMap<VersionID, Verdict> wave_verdicts;
+    vfs::StatusBatch wave_statuses;
     bool wave_open = false;
 
     /// RAII scope of one memo wave: verdicts live exactly as long as the
@@ -546,6 +547,7 @@ struct FileTable {
 
         ~Wave() {
             table.wave_verdicts.clear();
+            table.wave_statuses = {};
             table.wave_open = false;
         }
 
@@ -590,7 +592,7 @@ private:
 
     Verdict check_version_uncached(VersionID vid) {
         auto& version = this->version(vid);
-        auto status = vfs::status(resolve(version.fid));
+        auto status = wave_statuses.status(resolve(version.fid));
         if(!status) {
             saw_missing(version.fid);
             return Verdict::Missing;

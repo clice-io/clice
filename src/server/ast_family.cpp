@@ -90,7 +90,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                               path::parent_path(path),
                               preamble_text,
                               canonicalize(arguments, ArgsProfile::Frontend)});
-    if(!pch.fresh(pch_key) && !is_preamble_complete(text, bound)) {
+    // The text first: freshness checks every dependency of the key.
+    if(!is_preamble_complete(text, bound) && !pch.fresh(pch_key)) {
         // Preamble incomplete (user still typing) and nothing fresh to
         // adopt under the new key: defer the rebuild, keep using the
         // previously adopted PCH while its artifact is still available.

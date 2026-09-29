@@ -2,6 +2,7 @@
 #include <unistd.h>
 #endif
 
+#include <format>
 #include <string>
 
 #include "test/temp_dir.h"
@@ -134,6 +135,37 @@ TEST_CASE(KeptMappingShared) {
     tmp.touch("a.pch", std::string(32 * 1024, 'y'));
     ASSERT_EQ(map("a.pch")->getBuffer(), std::string(32 * 1024, 'y'));
 #endif
+}
+
+TEST_CASE(BatchAgreesWithStatus) {
+    // A directory asked about often enough answers from one listing, with
+    // exactly what a status by path would say.
+    TempDir tmp;
+    for(int i = 0; i < 20; i += 1) {
+        tmp.touch(std::format("dir/h{}.h", i), std::string(i, 'x'));
+    }
+    tmp.touch("dir/sub/a.h");
+
+    vfs::StatusBatch batch;
+    for(int round = 0; round < 2; round += 1) {
+        for(int i = 0; i < 20; i += 1) {
+            auto path = tmp.path(std::format("dir/h{}.h", i));
+            auto batched = batch.status(path);
+            auto direct = vfs::status(path);
+            ASSERT_TRUE(batched.has_value() && direct.has_value());
+            ASSERT_TRUE(batched->getUniqueID() == direct->getUniqueID());
+            ASSERT_EQ(batched->getSize(), direct->getSize());
+            ASSERT_TRUE(batched->getLastModificationTime() == direct->getLastModificationTime());
+            ASSERT_TRUE(batched->type() == direct->type());
+        }
+    }
+    auto sub = batch.status(tmp.path("dir/sub"));
+    ASSERT_TRUE(sub.has_value());
+    ASSERT_TRUE(sub->type() == llvm::sys::fs::file_type::directory_file);
+    ASSERT_TRUE(sub->getUniqueID() == vfs::status(tmp.path("dir/sub"))->getUniqueID());
+    auto missing = batch.status(tmp.path("dir/none.h"));
+    ASSERT_FALSE(missing.has_value());
+    ASSERT_TRUE(missing.error() == std::errc::no_such_file_or_directory);
 }
 
 };  // TEST_SUITE(FileSystem)

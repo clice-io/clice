@@ -505,9 +505,10 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     // the read and the lex for every unchanged file, at the cost of one
     // stat. Recorded at discovery so the prefetch never races the check.
     std::vector<FileScanResult> pending_warm;
+    vfs::StatusBatch statuses;
     auto try_warm = [&](Fid path_id, std::uint32_t config_id) {
         auto path = file_table.resolve(path_id);
-        auto status = vfs::status(path);
+        auto status = statuses.status(path);
         if(!status) {
             return false;
         }

@@ -77,9 +77,10 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
         }
 
         auto batch_end = std::min(begin + batch_size, files.size());
+        vfs::StatusBatch statuses;
         for(std::size_t i = begin; i < batch_end; i += 1) {
             auto path_id = files[i];
-            auto status = vfs::status(project.file_table.resolve(path_id));
+            auto status = statuses.status(project.file_table.resolve(path_id));
             if(!status) {
                 project.file_table.saw_missing(path_id);
                 continue;
