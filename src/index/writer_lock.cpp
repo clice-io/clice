@@ -99,14 +99,14 @@ bool write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint) {
         LOG_WARN("Failed to record the server endpoint at {}: {}",
                  final_path,
                  renamed.error().message());
-        llvm::sys::fs::remove(tmp_path);
+        fs::remove(tmp_path);
         return false;
     }
     return true;
 }
 
 void remove_endpoint(llvm::StringRef cache_dir) {
-    llvm::sys::fs::remove(path::join(cache_dir, endpoint_name));
+    fs::remove(path::join(cache_dir, endpoint_name));
 }
 
 std::string held_writer_message(const WriterProbe& probe, llvm::StringRef cache_dir) {

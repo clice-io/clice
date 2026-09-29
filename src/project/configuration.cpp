@@ -81,7 +81,7 @@ std::expected<void, std::error_code> write_selection(llvm::StringRef cache_dir,
         written = fs::rename(tmp_path, path);
     }
     if(!written) {
-        llvm::sys::fs::remove(tmp_path);
+        fs::remove(tmp_path);
     }
     return written;
 }

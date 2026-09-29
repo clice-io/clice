@@ -11,6 +11,7 @@
 #include "support/cache_store.h"
 #include "support/filesystem.h"
 
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
 
 namespace clice::testing {
@@ -349,6 +350,24 @@ TEST_CASE(InvalidateRemovesBlob) {
 
     ASSERT_FALSE(store.lookup("pch", "k1").has_value());
     ASSERT_FALSE(llvm::sys::fs::exists(path));
+}
+
+TEST_CASE(InvalidateMappedBlob) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_lru(store);
+
+    auto path = put(store, "pch", "k1", std::string(64 * 1024, 'x'));
+    auto mapped = llvm::MemoryBuffer::getFile(path,
+                                              /*IsText=*/false,
+                                              /*RequiresNullTerminator=*/false);
+    ASSERT_TRUE(bool(mapped));
+    ASSERT_EQ((*mapped)->getBufferKind(), llvm::MemoryBuffer::MemoryBuffer_MMap);
+
+    store.invalidate("pch", "k1");
+
+    ASSERT_FALSE(llvm::sys::fs::exists(path));
+    ASSERT_EQ((*mapped)->getBuffer().back(), 'x');
 }
 
 TEST_CASE(MissingManifestRescans) {

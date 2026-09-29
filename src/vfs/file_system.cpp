@@ -8,6 +8,7 @@
 #include <tuple>
 
 #include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
@@ -416,10 +417,11 @@ TextCache& texts() {
 class MappedArtifacts {
 public:
     void keep(llvm::StringRef path) {
+        auto key = spelling(path);
         std::lock_guard lock(mutex);
-        auto it = std::ranges::find(entries, path, &Entry::path);
+        auto it = std::ranges::find(entries, key, &Entry::path);
         if(it == entries.end()) {
-            entries.insert(entries.begin(), Entry{.path = path.str()});
+            entries.insert(entries.begin(), Entry{.path = std::move(key)});
             if(entries.size() > capacity) {
                 entries.pop_back();
             }
@@ -433,8 +435,9 @@ public:
     std::shared_ptr<const llvm::MemoryBuffer> map(llvm::StringRef path,
                                                   llvm::sys::fs::file_t handle,
                                                   const llvm::sys::fs::file_status& status) {
+        auto key = spelling(path);
         std::lock_guard lock(mutex);
-        auto it = std::ranges::find(entries, path, &Entry::path);
+        auto it = std::ranges::find(entries, key, &Entry::path);
         if(it == entries.end()) {
             return nullptr;
         }
@@ -454,6 +457,15 @@ public:
     }
 
 private:
+    /// The master names a PCH as the store spells it, clang as the
+    /// compile's arguments do (on Windows the two mix separators
+    /// differently): compare them in one spelling.
+    static std::string spelling(llvm::StringRef path) {
+        std::string key = path.str();
+        path::canonicalize(key);
+        return key;
+    }
+
     struct Entry {
         std::string path;
         llvm::sys::fs::file_status status;

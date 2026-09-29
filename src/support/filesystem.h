@@ -95,6 +95,13 @@ inline std::expected<void, std::error_code> rename(llvm::StringRef from, llvm::S
     return std::expected<void, std::error_code>();
 }
 
+/// Remove a file or an empty directory. Unlike llvm::sys::fs::remove, a
+/// file another process still maps goes on Windows as well: its name
+/// disappears at once and its content once the last mapping is gone, as
+/// on POSIX. Workers keep PCH blobs mapped across compiles, and the
+/// store retracts and replaces those blobs under them.
+std::error_code remove(const llvm::Twine& path, bool ignore_non_existing = true);
+
 /// Recursively remove a directory tree using plain filesystem primitives.
 /// Use this instead of llvm::sys::fs::remove_directories: on Windows that
 /// is implemented over shell COM (CoInitializeEx + IFileOperation), which
@@ -110,7 +117,7 @@ inline std::error_code remove_all(llvm::StringRef target) {
         return status_ec == std::errc::no_such_file_or_directory ? std::error_code() : status_ec;
     }
     if(target_status.type() != llvm::sys::fs::file_type::directory_file) {
-        return llvm::sys::fs::remove(target, /*IgnoreNonExisting=*/true);
+        return remove(target);
     }
 
     std::error_code ec;
@@ -125,7 +132,7 @@ inline std::error_code remove_all(llvm::StringRef target) {
             if(auto sub_ec = remove_all(it->path())) {
                 return sub_ec;
             }
-        } else if(auto remove_ec = llvm::sys::fs::remove(it->path(), /*IgnoreNonExisting=*/true)) {
+        } else if(auto remove_ec = remove(it->path())) {
             return remove_ec;
         }
     }
@@ -133,7 +140,7 @@ inline std::error_code remove_all(llvm::StringRef target) {
         // A missing root is fine: there is simply nothing to remove.
         return ec == std::errc::no_such_file_or_directory ? std::error_code() : ec;
     }
-    return llvm::sys::fs::remove(target, /*IgnoreNonExisting=*/true);
+    return remove(target);
 }
 
 }  // namespace fs

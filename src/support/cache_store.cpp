@@ -243,7 +243,7 @@ struct CacheStore::State {
         if(ns.config.aux_extension.empty() || entry.aux_size == 0) {
             return;
         }
-        llvm::sys::fs::remove(aux_blob_path(ns, key));
+        fs::remove(aux_blob_path(ns, key));
         ns.total_size -= entry.aux_size;
         entry.aux_size = 0;
     }
@@ -341,7 +341,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
         }
         if(!llvm::sys::fs::is_directory(it->path())) {
             LOG_INFO("CacheStore: discarding stale cache layout {}", it->path());
-            llvm::sys::fs::remove(it->path());
+            fs::remove(it->path());
             continue;
         }
         if(has_live_instance(it->path())) {
@@ -420,7 +420,7 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
             // CD_CreateNew proved this call created the file, so removing
             // the partial marker clobbers no concurrent writer and lets a
             // later session retry.
-            llvm::sys::fs::remove(path);
+            fs::remove(path);
         }
     };
     write_marker(path::join(root, ".gitignore"), "*\n!config.toml\n");
@@ -529,7 +529,7 @@ void CacheStore::register_namespace(CacheNamespace ns) {
             it->second.aux_size = entry.getValue().size;
             ns_state.total_size += entry.getValue().size;
         } else if(!state->read_only) {
-            llvm::sys::fs::remove(state->aux_blob_path(ns_state, key));
+            fs::remove(state->aux_blob_path(ns_state, key));
             LOG_DEBUG("CacheStore: removed stale aux blob {} in {}", key, ns_state.config.name);
         }
     }
@@ -644,7 +644,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
     // fsync outside the lock so lookups are not blocked behind disk flushes.
     if(durable) {
         if(auto ec = sync_file(pending.tmp_path)) {
-            llvm::sys::fs::remove(pending.tmp_path);
+            fs::remove(pending.tmp_path);
             return std::unexpected(ec);
         }
     }
@@ -662,7 +662,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
         // failed, or the entry was evicted in between) it would be an
         // orphan — refuse, the caller rebuilds the pair.
         if(pending.aux && !ns_state->entries.contains(pending.key)) {
-            llvm::sys::fs::remove(pending.tmp_path);
+            fs::remove(pending.tmp_path);
             return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
         }
 
@@ -681,7 +681,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
                 // assumed from the key: even LRU keys are not fully
                 // content-addressed (a dependency edit changes the PCH
                 // content without changing its key input).
-                llvm::sys::fs::remove(pending.tmp_path);
+                fs::remove(pending.tmp_path);
                 if(llvm::sys::fs::status(final_path, status)) {
                     return std::unexpected(result.error());
                 }
@@ -690,9 +690,9 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
                 // LRU blob whose content drifted from its key.  Remove it
                 // and retry; if the rename still fails, report the error
                 // instead of silently dropping the new data.
-                llvm::sys::fs::remove(final_path);
+                fs::remove(final_path);
                 if(auto retry = fs::rename(pending.tmp_path, final_path); !retry) {
-                    llvm::sys::fs::remove(pending.tmp_path);
+                    fs::remove(pending.tmp_path);
                     auto it = ns_state->entries.find(pending.key);
                     bool entry_alive = it != ns_state->entries.end();
                     if(pending.aux && entry_alive) {
@@ -749,7 +749,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
 
 void CacheStore::PendingEntry::remove_tmp() {
     if(!tmp_path.empty()) {
-        llvm::sys::fs::remove(tmp_path);
+        fs::remove(tmp_path);
     }
 }
 
@@ -771,9 +771,9 @@ void CacheStore::invalidate(llvm::StringRef ns, llvm::StringRef key) {
         }
 
         if(!ns_state->config.aux_extension.empty()) {
-            llvm::sys::fs::remove(state->aux_blob_path(*ns_state, key));
+            fs::remove(state->aux_blob_path(*ns_state, key));
         }
-        llvm::sys::fs::remove(state->blob_path(*ns_state, key));
+        fs::remove(state->blob_path(*ns_state, key));
         ns_state->total_size -= it->second.size + it->second.aux_size;
         ns_state->entries.erase(it);
 
@@ -848,7 +848,7 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
         if(!ns.config.aux_extension.empty()) {
             auto it = ns.entries.find(candidate.key);
             if(it->second.aux_size != 0) {
-                if(llvm::sys::fs::remove(aux_blob_path(ns, candidate.key))) {
+                if(fs::remove(aux_blob_path(ns, candidate.key))) {
                     LOG_DEBUG("CacheStore: cannot evict aux {} from {}, retrying later",
                               candidate.key,
                               ns.config.name);
@@ -858,7 +858,7 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
                 it->second.aux_size = 0;
             }
         }
-        if(llvm::sys::fs::remove(blob_path(ns, candidate.key))) {
+        if(fs::remove(blob_path(ns, candidate.key))) {
             LOG_DEBUG("CacheStore: cannot evict {} from {}, retrying later",
                       candidate.key,
                       ns.config.name);

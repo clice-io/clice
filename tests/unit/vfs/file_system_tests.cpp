@@ -2,6 +2,7 @@
 #include <unistd.h>
 #endif
 
+#include <algorithm>
 #include <format>
 #include <string>
 
@@ -129,6 +130,18 @@ TEST_CASE(KeptMappingShared) {
         return std::move(*buffer);
     };
     ASSERT_TRUE(map("a.pch")->getBufferStart() == map("a.pch")->getBufferStart());
+#ifdef _WIN32
+    // The master and clang spell one PCH with different separators.
+    auto native = [&](llvm::StringRef name) {
+        std::string path = tmp.path(name);
+        std::ranges::replace(path, '\\', '/');
+        vfs::View view;
+        auto file = view.openFileForReadBinary(path);
+        EXPECT_TRUE(bool(file));
+        return std::move(*(*file)->getBuffer(path, -1, false, false));
+    };
+    ASSERT_TRUE(native("a.pch")->getBufferStart() == map("a.pch")->getBufferStart());
+#endif
     ASSERT_FALSE(map("b.pch")->getBufferStart() == map("b.pch")->getBufferStart());
 #ifndef _WIN32
     // Windows refuses to rewrite a mapped file; elsewhere a rewrite is seen.

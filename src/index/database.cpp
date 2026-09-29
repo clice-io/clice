@@ -12,6 +12,7 @@
 
 #include "lmdb.h"
 #include "support/cache_store.h"
+#include "support/filesystem.h"
 #include "support/logging.h"
 #include "vfs/path.h"
 
@@ -97,8 +98,8 @@ bool is_corruption(int rc) {
 }
 
 void remove_database_files(llvm::StringRef path) {
-    llvm::sys::fs::remove(path);
-    llvm::sys::fs::remove(path + "-lock");
+    fs::remove(path);
+    fs::remove(path + "-lock");
 }
 
 class LmdbDatabase final : public BlobDatabase {
