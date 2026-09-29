@@ -4,6 +4,7 @@
 
 #include "command/invocation.h"
 #include "syntax/lexer.h"
+#include "vfs/file_system.h"
 
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -294,7 +295,7 @@ void scan_with_preprocessor(
     ScanResult& result,
     llvm::function_ref<void(clang::CompilerInstance&, clang::FrontendAction&)> body) {
     if(!vfs) {
-        vfs = llvm::vfs::createPhysicalFileSystem();
+        vfs = new vfs::View();
     }
 
     clang::DiagnosticOptions diag_opts;

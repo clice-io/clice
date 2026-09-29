@@ -12,8 +12,8 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "support/filesystem.h"
-#include "syntax/include_resolver.h"
 #include "vfs/file_table.h"
+#include "vfs/path.h"
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/xxhash.h"
@@ -245,7 +245,7 @@ TEST_CASE(ReadDropsBom) {
     // sends: both sides of every buffer-versus-disk comparison agree.
     TempDir tmp;
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
-    auto observed = read_file_observed(tmp.path("bom.h").c_str());
+    auto observed = vfs::read_observed(tmp.path("bom.h"));
     ASSERT_TRUE(observed.has_value());
     ASSERT_EQ(observed->content->getBuffer(), "int x;\n");
     ASSERT_EQ(observed->obs.hash, llvm::xxh3_64bits("int x;\n"));
@@ -257,11 +257,11 @@ TEST_CASE(CompileFSDropsBom) {
     TempDir tmp;
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
     auto path = tmp.path("bom.h");
-    ThreadSafeFS vfs;
-    auto status = vfs.status(path);
+    vfs::View view;
+    auto status = view.status(path);
     ASSERT_TRUE(bool(status));
     ASSERT_EQ(status->getSize(), 7u);
-    auto file = vfs.openFileForRead(path);
+    auto file = view.openFileForRead(path);
     ASSERT_TRUE(bool(file));
     auto buffer = (*file)->getBuffer(path, -1, true, false);
     ASSERT_TRUE(bool(buffer));
@@ -276,8 +276,8 @@ TEST_CASE(BinaryReadKeepsBom) {
               "\xEF\xBB\xBF"
               "AB");
     auto path = tmp.path("data.bin");
-    ThreadSafeFS vfs;
-    auto file = vfs.openFileForReadBinary(path);
+    vfs::View view;
+    auto file = view.openFileForReadBinary(path);
     ASSERT_TRUE(bool(file));
     ASSERT_EQ((*file)->status()->getSize(), 5u);
     auto buffer = (*file)->getBuffer(path, -1, true, false);
@@ -285,6 +285,37 @@ TEST_CASE(BinaryReadKeepsBom) {
     ASSERT_EQ((*buffer)->getBuffer(),
               "\xEF\xBB\xBF"
               "AB");
+}
+
+TEST_CASE(ReadModesServeBom) {
+    TempDir tmp;
+    tmp.touch("bom.txt",
+              "\xEF\xBB\xBF"
+              "AB");
+    auto path = tmp.path("bom.txt");
+    ASSERT_EQ((*vfs::read(path))->getBuffer(), "AB");
+    ASSERT_EQ((*vfs::read(path, vfs::Read::Bytes))->getBuffer(),
+              "\xEF\xBB\xBF"
+              "AB");
+    ASSERT_EQ((*vfs::read(path, vfs::Read::Mapped))->getBuffer(),
+              "\xEF\xBB\xBF"
+              "AB");
+}
+
+TEST_CASE(ListingKnowsDirectories) {
+    // Include completion tells directories from headers by the listing.
+    TempDir tmp;
+    tmp.touch("inc/a.h", "");
+    tmp.touch("inc/sub/b.h", "");
+#ifndef _WIN32
+    ASSERT_EQ(::symlink(tmp.path("inc/sub").c_str(), tmp.path("inc/link").c_str()), 0);
+#endif
+    auto listing = vfs::list(tmp.path("inc"));
+    ASSERT_FALSE(listing->entries.lookup("a.h"));
+    ASSERT_TRUE(listing->entries.lookup("sub"));
+#ifndef _WIN32
+    ASSERT_TRUE(listing->entries.lookup("link"));
+#endif
 }
 
 TEST_CASE(ListingSeesNewFile) {
@@ -297,13 +328,11 @@ TEST_CASE(ListingSeesNewFile) {
     age(dir);
     auto aged = file_mtime_ns(dir);
 
-    FileTable pool;
-    DirListingCache first_op;
-    first_op.shared = &pool;
-    auto* entries = resolve_dir(dir, first_op);
-    ASSERT_TRUE(entries != nullptr);
-    ASSERT_TRUE(entries->contains("a.h"));
-    ASSERT_FALSE(entries->contains("b.h"));
+    vfs::DirCache cache;
+    vfs::Scope first_op(cache);
+    auto& entries = first_op.list(dir);
+    ASSERT_TRUE(entries.contains("a.h"));
+    ASSERT_FALSE(entries.contains("b.h"));
 
     tmp.touch("inc/b.h", "");
     // A second age() rewinds relative to now and can land on the first
@@ -312,11 +341,10 @@ TEST_CASE(ListingSeesNewFile) {
     // staying outside the guard window.
     ASSERT_TRUE(set_file_mtime(dir, aged + 1'000'000'000));
 
-    DirListingCache second_op;
-    second_op.shared = &pool;
-    auto* refreshed = resolve_dir(dir, second_op);
-    ASSERT_TRUE(refreshed != nullptr);
-    ASSERT_TRUE(refreshed->contains("b.h"));
+    vfs::Scope second_op(cache);
+    ASSERT_TRUE(second_op.list(dir).contains("b.h"));
+    // The first operation keeps the listing it validated.
+    ASSERT_FALSE(entries.contains("b.h"));
 }
 
 TEST_CASE(WarmListingReused) {
@@ -325,23 +353,19 @@ TEST_CASE(WarmListingReused) {
     auto dir = tmp.path("inc");
     age(dir);
 
-    FileTable pool;
+    vfs::DirCache cache;
     {
-        DirListingCache op;
-        op.shared = &pool;
-        resolve_dir(dir, op);
+        vfs::Scope op(cache);
+        op.list(dir);
     }
-    ASSERT_TRUE(pool.dir_listings.contains(dir));
-    ASSERT_TRUE(pool.dir_listings.find(dir)->second.mtime_ns != 0);
+    ASSERT_TRUE(cache.listings.contains(dir));
+    ASSERT_TRUE(cache.listings.find(dir)->second->mtime_ns != 0);
 
     // The next operation validates by one stat and reuses the listing.
-    StatCounters counters;
-    DirListingCache op;
-    op.shared = &pool;
-    auto* entries = resolve_dir(dir, op, &counters);
-    ASSERT_TRUE(entries->contains("a.h"));
-    ASSERT_EQ(counters.dir_listings, 0u);
-    ASSERT_EQ(counters.dir_hits, 1u);
+    vfs::Scope op(cache);
+    ASSERT_TRUE(op.list(dir).contains("a.h"));
+    ASSERT_EQ(op.stats.listed, 0u);
+    ASSERT_EQ(op.stats.reused, 1u);
 }
 
 TEST_CASE(LookupSpellingNotShown) {

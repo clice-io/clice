@@ -10,6 +10,9 @@
 
 #include "support/filesystem.h"
 #include "syntax/scan.h"
+#include "vfs/dir_cache.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -17,37 +20,9 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Allocator.h"
-#include "llvm/Support/MemoryBuffer.h"
 
 namespace clice {
-
-/// One observation of a file's on-disk bytes: the xxh3 of the text a single
-/// read returned (see without_bom), and the stat describing the bytes. Captured under
-/// the pairing discipline (see read_file_observed) so the two halves are
-/// same-source: `paired` says the pre/post fstats of the read agreed,
-/// `reliable` additionally says the mtime lay outside the filesystem
-/// mtime-granularity guard window — only then may the stat serve as a
-/// fast-path baseline for skipping future reads. An unpaired or
-/// unreliable observation still carries a true hash of the bytes read.
-struct DiskObservation {
-    std::uint64_t size = 0;
-    std::int64_t mtime_ns = 0;
-    std::uint64_t hash = 0;
-    /// Filesystem identity of the inode the bytes were read from
-    /// (fstat's UniqueID) — what binds a spelling to an entity.
-    std::uint64_t uid_device = 0;
-    std::uint64_t uid_file = 0;
-    bool paired = false;
-    bool reliable = false;
-};
-
-/// A completed observed read: the observation plus the text it hashed.
-struct ObservedFile {
-    DiskObservation obs;
-    std::unique_ptr<llvm::MemoryBuffer> content;
-};
 
 /// A file id: the FileTable's compact handle for one interned path
 /// spelling. A distinct type so fids, version ids and other integers
@@ -115,17 +90,6 @@ struct std::formatter<clice::VersionID> : std::formatter<std::uint32_t> {
 };
 
 namespace clice {
-
-/// Read a file and hash its bytes under the pairing discipline: open a
-/// handle, fstat it, read through it, fstat again. Equal fstats prove
-/// the stat describes the bytes (an in-place write racing the read moves
-/// the mtime between the two fstats; a rename-over does not affect the
-/// open handle at all). A post-fstat mtime inside the guard window
-/// (coarse-granularity filesystems) demotes the pair to unreliable: a
-/// racing write can land within one mtime tick, so such a stat must not
-/// suppress future reads. Returns nullopt when the file cannot be
-/// opened or read. Safe to call from any thread.
-std::optional<ObservedFile> read_file_observed(const char* path);
 
 /// The master-side table of every file the workspace touches: a path is
 /// interned once to a compact fid, and downstream code references files
@@ -434,7 +398,7 @@ struct FileTable {
     /// pair. nullopt = unreadable right now (the pair is left untouched;
     /// what a failed read means is the caller's policy).
     std::optional<DiskObservation> read(Fid fid) {
-        auto observed = read_file_observed(resolve(fid).data());
+        auto observed = vfs::read_observed(resolve(fid));
         if(!observed) {
             return std::nullopt;
         }
@@ -559,23 +523,8 @@ struct FileTable {
 
     llvm::DenseMap<std::pair<std::uint64_t, std::uint64_t>, ModuleDecl> module_decls;
 
-    /// Directory listings, validated by the directory's own mtime: POSIX
-    /// and Windows bump it on entry creation and deletion, so one stat per
-    /// operation proves a cached listing current — external generators
-    /// dropping files into include directories produce no event, making
-    /// the mtime the only anchor there is. mtime_ns == 0 means the listing
-    /// was taken inside the mtime-granularity guard window (or the stat
-    /// failed) and must not be trusted across operations; a listing
-    /// re-earns trust at the next readdir. Deliberate residual: a forged
-    /// (backdated) directory mtime defeats this — files have the content
-    /// hash as a second anchor, a directory's only deeper truth is the
-    /// readdir itself, and re-reading every use would mean not caching.
-    struct DirListing {
-        llvm::StringSet<> entries;
-        std::int64_t mtime_ns = 0;
-    };
-
-    llvm::StringMap<DirListing> dir_listings;
+    /// Directory listings kept across operations.
+    vfs::DirCache dirs;
 
     /// Wave-scoped verdict memo: one top-level check operation (a
     /// deps_changed chain, an index need_update batch) opens a Wave, and

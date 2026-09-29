@@ -21,8 +21,8 @@
 #include "index/symbol_query.h"
 #include "index/types.h"
 #include "support/bitmap.h"
-#include "support/filesystem.h"
 #include "support/fuzzy_matcher.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"

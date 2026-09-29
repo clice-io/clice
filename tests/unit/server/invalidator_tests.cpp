@@ -400,8 +400,7 @@ TEST_CASE(RescanKeepsGuardedProvider) {
     auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cpp")));
     project.dep_graph.update_module_decl(iface, "m");
 
-    auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cpp"));
-    project.project_index.shards[iface] = shard_of((*disk)->getBuffer());
+    project.project_index.shards[iface] = shard_of(*read_file(tmp.path("m.cpp")));
 
     CommandResolver commands(project);
     ContextsBlob blob;

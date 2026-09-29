@@ -12,10 +12,15 @@
 
 namespace clice {
 
+namespace vfs {
+
+struct Scope;
+
+}
+
 class DependencyGraph;
 
 struct SearchConfig;
-struct DirListingCache;
 
 /// What kind of preamble-level completion is being requested.
 enum class CompletionContext : std::uint8_t {
@@ -61,11 +66,11 @@ struct IncludeCandidate {
 /// @param includer_dir  Directory of the file being edited, searched first by "" includes.
 /// @param prefix        Partially-typed include path (e.g. "vec" or "sys/").
 /// @param angled        True for <> includes, false for "" includes.
-/// @param dir_cache     Directory listing cache.
+/// @param scope         The request's directory listings.
 std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
                                                     llvm::StringRef includer_dir,
                                                     llvm::StringRef prefix,
                                                     bool angled,
-                                                    DirListingCache& dir_cache);
+                                                    vfs::Scope& scope);
 
 }  // namespace clice

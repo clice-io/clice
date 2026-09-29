@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "project/configuration.h"
 #include "support/filesystem.h"
+#include "vfs/path.h"
 
 namespace clice::testing {
 
@@ -45,7 +46,7 @@ TEST_CASE(SelectionRoundTrips) {
 
     tmp.touch(".clice/state.json", "not json");
     EXPECT_TRUE(read_selection(cache_dir).empty());
-    EXPECT_EQ(fs::read(path::join(cache_dir, "state.json")).value_or(""), "not json");
+    EXPECT_EQ(read_file(path::join(cache_dir, "state.json")).value_or(""), "not json");
     EXPECT_TRUE(read_selection("").empty());
 };
 

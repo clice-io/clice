@@ -11,8 +11,8 @@
 #include "server/file_tracker.h"
 #include "server/master_server.h"
 #include "support/cache_store.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/path.h"
 #include "worker/protocol.h"
 
 #include "kota/async/async.h"

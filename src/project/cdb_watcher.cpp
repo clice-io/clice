@@ -3,8 +3,8 @@
 #include <ranges>
 #include <utility>
 
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/STLExtras.h"
 

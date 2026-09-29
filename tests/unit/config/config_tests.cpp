@@ -5,7 +5,7 @@
 #include "test/test.h"
 #include "config/config.h"
 #include "project/build.h"
-#include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "kota/codec/dyn/decode.h"
 #include "kota/codec/json/json.h"

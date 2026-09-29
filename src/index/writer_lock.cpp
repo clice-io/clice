@@ -5,6 +5,8 @@
 #include "version.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/Support/FileSystem.h"
@@ -21,9 +23,9 @@ constexpr llvm::StringLiteral endpoint_name = "server.json";
 /// The holder's pid as stamped into the lock file; nullopt when the stamp
 /// is unreadable (a Windows holder keeps the file exclusive) or absent.
 std::optional<std::uint32_t> stamped_pid(llvm::StringRef lock_path) {
-    auto stamped = fs::read(lock_path);
+    auto stamped = vfs::read(lock_path, vfs::Read::Bytes);
     std::uint32_t pid = 0;
-    if(!stamped || llvm::StringRef(*stamped).trim().getAsInteger(10, pid)) {
+    if(!stamped || (*stamped)->getBuffer().trim().getAsInteger(10, pid)) {
         return std::nullopt;
     }
     return pid;
@@ -139,12 +141,12 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
     auto holder = stamped_pid(lock_path);
     probe.holder = holder_name(holder);
 
-    auto record = fs::read(path::join(cache_dir, endpoint_name));
+    auto record = vfs::read(path::join(cache_dir, endpoint_name), vfs::Read::Bytes);
     if(!record) {
         return probe;
     }
     ServerEndpoint endpoint;
-    if(auto parsed = kota::codec::json::from_string(*record, endpoint); !parsed) {
+    if(auto parsed = kota::codec::json::from_string((*record)->getBuffer(), endpoint); !parsed) {
         return probe;
     }
     // A record from a server that died holding the lock survives until the

@@ -4,9 +4,9 @@
 #include <chrono>
 #include <utility>
 
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"

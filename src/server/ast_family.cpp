@@ -13,10 +13,10 @@
 #include "server/editor_context.h"
 #include "server/position.h"
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
 #include "syntax/scan.h"
+#include "vfs/path.h"
 #include "worker/protocol.h"
 
 #include "kota/codec/json/json.h"

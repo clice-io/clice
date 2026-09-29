@@ -10,6 +10,7 @@
 #include "index/search_index.h"
 #include "support/logging.h"
 #include "support/timer.h"
+#include "vfs/file_system.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -51,7 +52,7 @@ std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
                                          std::unique_ptr<llvm::MemoryBuffer>& storage) {
-    auto buffer = fs::read_text(path);
+    auto buffer = vfs::read(path);
     if(!buffer) {
         return std::nullopt;
     }

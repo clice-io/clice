@@ -7,6 +7,7 @@
 #include "index/writer_lock.h"
 #include "support/cache_store.h"
 #include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Process.h"
@@ -366,12 +367,12 @@ TEST_CASE(WriterLockAtCacheRoot) {
     ASSERT_FALSE(
         llvm::sys::fs::exists(path::join(index::library_directory(store, "x"), "index.lock")));
 #ifndef _WIN32
-    auto held = fs::read(path::join(store.root_dir(), "index.lock"));
+    auto held = read_file(path::join(store.root_dir(), "index.lock"));
     ASSERT_TRUE(held.has_value());
     ASSERT_EQ(llvm::StringRef(*held).trim(), std::to_string(llvm::sys::Process::getProcessId()));
 #endif
     lock.reset();
-    auto released = fs::read(path::join(store.root_dir(), "index.lock"));
+    auto released = read_file(path::join(store.root_dir(), "index.lock"));
     ASSERT_TRUE(released.has_value() && released->empty());
 }
 

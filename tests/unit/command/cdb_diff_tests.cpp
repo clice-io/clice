@@ -7,6 +7,7 @@
 #include "command/argument_parser.h"
 #include "command/command.h"
 #include "support/filesystem.h"
+#include "vfs/path.h"
 
 namespace clice::testing {
 

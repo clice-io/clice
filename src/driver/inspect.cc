@@ -19,6 +19,8 @@
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
 #include "syntax/scan.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/StringSet.h"
@@ -924,7 +926,7 @@ int run_inspect(const InspectOptions& opts) {
     // and module/feature errors below land on stable entries.
     std::vector<SourceFile> sources;
     for(auto& [rel, abs]: files) {
-        auto buffer = fs::read_text(abs);
+        auto buffer = vfs::read(abs);
         if(!buffer) {
             FileEntry entry;
             entry.error = "read_error";
@@ -986,7 +988,7 @@ int run_inspect(const InspectOptions& opts) {
                                 llvm::MemoryBuffer::getMemBufferCopy(source.source.content));
             }
             auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
-                llvm::vfs::createPhysicalFileSystem());
+                llvm::makeIntrusiveRefCnt<vfs::View>());
             overlay->pushOverlay(memory);
 
             SharedScanCache cache;

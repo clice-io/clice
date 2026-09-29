@@ -11,8 +11,9 @@
 #include "server/editor_context.h"
 #include "server/features.h"
 #include "server/position.h"
-#include "support/filesystem.h"
 #include "syntax/include_resolver.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
@@ -71,7 +72,7 @@ protocol::CodeAction render(std::string title, protocol::CodeActionKind kind, Fi
 std::optional<std::string> include_spelling(CanonicalRef header,
                                             const SearchConfig& search,
                                             const Spelling& file,
-                                            DirListingCache& dir_cache) {
+                                            vfs::Scope& scope) {
     auto below = [&](CanonicalRef root) -> std::optional<llvm::StringRef> {
         if(root.empty() || !path::under(header, root) || header.size() <= root.size()) {
             return std::nullopt;
@@ -102,13 +103,8 @@ std::optional<std::string> include_spelling(CanonicalRef header,
         return candidate.name.size();
     });
     for(const auto& candidate: candidates) {
-        auto resolved = resolve_include(candidate.name,
-                                        candidate.angled,
-                                        directory,
-                                        false,
-                                        0,
-                                        search,
-                                        dir_cache);
+        auto resolved =
+            resolve_include(candidate.name, candidate.angled, directory, false, 0, search, scope);
         if(resolved && CanonicalPath(Spelling::absolute(resolved->path)) == header) {
             return candidate.angled ? std::format("<{}>", candidate.name)
                                     : std::format("\"{}\"", candidate.name);
@@ -235,7 +231,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             std::string content;
             if(host_session) {
                 content = host_session->text;
-            } else if(auto read = fs::read_text(host_path)) {
+            } else if(auto read = vfs::read(host_path)) {
                 content = (*read)->getBuffer().str();
             } else {
                 return;
@@ -290,15 +286,12 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         std::vector<std::string> arguments;
         auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
         auto search = project.cdb.search_config(ref);
-        DirListingCache dir_cache;
-        dir_cache.shared = &project.file_table;
+        vfs::Scope scope(project.file_table.dirs);
         llvm::StringRef text = session->text;
         std::string before = request.offset == text.size() && !text.ends_with('\n') ? "\n" : "";
         for(const auto& header: headers) {
-            if(auto spelling = include_spelling(header,
-                                                search,
-                                                project.file_table.spelling(path_id),
-                                                dir_cache)) {
+            if(auto spelling =
+                   include_spelling(header, search, project.file_table.spelling(path_id), scope)) {
                 emit(std::format("Add #include {}", *spelling),
                      action.kind,
                      {

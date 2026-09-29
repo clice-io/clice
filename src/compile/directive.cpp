@@ -1,8 +1,8 @@
 #include "compile/directive.h"
 
 #include "compile/implement.h"
-#include "support/filesystem.h"
 #include "syntax/lexer.h"
+#include "vfs/path.h"
 
 #include "clang/Basic/Module.h"
 #include "clang/Lex/MacroArgs.h"

@@ -4,7 +4,7 @@
 #include <tuple>
 
 #include "project/project.h"
-#include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Path.h"

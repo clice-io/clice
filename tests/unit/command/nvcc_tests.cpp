@@ -6,6 +6,7 @@
 #include "command/nvcc.h"
 #include "command/toolchain.h"
 #include "support/filesystem.h"
+#include "vfs/path.h"
 
 namespace clice::testing {
 namespace {

@@ -16,6 +16,7 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
+#include "vfs/path.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/ArrayRef.h"

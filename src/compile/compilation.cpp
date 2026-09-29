@@ -7,7 +7,6 @@
 #include "compile/diagnostic.h"
 #include "compile/implement.h"
 #include "semantic/decls.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/ipc/lsp/position.h"

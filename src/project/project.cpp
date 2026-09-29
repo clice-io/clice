@@ -13,6 +13,8 @@
 #include "syntax/include_resolver.h"
 #include "syntax/preamble_synthesis.h"
 #include "syntax/scan.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -31,7 +33,7 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
     }
     auto includer_path = file_table.resolve(chain[chain.size() - 2]);
     auto target_path = file_table.resolve(target_id);
-    auto buf = fs::read_text(includer_path);
+    auto buf = vfs::read(includer_path);
     if(!buf) {
         return 0;
     }
@@ -53,7 +55,7 @@ void Project::rescan_disk_file(Fid path_id) {
     // hash comparisons elsewhere stop re-reading), the lexical scan
     // (include edges and the module declaration), and the bytes the
     // module-decl preprocessor fallback must consume.
-    auto observed = read_file_observed(path.data());
+    auto observed = vfs::read_observed(path);
     if(observed) {
         file_table.observe(path_id, observed->obs);
         const auto& scan =
@@ -95,24 +97,23 @@ void Project::rescan_disk_file(Fid path_id) {
                 build.resolve(path_id, build.builtin(path), CommandSource::Fallback, path, path));
         }
 
-        DirListingCache dir_cache;
-        dir_cache.shared = &file_table;
+        vfs::Scope scope(file_table.dirs);
         auto spelled_dir = file_table.spelling(path_id).parent();
         llvm::StringRef dir = spelled_dir;
-        auto entries = resolve_dir(dir, dir_cache);
+        auto& listing = scope.list(dir);
         for(auto [index, ref]: llvm::enumerate(refs)) {
             auto search_config = cdb.search_config(ref);
-            auto resolved_config = resolve_search_config(search_config, dir_cache);
+            auto resolved_config = resolve_search_config(search_config, scope);
             llvm::SmallVector<IncludeEdge> edges;
             for(auto& include: scan.includes) {
                 auto resolved = resolve_include(include.path,
                                                 include.is_angled,
-                                                entries,
+                                                &listing,
                                                 dir,
                                                 include.is_include_next,
                                                 0,
                                                 resolved_config,
-                                                dir_cache);
+                                                scope);
                 if(resolved) {
                     edges.push_back({file_table.intern_spelled(Spelling::absolute(resolved->path)),
                                      include.conditional});
@@ -412,7 +413,7 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
 }
 
 std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
+    auto buffer = vfs::read(path, vfs::Read::Mapped);
     if(!buffer) {
         return nullptr;
     }

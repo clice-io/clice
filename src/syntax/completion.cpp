@@ -185,7 +185,7 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
                                                     llvm::StringRef includer_dir,
                                                     llvm::StringRef prefix,
                                                     bool angled,
-                                                    DirListingCache& dir_cache) {
+                                                    vfs::Scope& scope) {
     llvm::StringRef dir_prefix;
     llvm::StringRef file_prefix = prefix;
     auto slash_pos = prefix.rfind('/');
@@ -202,16 +202,13 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
         if(!dir_prefix.empty()) {
             llvm::sys::path::append(dir, dir_prefix);
         }
-        for(auto& entry: *resolve_dir(dir, dir_cache)) {
+        for(auto& entry: scope.list(dir).entries) {
             auto name = entry.getKey();
             if(!name.starts_with(file_prefix) || seen.contains(name)) {
                 continue;
             }
 
-            llvm::SmallString<256> full_path(dir);
-            llvm::sys::path::append(full_path, name);
-            bool is_dir = false;
-            llvm::sys::fs::is_directory(llvm::Twine(full_path), is_dir);
+            bool is_dir = entry.getValue();
             if(!is_dir && !looks_like_header(name, dir, search_dir, system)) {
                 continue;
             }

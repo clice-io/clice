@@ -12,8 +12,9 @@
 
 #include "compile/compilation_unit.h"
 #include "compile/dep_file.h"
-#include "support/filesystem.h"
 #include "syntax/preamble_synthesis.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
@@ -166,7 +167,7 @@ struct CompilationParams {
     /// Responsible for storing the arguments.
     std::vector<const char*> arguments;
 
-    llvm::IntrusiveRefCntPtr<vfs::FileSystem> vfs = new ThreadSafeFS();
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = new vfs::View();
 
     /// Information about reuse PCH.
     std::pair<std::string, std::uint32_t> pch;

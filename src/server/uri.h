@@ -2,7 +2,7 @@
 
 #include <optional>
 
-#include "support/filesystem.h"
+#include "vfs/path.h"
 
 namespace clice {
 

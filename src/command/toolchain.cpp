@@ -13,6 +13,7 @@
 #include "command/nvcc.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/path.h"
 
 #include "kota/async/async.h"
 #include "kota/meta/enum.h"

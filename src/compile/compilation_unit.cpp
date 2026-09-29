@@ -1,6 +1,7 @@
 #include "compile/implement.h"
 #include "semantic/display.h"
-#include "support/filesystem.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/ipc/lsp/text.h"
 
@@ -331,7 +332,7 @@ std::vector<DepFile> CompilationUnitRef::deps() {
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
             if(auto buffer = self->SM().getMemoryBufferForFileOrNone(*file)) {
-                it->second = llvm::xxh3_64bits(without_bom(buffer->getBuffer()));
+                it->second = llvm::xxh3_64bits(vfs::without_bom(buffer->getBuffer()));
             }
         }
     };

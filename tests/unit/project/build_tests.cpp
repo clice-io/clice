@@ -10,6 +10,7 @@
 #include "project/configuration.h"
 #include "project/project.h"
 #include "support/filesystem.h"
+#include "vfs/path.h"
 
 namespace clice::testing {
 

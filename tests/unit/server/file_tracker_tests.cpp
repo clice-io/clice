@@ -8,6 +8,7 @@
 #include "test/test.h"
 #include "server/file_tracker.h"
 #include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "llvm/Support/Process.h"
 

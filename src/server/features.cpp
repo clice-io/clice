@@ -16,6 +16,7 @@
 #include "server/lsp_projection.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
+#include "vfs/dir_cache.h"
 #include "worker/protocol.h"
 #include "worker/serialize.h"
 
@@ -737,14 +738,13 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
             auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
 
             auto search_config = project.cdb.search_config(ref);
-            DirListingCache dir_cache;
-            dir_cache.shared = &project.file_table;
+            vfs::Scope scope(project.file_table.dirs);
             bool angled = (pctx.kind == CompletionContext::IncludeAngled);
             auto candidates = complete_include_path(search_config,
                                                     path::parent_path(path),
                                                     pctx.prefix,
                                                     angled,
-                                                    dir_cache);
+                                                    scope);
 
             // A directory continues the path, replacing a `/` already
             // there; a header ends it and closes the directive, replacing

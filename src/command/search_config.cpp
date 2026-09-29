@@ -2,7 +2,7 @@
 
 #include "command/argument_parser.h"
 #include "command/command.h"
-#include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSet.h"

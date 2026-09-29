@@ -88,7 +88,7 @@ TEST_CASE(StoreAndLookup) {
     auto hit = store.lookup("pch", "k1");
     ASSERT_TRUE(hit.has_value());
     ASSERT_EQ(*hit, path);
-    ASSERT_EQ(fs::read(*hit).value_or(""), "blob content");
+    ASSERT_EQ(read_file(*hit).value_or(""), "blob content");
 
     // The blob landed inside the versioned namespace directory.
     ASSERT_TRUE(llvm::StringRef(path).contains("v1"));
@@ -106,8 +106,8 @@ TEST_CASE(RootIgnoreMarkers) {
     CacheStore::write_ignore_markers(tmp.path("root"));
 
     // config.toml stays visible: the root doubles as .clice/config.toml.
-    ASSERT_EQ(fs::read(tmp.path("root/.gitignore")).value_or(""), "*\n!config.toml\n");
-    auto tag = fs::read(tmp.path("root/CACHEDIR.TAG")).value_or("");
+    ASSERT_EQ(read_file(tmp.path("root/.gitignore")).value_or(""), "*\n!config.toml\n");
+    auto tag = read_file(tmp.path("root/CACHEDIR.TAG")).value_or("");
     ASSERT_TRUE(llvm::StringRef(tag).starts_with("Signature: 8a477f597d28d172789f06886806bc55"));
 }
 
@@ -117,7 +117,7 @@ TEST_CASE(MarkersCreateRoot) {
     // Sessions mark the defaulted root before anything else creates it.
     CacheStore::write_ignore_markers(tmp.path("fresh"));
 
-    ASSERT_EQ(fs::read(tmp.path("fresh/.gitignore")).value_or(""), "*\n!config.toml\n");
+    ASSERT_EQ(read_file(tmp.path("fresh/.gitignore")).value_or(""), "*\n!config.toml\n");
     ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("fresh/CACHEDIR.TAG")));
 }
 
@@ -127,7 +127,7 @@ TEST_CASE(IgnoreMarkersPreserved) {
     require(fs::write(tmp.path("root/.gitignore"), "custom\n").has_value(), "rewrite failed");
 
     CacheStore::write_ignore_markers(tmp.path("root"));
-    ASSERT_EQ(fs::read(tmp.path("root/.gitignore")).value_or(""), "custom\n");
+    ASSERT_EQ(read_file(tmp.path("root/.gitignore")).value_or(""), "custom\n");
     ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("root/CACHEDIR.TAG")));
 }
 
@@ -193,7 +193,7 @@ TEST_CASE(SurvivesReopen) {
     register_lru(store);
     auto hit = store.lookup("pch", "k1");
     ASSERT_TRUE(hit.has_value());
-    ASSERT_EQ(fs::read(*hit).value_or(""), "persisted");
+    ASSERT_EQ(read_file(*hit).value_or(""), "persisted");
 }
 
 TEST_CASE(VersionBumpDiscards) {
@@ -307,7 +307,7 @@ TEST_CASE(RewriteWins) {
     // same key must serve the new content, never the old blob.
     put(store, "pch", "k1", "first snapshot");
     auto path = put(store, "pch", "k1", "second");
-    ASSERT_EQ(fs::read(path).value_or(""), "second");
+    ASSERT_EQ(read_file(path).value_or(""), "second");
 }
 
 TEST_CASE(LruStaleBlobReplaced) {
@@ -321,7 +321,7 @@ TEST_CASE(LruStaleBlobReplaced) {
     // never kept.  Squat the path to force the collision portably.
     tmp.mkdir("root/cache/v1/pch/k1.pch");
     auto path = put(store, "pch", "k1", "fresh");
-    ASSERT_EQ(fs::read(path).value_or(""), "fresh");
+    ASSERT_EQ(read_file(path).value_or(""), "fresh");
     ASSERT_TRUE(store.lookup("pch", "k1").has_value());
 }
 
@@ -367,7 +367,7 @@ TEST_CASE(MissingManifestRescans) {
     register_lru(store);
     auto hit = store.lookup("pch", "k1");
     ASSERT_TRUE(hit.has_value());
-    ASSERT_EQ(fs::read(*hit).value_or(""), "scanned blob");
+    ASSERT_EQ(read_file(*hit).value_or(""), "scanned blob");
 }
 
 TEST_CASE(CorruptManifestRescans) {
@@ -440,7 +440,7 @@ TEST_CASE(ScratchBasics) {
 
     // Scratch entries never enter the manifest.
     store.checkpoint();
-    auto manifest = fs::read(tmp.path("root/cache/v1/manifest.json"));
+    auto manifest = read_file(tmp.path("root/cache/v1/manifest.json"));
     if(manifest.has_value()) {
         ASSERT_FALSE(llvm::StringRef(*manifest).contains("header_context"));
     }
@@ -469,7 +469,7 @@ TEST_CASE(CommitOverwriteSameKey) {
 
     put(store, "pch", "k1", "first");
     auto path = put(store, "pch", "k1", "second");
-    ASSERT_EQ(fs::read(path).value_or(""), "second");
+    ASSERT_EQ(read_file(path).value_or(""), "second");
 
     // total_size must account for replacement, not accumulate: correct
     // accounting gives 6 + 10 = 16 <= 20 (no eviction); accumulating the
@@ -509,7 +509,7 @@ TEST_CASE(CheckpointAutoTriggers) {
     for(int i = 0; i < 16; ++i) {
         put(store, "pch", std::format("k{}", i), "blob");
     }
-    auto manifest = fs::read(tmp.path("root/cache/v1/manifest.json"));
+    auto manifest = read_file(tmp.path("root/cache/v1/manifest.json"));
     ASSERT_TRUE(manifest.has_value());
     ASSERT_TRUE(llvm::StringRef(*manifest).contains("k0"));
 }
@@ -530,7 +530,7 @@ TEST_CASE(PairStoreAndLookup) {
 
     auto hit = store.lookup_aux("pch", "k1");
     ASSERT_TRUE(hit.has_value());
-    ASSERT_EQ(fs::read(*hit).value_or(""), "aux blob");
+    ASSERT_EQ(read_file(*hit).value_or(""), "aux blob");
 }
 
 TEST_CASE(AuxWithoutPrimaryFails) {
@@ -556,7 +556,7 @@ TEST_CASE(PrimaryRecommitResetsAux) {
     // next to today's primary would be a silent mismatch.
     put(store, "pch", "k1", "new primary");
     ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
-    ASSERT_FALSE(fs::read(aux_path).has_value());
+    ASSERT_FALSE(read_file(aux_path).has_value());
 
     put_aux(store, "pch", "k1", "new aux");
     ASSERT_TRUE(store.lookup_aux("pch", "k1").has_value());
@@ -577,7 +577,7 @@ TEST_CASE(PairEvictedTogether) {
 
     ASSERT_FALSE(store.lookup("pch", "k1").has_value());
     ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
-    ASSERT_FALSE(fs::read(aux_path).has_value());
+    ASSERT_FALSE(read_file(aux_path).has_value());
     ASSERT_TRUE(store.lookup("pch", "k2").has_value());
     ASSERT_TRUE(store.lookup_aux("pch", "k2").has_value());
 }
@@ -597,7 +597,7 @@ TEST_CASE(PairSurvivesReopen) {
     ASSERT_TRUE(store.lookup("pch", "k1").has_value());
     auto hit = store.lookup_aux("pch", "k1");
     ASSERT_TRUE(hit.has_value());
-    ASSERT_EQ(fs::read(*hit).value_or(""), "aux");
+    ASSERT_EQ(read_file(*hit).value_or(""), "aux");
 }
 
 TEST_CASE(StaleAuxDropped) {
@@ -630,7 +630,7 @@ TEST_CASE(StaleAuxDropped) {
     register_paired(store);
     ASSERT_TRUE(store.lookup("pch", "k1").has_value());
     ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
-    ASSERT_FALSE(fs::read(aux_path).has_value());
+    ASSERT_FALSE(read_file(aux_path).has_value());
 }
 
 TEST_CASE(OrphanAuxSwept) {
@@ -648,7 +648,7 @@ TEST_CASE(OrphanAuxSwept) {
     auto store = open_store(tmp);
     register_paired(store);
     ASSERT_FALSE(store.lookup_aux("pch", "ghost").has_value());
-    ASSERT_FALSE(fs::read(tmp.path("root/cache/v1/pch/ghost.pch.idx")).has_value());
+    ASSERT_FALSE(read_file(tmp.path("root/cache/v1/pch/ghost.pch.idx")).has_value());
 }
 
 TEST_CASE(InvalidateRemovesPair) {
@@ -662,7 +662,7 @@ TEST_CASE(InvalidateRemovesPair) {
     store.invalidate("pch", "k1");
     ASSERT_FALSE(store.lookup("pch", "k1").has_value());
     ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
-    ASSERT_FALSE(fs::read(aux_path).has_value());
+    ASSERT_FALSE(read_file(aux_path).has_value());
 }
 
 TEST_CASE(ReadOnlyOpenRequiresStore) {
@@ -706,7 +706,7 @@ TEST_CASE(ReadOnlyNeverWrites) {
         put(store, "pch", "k1", "blob");
         store.shutdown();
     }
-    auto manifest_before = fs::read(tmp.path("root/cache/v1/manifest.json"));
+    auto manifest_before = read_file(tmp.path("root/cache/v1/manifest.json"));
     ASSERT_TRUE(manifest_before.has_value());
 
     auto reader = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
@@ -720,8 +720,8 @@ TEST_CASE(ReadOnlyNeverWrites) {
     reader->invalidate("pch", "k1");
     reader->shutdown();
 
-    ASSERT_EQ(fs::read(tmp.path("root/cache/v1/pch/k1.pch")).value_or(""), "blob");
-    ASSERT_EQ(fs::read(tmp.path("root/cache/v1/manifest.json")).value_or(""), *manifest_before);
+    ASSERT_EQ(read_file(tmp.path("root/cache/v1/pch/k1.pch")).value_or(""), "blob");
+    ASSERT_EQ(read_file(tmp.path("root/cache/v1/manifest.json")).value_or(""), *manifest_before);
 }
 
 };  // TEST_SUITE(CacheStore)

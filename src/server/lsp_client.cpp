@@ -19,9 +19,9 @@
 #include "server/master_server.h"
 #include "server/uri.h"
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/preamble_synthesis.h"
+#include "vfs/path.h"
 #include "worker/serialize.h"
 
 #include "kota/codec/json/json.h"

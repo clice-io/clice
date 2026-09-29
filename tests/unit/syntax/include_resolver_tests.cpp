@@ -78,9 +78,10 @@ TEST_CASE(ResolveAbsolutePath) {
 
     auto abs_path = tmp.path("header.h");
     SearchConfig config;
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
-    auto result = resolve_include(abs_path, false, "", false, 0, config, dir_cache);
+    auto result = resolve_include(abs_path, false, "", false, 0, config, scope);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, abs_path));
@@ -95,9 +96,10 @@ TEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
     config.dirs.push_back({tmp.path("include")});
     config.angled_start_idx = 0;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
-    auto result = resolve_include("local.h", false, tmp.path("src"), false, 0, config, dir_cache);
+    auto result = resolve_include("local.h", false, tmp.path("src"), false, 0, config, scope);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("src/local.h")));
@@ -111,9 +113,10 @@ TEST_CASE(ResolveAngledIncludeFromSearchDirs) {
     config.dirs.push_back({tmp.path("include")});
     config.angled_start_idx = 0;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
-    auto result = resolve_include("sys/types.h", true, "", false, 0, config, dir_cache);
+    auto result = resolve_include("sys/types.h", true, "", false, 0, config, scope);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("include/sys/types.h")));
@@ -129,9 +132,10 @@ TEST_CASE(ResolveAngledSkipsQuotedDirs) {
     config.dirs.push_back({tmp.path("angled")});  // index 1 — angled starts
     config.angled_start_idx = 1;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
-    auto result = resolve_include("header.h", true, "", false, 0, config, dir_cache);
+    auto result = resolve_include("header.h", true, "", false, 0, config, scope);
 
     ASSERT_TRUE(result.has_value());
     // Angled include should skip quoted dir and find in angled dir.
@@ -149,10 +153,11 @@ TEST_CASE(ResolveIncludeNext) {
     config.dirs.push_back({tmp.path("dir2")});  // index 1
     config.angled_start_idx = 0;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
     // Simulate #include_next from a file found at dir index 0.
-    auto result = resolve_include("stdlib.h", true, "", true, 0, config, dir_cache);
+    auto result = resolve_include("stdlib.h", true, "", true, 0, config, scope);
 
     ASSERT_TRUE(result.has_value());
     // Should skip dir1 (found_dir_idx=0) and find in dir2.
@@ -167,10 +172,10 @@ TEST_CASE(ResolveNotFound) {
     config.dirs.push_back({tmp.path("include")});
     config.angled_start_idx = 0;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
-    auto result =
-        resolve_include("nonexistent.h", false, tmp.path("src"), false, 0, config, dir_cache);
+    auto result = resolve_include("nonexistent.h", false, tmp.path("src"), false, 0, config, scope);
 
     EXPECT_FALSE(result.has_value());
 }
@@ -183,15 +188,16 @@ TEST_CASE(ResolveStatCacheHits) {
     config.dirs.push_back({tmp.path("include")});
     config.angled_start_idx = 0;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
     // First resolution — populates cache.
-    auto result1 = resolve_include("cached.h", true, "", false, 0, config, dir_cache);
+    auto result1 = resolve_include("cached.h", true, "", false, 0, config, scope);
 
     ASSERT_TRUE(result1.has_value());
 
     // Second resolution — should use cache (no filesystem I/O needed).
-    auto result2 = resolve_include("cached.h", true, "", false, 0, config, dir_cache);
+    auto result2 = resolve_include("cached.h", true, "", false, 0, config, scope);
 
     ASSERT_TRUE(result2.has_value());
     EXPECT_EQ(result1->path, result2->path);
@@ -206,10 +212,10 @@ TEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
     config.dirs.push_back({tmp.path("include")});
     config.angled_start_idx = 0;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
-    auto result =
-        resolve_include("fallback.h", false, tmp.path("src"), false, 0, config, dir_cache);
+    auto result = resolve_include("fallback.h", false, tmp.path("src"), false, 0, config, scope);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("include/fallback.h")));
@@ -233,10 +239,11 @@ TEST_CASE(AngledSkipsQuotedDirs) {
     config.angled_start_idx = 1;
     config.system_start_idx = 2;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
     // <header.h> should skip iquote, find in idir (Angled before System).
-    auto result = resolve_include("header.h", true, "", false, 0, config, dir_cache);
+    auto result = resolve_include("header.h", true, "", false, 0, config, scope);
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("idir/header.h")));
     EXPECT_EQ(result->found_dir_idx, 1u);
@@ -252,10 +259,11 @@ TEST_CASE(AngledMissesQuotedOnly) {
     config.angled_start_idx = 1;
     config.system_start_idx = 1;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
     // <only_here.h> should NOT find it — only in quoted dir.
-    auto result = resolve_include("only_here.h", true, "", false, 0, config, dir_cache);
+    auto result = resolve_include("only_here.h", true, "", false, 0, config, scope);
     EXPECT_FALSE(result.has_value());
 }
 
@@ -271,10 +279,11 @@ TEST_CASE(QuotedSearchesAllDirs) {
     config.angled_start_idx = 1;
     config.system_start_idx = 2;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
     // "deep.h" is only in system dir, but quoted search goes through all.
-    auto result = resolve_include("deep.h", false, "", false, 0, config, dir_cache);
+    auto result = resolve_include("deep.h", false, "", false, 0, config, scope);
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("sys/deep.h")));
 }
@@ -290,10 +299,11 @@ TEST_CASE(AngledBeforeSystem) {
     config.angled_start_idx = 0;
     config.system_start_idx = 1;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
     // <priority.h> should find in Angled (index 0) before System (index 1).
-    auto result = resolve_include("priority.h", true, "", false, 0, config, dir_cache);
+    auto result = resolve_include("priority.h", true, "", false, 0, config, scope);
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("idir/priority.h")));
     EXPECT_EQ(result->found_dir_idx, 0u);
@@ -312,10 +322,11 @@ TEST_CASE(AfterSearchedLast) {
     config.system_start_idx = 1;
     config.after_start_idx = 2;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
     // <fallback.h> not in angled or sys, found in after.
-    auto result = resolve_include("fallback.h", true, "", false, 0, config, dir_cache);
+    auto result = resolve_include("fallback.h", true, "", false, 0, config, scope);
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("after/fallback.h")));
     EXPECT_EQ(result->found_dir_idx, 2u);
@@ -334,10 +345,11 @@ TEST_CASE(IncludeNextPropagatesIdx) {
     config.angled_start_idx = 0;
     config.system_start_idx = 1;
 
-    DirListingCache dir_cache;
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
 
     // File found at dir1 (index 1) does #include_next <limits.h>
-    auto result = resolve_include("limits.h", true, "", true, 1, config, dir_cache);
+    auto result = resolve_include("limits.h", true, "", true, 1, config, scope);
     ASSERT_TRUE(result.has_value());
     // Should skip dirs 0-1, find in dir2.
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("dir2/limits.h")));

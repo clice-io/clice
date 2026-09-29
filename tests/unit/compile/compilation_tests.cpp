@@ -9,6 +9,7 @@
 #include "compile/compilation.h"
 #include "support/filesystem.h"
 #include "syntax/scan.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/xxhash.h"
@@ -200,8 +201,8 @@ int main() { return preamble_func(); }
     prepare();
 
     // Consuming the PCH reads it from real disk; overlay like compile_with_pch.
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
@@ -239,7 +240,7 @@ int main() { return preamble_func(); }
             ASSERT_TRUE(preamble_unit.completed());
         }
 
-        auto blob = fs::read(*pch_path);
+        auto blob = read_file(*pch_path);
         ASSERT_TRUE(blob.operator bool());
         ASSERT_TRUE(fs::write(*pch_path, corrupt(std::move(*blob), shape)).operator bool());
 
@@ -468,6 +469,7 @@ int x = 1;
     llvm::StringRef v2 = R"cpp(
 #include "a.h"
 #include "b.h"
+#include "vfs/file_system.h"
 int x = 1;
 )cpp";
 

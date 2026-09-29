@@ -23,7 +23,6 @@
 #include "command/command.h"
 #include "config/config.h"
 #include "project/build.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/dependency_graph.h"
 #include "vfs/file_table.h"

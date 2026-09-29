@@ -15,8 +15,8 @@
 #include "semantic/display.h"
 #include "semantic/symbol.h"
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/markup.h"
+#include "vfs/path.h"
 
 #include "kota/codec/macro.h"
 #include "kota/ipc/lsp/position.h"

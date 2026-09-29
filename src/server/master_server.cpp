@@ -11,8 +11,9 @@
 #include "server/features.h"
 #include "server/lsp_client.h"
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
@@ -80,7 +81,7 @@ static void log_configuration(const ProjectServer& project, llvm::StringRef init
     if(project.config_path.empty()) {
         LOG_INFO("Configuration file: Missing (project {})", project.root);
     } else {
-        auto text = fs::read_text(project.config_path);
+        auto text = vfs::read(project.config_path);
         LOG_INFO("Configuration file {}:\n{}",
                  project.config_path,
                  text ? (*text)->getBuffer() : llvm::StringRef("<unreadable>"));

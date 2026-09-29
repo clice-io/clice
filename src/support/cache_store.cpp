@@ -23,6 +23,8 @@
 
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/ScopeExit.h"
@@ -117,8 +119,8 @@ bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
         return false;
     }
 
-    auto tmp_buf = llvm::MemoryBuffer::getFile(tmp_path);
-    auto final_buf = llvm::MemoryBuffer::getFile(final_path);
+    auto tmp_buf = vfs::read(tmp_path, vfs::Read::Mapped);
+    auto final_buf = vfs::read(final_path, vfs::Read::Mapped);
     if(!tmp_buf || !final_buf) {
         return false;
     }
@@ -353,9 +355,9 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     // Load the manifest.  Corrupt or missing is fine: registration falls
     // back to a directory scan with mtimes as last-accessed times.
     auto manifest_path = path::join(state->base, "manifest.json");
-    if(auto content = fs::read(manifest_path)) {
+    if(auto content = vfs::read(manifest_path, vfs::Read::Bytes)) {
         ManifestData data;
-        if(kota::codec::json::from_string(*content, data)) {
+        if(kota::codec::json::from_string((*content)->getBuffer(), data)) {
             for(auto& entry: data.entries) {
                 auto key = entry.ns + "/" + entry.key;
                 state->manifest_atimes[key] = entry.atime;

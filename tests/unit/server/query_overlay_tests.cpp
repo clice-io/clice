@@ -19,7 +19,8 @@
 #include "server/ast_projection.h"
 #include "server/live_sources.h"
 #include "server/session_store.h"
-#include "support/filesystem.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 #include "worker/pool.h"
 
 #include "kota/ipc/lsp/text.h"

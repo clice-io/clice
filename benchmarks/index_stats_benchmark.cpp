@@ -41,6 +41,7 @@
 #include "support/filesystem.h"
 #include "support/format.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
 
 #include "kota/deco/deco.h"
 #include "llvm/ADT/DenseMap.h"
@@ -1169,14 +1170,14 @@ int main(int argc, const char** argv) {
                 }
             };
 
-            auto content = fs::read(job.file);
+            auto content = vfs::read(job.file, vfs::Read::Bytes);
             if(!content) {
                 stats.skipped_missing += 1;
                 finish("skip (unreadable)");
                 continue;
             }
 
-            auto params = make_params(job.argv, job.file, *content);
+            auto params = make_params(job.argv, job.file, (*content)->getBuffer());
             auto unit = compile(params);
             if(!unit.completed()) {
                 stats.skipped_compile += 1;

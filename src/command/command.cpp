@@ -12,8 +12,9 @@
 #include "command/nvcc.h"
 #include "command/search_config.h"
 #include "command/toolchain.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/ScopeExit.h"
@@ -569,7 +570,7 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
 
         Spelling full(ref.drop_front(), directory);
         auto file = file_table.intern(full);
-        auto observed = read_file_observed(file_table.resolve(file).data());
+        auto observed = vfs::read_observed(file_table.resolve(file));
         if(observed) {
             file_table.observe(file, observed->obs);
         }
@@ -748,7 +749,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     auto& source = source_files[static_cast<std::size_t>(id)];
     llvm::StringRef path = source.path;
 
-    auto observed = read_file_observed(source.path.c_str());
+    auto observed = vfs::read_observed(source.path);
     if(!observed) {
         LOG_ERROR("Failed to read compilation database from {}", path);
         return std::nullopt;
