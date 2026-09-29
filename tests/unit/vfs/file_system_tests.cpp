@@ -168,6 +168,25 @@ TEST_CASE(BatchAgreesWithStatus) {
     ASSERT_TRUE(missing.error() == std::errc::no_such_file_or_directory);
 }
 
+TEST_CASE(BatchSeesLinkedEdits) {
+    // NTFS updates a directory entry only for the link a write went
+    // through: a directory holding hard links answers by name.
+    TempDir tmp;
+    for(int i = 0; i < 20; i += 1) {
+        tmp.touch(std::format("dir/h{}.h", i), "x");
+    }
+    ASSERT_FALSE(
+        bool(llvm::sys::fs::create_hard_link(tmp.path("dir/h0.h"), tmp.path("dir/link.h"))));
+    tmp.touch("dir/h0.h", "a longer text");
+
+    vfs::StatusBatch batch;
+    ASSERT_EQ(batch.status(tmp.path("dir/link.h"))->getSize(), 13u);
+    for(int i = 1; i < 20; i += 1) {
+        ASSERT_TRUE(batch.status(tmp.path(std::format("dir/h{}.h", i))).has_value());
+    }
+    ASSERT_EQ(batch.status(tmp.path("dir/link.h"))->getSize(), 13u);
+}
+
 };  // TEST_SUITE(FileSystem)
 
 }  // namespace

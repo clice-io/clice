@@ -672,7 +672,14 @@ std::expected<llvm::sys::fs::file_status, std::error_code>
     if(!directory.listed) {
         directory.asked += 1;
         if(directory.asked < list_after) {
-            return vfs::status(path);
+            auto status = vfs::status(path);
+            // NTFS updates a directory entry's size and time only for the
+            // link a write went through: a directory of hard links (Boost's
+            // `b2 headers`) cannot be answered from its listing.
+            if(status && status->getLinkCount() > 1) {
+                directory.listed = true;
+            }
+            return status;
         }
         directory.listed = true;
         directory.entries = list_statuses(llvm::sys::path::parent_path(path));

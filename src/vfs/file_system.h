@@ -92,8 +92,8 @@ std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRe
 /// Windows a directory asked about often enough within the operation is
 /// listed once, and its entries answer the rest: one listing costs about
 /// what a few statuses by name do. A name the listing lacks, a reparse
-/// point, a remote or oversized directory take vfs::status. Elsewhere
-/// every status is vfs::status.
+/// point, a remote or oversized directory and a directory seen to hold
+/// hard links take vfs::status. Elsewhere every status is vfs::status.
 class StatusBatch {
 public:
     std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRef path);
