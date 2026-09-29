@@ -396,6 +396,14 @@ CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
             instance.getFrontendOpts().ProgramAction = clang::frontend::GeneratePCH;
             instance.getPreprocessorOpts().GeneratePreamble = true;
 
+            // Without recorded mtimes clang checks each input by its size
+            // alone. Freshness is the master's call, made on content: a
+            // same-bytes rewrite (`git stash pop`, a branch switch) moves
+            // only the mtime and must not get a PCH the master still
+            // vouches for rejected. The size check stays, as it guards the
+            // reader against offsets past the end of a shrunk file.
+            instance.getFrontendOpts().IncludeTimestamps = false;
+
             // We don't want to write comment locations into PCH. They are racy and slow
             // to read back. We rely on dynamic index for the comments instead.
             instance.getPreprocessorOpts().WriteCommentListToPCH = false;

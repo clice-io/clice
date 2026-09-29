@@ -114,6 +114,26 @@ test("touch without content change skips recompile", async ({ session }) => {
     client.assertCleanCompile(uri);
 });
 
+test("touched pch input keeps completion", async ({ session }) => {
+    // A same-bytes rewrite (git stash pop, a branch switch) moves only the
+    // header's mtime: the PCH built from it must keep serving completion.
+    const { client, workspace } = session.tmp();
+    workspace.write("a.h", "#pragma once\nstruct Widget { int alpha_member; };\n");
+    const main = '#include "a.h"\nint main() {\n    Widget w;\n    return 0;\n}\n';
+    workspace.write("main.cpp", main);
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("a.h", workspace.read("a.h"));
+
+    client.change(uri, 1, main.replace("    return 0;", "    w.\n    return 0;"));
+    const reply = await client.completionAt(uri, 3, 6);
+    const items = Array.isArray(reply) ? reply : (reply?.items ?? []);
+    expect(items.map((item) => item.label.trim())).toContain("alpha_member");
+});
+
 test("header replaced with different content", async ({ session }) => {
     // Replacing a header file with different content should be detected
     // and trigger recompilation reflecting the new content.
