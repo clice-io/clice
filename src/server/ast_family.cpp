@@ -361,7 +361,8 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
                       !project.dep_graph.import_candidate_files().empty() ||
                       contexts.header_context(path_id) != nullptr ||
                       llvm::any_of(arguments, [](const std::string& arg) {
-                          return llvm::StringRef(arg).starts_with("-include");
+                          llvm::StringRef flag = arg;
+                          return flag.starts_with("-include") && flag != "-include-pch";
                       });
     if(!scan_worth) {
         scan_worth = scan_quick(text).has_import;
@@ -395,11 +396,11 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    auto deps = pcm.direct_deps(path_id,
-                                argv,
-                                directory,
-                                std::optional<llvm::StringRef>(text),
-                                synthesized);
+    auto deps = co_await pcm.direct_deps(path_id,
+                                         argv,
+                                         directory,
+                                         std::optional<llvm::StringRef>(text),
+                                         synthesized);
     graph.declare(node(path_id), deps.declared);
     // Sentinels join the round's candidates too: a successful landing
     // replaces the declaration with them, and a declare-only edge would

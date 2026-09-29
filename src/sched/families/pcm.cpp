@@ -34,7 +34,8 @@ void PCMFamily::register_runner() {
     });
 }
 
-PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id, std::optional<llvm::StringRef> content) {
+kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
+                                                         std::optional<llvm::StringRef> content) {
     // The same resolution the real build uses (run() below): a module unit
     // scanned with a different command than it compiles with would edge
     // against a different dependency set.
@@ -47,14 +48,14 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id, std::optional<llvm::St
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    return direct_deps(path_id, argv, directory, content);
+    co_return co_await direct_deps(path_id, argv, directory, content);
 }
 
-PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id,
-                                             llvm::ArrayRef<const char*> arguments,
-                                             llvm::StringRef directory,
-                                             std::optional<llvm::StringRef> content,
-                                             const SynthesizedContext* synthesized) {
+kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
+                                                         llvm::ArrayRef<const char*> arguments,
+                                                         llvm::StringRef directory,
+                                                         std::optional<llvm::StringRef> content,
+                                                         const SynthesizedContext* synthesized) {
     llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs;
     if(synthesized) {
         auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
@@ -66,7 +67,10 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id,
         overlay->pushOverlay(std::move(memory));
         vfs = std::move(overlay);
     }
-    auto scan_result = scan_precise(arguments, directory, content, nullptr, std::move(vfs));
+    // A failed scan finds nothing, as a scan that fails to set up does.
+    auto scanned = co_await kota::queue(
+        [&] { return scan_precise(arguments, directory, content, nullptr, std::move(vfs)); });
+    auto scan_result = scanned.has_value() ? std::move(scanned.value()) : ScanResult{};
 
     // Every scanned name lands in the edge set, resolved or not: an
     // unresolved name edges to its sentinel, which is what lets the
@@ -92,7 +96,7 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id,
         add(scan_result.module_name);
     }
 
-    return deps;
+    co_return deps;
 }
 
 llvm::SmallVector<NodeId> PCMFamily::provider_appeared(llvm::StringRef name) {
@@ -127,7 +131,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // edges honest: a CDB or import change is always seen by the next
     // round. Each depend() then records the candidate edge (interest- and
     // foreground-visible immediately) and waits for the dependency.
-    auto deps = direct_deps(path_id);
+    auto deps = co_await direct_deps(path_id);
     declare_deps(path_id, deps.declared);
     for(auto dep: deps.declared) {
         if(is_unresolved(dep)) {
@@ -328,7 +332,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
     // provider appearing for a sentinel) cascades to the open TUs
     // importing it through them. Declared even when empty, so a removed
     // import stops cascading.
-    auto deps = direct_deps(path_id, arguments, directory, content, synthesized);
+    auto deps = co_await direct_deps(path_id, arguments, directory, content, synthesized);
     // A module unit's PCM node carries its ARTIFACT's edge truth, owned
     // by its own rounds — a request's buffer view must not overwrite it
     // (an unsaved removed import would disconnect the cached PCM from

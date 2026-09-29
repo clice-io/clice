@@ -116,7 +116,8 @@ public:
     /// it in place of the file's on-disk text — even when empty (an open
     /// buffer's imports count before they are saved, and an emptied
     /// buffer has none).
-    ModuleDeps direct_deps(Fid path_id, std::optional<llvm::StringRef> content = std::nullopt);
+    kota::task<ModuleDeps> direct_deps(Fid path_id,
+                                       std::optional<llvm::StringRef> content = std::nullopt);
 
     /// The already-resolved-command flavor: scans under exactly the
     /// arguments the caller will compile with. The AST path uses it so a
@@ -125,11 +126,14 @@ public:
     /// which is only right for whole-TU runs on real commands. The
     /// header context the arguments name is served to the scan from
     /// `synthesized`.
-    ModuleDeps direct_deps(Fid path_id,
-                           llvm::ArrayRef<const char*> arguments,
-                           llvm::StringRef directory,
-                           std::optional<llvm::StringRef> content,
-                           const SynthesizedContext* synthesized = nullptr);
+    ///
+    /// The scan is a preprocessor run over the whole unit: it runs on the
+    /// thread pool, the event loop only resolves the names it found.
+    kota::task<ModuleDeps> direct_deps(Fid path_id,
+                                       llvm::ArrayRef<const char*> arguments,
+                                       llvm::StringRef directory,
+                                       std::optional<llvm::StringRef> content,
+                                       const SynthesizedContext* synthesized = nullptr);
 
 private:
     /// Commit the scan's full edge set as the unit's durable edges (see

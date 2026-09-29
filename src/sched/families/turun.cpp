@@ -129,11 +129,11 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             for(auto& arg: params.arguments) {
                 argv.push_back(arg.c_str());
             }
-            auto scanned = pcm.direct_deps(path_id,
-                                           argv,
-                                           params.directory,
-                                           std::nullopt,
-                                           resolved.synthesized.get());
+            auto scanned = co_await pcm.direct_deps(path_id,
+                                                    argv,
+                                                    params.directory,
+                                                    std::nullopt,
+                                                    resolved.synthesized.get());
             llvm::append_range(deps.resolved, scanned.resolved);
             llvm::append_range(deps.declared, scanned.declared);
         }
