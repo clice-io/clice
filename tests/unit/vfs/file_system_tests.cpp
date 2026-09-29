@@ -79,6 +79,33 @@ TEST_CASE(LinksShareIdentity) {
 #endif
 }
 
+TEST_CASE(KeptTextFollowsEdits) {
+    // A text read once is served to later compiles only while its file
+    // still stats the same; an edit is read afresh.
+    TempDir tmp;
+    tmp.touch("a.h", "int x;\n");
+    auto path = tmp.path("a.h");
+    ASSERT_TRUE(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
+
+    auto read = [&] {
+        vfs::View view;
+        auto file = view.openFileForRead(path);
+        EXPECT_TRUE(bool(file));
+        auto status = (*file)->status();
+        EXPECT_TRUE(bool(status));
+        EXPECT_TRUE(status->getUniqueID() == vfs::status(path)->getUniqueID());
+        auto buffer = (*file)->getBuffer(path, -1, true, false);
+        EXPECT_TRUE(bool(buffer));
+        EXPECT_EQ(status->getSize(), (*buffer)->getBufferSize());
+        return (*buffer)->getBuffer().str();
+    };
+    ASSERT_EQ(read(), "int x;\n");
+    ASSERT_EQ(read(), "int x;\n");
+
+    tmp.touch("a.h", "int y = 1;\n");
+    ASSERT_EQ(read(), "int y = 1;\n");
+}
+
 };  // TEST_SUITE(FileSystem)
 
 }  // namespace

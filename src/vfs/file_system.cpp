@@ -1,7 +1,9 @@
 #include "vfs/file_system.h"
 
+#include <algorithm>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <tuple>
 
@@ -246,14 +248,137 @@ StatusResult handle_status(llvm::sys::fs::file_t handle) {
 
 #endif
 
+bool same_file_state(const llvm::sys::fs::file_status& a, const llvm::sys::fs::file_status& b) {
+    return a.getSize() == b.getSize() &&
+           a.getLastModificationTime() == b.getLastModificationTime() &&
+           a.getUniqueID() == b.getUniqueID();
+}
+
+/// Serves a text the process keeps to one compile.
+class SharedText : public llvm::MemoryBuffer {
+public:
+    explicit SharedText(std::shared_ptr<const llvm::MemoryBuffer> text) : text(std::move(text)) {
+        init(this->text->getBufferStart(),
+             this->text->getBufferEnd(),
+             /*RequiresNullTerminator=*/true);
+    }
+
+    llvm::StringRef getBufferIdentifier() const override {
+        return text->getBufferIdentifier();
+    }
+
+    BufferKind getBufferKind() const override {
+        return MemoryBuffer_Malloc;
+    }
+
+private:
+    std::shared_ptr<const llvm::MemoryBuffer> text;
+};
+
+/// Source texts kept across the compiles of a process, by the path they
+/// were opened under: every compile reads each header it includes, and
+/// most are the bytes the compile before read. A text is served again
+/// while a status of its file matches the one it was read under — size,
+/// mtime and ID, the evidence the master's own change checks rest on — and
+/// only a text read in one piece whose mtime lay outside the guard window
+/// is kept at all.
+class TextCache {
+public:
+    struct Entry {
+        llvm::sys::fs::file_status status;
+        std::string real_name;
+        std::shared_ptr<const llvm::MemoryBuffer> text;
+        std::uint64_t used = 0;
+    };
+
+    std::optional<Entry> find(llvm::StringRef path, const llvm::sys::fs::file_status& status) {
+        std::lock_guard lock(mutex);
+        auto it = entries.find(path);
+        if(it == entries.end() || !same_file_state(it->second.status, status)) {
+            return std::nullopt;
+        }
+        clock += 1;
+        it->second.used = clock;
+        return it->second;
+    }
+
+    void insert(llvm::StringRef path, Entry entry) {
+        std::lock_guard lock(mutex);
+        clock += 1;
+        entry.used = clock;
+        auto size = entry.text->getBufferSize();
+        auto [it, inserted] = entries.try_emplace(path);
+        if(!inserted) {
+            bytes -= it->second.text->getBufferSize();
+        }
+        it->second = std::move(entry);
+        bytes += size;
+        while(bytes > budget) {
+            auto oldest = std::ranges::min_element(entries, {}, [](const auto& candidate) {
+                return candidate.second.used;
+            });
+            bytes -= oldest->second.text->getBufferSize();
+            entries.erase(oldest);
+        }
+    }
+
+private:
+    constexpr static std::size_t budget = 128 << 20;
+
+    std::mutex mutex;
+    llvm::StringMap<Entry> entries;
+    std::size_t bytes = 0;
+    std::uint64_t clock = 0;
+};
+
+TextCache& texts() {
+    static TextCache cache;
+    return cache;
+}
+
+/// A source file served from the process's texts.
+class CachedText : public llvm::vfs::File {
+public:
+    CachedText(std::string name, TextCache::Entry entry) :
+        name(std::move(name)), entry(std::move(entry)) {}
+
+    llvm::ErrorOr<llvm::vfs::Status> status() override {
+        auto result = llvm::vfs::Status::copyWithNewName(entry.status, name);
+        return llvm::vfs::Status::copyWithNewSize(result, entry.text->getBufferSize());
+    }
+
+    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
+        getBuffer(const llvm::Twine&, int64_t, bool, bool) override {
+        return std::make_unique<SharedText>(entry.text);
+    }
+
+    llvm::ErrorOr<std::string> getName() override {
+        return entry.real_name.empty() ? name : entry.real_name;
+    }
+
+    std::error_code close() override {
+        return {};
+    }
+
+private:
+    std::string name;
+    TextCache::Entry entry;
+};
+
 /// A file a compile opened, answering its status through the handle it
 /// was opened by. A source file is served as its text, read once, the size
 /// its status reports agreeing with the text; a binary file as its bytes,
 /// read the way clang asks.
 class DiskFile : public llvm::vfs::File {
 public:
-    DiskFile(llvm::sys::fs::file_t handle, std::string name, std::string real_name, bool text) :
-        handle(handle), name(std::move(name)), real_name(std::move(real_name)), is_text(text) {}
+    /// A source file names the path it is kept under in `text_key`; a
+    /// binary file has none.
+    DiskFile(llvm::sys::fs::file_t handle,
+             std::string name,
+             std::string real_name,
+             std::string text_key) :
+        handle(handle), name(std::move(name)), real_name(std::move(real_name)),
+        text_key(std::move(text_key)) {}
 
     ~DiskFile() override {
         close();
@@ -265,7 +390,7 @@ public:
             return status.error();
         }
         auto result = llvm::vfs::Status::copyWithNewName(*status, name);
-        if(!is_text || result.getType() != llvm::sys::fs::file_type::regular_file) {
+        if(text_key.empty() || result.getType() != llvm::sys::fs::file_type::regular_file) {
             return result;
         }
         if(auto error = load_text()) {
@@ -278,7 +403,7 @@ public:
                                                                  int64_t size,
                                                                  bool requires_terminator,
                                                                  bool is_volatile) override {
-        if(!is_text) {
+        if(text_key.empty()) {
             return llvm::MemoryBuffer::getOpenFile(handle,
                                                    buffer_name,
                                                    size,
@@ -288,7 +413,7 @@ public:
         if(auto error = load_text()) {
             return error;
         }
-        return std::move(text);
+        return std::make_unique<SharedText>(text);
     }
 
     llvm::ErrorOr<std::string> getName() override {
@@ -309,19 +434,25 @@ private:
         if(text) {
             return {};
         }
+        auto before = handle_status(handle);
         auto loaded = load(handle, name, Read::Text);
         if(!loaded) {
             return loaded.getError();
         }
         text = std::move(*loaded);
+        auto after = handle_status(handle);
+        if(before && after && same_file_state(*before, *after) &&
+           fs::settled(fs::mtime_ns(*after))) {
+            texts().insert(text_key, {.status = *after, .real_name = real_name, .text = text});
+        }
         return {};
     }
 
     llvm::sys::fs::file_t handle;
     std::string name;
     std::string real_name;
-    bool is_text;
-    std::unique_ptr<llvm::MemoryBuffer> text;
+    std::string text_key;
+    std::shared_ptr<const llvm::MemoryBuffer> text;
 };
 
 }  // namespace
@@ -421,13 +552,25 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
     if(auto error = getUnderlyingFS().makeAbsolute(absolute)) {
         return error;
     }
+    if(text) {
+        auto status = vfs::status(absolute);
+        if(!status) {
+            return status.error();
+        }
+        if(auto kept = texts().find(absolute, *status)) {
+            return std::make_unique<CachedText>(path.str(), std::move(*kept));
+        }
+    }
     llvm::SmallString<256> real_name;
     auto handle =
         llvm::sys::fs::openNativeFileForRead(absolute, llvm::sys::fs::OF_None, &real_name);
     if(!handle) {
         return llvm::errorToErrorCode(handle.takeError());
     }
-    return std::make_unique<DiskFile>(*handle, path.str(), real_name.str().str(), text);
+    return std::make_unique<DiskFile>(*handle,
+                                      path.str(),
+                                      real_name.str().str(),
+                                      text ? absolute.str().str() : std::string());
 }
 
 }  // namespace clice::vfs
