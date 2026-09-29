@@ -409,12 +409,12 @@ struct FileTable {
     /// Stat the file and produce a same-source observation of its
     /// current content. nullopt = missing or unreadable.
     std::optional<DiskObservation> current(Fid fid) {
-        llvm::sys::fs::file_status status;
-        if(llvm::sys::fs::status(resolve(fid), status)) {
+        auto status = vfs::status(resolve(fid));
+        if(!status) {
             saw_missing(fid);
             return std::nullopt;
         }
-        return observe_for(fid, status);
+        return observe_for(fid, *status);
     }
 
     /// The two-layer primitive: a same-source observation for a live
@@ -590,8 +590,8 @@ private:
 
     Verdict check_version_uncached(VersionID vid) {
         auto& version = this->version(vid);
-        llvm::sys::fs::file_status status;
-        if(llvm::sys::fs::status(resolve(version.fid), status)) {
+        auto status = vfs::status(resolve(version.fid));
+        if(!status) {
             saw_missing(version.fid);
             return Verdict::Missing;
         }
@@ -600,7 +600,7 @@ private:
         if(version.content_hash == 0) {
             return Verdict::Stale;
         }
-        auto obs = observe_for(version.fid, status);
+        auto obs = observe_for(version.fid, *status);
         if(!obs) {
             return Verdict::Unreadable;
         }

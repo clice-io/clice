@@ -507,13 +507,13 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     std::vector<FileScanResult> pending_warm;
     auto try_warm = [&](Fid path_id, std::uint32_t config_id) {
         auto path = file_table.resolve(path_id);
-        llvm::sys::fs::file_status status;
-        if(llvm::sys::fs::status(path, status)) {
+        auto status = vfs::status(path);
+        if(!status) {
             return false;
         }
-        auto size = status.getSize();
-        auto mtime_ns = fs::mtime_ns(status);
-        auto uid = status.getUniqueID();
+        auto size = status->getSize();
+        auto mtime_ns = fs::mtime_ns(*status);
+        auto uid = status->getUniqueID();
         auto hash = file_table.cached_hash(path_id, size, mtime_ns, uid.getDevice(), uid.getFile());
         if(!hash) {
             return false;

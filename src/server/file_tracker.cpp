@@ -6,6 +6,7 @@
 
 #include "support/logging.h"
 #include "support/timer.h"
+#include "vfs/file_system.h"
 #include "vfs/path.h"
 
 #include "llvm/ADT/DenseSet.h"
@@ -78,8 +79,8 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
         auto batch_end = std::min(begin + batch_size, files.size());
         for(std::size_t i = begin; i < batch_end; i += 1) {
             auto path_id = files[i];
-            llvm::sys::fs::file_status status;
-            if(llvm::sys::fs::status(project.file_table.resolve(path_id), status)) {
+            auto status = vfs::status(project.file_table.resolve(path_id));
+            if(!status) {
                 project.file_table.saw_missing(path_id);
                 continue;
             }
@@ -87,7 +88,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
             // file that stats fine but cannot be read right now (e.g. an
             // antivirus scanner briefly holding a fresh file on Windows)
             // leaves what was seen untouched; the next tick looks again.
-            project.file_table.observe_for(path_id, status);
+            project.file_table.observe_for(path_id, *status);
         }
     }
 

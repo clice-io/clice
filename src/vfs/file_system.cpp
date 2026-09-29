@@ -7,9 +7,28 @@
 #include "support/filesystem.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/xxhash.h"
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
+#include "llvm/Support/WindowsError.h"
+
+namespace llvm::sys::windows {
+
+// Declared by llvm/Support/Windows/WindowsSupport.h, which pins
+// _WIN32_WINNT below the version that declares GetFileInformationByName.
+std::error_code widenPath(const Twine& path8,
+                          SmallVectorImpl<wchar_t>& path16,
+                          size_t max_path_len = MAX_PATH);
+
+}  // namespace llvm::sys::windows
+#endif
 
 namespace clice::vfs {
 
@@ -74,24 +93,165 @@ bool starts_with_bom(const llvm::vfs::Status& status, llvm::StringRef path) {
     return verdict;
 }
 
-/// A source file a compile opened: its text, read once through the handle
-/// it was opened by, the size its status reports agreeing with the text.
-class TextFile : public llvm::vfs::File {
-public:
-    TextFile(llvm::sys::fs::file_t handle, std::string name, std::string real_name) :
-        handle(handle), name(std::move(name)), real_name(std::move(real_name)) {}
+using StatusResult = std::expected<llvm::sys::fs::file_status, std::error_code>;
 
-    ~TextFile() override {
+#ifdef _WIN32
+
+llvm::sys::fs::file_status make_status(DWORD attributes,
+                                       std::uint64_t last_access,
+                                       std::uint64_t last_write,
+                                       std::uint64_t size,
+                                       std::uint64_t volume,
+                                       const FILE_ID_128& id,
+                                       DWORD links) {
+    auto type = (attributes & FILE_ATTRIBUTE_DIRECTORY) ? llvm::sys::fs::file_type::directory_file
+                                                        : llvm::sys::fs::file_type::regular_file;
+    auto perms = (attributes & FILE_ATTRIBUTE_READONLY)
+                     ? llvm::sys::fs::all_read | llvm::sys::fs::all_exe
+                     : llvm::sys::fs::all_all;
+    // All 128 bits: ReFS file IDs do not fit in 64.
+    auto hash = static_cast<std::uint64_t>(
+        llvm::hash_combine_range(std::begin(id.Identifier), std::end(id.Identifier)));
+    return llvm::sys::fs::file_status(type,
+                                      perms,
+                                      links,
+                                      static_cast<std::uint32_t>(last_access >> 32),
+                                      static_cast<std::uint32_t>(last_access),
+                                      static_cast<std::uint32_t>(last_write >> 32),
+                                      static_cast<std::uint32_t>(last_write),
+                                      static_cast<std::uint32_t>(volume),
+                                      static_cast<std::uint32_t>(size >> 32),
+                                      static_cast<std::uint32_t>(size),
+                                      hash);
+}
+
+std::uint64_t filetime(const FILETIME& time) {
+    return (std::uint64_t(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+}
+
+StatusResult handle_status(HANDLE handle) {
+    FILE_REMOTE_PROTOCOL_INFO remote;
+    if(::GetFileInformationByHandleEx(handle, FileRemoteProtocolInfo, &remote, sizeof(remote))) {
+        llvm::sys::fs::file_status status;
+        if(auto error = llvm::sys::fs::status(handle, status)) {
+            return std::unexpected(error);
+        }
+        return status;
+    }
+    BY_HANDLE_FILE_INFORMATION info;
+    FILE_ID_INFO id;
+    if(!::GetFileInformationByHandle(handle, &info) ||
+       !::GetFileInformationByHandleEx(handle, FileIdInfo, &id, sizeof(id))) {
+        return std::unexpected(llvm::mapWindowsError(::GetLastError()));
+    }
+    return make_status(info.dwFileAttributes,
+                       filetime(info.ftLastAccessTime),
+                       filetime(info.ftLastWriteTime),
+                       (std::uint64_t(info.nFileSizeHigh) << 32) | info.nFileSizeLow,
+                       id.VolumeSerialNumber,
+                       id.FileId,
+                       info.nNumberOfLinks);
+}
+
+using GetFileInformationByNameFn = BOOL(WINAPI*)(PCWSTR, FILE_INFO_BY_NAME_CLASS, PVOID, ULONG);
+
+/// Null before Windows 11 24H2.
+GetFileInformationByNameFn by_name() {
+    static auto fn = reinterpret_cast<GetFileInformationByNameFn>(
+        ::GetProcAddress(::GetModuleHandleW(L"kernelbase.dll"), "GetFileInformationByName"));
+    return fn;
+}
+
+/// The errors a by-name query reports only for a path that names nothing;
+/// anything else it may report for a file an open would reach (the list
+/// CPython trusts).
+bool names_nothing(DWORD error) {
+    switch(error) {
+        case ERROR_FILE_NOT_FOUND:
+        case ERROR_PATH_NOT_FOUND:
+        case ERROR_NOT_READY:
+        case ERROR_BAD_NET_NAME:
+        case ERROR_BAD_NETPATH:
+        case ERROR_BAD_PATHNAME:
+        case ERROR_INVALID_NAME: return true;
+        default: return false;
+    }
+}
+
+StatusResult by_path(llvm::StringRef path) {
+    llvm::SmallVector<wchar_t, 256> wide;
+    if(auto error = llvm::sys::windows::widenPath(path, wide)) {
+        return std::unexpected(error);
+    }
+    wide.push_back(L'\0');
+    if(auto query = by_name()) {
+        // Not in the SDK's user-mode headers: the device is on another
+        // machine, where file IDs can be reused.
+        constexpr DWORD remote_device = 0x10;
+        FILE_STAT_BASIC_INFORMATION info;
+        if(query(wide.data(), FileStatBasicByNameInfo, &info, sizeof(info))) {
+            // A reparse point is not followed, a remote file is asked through
+            // a handle as well.
+            if(!(info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+               !(info.DeviceCharacteristics & remote_device)) {
+                return make_status(info.FileAttributes,
+                                   info.LastAccessTime.QuadPart,
+                                   info.LastWriteTime.QuadPart,
+                                   info.EndOfFile.QuadPart,
+                                   info.VolumeSerialNumber.QuadPart,
+                                   info.FileId128,
+                                   info.NumberOfLinks);
+            }
+        } else if(auto error = ::GetLastError(); names_nothing(error)) {
+            return std::unexpected(llvm::mapWindowsError(error));
+        }
+    }
+    HANDLE handle = ::CreateFileW(wide.data(),
+                                  0,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                  nullptr,
+                                  OPEN_EXISTING,
+                                  FILE_FLAG_BACKUP_SEMANTICS,
+                                  nullptr);
+    if(handle == INVALID_HANDLE_VALUE) {
+        return std::unexpected(llvm::mapWindowsError(::GetLastError()));
+    }
+    auto close = llvm::make_scope_exit([&] { ::CloseHandle(handle); });
+    return handle_status(handle);
+}
+
+#else
+
+StatusResult handle_status(llvm::sys::fs::file_t handle) {
+    llvm::sys::fs::file_status status;
+    if(auto error = llvm::sys::fs::status(handle, status)) {
+        return std::unexpected(error);
+    }
+    return status;
+}
+
+#endif
+
+/// A file a compile opened, answering its status through the handle it
+/// was opened by. A source file is served as its text, read once, the size
+/// its status reports agreeing with the text; a binary file as its bytes,
+/// read the way clang asks.
+class DiskFile : public llvm::vfs::File {
+public:
+    DiskFile(llvm::sys::fs::file_t handle, std::string name, std::string real_name, bool text) :
+        handle(handle), name(std::move(name)), real_name(std::move(real_name)), is_text(text) {}
+
+    ~DiskFile() override {
         close();
     }
 
     llvm::ErrorOr<llvm::vfs::Status> status() override {
-        llvm::sys::fs::file_status status;
-        if(auto error = llvm::sys::fs::status(handle, status)) {
-            return error;
+        auto status = handle_status(handle);
+        if(!status) {
+            return status.error();
         }
-        auto result = llvm::vfs::Status::copyWithNewName(status, name);
-        if(result.getType() != llvm::sys::fs::file_type::regular_file) {
+        auto result = llvm::vfs::Status::copyWithNewName(*status, name);
+        if(!is_text || result.getType() != llvm::sys::fs::file_type::regular_file) {
             return result;
         }
         if(auto error = load_text()) {
@@ -100,8 +260,17 @@ public:
         return llvm::vfs::Status::copyWithNewSize(result, text->getBufferSize());
     }
 
-    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-        getBuffer(const llvm::Twine&, int64_t, bool, bool) override {
+    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> getBuffer(const llvm::Twine& buffer_name,
+                                                                 int64_t size,
+                                                                 bool requires_terminator,
+                                                                 bool is_volatile) override {
+        if(!is_text) {
+            return llvm::MemoryBuffer::getOpenFile(handle,
+                                                   buffer_name,
+                                                   size,
+                                                   requires_terminator,
+                                                   is_volatile);
+        }
         if(auto error = load_text()) {
             return error;
         }
@@ -137,6 +306,7 @@ private:
     llvm::sys::fs::file_t handle;
     std::string name;
     std::string real_name;
+    bool is_text;
     std::unique_ptr<llvm::MemoryBuffer> text;
 };
 
@@ -192,21 +362,46 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path)
     return result;
 }
 
-llvm::ErrorOr<llvm::vfs::Status> View::status(const llvm::Twine& path) {
-    auto status = getUnderlyingFS().status(path);
-    if(!status || status->getType() != llvm::sys::fs::file_type::regular_file ||
-       status->getSize() < 3) {
-        return status;
+std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRef path) {
+#ifdef _WIN32
+    return by_path(path);
+#else
+    llvm::sys::fs::file_status status;
+    if(auto error = llvm::sys::fs::status(path, status)) {
+        return std::unexpected(error);
     }
+    return status;
+#endif
+}
+
+llvm::ErrorOr<llvm::vfs::Status> View::status(const llvm::Twine& path) {
     llvm::SmallString<256> absolute;
     path.toVector(absolute);
-    if(getUnderlyingFS().makeAbsolute(absolute) || !starts_with_bom(*status, absolute)) {
-        return status;
+    if(auto error = getUnderlyingFS().makeAbsolute(absolute)) {
+        return error;
     }
-    return llvm::vfs::Status::copyWithNewSize(*status, status->getSize() - 3);
+    auto status = vfs::status(absolute);
+    if(!status) {
+        return status.error();
+    }
+    auto result = llvm::vfs::Status::copyWithNewName(*status, path);
+    if(result.getType() != llvm::sys::fs::file_type::regular_file || result.getSize() < 3 ||
+       !starts_with_bom(result, absolute)) {
+        return result;
+    }
+    return llvm::vfs::Status::copyWithNewSize(result, result.getSize() - 3);
 }
 
 llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::openFileForRead(const llvm::Twine& path) {
+    return open(path, true);
+}
+
+llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>>
+    View::openFileForReadBinary(const llvm::Twine& path) {
+    return open(path, false);
+}
+
+llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& path, bool text) {
     llvm::SmallString<256> absolute;
     path.toVector(absolute);
     if(auto error = getUnderlyingFS().makeAbsolute(absolute)) {
@@ -218,7 +413,7 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::openFileForRead(const llvm
     if(!handle) {
         return llvm::errorToErrorCode(handle.takeError());
     }
-    return std::make_unique<TextFile>(*handle, path.str(), real_name.str().str());
+    return std::make_unique<DiskFile>(*handle, path.str(), real_name.str().str(), text);
 }
 
 }  // namespace clice::vfs

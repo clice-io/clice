@@ -6,6 +6,7 @@
 #include <system_error>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/VirtualFileSystem.h"
 
@@ -75,6 +76,17 @@ std::expected<std::unique_ptr<llvm::MemoryBuffer>, std::error_code> read(llvm::S
 /// suppress future reads. Safe to call from any thread.
 std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path);
 
+/// A file's status, symlinks followed.
+///
+/// Windows makes a status expensive by opening the file (every filter
+/// driver sees the open), so there it is taken by name without an open
+/// where the system can (Windows 11 24H2 on). A file's ID then comes from
+/// the volume's file ID instead of LLVM's hash of the file's final path,
+/// and View reports the same IDs for the files it opens: clang tells files
+/// apart by ID, and one scheme per process keeps one file one file. Network
+/// volumes keep LLVM's scheme, their file IDs can be reused.
+std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRef path);
+
 /// The file system one compile sees: the disk, each file served the way
 /// read() serves it — sources as text, `#embed` data, PCH and PCM files
 /// as bytes. Clang sets its working directory, so every compile gets its
@@ -95,9 +107,10 @@ public:
         openFileForRead(const llvm::Twine& path) override;
 
     llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>>
-        openFileForReadBinary(const llvm::Twine& path) override {
-        return getUnderlyingFS().openFileForReadBinary(path);
-    }
+        openFileForReadBinary(const llvm::Twine& path) override;
+
+private:
+    llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> open(const llvm::Twine& path, bool text);
 };
 
 }  // namespace vfs
