@@ -303,6 +303,9 @@ public:
     }
 
     void insert(llvm::StringRef path, Entry entry) {
+        if(entry.text->getBufferSize() > budget) {
+            return;
+        }
         std::lock_guard lock(mutex);
         clock += 1;
         entry.used = clock;
@@ -447,8 +450,8 @@ private:
         }
         text = std::move(*loaded);
         auto after = handle_status(handle);
-        if(before && after && same_file_state(*before, *after) &&
-           fs::settled(fs::mtime_ns(*after))) {
+        if(before && after && after->type() == llvm::sys::fs::file_type::regular_file &&
+           same_file_state(*before, *after) && fs::settled(fs::mtime_ns(*after))) {
             texts().insert(text_key, {.status = *after, .real_name = real_name, .text = text});
         }
         return {};
