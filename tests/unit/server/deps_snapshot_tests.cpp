@@ -1,6 +1,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "project/project.h"
+#include "vfs/file_system.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
@@ -22,13 +23,13 @@ std::int64_t generous_build_at() {
 /// The consumed hash a worker would report for the file's current bytes
 /// (0 = unreadable, which no test here expects).
 std::uint64_t consumed_hash(llvm::StringRef path) {
-    auto buf = llvm::MemoryBuffer::getFile(path);
-    return buf ? llvm::xxh3_64bits((*buf)->getBuffer()) : 0;
+    auto text = vfs::read(path);
+    return text ? llvm::xxh3_64bits((*text)->getBuffer()) : 0;
 }
 
 /// Rewind a file's mtime out of the mtime-granularity guard window, the
 /// way real project files predate a server start. A freshly touched file
-/// is deliberately untrusted (see read_file_observed), so tests exercising
+/// is deliberately untrusted (see vfs::read_observed), so tests exercising
 /// the stat fast path must age their files first.
 void age_file(llvm::StringRef path) {
     EXPECT_TRUE(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));

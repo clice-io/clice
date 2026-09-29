@@ -5,7 +5,7 @@
 #include "semantic/decls.h"
 #include "semantic/expr_hash.h"
 #include "semantic/hasher.h"
-#include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"

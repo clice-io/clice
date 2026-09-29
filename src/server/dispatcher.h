@@ -81,6 +81,7 @@ public:
     /// AST round may not have seen yet.
     RawResult completion(const Ticket& ticket,
                          const protocol::Position& position,
+                         const feature::CompletionClient& client,
                          std::optional<kota::cancellation_token> token = {});
     RawResult signature_help(const Ticket& ticket,
                              const protocol::Position& position,
@@ -106,11 +107,13 @@ private:
 
     /// Shared body of the interactive builds: identical inputs and
     /// quarantine passage, different wire type, evidence slot and label.
+    /// `wp` arrives with the fields particular to its request filled in.
     template <typename Params>
     RawResult interactive(std::uint8_t evidence,
                           llvm::StringRef label,
                           const Ticket& ticket,
                           protocol::Position position,
+                          Params wp,
                           std::optional<kota::cancellation_token> token);
 
     /// A quarantine refusal of a content-carrying build announces the
@@ -118,9 +121,15 @@ private:
     kota::ipc::Error refuse(const std::shared_ptr<Session>& session);
 
     /// The single exit of every dispatch: a fresh reply settles the kind's
-    /// ledger, a stale one never leaves as a value.
+    /// ledger, a stale one never leaves as a value — unless it is a
+    /// `snapshot` reply, which describes the buffer the request carried
+    /// and which the client reconciles with the edits made meanwhile.
     template <typename Outcome>
-    Outcome land(const Ticket& ticket, std::uint8_t kind, llvm::StringRef label, Outcome result);
+    Outcome land(const Ticket& ticket,
+                 std::uint8_t kind,
+                 llvm::StringRef label,
+                 Outcome result,
+                 bool snapshot = false);
 
     Project& project;
     EditorContext& contexts;

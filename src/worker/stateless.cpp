@@ -458,7 +458,7 @@ static kota::codec::RawValue handle_completion(const worker::CompletionParams& p
     cp.completion = {params.file, params.offset};
     cp.stop = stop;
 
-    auto items = feature::code_complete(cp, params.config.code_completion);
+    auto items = feature::code_complete(cp, params.config.code_completion, params.client);
     LOG_DEBUG("Completion done: {} items, {}ms", items.size(), timer.ms());
 
     return to_raw(items);

@@ -18,7 +18,8 @@
 
 namespace clice::testing {
 
-/// Reaches the family's private PCH adoption step for guard tests.
+/// Reaches the family's private PCH adoption step for guard tests: whether
+/// a request on the session's buffer compiles against a PCH.
 struct ASTFamilyFixture {
     static kota::task<bool> ensure_pch(ASTFamily& ast,
                                        const std::shared_ptr<Session>& session,
@@ -26,8 +27,14 @@ struct ASTFamilyFixture {
                                        std::uint64_t license_epoch,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments) {
-        return ast
-            .ensure_pch(session, license_generation, license_epoch, directory, arguments, nullptr);
+        auto key = co_await ast.ensure_pch(session,
+                                           session->text,
+                                           license_generation,
+                                           license_epoch,
+                                           directory,
+                                           arguments,
+                                           nullptr);
+        co_return key.has_value();
     }
 };
 
@@ -577,7 +584,7 @@ TEST_CASE(QuarantineBlocksBuilds) {
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
-        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {});
+        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
         // The gate's message, not the empty pool's: without the gate this
@@ -721,7 +728,7 @@ TEST_CASE(PCHCrashBlocksBuild) {
         opts.stateful_count = 0;
         CO_ASSERT_TRUE(stack.pool.start(opts));
 
-        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {});
+        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
         // One inherited strike plus both deaths of the doomed PCH build.
@@ -1046,9 +1053,10 @@ TEST_CASE(EpochGuardsPCHWash) {
         };
         co_await kota::when_all(launch(), invalidate());
 
-        // The build landed (the shared artifact is cached), but the stale
-        // request adopted nothing and washed nothing.
-        EXPECT_FALSE(built);
+        // The build landed (the shared artifact is cached) and the stale
+        // request compiles against it, but it adopted nothing and washed
+        // nothing.
+        EXPECT_TRUE(built);
         auto projection = stack.ast.projections.projection(session->path_id);
         EXPECT_TRUE(!projection || !projection->pch_key.has_value());
         EXPECT_EQ(session->quarantine.crashes(), 1u);

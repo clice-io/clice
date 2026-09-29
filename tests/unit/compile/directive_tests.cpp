@@ -1,6 +1,6 @@
 #include "test/test.h"
 #include "test/tester.h"
-#include "support/filesystem.h"
+#include "vfs/path.h"
 
 namespace clice::testing {
 

@@ -16,7 +16,6 @@
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
 #include "llvm/Support/StringSaver.h"
 #include "llvm/Support/xxhash.h"
 
@@ -344,7 +343,7 @@ FileScanResult scan_file_worker(const char* path, Fid path_id, std::uint32_t con
     result.config_id = config_id;
 
     auto t0 = std::chrono::steady_clock::now();
-    auto observed = read_file_observed(path);
+    auto observed = vfs::read_observed(path);
     auto t1 = std::chrono::steady_clock::now();
     result.read_us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
@@ -435,8 +434,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     report.config_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
 
-    DirListingCache dir_cache;
-    dir_cache.shared = &file_table;
+    vfs::Scope scope(file_table.dirs);
     llvm::StringMap<CachedInclude> include_cache;
 
     // Collect all unique search dirs and launch readdir tasks on the
@@ -447,8 +445,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 
     struct DirEntry {
         std::string dir_path;
-        llvm::StringSet<> entries;
-        std::int64_t reliable_mtime = 0;
+        std::shared_ptr<const vfs::Listing> listing;
     };
 
     std::vector<kota::task<DirEntry, kota::error>> pending_dir_tasks;
@@ -468,38 +465,14 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 
         pending_dir_tasks.reserve(unique_dirs.size());
         for(auto& entry: unique_dirs) {
-            // A listing the shared compartment can still vouch for skips
-            // the readdir; its one validation stat happens lazily at first
-            // use.
-            auto cached = file_table.dir_listings.find(entry.getKey());
-            if(cached != file_table.dir_listings.end() && cached->second.mtime_ns != 0) {
+            // A listing the cache can still vouch for skips the readdir;
+            // its one validation stat happens lazily at first use.
+            if(file_table.dirs.kept(entry.getKey())) {
                 continue;
             }
-            auto dir_path = entry.getKey().str();
             pending_dir_tasks.push_back(kota::queue(
-                [dir_path = std::move(dir_path)]() -> DirEntry {
-                    DirEntry result;
-                    result.dir_path = dir_path;
-                    fs::FileMetadata pre_status;
-                    bool pre_ok = !fs::file_metadata(result.dir_path, pre_status);
-                    std::error_code ec;
-                    llvm::sys::fs::directory_iterator di(result.dir_path, ec);
-                    for(; !ec && di != llvm::sys::fs::directory_iterator(); di.increment(ec)) {
-                        result.entries.insert(llvm::sys::path::filename(di->path()));
-                    }
-                    // Same pre/post-stat + guard + complete-readdir
-                    // discipline as resolve_dir.
-                    fs::FileMetadata post_status;
-                    if(pre_ok && !ec && !fs::file_metadata(result.dir_path, post_status) &&
-                       pre_status.mtime_ns == post_status.mtime_ns) {
-                        auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                          std::chrono::system_clock::now().time_since_epoch())
-                                          .count();
-                        if(post_status.mtime_ns <= fs::stat_baseline_before_ns(now_ms)) {
-                            result.reliable_mtime = post_status.mtime_ns;
-                        }
-                    }
-                    return result;
+                [dir_path = entry.getKey().str()]() -> DirEntry {
+                    return {dir_path, vfs::list(dir_path)};
                 },
                 loop));
         }
@@ -638,10 +611,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 pending_dir_tasks.clear();
                 if(dir_outcome.has_value()) {
                     for(auto& entry: *dir_outcome) {
-                        auto& listing = file_table.dir_listings[entry.dir_path];
-                        listing.entries = std::move(entry.entries);
-                        listing.mtime_ns = entry.reliable_mtime;
-                        dir_cache.validated.insert(entry.dir_path);
+                        scope.adopt(entry.dir_path, std::move(entry.listing));
                     }
                     LOG_INFO("Pre-populated dir cache: {} directories", dir_outcome->size());
                 }
@@ -678,7 +648,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         // Converts StringMap lookups into direct pointer dereferences for Phase 2.
         if(resolved_configs.empty()) {
             for(auto& [config_id, config]: configs) {
-                resolved_configs[config_id] = resolve_search_config(config, dir_cache);
+                resolved_configs[config_id] = resolve_search_config(config, scope);
             }
         }
 
@@ -689,7 +659,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         // with Phase 2 of the current wave.
         std::vector<WaveEntry> next_wave;
         next_wave.reserve(current_wave.size());  // Heuristic: next wave ≤ current wave.
-        StatCounters wave_stat_counters;
+        auto stats_before = scope.stats;
 
         for(auto& scan_result: scan_results) {
             report.total_files++;
@@ -709,7 +679,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             // the includer through, as clang's do.
             auto includer_spelling = file_table.spelling(scan_result.path_id).parent();
             llvm::StringRef includer_dir = includer_spelling;
-            auto* includer_entries = resolve_dir(includer_dir, dir_cache, &wave_stat_counters);
+            auto* includer_listing = &scope.list(includer_dir);
 
             // Look up the found_dir_idx for this file (stored when it was discovered).
             unsigned includer_found_dir_idx = 0;
@@ -744,7 +714,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                             scan_result.scan_result.is_interface_unit =
                                 cached->second.is_interface_unit;
                         }
-                    } else if(auto observed = read_file_observed(scan_result.path)) {
+                    } else if(auto observed = vfs::read_observed(scan_result.path)) {
                         // The preprocessor must consume the bytes that
                         // produced this scan. When the disk moved under the
                         // scan, the whole result is rebuilt from the bytes
@@ -832,13 +802,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 auto r_t0 = std::chrono::steady_clock::now();
                 auto resolved = resolve_include(inc.path,
                                                 inc.is_angled,
-                                                includer_entries,
+                                                includer_listing,
                                                 includer_dir,
                                                 inc.is_include_next,
                                                 includer_found_dir_idx,
                                                 resolved_config,
-                                                dir_cache,
-                                                &wave_stat_counters);
+                                                scope);
                 auto r_t1 = std::chrono::steady_clock::now();
                 report.p2_resolve_us +=
                     std::chrono::duration_cast<std::chrono::microseconds>(r_t1 - r_t0).count();
@@ -893,10 +862,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                                std::move(include_edges));
         }
 
-        report.dir_listings += wave_stat_counters.dir_listings;
-        report.dir_hits += wave_stat_counters.dir_hits;
-        report.fs_lookups += wave_stat_counters.lookups;
-        report.fs_us += wave_stat_counters.us;
+        auto wave_listed = scope.stats.listed - stats_before.listed;
+        auto wave_reused = scope.stats.reused - stats_before.reused;
+        report.dir_listings += wave_listed;
+        report.dir_hits += wave_reused;
+        report.fs_lookups += scope.stats.lookups - stats_before.lookups;
+        report.fs_us += scope.stats.us - stats_before.us;
 
         auto phase2_end = std::chrono::steady_clock::now();
         auto phase3_end = phase2_end;
@@ -919,8 +890,8 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         ws.phase2_ms = p2;
         ws.next_files = next_wave.size();
         ws.prefetch_count = prefetch_tasks.size();
-        ws.dir_listings = wave_stat_counters.dir_listings;
-        ws.dir_hits = wave_stat_counters.dir_hits;
+        ws.dir_listings = wave_listed;
+        ws.dir_hits = wave_reused;
         ws.cache_hits = wave_cache_hits;
         report.wave_stats.push_back(ws);
 

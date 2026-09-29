@@ -114,7 +114,9 @@ struct Session {
 /// Every later decision — adopting a compile product, landing a worker
 /// reply, answering at all — asks `fresh()` first; a didChange or
 /// didClose bumped the generation, and whatever the request computed
-/// describes a buffer that no longer exists.
+/// describes a buffer that no longer exists. Completion still answers
+/// after edits at or past its cursor: its ranges still hold, and the
+/// client filters it by what was typed meanwhile.
 struct Ticket {
     std::shared_ptr<Session> session;
     std::uint64_t generation = 0;

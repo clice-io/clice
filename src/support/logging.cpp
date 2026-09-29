@@ -19,8 +19,8 @@
 #endif
 
 #include "version.h"
-#include "support/filesystem.h"
 #include "support/stderr_sink.h"
+#include "vfs/path.h"
 
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"

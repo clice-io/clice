@@ -15,8 +15,8 @@
 #include "semantic/display.h"
 #include "semantic/symbol.h"
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/markup.h"
+#include "vfs/path.h"
 
 #include "kota/codec/macro.h"
 #include "kota/ipc/lsp/position.h"
@@ -77,7 +77,11 @@ inline auto to_range(const LineMap& map, LocalSourceRange range) -> std::optiona
 /// Corresponds to the `[code_completion]` section in clice.toml.
 struct CodeCompletionOptions {
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Complete keywords as snippets (not yet implemented).")
+                     description =
+                         "Complete statements such as `if` and `for` as snippets "
+                         "with placeholders for their parts; otherwise only the "
+                         "keyword is inserted. Ignored for clients without "
+                         "snippet support.")
     <bool> enable_keyword_snippet = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -86,19 +90,22 @@ struct CodeCompletionOptions {
                          "a call. For functions this applies to individually "
                          "listed overloads, so it requires `bundle_overloads = "
                          "false`; function-like macros have no overload sets and "
-                         "always take the snippet.")
+                         "always take the snippet. Ignored for clients without "
+                         "snippet support.")
     <bool> enable_function_arguments_snippet = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Insert template arguments as a snippet on completion "
-                         "(not yet implemented).")
+                         "Insert template arguments as a snippet when completing "
+                         "a class, alias or variable template. Ignored for clients "
+                         "without snippet support.")
     <bool> enable_template_arguments_snippet = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Insert parentheses when completing a function call "
-                         "(not yet implemented).")
+                         "Insert parentheses when completing a function call, "
+                         "unless the name is already followed by one; with snippet "
+                         "support the cursor lands between them.")
     <bool> insert_paren_in_function_call = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -108,6 +115,17 @@ struct CodeCompletionOptions {
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "Maximum number of completion items (not yet implemented).")
     <std::uint32_t> limit = 0;
+};
+
+/// What the client takes from a completion item, from its completion
+/// capabilities.
+struct CompletionClient {
+    /// Insert texts may carry placeholders.
+    bool snippets = false;
+
+    /// An item may carry both an insert and a replace range; the editor
+    /// picks one by its own setting.
+    bool insert_replace = false;
 };
 
 /// Corresponds to the `[hover]` section in clice.toml.
@@ -411,6 +429,7 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding = PositionEn
 
 auto code_complete(CompilationParams& params,
                    const CodeCompletionOptions& options = {},
+                   const CompletionClient& client = {},
                    PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::CompletionItem>;
 

@@ -3,7 +3,7 @@
 #include <format>
 
 #include "index/serialization.h"
-#include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"

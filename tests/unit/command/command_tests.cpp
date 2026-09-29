@@ -11,6 +11,7 @@
 #include "project/build.h"
 #include "support/filesystem.h"
 #include "support/shell.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/raw_ostream.h"

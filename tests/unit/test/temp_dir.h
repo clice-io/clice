@@ -1,9 +1,11 @@
 #pragma once
 
 #include <deque>
+#include <optional>
 #include <string>
 
 #include "support/filesystem.h"
+#include "vfs/file_system.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
@@ -96,6 +98,15 @@ inline std::int64_t file_mtime_ns(llvm::StringRef path) {
         return -1;
     }
     return fs::mtime_ns(status);
+}
+
+/// A file's bytes, or nullopt when it cannot be read.
+inline std::optional<std::string> read_file(llvm::StringRef path) {
+    auto buffer = vfs::read(path, vfs::Read::Bytes);
+    if(!buffer) {
+        return std::nullopt;
+    }
+    return (*buffer)->getBuffer().str();
 }
 
 }  // namespace clice::testing

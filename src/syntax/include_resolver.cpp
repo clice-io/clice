@@ -1,106 +1,18 @@
 #include "syntax/include_resolver.h"
 
-#include <chrono>
-
-#include "support/logging.h"
-#include "vfs/file_table.h"
-
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
 namespace clice {
 
-const llvm::StringSet<>* resolve_dir(llvm::StringRef dir,
-                                     DirListingCache& cache,
-                                     StatCounters* counters) {
-    if(auto it = cache.dirs.find(dir); it != cache.dirs.end()) {
-        if(counters) {
-            counters->dir_hits++;
-        }
-        return &it->second;
-    }
-
-    if(cache.shared) {
-        auto listing = cache.shared->dir_listings.find(dir);
-        if(listing != cache.shared->dir_listings.end()) {
-            // Validated once per operation: the directory's own mtime
-            // proves the listing current (entry creation and deletion bump
-            // it); later uses inside the operation trust the validation.
-            bool fresh = cache.validated.contains(dir);
-            if(!fresh && listing->second.mtime_ns != 0) {
-                fs::FileMetadata status;
-                fresh =
-                    !fs::file_metadata(dir, status) && status.mtime_ns == listing->second.mtime_ns;
-            }
-            if(fresh) {
-                cache.validated.insert(dir);
-                if(counters) {
-                    counters->dir_hits++;
-                }
-                return &listing->second.entries;
-            }
-        }
-    }
-
-    if(counters) {
-        counters->dir_listings++;
-    }
-
-    auto t0 = std::chrono::steady_clock::now();
-    // The pre/post-stat pairing discipline of file reads, on the
-    // directory: equal stats prove the listing describes this mtime, and
-    // an mtime inside the guard window must not be trusted across
-    // operations (a same-tick entry creation would be invisible).
-    fs::FileMetadata pre_status;
-    bool pre_ok = !fs::file_metadata(dir, pre_status);
-    llvm::StringSet<> entries;
-    std::error_code ec;
-    llvm::sys::fs::directory_iterator di(dir, ec);
-    if(ec) {
-        LOG_DEBUG("readdir failed for '{}': {}", dir, ec.message());
-    }
-    for(; !ec && di != llvm::sys::fs::directory_iterator(); di.increment(ec)) {
-        entries.insert(llvm::sys::path::filename(di->path()));
-    }
-    auto t1 = std::chrono::steady_clock::now();
-    if(counters) {
-        counters->us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-    }
-
-    if(cache.shared) {
-        std::int64_t reliable_mtime = 0;
-        fs::FileMetadata post_status;
-        // A failed or partial readdir (ec set) must not earn a trusted
-        // mtime: the incomplete listing would be reused until the
-        // directory itself changes.
-        if(pre_ok && !ec && !fs::file_metadata(dir, post_status) &&
-           pre_status.mtime_ns == post_status.mtime_ns) {
-            auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                              std::chrono::system_clock::now().time_since_epoch())
-                              .count();
-            if(post_status.mtime_ns <= fs::stat_baseline_before_ns(now_ms)) {
-                reliable_mtime = post_status.mtime_ns;
-            }
-        }
-        auto& listing = cache.shared->dir_listings[dir];
-        listing.entries = std::move(entries);
-        listing.mtime_ns = reliable_mtime;
-        cache.validated.insert(dir);
-        return &listing.entries;
-    }
-
-    auto [new_it, _] = cache.dirs.try_emplace(dir, std::move(entries));
-    return &new_it->second;
-}
-
-ResolvedSearchConfig resolve_search_config(const SearchConfig& config, DirListingCache& cache) {
+ResolvedSearchConfig resolve_search_config(const SearchConfig& config, vfs::Scope& scope) {
     ResolvedSearchConfig resolved;
     resolved.angled_start_idx = config.angled_start_idx;
     resolved.system_start_idx = config.system_start_idx;
     resolved.after_start_idx = config.after_start_idx;
     resolved.dirs.reserve(config.dirs.size());
     for(auto& dir: config.dirs) {
-        resolved.dirs.push_back({dir.path, resolve_dir(dir.path, cache)});
+        resolved.dirs.push_back({dir.path, &scope.list(dir.path)});
     }
     return resolved;
 }
@@ -110,18 +22,16 @@ namespace {
 /// Check if a file exists in a directory, handling multi-component include paths.
 /// For simple filenames (no '/'), checks pre-resolved entries directly.
 /// For multi-component paths like "llvm/Support/raw_ostream.h", constructs the
-/// full path and resolves the actual parent subdirectory via DirListingCache.
+/// full path and lists the actual parent subdirectory.
 bool check_in_dir(llvm::StringRef dir_path,
-                  const llvm::StringSet<>* entries,
+                  const vfs::Listing* listing,
                   llvm::StringRef filename,
                   bool is_simple,
-                  DirListingCache& dir_cache,
-                  StatCounters* counters) {
-    if(counters)
-        counters->lookups++;
+                  vfs::Scope& scope) {
+    scope.stats.lookups += 1;
 
     if(is_simple) {
-        return entries->contains(filename);
+        return listing->contains(filename);
     }
 
     // Quick rejection: check if first path component exists in pre-resolved
@@ -132,7 +42,7 @@ bool check_in_dir(llvm::StringRef dir_path,
     auto first_sep = filename.find_first_of("/\\");
     auto first_component = filename.substr(0, first_sep);
     if(first_component != "." && first_component != "..") {
-        if(!entries->contains(first_component)) {
+        if(!listing->contains(first_component)) {
             return false;
         }
     }
@@ -143,21 +53,19 @@ bool check_in_dir(llvm::StringRef dir_path,
     llvm::sys::path::append(full, filename);
     auto parent = llvm::sys::path::parent_path(full);
     auto name = llvm::sys::path::filename(full);
-    auto* sub_entries = resolve_dir(parent, dir_cache, counters);
-    return sub_entries->contains(name);
+    return scope.list(parent).contains(name);
 }
 
 }  // namespace
 
 std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              bool is_angled,
-                                             const llvm::StringSet<>* includer_entries,
+                                             const vfs::Listing* includer_listing,
                                              llvm::StringRef includer_dir,
                                              bool is_include_next,
                                              unsigned found_dir_idx,
                                              const ResolvedSearchConfig& config,
-                                             DirListingCache& dir_cache,
-                                             StatCounters* stat_counters) {
+                                             vfs::Scope& scope) {
     // 1. Absolute path: check directly via stat().
     if(llvm::sys::path::is_absolute(filename)) {
         if(llvm::sys::fs::exists(filename)) {
@@ -183,11 +91,10 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
         unsigned start = found_dir_idx + 1;
         for(unsigned i = start; i < config.dirs.size(); ++i) {
             if(check_in_dir(config.dirs[i].path,
-                            config.dirs[i].entries,
+                            config.dirs[i].listing,
                             filename,
                             is_simple,
-                            dir_cache,
-                            stat_counters)) {
+                            scope)) {
                 make_candidate(config.dirs[i].path, filename);
                 return ResolveResult{candidate, i};
             }
@@ -196,13 +103,8 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     }
 
     // 3. Quoted include: try includer's directory first.
-    if(!is_angled && includer_entries) {
-        if(check_in_dir(includer_dir,
-                        includer_entries,
-                        filename,
-                        is_simple,
-                        dir_cache,
-                        stat_counters)) {
+    if(!is_angled && includer_listing) {
+        if(check_in_dir(includer_dir, includer_listing, filename, is_simple, scope)) {
             make_candidate(includer_dir, filename);
             return ResolveResult{candidate, 0};
         }
@@ -213,12 +115,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     //       in dirs marked as framework dirs (-F, -iframework).
     unsigned start = is_angled ? config.angled_start_idx : 0;
     for(unsigned i = start; i < config.dirs.size(); ++i) {
-        if(check_in_dir(config.dirs[i].path,
-                        config.dirs[i].entries,
-                        filename,
-                        is_simple,
-                        dir_cache,
-                        stat_counters)) {
+        if(check_in_dir(config.dirs[i].path, config.dirs[i].listing, filename, is_simple, scope)) {
             make_candidate(config.dirs[i].path, filename);
             return ResolveResult{candidate, i};
         }
@@ -233,20 +130,18 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              bool is_include_next,
                                              unsigned found_dir_idx,
                                              const SearchConfig& config,
-                                             DirListingCache& dir_cache,
-                                             StatCounters* stat_counters) {
-    auto resolved_config = resolve_search_config(config, dir_cache);
-    const llvm::StringSet<>* includer_entries =
-        includer_dir.empty() ? nullptr : resolve_dir(includer_dir, dir_cache, stat_counters);
+                                             vfs::Scope& scope) {
+    auto resolved_config = resolve_search_config(config, scope);
+    const vfs::Listing* includer_listing =
+        includer_dir.empty() ? nullptr : &scope.list(includer_dir);
     return resolve_include(filename,
                            is_angled,
-                           includer_entries,
+                           includer_listing,
                            includer_dir,
                            is_include_next,
                            found_dir_idx,
                            resolved_config,
-                           dir_cache,
-                           stat_counters);
+                           scope);
 }
 
 }  // namespace clice

@@ -4,6 +4,8 @@
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/STLExtras.h"
@@ -42,7 +44,7 @@ std::string read_selection(llvm::StringRef cache_dir) {
         return {};
     }
     auto path = state_path(cache_dir);
-    auto content = fs::read(path);
+    auto content = vfs::read(path, vfs::Read::Bytes);
     if(!content) {
         if(content.error() != std::errc::no_such_file_or_directory) {
             LOG_WARN("Cannot read {}: {}", path, content.error().message());
@@ -50,7 +52,7 @@ std::string read_selection(llvm::StringRef cache_dir) {
         return {};
     }
     PersistedState state;
-    if(auto parsed = kota::codec::json::from_string(*content, state); !parsed) {
+    if(auto parsed = kota::codec::json::from_string((*content)->getBuffer(), state); !parsed) {
         LOG_WARN("Ignoring malformed {}: {}", path, parsed.error().message);
         return {};
     }

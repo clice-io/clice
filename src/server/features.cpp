@@ -16,6 +16,7 @@
 #include "server/lsp_projection.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
+#include "vfs/dir_cache.h"
 #include "worker/protocol.h"
 #include "worker/serialize.h"
 
@@ -667,6 +668,7 @@ Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,
 
 Features::RawResult Features::completion(std::shared_ptr<Session> session,
                                          const protocol::Position& position,
+                                         const feature::CompletionClient& client,
                                          llvm::StringRef trigger_character,
                                          std::optional<kota::cancellation_token> token) {
     auto pause = pump.scoped_pause();
@@ -736,18 +738,42 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
             auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
 
             auto search_config = project.cdb.search_config(ref);
-            DirListingCache dir_cache;
-            dir_cache.shared = &project.file_table;
-            auto resolved = resolve_search_config(search_config, dir_cache);
+            vfs::Scope scope(project.file_table.dirs);
             bool angled = (pctx.kind == CompletionContext::IncludeAngled);
-            auto candidates = complete_include_path(resolved, pctx.prefix, angled, dir_cache);
+            auto candidates = complete_include_path(search_config,
+                                                    path::parent_path(path),
+                                                    pctx.prefix,
+                                                    angled,
+                                                    scope);
 
+            // A directory continues the path, replacing a `/` already
+            // there; a header ends it and closes the directive, replacing
+            // the rest of the path through a closing delimiter already there.
+            llvm::StringRef text = session->text;
+            char closer = angled ? '>' : '"';
+            auto line_end = std::min(text.find_first_of("\r\n", pctx.replace.end), text.size());
+            auto close = text.slice(pctx.replace.end, line_end).find(closer);
+            auto edit = [&](const IncludeCandidate& candidate) {
+                auto end = pctx.replace.end;
+                if(candidate.is_directory) {
+                    if(text.substr(end).starts_with("/")) {
+                        end += 1;
+                    }
+                } else if(close != llvm::StringRef::npos) {
+                    end += close + 1;
+                }
+                return protocol::TextEdit{
+                    .range = *map.to_range(pctx.replace.begin, end),
+                    .new_text = candidate.name + (candidate.is_directory ? '/' : closer),
+                };
+            };
             std::vector<protocol::CompletionItem> items;
             items.reserve(candidates.size());
             for(auto& c: candidates) {
                 protocol::CompletionItem item;
                 item.label = c.is_directory ? c.name + "/" : c.name;
                 item.kind = protocol::CompletionItemKind::File;
+                item.text_edit = edit(c);
                 items.push_back(std::move(item));
             }
             auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(items);
@@ -762,7 +788,10 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
                 protocol::CompletionItem item;
                 item.label = name;
                 item.kind = protocol::CompletionItemKind::Module;
-                item.insert_text = name + ";";
+                item.text_edit = protocol::TextEdit{
+                    .range = *map.to_range(pctx.replace.begin, pctx.replace.end),
+                    .new_text = name + ";",
+                };
                 items.push_back(std::move(item));
             }
             auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(items);
@@ -770,7 +799,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
         }
     }
 
-    co_return co_await dispatcher.completion(ticket, position, std::move(token));
+    co_return co_await dispatcher.completion(ticket, position, client, std::move(token));
 }
 
 Features::RawResult Features::signature_help(std::shared_ptr<Session> session,

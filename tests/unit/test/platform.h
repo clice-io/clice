@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <string>
 
-#include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/FileSystem.h"

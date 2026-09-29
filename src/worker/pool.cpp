@@ -5,8 +5,9 @@
 #include <string>
 
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/async/io/system.h"
 #include "kota/ipc/transport.h"
@@ -564,8 +565,8 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     // (noisy, non-portable) stack frames.
     if(!log_dir.empty()) {
         auto log_path = path::join(log_dir, w.name + ".log");
-        if(auto content = fs::read(log_path)) {
-            llvm::StringRef tail(*content);
+        if(auto content = vfs::read(log_path, vfs::Read::Bytes)) {
+            llvm::StringRef tail = (*content)->getBuffer();
             for(llvm::StringRef marker: {"CRASH STACK TRACE", "Stack dump"}) {
                 if(auto pos = tail.find(marker); pos != llvm::StringRef::npos)
                     tail = tail.substr(0, pos);

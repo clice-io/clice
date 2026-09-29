@@ -284,9 +284,9 @@ int main() { return 0; }
 )");
     build_state();
 
-    auto buffer = llvm::MemoryBuffer::getFile(dir.path("state.pch.idx"));
-    ASSERT_TRUE(bool(buffer));
-    auto bytes = (*buffer)->getBuffer();
+    auto read = read_file(dir.path("state.pch.idx"));
+    ASSERT_TRUE(read.has_value());
+    llvm::StringRef bytes = *read;
     ASSERT_TRUE(bytes.size() > 8);
 
     dir.touch("truncated.pch.idx", bytes.take_front(bytes.size() / 2));
@@ -311,9 +311,9 @@ int main() { return 0; }
     // Overwrite one section's blob bytes in place: the envelope stays
     // structurally valid, but the load gate verifies every blob and must
     // read the pair as missing instead of silently serving nothing.
-    auto buffer = llvm::MemoryBuffer::getFile(dir.path("state.pch.idx"));
-    ASSERT_TRUE(bool(buffer));
-    std::string bytes = (*buffer)->getBuffer().str();
+    auto read = read_file(dir.path("state.pch.idx"));
+    ASSERT_TRUE(read.has_value());
+    std::string bytes = std::move(*read);
 
     auto view = index::TUIndex::from_bytes(bytes);
     ASSERT_TRUE(view.loaded());

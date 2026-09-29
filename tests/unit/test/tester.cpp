@@ -16,6 +16,7 @@
 #include "test/temp_dir.h"
 #include "support/logging.h"
 #include "syntax/scan.h"
+#include "vfs/file_system.h"
 
 #ifdef _WIN32
 #include "llvm/Support/ConvertUTF.h"
@@ -96,8 +97,8 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
         return false;
     }
 
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
@@ -220,8 +221,8 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
             return false;
     }
 
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
 
     llvm::StringMap<std::string> built_pcms;
@@ -335,8 +336,8 @@ void Tester::prepare_driver(llvm::StringRef standard) {
 
     params.kind = CompilationKind::Content;
 
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 

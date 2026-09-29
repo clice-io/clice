@@ -133,6 +133,7 @@ public:
     /// Space-triggered requests are only answered for import contexts.
     RawResult completion(std::shared_ptr<Session> session,
                          const protocol::Position& position,
+                         const feature::CompletionClient& client,
                          llvm::StringRef trigger_character = {},
                          std::optional<kota::cancellation_token> token = {});
 

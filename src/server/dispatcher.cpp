@@ -1,5 +1,6 @@
 #include "server/dispatcher.h"
 
+#include <type_traits>
 #include <utility>
 
 #include "server/editor_context.h"
@@ -111,7 +112,8 @@ template <typename Outcome>
 Outcome Dispatcher::land(const Ticket& ticket,
                          std::uint8_t kind,
                          llvm::StringRef label,
-                         Outcome result) {
+                         Outcome result,
+                         bool snapshot) {
     auto& session = *ticket.session;
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
@@ -129,6 +131,9 @@ Outcome Dispatcher::land(const Ticket& ticket,
     // settles only when fresh. Leaving quarantine here clears the published
     // diagnostic: no compile runs to overwrite it.
     if(!ticket.fresh()) {
+        if(snapshot) {
+            return result;
+        }
         return Outcome{kota::outcome_error(content_modified())};
     }
     bool was_active = session.quarantine.active();
@@ -289,11 +294,11 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
                                               llvm::StringRef label,
                                               const Ticket& ticket,
                                               protocol::Position position,
+                                              Params wp,
                                               std::optional<kota::cancellation_token> token) {
     auto& session = *ticket.session;
     auto path_id = session.path_id;
     auto path = std::string(project.file_table.resolve(path_id));
-
     // This build compiles the same content the quarantine watches.
     QuarantineGate entry(session.quarantine, evidence, QuarantineGate::Scope::Content);
     if(entry.refused()) {
@@ -302,19 +307,15 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     }
     auto flight = session.quarantine.begin_flight();
 
-    Params wp;
     wp.file = path;
     wp.text = session.text;
     auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
-    if(resolution.synthesized) {
-        wp.synthesized = resolution.synthesized->files;
-        resolution.synthesized->append_suffix_include(wp.text);
-    }
     wp.config = project.config;
 
     ScopedTimer timer;
     ASTFamily::StatelessInputs inputs;
     if(!co_await ast.prepare_stateless_inputs(ticket,
+                                              wp.text,
                                               wp.directory,
                                               wp.arguments,
                                               resolution.synthesized.get(),
@@ -336,12 +337,26 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     }
     auto wait_ms = timer.ms_f();
 
-    if(!ticket.fresh()) {
+    lsp::LineMap map(wp.text);
+    wp.offset = clamped_offset(map, position);
+
+    // A completion reply stays useful after edits at or past the cursor:
+    // its ranges still hold, and the client filters it by what was typed
+    // meanwhile. It never spends a recovery probe, though: the edit that
+    // armed the probe replaced the carried buffer.
+    auto carried = wp.text.substr(0, wp.offset);
+    auto snapshot = [&] {
+        return std::is_same_v<Params, worker::CompletionParams> && !session.quarantine.active() &&
+               session.text.starts_with(carried);
+    };
+    if(!ticket.fresh() && !snapshot()) {
         co_return kota::outcome_error(content_modified());
     }
 
-    lsp::LineMap map(wp.text);
-    wp.offset = clamped_offset(map, position);
+    if(resolution.synthesized) {
+        wp.synthesized = resolution.synthesized->files;
+        resolution.synthesized->append_suffix_include(wp.text);
+    }
 
     // The license is re-taken here: the entry gate's answer may have been
     // spent by a concurrent recovery during the dependency awaits.
@@ -358,7 +373,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
             session.quarantine.on_kind_crash(evidence, worker::death_of(error));
         },
         {.token = std::move(token)});
-    result = land(ticket, evidence, label, std::move(result));
+    result = land(ticket, evidence, label, std::move(result), snapshot());
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
@@ -372,22 +387,25 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
 
 Dispatcher::RawResult Dispatcher::completion(const Ticket& ticket,
                                              const protocol::Position& position,
+                                             const feature::CompletionClient& client,
                                              std::optional<kota::cancellation_token> token) {
-    return interactive<worker::CompletionParams>(evidence_kind(EvidenceKind::Completion),
-                                                 "Completion",
-                                                 ticket,
-                                                 position,
-                                                 std::move(token));
+    return interactive(evidence_kind(EvidenceKind::Completion),
+                       "Completion",
+                       ticket,
+                       position,
+                       worker::CompletionParams{.client = client},
+                       std::move(token));
 }
 
 Dispatcher::RawResult Dispatcher::signature_help(const Ticket& ticket,
                                                  const protocol::Position& position,
                                                  std::optional<kota::cancellation_token> token) {
-    return interactive<worker::SignatureHelpParams>(evidence_kind(EvidenceKind::SignatureHelp),
-                                                    "SignatureHelp",
-                                                    ticket,
-                                                    position,
-                                                    std::move(token));
+    return interactive(evidence_kind(EvidenceKind::SignatureHelp),
+                       "SignatureHelp",
+                       ticket,
+                       position,
+                       worker::SignatureHelpParams{},
+                       std::move(token));
 }
 
 Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,

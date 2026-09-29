@@ -17,6 +17,12 @@
 /// edited buffer at the wrong places (formatting edits would even corrupt
 /// the file). The server has no AST for the old buffer anymore once the edit
 /// superseded the compile, so the only honest answer is "changed, ask again".
+///
+/// Completion is the exception while the edits sit at or past its cursor:
+/// VS Code neither cancels nor re-asks a completion the user keeps typing
+/// into — it filters the reply by what was typed meanwhile, and treats
+/// ContentModified as an empty list. An edit before the cursor moves the
+/// reply's ranges, so that one still answers ContentModified.
 
 import * as proto from "vscode-languageserver-protocol";
 import { sleep } from "@clice/tools/client";
@@ -26,6 +32,9 @@ import { test, expect } from "../fixtures.ts";
 // so an edit reliably lands while the request still waits on the compile.
 const SLOW = Array.from({ length: 200_000 }, (_, i) => `int v${i};`).join("\n") + "\n";
 const EDIT_SUPERSEDE_DELAY = 300;
+// Completion skips most of the work a full build does and can finish the
+// body within EDIT_SUPERSEDE_DELAY on a fast machine.
+const COMPLETION_EDIT_DELAY = 30;
 
 test("edit mid-flight answers ContentModified", async ({ session }) => {
     const { client, workspace } = session.tmp();
@@ -73,4 +82,27 @@ test("edit mid-flight answers ContentModified", async ({ session }) => {
     expect(tokens!.data.length).toBeGreaterThan(0);
     const hover = await client.hoverAt(uri, 0, 4);
     expect(hover).not.toBeNull();
+}, 300_000);
+
+test("edit mid-flight still completes", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    const body = SLOW + "int extra_value;\nint probe = extra_";
+    workspace.write("slow.cpp", body);
+    workspace.writeCDB(["slow.cpp"]);
+    await client.initialize(workspace);
+
+    const [uri] = client.open("slow.cpp");
+    const line = body.split("\n").length - 1;
+    const pending = client.completionAt(uri, line, "int probe = extra_".length);
+    await sleep(COMPLETION_EDIT_DELAY);
+    client.change(uri, 1, body + "v");
+
+    const reply = await pending;
+    const items = Array.isArray(reply) ? reply : (reply?.items ?? []);
+    expect(items.map((item) => item.label)).toContain("extra_value");
+
+    const moved = client.completionAt(uri, line, "int probe = extra_".length);
+    await sleep(COMPLETION_EDIT_DELAY);
+    client.change(uri, 2, "int moved;\n" + body);
+    await expect(moved).rejects.toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
 }, 300_000);

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <format>
 #include <thread>
 
 #include "test/temp_dir.h"
@@ -9,6 +10,7 @@
 #include "compile/compilation.h"
 #include "support/filesystem.h"
 #include "syntax/scan.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/xxhash.h"
@@ -200,8 +202,8 @@ int main() { return preamble_func(); }
     prepare();
 
     // Consuming the PCH reads it from real disk; overlay like compile_with_pch.
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
@@ -239,7 +241,7 @@ int main() { return preamble_func(); }
             ASSERT_TRUE(preamble_unit.completed());
         }
 
-        auto blob = fs::read(*pch_path);
+        auto blob = read_file(*pch_path);
         ASSERT_TRUE(blob.operator bool());
         ASSERT_TRUE(fs::write(*pch_path, corrupt(std::move(*blob), shape)).operator bool());
 
@@ -261,6 +263,56 @@ int main() { return preamble_func(); }
         });
         ASSERT_TRUE(blames_pch);
     }
+
+    llvm::sys::fs::remove(*pch_path);
+}
+
+TEST_CASE(PCHIgnoresInputMtime) {
+    TempDir tmp;
+    tmp.touch("preamble.h", "int preamble_func();\n");
+    auto header = tmp.path("preamble.h");
+    auto content =
+        std::format("#include \"{}\"\n\nint main() {{ return preamble_func(); }}\n", header);
+    add_main("main.cpp", content);
+    prepare();
+
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
+    overlay->pushOverlay(vfs);
+    params.vfs = overlay;
+
+    auto pch_path = fs::createTemporaryFile("clice-test", "pch");
+    ASSERT_TRUE(pch_path.operator bool());
+    auto main_vfs_path = TestVFS::path("main.cpp");
+    auto bound = compute_preamble_bound(content);
+
+    params.kind = CompilationKind::Preamble;
+    params.output_file = *pch_path;
+    params.add_remapped_file(main_vfs_path, content, bound);
+    PCHInfo info;
+    ASSERT_TRUE(clice::compile(params, info).completed());
+
+    auto compile_with = [&] {
+        params.kind = CompilationKind::Content;
+        params.output_file.clear();
+        params.pch = {*pch_path, bound};
+        params.buffers.clear();
+        return clice::compile(params);
+    };
+
+    // A same-bytes rewrite moves only the mtime.
+    ASSERT_TRUE(set_file_mtime(header, file_mtime_ns(header) + 10'000'000'000));
+    {
+        auto unit = compile_with();
+        ASSERT_TRUE(unit.completed());
+        ASSERT_TRUE(std::ranges::none_of(unit.diagnostics(), [](auto& diag) {
+            return diag.id.level >= DiagnosticLevel::Error;
+        }));
+    }
+
+    // A size change still rejects it.
+    tmp.touch("preamble.h", "int preamble_func();\nint more;\n");
+    ASSERT_FALSE(compile_with().completed());
 
     llvm::sys::fs::remove(*pch_path);
 }
@@ -468,6 +520,7 @@ int x = 1;
     llvm::StringRef v2 = R"cpp(
 #include "a.h"
 #include "b.h"
+#include "vfs/file_system.h"
 int x = 1;
 )cpp";
 

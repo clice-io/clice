@@ -37,6 +37,7 @@
 #include "support/logging.h"
 #include "support/timer.h"
 #include "syntax/scan.h"
+#include "vfs/file_system.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/deco/deco.h"
@@ -147,12 +148,12 @@ FileResult profile_file(llvm::StringRef file,
 
     std::string content;
     bool ok = run_stage(runs, result.read_ms, [&] {
-        auto read = fs::read(file);
+        auto read = vfs::read(file, vfs::Read::Bytes);
         if(!read) {
             result.error = "read failed: " + read.error().message();
             return false;
         }
-        content = std::move(*read);
+        content = (*read)->getBuffer().str();
         return true;
     });
     if(!ok) {

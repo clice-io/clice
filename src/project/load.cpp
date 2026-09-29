@@ -7,10 +7,10 @@
 #include "project/configuration.h"
 #include "project/project.h"
 #include "support/cache_store.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
 #include "syntax/dependency_graph.h"
+#include "vfs/path.h"
 
 namespace clice {
 

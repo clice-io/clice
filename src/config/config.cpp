@@ -8,6 +8,8 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/shell.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/async/io/system.h"
 #include "kota/codec/json/json.h"
@@ -303,7 +305,7 @@ std::optional<Config> Config::load(llvm::StringRef path,
                                    CanonicalRef workspace_root,
                                    std::vector<ConfigIssue>* issues,
                                    bool finalized) {
-    auto content = fs::read_text(path);
+    auto content = vfs::read(path);
     if(!content)
         return std::nullopt;
 
@@ -400,8 +402,8 @@ Config Config::load_from_workspace(CanonicalRef workspace_root,
 constexpr static llvm::StringRef cache_owner_file = "owner";
 
 std::string cache_dir_owner(llvm::StringRef cache_dir) {
-    auto owner = fs::read(path::join(cache_dir, cache_owner_file));
-    return owner ? llvm::StringRef(*owner).trim().str() : std::string();
+    auto owner = vfs::read(path::join(cache_dir, cache_owner_file), vfs::Read::Bytes);
+    return owner ? (*owner)->getBuffer().trim().str() : std::string();
 }
 
 /// A recorded owner that no longer exists (a moved or deleted checkout)

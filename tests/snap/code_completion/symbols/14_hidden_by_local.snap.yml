@@ -1,0 +1,6 @@
+---
+created_at: 2026-09-27
+input_file: symbols/14_hidden_by_local.cpp
+---
+pos:
+- { label: "maximum", kind: Variable, description: "int", edit: "17:12-17:16" }

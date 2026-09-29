@@ -5,8 +5,8 @@
 #include "project/index_store.h"
 #include "project/load.h"
 #include "support/cache_store.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/path.h"
 
 #include "kota/async/async.h"
 

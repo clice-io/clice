@@ -9,6 +9,7 @@
 #include "support/anomaly.h"
 #include "support/logging.h"
 #include "syntax/scan.h"
+#include "vfs/file_system.h"
 #include "worker/protocol.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -61,7 +62,7 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(Fid path_id,
             memory->addFile(file, 0, llvm::MemoryBuffer::getMemBufferCopy(text, file));
         }
         auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
-            llvm::vfs::createPhysicalFileSystem());
+            llvm::makeIntrusiveRefCnt<vfs::View>());
         overlay->pushOverlay(std::move(memory));
         vfs = std::move(overlay);
     }
@@ -203,7 +204,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // module's current content: unlike pch_key (which embeds the
     // preamble text), pcm_key is content-free, and a blocked budget
     // must unlock the moment the poison is edited.
-    auto content = fs::read_text(file_path);
+    auto content = vfs::read(file_path);
     auto budget_key = std::format("{}-{:016x}",
                                   pcm_key,
                                   content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0);

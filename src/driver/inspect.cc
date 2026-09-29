@@ -19,6 +19,8 @@
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
 #include "syntax/scan.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/StringSet.h"
@@ -280,9 +282,11 @@ std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit,
 /// the completion offset.
 std::optional<kota::codec::RawValue> run_code_completion(CompilationParams& params,
                                                          llvm::StringRef config) {
+    // The replies of an editor client that takes everything an item can carry.
     return to_raw_json(
         feature::code_complete(params,
-                               *parse_feature_config<feature::CodeCompletionOptions>(config)));
+                               *parse_feature_config<feature::CodeCompletionOptions>(config),
+                               {.snippets = true, .insert_replace = true}));
 }
 
 std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& params,
@@ -922,7 +926,7 @@ int run_inspect(const InspectOptions& opts) {
     // and module/feature errors below land on stable entries.
     std::vector<SourceFile> sources;
     for(auto& [rel, abs]: files) {
-        auto buffer = fs::read_text(abs);
+        auto buffer = vfs::read(abs);
         if(!buffer) {
             FileEntry entry;
             entry.error = "read_error";
@@ -984,7 +988,7 @@ int run_inspect(const InspectOptions& opts) {
                                 llvm::MemoryBuffer::getMemBufferCopy(source.source.content));
             }
             auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
-                llvm::vfs::createPhysicalFileSystem());
+                llvm::makeIntrusiveRefCnt<vfs::View>());
             overlay->pushOverlay(memory);
 
             SharedScanCache cache;

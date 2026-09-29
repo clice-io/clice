@@ -109,8 +109,11 @@ public:
     /// epoch — either way the resolved command may describe a command
     /// that no longer exists, and adopting the key would hand later
     /// incomplete-preamble edits a stale-flag PCH. This path runs no
-    /// graph round it could ask instead.
+    /// graph round it could ask instead. The inputs themselves follow
+    /// `text`, the buffer the build sends, so a request that outlives its
+    /// ticket still compiles against a PCH of its own preamble.
     kota::task<bool> prepare_stateless_inputs(const Ticket& ticket,
+                                              llvm::StringRef text,
                                               const std::string& directory,
                                               const std::vector<std::string>& arguments,
                                               const SynthesizedContext* synthesized,
@@ -225,18 +228,21 @@ private:
                      const std::vector<std::string>& arguments,
                      const SynthesizedContext* synthesized);
 
-    /// Revalidate or build the session's preamble PCH through the family
+    /// Revalidate or build the preamble PCH of `text` through the family
     /// and adopt its key under the request's license (see
-    /// prepare_stateless_inputs). This request is the dispatch owner when
-    /// its acquire spawns the round; the probe then pins every worker
-    /// death of the build on this document, held by the round so the
-    /// evidence lands even if this request goes stale meanwhile.
-    kota::task<bool> ensure_pch(const std::shared_ptr<Session>& session,
-                                std::uint64_t license_generation,
-                                std::uint64_t license_epoch,
-                                const std::string& directory,
-                                const std::vector<std::string>& arguments,
-                                const SynthesizedContext* synthesized);
+    /// prepare_stateless_inputs). Returns the key the request compiles
+    /// against, adopted or not; none when it compiles without a PCH. This
+    /// request is the dispatch owner when its acquire spawns the round; the
+    /// probe then pins every worker death of the build on this document,
+    /// held by the round so the evidence lands even if this request goes
+    /// stale meanwhile.
+    kota::task<std::optional<std::string>> ensure_pch(const std::shared_ptr<Session>& session,
+                                                      llvm::StringRef text,
+                                                      std::uint64_t license_generation,
+                                                      std::uint64_t license_epoch,
+                                                      const std::string& directory,
+                                                      const std::vector<std::string>& arguments,
+                                                      const SynthesizedContext* synthesized);
 
     friend struct testing::ASTFamilyFixture;
 

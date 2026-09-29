@@ -66,7 +66,8 @@ struct CacheNamespace {
 /// metadata is flushed debounced by the owner, so a crash before the
 /// flush — or a concurrent writer republishing a key mid-session — can
 /// leave metadata that validates against its deps while describing bytes
-/// it never saw; clang's own PCH/PCM validation is the backstop. An
+/// it never saw; clang's own PCH/PCM validation is the backstop (for a
+/// PCH, input sizes only: a same-size edit gets past it). An
 /// earlier revision pinned each record to its blob's identity (size,
 /// mtime, UniqueID and xxh3, captured from the tmp file before the
 /// publishing rename) and revalidated it on every use, with per-writer
