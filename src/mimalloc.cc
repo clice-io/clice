@@ -5,6 +5,11 @@
 // code (clice, LLVM, libc++). Blocks the UCRT allocated for itself
 // (`strdup`, `_wgetcwd(nullptr)`, ...) still reach free() and realloc();
 // they go back to the UCRT.
+//
+// C++ allocation is routed as well: libc++ implements the aligned
+// `operator new` with the UCRT's `_aligned_malloc`, an import no
+// definition here can replace, and LLVM allocates every container and
+// bump allocator slab through it (llvm::allocate_buffer).
 
 #include <cstddef>
 #include <cstring>
@@ -14,6 +19,7 @@
 #include <windows.h>
 
 #include "mimalloc.h"
+#include "mimalloc-new-delete.h"
 
 namespace {
 
