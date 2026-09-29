@@ -306,24 +306,30 @@ public:
         std::lock_guard lock(mutex);
         clock += 1;
         entry.used = clock;
-        auto size = entry.text->getBufferSize();
         auto [it, inserted] = entries.try_emplace(path);
         if(!inserted) {
-            bytes -= it->second.text->getBufferSize();
+            bytes -= cost(*it);
         }
         it->second = std::move(entry);
-        bytes += size;
+        bytes += cost(*it);
         while(bytes > budget) {
             auto oldest = std::ranges::min_element(entries, {}, [](const auto& candidate) {
                 return candidate.second.used;
             });
-            bytes -= oldest->second.text->getBufferSize();
+            bytes -= cost(*oldest);
             entries.erase(oldest);
         }
     }
 
 private:
     constexpr static std::size_t budget = 128 << 20;
+
+    /// An entry's memory, its bookkeeping included: a cache of empty
+    /// headers is not free.
+    static std::size_t cost(const llvm::StringMapEntry<Entry>& entry) {
+        return entry.getKeyLength() + entry.second.real_name.size() +
+               entry.second.text->getBufferSize() + 256;
+    }
 
     std::mutex mutex;
     llvm::StringMap<Entry> entries;

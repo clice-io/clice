@@ -97,13 +97,15 @@ TEST_CASE(KeptTextFollowsEdits) {
         auto buffer = (*file)->getBuffer(path, -1, true, false);
         EXPECT_TRUE(bool(buffer));
         EXPECT_EQ(status->getSize(), (*buffer)->getBufferSize());
-        return (*buffer)->getBuffer().str();
+        return std::move(*buffer);
     };
-    ASSERT_EQ(read(), "int x;\n");
-    ASSERT_EQ(read(), "int x;\n");
+    auto first = read();
+    auto second = read();
+    ASSERT_EQ(first->getBuffer(), "int x;\n");
+    ASSERT_TRUE(first->getBufferStart() == second->getBufferStart());
 
     tmp.touch("a.h", "int y = 1;\n");
-    ASSERT_EQ(read(), "int y = 1;\n");
+    ASSERT_EQ(read()->getBuffer(), "int y = 1;\n");
 }
 
 };  // TEST_SUITE(FileSystem)
