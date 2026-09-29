@@ -8,8 +8,8 @@
 //
 // C++ allocation is routed as well: libc++ implements the aligned
 // `operator new` with the UCRT's `_aligned_malloc`, an import no
-// definition here can replace, and LLVM allocates every container and
-// bump allocator slab through it (llvm::allocate_buffer).
+// definition here can replace, and LLVM allocates its hash tables and
+// bump allocator slabs through it (llvm::allocate_buffer).
 
 #include <cstddef>
 #include <cstring>
