@@ -6,8 +6,27 @@
 
 #include "kota/deco/deco.h"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 int main(int argc, const char** argv) {
-#ifndef _WIN32
+#ifdef _WIN32
+    // A process without a window is background work to Windows: it is
+    // throttled (EcoQoS) onto the efficiency cores of a hybrid CPU, which
+    // made every request about twice as slow as on Linux.
+    PROCESS_POWER_THROTTLING_STATE throttling{
+        .Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        .ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+        .StateMask = 0,
+    };
+    ::SetProcessInformation(::GetCurrentProcess(),
+                            ProcessPowerThrottling,
+                            &throttling,
+                            sizeof(throttling));
+#else
     signal(SIGPIPE, SIG_IGN);
 #endif
 
