@@ -72,7 +72,7 @@ async function waitResidueReleased(workspace: Workspace, deadlineMs = 20_000): P
 
 test("pch written to cache dir", async ({ session }) => {
     // After opening a file with #include, a .pch file should appear
-    // in .clice/cache/pch/ with a hex-hash filename.
+    // in .clice/cache/pch/.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct Foo { int x; };\n");
@@ -88,11 +88,8 @@ test("pch written to cache dir", async ({ session }) => {
     expect(pchFiles.length, "Expected at least one .pch file in the store").toBeGreaterThanOrEqual(
         1,
     );
-    // Filename should be a 32-char hex hash (xxh3_128bits) + .pch
-    const stem = path.basename(pchFiles[0]!, ".pch");
-    expect(stem.length, `Expected 32-char hex filename, got: ${path.basename(pchFiles[0]!)}`).toBe(
-        32,
-    );
+    // The key (a 32-char xxh3_128bits hex hash) and the build's nonce.
+    expect(path.basename(pchFiles[0]!)).toMatch(/^[0-9a-f]{32}-[0-9a-f]{16}\.pch$/);
 });
 
 test("pch reused on close reopen", async ({ session }) => {

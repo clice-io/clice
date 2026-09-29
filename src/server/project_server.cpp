@@ -489,21 +489,16 @@ void ProjectServer::drain_store_evictions() {
     // on a worker thread); drop the derived pch_cache metadata here on the
     // event loop, or the content-keyed map grows for the server's
     // lifetime even for keys never requested again. An entry mid-rebuild
-    // keeps its slot — its commit republishes fresh blobs over the
-    // eviction.
+    // keeps its slot — its commit publishes a fresh pair. A key rebuilt
+    // after the eviction was recorded names another blob by now.
     for(auto& evicted: project.store->take_evictions()) {
         if(evicted.ns != "pch") {
             continue;
         }
-        // A key rebuilt after the eviction was recorded has live blobs
-        // again — the record is stale, not the entry. Erase only when the
-        // store still lacks the blob, and never mid-rebuild (the commit
-        // republishes over the eviction).
-        if(project.store->lookup("pch", evicted.key)) {
-            continue;
-        }
-        if(auto it = project.pch_cache.find(evicted.key);
-           it != project.pch_cache.end() && !sched.pch.building(evicted.key)) {
+        auto it = llvm::find_if(project.pch_cache, [&](const auto& entry) {
+            return entry.second.blob == evicted.key;
+        });
+        if(it != project.pch_cache.end() && !sched.pch.building(it->getKey())) {
             project.pch_cache.erase(it);
         }
     }

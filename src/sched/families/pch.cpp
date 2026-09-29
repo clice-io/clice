@@ -1,6 +1,8 @@
 #include "sched/families/pch.h"
 
 #include <algorithm>
+#include <format>
+#include <random>
 #include <utility>
 
 #include "sched/families/build_common.h"
@@ -94,8 +96,8 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         auto wave = project.file_table.wave();
         if(auto it = project.pch_cache.find(pch_key); it != project.pch_cache.end()) {
             auto& st = it->second;
-            bool in_store = project.store && project.store->lookup("pch", pch_key) &&
-                            project.store->lookup_aux("pch", pch_key);
+            bool in_store = project.store && project.store->lookup("pch", st.blob) &&
+                            project.store->lookup_aux("pch", st.blob);
             if(st.path.empty()) {
                 pch_miss = "incomplete_entry";
             } else if(!in_store) {
@@ -155,8 +157,10 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // Build a new pair via a stateless worker: it writes the PCH and its
     // pch.idx envelope to the tmp paths allocated here; the store commits
     // (fsync + rename) both on success, primary first.
-    auto pending = project.store->begin_store("pch", pch_key);
-    auto pending_idx = project.store->begin_store_aux("pch", pch_key);
+    std::random_device random;
+    auto blob = std::format("{}-{:08x}{:08x}", pch_key, random(), random());
+    auto pending = project.store->begin_store("pch", blob);
+    auto pending_idx = project.store->begin_store_aux("pch", blob);
 
     worker::BuildPCHParams bp;
     bp.file = std::move(request.file);
@@ -231,7 +235,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         // published, retract the PCH too — the next round rebuilds both.
         auto index_path = project.store->commit(std::move(pending_idx));
         if(!index_path) {
-            project.store->invalidate("pch", pch_key);
+            project.store->invalidate("pch", blob);
             return outcome;
         }
         outcome.index_path = std::move(*index_path);
@@ -240,7 +244,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         // an uncommitted one: retract the pair rather than publish a PCH
         // whose preamble state every consumer would fail to load.
         if(!outcome.state) {
-            project.store->invalidate("pch", pch_key);
+            project.store->invalidate("pch", blob);
         }
         return outcome;
     });
@@ -270,6 +274,10 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     build_crashes.on_land(pch_key);
 
     auto& st = project.pch_cache[pch_key];
+    if(!st.blob.empty()) {
+        project.store->invalidate("pch", st.blob);
+    }
+    st.blob = std::move(blob);
     st.path = *committed.value().pch_path;
     st.bound = request.preamble_bound;
     st.deps =
@@ -293,11 +301,11 @@ bool PCHFamily::fresh(llvm::StringRef pch_key) {
     if(it == project.pch_cache.end() || it->second.path.empty() || it->second.index_path.empty()) {
         return false;
     }
-    if(!project.store || !project.store->lookup("pch", pch_key) ||
-       !project.store->lookup_aux("pch", pch_key)) {
+    auto& st = it->second;
+    if(!project.store || !project.store->lookup("pch", st.blob) ||
+       !project.store->lookup_aux("pch", st.blob)) {
         return false;
     }
-    auto& st = it->second;
     auto wave = project.file_table.wave();
     return !deps_changed(project.file_table, st.deps);
 }
@@ -308,13 +316,17 @@ bool PCHFamily::building(llvm::StringRef pch_key) const {
 }
 
 void PCHFamily::invalidate(llvm::StringRef pch_key) {
-    if(project.store) {
-        project.store->invalidate("pch", pch_key);
+    auto it = project.pch_cache.find(pch_key);
+    if(it == project.pch_cache.end()) {
+        return;
     }
-    // An in-flight rebuild owns the entry; its commit republishes fresh
-    // blobs over the retracted pair, so only a settled entry is dropped.
-    if(auto it = project.pch_cache.find(pch_key);
-       it != project.pch_cache.end() && !building(pch_key)) {
+    if(project.store) {
+        project.store->invalidate("pch", it->second.blob);
+    }
+    // An in-flight rebuild owns the entry; its commit publishes a fresh
+    // pair in place of the retracted one, so only a settled entry is
+    // dropped.
+    if(!building(pch_key)) {
         project.pch_cache.erase(it);
     }
 }
@@ -340,7 +352,7 @@ std::shared_ptr<index::TUIndex> PCHFamily::preamble_state(llvm::StringRef pch_ke
         // life. Retract it now; the entry itself stays until ensure_pch
         // re-checks the store and rebuilds the pair.
         LOG_WARN("Retracting PCH pair {} with unreadable pch.idx envelope", pch_key);
-        project.store->invalidate("pch", pch_key);
+        project.store->invalidate("pch", st.blob);
     }
     if(state) {
         touch_loaded_state(pch_key);

@@ -2873,6 +2873,7 @@ TEST_CASE(StaleFormatDropsPch) {
 
         auto dep_id = f.project.file_table.intern(Spelling::absolute(dep_path));
         auto& st = f.project.pch_cache["k"];
+        st.blob = "k";
         st.path = "k.pch";
         st.deps.push_back(
             {.path_id = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)});
