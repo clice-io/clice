@@ -357,8 +357,9 @@ TEST_CASE(IncludeNextPropagatesIdx) {
 }
 
 TEST_CASE(CaseMatchesVolume) {
-    // `StdAfx.h` included as "stdafx.h": found exactly where the volume
-    // opens it — Windows and macOS by default — and nowhere else.
+    // A header included in another case than its name on disk: found
+    // exactly where the volume opens it — Windows and macOS by default —
+    // and nowhere else.
     TempDir tmp;
     tmp.touch("a/MyHeader.h");
     tmp.touch("b/Sub/x.h");
@@ -378,6 +379,22 @@ TEST_CASE(CaseMatchesVolume) {
         EXPECT_TRUE(llvm::sys::fs::equivalent(header->path, tmp.path("a/MyHeader.h")));
         EXPECT_EQ(nested->found_dir_idx, 1u);
     }
+}
+
+TEST_CASE(NormalizationMatchesVolume) {
+    // The name on disk decomposed (NFD), the include composed (NFC): APFS
+    // opens one by the other, other volumes do not.
+    TempDir tmp;
+    tmp.touch("inc/e\xCC\x81.h");
+    bool insensitive = llvm::sys::fs::exists(tmp.path("inc/\xC3\xA9.h"));
+
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("inc")});
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    auto result = resolve_include("\xC3\xA9.h", true, "", false, 0, config, scope);
+    ASSERT_EQ(result.has_value(), insensitive);
 }
 
 // TODO: add tests for:
