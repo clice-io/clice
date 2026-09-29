@@ -5,12 +5,48 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Path.h"
 
 namespace clice::vfs {
 
+namespace {
+
+#if defined(_WIN32) || defined(__APPLE__)
+constexpr bool case_insensitive = true;
+#else
+constexpr bool case_insensitive = false;
+#endif
+
+llvm::SmallString<64> fold(llvm::StringRef name) {
+    llvm::SmallString<64> folded;
+    for(char c: name) {
+        folded.push_back(llvm::toLower(c));
+    }
+    return folded;
+}
+
+}  // namespace
+
+bool Listing::contains(llvm::StringRef name) const {
+    if(entries.contains(name)) {
+        return true;
+    }
+    if constexpr(!case_insensitive) {
+        return false;
+    }
+    if(llvm::isASCII(name) && !folded.contains(fold(name))) {
+        return false;
+    }
+    llvm::SmallString<256> path(dir);
+    llvm::sys::path::append(path, name);
+    return llvm::sys::fs::exists(path);
+}
+
 std::shared_ptr<const Listing> list(llvm::StringRef dir) {
     auto listing = std::make_shared<Listing>();
+    listing->dir = dir.str();
     llvm::sys::fs::file_status before;
     bool have_before = !llvm::sys::fs::status(dir, before);
     std::error_code ec;
@@ -25,7 +61,11 @@ std::shared_ptr<const Listing> list(llvm::StringRef dir) {
            type == llvm::sys::fs::file_type::type_unknown) {
             directory = llvm::sys::fs::is_directory(it->path());
         }
-        listing->entries.try_emplace(llvm::sys::path::filename(it->path()), directory);
+        auto name = llvm::sys::path::filename(it->path());
+        listing->entries.try_emplace(name, directory);
+        if constexpr(case_insensitive) {
+            listing->folded.insert(fold(name));
+        }
     }
 
     llvm::sys::fs::file_status after;

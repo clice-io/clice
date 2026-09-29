@@ -356,6 +356,30 @@ TEST_CASE(IncludeNextPropagatesIdx) {
     EXPECT_EQ(result->found_dir_idx, 2u);
 }
 
+TEST_CASE(CaseMatchesVolume) {
+    // `StdAfx.h` included as "stdafx.h": found exactly where the volume
+    // opens it — Windows and macOS by default — and nowhere else.
+    TempDir tmp;
+    tmp.touch("a/MyHeader.h");
+    tmp.touch("b/Sub/x.h");
+    bool insensitive = llvm::sys::fs::exists(tmp.path("a/myheader.h"));
+
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("a")});
+    config.dirs.push_back({tmp.path("b")});
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    auto header = resolve_include("myheader.h", true, "", false, 0, config, scope);
+    auto nested = resolve_include("sub/x.h", true, "", false, 0, config, scope);
+    ASSERT_EQ(header.has_value(), insensitive);
+    ASSERT_EQ(nested.has_value(), insensitive);
+    if(insensitive) {
+        EXPECT_TRUE(llvm::sys::fs::equivalent(header->path, tmp.path("a/MyHeader.h")));
+        EXPECT_EQ(nested->found_dir_idx, 1u);
+    }
+}
+
 // TODO: add tests for:
 // - #include_next crossing segment boundaries (angled→system)
 // - #include_next at last search dir (should return nullopt)

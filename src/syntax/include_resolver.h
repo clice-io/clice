@@ -44,10 +44,6 @@ ResolvedSearchConfig resolve_search_config(const SearchConfig& config, vfs::Scop
 
 /// Resolve an include directive using pre-resolved config and includer listing.
 ///
-/// TODO: on case-insensitive filesystems (macOS HFS+/APFS, Windows NTFS),
-/// the readdir-based first-component optimization may produce false
-/// negatives when the #include casing differs from disk.
-///
 /// @param filename         Raw include name (without delimiters)
 /// @param is_angled        Whether this is a <...> include
 /// @param includer_listing Listing of the includer's directory (may be null)

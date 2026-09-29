@@ -2,9 +2,11 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace clice::vfs {
 
@@ -13,9 +15,16 @@ namespace clice::vfs {
 /// where individual stat() calls are very expensive (~10x slower than
 /// Linux).
 struct Listing {
+    /// The directory listed, as spelled.
+    std::string dir;
+
     /// Each entry's name, mapped to whether it is a directory (a symlink
     /// counts as what it points to).
     llvm::StringMap<bool> entries;
+
+    /// Each entry's name with ASCII letters lowered, where the filesystem
+    /// matches names case-insensitively (Windows, macOS); empty elsewhere.
+    llvm::StringSet<> folded;
 
     /// The directory's mtime the listing provably describes, or 0: the
     /// directory changed during the readdir, the readdir failed or stopped
@@ -24,9 +33,12 @@ struct Listing {
     /// the operation that took it only.
     std::int64_t mtime_ns = 0;
 
-    bool contains(llvm::StringRef name) const {
-        return entries.contains(name);
-    }
+    /// Whether `name` opens an entry. Windows and macOS match names
+    /// case-insensitively, and macOS across Unicode normalizations as well,
+    /// but only the volume knows its rule (either can be case-sensitive):
+    /// a name the listing holds under another spelling is confirmed with
+    /// one stat, as is any non-ASCII name the listing lacks.
+    bool contains(llvm::StringRef name) const;
 };
 
 /// List `dir`: the pre/post-stat pairing discipline of file reads, on the
