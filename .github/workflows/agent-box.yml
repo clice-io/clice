@@ -48,7 +48,7 @@ jobs:
           key: ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-RelWithDebInfo-native-ccache-
           restore-keys: |
             ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-RelWithDebInfo-native-ccache-
-      - uses: 16bit-ykiko/agent-box@b5faab5bd3c42036200ad723d16b1dfe1d2da462
+      - uses: 16bit-ykiko/agent-box@a0fc879b1b1aa0ba8922018c82479a5ca7953c12
         with:
           pubkey: ${{ inputs.pubkey }}
           minutes: ${{ inputs.minutes }}
