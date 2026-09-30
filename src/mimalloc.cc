@@ -18,8 +18,8 @@
 #define NOMINMAX
 #include <windows.h>
 
-#include "mimalloc.h"
 #include "mimalloc-new-delete.h"
+#include "mimalloc.h"
 
 namespace {
 

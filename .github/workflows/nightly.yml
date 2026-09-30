@@ -80,8 +80,10 @@ jobs:
               if [ -z "$RUN" ]; then continue; fi
               # Nightly runs upload packages under main as well; only a
               # green push run of the main workflow tested what it packaged.
+              # A failed lookup retries the attempt: skipping the run would
+              # promote an older commit.
               KIND=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN" \
-                --jq '"\(.path) \(.event) \(.conclusion)"') || continue
+                --jq '"\(.path) \(.event) \(.conclusion)"') || break
               if [ "$KIND" = ".github/workflows/main.yml push success" ]; then
                 COMMIT=$SHA
                 break
