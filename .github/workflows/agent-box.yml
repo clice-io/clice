@@ -1,0 +1,31 @@
+# Installed by `box install`, which later only moves the agent-box pin. Add whatever setup the
+# box should start with before the last step: the checkout, toolchain and cache restore steps of
+# this repo's CI, so a box builds where and how CI does.
+name: agent-box
+run-name: agent-box ${{ inputs.lease }}
+on:
+  push:
+    branches: [agent-box]
+  workflow_dispatch:
+    inputs:
+      lease:
+        required: true
+      pubkey:
+        required: true
+      minutes:
+        default: "340"
+      os:
+        type: choice
+        default: linux
+        options: [linux, linux-arm, macos, macos-intel, windows, windows-arm]
+permissions: {}
+jobs:
+  box:
+    if: github.event_name == 'workflow_dispatch' && github.actor == '16bit-ykiko' && github.triggering_actor == '16bit-ykiko'
+    runs-on: ${{ fromJSON('{"linux":"ubuntu-24.04","linux-arm":"ubuntu-24.04-arm","macos":"macos-15","macos-intel":"macos-15-intel","windows":"windows-2025","windows-arm":"windows-11-arm"}')[inputs.os] || 'ubuntu-24.04' }}
+    timeout-minutes: 350
+    steps:
+      - uses: 16bit-ykiko/agent-box@b5faab5bd3c42036200ad723d16b1dfe1d2da462
+        with:
+          pubkey: ${{ inputs.pubkey }}
+          minutes: ${{ inputs.minutes }}
