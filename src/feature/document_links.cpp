@@ -29,8 +29,8 @@ auto find_directive_argument(llvm::StringRef content,
         }
 
         // A filename passed through a macro argument (`#if HAS(<c.h>)`)
-        // follows no keyword: the offset pins its start.
-        if(directive && !after_keyword && token.range.begin == offset) {
+        // follows no keyword of its own: the offset pins its start.
+        if(directive && token.range.begin == offset) {
             if(token.kind == clang::tok::string_literal) {
                 return token.range;
             }
