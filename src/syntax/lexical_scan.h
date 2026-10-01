@@ -14,10 +14,11 @@ namespace clice {
 /// Everything one lexical pass over a file records that neither the AST
 /// nor the preprocessor callbacks report: comments (the token buffer drops
 /// them), the three module declaration forms (clang reports imports
-/// through PPCallbacks, but nothing covers the declarations themselves)
-/// and the block structure of the conditional and region directives (the
+/// through PPCallbacks, but nothing covers the declarations themselves),
+/// the block structure of the conditional and region directives (the
 /// callbacks skip the branches nested in a skipped block, a `#else` behind
-/// a taken `#elif`, and everything a preamble PCH consumed).
+/// a taken `#elif`, and everything a preamble PCH consumed) and the include
+/// directives (a preamble PCH consumes those too).
 struct LexicalInfo {
     struct Comment {
         enum class Kind : std::uint8_t {
@@ -86,6 +87,10 @@ struct LexicalInfo {
 
     /// In source order.
     std::vector<BlockDirective> block_directives;
+
+    /// `#include`, `#include_next` and `#import` directives in source
+    /// order, each from the `#` to the end of its logical line.
+    std::vector<LocalSourceRange> include_directives;
 
     // Both vectors heap-allocate so that payload pointers into them (the
     // Semantics node table stores such pointers) survive moving the info.

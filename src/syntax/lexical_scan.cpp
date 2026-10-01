@@ -74,6 +74,7 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
     auto scan_directive = [&](const Token& hash) {
         auto token = advance();
         auto keyword = token.text(content);
+        bool include = keyword == "include" || keyword == "include_next" || keyword == "import";
         std::optional<BlockDirective::Kind> kind;
         if(keyword == "if" || keyword == "ifdef" || keyword == "ifndef") {
             kind = BlockDirective::Kind::If;
@@ -95,11 +96,11 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
         while(!token.is_eod() && !token.is_eof()) {
             token = advance();
         }
+        LocalSourceRange range{hash.range.begin, token.range.begin};
         if(kind) {
-            info.block_directives.push_back({
-                .kind = *kind,
-                .range = {hash.range.begin, token.range.begin},
-            });
+            info.block_directives.push_back({.kind = *kind, .range = range});
+        } else if(include) {
+            info.include_directives.push_back(range);
         }
     };
 

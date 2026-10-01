@@ -34,8 +34,8 @@ namespace {
 /// A delimited fold spans its delimiters, which `collapsed_text` repeats; a
 /// section fold (an access-specifier section, a conditional branch, a
 /// region, a module fragment) runs from the end of its header line to the
-/// next header, which stays visible; a run of line comments folds below its
-/// first line.
+/// next header, which stays visible; a run of line comments or include
+/// directives on consecutive lines folds below its first line.
 class FoldingRangeCollector {
 public:
     explicit FoldingRangeCollector(CompilationUnitRef unit) :
@@ -69,6 +69,7 @@ public:
         collect_block_directives(unit.semantics().block_directives());
         collect_module_fragments(unit.semantics().module_declarations());
         collect_comments(unit.semantics().comments());
+        add_runs(unit.semantics().include_directives(), protocol::FoldingRangeKind::imports);
 
         // Order by kind and text after position so equal entries are adjacent
         // and the output stays deterministic under the unstable sort.

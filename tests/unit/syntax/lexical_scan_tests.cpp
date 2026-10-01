@@ -236,5 +236,28 @@ int x; /* b */ #pragma endregion
 
 };  // TEST_SUITE(LexicalScanBlockDirectives)
 
+TEST_SUITE(LexicalScanIncludes) {
+
+TEST_CASE(IncludeForms) {
+    llvm::StringRef content = R"(#include <vector> // trailing
+#include_next "next.h"
+  #  import "imported.h"
+#define include
+#pragma include
+#if 0
+#include "skipped.h"
+#endif
+)";
+    auto info = lexical_scan(content);
+
+    ASSERT_EQ(info.include_directives.size(), 4U);
+    ASSERT_EQ(text(content, info.include_directives[0]), "#include <vector> // trailing");
+    ASSERT_EQ(text(content, info.include_directives[1]), R"(#include_next "next.h")");
+    ASSERT_EQ(text(content, info.include_directives[2]), R"(#  import "imported.h")");
+    ASSERT_EQ(text(content, info.include_directives[3]), R"(#include "skipped.h")");
+}
+
+};  // TEST_SUITE(LexicalScanIncludes)
+
 }  // namespace
 }  // namespace clice::testing
