@@ -739,21 +739,15 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
                         const SymbolIdentity& identity,
                         llvm::StringRef path,
                         std::uint32_t reference_files) {
+        // A function's locals (parameters, local variables and classes)
+        // and a template's parameters are no one's search target; an open
+        // session's table holds them, the project table never does.
         if(!is_searchable_kind(identity.kind) || identity.name.empty() ||
+           identity.scope == SymbolScope::FileLocal ||
            has_flag(identity.flags, SymbolFlags::Unnamed) || seen.contains(hash)) {
             return;
         }
         if(!query.kinds.empty() && !llvm::is_contained(query.kinds, identity.kind)) {
-            return;
-        }
-        // A function's locals (parameters, local variables and classes)
-        // are no one's search target.
-        auto containers = container_chain(hash);
-        if(llvm::any_of(containers, [](const SymbolRef& container) {
-               return container.kind == SymbolKind::Function ||
-                      container.kind == SymbolKind::Method ||
-                      container.kind == SymbolKind::Operator;
-           })) {
             return;
         }
         if(!query.paths.empty() && llvm::none_of(query.paths, [&](const std::string& wanted) {
@@ -763,7 +757,7 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
         }
         if(query.absolute || !query.scope.empty() || query.mode == SymbolQuery::Mode::Members) {
             llvm::SmallVector<ScopeEntry, 4> chain;
-            for(auto& container: containers) {
+            for(auto& container: container_chain(hash)) {
                 chain.push_back({.name = container.name, .args = container.args});
             }
             if(!in_scope(query, chain)) {

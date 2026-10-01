@@ -1,0 +1,20 @@
+---
+created_at: 2026-10-01
+input_file: aliases/main.cpp
+---
+"Size":
+  - { name: "Size", kind: TypeParameter, file: "${WS}/aliases/types.h", range: "4:22-4:26", container: "net" }
+
+"Handle":
+  - { name: "Handle", kind: TypeParameter, file: "${WS}/aliases/types.h", range: "6:6-6:12", container: "net" }
+
+"Ptr":
+  - { name: "Ptr", kind: TypeParameter, file: "${WS}/aliases/types.h", range: "9:6-9:9", container: "net" }
+
+"id_type":
+  - { name: "id_type", kind: TypeParameter, file: "${WS}/aliases/types.h", range: "12:10-12:17", container: "net::Widget" }
+
+"di":
+  - { name: "di", kind: Namespace, file: "${WS}/aliases/types.h", range: "17:10-17:12" }
+
+"Hidden": none

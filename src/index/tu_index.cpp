@@ -95,6 +95,15 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
                  clang::TemplateTemplateParmDecl>(decl)) {
         return SymbolScope::FileLocal;
     }
+    // An alias has no linkage of its own, yet names one entity wherever its
+    // scope reaches: at namespace and class scope it is as global as what
+    // it names, inside a function as local.
+    if(llvm::isa<clang::TypedefNameDecl, clang::NamespaceAliasDecl>(decl)) {
+        if(decl->getParentFunctionOrMethod()) {
+            return SymbolScope::FileLocal;
+        }
+        return decl->isInAnonymousNamespace() ? SymbolScope::TULocal : SymbolScope::External;
+    }
     auto linkage = decl->getFormalLinkage();
     if(linkage == clang::Linkage::None)
         return SymbolScope::FileLocal;
