@@ -51,8 +51,8 @@ void Project::rescan_disk_file(Fid path_id) {
     auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
 
-    // One read serves everything a save invalidates: the shared pair (so
-    // hash comparisons elsewhere stop re-reading), the lexical scan
+    // One read serves everything a save invalidates: the file's stamp and
+    // hash (so hash comparisons elsewhere stop re-reading), the lexical scan
     // (include edges and the module declaration), and the bytes the
     // module-decl preprocessor fallback must consume.
     auto observed = vfs::read_observed(path);
@@ -361,10 +361,8 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             continue;
         }
 
-        auto size = status->getSize();
-        auto mtime_ns = fs::mtime_ns(*status);
         if(hash == 0) {
-            if(mtime_ns > baseline_before_ns) {
+            if(status->stamp.mtime_ns > baseline_before_ns) {
                 // The worker could not hash the consumed bytes and the file
                 // may have changed during the build — no version can name
                 // them. The dep stays version-less and reads as changed
@@ -372,14 +370,16 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
                 continue;
             }
             // The unchanged mtime proves the disk still holds the consumed
-            // bytes, so their hash can be taken from the shared pair — or
-            // one read, unless the file moved between the stat and the
+            // bytes, so their hash can be taken from the last reliable read
+            // — or one read, unless the file moved between the stat and the
             // read, which voids the proof.
             auto obs = files.observe_for(dep.path_id, *status);
-            if(!obs || obs->size != size || obs->mtime_ns != mtime_ns) {
+            if(!obs || obs->stamp != status->stamp) {
                 continue;
             }
             hash = obs->hash;
+        } else {
+            files.disk.consumed(dep.path_id, hash);
         }
 
         dep.version = files.intern_version(dep.path_id, hash);
@@ -392,7 +392,7 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         if(dep.missing) {
             // Gone at build time: reappearing is the change; still-missing
             // stays unchanged (see the capture).
-            if(files.current(dep.path_id)) {
+            if(files.present(dep.path_id)) {
                 return true;
             }
             continue;
@@ -406,7 +406,7 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         // Missing means gone now — a change, since the build saw the file.
         // Unreadable cannot prove the disk unchanged and counts as changed
         // — conservative, retried by the rebuild's capture.
-        if(files.check_version(dep.version) != FileTable::Verdict::Fresh) {
+        if(files.check_version(dep.version) != vfs::DiskState::Verdict::Fresh) {
             return true;
         }
     }

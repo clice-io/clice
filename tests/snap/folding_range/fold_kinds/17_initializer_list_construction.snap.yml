@@ -2,9 +2,10 @@
 created_at: 2026-08-01
 input_file: fold_kinds/17_initializer_list_construction.cpp
 ---
+- { range: "0:36-5:65", kind: comment }
 - { range: "7:14-18:1", kind: namespace, collapsed_text: "{...}" }
 - { range: "10:23-16:1", kind: class, collapsed_text: "{...}" }
-- { range: "11:6-16:1", kind: accessSpecifier }
+- { range: "11:7-16:0", kind: accessSpecifier }
 - { range: "20:11-22:1", kind: struct, collapsed_text: "{...}" }
 - { range: "24:10-27:1", kind: initializer, collapsed_text: "{...}" }
 - { range: "29:10-32:2", kind: functionCall, collapsed_text: "(...)" }

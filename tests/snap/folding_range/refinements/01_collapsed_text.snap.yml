@@ -2,5 +2,7 @@
 created_at: 2026-07-27
 input_file: refinements/01_collapsed_text.cpp
 ---
+- { range: "0:44-11:43", kind: comment }
 - { range: "13:14-16:1", kind: struct, collapsed_text: "{...}" }
+- { range: "18:69-19:69", kind: comment }
 - { range: "20:36-22:1", kind: functionBody, collapsed_text: "{...}" }

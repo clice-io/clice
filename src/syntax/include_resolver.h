@@ -16,9 +16,10 @@ struct ResolveResult {
     /// The resolved absolute path (stack-allocated for paths < 256 chars).
     llvm::SmallString<256> path;
 
-    /// The index in SearchConfig::dirs where this file was found.
-    /// Used for #include_next to resume searching from found_dir_idx + 1.
-    unsigned found_dir_idx = 0;
+    /// The index in SearchConfig::dirs where this file was found; none
+    /// when it was found next to its includer or by absolute path. Used
+    /// for #include_next to resume searching from found_dir_idx + 1.
+    std::optional<unsigned> found_dir_idx;
 };
 
 /// A search directory with its listing for the operation, held by the
@@ -49,7 +50,9 @@ ResolvedSearchConfig resolve_search_config(const SearchConfig& config, vfs::Scop
 /// @param includer_listing Listing of the includer's directory (may be null)
 /// @param includer_dir     Directory of the file containing the #include
 /// @param is_include_next  Whether this is #include_next
-/// @param found_dir_idx    For #include_next: the search dir index of the includer
+/// @param found_dir_idx    For #include_next: the search dir index of the includer;
+///                         none (the main file, or one found outside the search
+///                         dirs) looks the include up like a plain one, as clang does
 /// @param config           Pre-resolved search configuration
 /// @return Resolved path and the search dir index, or nullopt if not found
 std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
@@ -57,7 +60,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              const vfs::Listing* includer_listing,
                                              llvm::StringRef includer_dir,
                                              bool is_include_next,
-                                             unsigned found_dir_idx,
+                                             std::optional<unsigned> found_dir_idx,
                                              const ResolvedSearchConfig& config,
                                              vfs::Scope& scope);
 
@@ -67,7 +70,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              bool is_angled,
                                              llvm::StringRef includer_dir,
                                              bool is_include_next,
-                                             unsigned found_dir_idx,
+                                             std::optional<unsigned> found_dir_idx,
                                              const SearchConfig& config,
                                              vfs::Scope& scope);
 

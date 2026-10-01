@@ -22,25 +22,29 @@ CDBWatcher::Hashes CDBWatcher::loaded(SourceID id) const {
         llvm::map_range(project.cdb.inputs(id), [](auto& input) { return input.hash; }));
 }
 
-Fid CDBWatcher::database(SourceID id) {
-    return project.file_table.intern(
-        CanonicalPath(Spelling::absolute(project.cdb.source_path(id))));
-}
-
-CDBWatcher::Hashes CDBWatcher::look(SourceID id) {
-    auto hash = [&](Fid file) {
-        auto observed = project.file_table.current(file);
-        return observed ? std::optional(observed->hash) : std::nullopt;
-    };
-    Hashes result{hash(database(id))};
-    for(auto& input: project.cdb.inputs(id).drop_front()) {
-        result.push_back(hash(input.file));
+CDBWatcher::Hashes CDBWatcher::look(TrackedSource& tracked) {
+    Hashes result;
+    for(auto& input: tracked.inputs) {
+        input.look();
+        result.push_back(input.hash);
     }
     return result;
 }
 
+void CDBWatcher::watch_inputs(TrackedSource& tracked) {
+    tracked.inputs.truncate(1);
+    for(auto& input: project.cdb.inputs(tracked.id).drop_front()) {
+        tracked.inputs.push_back({.path = project.file_table.resolve(input.file).str()});
+    }
+}
+
 void CDBWatcher::track(SourceID id) {
-    sources.push_back({.id = id, .applied = loaded(id)});
+    auto& tracked = sources.emplace_back(TrackedSource{
+        .id = id,
+        .applied = loaded(id),
+        .inputs = {{.path = project.cdb.source_path(id).str()}},
+    });
+    watch_inputs(tracked);
 }
 
 llvm::SmallVector<Fid> CDBWatcher::shared_files(SourceID id) const {
@@ -91,7 +95,7 @@ static void append(CDBDiff& into, const CDBDiff& from) {
 }
 
 void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta) {
-    auto current = look(tracked.id);
+    auto current = look(tracked);
     if(!force) {
         if(current == tracked.applied) {
             tracked.pending.reset();
@@ -107,7 +111,7 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
     // A forced tick reloads unconditionally: a spurious reload just yields
     // an empty diff.
     tracked.pending.reset();
-    bool exists = !project.file_table.seen_missing(database(tracked.id));
+    bool exists = tracked.inputs.front().stamp.has_value();
     // A discovered database's presence ranks it (see Build::source_order):
     // the files whose default entry moves with it change command.
     bool flips = project.cdb.present(tracked.id) != exists && project.build.discovered(tracked.id);
@@ -137,6 +141,7 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
     // The baseline is the reload's own reads: a rewrite landing meanwhile
     // is seen next tick.
     tracked.applied = loaded(tracked.id);
+    watch_inputs(tracked);
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
              project.cdb.source_path(tracked.id),
              diff->added.size(),

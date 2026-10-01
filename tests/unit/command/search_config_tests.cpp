@@ -53,6 +53,25 @@ TEST_CASE(ReordersDirectoryGroups) {
     EXPECT_EQ(config.dirs[4].path, spelled(tmp, "sysroot"));
 }
 
+TEST_CASE(MarksDriverDirs) {
+    // Only the driver's own flags add a toolchain directory; a user's
+    // -isystem is the user's.
+    TempDir tmp;
+    std::vector<const char*> args = {"clang++",
+                                     "-isystem",
+                                     tmp.c_path("vendored"),
+                                     "-internal-isystem",
+                                     tmp.c_path("stdlib"),
+                                     "-internal-externc-isystem",
+                                     tmp.c_path("sysroot"),
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root.str());
+    ASSERT_EQ(config.dirs.size(), 3u);
+    EXPECT_FALSE(config.dirs[0].driver);
+    EXPECT_TRUE(config.dirs[1].driver);
+    EXPECT_TRUE(config.dirs[2].driver);
+}
+
 TEST_CASE(PreservesWithinGroupOrder) {
     TempDir tmp;
     std::vector<const char*> args = {"clang++",

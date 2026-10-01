@@ -367,7 +367,7 @@ FileScanResult scan_file_worker(const char* path, Fid path_id, std::uint32_t con
 struct CachedInclude {
     /// Invalid = the include is known-unresolvable under this config.
     Fid path_id;
-    unsigned found_dir_idx;
+    std::optional<unsigned> found_dir_idx;
 };
 
 /// The async scan implementation that runs on a local event loop.
@@ -402,7 +402,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             if(inserted) {
                 group_refs.push_back(unit);
             }
-            wave0.push_back({unit.file, it->second, /*found_dir_idx=*/0});
+            wave0.push_back({.path_id = unit.file, .config_id = it->second});
         }
     }
 
@@ -481,7 +481,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 
     // Track which files have been scanned (by fid — cheaper than string hash).
     // Value: found_dir_idx needed for #include_next.
-    llvm::DenseMap<Fid, unsigned> scanned_files;
+    llvm::DenseMap<Fid, std::optional<unsigned>> scanned_files;
 
     // Wave 0: all source files from CDB (entry file ids are pool ids).
     // Re-use the cached initial_wave when available.
@@ -512,10 +512,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         if(!status) {
             return false;
         }
-        auto size = status->getSize();
-        auto mtime_ns = fs::mtime_ns(*status);
-        auto uid = status->getUniqueID();
-        auto hash = file_table.cached_hash(path_id, size, mtime_ns, uid.getDevice(), uid.getFile());
+        auto hash = file_table.cached_hash(path_id, status->stamp);
         if(!hash) {
             return false;
         }
@@ -528,13 +525,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             .path_id = path_id,
             .config_id = config_id,
             .scan_result = it->second,
-            .obs = {.size = size,
-                    .mtime_ns = mtime_ns,
-                    .hash = *hash,
-                    .uid_device = uid.getDevice(),
-                    .uid_file = uid.getFile(),
-                    .paired = true,
-                    .reliable = true}
+            .obs = {.stamp = status->stamp, .hash = *hash, .paired = true, .reliable = true}
         });
         report.scan_cache_hits++;
         return true;
@@ -677,7 +668,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             auto* includer_listing = &scope.list(includer_dir);
 
             // Look up the found_dir_idx for this file (stored when it was discovered).
-            unsigned includer_found_dir_idx = 0;
+            std::optional<unsigned> includer_found_dir_idx;
             auto sf_it = scanned_files.find(scan_result.path_id);
             if(sf_it != scanned_files.end()) {
                 includer_found_dir_idx = sf_it->second;
@@ -808,7 +799,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     std::chrono::duration_cast<std::chrono::microseconds>(r_t1 - r_t0).count();
                 if(!resolved.has_value()) {
                     if(cache_eligible) {
-                        include_cache.try_emplace(cache_key, CachedInclude{{}, 0});
+                        include_cache.try_emplace(cache_key, CachedInclude{});
                     }
                     report.unresolved.push_back({
                         std::move(inc.path),

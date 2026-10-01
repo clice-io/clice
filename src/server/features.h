@@ -111,6 +111,7 @@ public:
                           const protocol::Range& range,
                           std::optional<kota::cancellation_token> token = {});
     RawResult folding_range(std::shared_ptr<Session> session,
+                            bool line_folding_only,
                             std::optional<kota::cancellation_token> token = {});
     RawResult document_symbol(std::shared_ptr<Session> session,
                               std::optional<kota::cancellation_token> token = {});

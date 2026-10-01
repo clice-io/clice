@@ -264,6 +264,11 @@ void LSPClient::register_lifecycle() {
         }
 
         if(init.capabilities.text_document.has_value() &&
+           init.capabilities.text_document->folding_range.has_value()) {
+            line_folding_only = init.capabilities.text_document->folding_range->line_folding_only;
+        }
+
+        if(init.capabilities.text_document.has_value() &&
            init.capabilities.text_document->completion.has_value() &&
            init.capabilities.text_document->completion->completion_item.has_value()) {
             auto& item = *init.capabilities.text_document->completion->completion_item;
@@ -647,7 +652,9 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(unserved(path));
-            co_return co_await project->features.folding_range(session, ctx.cancellation);
+            co_return co_await project->features.folding_range(session,
+                                                               line_folding_only,
+                                                               ctx.cancellation);
         });
 
     peer.on_request(
@@ -928,6 +935,9 @@ void LSPClient::register_extensions() {
                                 kota::ipc::Error{protocol::ErrorCode::InvalidParams,
                                                  R"(loop must be "cdb" or "workspace")"});
                         }
+                        if(params.loop == "workspace") {
+                            srv.files.disk.look_all();
+                        }
                         // Every project ticks; the reply counts the events of all.
                         std::uint32_t count = 0;
                         bool loaded = false;
@@ -941,7 +951,7 @@ void LSPClient::register_extensions() {
                             if(params.loop == "cdb") {
                                 events = project->tracker->tick_cdb(params.force.value_or(true));
                             } else {
-                                events = co_await project->tracker->tick_workspace();
+                                events = project->tracker->tick_sources();
                             }
                             count += static_cast<std::uint32_t>(events.size());
                             if(!events.empty()) {
@@ -1017,6 +1027,8 @@ void LSPClient::register_extensions() {
                     [](const HeaderContext& context) { return context.synthesized != nullptr; }));
                 stats.sessions += static_cast<std::uint32_t>(served->sessions.sessions.size());
             }
+            stats.checks_looked = this->server.files.disk.checks.looked;
+            stats.checks_trusted = this->server.files.disk.checks.trusted;
             co_return to_raw(stats);
         });
 }

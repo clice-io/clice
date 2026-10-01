@@ -604,7 +604,16 @@ Features::RawResult Features::inlay_hints(std::shared_ptr<Session> session,
 }
 
 Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
+                                            bool line_folding_only,
                                             std::optional<kota::cancellation_token> token) {
+    auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
+        return to_raw(feature::folding_ranges_to_protocol(folds,
+                                                          session->text,
+                                                          session->line_starts,
+                                                          feature::PositionEncoding::UTF16,
+                                                          line_folding_only));
+    };
+
     auto ticket = Ticket::take(session);
     std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
@@ -617,10 +626,7 @@ Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
                 rows.decls,
                 [&](index::SymbolHash hash) { return query.symbol_info(hash); });
             session->index_served = true;
-            co_return to_raw(feature::folding_ranges_to_protocol(folds,
-                                                                 session->text,
-                                                                 session->line_starts,
-                                                                 feature::PositionEncoding::UTF16));
+            co_return convert(folds);
         }
         case Route::Empty: {
             // Same contract as the semantic-tokens Empty route: the
@@ -632,11 +638,14 @@ Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
         }
         case Route::Ast: break;
     }
-    co_return co_await dispatcher.query(worker::QueryKind::FoldingRange,
-                                        ticket,
-                                        {},
-                                        {},
-                                        std::move(token));
+    auto folds = co_await dispatcher.folding_ranges(ticket, std::move(token));
+    if(!folds.has_value()) {
+        co_return kota::outcome_error(std::move(folds.error()));
+    }
+    if(!*folds) {
+        co_return serde_raw{"null"};
+    }
+    co_return convert(**folds);
 }
 
 Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,

@@ -162,6 +162,8 @@ test("cancel storm leaves no tmp", async ({ session }) => {
     expect(Object.keys(stats).sort()).toEqual(
         [
             ...wireKeys<StatsResult>()([
+                "checksLooked",
+                "checksTrusted",
                 "headerContexts",
                 "synthesizedContexts",
                 "indexInmemoryShards",

@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "command/argument_parser.h"
+#include "feature/feature.h"
 #include "index/tu_index.h"
 #include "sched/families/build_common.h"
 #include "server/context_service.h"
@@ -21,6 +22,7 @@
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -46,6 +48,52 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
         "the file is quarantined until it is edited",
         crashes);
     auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostics);
+    return kota::codec::RawValue{json ? std::move(*json) : "[]"};
+}
+
+/// The compile's diagnostics behind the ones its PCH's build raised in the
+/// preamble, which the parse consuming the PCH never raises again — those
+/// of the command line it does, and they appear once. Files with one
+/// preamble share the PCH: related information the build placed in its
+/// own main file moves to `path`.
+static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
+                                           const index::TUIndex& preamble,
+                                           llvm::StringRef path) {
+    std::vector<protocol::Diagnostic> merged;
+    [[maybe_unused]] auto status =
+        kota::codec::json::from_string<kota::ipc::lsp_config>(preamble.preamble_diagnostics(),
+                                                              merged);
+    if(merged.empty()) {
+        return diagnostics;
+    }
+    auto builder = feature::to_uri(preamble.path(preamble.path_count() - 1));
+    auto uri = feature::to_uri(path);
+    for(auto& diagnostic: merged) {
+        if(!diagnostic.related_information) {
+            continue;
+        }
+        for(auto& related: *diagnostic.related_information) {
+            if(related.location.uri == builder) {
+                related.location.uri = uri;
+            }
+        }
+    }
+    std::vector<protocol::Diagnostic> own;
+    if(!diagnostics.empty()) {
+        status = kota::codec::json::from_string<kota::ipc::lsp_config>(diagnostics.data, own);
+    }
+    llvm::StringSet<> raised;
+    for(auto& diagnostic: own) {
+        if(auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostic)) {
+            raised.insert(*json);
+        }
+    }
+    std::erase_if(merged, [&](const protocol::Diagnostic& diagnostic) {
+        auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostic);
+        return json && raised.contains(*json);
+    });
+    std::ranges::move(own, std::back_inserter(merged));
+    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(merged);
     return kota::codec::RawValue{json ? std::move(*json) : "[]"};
 }
 
@@ -201,6 +249,37 @@ bool ASTFamily::is_stale(const Session& session) {
     return false;
 }
 
+void ASTFamily::closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files) {
+    auto add = [&](const DepsSnapshot& deps) {
+        for(auto& dep: deps) {
+            files.push_back(dep.path_id);
+        }
+    };
+    if(auto it = projections.entries.find(path_id);
+       it != projections.entries.end() && it->second.deps) {
+        add(*it->second.deps);
+    }
+    if(auto* header_context = contexts.header_context(path_id)) {
+        add(header_context->deps);
+    }
+    if(auto projection = projections.projection(path_id); projection && projection->pch_key) {
+        if(auto it = project.pch_cache.find(*projection->pch_key); it != project.pch_cache.end()) {
+            add(it->second.deps);
+        }
+    }
+    // A module's snapshot covers the modules it imports in turn.
+    for(auto dep: graph.dependencies(node(path_id))) {
+        if(dep.family != Family::PCM) {
+            continue;
+        }
+        Fid module{static_cast<std::uint32_t>(dep.key)};
+        if(auto it = project.pcm_cache.find(module); it != project.pcm_cache.end()) {
+            files.push_back(module);
+            add(it->second.deps);
+        }
+    }
+}
+
 void ASTFamily::touch(Fid path_id) {
     auto& entry = projections.entries[path_id];
     entry.current = false;
@@ -321,7 +400,7 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
             co_return true;
         }
         // A dependency changed on disk behind this session's back — the
-        // lazy twin of the workspace sweep. The document recompiles now,
+        // lazy twin of the background ticks. The document recompiles now,
         // whether or not the dependency graph knows the edge (a macro
         // include); the changed file's cascade follows from the file
         // table's change queue. The handler re-resolves the session by
@@ -342,12 +421,12 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
     co_return outcome == JoinOutcome::Success;
 }
 
-kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
-                                                   Fid path_id,
-                                                   llvm::StringRef directory,
-                                                   const std::vector<std::string>& arguments,
-                                                   llvm::StringRef text,
-                                                   const SynthesizedContext* synthesized) {
+kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
+                                           Fid path_id,
+                                           llvm::StringRef directory,
+                                           const std::vector<std::string>& arguments,
+                                           llvm::StringRef text,
+                                           const SynthesizedContext* synthesized) {
     // A project with no module code pays nothing — no CDB lookup, no
     // precise scan. The moment import syntax exists anywhere (the
     // lexical candidate set), every document scans precisely: that is
@@ -373,7 +452,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
         // earned earlier must stop cascading here, even when the compile
         // itself later fails (failed rounds keep declared edges).
         graph.declare(node(path_id), {});
-        co_return DependResult::Ready;
+        co_return true;
     }
 
     // Imports come from the round's buffer snapshot under the round's own
@@ -412,7 +491,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
         }
     }
     if(deps.resolved.empty()) {
-        co_return DependResult::Ready;
+        co_return true;
     }
 
     // Building a dependency can itself evict another clean module's PCM
@@ -428,12 +507,16 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
         for(auto dep: deps.resolved) {
             switch(co_await ctx.depend({Family::PCM, dep.raw})) {
                 case DependResult::Ready: break;
-                case DependResult::Failed: co_return DependResult::Failed;
-                case DependResult::Cancelled: co_return DependResult::Cancelled;
+                case DependResult::Failed:
+                    LOG_INFO("Import {} of {} failed to build; the parse reports it",
+                             project.file_table.resolve(dep),
+                             project.file_table.resolve(path_id));
+                    break;
+                case DependResult::Cancelled: co_return false;
             }
         }
     }
-    co_return DependResult::Ready;
+    co_return true;
 }
 
 kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
@@ -508,17 +591,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                            !header_context->synthesized &&
                            contexts.commands.header_mode(path_id) == HeaderMode::Unknown;
 
-        switch(co_await depend_modules(ctx,
-                                       path_id,
-                                       params.directory,
-                                       params.arguments,
-                                       params.text,
-                                       synthesized)) {
-            case DependResult::Ready: break;
-            case DependResult::Failed:
-                LOG_WARN("Dependency preparation failed for {}, skipping compile", file_path);
-                co_return RoundOutcome::Failed;
-            case DependResult::Cancelled: co_return RoundOutcome::Stale;
+        if(!co_await depend_modules(ctx,
+                                    path_id,
+                                    params.directory,
+                                    params.arguments,
+                                    params.text,
+                                    synthesized)) {
+            co_return RoundOutcome::Stale;
         }
 
         if(session->generation != gen) {
@@ -793,7 +872,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             std::vector<protocol::Diagnostic> diagnostics;
             if(!result.value().diagnostics.empty()) {
                 [[maybe_unused]] auto status =
-                    kota::codec::json::from_string(result.value().diagnostics.data, diagnostics);
+                    kota::codec::json::from_string<kota::ipc::lsp_config>(
+                        result.value().diagnostics.data,
+                        diagnostics);
             }
             session->trial_done = true;
             contexts.commands.record_header_mode(path_id, HeaderMode::SelfContained);
@@ -846,10 +927,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
+        auto& diagnostics = result.value().diagnostics;
         next->output = CompileOutput{
             .version = session->version,
             .source = source,
-            .diagnostics = std::move(result.value().diagnostics),
+            .diagnostics = preamble_state && preamble_state->matches_prefix(params.text)
+                               ? with_preamble(std::move(diagnostics), *preamble_state, file_path)
+                               : std::move(diagnostics),
             .line_limit = suffix_line_limit,
         };
 

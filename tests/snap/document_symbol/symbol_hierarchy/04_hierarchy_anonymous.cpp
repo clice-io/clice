@@ -12,6 +12,11 @@ int hidden_counter = 0;
 
 }  // namespace
 
+static union {
+    int global_int;
+    float global_float;
+};
+
 namespace misc {
 
 inline namespace v1 {

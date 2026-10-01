@@ -12,7 +12,6 @@ std::vector<Include> includes;
 std::vector<HasInclude> has_includes;
 std::vector<Condition> conditions;
 std::vector<MacroRef> macros;
-std::vector<Pragma> pragmas;
 std::vector<DiagnosticPragma> diagnostic_pragmas;
 std::vector<Embed> embeds;
 std::vector<HasEmbed> has_embeds;
@@ -27,7 +26,6 @@ void run(llvm::StringRef code) {
     has_includes = unit->directives()[fid].has_includes;
     conditions = unit->directives()[fid].conditions;
     macros = unit->directives()[fid].macros;
-    pragmas = unit->directives()[fid].pragmas;
     diagnostic_pragmas = unit->directives()[fid].diagnostic_pragmas;
     embeds = unit->directives()[fid].embeds;
     has_embeds = unit->directives()[fid].has_embeds;
@@ -82,14 +80,6 @@ void EXPECT_HAS_EMBED(u32 index,
     ASSERT_EQ(offset, point(position));
     ASSERT_EQ(has_embed.file.has_value(), exists);
     ASSERT_EQ(has_embed.file_name, filename);
-}
-
-void EXPECT_PRAGMA(u32 index, Pragma::Kind kind, llvm::StringRef pos, llvm::StringRef text) {
-    auto& pragma = pragmas[index];
-    auto [_, offset] = unit->decompose_location(pragma.loc);
-    ASSERT_EQ(int(pragma.kind), int(kind));
-    ASSERT_EQ(pragma.stmt, text);
-    ASSERT_EQ(offset, point(pos));
 }
 
 TEST_CASE(Include) {
@@ -228,20 +218,6 @@ int y = §(6)expr(§(7)expr(1));
     EXPECT_MACRO(6, MacroRef::Kind::Ref, "6");
     EXPECT_MACRO(7, MacroRef::Kind::Ref, "7");
     EXPECT_MACRO(8, MacroRef::Kind::Undef, "8");
-};
-
-TEST_CASE(Pragma) {
-    run(R"cpp(
-#[main.cpp]
-§(0)#pragma GCC poison printf sprintf fprintf
-§(1)#pragma region
-§(2)#pragma endregion
-)cpp");
-
-    ASSERT_EQ(pragmas.size(), 3U);
-    EXPECT_PRAGMA(0, Pragma::Kind::Other, "0", "#pragma GCC poison printf sprintf fprintf");
-    EXPECT_PRAGMA(1, Pragma::Kind::Region, "1", "#pragma region");
-    EXPECT_PRAGMA(2, Pragma::Kind::EndRegion, "2", "#pragma endregion");
 };
 
 TEST_CASE(DiagnosticPragma) {

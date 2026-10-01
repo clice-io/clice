@@ -251,20 +251,16 @@ struct ProjectConfig {
     <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
 };
 
-/// Corresponds to the `[tracker]` section in clice.toml: the stat-polling
-/// file tracker's intervals (integration tests drive ticks through the
-/// clice/internal/poll hook instead).
+/// Corresponds to the `[tracker]` section in clice.toml: how often files
+/// are looked at in the background (integration tests drive ticks through
+/// the clice/internal/poll hook instead).
 struct TrackerConfig {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Compilation database poll interval in seconds; 0 disables "
-                         "polling.")
-    <std::uint32_t> cdb_poll_seconds = 3;
-
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Workspace file sweep interval in seconds; 0 disables "
-                         "polling.")
+                         "Longest interval in seconds between two background looks at a "
+                         "workspace file: the interval doubles at every look that finds the "
+                         "file unchanged, up to this. 0 disables background polling, "
+                         "compilation databases included.")
     <std::uint32_t> workspace_poll_seconds = 30;
 };
 
@@ -356,7 +352,7 @@ struct Config {
     <ProjectConfig> project;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [tracker] section: file tracker poll intervals.")
+                     description = "The [tracker] section: background polling of files.")
     <TrackerConfig> tracker;
 
     KOTATSU_ANNOTATE(defaulted = true,

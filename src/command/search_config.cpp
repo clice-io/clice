@@ -64,9 +64,11 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
             case OPT_I: angled.push_back({make_absolute(value)}); break;
 
             // System group (clang: frontend::System / ExternCSystem)
-            case OPT_isystem:
+            case OPT_isystem: system.push_back({make_absolute(value)}); break;
             case OPT_internal_isystem:
-            case OPT_internal_externc_isystem: system.push_back({make_absolute(value)}); break;
+            case OPT_internal_externc_isystem:
+                system.push_back({.path = make_absolute(value), .driver = true});
+                break;
 
             // Prefix options: must be processed in argument order.
             case OPT_iprefix: prefix = value; break;

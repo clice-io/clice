@@ -517,16 +517,21 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         // PCM) it is the only hash naming the bytes the rows describe.
         auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.path_hash(i);
 
-        fs::file_status status;
-        if(hash == 0 && !fs::status(path, status) && fs::mtime_ns(status) <= baseline_before_ns) {
-            // The worker had no buffer to hash (e.g. behind a PCM) and no
-            // rows recorded one; the unchanged mtime proves the disk still
-            // holds the consumed bytes, so take their hash from the shared
-            // pair — or one read, unless the file moved between the stat
-            // and the read, which voids the proof.
-            auto obs = project.file_table.observe_for(file_ids_map[i], status);
-            if(obs && obs->size == status.getSize() && obs->mtime_ns == fs::mtime_ns(status)) {
-                hash = obs->hash;
+        if(hash != 0) {
+            project.file_table.disk.consumed(file_ids_map[i], hash);
+        } else {
+            auto status = vfs::status(path);
+            if(status && status->stamp.mtime_ns <= baseline_before_ns) {
+                // The worker had no buffer to hash (e.g. behind a PCM) and
+                // no rows recorded one; the unchanged mtime proves the disk
+                // still holds the consumed bytes, so take their hash from
+                // the last reliable read — or one read, unless the file
+                // moved between the stat and the read, which voids the
+                // proof.
+                auto obs = project.file_table.observe_for(file_ids_map[i], *status);
+                if(obs && obs->stamp == status->stamp) {
+                    hash = obs->hash;
+                }
             }
         }
 
@@ -1816,7 +1821,7 @@ bool IndexStore::file_version_stale(VersionID fv_id) {
 
     // Missing and unreadable both read as stale — conservative, the
     // reindex re-observes.
-    bool stale = project.file_table.check_version(fv_id) != FileTable::Verdict::Fresh;
+    bool stale = project.file_table.check_version(fv_id) != vfs::DiskState::Verdict::Fresh;
     fv_verdicts[fv_id] = stale;
     return stale;
 }
@@ -1841,7 +1846,7 @@ bool IndexStore::need_update(Fid file) {
         }
     }
     return llvm::any_of(manifest.absent, [&](VersionID fv) {
-        return project.file_table.current(project.file_table.version(fv).fid).has_value();
+        return project.file_table.present(project.file_table.version(fv).fid);
     });
 }
 

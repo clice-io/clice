@@ -8,6 +8,7 @@ namespace {
 
 using Comment = LexicalInfo::Comment;
 using ModuleDeclaration = LexicalInfo::ModuleDeclaration;
+using BlockDirective = LexicalInfo::BlockDirective;
 
 llvm::StringRef text(llvm::StringRef content, LocalSourceRange range) {
     return content.substr(range.begin, range.length());
@@ -177,6 +178,108 @@ TEST_CASE(NegativeControls) {
 }
 
 };  // TEST_SUITE(LexicalScanModules)
+
+TEST_SUITE(LexicalScanBlockDirectives) {
+
+TEST_CASE(ConditionalChain) {
+    llvm::StringRef content = R"(#if A // first
+int a;
+#elifdef B
+#else
+#endif
+#define X 1
+)";
+    auto info = lexical_scan(content);
+
+    ASSERT_EQ(info.block_directives.size(), 4U);
+    ASSERT_EQ(info.block_directives[0].kind, BlockDirective::Kind::If);
+    ASSERT_EQ(text(content, info.block_directives[0].range), "#if A // first");
+    ASSERT_EQ(info.block_directives[1].kind, BlockDirective::Kind::Else);
+    ASSERT_EQ(text(content, info.block_directives[1].range), "#elifdef B");
+    ASSERT_EQ(info.block_directives[2].kind, BlockDirective::Kind::Else);
+    ASSERT_EQ(info.block_directives[3].kind, BlockDirective::Kind::EndIf);
+}
+
+TEST_CASE(ContinuedLine) {
+    llvm::StringRef content = "#if defined(A) && \\\n    defined(B)\nint a;\n#endif";
+    auto info = lexical_scan(content);
+
+    ASSERT_EQ(info.block_directives.size(), 2U);
+    ASSERT_EQ(text(content, info.block_directives[0].range),
+              "#if defined(A) && \\\n    defined(B)");
+    ASSERT_EQ(text(content, info.block_directives[1].range), "#endif");
+}
+
+TEST_CASE(PragmaRegions) {
+    llvm::StringRef content = R"(#pragma GCC poison printf
+#pragma region endregion_pair
+#pragma mark see endregion notes
+#pragma endregion
+/* spans
+a line */ #pragma region after_comment
+int x; /* b */ #pragma endregion
+#pragma region
+#pragma endregion
+)";
+    auto info = lexical_scan(content);
+
+    ASSERT_EQ(info.block_directives.size(), 5U);
+    ASSERT_EQ(info.block_directives[0].kind, BlockDirective::Kind::Region);
+    ASSERT_EQ(text(content, info.block_directives[0].range), "#pragma region endregion_pair");
+    ASSERT_EQ(info.block_directives[1].kind, BlockDirective::Kind::EndRegion);
+    ASSERT_EQ(info.block_directives[2].kind, BlockDirective::Kind::Region);
+    ASSERT_EQ(text(content, info.block_directives[2].range), "#pragma region after_comment");
+    ASSERT_EQ(info.block_directives[3].kind, BlockDirective::Kind::Region);
+    ASSERT_EQ(text(content, info.block_directives[3].range), "#pragma region");
+    ASSERT_EQ(info.block_directives[4].kind, BlockDirective::Kind::EndRegion);
+}
+
+};  // TEST_SUITE(LexicalScanBlockDirectives)
+
+TEST_SUITE(LexicalScanIncludes) {
+
+TEST_CASE(IncludeForms) {
+    llvm::StringRef content = R"(#include <vector> // trailing
+#include_next "next.h"
+  #  import "imported.h"
+#define include
+#pragma include
+#if 0
+#include "skipped.h"
+#endif
+)";
+    auto info = lexical_scan(content);
+
+    ASSERT_EQ(info.include_directives.size(), 4U);
+    ASSERT_EQ(text(content, info.include_directives[0]), "#include <vector> // trailing");
+    ASSERT_EQ(text(content, info.include_directives[1]), R"(#include_next "next.h")");
+    ASSERT_EQ(text(content, info.include_directives[2]), R"(#  import "imported.h")");
+    ASSERT_EQ(text(content, info.include_directives[3]), R"(#include "skipped.h")");
+}
+
+};  // TEST_SUITE(LexicalScanIncludes)
+
+TEST_SUITE(LexicalScanRawStrings) {
+
+TEST_CASE(RawStringTokens) {
+    llvm::StringRef content = R"cpp(auto a = R"(one
+two)";
+auto b = u8R"x(")" inside)x"_suffix;
+auto c = "R(not raw)";
+auto R = 1;
+#define RAW R"(in a directive)"
+)cpp";
+    clang::LangOptions lang_opts;
+    lang_opts.CPlusPlus = lang_opts.CPlusPlus11 = lang_opts.RawStringLiterals = true;
+    auto info = lexical_scan(content, &lang_opts);
+
+    ASSERT_EQ(info.raw_strings.size(), 2U);
+    ASSERT_EQ(text(content, info.raw_strings[0]), R"x(R"(one
+two)")x");
+    ASSERT_EQ(text(content, info.raw_strings[1]), R"y(u8R"x(")" inside)x"_suffix)y");
+}
+
+};  // TEST_SUITE(LexicalScanRawStrings)
 
 }  // namespace
 }  // namespace clice::testing

@@ -170,7 +170,8 @@ void ProjectServer::start() {
         if(!report.has_commands) {
             LOG_GUIDANCE(
                 "No compile_commands.json found in workspace {}. Compile commands will be "
-                "guessed; see https://clice.io/en/guide/quick-start for setup.",
+                "guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for "
+                "setup.",
                 project.file_table.display(root));
         }
     }
@@ -194,6 +195,8 @@ void ProjectServer::start() {
     if(root.empty()) {
         return;
     }
+    auto poll_seconds = std::chrono::seconds(project.config.tracker.workspace_poll_seconds.value);
+    project.file_table.disk.add_root(root, {.max = poll_seconds});
     // Construct after the project load: the tracker baselines each
     // database at the read its entries came from.
     tracker = std::make_unique<FileTracker>(project, sessions, root);
@@ -202,12 +205,10 @@ void ProjectServer::start() {
     for(auto& [path_id, session]: sessions.sessions) {
         discover_around(path_id);
     }
-    auto& tracker_cfg = project.config.tracker;
-    if(tracker_cfg.cdb_poll_seconds.value > 0) {
+    if(poll_seconds.count() > 0) {
         bg_tasks.spawn(cdb_poll_task());
-    }
-    if(tracker_cfg.workspace_poll_seconds.value > 0) {
-        bg_tasks.spawn(workspace_poll_task());
+        bg_tasks.spawn(sources_poll_task());
+        server.start_polling();
     }
 }
 
@@ -319,6 +320,12 @@ void ProjectServer::close_session(Fid path_id) {
     // shrinks with the open count, and this is the moment it does.
     sched.pch.enforce_loaded_budget();
     LOG_DEBUG("Closed {}", path);
+}
+
+void ProjectServer::open_closures(llvm::SmallVectorImpl<Fid>& files) {
+    for(auto& [path_id, session]: sessions.sessions) {
+        ast.closure(path_id, files);
+    }
 }
 
 bool ProjectServer::knows(Fid path_id) {
@@ -532,7 +539,7 @@ void ProjectServer::start_control_listener() {
 }
 
 kota::task<> ProjectServer::cdb_poll_task() {
-    auto interval = std::chrono::seconds(project.config.tracker.cdb_poll_seconds.value);
+    constexpr auto interval = std::chrono::seconds(3);
     while(true) {
         co_await kota::sleep(interval);
         auto events = tracker->tick_cdb();
@@ -542,15 +549,14 @@ kota::task<> ProjectServer::cdb_poll_task() {
     }
 }
 
-kota::task<> ProjectServer::workspace_poll_task() {
+kota::task<> ProjectServer::sources_poll_task() {
     auto interval = std::chrono::seconds(project.config.tracker.workspace_poll_seconds.value);
     while(true) {
         co_await kota::sleep(interval);
-        auto events = co_await tracker->tick_workspace();
+        auto events = tracker->tick_sources();
         if(!events.empty()) {
             dispatch(events);
         }
-        server.drain_disk_changes();
     }
 }
 

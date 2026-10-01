@@ -136,6 +136,14 @@ std::unique_ptr<clang::CompilerInvocation>
         lang_opts.DelayedTemplateParsing = false;
     }
 
+    // A header compiled under a source's command (`-x c++` buys a parse
+    // instead of a precompiled-header job) is still a header: no "#pragma
+    // once in main file", no unused warnings for its static functions.
+    if(auto file = front_opts.Inputs[0].getFile();
+       is_header_path(file) || is_context_header_path(file)) {
+        lang_opts.IsHeaderFile = true;
+    }
+
     return invocation;
 }
 
@@ -188,6 +196,15 @@ public:
         // explicit instantiation directive that finds it already defined.
         if(!collected.insert(decl).second) {
             return;
+        }
+
+        // A namespace-scope anonymous union reaches the consumer only as
+        // its implicit variable; the written union is the record behind it.
+        if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl); var && var->isImplicit()) {
+            if(auto* record = var->getType()->getAsRecordDecl();
+               record && record->isAnonymousStructOrUnion()) {
+                unit->top_level_decls.push_back(record);
+            }
         }
 
         unit->top_level_decls.push_back(decl);

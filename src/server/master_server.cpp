@@ -37,14 +37,15 @@ MasterServer::MasterServer(kota::event_loop& loop,
                            std::string self_path,
                            std::string requested_configuration) :
     loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)),
-    bg_tasks(loop), self_path(std::move(self_path)) {
+    bg_tasks(loop), polling(loop), self_path(std::move(self_path)) {
     // Documents opened before initialize land in this project: sessions
     // are plain state, and initialize re-routes them once folders exist.
     projects.push_back(make_project(CanonicalPath()));
+    files.disk.shadow = llvm::sys::Process::GetEnv("CLICE_SHADOW_FRESHNESS").has_value();
     // A disk change can be seen deep inside any operation — a staleness
     // check, a rescan inside a cascade: the drain runs on a later loop
     // turn, outside it.
-    files.on_change = [this] {
+    files.disk.on_change = [this] {
         bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
             co_await kota::sleep(std::chrono::milliseconds(0));
             server.drain_disk_changes();
@@ -612,8 +613,31 @@ std::uint64_t MasterServer::context_epoch() {
 }
 
 void MasterServer::saved(Fid path_id) {
-    files.current(path_id);
+    llvm::SmallVector<Fid> closures{path_id};
+    for(auto& project: projects) {
+        project->open_closures(closures);
+    }
+    files.disk.look(closures);
     drain_disk_changes();
+}
+
+void MasterServer::start_polling() {
+    if(!polling_started) {
+        polling_started = true;
+        polling.spawn(poll_task());
+    }
+}
+
+kota::task<> MasterServer::poll_task() {
+    // A tick's looks run on the event loop: bounded, so a backlog (a
+    // checkout making every workspace file due) spreads over ticks instead
+    // of stalling requests.
+    constexpr auto interval = std::chrono::milliseconds(250);
+    constexpr auto budget = std::chrono::milliseconds(2);
+    while(true) {
+        co_await kota::sleep(interval);
+        files.disk.tick(budget);
+    }
 }
 
 std::size_t MasterServer::drain_disk_changes() {
@@ -758,6 +782,8 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     // start from here on (a retirement finishing below would serve the
     // folders again, see make_project).
     lifecycle = ServerLifecycle::ShuttingDown;
+    polling.cancel();
+    co_await polling.join();
     co_await bg_tasks.join();
     for(auto& project: projects) {
         co_await project->shutdown();

@@ -27,8 +27,8 @@ class PCMFamily;
 struct FileEvent {
     enum class Kind : std::uint8_t {
         /// The file's content on disk changed — open or not: the file table
-        /// saw other bytes than it last saw, whoever looked (the workspace
-        /// sweep, a didSave, a rescan, a compile's staleness check).
+        /// saw other bytes than it last saw, whoever looked (a background
+        /// tick, a didSave, a rescan, a compile's staleness check).
         DiskChanged,
         /// The file disappeared from disk (see DiskChanged).
         DiskRemoved,

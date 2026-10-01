@@ -3,8 +3,10 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <string>
+#include <thread>
 
 #include "test/temp_dir.h"
 #include "test/test.h"
@@ -29,7 +31,7 @@ TEST_CASE(OpenedFilesKeepIdentity) {
 
     auto status = vfs::status(path);
     ASSERT_TRUE(status.has_value());
-    ASSERT_EQ(status->getSize(), 10u);
+    ASSERT_EQ(status->stamp.size, 10u);
 
     vfs::View view;
     auto stated = view.status(path);
@@ -40,13 +42,15 @@ TEST_CASE(OpenedFilesKeepIdentity) {
     auto bytes_status = (*bytes)->status();
     ASSERT_TRUE(text_status && bytes_status);
 
-    ASSERT_TRUE(stated->getUniqueID() == status->getUniqueID());
-    ASSERT_TRUE(text_status->getUniqueID() == status->getUniqueID());
-    ASSERT_TRUE(bytes_status->getUniqueID() == status->getUniqueID());
+    auto id = status->to_llvm(path).getUniqueID();
+    ASSERT_TRUE(stated->getUniqueID() == id);
+    ASSERT_TRUE(text_status->getUniqueID() == id);
+    ASSERT_TRUE(bytes_status->getUniqueID() == id);
     ASSERT_EQ(stated->getSize(), 7u);
     ASSERT_EQ(text_status->getSize(), 7u);
     ASSERT_EQ(bytes_status->getSize(), 10u);
-    ASSERT_TRUE(text_status->getLastModificationTime() == status->getLastModificationTime());
+    ASSERT_TRUE(text_status->getLastModificationTime() ==
+                status->to_llvm(path).getLastModificationTime());
 }
 
 TEST_CASE(DirectoriesAndMissing) {
@@ -55,9 +59,9 @@ TEST_CASE(DirectoriesAndMissing) {
 
     auto dir = vfs::status(tmp.path("dir"));
     ASSERT_TRUE(dir.has_value());
-    ASSERT_TRUE(dir->type() == llvm::sys::fs::file_type::directory_file);
-    ASSERT_TRUE(dir->getUniqueID() == vfs::status(tmp.path("dir"))->getUniqueID());
-    ASSERT_FALSE(dir->getUniqueID() == vfs::status(tmp.path("dir/a.h"))->getUniqueID());
+    ASSERT_TRUE(dir->type == llvm::sys::fs::file_type::directory_file);
+    ASSERT_EQ(dir->stamp.file, vfs::status(tmp.path("dir"))->stamp.file);
+    ASSERT_NE(dir->stamp.file, vfs::status(tmp.path("dir/a.h"))->stamp.file);
 
     auto missing = vfs::status(tmp.path("dir/b.h"));
     ASSERT_FALSE(missing.has_value());
@@ -72,14 +76,15 @@ TEST_CASE(LinksShareIdentity) {
     tmp.touch("a.h", "int x;\n");
     auto a = tmp.path("a.h");
     ASSERT_FALSE(bool(llvm::sys::fs::create_hard_link(a, tmp.path("b.h"))));
-    ASSERT_TRUE(vfs::status(a)->getUniqueID() == vfs::status(tmp.path("b.h"))->getUniqueID());
+    ASSERT_TRUE(vfs::status(a)->stamp == vfs::status(tmp.path("b.h"))->stamp);
 #ifndef _WIN32
     ASSERT_EQ(::symlink(a.c_str(), tmp.path("c.h").c_str()), 0);
     vfs::View view;
     auto linked = view.openFileForRead(tmp.path("c.h"));
     ASSERT_TRUE(bool(linked));
-    ASSERT_TRUE((*linked)->status()->getUniqueID() == vfs::status(a)->getUniqueID());
-    ASSERT_TRUE(view.status(tmp.path("c.h"))->getUniqueID() == vfs::status(a)->getUniqueID());
+    auto id = vfs::status(a)->to_llvm(a).getUniqueID();
+    ASSERT_TRUE((*linked)->status()->getUniqueID() == id);
+    ASSERT_TRUE(view.status(tmp.path("c.h"))->getUniqueID() == id);
 #endif
 }
 
@@ -97,7 +102,7 @@ TEST_CASE(KeptTextFollowsEdits) {
         EXPECT_TRUE(bool(file));
         auto status = (*file)->status();
         EXPECT_TRUE(bool(status));
-        EXPECT_TRUE(status->getUniqueID() == vfs::status(path)->getUniqueID());
+        EXPECT_TRUE(status->getUniqueID() == vfs::status(path)->to_llvm(path).getUniqueID());
         auto buffer = (*file)->getBuffer(path, -1, true, false);
         EXPECT_TRUE(bool(buffer));
         EXPECT_EQ(status->getSize(), (*buffer)->getBufferSize());
@@ -161,16 +166,18 @@ TEST_CASE(BatchAgreesWithStatus) {
             auto batched = batch.status(path);
             auto direct = vfs::status(path);
             ASSERT_TRUE(batched.has_value() && direct.has_value());
-            ASSERT_TRUE(batched->getUniqueID() == direct->getUniqueID());
-            ASSERT_EQ(batched->getSize(), direct->getSize());
-            ASSERT_TRUE(batched->getLastModificationTime() == direct->getLastModificationTime());
-            ASSERT_TRUE(batched->type() == direct->type());
+            ASSERT_TRUE(batched->stamp == direct->stamp);
+            ASSERT_TRUE(batched->type == direct->type);
         }
     }
     auto sub = batch.status(tmp.path("dir/sub"));
     ASSERT_TRUE(sub.has_value());
-    ASSERT_TRUE(sub->type() == llvm::sys::fs::file_type::directory_file);
-    ASSERT_TRUE(sub->getUniqueID() == vfs::status(tmp.path("dir/sub"))->getUniqueID());
+    ASSERT_TRUE(sub->type == llvm::sys::fs::file_type::directory_file);
+    // A directory's times in its parent's listing may lag behind its own:
+    // only its identity is compared.
+    auto direct = vfs::status(tmp.path("dir/sub"));
+    ASSERT_EQ(sub->stamp.device, direct->stamp.device);
+    ASSERT_EQ(sub->stamp.file, direct->stamp.file);
     auto missing = batch.status(tmp.path("dir/none.h"));
     ASSERT_FALSE(missing.has_value());
     ASSERT_TRUE(missing.error() == std::errc::no_such_file_or_directory);
@@ -188,11 +195,30 @@ TEST_CASE(BatchSeesLinkedEdits) {
     tmp.touch("dir/h0.h", "a longer text");
 
     vfs::StatusBatch batch;
-    ASSERT_EQ(batch.status(tmp.path("dir/link.h"))->getSize(), 13u);
+    ASSERT_EQ(batch.status(tmp.path("dir/link.h"))->stamp.size, 13u);
     for(int i = 1; i < 20; i += 1) {
         ASSERT_TRUE(batch.status(tmp.path(std::format("dir/h{}.h", i))).has_value());
     }
-    ASSERT_EQ(batch.status(tmp.path("dir/link.h"))->getSize(), 13u);
+    ASSERT_EQ(batch.status(tmp.path("dir/link.h"))->stamp.size, 13u);
+}
+
+TEST_CASE(StampSeesKeptTimes) {
+    // A rewrite that keeps the size and puts the mtime back still moves
+    // the change time.
+    TempDir tmp;
+    tmp.touch("a.h", "int x;\n");
+    auto path = tmp.path("a.h");
+    auto before = vfs::status(path);
+    ASSERT_TRUE(before.has_value());
+    // Past the coarse clock inode times are taken from.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    tmp.touch("a.h", "int y;\n");
+    ASSERT_TRUE(set_file_mtime(path, before->stamp.mtime_ns));
+    auto after = vfs::status(path);
+    ASSERT_TRUE(after.has_value());
+    ASSERT_EQ(after->stamp.size, before->stamp.size);
+    ASSERT_EQ(after->stamp.mtime_ns, before->stamp.mtime_ns);
+    ASSERT_TRUE(after->stamp != before->stamp);
 }
 
 };  // TEST_SUITE(FileSystem)

@@ -23,9 +23,8 @@
         },
         "tracker": {
             "$ref": "#/$defs/TrackerConfig",
-            "description": "The [tracker] section: file tracker poll intervals.",
+            "description": "The [tracker] section: background polling of files.",
             "default": {
-                "cdb_poll_seconds": 3,
                 "workspace_poll_seconds": 30
             }
         },
@@ -145,18 +144,11 @@
         "TrackerConfig": {
             "type": "object",
             "properties": {
-                "cdb_poll_seconds": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 4294967295,
-                    "description": "Compilation database poll interval in seconds; 0 disables polling.",
-                    "default": 3
-                },
                 "workspace_poll_seconds": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 4294967295,
-                    "description": "Workspace file sweep interval in seconds; 0 disables polling.",
+                    "description": "Longest interval in seconds between two background looks at a workspace file: the interval doubles at every look that finds the file unchanged, up to this. 0 disables background polling, compilation databases included.",
                     "default": 30
                 }
             },

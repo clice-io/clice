@@ -130,16 +130,6 @@ Token Lexer::advance() {
     return current_token;
 }
 
-std::optional<Token> Lexer::advance_if(llvm::function_ref<bool(const Token&)> callback) {
-    auto token = next();
-
-    if(callback(token)) {
-        return advance();
-    }
-
-    return std::nullopt;
-}
-
 Token Lexer::advance_until(TokenKind kind) {
     while(true) {
         auto token = advance();

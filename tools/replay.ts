@@ -17,6 +17,7 @@ import {
     anomaliesInMessages,
     logFiles,
     processGateFailures,
+    serverEnv,
 } from "./process_gate.ts";
 import { TimeoutError, withTimeout } from "./promise.ts";
 
@@ -346,7 +347,7 @@ async function replayOne(
     // in this session may gate it.
     const preexistingLogs = new Set(logFiles(displayWs));
 
-    const env = { ...process.env };
+    const env = serverEnv();
     if (process.platform === "darwin") {
         const prev = env["ASAN_OPTIONS"] ?? "";
         env["ASAN_OPTIONS"] = prev ? `${prev}:detect_leaks=0` : "detect_leaks=0";

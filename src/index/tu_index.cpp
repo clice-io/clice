@@ -76,6 +76,11 @@ struct EnvelopeBlob {
     /// The places the parse's failed lookups looked that held no file
     /// (CompilationUnitRef::absent).
     std::vector<std::string> absent;
+
+    /// Preamble ride-along: the diagnostics the preamble's build raised,
+    /// as published (a JSON array of LSP diagnostics) — a compile that
+    /// consumes the PCH never raises them again.
+    std::string diagnostics;
 };
 
 /// What build_preamble_index adds on top of an ordinary build.
@@ -85,6 +90,7 @@ struct PreambleExtras {
     llvm::ArrayRef<feature::DocumentLink> links;
     llvm::ArrayRef<std::uint32_t> inactive_regions;
     llvm::ArrayRef<std::uint8_t> open_conditionals;
+    llvm::StringRef diagnostics;
 };
 
 SymbolScope classify_scope(const clang::NamedDecl* decl) {
@@ -927,6 +933,7 @@ public:
             blob.links = extras->links;
             blob.inactive_regions = extras->inactive_regions;
             blob.open_conditionals = extras->open_conditionals;
+            blob.diagnostics = extras->diagnostics.str();
         }
 
         ScopedTimer pack_timer;
@@ -968,7 +975,8 @@ std::string build_tu_index(CompilationUnitRef unit, bool main_file_only) {
 std::string build_preamble_index(CompilationUnitRef unit,
                                  llvm::ArrayRef<feature::DocumentLink> links,
                                  llvm::ArrayRef<std::uint32_t> inactive_regions,
-                                 llvm::ArrayRef<std::uint8_t> open_conditionals) {
+                                 llvm::ArrayRef<std::uint8_t> open_conditionals,
+                                 llvm::StringRef diagnostics) {
     // The preamble compile remaps the buffer truncated at the bound, so
     // main_content() is exactly the preamble text the PCH was built
     // from.
@@ -979,6 +987,7 @@ std::string build_preamble_index(CompilationUnitRef unit,
         .links = links,
         .inactive_regions = inactive_regions,
         .open_conditionals = open_conditionals,
+        .diagnostics = diagnostics,
     };
     Projector projector(unit, false);
     return projector.build(&extras);
@@ -1260,6 +1269,13 @@ llvm::ArrayRef<std::uint8_t> TUIndex::open_conditionals() const {
         return {};
     }
     return to_array_ref(wire_root(data)[&EnvelopeBlob::open_conditionals]);
+}
+
+llvm::StringRef TUIndex::preamble_diagnostics() const {
+    if(!loaded()) {
+        return {};
+    }
+    return to_ref(wire_root(data)[&EnvelopeBlob::diagnostics]);
 }
 
 }  // namespace clice::index

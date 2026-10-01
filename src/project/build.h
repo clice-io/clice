@@ -134,7 +134,7 @@ public:
     /// Enumerate the sources the default-command rules claim again and
     /// report the ones that appeared since the last enumeration — a file
     /// created after startup joins the build; a deleted one just leaves
-    /// the members. The workspace sweep calls it every tick.
+    /// the members. The file tracker calls it every workspace poll.
     llvm::SmallVector<Fid> refresh_default_sources();
 
     /// The scan units of `members`: every command of every member, so a

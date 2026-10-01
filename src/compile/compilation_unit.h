@@ -145,6 +145,10 @@ public:
     /// Return clang's main file ID, the file this unit was built for.
     auto main_file() -> clang::FileID;
 
+    /// Whether `fid` is the main file, or the preamble of it a consumed PCH
+    /// recorded — where the preamble's include locations point.
+    bool is_main_file(clang::FileID fid);
+
     /// Get the content of main file.
     auto main_content() -> llvm::StringRef;
 

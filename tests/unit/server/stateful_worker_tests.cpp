@@ -348,13 +348,12 @@ TEST_CASE(FoldingRangeWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::FoldingRange;
+        worker::FoldingRangeParams params;
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        EXPECT_FALSE(result.value().has_value());
         test_done = true;
     });
 
@@ -468,8 +467,7 @@ TEST_CASE(MultipleSequentialRequests) {
         auto r3 = co_await w.peer->send_request(stp);
         EXPECT_TRUE(r3.has_value());
 
-        worker::QueryParams frp;
-        frp.kind = worker::QueryKind::FoldingRange;
+        worker::FoldingRangeParams frp;
         frp.path = src;
         auto r4 = co_await w.peer->send_request(frp);
         EXPECT_TRUE(r4.has_value());

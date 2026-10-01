@@ -147,7 +147,8 @@ struct LogFloodResult {
 /// clice/internal/stats — TEST-ONLY, not a stable API. Ownership gauges
 /// for memory-lifecycle regression tests: instead of brittle RSS
 /// assertions, each leak class is pinned by a deterministic counter
-/// (consumed by tests/integration/server/memory_ownership.test.ts).
+/// (consumed by tests/integration/server/memory_ownership.test.ts); and
+/// the counts of freshness checks, which pin what a request looks at.
 /// Absent from capabilities and user docs.
 struct StatsParams {};
 
@@ -178,6 +179,11 @@ struct StatsResult {
     /// Of those, the ones whose includer context was synthesized.
     std::uint32_t synthesized_contexts = 0;
     std::uint32_t sessions = 0;
+
+    /// Freshness checks of files answered by a look at the disk, and from
+    /// a look not yet due (see vfs::DiskState::Checks).
+    std::uint64_t checks_looked = 0;
+    std::uint64_t checks_trusted = 0;
 };
 
 }  // namespace clice::ext

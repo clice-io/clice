@@ -138,6 +138,10 @@ public:
     /// products die with it.
     void drop(Fid path_id);
 
+    /// The files the document's compile depends on: the ones is_stale()
+    /// checks, and the inputs of the modules it imports.
+    void closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files);
+
     /// clice/switchContext: the new context is a different compilation
     /// identity. Supersede any in-flight compile and drop the state
     /// earned under the old one — including the self-containment trial,
@@ -197,13 +201,15 @@ private:
     /// revalidate on-disk PCM blobs, declare the Ast→PCM durable edges
     /// (scanner truth — they must survive a failed compile or fixing an
     /// import could never re-dirty this document), and wait on each
-    /// import through depend.
-    kota::task<DependResult> depend_modules(RoundContext& ctx,
-                                            Fid path_id,
-                                            llvm::StringRef directory,
-                                            const std::vector<std::string>& arguments,
-                                            llvm::StringRef text,
-                                            const SynthesizedContext* synthesized);
+    /// import through depend. False when cancelled: an import whose build
+    /// failed is left to the parse, which reports it on the import next to
+    /// the file's own diagnostics.
+    kota::task<bool> depend_modules(RoundContext& ctx,
+                                    Fid path_id,
+                                    llvm::StringRef directory,
+                                    const std::vector<std::string>& arguments,
+                                    llvm::StringRef text,
+                                    const SynthesizedContext* synthesized);
 
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);
@@ -266,6 +272,7 @@ private:
 /// Discriminators for Quarantine's per-kind ledgers.
 enum class EvidenceKind : std::uint8_t {
     DocumentLink,
+    FoldingRange,
     CodeAction,
     PCH,
     Completion,

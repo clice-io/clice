@@ -17,7 +17,7 @@ test("defaults overlay the caller's options", () => {
             stateful_worker_count: 3,
             stateless_worker_count: 1,
         },
-        tracker: { cdb_poll_seconds: 0, workspace_poll_seconds: 0 },
+        tracker: { workspace_poll_seconds: 0 },
     });
 });
 

@@ -69,6 +69,11 @@ public:
     kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         document_links(const Ticket& ticket, std::optional<kota::cancellation_token> token = {});
 
+    /// The folding ranges from the stateful worker holding the AST, none
+    /// without one.
+    kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
+        folding_ranges(const Ticket& ticket, std::optional<kota::cancellation_token> token = {});
+
     /// The code actions on a range of the buffer, from the stateful worker
     /// holding the AST; index requests come back unresolved.
     kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
@@ -95,7 +100,7 @@ public:
 
 private:
     /// Shared body of the typed requests to the worker holding the AST
-    /// (document links, code actions): the compile, the gate, the send
+    /// (document links, folding ranges, code actions): the compile, the gate, the send
     /// and the landing; a missing AST answers an empty result.
     template <typename Params>
     kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>

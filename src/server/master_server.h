@@ -145,8 +145,15 @@ public:
     void builds_changed();
 
     /// didSave: a look at the file's disk content, which every project
-    /// knowing the file cascades if it changed (drain_disk_changes).
+    /// knowing the file cascades if it changed (drain_disk_changes). A save
+    /// is also when users expect everything to be current: the files every
+    /// open document's compile depends on, installed headers included, are
+    /// looked at too.
     void saved(Fid path_id);
+
+    /// Start the background looks at files (see vfs::DiskState::tick); calls
+    /// after the first do nothing.
+    void start_polling();
 
     /// Hand the disk changes the file table saw to every project knowing
     /// the file (ProjectServer::knows); how many there were.
@@ -326,6 +333,12 @@ private:
     /// Shutdowns of removed projects and deferred drains of the file
     /// table's changes; joined in shutdown_and_cleanup().
     kota::task_group<> bg_tasks;
+
+    /// The background looks at files, ticking until shutdown_and_cleanup()
+    /// cancels them.
+    kota::task_group<> polling;
+    bool polling_started = false;
+    kota::task<> poll_task();
 
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.
