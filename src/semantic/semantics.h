@@ -241,8 +241,7 @@ struct NameOccurrence {
 /// Every declaration `node` refers to — the single implementation of
 /// "node → referenced decl" (the distilled content of the former
 /// SemanticVisitor visit methods). Semantic tokens, the index projection
-/// and hover consume the spelled subset through resolve_occurrences; the
-/// content table consumes all of them as dependencies.
+/// and hover consume the spelled subset through resolve_occurrences.
 ///
 /// Dependent names (typename T::type, unresolved lookups, dependent using
 /// declarations) resolve through the template resolver into WeakReference
@@ -259,9 +258,8 @@ llvm::SmallVector<Reference, 2> resolve_references(const SemanticNode& node,
 struct SemanticsOptions {
     /// Traverse only the main file's top-level decls — the shape features
     /// consume, cached on the unit. Without it the whole TU is traversed,
-    /// the transient shape the full index projection and the content table
-    /// use; token ownership still only covers the main file's spelled
-    /// tokens.
+    /// the transient shape the full index projection uses; token ownership
+    /// still only covers the main file's spelled tokens.
     bool main_file_only = true;
 
     /// Also traverse template instantiations, flagged in_instantiation:

@@ -5,7 +5,6 @@
 import type { AnnotatedSource } from "./annotation.ts";
 import { codeAction } from "./features/code_action.ts";
 import { codeCompletion } from "./features/code_completion.ts";
-import { content } from "./features/content.ts";
 import { documentLinks } from "./features/document_links.ts";
 import { documentSymbol } from "./features/document_symbol.ts";
 import { foldingRange } from "./features/folding_range.ts";
@@ -21,7 +20,6 @@ import type { Feature, FeatureShape } from "./render.ts";
 const FEATURES: Record<string, Feature> = {
     code_action: codeAction,
     code_completion: codeCompletion,
-    content,
     document_links: documentLinks,
     document_symbol: documentSymbol,
     folding_range: foldingRange,
