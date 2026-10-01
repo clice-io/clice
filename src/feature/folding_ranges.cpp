@@ -127,13 +127,10 @@ private:
         }
 
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-            if(!function->doesThisDeclarationHaveABody()) {
-                collect_parameter_list(function->getSourceRange());
-                return;
+            collect_parameter_list(function);
+            if(function->doesThisDeclarationHaveABody()) {
+                add_range(function->getBody()->getSourceRange(), "functionBody", "{...}");
             }
-
-            collect_parameter_list(function->getBeginLoc(), function->getBody()->getBeginLoc());
-            add_range(function->getBody()->getSourceRange(), "functionBody", "{...}");
         }
     }
 
@@ -141,8 +138,7 @@ private:
         if(const auto* lambda = llvm::dyn_cast<clang::LambdaExpr>(stmt)) {
             add_range(lambda->getIntroducerRange(), "lambdaCapture", "[...]");
             if(lambda->hasExplicitParameters()) {
-                collect_parameter_list(lambda->getIntroducerRange().getEnd(),
-                                       lambda->getCompoundStmtBody()->getBeginLoc());
+                collect_parameter_list(lambda->getCallOperator());
             }
             return;
         }
@@ -240,29 +236,13 @@ private:
         close(record->getBraceRange().getEnd());
     }
 
-    void collect_parameter_list(clang::SourceLocation left, clang::SourceLocation right) {
-        collect_parameter_list(clang::SourceRange(left, right));
-    }
-
-    void collect_parameter_list(clang::SourceRange bounds) {
-        auto tokens = unit.expanded_tokens(bounds);
-        auto left_paren = tokens.drop_until(
-            [](const clang::syntax::Token& token) { return token.kind() == clang::tok::l_paren; });
-        if(left_paren.empty()) {
-            return;
+    /// Between the parentheses of the declarator — not the first `(` and
+    /// the last `)` of the declaration, which may belong to the name of
+    /// `operator()`, a member initializer or `noexcept(...)`.
+    void collect_parameter_list(const clang::FunctionDecl* function) {
+        if(auto type = function->getFunctionTypeLoc()) {
+            add_range(type.getParensRange(), "functionParams", "(...)");
         }
-
-        auto right_paren = std::find_if(
-            left_paren.rbegin(),
-            left_paren.rend(),
-            [](const clang::syntax::Token& token) { return token.kind() == clang::tok::r_paren; });
-        if(right_paren == left_paren.rend()) {
-            return;
-        }
-
-        add_range(clang::SourceRange(left_paren.front().location(), right_paren->location()),
-                  "functionParams",
-                  "(...)");
     }
 
     void collect_block_directives(llvm::ArrayRef<LexicalInfo::BlockDirective> directives) {
