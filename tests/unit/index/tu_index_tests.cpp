@@ -913,6 +913,21 @@ TEST_CASE(DeclarationAndDefinition) {
     ASSERT_TRUE(found_def);
 }
 
+TEST_CASE(MacroDefinitionExtent) {
+    build_index(R"(
+        #define MAKE_FN(name) int name() { return 42; }
+        §(ext)⟦MAKE_FN(generated)⟧
+    )");
+
+    auto [hash, symbol] = symbol_named("generated");
+    auto& relations = tu_index.main_file_index.relations[hash];
+    auto definition = std::ranges::find_if(relations, [](const index::Relation& relation) {
+        return relation.kind == RelationKind::Definition;
+    });
+    ASSERT_TRUE(definition != relations.end());
+    ASSERT_EQ(dump(definition->definition_range()), dump(range("ext")));
+}
+
 TEST_CASE(CrossFileHeaderIndex) {
     add_file("header.h", R"(
             #pragma once

@@ -516,8 +516,21 @@ public:
         };
 
         if(auto* CE = node.get<clang::CallExpr>()) {
+            // Some calls span no written extent: the ones Sema synthesizes
+            // for `__builtin_invoke` start nowhere or end before they
+            // begin, a bare MS `__noop` ends nowhere. They land at their
+            // expression location — the builtin's name — or nowhere when
+            // even that is unwritten.
+            auto range = CE->getSourceRange();
+            auto& SM = unit.context().getSourceManager();
+            if(range.isInvalid() || SM.isBeforeInTranslationUnit(range.getEnd(), range.getBegin())) {
+                range = CE->getExprLoc();
+                if(range.isInvalid()) {
+                    return;
+                }
+            }
             if(auto* callee = llvm::dyn_cast_if_present<clang::NamedDecl>(CE->getCalleeDecl())) {
-                call(callee, CE->getSourceRange());
+                call(callee, range);
                 return;
             }
             // A dependent call reaches every candidate the resolver finds
@@ -526,7 +539,7 @@ public:
                 if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(candidate)) {
                     candidate = shadow->getTargetDecl();
                 }
-                call(candidate, CE->getSourceRange());
+                call(candidate, range);
             }
             return;
         }

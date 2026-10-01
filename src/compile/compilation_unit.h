@@ -108,7 +108,8 @@ public:
     /// files, we cut off the range at the end of the first file.
     auto decompose_range(clang::SourceRange range) -> std::pair<clang::FileID, LocalSourceRange>;
 
-    /// Same as `decompose_range`, but will translate range to expansion range.
+    /// Same as `decompose_range`, but will translate range to expansion range:
+    /// a range inside a macro expansion covers the whole invocation.
     auto decompose_expansion_range(clang::SourceRange range)
         -> std::pair<clang::FileID, LocalSourceRange>;
 

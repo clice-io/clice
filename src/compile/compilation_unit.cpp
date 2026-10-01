@@ -67,12 +67,10 @@ auto CompilationUnitRef::decompose_range(clang::SourceRange range)
 auto CompilationUnitRef::decompose_expansion_range(clang::SourceRange range)
     -> std::pair<clang::FileID, LocalSourceRange> {
     auto [begin, end] = range;
-    if(begin == end) {
-        return decompose_range(expansion_location(begin));
-    } else {
-        return decompose_range(
-            clang::SourceRange(expansion_location(begin), expansion_location(end)));
-    }
+    // An end inside a macro expansion extends to the invocation's last
+    // token: `MAKE_FN(name)` as a whole, not its macro name alone.
+    return decompose_range(clang::SourceRange(expansion_location(begin),
+                                              self->SM().getExpansionRange(end).getEnd()));
 }
 
 auto CompilationUnitRef::file_id(clang::SourceLocation location) -> clang::FileID {
