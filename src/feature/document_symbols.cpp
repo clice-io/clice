@@ -289,6 +289,7 @@ private:
             case clang::Decl::ClassTemplateSpecialization:
             case clang::Decl::ClassTemplatePartialSpecialization:
             case clang::Decl::Field:
+            case clang::Decl::MSProperty:
             case clang::Decl::Var:
             case clang::Decl::VarTemplateSpecialization:
             case clang::Decl::VarTemplatePartialSpecialization:

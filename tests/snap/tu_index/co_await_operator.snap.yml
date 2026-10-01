@@ -1,0 +1,44 @@
+---
+created_at: 2026-10-01
+input_file: co_await_operator.cpp
+---
+- { loc: "4:10", kind: Namespace, text: "std", relations: [Definition] }
+- { loc: "5:19", kind: Type, text: "Ret", relations: [Definition] }
+- { loc: "6:7", kind: Struct, text: "coroutine_traits", relations: [Definition] }
+- { loc: "7:10", kind: Type, text: "promise_type", relations: [Definition] }
+- { loc: "7:34", kind: Type, text: "Ret", relations: [Reference] }
+- { loc: "11:7", kind: Struct, text: "coroutine_handle", relations: [Definition] }
+- { loc: "12:4", kind: Method, text: "coroutine_handle", relations: [Definition] }
+- { loc: "13:23", kind: Type, text: "Promise", relations: [Definition] }
+- { loc: "14:4", kind: Method, text: "coroutine_handle", relations: [Declaration] }
+- { loc: "14:21", kind: Struct, text: "coroutine_handle", relations: [Reference] }
+- { loc: "14:38", kind: Type, text: "Promise", relations: [Reference] }
+- { loc: "15:11", kind: Struct, text: "coroutine_handle", relations: [Reference] }
+- { loc: "15:28", kind: Method, text: "from_address", relations: [Declaration] }
+- { loc: "18:7", kind: Struct, text: "suspend_never", relations: [Definition] }
+- { loc: "19:9", kind: Method, text: "await_ready", relations: [Declaration] }
+- { loc: "20:9", kind: Method, text: "await_suspend", relations: [Declaration] }
+- { loc: "20:23", kind: Struct, text: "coroutine_handle", relations: [Reference] }
+- { loc: "21:9", kind: Method, text: "await_resume", relations: [Declaration] }
+- { loc: "25:7", kind: Struct, text: "Task", relations: [Definition] }
+- { loc: "26:11", kind: Struct, text: "promise_type", relations: [Definition] }
+- { loc: "27:8", kind: Struct, text: "Task", relations: [Reference] }
+- { loc: "27:13", kind: Method, text: "get_return_object", relations: [Declaration] }
+- { loc: "28:8", kind: Namespace, text: "std", relations: [Reference] }
+- { loc: "28:13", kind: Struct, text: "suspend_never", relations: [Reference] }
+- { loc: "28:27", kind: Method, text: "initial_suspend", relations: [Declaration] }
+- { loc: "29:8", kind: Namespace, text: "std", relations: [Reference] }
+- { loc: "29:13", kind: Struct, text: "suspend_never", relations: [Reference] }
+- { loc: "29:27", kind: Method, text: "final_suspend", relations: [Declaration] }
+- { loc: "30:13", kind: Method, text: "return_void", relations: [Declaration] }
+- { loc: "31:13", kind: Method, text: "unhandled_exception", relations: [Declaration] }
+- { loc: "35:7", kind: Struct, text: "Awaitable", relations: [Definition] }
+- { loc: "36:4", kind: Namespace, text: "std", relations: [Reference] }
+- { loc: "36:9", kind: Struct, text: "suspend_never", relations: [Reference] }
+- { loc: "36:23", kind: Operator, text: "operator", relations: [Declaration] }
+- { loc: "39:0", kind: Struct, text: "Task", relations: [Reference] }
+- { loc: "39:5", kind: Function, text: "coro", relations: [Definition] }
+- { loc: "39:10", kind: Struct, text: "Awaitable", relations: [Reference] }
+- { loc: "39:20", kind: Parameter, text: "value", relations: [Definition] }
+- { loc: "40:4", kind: Operator, text: "co_await", relations: [Reference] }
+- { loc: "40:13", kind: Parameter, text: "value", relations: [Reference] }

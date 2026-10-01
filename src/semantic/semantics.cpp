@@ -401,8 +401,17 @@ public:
         if(head) {
             instantiation_depth += 1;
         }
-        bool ret = traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)),
-                                 [&] { return Base::TraverseDecl(X); });
+        bool ret = traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)), [&] {
+            // RAV leaves out the condition of `explicit(cond)`.
+            if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(X)) {
+                if(auto* condition = clang::ExplicitSpecifier::getFromDecl(function).getExpr()) {
+                    if(!TraverseStmt(condition)) {
+                        return false;
+                    }
+                }
+            }
+            return Base::TraverseDecl(X);
+        });
         if(head) {
             instantiation_depth -= 1;
         }
@@ -420,6 +429,13 @@ public:
     bool TraverseLambdaExpr(clang::LambdaExpr* S, DataRecursionQueue* queue = nullptr) {
         if(!Base::TraverseLambdaExpr(S, queue)) {
             return false;
+        }
+        // The attributes written on the lambda belong to its call operator,
+        // a declaration RAV never visits.
+        for(auto* attr: S->getCallOperator()->attrs()) {
+            if(!attr->isImplicit() && !TraverseAttr(attr)) {
+                return false;
+            }
         }
         if(!options.instantiations) {
             return true;
@@ -443,6 +459,25 @@ public:
 
         return traverse_node(SemanticNode(X),
                              [&] { return Base::TraverseTypeLoc(X, traverse_qualifier); });
+    }
+
+    // RAV visits these written components as types rather than type
+    // locations, so the names they spell would go unrecorded.
+    bool TraverseVectorTypeLoc(clang::VectorTypeLoc X, bool = true) {
+        return TraverseTypeLoc(X.getElementLoc());
+    }
+
+    bool TraverseExtVectorTypeLoc(clang::ExtVectorTypeLoc X, bool = true) {
+        return TraverseTypeLoc(X.getElementLoc());
+    }
+
+    bool TraverseDependentVectorTypeLoc(clang::DependentVectorTypeLoc X, bool = true) {
+        return TraverseStmt(X.getTypePtr()->getSizeExpr()) && TraverseTypeLoc(X.getElementLoc());
+    }
+
+    bool TraverseDependentSizedExtVectorTypeLoc(clang::DependentSizedExtVectorTypeLoc X,
+                                                bool = true) {
+        return TraverseStmt(X.getTypePtr()->getSizeExpr()) && TraverseTypeLoc(X.getElementLoc());
     }
 
     bool TraverseTemplateArgumentLoc(const clang::TemplateArgumentLoc& X) {
@@ -536,6 +571,18 @@ public:
         return traverse_node(SemanticNode(static_cast<const clang::Stmt*>(S)), [&] {
             return TraverseStmt(S->getInit()) && TraverseDecl(S->getLoopVariable()) &&
                    TraverseStmt(S->getRangeInit()) && TraverseStmt(S->getBody());
+        });
+    }
+
+    // RAV skips a statement's attributes (`[[assume(expr)]];`).
+    bool TraverseAttributedStmt(clang::AttributedStmt* S, DataRecursionQueue* = nullptr) {
+        return traverse_node(SemanticNode(static_cast<const clang::Stmt*>(S)), [&] {
+            for(auto* attr: S->getAttrs()) {
+                if(!TraverseAttr(const_cast<clang::Attr*>(attr))) {
+                    return false;
+                }
+            }
+            return TraverseStmt(S->getSubStmt());
         });
     }
 
@@ -1179,6 +1226,13 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
         return;
     }
 
+    /// __declspec(property(get = get_value)) int value;
+    ///                                            ^~~~ definition
+    if(auto* MSPD = llvm::dyn_cast<clang::MSPropertyDecl>(D)) {
+        refer(out, MSPD, RelationKind::Definition, MSPD->getLocation());
+        return;
+    }
+
     /// enum Foo { bar };
     ///             ^~~~ definition
     if(auto* ECD = llvm::dyn_cast<clang::EnumConstantDecl>(D)) {
@@ -1567,6 +1621,36 @@ void stmt_references(const clang::Stmt* S,
         return;
     }
 
+    /// __builtin_offsetof(S, field)
+    ///                        ^~~~ reference
+    if(auto* OOE = llvm::dyn_cast<clang::OffsetOfExpr>(S)) {
+        for(unsigned i = 0; i < OOE->getNumComponents(); i += 1) {
+            auto& component = OOE->getComponent(i);
+            if(component.getKind() == clang::OffsetOfNode::Field) {
+                refer(out, component.getField(), RelationKind::Reference, component.getEndLoc());
+            }
+        }
+        return;
+    }
+
+    /// asm goto("" : : : : done)
+    ///                     ^~~~ reference; the traversal never enters the
+    /// label operands.
+    if(auto* GAS = llvm::dyn_cast<clang::GCCAsmStmt>(S)) {
+        for(unsigned i = 0; i < GAS->getNumLabels(); i += 1) {
+            auto* label = GAS->getLabelExpr(i);
+            refer(out, label->getLabel(), RelationKind::Reference, label->getLabelLoc());
+        }
+        return;
+    }
+
+    /// object.value with `__declspec(property)`
+    ///         ^~~~ reference
+    if(auto* MSPRE = llvm::dyn_cast<clang::MSPropertyRefExpr>(S)) {
+        refer(out, MSPRE->getPropertyDecl(), RelationKind::Reference, MSPRE->getMemberLoc());
+        return;
+    }
+
     /// goto done; / done: ... / &&done
     ///      ^~~~ reference / definition / reference
     if(auto* GS = llvm::dyn_cast<clang::GotoStmt>(S)) {
@@ -1734,12 +1818,12 @@ void stmt_references(const clang::Stmt* S,
     }
 
     /// 12_i — a leaf: the suffix cannot be split off its token, so the
-    /// operator is referenced without a location.
+    /// whole literal token references the operator.
     if(auto* UDL = llvm::dyn_cast<clang::UserDefinedLiteral>(S)) {
         refer(out,
               llvm::dyn_cast_if_present<clang::NamedDecl>(UDL->getCalleeDecl()),
               RelationKind::Reference,
-              {});
+              UDL->getBeginLoc());
         return;
     }
 
@@ -1753,6 +1837,16 @@ void stmt_references(const clang::Stmt* S,
         return;
     }
     if(auto* CSE = llvm::dyn_cast<clang::CoroutineSuspendExpr>(S)) {
+        /// co_await value
+        /// ^~~~ reference to the `operator co_await` it selects
+        if(llvm::isa<clang::CoawaitExpr>(CSE)) {
+            if(auto* call = llvm::dyn_cast<clang::CallExpr>(CSE->getCommonExpr()->IgnoreImplicit())) {
+                if(auto* callee = call->getDirectCallee();
+                   callee && callee->getOverloadedOperator() == clang::OO_Coawait) {
+                    refer(out, callee, RelationKind::Reference, CSE->getKeywordLoc());
+                }
+            }
+        }
         for(auto* child: CSE->children()) {
             if(child != CSE->getOperand()) {
                 refer_hidden(out, child, resolver);
@@ -1855,6 +1949,23 @@ llvm::SmallVector<Reference, 2> resolve_references(const SemanticNode& node,
                       RelationKind::Reference,
                       init->getMemberLocation());
             }
+            /// template <class T> struct X { X() : X(T{}) {} };
+            ///                                      ^~~~ weak reference to
+            /// every constructor taking that many arguments: dependent ones
+            /// leave the choice to instantiation. Inside a template a
+            /// delegating initializer reads as one of the base.
+            auto* PLE = llvm::dyn_cast_if_present<clang::ParenListExpr>(init->getInit());
+            auto* type = init->getTypeSourceInfo();
+            if(auto* record = type ? type->getType()->getAsCXXRecordDecl() : nullptr;
+               PLE && record && record->hasDefinition()) {
+                auto count = PLE->getNumExprs();
+                for(auto* ctor: record->ctors()) {
+                    if(ctor->getMinRequiredArguments() <= count &&
+                       (count <= ctor->getNumParams() || ctor->isVariadic())) {
+                        refer(out, ctor, RelationKind::WeakReference, PLE->getLParenLoc());
+                    }
+                }
+            }
             break;
         }
 
@@ -1888,7 +1999,7 @@ llvm::SmallVector<Reference, 2> resolve_references(const SemanticNode& node,
             /// __attribute__((cleanup(fn))) — the attribute stores the
             /// function itself, not an expression the traversal would record.
             if(auto* CA = node.get<clang::CleanupAttr>()) {
-                refer(out, CA->getFunctionDecl(), RelationKind::Reference, {});
+                refer(out, CA->getFunctionDecl(), RelationKind::Reference, CA->getArgLoc());
             }
             break;
         }
