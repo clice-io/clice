@@ -35,8 +35,9 @@ namespace {
 /// A delimited fold spans its delimiters, which `collapsed_text` repeats; a
 /// section fold (an access-specifier section, a conditional branch, a
 /// region, a module fragment) runs from the end of its header line to the
-/// next header, which stays visible; a run of line comments or include
-/// directives on consecutive lines folds below its first line.
+/// next header, which stays visible; a run of line comments, include
+/// directives or using declarations on consecutive lines folds below its
+/// first line.
 class FoldingRangeCollector {
 public:
     explicit FoldingRangeCollector(CompilationUnitRef unit) :
@@ -72,6 +73,8 @@ public:
         collect_comments(unit.semantics().comments());
         add_runs(unit.semantics().include_directives(), protocol::FoldingRangeKind::imports);
         collect_raw_strings(unit.semantics().raw_strings());
+        std::ranges::sort(usings, {}, &LocalSourceRange::begin);
+        add_runs(usings, "usingDeclaration");
 
         // Order by kind and text after position so equal entries are adjacent
         // and the output stays deterministic under the unstable sort.
@@ -100,6 +103,16 @@ public:
 
 private:
     void collect_decl(const clang::Decl* decl) {
+        if(llvm::isa<clang::UsingDecl, clang::UsingDirectiveDecl, clang::UsingEnumDecl>(decl)) {
+            auto begin = unit.file_location(decl->getBeginLoc());
+            auto end = unit.file_location(decl->getEndLoc());
+            if(auto [fid, local] = unit.decompose_range(clang::SourceRange(begin, end));
+               fid == unit.main_file() && local.valid()) {
+                usings.push_back(local);
+            }
+            return;
+        }
+
         if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
             add_block(ns, ns->getRBraceLoc(), "namespace");
             return;
@@ -445,6 +458,9 @@ private:
     CompilationUnitRef unit;
     llvm::StringRef content;
     std::vector<FoldingRange> ranges;
+
+    /// Using declarations and directives met on the walk, folded by runs.
+    llvm::SmallVector<LocalSourceRange> usings;
 };
 
 }  // namespace
