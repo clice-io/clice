@@ -88,6 +88,13 @@ struct PreambleExtras {
 };
 
 SymbolScope classify_scope(const clang::NamedDecl* decl) {
+    // A template parameter is named only inside its template, whatever
+    // linkage Clang derives for it from the enclosing context.
+    if(llvm::isa<clang::TemplateTypeParmDecl,
+                 clang::NonTypeTemplateParmDecl,
+                 clang::TemplateTemplateParmDecl>(decl)) {
+        return SymbolScope::FileLocal;
+    }
     auto linkage = decl->getFormalLinkage();
     if(linkage == clang::Linkage::None)
         return SymbolScope::FileLocal;

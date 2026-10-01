@@ -720,7 +720,8 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
                         const SymbolIdentity& identity,
                         llvm::StringRef path,
                         std::uint32_t reference_files) {
-        if(!is_searchable_kind(identity.kind) || identity.name.empty() || seen.contains(hash)) {
+        if(!is_searchable_kind(identity.kind) || identity.name.empty() ||
+           has_flag(identity.flags, SymbolFlags::Unnamed) || seen.contains(hash)) {
             return;
         }
         if(!query.kinds.empty() && !llvm::is_contained(query.kinds, identity.kind)) {

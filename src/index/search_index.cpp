@@ -254,7 +254,8 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     llvm::DenseSet<SymbolHash> seen;
     for(std::uint32_t i = 0; i < snapshot.entries.size(); i += 1) {
         auto& entry = snapshot.entries[i];
-        if(!is_searchable_kind(entry.kind) || entry.name.empty() || entry.hash == 0 ||
+        if(!is_searchable_kind(entry.kind) || entry.name.empty() ||
+           has_flag(entry.flags, SymbolFlags::Unnamed) || entry.hash == 0 ||
            reserved_key(entry.hash) || !seen.insert(entry.hash).second) {
             continue;
         }
