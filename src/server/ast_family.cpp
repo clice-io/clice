@@ -22,6 +22,7 @@
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -51,9 +52,10 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
 }
 
 /// The compile's diagnostics behind the ones its PCH's build raised in the
-/// preamble, which the parse consuming the PCH never raises again. Files
-/// with one preamble share the PCH: related information the build placed
-/// in its own main file moves to `path`.
+/// preamble, which the parse consuming the PCH never raises again — those
+/// of the command line it does, and they appear once. Files with one
+/// preamble share the PCH: related information the build placed in its
+/// own main file moves to `path`.
 static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
                                            const index::TUIndex& preamble,
                                            llvm::StringRef path) {
@@ -80,6 +82,16 @@ static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
     if(!diagnostics.empty()) {
         status = kota::codec::json::from_string<kota::ipc::lsp_config>(diagnostics.data, own);
     }
+    llvm::StringSet<> raised;
+    for(auto& diagnostic: own) {
+        if(auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostic)) {
+            raised.insert(*json);
+        }
+    }
+    std::erase_if(merged, [&](const protocol::Diagnostic& diagnostic) {
+        auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostic);
+        return json && raised.contains(*json);
+    });
     std::ranges::move(own, std::back_inserter(merged));
     auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(merged);
     return kota::codec::RawValue{json ? std::move(*json) : "[]"};

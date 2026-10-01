@@ -108,10 +108,10 @@ public:
 private:
     /// Locate the diagnostic in the main file. One from another file moves
     /// there: an error to the instantiation the main file requested, else
-    /// to the #include that brought its file in — prefixed with where it
-    /// happened and pointing back at it, only the first of the errors
-    /// landing on one spot kept; any other to its first note in the main
-    /// file. Nothing else concerns the main file.
+    /// to the #include that brought its file in, else to the top of the
+    /// file — prefixed with where it happened and pointing back at it, only
+    /// the first of the errors landing on one spot kept; any other to its
+    /// first note in the main file. Nothing else concerns the main file.
     bool place(const Diagnostic& main,
                llvm::ArrayRef<Diagnostic> notes,
                protocol::Diagnostic& diagnostic) {
@@ -139,13 +139,25 @@ private:
                 anchor = include_range(main.fid);
                 where = "In included file";
             }
+            // What the command line brought in (-include, -D) sits on no
+            // #include: it stays at the top of the file, like the command
+            // line's own diagnostics. A header context's borrowed prefix is
+            // the host's, not the header's.
+            if(!anchor && !unit.from_context(main.fid)) {
+                anchor = LocalSourceRange{0, 0};
+                if(unit.is_builtin_file(main.fid)) {
+                    where = {};
+                }
+            }
             if(anchor) {
                 auto range = to_range(map, *anchor);
                 if(!range || !relocated.insert(anchor->begin).second) {
                     return false;
                 }
                 diagnostic.range = *range;
-                diagnostic.message = std::format("{}: {}", where, main.message);
+                if(!where.empty()) {
+                    diagnostic.message = std::format("{}: {}", where, main.message);
+                }
                 add_related(diagnostic, main.fid, main.range, "error occurred here");
                 return true;
             }

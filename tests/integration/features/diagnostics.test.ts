@@ -150,7 +150,8 @@ test("preamble warnings are published", async ({ session }) => {
     const preamble = '#define M 1\n#define M 2\n#pragma message("built")\n#include "c.h"\n';
     workspace.write("a.cpp", preamble + "int a = M;\n");
     workspace.write("b.cpp", preamble + "int b = M;\n");
-    workspace.writeCDB(["a.cpp", "b.cpp"]);
+    // Both builds raise the command line's warning; it appears once.
+    workspace.writeCDB(["a.cpp", "b.cpp"], { extraArgs: ["-Wlogical-op"] });
     await client.initialize(workspace);
 
     for (const file of ["a.cpp", "b.cpp"]) {
@@ -158,7 +159,11 @@ test("preamble warnings are published", async ({ session }) => {
         const diagnostics = published(client, uri);
         expect(
             diagnostics.map((diagnostic) => `${span(diagnostic.range)} ${diagnostic.code}`),
-        ).toEqual(["1:8-1:9 ext_pp_macro_redef", "2:8-2:15 warn_pragma_message"]);
+        ).toEqual([
+            "1:8-1:9 ext_pp_macro_redef",
+            "2:8-2:15 warn_pragma_message",
+            "0:0-0:0 warn_unknown_diag_option",
+        ]);
         expect(related(workspace, diagnostics[0]!)).toEqual([
             `${file}@0:8-0:9 previous definition is here`,
         ]);
@@ -183,6 +188,31 @@ test("header warnings stay in the header", async ({ session }) => {
     const diagnostics = published(client, uri);
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["err_undeclared_var_use"]);
     expect(diagnostics[0]!.relatedInformation).toBeUndefined();
+});
+
+test("command line includes report at the top", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("forced.h", "int forced = undeclared_forced;\n");
+    workspace.write("missing.cpp", "int a = 0;\n");
+    workspace.write("forced.cpp", "int b = 0;\n");
+    workspace.writeEntries([
+        ["missing.cpp", ["-include", "missing.h"]],
+        ["forced.cpp", ["-include", "forced.h"]],
+    ]);
+    await client.initialize(workspace);
+
+    const [missing] = await client.openAndWait("missing.cpp");
+    expect(
+        published(client, missing).map(
+            (diagnostic) => `${span(diagnostic.range)} ${text(diagnostic)}`,
+        ),
+    ).toEqual(["0:0-0:0 'missing.h' file not found"]);
+    const [forced] = await client.openAndWait("forced.cpp");
+    const diagnostics = published(client, forced);
+    expect(
+        diagnostics.map((diagnostic) => `${span(diagnostic.range)} ${text(diagnostic)}`),
+    ).toEqual(["0:0-0:0 In included file: use of undeclared identifier 'undeclared_forced'"]);
+    expect(related(workspace, diagnostics[0]!)).toEqual(["forced.h@0:13-0:30 error occurred here"]);
 });
 
 test("instantiation warnings land on the request", async ({ session }) => {
