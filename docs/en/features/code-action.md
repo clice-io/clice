@@ -340,6 +340,30 @@ tests/snap/code_action/switch_cases/05_selection_range.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Labels depending on templates**
+
+A switch with a label depending on template parameters offers no action, since only an instantiation knows which enumerators it covers
+
+```snap
+tests/snap/code_action/switch_cases/06_dependent_labels.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Sections declaring variables**
+
+Without a `default`, the missing cases go before the first section declaring a variable at the switch's scope, since a label after it would jump past the declaration
+
+```snap
+tests/snap/code_action/switch_cases/07_declaring_section.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Deduced Types
@@ -443,10 +467,34 @@ tests/snap/code_action/macro/02_nested_expansion.cpp
 
 **Directive references and empty macros**
 
-A macro named in a preprocessor condition is not an expansion to replace, while a macro expanding to nothing is deleted
+A macro named in a preprocessor condition, on any of its lines, is not an expansion to replace, while a macro expanding to nothing is deleted
 
 ```snap
 tests/snap/code_action/macro/03_directives_and_empty.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macros running pragmas**
+
+A macro whose expansion executes a `_Pragma` operator offers no expansion, since the pragma leaves no tokens behind to write in its place
+
+```snap
+tests/snap/code_action/macro/04_pragma_operator.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Tokens stay apart**
+
+The expansion is spaced so its tokens merge neither with each other nor with the text written flush against the invocation
+
+```snap
+tests/snap/code_action/macro/05_token_boundaries.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -577,7 +625,7 @@ tests/snap/code_action/reorder/04_trailing_comments.cpp
 
 **Memberwise constructor**
 
-A class receives a constructor taking every field in order, scalars by value and other types by const reference
+A class receives a constructor taking every field in order, scalars by value and copyable classes by const reference
 
 ```snap
 tests/snap/code_action/constructor/01_memberwise.cpp
@@ -637,10 +685,26 @@ tests/snap/code_action/constructor/05_base_without_default.cpp
 
 **Deleted base default constructor**
 
-A base whose default constructor is deleted, explicitly or by a reference member, blocks the memberwise constructor too
+A base whose default constructor is deleted, explicitly, by a reference member or by a const member nothing initializes, blocks the memberwise constructor too
 
 ```snap
 tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Move-only fields**
+
+A field whose class moves but does not copy is taken by value and moved from, as is the object an rvalue reference field binds
+
+The file gains `#include <utility>` when nothing it includes declares
+`std::move` yet. A class that neither copies nor moves gets no
+constructor.
+
+```snap
+tests/snap/code_action/constructor/07_move_only_fields.cpp
 ```
 
 <!-- END CAPABILITY -->
