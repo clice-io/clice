@@ -356,6 +356,38 @@ TEST_CASE(IncludeNextPropagatesIdx) {
     EXPECT_EQ(result->found_dir_idx, 2u);
 }
 
+TEST_CASE(IncludeNextOutsideDirs) {
+    TempDir tmp;
+    tmp.touch("inc0/target.h", "// first");
+    tmp.touch("inc1/target.h", "// second");
+    tmp.touch("src/a.h", "#include_next \"target.h\"");
+
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("inc0")});
+    config.dirs.push_back({tmp.path("inc1")});
+    config.angled_start_idx = 0;
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+
+    // src/a.h was found next to its includer, through no search dir: clang
+    // looks its #include_next up like a plain include, from the start.
+    auto includer = resolve_include("a.h", false, tmp.path("src"), false, std::nullopt, config, scope);
+    ASSERT_TRUE(includer.has_value());
+    EXPECT_EQ(includer->found_dir_idx, std::nullopt);
+
+    auto result = resolve_include("target.h",
+                                  false,
+                                  tmp.path("src"),
+                                  true,
+                                  includer->found_dir_idx,
+                                  config,
+                                  scope);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("inc0/target.h")));
+    EXPECT_EQ(result->found_dir_idx, 0u);
+}
+
 TEST_CASE(CaseMatchesVolume) {
     // A header included in another case than its name on disk: found
     // exactly where the volume opens it — Windows and macOS by default —

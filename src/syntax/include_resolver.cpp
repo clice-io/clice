@@ -63,13 +63,13 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              const vfs::Listing* includer_listing,
                                              llvm::StringRef includer_dir,
                                              bool is_include_next,
-                                             unsigned found_dir_idx,
+                                             std::optional<unsigned> found_dir_idx,
                                              const ResolvedSearchConfig& config,
                                              vfs::Scope& scope) {
     // 1. Absolute path: check directly via stat().
     if(llvm::sys::path::is_absolute(filename)) {
         if(llvm::sys::fs::exists(filename)) {
-            return ResolveResult{llvm::SmallString<256>(filename), 0};
+            return ResolveResult{llvm::SmallString<256>(filename), std::nullopt};
         }
         return std::nullopt;
     }
@@ -87,8 +87,8 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     };
 
     // 2. For #include_next, start from found_dir_idx + 1.
-    if(is_include_next) {
-        unsigned start = found_dir_idx + 1;
+    if(is_include_next && found_dir_idx) {
+        unsigned start = *found_dir_idx + 1;
         for(unsigned i = start; i < config.dirs.size(); ++i) {
             if(check_in_dir(config.dirs[i].path,
                             config.dirs[i].listing,
@@ -106,7 +106,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     if(!is_angled && includer_listing) {
         if(check_in_dir(includer_dir, includer_listing, filename, is_simple, scope)) {
             make_candidate(includer_dir, filename);
-            return ResolveResult{candidate, 0};
+            return ResolveResult{candidate, std::nullopt};
         }
     }
 
@@ -128,7 +128,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              bool is_angled,
                                              llvm::StringRef includer_dir,
                                              bool is_include_next,
-                                             unsigned found_dir_idx,
+                                             std::optional<unsigned> found_dir_idx,
                                              const SearchConfig& config,
                                              vfs::Scope& scope) {
     auto resolved_config = resolve_search_config(config, scope);
