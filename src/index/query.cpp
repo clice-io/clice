@@ -767,8 +767,9 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
             return;
         }
         if(query.absolute || !query.scope.empty() || query.mode == SymbolQuery::Mode::Members) {
+            auto containers = container_chain(hash);
             llvm::SmallVector<ScopeEntry, 4> chain;
-            for(auto& container: container_chain(hash)) {
+            for(auto& container: containers) {
                 chain.push_back({.name = container.name, .args = container.args});
             }
             if(!in_scope(query, chain)) {
