@@ -19,22 +19,20 @@ public:
 private:
     void add_condition(clang::SourceLocation location,
                        Condition::BranchKind kind,
-                       Condition::ConditionValue value,
-                       clang::SourceRange cond_range) {
+                       Condition::ConditionValue value) {
         auto& directive = unit->directives[unit.file_id(location)];
-        directive.conditions.emplace_back(kind, value, location, cond_range);
+        directive.conditions.emplace_back(kind, value, location);
     }
 
     void add_condition(clang::SourceLocation loc,
                        Condition::BranchKind kind,
-                       clang::PPCallbacks::ConditionValueKind value,
-                       clang::SourceRange condition_range) {
+                       clang::PPCallbacks::ConditionValueKind value) {
         Condition::ConditionValue cond_value =
             value == clang::PPCallbacks::CVK_False          ? Condition::False
             : value == clang::PPCallbacks::CVK_True         ? Condition::True
             : value == clang::PPCallbacks::CVK_NotEvaluated ? Condition::Skipped
                                                             : Condition::None;
-        add_condition(loc, kind, cond_value, condition_range);
+        add_condition(loc, kind, cond_value);
     }
 
     /// `negated` flips the recorded truth for #ifndef/#elifndef: the
@@ -50,7 +48,7 @@ private:
             add_macro(def, MacroRef::Ref, name.getLocation());
         }
         bool taken = negated ? def == nullptr : def != nullptr;
-        add_condition(loc, kind, taken ? Condition::True : Condition::False, name.getLocation());
+        add_condition(loc, kind, taken ? Condition::True : Condition::False);
     }
 
     void add_macro(const clang::MacroInfo* def, MacroRef::Kind kind, clang::SourceLocation loc) {
@@ -240,16 +238,16 @@ public:
     }
 
     void If(clang::SourceLocation loc,
-            clang::SourceRange cond_range,
+            clang::SourceRange,
             clang::PPCallbacks::ConditionValueKind value) override {
-        add_condition(loc, Condition::If, value, cond_range);
+        add_condition(loc, Condition::If, value);
     }
 
     void Elif(clang::SourceLocation loc,
-              clang::SourceRange cond_range,
+              clang::SourceRange,
               clang::PPCallbacks::ConditionValueKind value,
               clang::SourceLocation) override {
-        add_condition(loc, Condition::Elif, value, cond_range);
+        add_condition(loc, Condition::Elif, value);
     }
 
     void Ifdef(clang::SourceLocation loc,
@@ -266,11 +264,9 @@ public:
     }
 
     /// Invoke when #elif is skipped.
-    void Elifdef(clang::SourceLocation loc,
-                 clang::SourceRange cond_range,
-                 clang::SourceLocation) override {
+    void Elifdef(clang::SourceLocation loc, clang::SourceRange, clang::SourceLocation) override {
         /// FIXME: should we try to evaluate the condition to compute the macro reference?
-        add_condition(loc, Condition::Elifdef, Condition::Skipped, cond_range);
+        add_condition(loc, Condition::Elifdef, Condition::Skipped);
     }
 
     /// Invoke when #ifndef is taken.
@@ -288,18 +284,16 @@ public:
     }
 
     // Invoke when #elifndef is skipped.
-    void Elifndef(clang::SourceLocation loc,
-                  clang::SourceRange cond_range,
-                  clang::SourceLocation) override {
-        add_condition(loc, Condition::Elifndef, Condition::Skipped, cond_range);
+    void Elifndef(clang::SourceLocation loc, clang::SourceRange, clang::SourceLocation) override {
+        add_condition(loc, Condition::Elifndef, Condition::Skipped);
     }
 
     void Else(clang::SourceLocation loc, clang::SourceLocation if_loc) override {
-        add_condition(loc, Condition::Else, Condition::None, clang::SourceRange());
+        add_condition(loc, Condition::Else, Condition::None);
     }
 
     void Endif(clang::SourceLocation loc, clang::SourceLocation if_loc) override {
-        add_condition(loc, Condition::EndIf, Condition::None, clang::SourceRange());
+        add_condition(loc, Condition::EndIf, Condition::None);
     }
 
     void MacroDefined(const clang::Token& name, const clang::MacroDirective* md) override {

@@ -67,9 +67,6 @@ struct Condition {
 
     /// Location of the directive identifier.
     clang::SourceLocation loc;
-
-    /// Range of the condition.
-    clang::SourceRange condition_range;
 };
 
 /// Information about macro definition, reference and undef.

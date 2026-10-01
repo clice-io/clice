@@ -228,8 +228,14 @@ private:
     void collect_access_specifiers(const clang::CXXRecordDecl* record) {
         const clang::AccessSpecDecl* previous = nullptr;
         auto close = [&](clang::SourceLocation next) {
-            if(previous) {
-                add_section(previous->getColonLoc(), next, "accessSpecifier");
+            if(!previous) {
+                return;
+            }
+            auto [header_fid, header] =
+                unit.decompose_location(unit.file_location(previous->getColonLoc()));
+            auto [next_fid, end] = unit.decompose_location(unit.file_location(next));
+            if(header_fid == unit.main_file() && next_fid == unit.main_file()) {
+                add_section(header_end(header), end, "accessSpecifier");
             }
         };
         for(auto* member: record->decls()) {
@@ -241,9 +247,6 @@ private:
         close(record->getBraceRange().getEnd());
     }
 
-    /// Between the parentheses of the declarator — not the first `(` and
-    /// the last `)` of the declaration, which may belong to the name of
-    /// `operator()`, a member initializer or `noexcept(...)`.
     void collect_parameter_list(const clang::FunctionDecl* function) {
         if(auto type = function->getFunctionTypeLoc()) {
             add_range(type.getParensRange(), "functionParams", "(...)");
@@ -252,8 +255,6 @@ private:
 
     void collect_block_directives(llvm::ArrayRef<LexicalInfo::BlockDirective> directives) {
         using enum LexicalInfo::BlockDirective::Kind;
-        // Each branch folds up to the directive that ends it, so every arm
-        // of a chain folds on its own.
         llvm::SmallVector<const LexicalInfo::BlockDirective*> branches;
         llvm::SmallVector<const LexicalInfo::BlockDirective*> regions;
         for(const auto& directive: directives) {
@@ -304,7 +305,7 @@ private:
     }
 
     /// A brace block whose declaration records only its closing brace: the
-    /// opening one is the declaration's first `{`, after the name.
+    /// opening one is the declaration's first `{`.
     void add_block(const clang::Decl* decl,
                    clang::SourceLocation right_brace,
                    protocol::FoldingRangeKind kind) {
@@ -349,16 +350,6 @@ private:
             .kind = std::move(kind),
             .collapsed_text = std::move(collapsed_text),
         });
-    }
-
-    void add_section(clang::SourceLocation header,
-                     clang::SourceLocation next,
-                     protocol::FoldingRangeKind kind) {
-        auto [header_fid, header_offset] = unit.decompose_location(unit.file_location(header));
-        auto [next_fid, next_offset] = unit.decompose_location(unit.file_location(next));
-        if(header_fid == unit.main_file() && next_fid == unit.main_file()) {
-            add_section(header_end(header_offset), next_offset, std::move(kind));
-        }
     }
 
     /// `begin` ends a header line; a section hiding no whole line is noise.

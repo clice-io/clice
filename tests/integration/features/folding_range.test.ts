@@ -1,7 +1,7 @@
 /// Integration tests for the two folding modes a client can ask for. A
 /// `lineFoldingOnly` client hides whole lines below the start line, so a
 /// fold must end before the line holding its closing brace or the next
-/// section's header; the snap corpus pins the character-precise mode.
+/// section's header.
 
 import type * as proto from "vscode-languageserver-protocol";
 import { expect, test } from "../fixtures.ts";
@@ -33,6 +33,8 @@ int x;
 #else
 int y;
 #endif
+int g(int a,
+      int b);
 `;
 
 function render(folds: proto.FoldingRange[] | null): string[] {
@@ -48,10 +50,7 @@ for (const lineFoldingOnly of [true, false]) {
         workspace.write("main.cpp", MAIN);
         workspace.writeCDB(["main.cpp"]);
         await client.initialize(workspace, {
-            capabilities: {
-                textDocument: { foldingRange: { lineFoldingOnly } },
-                workspace: { workspaceEdit: { documentChanges: true } },
-            },
+            capabilities: { textDocument: { foldingRange: { lineFoldingOnly } } },
         });
         const [uri] = await client.openAndWait("main.cpp");
         client.assertNoErrors(uri);
@@ -84,6 +83,7 @@ for (const lineFoldingOnly of [true, false]) {
                 "19:8-21:0 accessSpecifier",
                 "22:11-24:0 conditionDirective",
                 "24:5-26:0 conditionDirective",
+                "27:5-28:12 functionParams",
             ]);
         }
     });

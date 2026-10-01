@@ -9,8 +9,8 @@
 
 #ifdef ENABLE_LOGGING    // ┐
 void log_message();      // │ folds: a bare conditional
-void log_flush();        // │
-#endif                   // ┘
+void log_flush();        // ┘
+#endif
 
 #ifdef USE_THREADS       // ┐
 void spawn_workers();    // ┘ folds: the first branch

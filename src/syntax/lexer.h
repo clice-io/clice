@@ -5,7 +5,6 @@
 
 #include "syntax/token.h"
 
-#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "clang/Basic/LangOptions.h"
 
@@ -66,18 +65,6 @@ public:
     Token last();
     Token next();
     Token advance();
-
-    std::optional<Token> advance_if(llvm::function_ref<bool(const Token&)> callback);
-
-    std::optional<Token> advance_if(llvm::StringRef spelling) {
-        return advance_if([&](const Token& token) {
-            return token.is_identifier() && token.text(content) == spelling;
-        });
-    }
-
-    std::optional<Token> advance_if(TokenKind kind) {
-        return advance_if([&](const Token& token) { return token.kind == kind; });
-    }
 
     Token advance_until(TokenKind kind);
 

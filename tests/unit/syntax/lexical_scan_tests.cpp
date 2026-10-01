@@ -218,15 +218,20 @@ TEST_CASE(PragmaRegions) {
 /* spans
 a line */ #pragma region after_comment
 int x; /* b */ #pragma endregion
+#pragma region
+#pragma endregion
 )";
     auto info = lexical_scan(content);
 
-    ASSERT_EQ(info.block_directives.size(), 3U);
+    ASSERT_EQ(info.block_directives.size(), 5U);
     ASSERT_EQ(info.block_directives[0].kind, BlockDirective::Kind::Region);
     ASSERT_EQ(text(content, info.block_directives[0].range), "#pragma region endregion_pair");
     ASSERT_EQ(info.block_directives[1].kind, BlockDirective::Kind::EndRegion);
     ASSERT_EQ(info.block_directives[2].kind, BlockDirective::Kind::Region);
     ASSERT_EQ(text(content, info.block_directives[2].range), "#pragma region after_comment");
+    ASSERT_EQ(info.block_directives[3].kind, BlockDirective::Kind::Region);
+    ASSERT_EQ(text(content, info.block_directives[3].range), "#pragma region");
+    ASSERT_EQ(info.block_directives[4].kind, BlockDirective::Kind::EndRegion);
 }
 
 };  // TEST_SUITE(LexicalScanBlockDirectives)

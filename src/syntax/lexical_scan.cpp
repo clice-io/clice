@@ -2,6 +2,8 @@
 
 #include "syntax/lexer.h"
 
+#include "llvm/ADT/STLFunctionalExtras.h"
+
 namespace clice {
 
 LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang_opts) {
@@ -71,7 +73,7 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
 
     auto scan_directive = [&](const Token& hash) {
         auto token = advance();
-        auto keyword = token.is_identifier() ? token.text(content) : llvm::StringRef();
+        auto keyword = token.text(content);
         std::optional<BlockDirective::Kind> kind;
         if(keyword == "if" || keyword == "ifdef" || keyword == "ifndef") {
             kind = BlockDirective::Kind::If;
@@ -95,8 +97,8 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
         }
         if(kind) {
             info.block_directives.push_back({
-                *kind,
-                {hash.range.begin, token.range.begin}
+                .kind = *kind,
+                .range = {hash.range.begin, token.range.begin},
             });
         }
     };

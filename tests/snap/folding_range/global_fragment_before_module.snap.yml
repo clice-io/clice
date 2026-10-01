@@ -1,0 +1,5 @@
+---
+created_at: 2026-10-01
+input_file: global_fragment_before_module.cpp
+---
+- { range: "3:7-8:0", kind: moduleFragment }

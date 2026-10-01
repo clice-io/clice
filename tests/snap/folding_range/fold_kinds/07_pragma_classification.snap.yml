@@ -2,5 +2,5 @@
 created_at: 2026-08-01
 input_file: fold_kinds/07_pragma_classification.cpp
 ---
-- { range: "12:29-16:0", kind: region }
-- { range: "21:38-23:0", kind: region }
+- { range: "8:29-12:0", kind: region }
+- { range: "17:38-19:0", kind: region }

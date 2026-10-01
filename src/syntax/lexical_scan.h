@@ -84,14 +84,14 @@ struct LexicalInfo {
         LocalSourceRange range;
     };
 
+    /// In source order.
+    std::vector<BlockDirective> block_directives;
+
     // Both vectors heap-allocate so that payload pointers into them (the
     // Semantics node table stores such pointers) survive moving the info.
     std::vector<Comment> comments;
 
     std::vector<ModuleDeclaration> modules;
-
-    /// In source order.
-    std::vector<BlockDirective> block_directives;
 };
 
 /// Scan `content` once and collect its LexicalInfo. The matching is purely
