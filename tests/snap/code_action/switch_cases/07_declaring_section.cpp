@@ -2,17 +2,21 @@
 ///
 /// - status: supported
 ///
-/// Without a `default`, the missing cases go before the first section declaring a variable at the switch's scope, since a label after it would jump past the declaration
+/// Without a `default`, a switch declaring a variable at its own scope receives the missing cases before its first label, since a label after the declaration would jump past it
+///
+/// No section falls through into cases placed there.
 
 enum class Shape { Circle, Square, Triangle, Hexagon };
 
 int sides(Shape shape) {
+    int extra = 0;
     §(declares)switch (shape) {
     case Shape::Circle:
-        return 0;
+        extra = 1;
+        [[fallthrough]];
     case Shape::Square:
         int count = 4;
-        return count;
+        return count + extra;
     }
     return 3;
 }

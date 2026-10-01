@@ -346,6 +346,9 @@ tests/snap/code_action/switch_cases/05_selection_range.cpp
 
 A switch with a label depending on template parameters offers no action, since only an instantiation knows which enumerators it covers
 
+A switch in a template whose labels do not depend on its parameters is
+completed as anywhere else.
+
 ```snap
 tests/snap/code_action/switch_cases/06_dependent_labels.cpp
 ```
@@ -356,7 +359,9 @@ tests/snap/code_action/switch_cases/06_dependent_labels.cpp
 
 **Sections declaring variables**
 
-Without a `default`, the missing cases go before the first section declaring a variable at the switch's scope, since a label after it would jump past the declaration
+Without a `default`, a switch declaring a variable at its own scope receives the missing cases before its first label, since a label after the declaration would jump past it
+
+No section falls through into cases placed there.
 
 ```snap
 tests/snap/code_action/switch_cases/07_declaring_section.cpp
@@ -686,6 +691,9 @@ tests/snap/code_action/constructor/05_base_without_default.cpp
 **Deleted base default constructor**
 
 A base whose default constructor is deleted, explicitly, by a reference member or by a const member nothing initializes, blocks the memberwise constructor too
+
+A const member of a class that initializes all its own fields leaves
+the base default-constructible.
 
 ```snap
 tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp

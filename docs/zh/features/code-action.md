@@ -337,6 +337,8 @@ tests/snap/code_action/switch_cases/05_selection_range.cpp
 
 switch 中有标签依赖模板参数时不给出操作，因为只有实例化之后才知道它覆盖了哪些枚举项
 
+模板中的 switch 若标签不依赖模板参数，仍会像在其他地方一样补全分支。
+
 ```snap
 tests/snap/code_action/switch_cases/06_dependent_labels.cpp
 ```
@@ -347,7 +349,9 @@ tests/snap/code_action/switch_cases/06_dependent_labels.cpp
 
 **声明变量的分支**
 
-没有 `default` 时，缺失的分支会插在第一个在 switch 作用域内声明了变量的分支之前，因为放在它之后的标签会跳过这个声明
+没有 `default` 时，若 switch 在自身作用域内声明了变量，缺失的分支会插在它的第一个标签之前，因为放在声明之后的标签会跳过该声明
+
+原有的分支都不会落入插在那里的分支。
 
 ```snap
 tests/snap/code_action/switch_cases/07_declaring_section.cpp
@@ -674,6 +678,8 @@ tests/snap/code_action/constructor/05_base_without_default.cpp
 **默认构造函数被删除的基类**
 
 当基类的默认构造函数被删除时，无论是显式删除，还是因引用成员或没有初始化的 const 成员而隐式删除，同样不会生成逐成员构造函数
+
+若基类自己初始化了全部字段，其中的 const 成员不会让它失去默认构造函数。
 
 ```snap
 tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp

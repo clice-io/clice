@@ -5,6 +5,10 @@ input_file: constructor/06_implicitly_deleted_base.cpp
 const_base:
 (no actions)
 
+const_initialized:
+- [refactor.rewrite] Generate a memberwise constructor for 'Fourth'
+  47:0-47:0 => "    explicit Fourth(int x) : x(x) {}\n"
+
 explicit_base:
 (no actions)
 

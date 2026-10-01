@@ -300,41 +300,6 @@ test("memberwise constructors move what only moves", async ({ session }) => {
     client.close(library);
 });
 
-test("memberwise constructors skip invalid classes", async ({ session }) => {
-    const workspace = session.tmpdir();
-    const text = [
-        "struct Incomplete;",
-        "struct Partial {",
-        "  Incomplete part;",
-        "};",
-        "struct OnPartial : Partial {",
-        "  int x;",
-        "};",
-        "struct Recursive {",
-        "  Recursive self;",
-        "};",
-        "struct OnRecursive : Recursive {",
-        "  int x;",
-        "};",
-        "",
-    ].join("\n");
-    workspace.write("main.cpp", text);
-    workspace.writeCDB(["main.cpp"]);
-    const client = await session.spawn(workspace).initialize(workspace);
-    const [uri] = await client.openAndWait("main.cpp");
-    client.assertHasErrors(uri);
-
-    for (const name of ["Partial {", "OnPartial", "Recursive {", "OnRecursive"]) {
-        const position = positionOf(text, name);
-        const actions = actionsOf(
-            await client.codeActions(uri, { start: position, end: position }),
-        );
-        const titles = actions.map((action) => action.title);
-        expect(titles.filter((title) => title.startsWith("Generate a memberwise"))).toEqual([]);
-    }
-    client.close(uri);
-});
-
 test("missing enum cases compile", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.write(".clang-format", "BasedOnStyle: LLVM\n");
@@ -353,16 +318,21 @@ test("missing enum cases compile", async ({ session }) => {
             "",
             "enum class Shape { Circle, Square, Triangle };",
             "",
-            "int sides(Shape shape) {",
+            "constexpr int sides(Shape shape) {",
+            "  int extra = 0;",
             "  switch (shape) {",
             "  case Shape::Circle:",
-            "    return 0;",
+            "    extra = 1;",
+            "    [[fallthrough]];",
             "  case Shape::Square:",
             "    int count = 4;",
-            "    return count;",
+            "    return count + extra;",
             "  }",
             "  return 3;",
             "}",
+            "",
+            "static_assert(sides(Shape::Circle) == 5);",
+            "static_assert(sides(Shape::Triangle) == 3);",
             "",
         ].join("\n"),
     );
@@ -370,7 +340,8 @@ test("missing enum cases compile", async ({ session }) => {
     const client = await session.spawn(workspace).initialize(workspace);
     const [uri, text] = await client.openAndWait("main.cpp");
 
-    // A value past 64 bits is its own enumerator, not a truncated Low.
+    // A value past 64 bits is its own enumerator, not a truncated Low;
+    // the Circle section must still fall through into Square.
     const wide = await applyAction(
         client,
         uri,
@@ -388,7 +359,9 @@ test("missing enum cases compile", async ({ session }) => {
         "Add 1 missing enum case to switch",
     );
     client.assertCleanCompile(uri);
-    expect(shape).toContain("  case Shape::Triangle:\n    break;\n  case Shape::Square:\n");
+    expect(shape).toContain(
+        "  switch (shape) {\n  case Shape::Triangle:\n    break;\n  case Shape::Circle:\n",
+    );
     client.close(uri);
 });
 

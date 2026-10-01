@@ -20,7 +20,8 @@ namespace {
 /// that is not const-default-constructible without an initializer, or
 /// by a base or member that cannot default-construct itself.
 bool default_constructible(const clang::CXXRecordDecl* record) {
-    if(record->isInvalidDecl()) {
+    record = record->getDefinition();
+    if(!record || record->isInvalidDecl()) {
         return false;
     }
     for(const auto* ctor: record->ctors()) {
@@ -46,10 +47,10 @@ bool default_constructible(const clang::CXXRecordDecl* record) {
             return false;
         }
         const auto* member = type->getAsCXXRecordDecl();
-        if(type.isConstQualified() && (!member || !member->allowConstDefaultInit())) {
+        if(member && !default_constructible(member)) {
             return false;
         }
-        if(member && !default_constructible(member)) {
+        if(type.isConstQualified() && (!member || !member->allowConstDefaultInit())) {
             return false;
         }
     }
@@ -66,37 +67,22 @@ bool callable(const clang::CXXConstructorDecl* ctor) {
 /// flags or by a user-declared move operation.
 bool copy_constructible(const clang::CXXRecordDecl* record) {
     for(const auto* ctor: record->ctors()) {
-        unsigned quals = 0;
-        if(ctor->isCopyConstructor(quals) && (quals & clang::Qualifiers::Const)) {
+        unsigned qualifiers = 0;
+        if(ctor->isCopyConstructor(qualifiers) && (qualifiers & clang::Qualifiers::Const)) {
             return callable(ctor);
         }
     }
     return record->hasSimpleCopyConstructor() && !record->hasUserDeclaredMoveOperation();
 }
 
-/// Whether an rvalue constructs the class: through its move constructor,
-/// else through the copy constructor overload resolution falls back to.
+/// Whether the class has a move constructor another class may call.
 bool move_constructible(const clang::CXXRecordDecl* record) {
     for(const auto* ctor: record->ctors()) {
         if(ctor->isMoveConstructor()) {
             return callable(ctor);
         }
     }
-    return record->hasSimpleMoveConstructor() || copy_constructible(record);
-}
-
-/// The defined class a field of `type` is an object of; for a dependent
-/// specialization, its template's pattern.
-const clang::CXXRecordDecl* class_of(clang::QualType type) {
-    const auto* record = type->getAsCXXRecordDecl();
-    if(const auto* specialization = type->getAs<clang::TemplateSpecializationType>();
-       !record && specialization) {
-        if(auto* pattern = llvm::dyn_cast_if_present<clang::ClassTemplateDecl>(
-               specialization->getTemplateName().getAsTemplateDecl())) {
-            record = pattern->getTemplatedDecl();
-        }
-    }
-    return record ? record->getDefinition() : nullptr;
+    return record->hasSimpleMoveConstructor();
 }
 
 /// Whether the translation unit declares `std::move`.
@@ -143,9 +129,6 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
         }
     }
 
-    // Scalars and references are taken as they are, copyable classes by
-    // const reference; a class that only moves is taken by value and
-    // moved from, as is what an rvalue reference binds.
     auto& context = unit.context();
     std::string parameters;
     std::string initializers;
@@ -155,7 +138,10 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
         bool moves = type->isRValueReferenceType();
         if(!type->isReferenceType()) {
             type = type.getUnqualifiedType();
-            if(const auto* member = class_of(type); member && !copy_constructible(member)) {
+            const auto* tag =
+                llvm::dyn_cast_if_present<clang::CXXRecordDecl>(unit.resolver().resolve_tag(type));
+            if(const auto* member = tag ? tag->getDefinition() : nullptr;
+               member && !copy_constructible(member)) {
                 if(!move_constructible(member)) {
                     return;
                 }

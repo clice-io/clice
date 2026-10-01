@@ -26,3 +26,15 @@ struct §(pinned)Pinned {
     Lock lock;
     int count;
 };
+
+template <class T>
+struct Slot {
+    Slot(Slot&&) = default;
+    Slot(const Slot&) = delete;
+};
+
+template <class T>
+struct §(holder)Holder {
+    Slot<T> slot;
+    int count;
+};

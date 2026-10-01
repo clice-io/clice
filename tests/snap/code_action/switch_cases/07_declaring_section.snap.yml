@@ -4,4 +4,4 @@ input_file: switch_cases/07_declaring_section.cpp
 ---
 declares:
 - [refactor.rewrite] Add 2 missing enum cases to switch
-  12:0-12:0 => "    case Shape::Triangle:\n    case Shape::Hexagon:\n        break;\n"
+  13:0-13:0 => "    case Shape::Triangle:\n    case Shape::Hexagon:\n        break;\n"

@@ -17,19 +17,20 @@
 
 namespace clice::feature::action {
 
-/// The label opening the first section of a switch body that declares
-/// something at the body's own scope.
-const static clang::SwitchCase* declaring_section(const clang::CompoundStmt* body) {
-    const clang::SwitchCase* section = nullptr;
+/// The first label of a switch body that declares something at its own
+/// scope past that label, which a label added after the declaration would
+/// jump past; null for a body declaring nothing there.
+const static clang::SwitchCase* first_label_if_declaring(const clang::CompoundStmt* body) {
+    const clang::SwitchCase* first = nullptr;
     for(const clang::Stmt* statement: body->body()) {
         if(const auto* label = llvm::dyn_cast<clang::SwitchCase>(statement)) {
-            section = label;
+            first = first ? first : label;
             while(const auto* nested = llvm::dyn_cast<clang::SwitchCase>(statement)) {
                 statement = nested->getSubStmt();
             }
         }
-        if(section && llvm::isa<clang::DeclStmt>(statement)) {
-            return section;
+        if(first && llvm::isa<clang::DeclStmt>(statement)) {
+            return first;
         }
     }
     return nullptr;
@@ -94,12 +95,12 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
     }
 
     // The labels go before `default`, falling through into it as the
-    // missing cases already did; else at the end with a `break` of their
-    // own, though before the first section declaring a variable, which a
-    // label after it would jump past. Either way on the labels' own
+    // missing cases already did; else with a `break` of their own at the
+    // end, or before the first label when a declaration lies in between,
+    // where nothing falls into them. Either way on the labels' own
     // indentation.
     auto content = unit.main_content();
-    const clang::SwitchCase* next = default_stmt ? default_stmt : declaring_section(body);
+    const clang::SwitchCase* next = default_stmt ? default_stmt : first_label_if_declaring(body);
     auto anchor = main_range(unit, next ? next->getKeywordLoc() : body->getRBracLoc());
     if(!anchor) {
         return;
