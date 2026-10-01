@@ -1,0 +1,27 @@
+---
+created_at: 2026-10-01
+input_file: enum_value_wide.cpp
+---
+narrow: { range: "7:17-7:23" }
+### variable `narrow`  
+
+---
+Type: `const Narrow`  
+Value = `Small (0x5)`  
+
+---
+```cpp
+constexpr Narrow narrow = Small
+```
+
+wide: { range: "6:15-6:19" }
+### variable `wide`  
+
+---
+Type: `const Wide`  
+Value = `Max (0xffffffffffffffff)`  
+
+---
+```cpp
+constexpr Wide wide = Max
+```

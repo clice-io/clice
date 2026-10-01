@@ -305,7 +305,13 @@ std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
 
         case clang::DeclarationName::CXXConversionFunctionName: {
             result += "operator ";
-            result += name.getCXXNameType().getAsString(policy);
+            /// The name holds the canonical type (`operator int *` for
+            /// `operator Handle`); the declaration keeps the type as written.
+            auto type = name.getCXXNameType();
+            if(auto* conversion = llvm::dyn_cast<clang::CXXConversionDecl>(decl)) {
+                type = conversion->getConversionType();
+            }
+            result += type.getAsString(policy);
             break;
         }
 
@@ -398,8 +404,12 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
         qualifier.print(os, policy);
     }
 
-    /// Print the name itself.
-    decl->getDeclName().print(os, policy);
+    /// Print the name itself — a conversion's as declared, see bare_name.
+    if(llvm::isa<clang::CXXConversionDecl>(decl)) {
+        os << bare_name(decl, options);
+    } else {
+        decl->getDeclName().print(os, policy);
+    }
 
     /// Print template arguments.
     os << template_args(*decl);
@@ -793,13 +803,10 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
     }
 
     /// Show enums symbolically, not numerically like APValue::printPretty().
-    if(type->isEnumeralType() && constant.Val.isInt() &&
-       constant.Val.getInt().getSignificantBits() <= 64) {
-        /// Compare to int64_t to avoid bit-width match requirements.
-        std::int64_t value = constant.Val.getInt().getExtValue();
+    if(type->isEnumeralType() && constant.Val.isInt()) {
         for(const clang::EnumConstantDecl* enumerator:
             type->castAs<clang::EnumType>()->getDecl()->enumerators()) {
-            if(enumerator->getInitVal() == value) {
+            if(llvm::APSInt::isSameValue(enumerator->getInitVal(), constant.Val.getInt())) {
                 return llvm::formatv("{0} ({1})",
                                      enumerator->getNameAsString(),
                                      print_hex(constant.Val.getInt()))
