@@ -17,6 +17,13 @@ function offsetOf(text: string, position: proto.Position): number {
     return Math.min(offset + position.character, text.length);
 }
 
+/// The position of `offset` in `text`, the inverse of offsetOf.
+export function positionAt(text: string, offset: number): proto.Position {
+    const before = text.slice(0, offset);
+    const line = before.split("\n").length - 1;
+    return { line, character: offset - (before.lastIndexOf("\n") + 1) };
+}
+
 /// The document after `edits`, each replacing its range of the original
 /// text; ranges must not overlap.
 export function applyTextEdits(text: string, edits: readonly proto.TextEdit[]): string {
@@ -32,6 +39,11 @@ export function applyTextEdits(text: string, edits: readonly proto.TextEdit[]): 
         result = result.slice(0, edit.begin) + edit.newText + result.slice(edit.end);
     }
     return result;
+}
+
+/// The code actions of a codeAction reply.
+export function actionsOf(reply: (proto.Command | proto.CodeAction)[] | null): proto.CodeAction[] {
+    return (reply ?? []).filter((item): item is proto.CodeAction => "title" in item);
 }
 
 /// The text edits a code action applies to `uri`, from its versioned

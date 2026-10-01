@@ -2,9 +2,9 @@
 ///
 /// - status: supported
 ///
-/// A C variadic parameter, `consteval` and the exception specification the base's type has carry over to the override
+/// A C variadic parameter, `consteval` and whether the base's method is `noexcept` carry over to the override
 ///
-/// An exception specification that depends on the arguments of a base class template is not known before the compiler needs it, and such a method gets no declaration.
+/// A method whose exception specification depends on the arguments of a base class template gets no declaration.
 
 #define NOTHROW noexcept
 

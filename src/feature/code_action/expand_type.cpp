@@ -17,10 +17,6 @@ namespace clice::feature::action {
 
 namespace {
 
-bool is_cv(const clang::syntax::Token& token) {
-    return token.kind() == clang::tok::kw_const || token.kind() == clang::tok::kw_volatile;
-}
-
 /// A declaration specifier other than a type, which may stand between a
 /// cv-qualifier and the type it qualifies.
 bool is_specifier(const clang::syntax::Token& token) {
@@ -32,9 +28,7 @@ bool is_specifier(const clang::syntax::Token& token) {
                                        kw_constinit,
                                        kw_consteval,
                                        kw_thread_local,
-                                       kw_mutable,
                                        kw_register,
-                                       kw_virtual,
                                        kw_friend};
     return is_cv(token) || llvm::is_contained(specifiers, token.kind());
 }

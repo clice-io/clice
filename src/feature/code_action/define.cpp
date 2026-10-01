@@ -133,10 +133,6 @@ clang::SourceRange default_argument_range(const clang::NamedDecl* param) {
     return {};
 }
 
-bool is_cv(const clang::syntax::Token& token) {
-    return token.kind() == clang::tok::kw_const || token.kind() == clang::tok::kw_volatile;
-}
-
 /// The source transform turning a declaration into the head of its
 /// out-of-line definition, spelled for insertion into `from`.
 class Transform {
@@ -292,7 +288,7 @@ private:
 
     /// The leading return type is looked up at the definition's scope,
     /// unlike the parameters, which the qualified name puts in the
-    /// class's scope: spell it fully qualified. Deduced and dependent
+    /// class's scope: spell it for that scope. Deduced and dependent
     /// return types stay as written.
     void qualify_return_type() {
         auto range = decl->getReturnTypeSourceRange();

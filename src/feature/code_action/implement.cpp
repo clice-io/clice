@@ -38,14 +38,13 @@ std::optional<bool> requires_noexcept(const clang::CXXMethodDecl* method) {
     std::unreachable();
 }
 
-/// The declaration overriding `method` in `record`, its types spelled
-/// fully qualified: the base's unqualified spellings need not resolve in
-/// the derived class's scope. Nullopt when a type has no spelling.
-std::optional<std::string> override_declaration(CompilationUnitRef unit,
+/// The declaration overriding `method` in `record`, its types spelled for
+/// `record`: the base's spellings need not resolve in the derived class's
+/// scope. Nullopt when a type has no spelling there.
+std::optional<std::string> override_declaration(clang::ASTContext& context,
                                                 const clang::CXXMethodDecl* method,
                                                 const clang::CXXRecordDecl* record,
                                                 bool is_nothrow) {
-    auto& context = unit.context();
     std::string text;
     llvm::raw_string_ostream os(text);
     if(method->isConsteval()) {
@@ -135,7 +134,7 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
         if(!is_nothrow && llvm::is_contained(specs, std::nullopt)) {
             continue;
         }
-        if(auto line = override_declaration(unit, group.front(), record, is_nothrow)) {
+        if(auto line = override_declaration(context, group.front(), record, is_nothrow)) {
             lines.push_back(std::move(*line));
         }
     }

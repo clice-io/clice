@@ -6,12 +6,8 @@
 import * as fs from "node:fs";
 import type * as proto from "vscode-languageserver-protocol";
 import { SETTLE_TIME, sleep } from "@clice/tools/client";
-import { applyTextEdits, editsFor } from "@clice/tools/client/edits";
+import { actionsOf, applyTextEdits, editsFor } from "@clice/tools/client/edits";
 import { expect, test } from "../fixtures.ts";
-
-function actionsOf(reply: (proto.Command | proto.CodeAction)[] | null): proto.CodeAction[] {
-    return (reply ?? []).filter((item): item is proto.CodeAction => "title" in item);
-}
 
 test("edits apply to the buffer they were computed for", async ({ session }) => {
     const workspace = session.tmpdir();

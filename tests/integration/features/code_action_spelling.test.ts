@@ -5,30 +5,26 @@
 
 import type * as proto from "vscode-languageserver-protocol";
 import type { CliceClient } from "@clice/tools/client";
-import { applyTextEdits, editsFor } from "@clice/tools/client/edits";
+import { actionsOf, applyTextEdits, editsFor, positionAt } from "@clice/tools/client/edits";
 import { parseAnnotations } from "@clice/tools/snap/annotation";
 import { expect, test, type SessionFactory } from "../fixtures.ts";
 
-function positionOf(text: string, offset: number): proto.Position {
-    const before = text.slice(0, offset);
-    const line = before.split("\n").length - 1;
-    return { line, character: offset - (before.lastIndexOf("\n") + 1) };
-}
-
 /// The opened main.cpp of `source` (annotated with `§(name)` points),
-/// compiled as C++23 and formatted in LLVM style.
+/// compiled as C++23 for a target without MSVC compatibility, which
+/// declares `size_t` implicitly, and formatted in LLVM style.
 async function open(session: SessionFactory, source: string) {
     const annotated = parseAnnotations(source);
     const workspace = session.tmpdir();
     workspace.write(".clang-format", "BasedOnStyle: LLVM\n");
     workspace.write("main.cpp", annotated.content);
-    workspace.writeCDB(["main.cpp"], { std: "c++23" });
+    workspace.writeCDB(["main.cpp"], {
+        std: "c++23",
+        extraArgs: ["--target=x86_64-unknown-linux-gnu"],
+    });
     const client = await session.spawn(workspace).initialize(workspace);
     const [uri] = await client.openAndWait("main.cpp");
     return new OpenFile(client, uri, annotated.content, annotated.offsets);
 }
-
-const expanded = expect.stringMatching(/^Replace /);
 
 class OpenFile {
     private readonly client: CliceClient;
@@ -68,9 +64,10 @@ class OpenFile {
     private async actions(marker: string): Promise<proto.CodeAction[]> {
         const offset = this.markers.get(marker);
         expect(offset, marker).toBeDefined();
-        const position = positionOf(this.original, offset!);
-        const reply = await this.client.codeActions(this.uri, { start: position, end: position });
-        return (reply ?? []).filter((item): item is proto.CodeAction => "title" in item);
+        const position = positionAt(this.original, offset!);
+        return actionsOf(
+            await this.client.codeActions(this.uri, { start: position, end: position }),
+        );
     }
 
     private async change(text: string): Promise<void> {
@@ -194,6 +191,7 @@ void g() {
     §(parameter)auto t = make_t();
     static_assert(__is_same(decltype(t), ns::T));
 }
+template void g<int>();
 }  // namespace ns
 `,
     );
@@ -222,12 +220,15 @@ using nullptr_t = decltype(nullptr);
 
 void g(int* a, int* b) {
     §(size_std)auto n = sizeof(int);
+    static_assert(__is_same(decltype(n), std::size_t));
     §(difference)auto d = b - a;
+    static_assert(__is_same(decltype(d), std::ptrdiff_t));
     §(null_std)auto p = nullptr;
+    static_assert(__is_same(decltype(p), std::nullptr_t));
 }
 `,
     );
-    expect(await buffer.titles("size")).not.toContainEqual(expanded);
+    expect(await buffer.titles("size")).toEqual([]);
     expect(await buffer.apply("null", "Replace 'auto' with 'decltype(nullptr)'")).toContain(
         "decltype(nullptr) p",
     );
@@ -245,16 +246,36 @@ void g(int* a, int* b) {
 test("types the insertion point cannot name stay auto", async ({ session }) => {
     const buffer = await open(
         session,
-        `auto local() {
+        `template <class T, class Compare>
+struct Set {
+    struct iterator {};
+    iterator begin() { return {}; }
+};
+
+template <class T>
+struct Box {};
+
+template <class T>
+T id(T value);
+
+auto local() {
     struct Hidden {};
     return Hidden{};
 }
 
+auto local_box() {
+    int local = 0;
+    return Box<decltype(local)>{};
+}
+
 class C {
     struct Private {};
+    template <class T>
+    struct Item {};
 
 public:
     static Private make();
+    static Item<int> make_item();
 
     void member() {
         §(member)auto p = make();
@@ -262,19 +283,86 @@ public:
 };
 
 void f() {
-    struct Own {};
+    struct Own {
+        struct Nested {};
+    };
     §(own)auto o = Own{};
+    §(nested)auto n = Own::Nested{};
     §(local)auto h = local();
     §(private)auto p = C::make();
+    auto less = [](int a, int b) { return a < b; };
+    Set<int, decltype(less)> set;
+    §(closure)auto it = set.begin();
+    §(specialization)auto item = id(C::make_item());
+    §(expression)auto box = local_box();
 }
 `,
     );
-    expect(await buffer.titles("local")).not.toContainEqual(expanded);
-    expect(await buffer.titles("private")).not.toContainEqual(expanded);
+    for (const marker of ["local", "private", "closure", "specialization", "expression"]) {
+        expect(await buffer.titles(marker), marker).toEqual([]);
+    }
     expect(await buffer.apply("member", "Replace 'auto' with 'C::Private'")).toContain(
         "C::Private p",
     );
     expect(await buffer.apply("own", "Replace 'auto' with 'Own'")).toContain("Own o");
+    expect(await buffer.apply("nested", "Replace 'auto' with 'Own::Nested'")).toContain(
+        "Own::Nested n",
+    );
+});
+
+test("lookup follows the scopes in effect", async ({ session }) => {
+    const buffer = await open(
+        session,
+        `namespace app {
+namespace v2 {
+struct Config {};
+}  // namespace v2
+struct Config {};
+Config load();
+
+void directive() {
+    using namespace v2;
+    §(directive)auto c = load();
+    static_assert(__is_same(decltype(c), app::Config));
+}
+
+struct Node {};
+Node make_node();
+
+struct Tree {
+    struct Node {};
+
+    friend void visit(Tree&) {
+        §(friend)auto n = make_node();
+        static_assert(__is_same(decltype(n), app::Node));
+    }
+};
+
+struct U {};
+U make_u();
+
+template <class T>
+struct S {
+    void f();
+};
+
+template <class U>
+void S<U>::f() {
+    §(outer)auto u = make_u();
+    static_assert(__is_same(decltype(u), app::U));
+}
+
+template struct S<int>;
+}  // namespace app
+`,
+    );
+    expect(await buffer.apply("directive", "Replace 'auto' with 'app::Config'")).toContain(
+        "app::Config c",
+    );
+    expect(await buffer.apply("friend", "Replace 'auto' with 'app::Node'")).toContain(
+        "app::Node n",
+    );
+    expect(await buffer.apply("outer", "Replace 'auto' with 'app::U'")).toContain("app::U u");
 });
 
 test("cv-qualifiers stay on the deduced pointer", async ({ session }) => {
@@ -286,6 +374,7 @@ test("cv-qualifiers stay on the deduced pointer", async ({ session }) => {
     const §(pointee)auto* cp = pp;
     static_assert(__is_same(decltype(cp), int* const*));
     static const §(specifiers)auto s = q;
+    static_assert(__is_same(decltype(s), int* const));
     const static §(parted)auto t = q;
 }
 `,
@@ -299,7 +388,7 @@ test("cv-qualifiers stay on the deduced pointer", async ({ session }) => {
     expect(await buffer.apply("specifiers", "Replace 'const auto' with 'int* const'")).toContain(
         "static int* const s = q;",
     );
-    expect(await buffer.titles("parted")).not.toContainEqual(expanded);
+    expect(await buffer.titles("parted")).toEqual([]);
 });
 
 test("one override per signature shared by bases", async ({ session }) => {
@@ -344,13 +433,6 @@ struct Interface {
 struct §(derived)Impl : base::Interface {};
 
 static_assert(!__is_abstract(Impl));
-
-template <bool B>
-struct Pending {
-    virtual void wait() noexcept(B) = 0;
-};
-
-struct §(pending)Waiter : Pending<true> {};
 `,
     );
     const edited = await buffer.apply("derived", "Implement pure virtual methods of 'Impl'");
@@ -363,9 +445,18 @@ struct §(pending)Waiter : Pending<true> {};
             "  consteval int compute() override;",
         ].join("\n"),
     );
-    // The base's specification waits on instantiation: no spelling of it
-    // is known to hold.
-    expect(await buffer.titles("pending")).not.toContain(
-        "Implement pure virtual methods of 'Waiter'",
+});
+
+test("no override while noexcept is uninstantiated", async ({ session }) => {
+    const buffer = await open(
+        session,
+        `template <bool B>
+struct Pending {
+    virtual void wait() noexcept(B) = 0;
+};
+
+struct §(waiter)Waiter : Pending<true> {};
+`,
     );
+    expect(await buffer.titles("waiter")).toEqual([]);
 });

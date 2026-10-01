@@ -74,6 +74,8 @@ std::optional<llvm::StringRef> spelled_text(CompilationUnitRef unit, clang::Sour
 /// The whitespace opening the line containing `offset`.
 llvm::StringRef line_indent(llvm::StringRef content, std::uint32_t offset);
 
+bool is_cv(const clang::syntax::Token& token);
+
 /// Whether a context is a file scope a definition is written at: the
 /// translation unit, a namespace, a linkage specification or an export
 /// block.
