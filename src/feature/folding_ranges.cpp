@@ -32,8 +32,8 @@ namespace {
 ///
 /// A delimited fold spans its delimiters, which `collapsed_text` repeats; a
 /// section fold (an access-specifier section, a conditional branch, a
-/// region) runs from the end of its header line to the next header, which
-/// stays visible.
+/// region, a module fragment) runs from the end of its header line to the
+/// next header, which stays visible.
 class FoldingRangeCollector {
 public:
     explicit FoldingRangeCollector(CompilationUnitRef unit) :
@@ -65,6 +65,7 @@ public:
         }
 
         collect_block_directives(unit.semantics().block_directives());
+        collect_module_fragments(unit.semantics().module_declarations());
 
         // Order by kind and text after position so equal entries are adjacent
         // and the output stays deterministic under the unstable sort.
@@ -94,16 +95,20 @@ public:
 private:
     void collect_decl(const clang::Decl* decl) {
         if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
-            // NamespaceDecl does not store its left brace location; scan for
-            // it so the fold keeps the name visible.
-            auto tokens = unit.expanded_tokens(ns->getSourceRange())
-                              .drop_until([](const clang::syntax::Token& token) {
-                                  return token.kind() == clang::tok::l_brace;
-                              });
-            if(!tokens.empty()) {
-                add_range(clang::SourceRange(tokens.front().location(), ns->getRBraceLoc()),
-                          "namespace",
-                          "{...}");
+            add_block(ns, ns->getRBraceLoc(), "namespace");
+            return;
+        }
+
+        if(const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(decl)) {
+            if(linkage->hasBraces()) {
+                add_block(linkage, linkage->getRBraceLoc(), "linkageSpec");
+            }
+            return;
+        }
+
+        if(const auto* exported = llvm::dyn_cast<clang::ExportDecl>(decl)) {
+            if(exported->hasBraces()) {
+                add_block(exported, exported->getRBraceLoc(), "export");
             }
             return;
         }
@@ -279,6 +284,38 @@ private:
                     break;
                 }
             }
+        }
+    }
+
+    /// The global module fragment runs to the module declaration, the
+    /// private one to the end of the file.
+    void collect_module_fragments(llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules) {
+        for(auto [index, module]: llvm::enumerate(modules)) {
+            if(module.kind == LexicalInfo::ModuleDeclaration::Kind::Declaration) {
+                continue;
+            }
+            auto end = static_cast<std::uint32_t>(content.size());
+            if(index + 1 < modules.size()) {
+                const auto& next = modules[index + 1];
+                end = next.export_keyword.valid() ? next.export_keyword.begin : next.keyword.begin;
+            }
+            add_section(header_end(module.keyword.begin), end, "moduleFragment");
+        }
+    }
+
+    /// A brace block whose declaration records only its closing brace: the
+    /// opening one is the declaration's first `{`, after the name.
+    void add_block(const clang::Decl* decl,
+                   clang::SourceLocation right_brace,
+                   protocol::FoldingRangeKind kind) {
+        auto tokens = unit.expanded_tokens(decl->getSourceRange())
+                          .drop_until([](const clang::syntax::Token& token) {
+                              return token.kind() == clang::tok::l_brace;
+                          });
+        if(!tokens.empty()) {
+            add_range(clang::SourceRange(tokens.front().location(), right_brace),
+                      std::move(kind),
+                      "{...}");
         }
     }
 
