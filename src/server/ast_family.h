@@ -197,15 +197,15 @@ private:
     /// revalidate on-disk PCM blobs, declare the Ast→PCM durable edges
     /// (scanner truth — they must survive a failed compile or fixing an
     /// import could never re-dirty this document), and wait on each
-    /// import through depend. Ready unless cancelled: an import whose
-    /// build failed is left to the parse, which reports it on the import
-    /// next to the file's own diagnostics.
-    kota::task<DependResult> depend_modules(RoundContext& ctx,
-                                            Fid path_id,
-                                            llvm::StringRef directory,
-                                            const std::vector<std::string>& arguments,
-                                            llvm::StringRef text,
-                                            const SynthesizedContext* synthesized);
+    /// import through depend. False when cancelled: an import whose build
+    /// failed is left to the parse, which reports it on the import next to
+    /// the file's own diagnostics.
+    kota::task<bool> depend_modules(RoundContext& ctx,
+                                    Fid path_id,
+                                    llvm::StringRef directory,
+                                    const std::vector<std::string>& arguments,
+                                    llvm::StringRef text,
+                                    const SynthesizedContext* synthesized);
 
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);

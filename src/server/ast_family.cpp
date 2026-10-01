@@ -58,10 +58,10 @@ static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
                                            const index::TUIndex& preamble,
                                            llvm::StringRef path) {
     std::vector<protocol::Diagnostic> merged;
-    auto parsed =
+    [[maybe_unused]] auto status =
         kota::codec::json::from_string<kota::ipc::lsp_config>(preamble.preamble_diagnostics(),
                                                               merged);
-    if(!parsed || merged.empty()) {
+    if(merged.empty()) {
         return diagnostics;
     }
     auto builder = feature::to_uri(preamble.path(preamble.path_count() - 1));
@@ -78,12 +78,9 @@ static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
     }
     std::vector<protocol::Diagnostic> own;
     if(!diagnostics.empty()) {
-        [[maybe_unused]] auto status =
-            kota::codec::json::from_string<kota::ipc::lsp_config>(diagnostics.data, own);
+        status = kota::codec::json::from_string<kota::ipc::lsp_config>(diagnostics.data, own);
     }
-    merged.insert(merged.end(),
-                  std::make_move_iterator(own.begin()),
-                  std::make_move_iterator(own.end()));
+    std::ranges::move(own, std::back_inserter(merged));
     auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(merged);
     return kota::codec::RawValue{json ? std::move(*json) : "[]"};
 }
@@ -381,12 +378,12 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
     co_return outcome == JoinOutcome::Success;
 }
 
-kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
-                                                   Fid path_id,
-                                                   llvm::StringRef directory,
-                                                   const std::vector<std::string>& arguments,
-                                                   llvm::StringRef text,
-                                                   const SynthesizedContext* synthesized) {
+kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
+                                           Fid path_id,
+                                           llvm::StringRef directory,
+                                           const std::vector<std::string>& arguments,
+                                           llvm::StringRef text,
+                                           const SynthesizedContext* synthesized) {
     // A project with no module code pays nothing — no CDB lookup, no
     // precise scan. The moment import syntax exists anywhere (the
     // lexical candidate set), every document scans precisely: that is
@@ -412,7 +409,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
         // earned earlier must stop cascading here, even when the compile
         // itself later fails (failed rounds keep declared edges).
         graph.declare(node(path_id), {});
-        co_return DependResult::Ready;
+        co_return true;
     }
 
     // Imports come from the round's buffer snapshot under the round's own
@@ -451,7 +448,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
         }
     }
     if(deps.resolved.empty()) {
-        co_return DependResult::Ready;
+        co_return true;
     }
 
     // Building a dependency can itself evict another clean module's PCM
@@ -472,11 +469,11 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
                              project.file_table.resolve(dep),
                              project.file_table.resolve(path_id));
                     break;
-                case DependResult::Cancelled: co_return DependResult::Cancelled;
+                case DependResult::Cancelled: co_return false;
             }
         }
     }
-    co_return DependResult::Ready;
+    co_return true;
 }
 
 kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
@@ -551,12 +548,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                            !header_context->synthesized &&
                            contexts.commands.header_mode(path_id) == HeaderMode::Unknown;
 
-        if(co_await depend_modules(ctx,
-                                   path_id,
-                                   params.directory,
-                                   params.arguments,
-                                   params.text,
-                                   synthesized) == DependResult::Cancelled) {
+        if(!co_await depend_modules(ctx,
+                                    path_id,
+                                    params.directory,
+                                    params.arguments,
+                                    params.text,
+                                    synthesized)) {
             co_return RoundOutcome::Stale;
         }
 

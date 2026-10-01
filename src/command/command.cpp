@@ -233,8 +233,6 @@ void render_driver_arg(const Arg& arg,
     std::vector<std::string> fragments;
     render_arg(arg, [&](std::string_view fragment) { fragments.emplace_back(fragment); });
 
-    // Faithful when the rendering reads back as this very argument under a
-    // cl-mode driver's own visibility.
     auto parse_options = kota::option::ParseOptions{.visibility = option::CLOption};
     std::size_t count = 0;
     bool faithful = true;

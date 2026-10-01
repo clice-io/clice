@@ -129,15 +129,13 @@ private:
         };
         if(main.error_by_default) {
             std::optional<LocalSourceRange> anchor;
-            std::string_view where;
-            for(const auto& note: notes) {
-                if(in_main(note) && instantiation_note(note.id.value)) {
-                    anchor = note.range;
-                    where = "In template";
-                    break;
-                }
-            }
-            if(!anchor) {
+            std::string_view where = "In template";
+            auto request = llvm::find_if(notes, [&](const Diagnostic& note) {
+                return in_main(note) && instantiation_note(note.id.value);
+            });
+            if(request != notes.end()) {
+                anchor = request->range;
+            } else {
                 anchor = include_range(main.fid);
                 where = "In included file";
             }

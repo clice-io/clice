@@ -402,7 +402,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             if(inserted) {
                 group_refs.push_back(unit);
             }
-            wave0.push_back({unit.file, it->second, std::nullopt});
+            wave0.push_back({.path_id = unit.file, .config_id = it->second});
         }
     }
 
@@ -808,7 +808,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     std::chrono::duration_cast<std::chrono::microseconds>(r_t1 - r_t0).count();
                 if(!resolved.has_value()) {
                     if(cache_eligible) {
-                        include_cache.try_emplace(cache_key, CachedInclude{{}, std::nullopt});
+                        include_cache.try_emplace(cache_key, CachedInclude{});
                     }
                     report.unresolved.push_back({
                         std::move(inc.path),

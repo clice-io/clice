@@ -12,6 +12,15 @@ namespace clice::testing {
 
 namespace {
 
+/// The envelope's leading slots (the layout in tu_index.cpp): the version,
+/// then the minimal path table verification demands — every other field
+/// reads back absent, which is structurally valid.
+struct VersionAndPaths {
+    std::uint32_t format_version = 0;
+    std::int64_t built_at = 0;
+    std::vector<std::string> paths = {"/proj/main.cpp"};
+};
+
 TEST_SUITE(PreambleIndex, Tester) {
 
 TempDir dir;
@@ -244,53 +253,24 @@ TEST_CASE(RejectBadBlob) {
 }
 
 TEST_CASE(RejectVersionMismatch) {
-    // A structurally valid blob written by a different format version (0 is
-    // what a version-less blob reads back) must load as missing, so the
-    // PCH pair rebuilds instead of serving a stale layout. The blob only
-    // needs the version slot: every other field reads back absent, which is
-    // structurally valid — rejection must come from the version check.
-    struct VersionOnly {
-        std::uint32_t format_version = 0;
-    };
+    // A structurally valid blob of another format version — none (0, what a
+    // version-less blob reads back) or the one before this build's — must
+    // load as missing, so the PCH pair rebuilds instead of serving a stale
+    // layout.
+    for(auto version: {0u, index::index_format_version - 1}) {
+        auto blob = kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = version});
+        ASSERT_TRUE(blob.has_value());
 
-    auto blob = kota::codec::fbs::to_bytes(VersionOnly{});
-    ASSERT_TRUE(blob.has_value());
-
-    auto blob_path = dir.path("stale.pch.idx");
-    dir.touch("stale.pch.idx",
-              llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
-    EXPECT_TRUE(load_pch_envelope(blob_path) == nullptr);
-}
-
-TEST_CASE(RejectPreviousVersion) {
-    // A pair the previous format wrote carries no preamble diagnostics:
-    // serving it would publish none, so it rebuilds like any stale layout.
-    struct VersionAndPaths {
-        std::uint32_t format_version = 0;
-        std::int64_t built_at = 0;
-        std::vector<std::string> paths = {"/proj/main.cpp"};
-    };
-
-    auto blob = kota::codec::fbs::to_bytes(
-        VersionAndPaths{.format_version = index::index_format_version - 1});
-    ASSERT_TRUE(blob.has_value());
-
-    dir.touch("previous.pch.idx",
-              llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
-    EXPECT_TRUE(load_pch_envelope(dir.path("previous.pch.idx")) == nullptr);
+        dir.touch("stale.pch.idx",
+                  llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
+        EXPECT_TRUE(load_pch_envelope(dir.path("stale.pch.idx")) == nullptr);
+    }
 }
 
 TEST_CASE(AcceptCurrentVersionBlob) {
-    // Positive control for RejectVersionMismatch: the same leading slots
-    // carrying the CURRENT version (plus the minimal valid path table, which
-    // verification demands) load — slot 0 really is the version slot and the
-    // rejection comes from its value, not from the blob's shape.
-    struct VersionAndPaths {
-        std::uint32_t format_version = 0;
-        std::int64_t built_at = 0;
-        std::vector<std::string> paths = {"/proj/main.cpp"};
-    };
-
+    // Positive control for RejectVersionMismatch: the same blob carrying the
+    // CURRENT version loads — the rejection comes from the version's value,
+    // not from the blob's shape.
     auto blob =
         kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = index::index_format_version});
     ASSERT_TRUE(blob.has_value());

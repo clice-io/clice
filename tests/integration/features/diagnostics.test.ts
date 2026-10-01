@@ -3,6 +3,7 @@
 
 import type * as proto from "vscode-languageserver-protocol";
 import type { CliceClient } from "@clice/tools/client";
+import type { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
 
 function published(client: CliceClient, uri: string): proto.Diagnostic[] {
@@ -21,10 +22,13 @@ function span(range: proto.Range): string {
     return `${range.start.line}:${range.start.character}-${range.end.line}:${range.end.character}`;
 }
 
-/// Related information as `file@range message`, the file by its name.
-function related(client: CliceClient, diagnostic: proto.Diagnostic): string[] {
+/// Related information as `file@range message`, a workspace file by its
+/// relative path; any other URI stays whole.
+function related(workspace: Workspace, diagnostic: proto.Diagnostic): string[] {
+    const root = workspace.uri() + "/";
     return (diagnostic.relatedInformation ?? []).map((info) => {
-        const file = client.normalizeUri(info.location.uri).split("/").pop();
+        const uri = info.location.uri;
+        const file = uri.startsWith(root) ? uri.slice(root.length) : uri;
         return `${file}@${span(info.location.range)} ${info.message}`;
     });
 }
@@ -38,25 +42,32 @@ test("notes become related information", async ({ session }) => {
 
     const [redefinition] = withCode(client, uri, "err_redefinition");
     expect(span(redefinition!.range)).toBe("1:4-1:5");
-    expect(related(client, redefinition!)).toEqual([
+    expect(related(workspace, redefinition!)).toEqual([
         "main.cpp@0:4-0:5 previous definition is here",
     ]);
     const [call] = withCode(client, uri, "err_ovl_no_viable_function_in_call");
-    expect(related(client, call!)).toEqual([
+    expect(related(workspace, call!)).toEqual([
         "main.cpp@2:5-2:6 candidate function not viable: requires 1 argument, but 2 were provided",
     ]);
 });
 
 test("range holds the caret", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    workspace.write("main.cpp", 'double f() {\n    return 1.0 + "a";\n}\n');
+    workspace.write(
+        "main.cpp",
+        'double f() {\n    return 1.0 + "a";\n}\n[[nodiscard]] int value();\nvoid g() {\n    value();\n}\n',
+    );
     workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
     const [uri] = await client.openAndWait("main.cpp");
 
-    // Clang underlines both operands and puts the caret on the operator.
+    // Clang underlines both operands and puts the caret on the operator:
+    // no range holds it, the caret's token stands.
     const [invalid] = withCode(client, uri, "err_typecheck_invalid_operands");
     expect(span(invalid!.range)).toBe("1:15-1:16");
+    // The caret starts the call clang underlines whole.
+    const [discarded] = withCode(client, uri, "warn_unused_result");
+    expect(span(discarded!.range)).toBe("5:4-5:11");
 });
 
 test("header errors land on the include", async ({ session }) => {
@@ -81,7 +92,7 @@ test("header errors land on the include", async ({ session }) => {
             "2:9-2:16 In included file: use of undeclared identifier 'undefined_one'",
             "3:8-3:23 use of undeclared identifier 'undeclared_main'",
         ]);
-        expect(related(client, published(client, uri)[0]!)).toEqual([
+        expect(related(workspace, published(client, uri)[0]!)).toEqual([
             "bad.h@0:10-0:23 error occurred here",
         ]);
     }
@@ -108,7 +119,7 @@ test("instantiation errors land on the request", async ({ session }) => {
     expect(text(error!)).toBe(
         "In template: member reference base type 'int' is not a structure or union",
     );
-    expect(related(client, error!)).toEqual([
+    expect(related(workspace, error!)).toEqual([
         "box.h@1:19-1:20 error occurred here",
         "box.h@4:20-4:25 in instantiation of function template specialization 'touch<int>' requested here",
         "main.cpp@3:9-3:12 in instantiation of member function 'Box<int>::put' requested here",
@@ -125,12 +136,14 @@ test("preamble errors keep their place", async ({ session }) => {
     await client.initialize(workspace);
     const [uri] = await client.openAndWait("main.cpp");
 
-    const [unterminated] = withCode(client, uri, "err_pp_unterminated_conditional");
-    expect(span(unterminated!.range)).toBe("1:1-1:6");
+    expect(
+        published(client, uri).map((diagnostic) => `${span(diagnostic.range)} ${diagnostic.code}`),
+    ).toEqual(["1:1-1:6 err_pp_unterminated_conditional"]);
 });
 
 test("preamble warnings are published", async ({ session }) => {
     const { client, workspace } = session.tmp();
+    workspace.pinCacheDir();
     workspace.write("c.h", "#pragma once\nint c_val = 1;\n");
     // Both files open with the same preamble and share its PCH; each sees
     // the warnings of the PCH's build pointing into itself.
@@ -146,17 +159,22 @@ test("preamble warnings are published", async ({ session }) => {
         expect(
             diagnostics.map((diagnostic) => `${span(diagnostic.range)} ${diagnostic.code}`),
         ).toEqual(["1:8-1:9 ext_pp_macro_redef", "2:8-2:15 warn_pragma_message"]);
-        expect(related(client, diagnostics[0]!)).toEqual([
+        expect(related(workspace, diagnostics[0]!)).toEqual([
             `${file}@0:8-0:9 previous definition is here`,
         ]);
     }
+    expect(workspace.pchFiles()).toHaveLength(1);
 });
 
 test("header warnings stay in the header", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    workspace.write("redef.h", "#define LIMIT 1\n#define LIMIT 2\n");
+    // -Werror makes the unused variable an error, still the header's own.
+    workspace.write(
+        "redef.h",
+        "#define LIMIT 1\n#define LIMIT 2\ninline int f() {\n    int unused = 0;\n    return 0;\n}\n",
+    );
     workspace.write("main.cpp", 'int x = undeclared;\n#include "redef.h"\n');
-    workspace.writeCDB(["main.cpp"]);
+    workspace.writeCDB(["main.cpp"], { extraArgs: ["-Wall", "-Werror"] });
     await client.initialize(workspace);
     const [uri] = await client.openAndWait("main.cpp");
 
@@ -165,6 +183,27 @@ test("header warnings stay in the header", async ({ session }) => {
     const diagnostics = published(client, uri);
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["err_undeclared_var_use"]);
     expect(diagnostics[0]!.relatedInformation).toBeUndefined();
+});
+
+test("instantiation warnings land on the request", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write(
+        "cmp.h",
+        "template <typename T>\nbool less(T a, unsigned b) {\n    return a < b;\n}\n",
+    );
+    workspace.write("main.cpp", '#include "cmp.h"\nbool b = less(-1, 1u);\n');
+    workspace.writeCDB(["main.cpp"], { extraArgs: ["-Wsign-compare"] });
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+
+    // Not an error: published on the request as is, no prefix.
+    expect(
+        published(client, uri).map(
+            (diagnostic) => `${span(diagnostic.range)} ${diagnostic.code} ${text(diagnostic)}`,
+        ),
+    ).toEqual([
+        "1:9-1:13 warn_mixed_sign_comparison comparison of integers of different signs: 'int' and 'unsigned int'",
+    ]);
 });
 
 test("host errors stay out of headers", async ({ session }) => {
@@ -192,8 +231,11 @@ test("borrowed header stays a header", async ({ session }) => {
     // The broken include keeps the header out of a PCH, so the main parse
     // sees the #pragma once at its top.
     workspace.write("src/hdr.h", '#pragma once\n#include "nothere.h"\n');
-    // A static function is for its includers to use.
-    workspace.write("src/util.h", "#pragma once\nstatic inline int helper() { return 1; }\n");
+    // Its system-header pragma and static function are for its includers.
+    workspace.write(
+        "src/util.h",
+        "#pragma once\n#pragma GCC system_header\nstatic inline int helper() { return 1; }\n",
+    );
     workspace.write("src/user.cpp", '#include "hdr.h"\n#include "util.h"\n');
     workspace.writeCDB(["src/user.cpp"], { extraArgs: ["-Wall"] });
     await client.initialize(workspace);

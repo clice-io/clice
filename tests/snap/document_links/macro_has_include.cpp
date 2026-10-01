@@ -4,3 +4,6 @@
 #if HAS(<header_a.h>)
 #include "header_a.h"
 #endif
+
+#if HAS("header_b.h")
+#endif
