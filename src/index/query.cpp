@@ -610,7 +610,27 @@ std::vector<Site> IndexQuery::implementation(SymbolHash hash) const {
     }
     bool type_like = info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
                      info->kind == SymbolKind::Union;
-    return target_sites(hash, type_like ? RelationKind::Derived : RelationKind::Implementation);
+    if(type_like) {
+        return target_sites(hash, RelationKind::Derived);
+    }
+    // An override that only declares — a pure virtual of an abstract
+    // intermediate class — implements nothing itself: its own overriders
+    // follow it.
+    std::vector<Site> result;
+    llvm::DenseSet<SymbolHash> seen{hash};
+    llvm::SmallVector<SymbolHash> pending{hash};
+    while(!pending.empty()) {
+        for(auto& located: located_targets(pending.pop_back_val(), RelationKind::Implementation)) {
+            if(!seen.insert(located.symbol.hash).second) {
+                continue;
+            }
+            result.push_back(located.site);
+            if(!has_flag(located.symbol.flags, SymbolFlags::HasDefinition)) {
+                pending.push_back(located.symbol.hash);
+            }
+        }
+    }
+    return result;
 }
 
 std::optional<llvm::StringRef>

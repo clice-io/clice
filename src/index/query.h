@@ -281,7 +281,8 @@ public:
     std::vector<Site> target_sites(SymbolHash hash, RelationKind kind) const;
 
     /// Sites implementing the symbol: derived types for a class-like
-    /// symbol, override targets otherwise.
+    /// symbol, overrides otherwise — through every override that only
+    /// declares to the ones below it.
     std::vector<Site> implementation(SymbolHash hash) const;
 
     /// A symbol's definition as text: the extent's site, the text it
