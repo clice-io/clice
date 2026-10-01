@@ -443,19 +443,17 @@ std::optional<Site> IndexQuery::canonical_site(SymbolHash hash) const {
     if(auto site = first_site(hash, RelationKind::Definition)) {
         return site;
     }
-    // A declaration stands in only for a symbol nothing defines: a
-    // definition withheld as stale stays unavailable, as documented. An
-    // open session's identity may know only the declaration; the project
-    // row remembers the definition.
-    auto info = symbol_info(hash);
-    if(!info) {
-        return std::nullopt;
-    }
-    bool defined = has_flag(info->flags, SymbolFlags::HasDefinition);
-    if(auto row = index.identity_of(hash)) {
-        defined = defined || has_flag(row->flags, SymbolFlags::HasDefinition);
-    }
-    if(defined) {
+    // A declaration stands in only for a symbol nothing defines: a file
+    // with rows that are not serving — withheld as stale, or an open buffer
+    // that moved on from them — may hold the definition, which then stays
+    // unavailable, as documented. The table's HasDefinition cannot decide
+    // it: the bit stays once some unit reported a definition, even after
+    // the definition is deleted.
+    bool unavailable = false;
+    index.each_reference_file(hash, [&](Fid file) {
+        unavailable = unavailable || (index.shard(file) && !serving(file));
+    });
+    if(unavailable) {
         return std::nullopt;
     }
     return first_site(hash, RelationKind::Declaration);

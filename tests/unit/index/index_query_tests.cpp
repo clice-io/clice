@@ -399,6 +399,34 @@ TEST_CASE(StaleContributionSuppressed) {
     ASSERT_TRUE(query.sites(symbol, RelationKind::Reference).empty());
 }
 
+TEST_CASE(DeletedDefinitionFallsBack) {
+    llvm::StringRef header = R"(
+        int removed();
+    )";
+    add_file("header.h", header);
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int removed() { return 0; }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    // The table keeps the definition the first unit reported; the rows
+    // no longer hold it, so the declaration places the symbol.
+    clear();
+    add_file("header.h", header);
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int kept() { return removed(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    auto results = search("removed");
+    ASSERT_EQ(results.size(), 1U);
+    ASSERT_TRUE(results.front().site.path.ends_with("header.h"));
+}
+
 };  // TEST_SUITE(IndexQuery)
 
 }  // namespace
