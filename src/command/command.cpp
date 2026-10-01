@@ -19,6 +19,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/StringSaver.h"
@@ -1475,7 +1476,17 @@ SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
     auto [it, inserted] = search_configs.try_emplace(*resolved);
     if(inserted) {
         it->second = extract_search_config(chain->resolved(*resolved).args, directory);
+        // A directory the command names is the user's, however the driver
+        // passes it on: clang-cl's /imsvc reaches cc1 as -internal-isystem.
+        llvm::StringSet<> named;
+        auto base = Spelling::absolute(directory);
+        for(auto& arg: config(ref.config).args) {
+            for(auto& value: arg.values) {
+                named.insert(Spelling(value, base).str());
+            }
+        }
         for(auto& dir: it->second.dirs) {
+            dir.driver = dir.driver && !named.contains(dir.path);
             if(dir.driver) {
                 file_table.disk.add_package(CanonicalPath(Spelling::absolute(dir.path)).str());
             }

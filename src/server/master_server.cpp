@@ -41,10 +41,10 @@ MasterServer::MasterServer(kota::event_loop& loop,
     // Documents opened before initialize land in this project: sessions
     // are plain state, and initialize re-routes them once folders exist.
     projects.push_back(make_project(CanonicalPath()));
+    files.disk.shadow = llvm::sys::Process::GetEnv("CLICE_SHADOW_FRESHNESS").has_value();
     // A disk change can be seen deep inside any operation — a staleness
     // check, a rescan inside a cascade: the drain runs on a later loop
     // turn, outside it.
-    files.disk.shadow = llvm::sys::Process::GetEnv("CLICE_SHADOW_FRESHNESS").has_value();
     files.disk.on_change = [this] {
         bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
             co_await kota::sleep(std::chrono::milliseconds(0));
@@ -622,8 +622,8 @@ void MasterServer::saved(Fid path_id) {
 }
 
 void MasterServer::start_polling() {
-    if(!polls) {
-        polls = true;
+    if(!polling_started) {
+        polling_started = true;
         polling.spawn(poll_task());
     }
 }

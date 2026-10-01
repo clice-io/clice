@@ -111,7 +111,7 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
     // A forced tick reloads unconditionally: a spurious reload just yields
     // an empty diff.
     tracked.pending.reset();
-    bool exists = !tracked.inputs.front().missing;
+    bool exists = tracked.inputs.front().stamp.has_value();
     // A discovered database's presence ranks it (see Build::source_order):
     // the files whose default entry moves with it change command.
     bool flips = project.cdb.present(tracked.id) != exists && project.build.discovered(tracked.id);

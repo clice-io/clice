@@ -151,8 +151,8 @@ public:
     /// looked at too.
     void saved(Fid path_id);
 
-    /// Start the background looks at files (see vfs::DiskState::tick), once
-    /// for every project that polls.
+    /// Start the background looks at files (see vfs::DiskState::tick); calls
+    /// after the first do nothing.
     void start_polling();
 
     /// Hand the disk changes the file table saw to every project knowing
@@ -337,7 +337,7 @@ private:
     /// The background looks at files, ticking until shutdown_and_cleanup()
     /// cancels them.
     kota::task_group<> polling;
-    bool polls = false;
+    bool polling_started = false;
     kota::task<> poll_task();
 
     /// Removed projects, shutting down or kept alive after by the requests

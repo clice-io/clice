@@ -9,6 +9,7 @@
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
+#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/stderr_sink.h"
 #include "worker/common.h"

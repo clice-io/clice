@@ -352,7 +352,7 @@ struct Config {
     <ProjectConfig> project;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [tracker] section: file tracker poll intervals.")
+                     description = "The [tracker] section: background polling of files.")
     <TrackerConfig> tracker;
 
     KOTATSU_ANNOTATE(defaulted = true,

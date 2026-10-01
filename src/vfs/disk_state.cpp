@@ -6,7 +6,6 @@
 #include <utility>
 
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -21,16 +20,6 @@ std::optional<std::uint64_t> DiskState::seen_hash(Fid fid) const {
 bool DiskState::seen_missing(Fid fid) const {
     auto it = files.find(fid);
     return it != files.end() && !it->second.seen;
-}
-
-llvm::SmallVector<Fid> DiskState::missing_files() const {
-    llvm::SmallVector<Fid> result;
-    for(auto& [fid, file]: files) {
-        if(!file.seen) {
-            result.push_back(fid);
-        }
-    }
-    return result;
 }
 
 llvm::SmallVector<Fid> DiskState::take_changes() {
@@ -99,17 +88,19 @@ DiskState::Wave::~Wave() {
 }
 
 DiskState::Verdict DiskState::check(Fid fid, std::uint64_t hash) {
-    auto found = wave_look(fid);
-    switch(found.kind) {
-        case Look::Missing: return Verdict::Missing;
-        case Look::Unreadable: return Verdict::Unreadable;
-        case Look::Read: return hash != 0 && found.hash == hash ? Verdict::Fresh : Verdict::Stale;
+    auto expected =
+        hash != 0 ? std::optional(Look{.found = Look::Found::Read, .hash = hash}) : std::nullopt;
+    auto look = wave_look(fid, expected);
+    switch(look.found) {
+        case Look::Found::Missing: return Verdict::Missing;
+        case Look::Found::Unreadable: return Verdict::Unreadable;
+        case Look::Found::Read: return look == expected ? Verdict::Fresh : Verdict::Stale;
     }
     std::unreachable();
 }
 
 bool DiskState::present(Fid fid) {
-    return wave_look(fid).kind == Look::Read;
+    return wave_look(fid, Look{.found = Look::Found::Missing}).found == Look::Found::Read;
 }
 
 void DiskState::add_root(llvm::StringRef dir, Policy policy) {
@@ -203,10 +194,9 @@ void DiskState::tick(Clock::duration budget) {
             }
             looked += 1;
             look_at(fid, statuses);
-            // An unreadable file records nothing: look again after its
-            // interval.
             if(auto& file = files.find(fid)->second; file.queued == Clock::time_point::max()) {
-                schedule(fid, file, at + file.interval);
+                // Nothing recorded: the read failed. Retry soon.
+                enqueue(fid, file, at + policy(file).min);
             }
         }
     }
@@ -215,7 +205,7 @@ void DiskState::tick(Clock::duration budget) {
 void DiskState::look(llvm::ArrayRef<Fid> fids) {
     auto sorted = llvm::to_vector(fids);
     std::ranges::sort(sorted, {}, [&](Fid fid) { return path(fid); });
-    sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+    sorted.erase(llvm::unique(sorted), sorted.end());
     StatusBatch statuses;
     for(auto fid: sorted) {
         look_at(fid, statuses);
@@ -257,30 +247,38 @@ void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool settled) {
     }
 }
 
-DiskState::Look DiskState::wave_look(Fid fid) {
+DiskState::Look DiskState::wave_look(Fid fid, std::optional<Look> expected) {
     assert(wave_open && "a check outside a Wave");
     if(auto it = wave_looks.find(fid); it != wave_looks.end()) {
         return it->second;
     }
-    auto found = trusted(fid);
-    if(found) {
+    // Trust only confirms: a stale last look must never stand for a change
+    // the disk may not hold (a build may have read newer bytes than it).
+    if(auto last = trusted(fid); last && last == expected) {
         checks.trusted += 1;
         if(shadow) {
-            verify(fid, *found);
+            verify(fid, *last);
         }
+        return *last;
+    }
+    checks.looked += 1;
+    Look look{.found = Look::Found::Missing};
+    if(auto status = wave_statuses.status(path(fid)); !status) {
+        saw_missing(fid);
+    } else if(auto obs = observe_for(fid, *status)) {
+        look = {.found = Look::Found::Read, .hash = obs->hash};
     } else {
-        checks.looked += 1;
-        found = Look{.kind = Look::Missing};
-        if(auto status = wave_statuses.status(path(fid)); !status) {
-            saw_missing(fid);
-        } else if(auto obs = observe_for(fid, *status)) {
-            found = Look{.kind = Look::Read, .hash = obs->hash};
-        } else {
-            found->kind = Look::Unreadable;
+        look.found = Look::Found::Unreadable;
+        if(auto it = files.find(fid); it != files.end()) {
+            unreadable(it->second);
         }
     }
-    wave_looks.try_emplace(fid, *found);
-    return *found;
+    wave_looks.try_emplace(fid, look);
+    return look;
+}
+
+void DiskState::unreadable(File& file) {
+    file.due = std::min(file.due, now());
 }
 
 std::optional<DiskState::Look> DiskState::trusted(Fid fid) {
@@ -289,31 +287,31 @@ std::optional<DiskState::Look> DiskState::trusted(Fid fid) {
         return std::nullopt;
     }
     auto& file = it->second;
-    if(policy(file).kind != Class::Package || file.due <= now()) {
+    if(policy(file).kind != Kind::Package || file.due <= now()) {
         return std::nullopt;
     }
     if(!file.seen) {
-        return Look{.kind = Look::Missing};
+        return Look{.found = Look::Found::Missing};
     }
-    return Look{.kind = Look::Read, .hash = *file.seen};
+    return Look{.found = Look::Found::Read, .hash = *file.seen};
 }
 
 void DiskState::verify(Fid fid, const Look& found) {
-    Look truth{.kind = Look::Missing};
+    Look truth{.found = Look::Found::Missing};
     if(auto status = vfs::status(path(fid))) {
         auto& pair = files.find(fid)->second.pair;
         if(pair && pair->stamp == status->stamp) {
-            truth = {.kind = Look::Read, .hash = pair->hash};
+            truth = {.found = Look::Found::Read, .hash = pair->hash};
         } else if(auto observed = read_observed(path(fid))) {
-            truth = {.kind = Look::Read, .hash = observed->obs.hash};
+            truth = {.found = Look::Found::Read, .hash = observed->obs.hash};
         } else {
             return;
         }
     }
-    if(truth.kind != found.kind || truth.hash != found.hash) {
+    if(truth != found) {
         auto describe = [](const Look& look) {
-            return look.kind == Look::Missing ? std::string("missing")
-                                              : std::format("hash {:016x}", look.hash);
+            return look.found == Look::Found::Missing ? std::string("missing")
+                                                      : std::format("hash {:016x}", look.hash);
         };
         LOG_ANOMALY(StaleTrust,
                     "{} was trusted as {} but holds {}",
@@ -336,6 +334,10 @@ std::uint32_t DiskState::root_of(llvm::StringRef path) const {
 
 void DiskState::schedule(Fid fid, File& file, Clock::time_point at) {
     file.due = at;
+    enqueue(fid, file, at);
+}
+
+void DiskState::enqueue(Fid fid, File& file, Clock::time_point at) {
     if(policy(file).max == Clock::duration::zero() || at >= file.queued) {
         return;
     }
@@ -346,7 +348,7 @@ void DiskState::schedule(Fid fid, File& file, Clock::time_point at) {
 
 void DiskState::look_flags() {
     // An owner may watch or drop flags when it hears of a change.
-    std::erase_if(watches, [](const std::weak_ptr<Watch>& watch) { return watch.expired(); });
+    llvm::erase_if(watches, [](const std::weak_ptr<Watch>& watch) { return watch.expired(); });
     llvm::SmallVector<std::shared_ptr<Watch>> live;
     for(auto& watch: watches) {
         live.push_back(watch.lock());
@@ -361,29 +363,32 @@ void DiskState::look_flags() {
 void DiskState::look_at(Fid fid, StatusBatch& statuses) {
     if(auto status = statuses.status(path(fid)); !status) {
         saw_missing(fid);
-    } else {
-        observe_for(fid, *status);
+    } else if(!observe_for(fid, *status)) {
+        if(auto it = files.find(fid); it != files.end()) {
+            unreadable(it->second);
+        }
     }
 }
 
 bool Flag::look() {
-    std::optional<std::uint64_t> found;
     auto status = vfs::status(path);
-    if(status && stamp == status->stamp) {
+    std::optional<std::uint64_t> found;
+    if(status && hashed == status->stamp) {
         found = hash;
     } else {
-        stamp.reset();
+        hashed.reset();
         if(status) {
             if(auto observed = read_observed(path)) {
                 found = observed->obs.hash;
                 if(observed->obs.reliable) {
-                    stamp = observed->obs.stamp;
+                    hashed = observed->obs.stamp;
                 }
             }
         }
     }
-    bool was_missing = std::exchange(missing, !status);
-    return std::exchange(hash, found) != found || was_missing != missing;
+    auto now = status ? std::optional(status->stamp) : std::nullopt;
+    bool moved = std::exchange(stamp, now) != now;
+    return std::exchange(hash, found) != found || moved;
 }
 
 }  // namespace clice::vfs

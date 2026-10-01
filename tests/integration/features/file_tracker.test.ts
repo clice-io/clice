@@ -363,7 +363,7 @@ test("cdb flag change reindexes closed", async ({ session }) => {
     ).toBe(true);
 });
 
-test("rewrite before first sweep reported", async ({ session }) => {
+test("rewrite before first tick reported", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("header.h", HEADER_V1);
     workspace.write("closed.cpp", '#include "header.h"\nint use_target() { return TARGET(); }\n');
@@ -377,7 +377,7 @@ test("rewrite before first sweep reported", async ({ session }) => {
         "initial index never resolved the closed TU's alpha call",
     ).toBe(true);
 
-    // No seeding sweep: the first one judges the header against the bytes
+    // No seeding tick: the first one judges the header against the bytes
     // the startup scan read.
     await sleep(MTIME_GRANULARITY);
     workspace.write("header.h", HEADER_V2);
@@ -514,4 +514,27 @@ test("save looks at installed headers", async ({ session }) => {
     client.save(main);
     await client.waitForRecompile(main);
     client.assertNoErrors(main, "the save must look at the installed header");
+});
+
+test("background ticks see a rewrite", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("header.h", HEADER_V1);
+    workspace.write("closed.cpp", '#include "header.h"\nint use_target() { return TARGET(); }\n');
+    workspace.writeCDB(["closed.cpp"]);
+    await client.initialize(workspace, {
+        initializationOptions: { tracker: { workspace_poll_seconds: 1 } },
+    });
+
+    const headerUri = workspace.uri("header.h");
+    const closedUri = workspace.uri("closed.cpp");
+    expect(await client.waitForReference(headerUri, 2, 11, closedUri)).toBe(true);
+
+    // No hook, no save, and the index answers without looking at the disk:
+    // only a tick can see the rewrite.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("header.h", HEADER_V2);
+    expect(
+        await client.waitForReference(headerUri, 3, 11, closedUri),
+        "a background tick must see the rewrite",
+    ).toBe(true);
 });

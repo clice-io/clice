@@ -2,13 +2,10 @@
 
 #include <cassert>
 #include <cstdint>
-#include <format>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
 
-#include "support/filesystem.h"
 #include "syntax/scan.h"
 #include "vfs/dir_cache.h"
 #include "vfs/disk_state.h"
@@ -17,7 +14,6 @@
 #include "vfs/path.h"
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -175,10 +171,6 @@ struct FileTable {
 
     bool seen_missing(Fid fid) const {
         return disk.seen_missing(fid);
-    }
-
-    llvm::SmallVector<Fid> missing_files() const {
-        return disk.missing_files();
     }
 
     llvm::SmallVector<Fid> take_changes() {

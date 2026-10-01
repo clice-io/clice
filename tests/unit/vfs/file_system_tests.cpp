@@ -173,7 +173,11 @@ TEST_CASE(BatchAgreesWithStatus) {
     auto sub = batch.status(tmp.path("dir/sub"));
     ASSERT_TRUE(sub.has_value());
     ASSERT_TRUE(sub->type == llvm::sys::fs::file_type::directory_file);
-    ASSERT_TRUE(sub->stamp == vfs::status(tmp.path("dir/sub"))->stamp);
+    // A directory's times in its parent's listing may lag behind its own:
+    // only its identity is compared.
+    auto direct = vfs::status(tmp.path("dir/sub"));
+    ASSERT_EQ(sub->stamp.device, direct->stamp.device);
+    ASSERT_EQ(sub->stamp.file, direct->stamp.file);
     auto missing = batch.status(tmp.path("dir/none.h"));
     ASSERT_FALSE(missing.has_value());
     ASSERT_TRUE(missing.error() == std::errc::no_such_file_or_directory);

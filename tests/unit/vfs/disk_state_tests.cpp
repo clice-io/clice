@@ -6,6 +6,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "support/anomaly.h"
+#include "support/filesystem.h"
 #include "vfs/file_table.h"
 #include "vfs/path.h"
 
@@ -106,6 +107,7 @@ TEST_CASE(TrustedMissingStays) {
     Fixture f;
     auto fid = f.table.intern(Spelling::absolute(f.tmp.path("pkg/none.h")));
     f.disk.saw_missing(fid);
+    ASSERT_TRUE(f.disk.take_changes().empty());
     f.file("pkg/none.h", "int a;\n");
     {
         auto wave = f.disk.wave();
@@ -114,6 +116,47 @@ TEST_CASE(TrustedMissingStays) {
     f.time += vfs::DiskState::package_policy.min;
     auto wave = f.disk.wave();
     ASSERT_TRUE(f.disk.present(fid));
+}
+
+TEST_CASE(TrustOnlyConfirms) {
+    // A build that read newer bytes than the last look is not told they
+    // changed: only a look may say so.
+    Fixture f;
+    auto fid = f.file("pkg/a.h", "int a;\n");
+    f.hash_of(fid);
+    f.rewrite("pkg/a.h", "int b;\n");
+    ASSERT_TRUE(f.check(fid, llvm::xxh3_64bits("int b;\n")) == Verdict::Fresh);
+    ASSERT_EQ(f.disk.take_changes(), llvm::SmallVector<Fid>{fid});
+
+    // Nor that a place it found empty, after an upgrade removed the file
+    // there, is still filled.
+    auto gone = f.file("pkg/gone.h", "int c;\n");
+    f.hash_of(gone);
+    fs::remove_all(f.tmp.path("pkg/gone.h"));
+    auto wave = f.disk.wave();
+    ASSERT_FALSE(f.disk.present(gone));
+}
+
+TEST_CASE(OneLookPerWave) {
+    Fixture f;
+    auto fid = f.file("src/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    auto wave = f.disk.wave();
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash + 1) == Verdict::Stale);
+    ASSERT_EQ(f.disk.checks.looked, 1u);
+}
+
+TEST_CASE(DeepestRootDecides) {
+    // A workspace root registered after a package root inside it leaves
+    // the package's files trusted.
+    Fixture f;
+    f.disk.add_root(CanonicalPath(Spelling::absolute(f.tmp.root)).str(),
+                    vfs::DiskState::workspace_policy);
+    auto fid = f.file("pkg/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    f.rewrite("pkg/a.h", "int b;\n");
+    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
 }
 
 TEST_CASE(TickLooksWhenDue) {
@@ -265,7 +308,8 @@ TEST_CASE(EnvironmentInstallMakesDue) {
     f.rewrite("env/include/a.h", "int b;\n");
     ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
 
-    f.rewrite("env/conda-meta/history", "==> 2 <==\n");
+    // pixi rewrites the history with the same line every time.
+    f.rewrite("env/conda-meta/history", "==> 1 <==\n");
     ASSERT_EQ(f.tick(), llvm::SmallVector<Fid>{fid});
 }
 

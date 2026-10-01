@@ -1,4 +1,5 @@
 #include <chrono>
+#include <thread>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -266,6 +267,34 @@ TEST_CASE(ResponseRewriteBeforeWatch) {
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     EXPECT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main});
     EXPECT_TRUE(tracker.tick_cdb().empty());
+}
+
+TEST_CASE(ResponseAddedByReload) {
+    /// A response file a reload starts reading is watched from then on.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("flags.rsp", "-DONE\n");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
+    }));
+    ASSERT_EQ(tracker.tick_cdb(/*force=*/true).size(), 1u);
+
+    tmp.touch("flags.rsp", "-DTWO\n");
+    EXPECT_TRUE(tracker.tick_cdb().empty());
+    auto events = tracker.tick_cdb();
+    ASSERT_EQ(events.size(), 1u);
+    auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    EXPECT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main});
 }
 
 TEST_CASE(CDBTickRenameOver) {
@@ -563,6 +592,8 @@ TEST_CASE(CDBForgedStampSeen) {
     ASSERT_TRUE(tracker.tick_cdb().empty());
     ASSERT_TRUE(tracker.tick_cdb().empty());
 
+    // Past the coarse clock inode times are taken from.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
@@ -574,7 +605,7 @@ TEST_CASE(CDBForgedStampSeen) {
 
 /// One workspace tick of the test hook: a look at every file, the
 /// build's default sources refreshed, and the disk changes those looks saw.
-llvm::SmallVector<FileEvent> sweep(FileTracker& tracker, FileTable& files) {
+llvm::SmallVector<FileEvent> workspace_tick(FileTracker& tracker, FileTable& files) {
     files.disk.look_all();
     auto events = tracker.tick_sources();
     for(auto& event: take_disk_events(files)) {
@@ -595,33 +626,33 @@ TEST_CASE(WorkspaceTickStateMachine) {
 
     // A first look is no change.
     project.file_table.current(header);
-    ASSERT_TRUE(sweep(tracker, files).empty());
+    ASSERT_TRUE(workspace_tick(tracker, files).empty());
 
     // Content change is confirmed by hash and reported once. The new
     // content has a different LENGTH on purpose: back-to-back writes can
     // land within one mtime tick (observed on Windows CI), and only the
     // size change keeps the stamp fast path deterministic.
     tmp.touch("header.h", R"(int x = 2222;)");
-    auto changed = sweep(tracker, files);
+    auto changed = workspace_tick(tracker, files);
     ASSERT_EQ(changed.size(), 1u);
     ASSERT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
     ASSERT_EQ(changed[0].path_id, header);
 
     // Touch: mtime may bump, identical bytes — silent either way.
     tmp.touch("header.h", R"(int x = 2222;)");
-    ASSERT_TRUE(sweep(tracker, files).empty());
+    ASSERT_TRUE(workspace_tick(tracker, files).empty());
 
     // Removal reported once, then quiet while missing.
     fs::remove_all(tmp.path("header.h"));
-    auto removed = sweep(tracker, files);
+    auto removed = workspace_tick(tracker, files);
     ASSERT_EQ(removed.size(), 1u);
     ASSERT_EQ(removed[0].kind, FileEvent::Kind::DiskRemoved);
     ASSERT_EQ(removed[0].path_id, header);
-    ASSERT_TRUE(sweep(tracker, files).empty());
+    ASSERT_TRUE(workspace_tick(tracker, files).empty());
 
     // Reappearance counts as a disk change.
     tmp.touch("header.h", R"(int x = 3;)");
-    auto reborn = sweep(tracker, files);
+    auto reborn = workspace_tick(tracker, files);
     ASSERT_EQ(reborn.size(), 1u);
     ASSERT_EQ(reborn[0].kind, FileEvent::Kind::DiskChanged);
 }
@@ -647,10 +678,10 @@ TEST_CASE(WorkspaceTickKeepsListedMember) {
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     auto both = project.file_table.intern(Spelling::absolute(tmp.path("src/both.cpp")));
     project.file_table.current(both);
-    ASSERT_TRUE(sweep(tracker, files).empty());
+    ASSERT_TRUE(workspace_tick(tracker, files).empty());
 
     fs::remove_all(tmp.path("src/both.cpp"));
-    auto removed = sweep(tracker, files);
+    auto removed = workspace_tick(tracker, files);
     ASSERT_EQ(removed.size(), 1u);
     ASSERT_EQ(removed[0].kind, FileEvent::Kind::DiskRemoved);
     ASSERT_EQ(removed[0].path_id, both);
@@ -670,17 +701,17 @@ TEST_CASE(WorkspaceTickSeesOpen) {
     store.open(header);
     project.file_table.current(header);
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT_TRUE(sweep(tracker, files).empty());
+    ASSERT_TRUE(workspace_tick(tracker, files).empty());
 
     tmp.touch("header.h", R"(int x = 2222;)");
-    auto changed = sweep(tracker, files);
+    auto changed = workspace_tick(tracker, files);
     ASSERT_EQ(changed.size(), 1u);
     ASSERT_EQ(changed[0].kind, FileEvent::Kind::DiskChanged);
     ASSERT_EQ(changed[0].path_id, header);
-    ASSERT_TRUE(sweep(tracker, files).empty());
+    ASSERT_TRUE(workspace_tick(tracker, files).empty());
 
     fs::remove_all(tmp.path("header.h"));
-    auto removed = sweep(tracker, files);
+    auto removed = workspace_tick(tracker, files);
     ASSERT_EQ(removed.size(), 1u);
     ASSERT_EQ(removed[0].kind, FileEvent::Kind::DiskRemoved);
     ASSERT_EQ(removed[0].path_id, header);
@@ -700,11 +731,11 @@ TEST_CASE(WorkspaceTickAfterScan) {
     tmp.touch("header.h", R"(int x = 2222;)");
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
-    auto first = sweep(tracker, files);
+    auto first = workspace_tick(tracker, files);
     ASSERT_EQ(first.size(), 1u);
     ASSERT_EQ(first[0].kind, FileEvent::Kind::DiskChanged);
     ASSERT_EQ(first[0].path_id, header);
-    ASSERT_TRUE(sweep(tracker, files).empty());
+    ASSERT_TRUE(workspace_tick(tracker, files).empty());
 }
 
 TEST_CASE(AnyLookReportsChange) {
@@ -723,10 +754,10 @@ TEST_CASE(AnyLookReportsChange) {
     tmp.touch("header.h", R"(int x = 2222;)");
     project.rescan_disk_file(header);
 
-    auto first = sweep(tracker, files);
+    auto first = workspace_tick(tracker, files);
     ASSERT_EQ(first.size(), 1u);
     ASSERT_EQ(first[0].kind, FileEvent::Kind::DiskChanged);
-    ASSERT_TRUE(sweep(tracker, files).empty());
+    ASSERT_TRUE(workspace_tick(tracker, files).empty());
 }
 
 TEST_CASE(CheckoutMakesWorkspaceDue) {
@@ -750,11 +781,36 @@ TEST_CASE(CheckoutMakesWorkspaceDue) {
 
     tmp.touch("header.h", R"(int x = 2222;)");
     files.disk.tick(std::chrono::hours(1));
-    ASSERT_TRUE(files.take_changes().empty());
+    ASSERT_TRUE(files.disk.take_changes().empty());
 
     tmp.touch(".git/index", "v2");
     files.disk.tick(std::chrono::hours(1));
-    ASSERT_EQ(files.take_changes(), llvm::SmallVector<Fid>{header});
+    ASSERT_EQ(files.disk.take_changes(), llvm::SmallVector<Fid>{header});
+}
+
+TEST_CASE(LinkedWorktreeWatched) {
+    /// A linked worktree's `.git` is a file naming its git directory, where
+    /// its own HEAD lives.
+    TempDir tmp;
+    tmp.touch("repo/.git/worktrees/wt/HEAD", "ref: refs/heads/main\n");
+    tmp.touch("wt/.git", "gitdir: ../repo/.git/worktrees/wt\n");
+    tmp.touch("wt/header.h", R"(int x = 1;)");
+
+    FileTable files;
+    auto time = vfs::DiskState::Clock::now();
+    files.disk.now = [&] {
+        return time;
+    };
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("wt/header.h")));
+    project.file_table.current(header);
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.path("wt"))));
+
+    tmp.touch("wt/header.h", R"(int x = 2222;)");
+    tmp.touch("repo/.git/worktrees/wt/HEAD", "ref: refs/heads/other\n");
+    files.disk.tick(std::chrono::hours(1));
+    ASSERT_EQ(files.disk.take_changes(), llvm::SmallVector<Fid>{header});
 }
 
 };  // TEST_SUITE(FileTracker)

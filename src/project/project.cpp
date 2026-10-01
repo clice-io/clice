@@ -51,8 +51,8 @@ void Project::rescan_disk_file(Fid path_id) {
     auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
 
-    // One read serves everything a save invalidates: the shared pair (so
-    // hash comparisons elsewhere stop re-reading), the lexical scan
+    // One read serves everything a save invalidates: the file's stamp and
+    // hash (so hash comparisons elsewhere stop re-reading), the lexical scan
     // (include edges and the module declaration), and the bytes the
     // module-decl preprocessor fallback must consume.
     auto observed = vfs::read_observed(path);
@@ -370,8 +370,8 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
                 continue;
             }
             // The unchanged mtime proves the disk still holds the consumed
-            // bytes, so their hash can be taken from the shared pair — or
-            // one read, unless the file moved between the stat and the
+            // bytes, so their hash can be taken from the last reliable read
+            // — or one read, unless the file moved between the stat and the
             // read, which voids the proof.
             auto obs = files.observe_for(dep.path_id, *status);
             if(!obs || obs->stamp != status->stamp) {

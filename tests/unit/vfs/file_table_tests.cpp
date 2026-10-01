@@ -78,10 +78,10 @@ TEST_CASE(RenameSaveReads) {
     ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
     EXPECT_TRUE(set_file_mtime(f, first->stamp.mtime_ns));
 
-    auto status = stamp_of(f);
-    ASSERT_EQ(status.size, first->stamp.size);
-    ASSERT_EQ(status.mtime_ns, first->stamp.mtime_ns);
-    ASSERT_FALSE(pool.cached_hash(fid, status).has_value());
+    auto stamp = stamp_of(f);
+    ASSERT_EQ(stamp.size, first->stamp.size);
+    ASSERT_EQ(stamp.mtime_ns, first->stamp.mtime_ns);
+    ASSERT_FALSE(pool.cached_hash(fid, stamp).has_value());
 
     auto reread = pool.read(fid);
     ASSERT_TRUE(reread.has_value());

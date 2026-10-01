@@ -73,7 +73,7 @@ private:
         /// The source's inputs, in CompilationDatabase::inputs order. The
         /// database is watched by the path the source names: a symlinked
         /// one may be pointed elsewhere since its load.
-        llvm::SmallVector<vfs::Flag> inputs;
+        llvm::SmallVector<vfs::Flag, 0> inputs;
     };
 
     /// The hashes of the source's last load.

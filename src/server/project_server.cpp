@@ -195,12 +195,7 @@ void ProjectServer::start() {
         return;
     }
     auto poll_seconds = std::chrono::seconds(project.config.tracker.workspace_poll_seconds.value);
-    project.file_table.disk.add_root(root,
-                                     {
-                                         .kind = vfs::DiskState::Class::Workspace,
-                                         .min = vfs::DiskState::workspace_policy.min,
-                                         .max = poll_seconds,
-                                     });
+    project.file_table.disk.add_root(root, {.max = poll_seconds});
     // Construct after the project load: the tracker baselines each
     // database at the read its entries came from.
     tracker = std::make_unique<FileTracker>(project, sessions, root);

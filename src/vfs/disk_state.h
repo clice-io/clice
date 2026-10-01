@@ -6,7 +6,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <vector>
 
 #include "vfs/file_system.h"
 #include "vfs/ids.h"
@@ -27,12 +26,14 @@ struct Flag {
     /// The content hash at the last look; nullopt while the file is
     /// missing or unreadable.
     std::optional<std::uint64_t> hash;
-    /// Whether the last look found no file at all.
-    bool missing = false;
-    /// The stamp a reliable read of `hash` was taken under.
+    /// The stamp at the last look; nullopt while the file is missing.
     std::optional<Stamp> stamp;
+    /// The stamp a reliable read of `hash` was taken under.
+    std::optional<Stamp> hashed;
 
-    /// Look again; whether the finding differs from the last one.
+    /// Look again; whether the stamp or the content moved. A marker can
+    /// move without its content: pixi rewrites an environment's history
+    /// with the same line at every install.
     bool look();
 };
 
@@ -50,15 +51,16 @@ struct Flag {
 /// Each file looked at is also due for its next look after an interval
 /// that tick() keeps: one of its class's, doubled at every look that finds
 /// the file unchanged and dropped back to the shortest at a change. A
-/// check of a workspace file always looks; a check of a package file may
-/// answer from the last look while that one is not due — no tick running
-/// lets every file fall due, so every check looks again.
+/// check of a workspace file always looks; a check of a package file is
+/// answered "unchanged" without a look when the last look, not yet due,
+/// found what the check expects — any other answer is the disk's. No tick
+/// running lets every file fall due, so every check looks again.
 class DiskState {
 public:
     using Clock = std::chrono::steady_clock;
 
     /// Who changes a file, which decides how a check answers for it.
-    enum class Class : std::uint8_t {
+    enum class Kind : std::uint8_t {
         /// The user, and the tools they run — sources, generated files,
         /// anything under no registered root, edited by agents outside the
         /// editor as often as in it: a check always looks.
@@ -70,7 +72,7 @@ public:
 
     /// How often the files of a root are looked at.
     struct Policy {
-        Class kind = Class::Workspace;
+        Kind kind = Kind::Workspace;
         Clock::duration min = std::chrono::seconds(1);
         /// Zero: never looked at in the background.
         Clock::duration max = std::chrono::seconds(30);
@@ -91,10 +93,6 @@ public:
 
     /// Whether the last look through this fid found the file missing.
     bool seen_missing(Fid fid) const;
-
-    /// Every fid the last look found missing: deleted files, and the places
-    /// failed lookups looked — where a file appearing is a change.
-    llvm::SmallVector<Fid> missing_files() const;
 
     /// The changed files, in first-change order, emptying the queue.
     llvm::SmallVector<Fid> take_changes();
@@ -261,9 +259,11 @@ private:
 
     /// What a wave's look at a file found.
     struct Look {
-        enum Kind : std::uint8_t { Missing, Unreadable, Read } kind;
+        enum class Found : std::uint8_t { Missing, Unreadable, Read } found;
 
         std::uint64_t hash = 0;
+
+        friend bool operator==(const Look&, const Look&) = default;
     };
 
     llvm::StringRef path(Fid fid) const {
@@ -277,11 +277,17 @@ private:
     /// fs::settled), else twice the last one.
     void saw(Fid fid, std::optional<std::uint64_t> hash, bool settled);
 
-    /// The wave's look at a file, taken once per wave.
-    Look wave_look(Fid fid);
+    /// The wave's look at a file, taken once per wave — unless the last
+    /// look, at a package file not yet due, found what is `expected`.
+    Look wave_look(Fid fid, std::optional<Look> expected);
 
     /// The last look's finding, for a package file not yet due.
     std::optional<Look> trusted(Fid fid);
+
+    /// A look found the file there but could not read it: nothing is
+    /// recorded, and nothing is answered from the last look until a read
+    /// succeeds.
+    void unreadable(File& file);
 
     /// Report a trusted finding a look contradicts.
     void verify(Fid fid, const Look& found);
@@ -292,9 +298,11 @@ private:
 
     std::uint32_t root_of(llvm::StringRef path) const;
 
-    /// Make the file due at `at`, queueing it unless an earlier entry
-    /// already will bring it up.
+    /// Make the file due at `at`, queueing it.
     void schedule(Fid fid, File& file, Clock::time_point at);
+
+    /// Bring the file up at `at`, unless an earlier entry already will.
+    void enqueue(Fid fid, File& file, Clock::time_point at);
 
     void look_flags();
 
@@ -318,13 +326,13 @@ private:
     StatusBatch wave_statuses;
     bool wave_open = false;
 
-    std::vector<Root> roots;
+    llvm::SmallVector<Root> roots;
 
     /// A min-heap on `at`. An entry whose time is not its file's `queued`
     /// is a leftover of a rescheduling, skipped when it comes up.
-    std::vector<Due> queue;
+    llvm::SmallVector<Due> queue;
 
-    std::vector<std::weak_ptr<Watch>> watches;
+    llvm::SmallVector<std::weak_ptr<Watch>> watches;
 
     /// The install history watched for each conda environment.
     llvm::StringMap<std::shared_ptr<const Flag>> environments;
@@ -333,7 +341,7 @@ private:
 const inline DiskState::Policy DiskState::workspace_policy{};
 
 const inline DiskState::Policy DiskState::package_policy{
-    .kind = Class::Package,
+    .kind = Kind::Package,
     .min = std::chrono::seconds(30),
     .max = std::chrono::minutes(10),
 };

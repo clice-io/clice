@@ -102,10 +102,12 @@ using StatusResult = std::expected<Status, std::error_code>;
 
 #ifdef _WIN32
 
-/// FILETIME ticks (100 ns since 1601) as nanoseconds since the Unix epoch.
+/// FILETIME ticks (100 ns since 1601) as nanoseconds since the Unix epoch;
+/// a time no clock reaches (FAT's zero ChangeTime) wraps rather than
+/// overflows.
 std::int64_t unix_ns(std::uint64_t ticks) {
-    constexpr std::int64_t unix_epoch = 116'444'736'000'000'000;
-    return (static_cast<std::int64_t>(ticks) - unix_epoch) * 100;
+    constexpr std::uint64_t unix_epoch = 116'444'736'000'000'000;
+    return static_cast<std::int64_t>((ticks - unix_epoch) * 100);
 }
 
 Status make_status(DWORD attributes,

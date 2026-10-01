@@ -928,11 +928,10 @@ void LSPClient::register_extensions() {
                                 kota::ipc::Error{protocol::ErrorCode::InvalidParams,
                                                  R"(loop must be "cdb" or "workspace")"});
                         }
-                        // Every project ticks; the reply counts the events of all.
-                        // A workspace tick looks at every file first.
                         if(params.loop == "workspace") {
                             srv.files.disk.look_all();
                         }
+                        // Every project ticks; the reply counts the events of all.
                         std::uint32_t count = 0;
                         bool loaded = false;
                         for(std::size_t i = 0; i < srv.projects.size(); i += 1) {

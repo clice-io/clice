@@ -23,7 +23,7 @@
         },
         "tracker": {
             "$ref": "#/$defs/TrackerConfig",
-            "description": "The [tracker] section: file tracker poll intervals.",
+            "description": "The [tracker] section: background polling of files.",
             "default": {
                 "workspace_poll_seconds": 30
             }

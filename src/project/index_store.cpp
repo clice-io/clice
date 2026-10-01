@@ -525,8 +525,9 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
                 // The worker had no buffer to hash (e.g. behind a PCM) and
                 // no rows recorded one; the unchanged mtime proves the disk
                 // still holds the consumed bytes, so take their hash from
-                // the shared pair — or one read, unless the file moved
-                // between the stat and the read, which voids the proof.
+                // the last reliable read — or one read, unless the file
+                // moved between the stat and the read, which voids the
+                // proof.
                 auto obs = project.file_table.observe_for(file_ids_map[i], *status);
                 if(obs && obs->stamp == status->stamp) {
                     hash = obs->hash;
