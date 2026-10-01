@@ -31,6 +31,11 @@ auto decl_of(clang::QualType type, TemplateResolver* resolver = nullptr) -> cons
 /// of "int".
 auto unwrap(clang::TypeLoc type, bool unwrap_function_type = true) -> clang::TypeLoc;
 
+/// The same for a type: the element type behind every pointer, reference
+/// and array layer written in it, e.g. `int` for `const int*(&)[3]`. A
+/// layer behind a type alias stays: the alias is what the type names.
+auto unwrap(clang::QualType type) -> clang::QualType;
+
 /// Return the type a TypeDecl declares, preferring the sugared form with
 /// template arguments as written for class template specializations.
 auto declared_type(const clang::TypeDecl* decl) -> clang::QualType;

@@ -533,7 +533,7 @@ public:
             }
 
             auto* VD = llvm::cast<clang::ValueDecl>(D);
-            if(auto target = types::decl_of(VD->getType())) {
+            if(auto target = types::decl_of(types::unwrap(VD->getType()))) {
                 add_pair_relation(VD, RelationKind::TypeDefinition, target, VD->getLocation());
             }
             return;
@@ -548,7 +548,7 @@ public:
         }
 
         if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(D)) {
-            if(auto target = types::decl_of(TND->getUnderlyingType())) {
+            if(auto target = types::decl_of(types::unwrap(TND->getUnderlyingType()))) {
                 add_pair_relation(TND, RelationKind::TypeDefinition, target, TND->getLocation());
             }
             return;

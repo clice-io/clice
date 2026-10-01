@@ -1,0 +1,142 @@
+---
+created_at: 2026-10-01
+input_file: go_to_type_definition/07_typedef_pointer_reference.cpp
+---
+array:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "19:11-19:16" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "19:11-19:16" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "19:11-19:16" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "21:36-21:41" }
+
+array_parameter:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "18:17-18:22" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "18:17-18:22" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "18:17-18:22" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "22:39-22:44" }
+
+const_reference:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:24-17:27" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:24-17:27" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:24-17:27" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "21:11-21:14" }
+
+field_pointer:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "13:12-13:19" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "13:12-13:19" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "13:12-13:19" }
+
+field_reference:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "14:12-14:21" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "14:12-14:21" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "14:12-14:21" }
+
+pointer:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:37-17:40" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:37-17:40" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:37-17:40" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "20:25-20:28" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "21:23-21:26" }
+
+pointer_to_const:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "20:18-20:22" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "20:18-20:22" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "20:18-20:22" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "22:25-22:29" }
+
+rvalue:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:51-17:56" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:51-17:56" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:51-17:56" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "22:11-22:16" }
+
+type:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "13:4-13:10" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "14:4-14:10" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:16-17:22" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:29-17:35" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:42-17:48" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "18:10-18:16" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "19:4-19:10" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "20:10-20:16" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+
+use_array:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "19:11-19:16" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "19:11-19:16" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "19:11-19:16" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "21:36-21:41" }
+
+use_pointer:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:37-17:40" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:37-17:40" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:37-17:40" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "20:25-20:28" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "21:23-21:26" }
+
+use_reference:
+  definition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:24-17:27" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:24-17:27" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "17:24-17:27" }
+    - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "21:11-21:14" }
