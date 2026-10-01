@@ -31,8 +31,9 @@ namespace {
 /// `imports` and `region`; servers may add custom values).
 ///
 /// A delimited fold spans its delimiters, which `collapsed_text` repeats; a
-/// section fold (a conditional branch, a region) runs from the end of its
-/// header line to the next header, which stays visible.
+/// section fold (an access-specifier section, a conditional branch, a
+/// region) runs from the end of its header line to the next header, which
+/// stays visible.
 class FoldingRangeCollector {
 public:
     explicit FoldingRangeCollector(CompilationUnitRef unit) :
@@ -224,27 +225,19 @@ private:
     }
 
     void collect_access_specifiers(const clang::CXXRecordDecl* record) {
-        clang::AccessSpecDecl* previous = nullptr;
-        for(auto* member: record->decls()) {
-            auto* access = llvm::dyn_cast<clang::AccessSpecDecl>(member);
-            if(!access) {
-                continue;
-            }
-
+        const clang::AccessSpecDecl* previous = nullptr;
+        auto close = [&](clang::SourceLocation next) {
             if(previous) {
-                add_range(
-                    clang::SourceRange(previous->getColonLoc(), access->getAccessSpecifierLoc()),
-                    "accessSpecifier",
-                    "");
+                add_section(previous->getColonLoc(), next, "accessSpecifier");
             }
-            previous = access;
+        };
+        for(auto* member: record->decls()) {
+            if(auto* access = llvm::dyn_cast<clang::AccessSpecDecl>(member)) {
+                close(access->getAccessSpecifierLoc());
+                previous = access;
+            }
         }
-
-        if(previous) {
-            add_range(clang::SourceRange(previous->getColonLoc(), record->getBraceRange().getEnd()),
-                      "accessSpecifier",
-                      "");
-        }
+        close(record->getBraceRange().getEnd());
     }
 
     void collect_parameter_list(clang::SourceLocation left, clang::SourceLocation right) {
@@ -340,6 +333,16 @@ private:
         });
     }
 
+    void add_section(clang::SourceLocation header,
+                     clang::SourceLocation next,
+                     protocol::FoldingRangeKind kind) {
+        auto [header_fid, header_offset] = unit.decompose_location(unit.file_location(header));
+        auto [next_fid, next_offset] = unit.decompose_location(unit.file_location(next));
+        if(header_fid == unit.main_file() && next_fid == unit.main_file()) {
+            add_section(header_end(header_offset), next_offset, std::move(kind));
+        }
+    }
+
     /// `begin` ends a header line; a section hiding no whole line is noise.
     void add_section(std::uint32_t begin, std::uint32_t end, protocol::FoldingRangeKind kind) {
         if(end <= begin || content.substr(begin, end - begin).count('\n') < 2) {
@@ -349,6 +352,12 @@ private:
             .range = {begin, end},
             .kind = std::move(kind)
         });
+    }
+
+    /// Where the text of the line holding `offset` ends.
+    std::uint32_t header_end(std::uint32_t offset) {
+        return static_cast<std::uint32_t>(
+            std::min(content.find_first_of("\r\n", offset), content.size()));
     }
 
     CompilationUnitRef unit;
