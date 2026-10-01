@@ -16,6 +16,7 @@
 #include "llvm/Support/Casting.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/StmtCXX.h"
@@ -103,6 +104,8 @@ public:
 
 private:
     void collect_decl(const clang::Decl* decl) {
+        collect_template_parameters(decl);
+
         if(llvm::isa<clang::UsingDecl, clang::UsingDirectiveDecl, clang::UsingEnumDecl>(decl)) {
             auto begin = unit.file_location(decl->getBeginLoc());
             auto end = unit.file_location(decl->getEndLoc());
@@ -161,6 +164,9 @@ private:
     void collect_stmt(const clang::Stmt* stmt, std::uint32_t parent) {
         if(const auto* lambda = llvm::dyn_cast<clang::LambdaExpr>(stmt)) {
             add_range(lambda->getIntroducerRange(), "lambdaCapture", "[...]");
+            if(!lambda->getExplicitTemplateParameters().empty()) {
+                add_template_parameters(lambda->getTemplateParameterList());
+            }
             if(lambda->hasExplicitParameters()) {
                 collect_parameter_list(lambda->getCallOperator());
             }
@@ -264,6 +270,36 @@ private:
             }
         }
         close(record->getBraceRange().getEnd());
+    }
+
+    /// A template's own parameter list, and the outer lists an out-of-line
+    /// member definition repeats for its enclosing templates.
+    void collect_template_parameters(const clang::Decl* decl) {
+        if(const auto* templated = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
+            add_template_parameters(templated->getTemplateParameters());
+        } else if(const auto* partial =
+                      llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(decl)) {
+            add_template_parameters(partial->getTemplateParameters());
+        } else if(const auto* partial =
+                      llvm::dyn_cast<clang::VarTemplatePartialSpecializationDecl>(decl)) {
+            add_template_parameters(partial->getTemplateParameters());
+        }
+
+        llvm::ArrayRef<clang::TemplateParameterList*> outer;
+        if(const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(decl)) {
+            outer = declarator->getTemplateParameterLists();
+        } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
+            outer = tag->getTemplateParameterLists();
+        }
+        for(const auto* parameters: outer) {
+            add_template_parameters(parameters);
+        }
+    }
+
+    void add_template_parameters(const clang::TemplateParameterList* parameters) {
+        add_range(clang::SourceRange(parameters->getLAngleLoc(), parameters->getRAngleLoc()),
+                  "templateParams",
+                  "<...>");
     }
 
     void collect_parameter_list(const clang::FunctionDecl* function) {

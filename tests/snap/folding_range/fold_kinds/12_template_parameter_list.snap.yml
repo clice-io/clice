@@ -1,0 +1,16 @@
+---
+created_at: 2026-10-01
+input_file: fold_kinds/12_template_parameter_list.cpp
+---
+- { range: "0:37-9:15", kind: comment }
+- { range: "14:8-18:1", kind: templateParams, collapsed_text: "<...>" }
+- { range: "19:16-25:1", kind: class, collapsed_text: "{...}" }
+- { range: "20:12-23:5", kind: templateParams, collapsed_text: "<...>" }
+- { range: "27:8-31:1", kind: templateParams, collapsed_text: "<...>" }
+- { range: "32:8-35:1", kind: templateParams, collapsed_text: "<...>" }
+- { range: "38:8-41:1", kind: templateParams, collapsed_text: "<...>" }
+- { range: "44:8-47:18", kind: templateParams, collapsed_text: "<...>" }
+- { range: "44:17-47:1", kind: templateParams, collapsed_text: "<...>" }
+- { range: "50:8-52:1", kind: templateParams, collapsed_text: "<...>" }
+- { range: "55:8-56:20", kind: templateParams, collapsed_text: "<...>" }
+- { range: "59:17-62:1", kind: templateParams, collapsed_text: "<...>" }
