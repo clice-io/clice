@@ -4,3 +4,4 @@ input_file: macro_has_include.cpp
 ---
 - { range: "3:8-3:20", target: "${WS}/header_a.h" }
 - { range: "4:9-4:21", target: "${WS}/header_a.h" }
+- { range: "7:8-7:20", target: "${WS}/header_b.h" }
