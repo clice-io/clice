@@ -169,6 +169,20 @@ struct U {
 )");
     apply("f", "Define 'U<T, T1_>::f' out of line");
     EXPECT_APPENDED("template <class T, class T1_>\nT1 U<T, T1_>::f() {\n}\n", "f");
+
+    run(R"(
+struct T0 {};
+struct Outer {
+    template <class>
+    struct Inner;
+};
+template <class>
+struct Outer::Inner {
+    void §(f)f(T0);
+};
+)");
+    apply("f", "Define 'Outer::Inner<T0_>::f' out of line");
+    EXPECT_APPENDED("template <class T0_>\nvoid Outer::Inner<T0_>::f(T0) {\n}\n", "f");
 }
 
 TEST_CASE(ConstrainedTemplateParameter) {
@@ -454,6 +468,21 @@ namespace b { void §(f)f(a::C c); }
 namespace a { struct C {}; }
 )");
     EXPECT_EQ(definitions("f"), std::vector<std::string>{});
+
+    run(R"(
+struct C;
+namespace { C §(f)f(); }
+struct C {};
+)");
+    EXPECT_EQ(definitions("f"), std::vector<std::string>{});
+
+    run(R"(
+struct C;
+namespace a { C §(g)g(); }
+struct C {};
+)");
+    apply("g", "Define 'a::g' out of line");
+    EXPECT_APPENDED("C a::g() {\n}\n", "g");
 }
 
 TEST_CASE(LayoutKeptWithoutStyle) {

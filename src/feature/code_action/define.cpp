@@ -653,9 +653,31 @@ std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnitRef u
     return last;
 }
 
+/// Whether a definition spelled at `from` defines `decl`. `from` must
+/// enclose it, and a function outside a class must sit in namespaces its
+/// qualifier names: one the qualifier skips, unnamed or inline, would
+/// leave the definition declaring a new function.
+bool defines_from(const clang::FunctionDecl* decl, const clang::DeclContext* from) {
+    auto* scope = from->getRedeclContext();
+    if(!scope->Encloses(decl->getDeclContext())) {
+        return false;
+    }
+    if(llvm::isa<clang::CXXMethodDecl>(decl)) {
+        return true;
+    }
+    for(auto* context = decl->getDeclContext()->getRedeclContext(); !context->Equals(scope);
+        context = context->getParent()->getRedeclContext()) {
+        auto* ns = llvm::cast<clang::NamespaceDecl>(context);
+        if(ns->isAnonymousNamespace() || ns->isInline()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /// The placement moved past `definition` when it lies further on in the
-/// main file; nullopt when the definition comes later elsewhere, or where
-/// it ends the function's scope is out of reach.
+/// main file; nullopt when the definition comes later elsewhere, or a
+/// definition of the function past it could not name the function.
 std::optional<Placement> placement_past(CompilationUnitRef unit,
                                         Placement placement,
                                         const clang::TagDecl* definition,
@@ -665,7 +687,7 @@ std::optional<Placement> placement_past(CompilationUnitRef unit,
         return placement;
     }
     auto moved = placement_after(unit, file_scope_anchor(definition));
-    if(!moved || !moved->from->getRedeclContext()->Encloses(decl->getDeclContext())) {
+    if(!moved || !defines_from(decl, moved->from)) {
         return std::nullopt;
     }
     return moved;

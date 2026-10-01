@@ -62,8 +62,9 @@ std::optional<std::string> override_declaration(CompilationUnitRef unit,
     // type is printed around a placeholder rather than the declarator
     // itself: type_name rewrites its whole output (drops namespace
     // prefixes, binds `*` and `&` to the type), which must not reach the
-    // parameters or the exception specification.
-    constexpr llvm::StringRef placeholder = "clice_override_declarator";
+    // parameters or the exception specification. No spelling of a type
+    // holds the placeholder's control character.
+    constexpr llvm::StringRef placeholder = "_\x01";
     auto text = type_name(context, method->getReturnType(), record, placeholder);
     if(!text) {
         return std::nullopt;

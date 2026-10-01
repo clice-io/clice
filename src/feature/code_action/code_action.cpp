@@ -138,45 +138,45 @@ const clang::TemplateParameterList* template_parameters(const clang::CXXRecordDe
 
 /// The name a class template's parameter is spelled with out of line. An
 /// unnamed one needs a name the class qualifier can refer to: `T<index>`,
-/// made unlike every identifier the outermost enclosing class spells (the
-/// parameters of its templates and member templates, the names its
+/// made unlike every identifier the classes enclosing it spell (the
+/// parameters of their templates and member templates, the names their
 /// members use) and the names given to the parameters of the templates
 /// enclosing this one.
 std::string parameter_name(const clang::NamedDecl* param, std::size_t index) {
     if(!param->getName().empty()) {
         return param->getNameAsString();
     }
+    auto& context = param->getASTContext();
+    auto identifier = [](char c) {
+        return llvm::isAlnum(c) || c == '_';
+    };
     llvm::StringSet<> taken;
-    const clang::Decl* outermost = nullptr;
-    for(const auto* context = param->getDeclContext();
-        auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
-        context = context->getParent()) {
+    for(const auto* scope = param->getDeclContext();
+        auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(scope);
+        scope = scope->getParent()) {
+        // A nested class defined out of its enclosing class lies outside
+        // that class's text: every class of the chain is read.
+        const clang::Decl* spelled = record;
         if(auto* described = record->getDescribedClassTemplate()) {
-            outermost = described;
-        } else {
-            outermost = record;
+            spelled = described;
+        }
+        llvm::StringRef text = clang::Lexer::getSourceText(
+            clang::CharSourceRange::getTokenRange(spelled->getSourceRange()),
+            context.getSourceManager(),
+            context.getLangOpts());
+        while(!text.empty()) {
+            text = text.drop_until(identifier);
+            auto word = text.take_while(identifier);
+            taken.insert(word);
+            text = text.drop_front(word.size());
         }
         auto* params = template_parameters(record);
-        if(context == param->getDeclContext() || !params) {
+        if(scope == param->getDeclContext() || !params) {
             continue;
         }
         for(auto [other_index, other]: llvm::enumerate(*params)) {
             taken.insert(parameter_name(other, other_index));
         }
-    }
-    auto& context = outermost->getASTContext();
-    llvm::StringRef text = clang::Lexer::getSourceText(
-        clang::CharSourceRange::getTokenRange(outermost->getSourceRange()),
-        context.getSourceManager(),
-        context.getLangOpts());
-    auto identifier = [](char c) {
-        return llvm::isAlnum(c) || c == '_';
-    };
-    while(!text.empty()) {
-        text = text.drop_until(identifier);
-        auto word = text.take_while(identifier);
-        taken.insert(word);
-        text = text.drop_front(word.size());
     }
     auto name = std::format("T{}", index);
     while(taken.contains(name)) {
