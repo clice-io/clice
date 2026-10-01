@@ -111,11 +111,12 @@ private:
                      clang::UsingEnumDecl,
                      clang::UnresolvedUsingValueDecl,
                      clang::UnresolvedUsingTypenameDecl>(decl)) {
-            // A declaration a macro produces spans the whole invocation.
+            // A declaration a macro produces spans the whole invocation,
+            // which stands for every declaration it produces.
             auto range =
                 unit.context().getSourceManager().getExpansionRange(decl->getSourceRange());
             if(auto [fid, local] = unit.decompose_range(range.getAsRange());
-               fid == unit.main_file()) {
+               fid == unit.main_file() && (usings.empty() || usings.back() != local)) {
                 usings.push_back(local);
             }
             return;

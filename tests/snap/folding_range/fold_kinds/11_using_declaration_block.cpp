@@ -61,3 +61,11 @@ namespace macros {
 USE(vector)
 USE(string)
 }  // namespace macros
+
+#define USE_TWO(first, second) using lib::first; using lib::second;
+
+namespace pairs {
+USE_TWO(vector, string)
+USE_TWO(map, vector)
+USE_TWO(string, map)
+}  // namespace pairs

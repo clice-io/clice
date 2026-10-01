@@ -17,3 +17,5 @@ input_file: fold_kinds/11_using_declaration_block.cpp
 - { range: "53:18-55:20", kind: namespace, collapsed_text: "{...}" }
 - { range: "59:17-62:1", kind: namespace, collapsed_text: "{...}" }
 - { range: "60:11-61:11", kind: usingDeclaration }
+- { range: "66:16-70:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "67:23-69:20", kind: usingDeclaration }
