@@ -84,7 +84,6 @@ struct Diagnostic {
 
     /// The error message of this diagnostic.
     std::string message;
-
 };
 
 }  // namespace clice
