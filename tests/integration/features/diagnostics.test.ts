@@ -192,15 +192,19 @@ test("borrowed header stays a header", async ({ session }) => {
     // The broken include keeps the header out of a PCH, so the main parse
     // sees the #pragma once at its top.
     workspace.write("src/hdr.h", '#pragma once\n#include "nothere.h"\n');
-    workspace.write("src/user.cpp", '#include "hdr.h"\n');
-    workspace.writeCDB(["src/user.cpp"]);
+    // A static function is for its includers to use.
+    workspace.write("src/util.h", "#pragma once\nstatic inline int helper() { return 1; }\n");
+    workspace.write("src/user.cpp", '#include "hdr.h"\n#include "util.h"\n');
+    workspace.writeCDB(["src/user.cpp"], { extraArgs: ["-Wall"] });
     await client.initialize(workspace);
-    const [uri] = await client.openAndWait("src/hdr.h");
 
-    expect(published(client, uri).map((diagnostic) => diagnostic.code)).toEqual([
+    const [hdr] = await client.openAndWait("src/hdr.h");
+    expect(published(client, hdr).map((diagnostic) => diagnostic.code)).toEqual([
         "inferred-compile-command",
         "err_pp_file_not_found",
     ]);
+    const [util] = await client.openAndWait("src/util.h");
+    expect(published(client, util)).toEqual([]);
 });
 
 test("cl warning level stays", async ({ session }) => {
