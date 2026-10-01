@@ -210,6 +210,9 @@ public:
                     bool is_angled,
                     clang::OptionalFileEntryRef file,
                     clang::SrcMgr::CharacteristicKind) override {
+        // The filename may come from a macro's argument: record where it
+        // is spelled.
+        location = unit.file_location(location);
         unit->directives[unit.file_id(location)].has_includes.emplace_back(file, location);
         if(!file) {
             add_absent(file_name, is_angled, location);
