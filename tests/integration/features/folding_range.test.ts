@@ -61,6 +61,40 @@ struct S {};
 // the file
 `;
 
+const DECLARATIONS = `struct Base {};
+int process(int a)
+{
+    return a;
+}
+static int
+gnu_style(int a,
+          int b,
+          int c)
+{
+    return a + b + c;
+}
+class Widget
+    : public Base
+{
+    int x;
+};
+namespace
+{
+int y;
+}
+#ifdef FLAG
+void picked(int a)
+#else
+void picked(int a, int b)
+#endif
+{
+    return;
+}
+int same_line(int a) {
+    return a;
+}
+`;
+
 function render(folds: proto.FoldingRange[] | null): string[] {
     return (folds ?? []).map(
         (fold) =>
@@ -148,6 +182,46 @@ for (const lineFoldingOnly of [true, false]) {
                 "13:19-15:2 rawString",
                 "16:9-17:21 templateParams",
                 "19:15-20:11 comment",
+            ]);
+        }
+    });
+}
+
+for (const lineFoldingOnly of [true, false]) {
+    test(`declaration folds with lineFoldingOnly ${lineFoldingOnly}`, async ({ session }) => {
+        const { client, workspace } = session.tmp();
+        workspace.write("main.cpp", DECLARATIONS);
+        workspace.writeCDB(["main.cpp"]);
+        await client.initialize(workspace, {
+            capabilities: { textDocument: { foldingRange: { lineFoldingOnly } } },
+        });
+        const [uri] = await client.openAndWait("main.cpp");
+        client.assertNoErrors(uri);
+
+        const folds = render(await client.foldingRanges(uri));
+        if (lineFoldingOnly) {
+            expect(folds).toEqual([
+                "1:--3:- functionBody",
+                "6:--10:- functionBody",
+                "6:--7:- functionParams",
+                "12:--15:- class",
+                "17:--19:- namespace",
+                "21:--22:- conditionDirective",
+                "23:--24:- conditionDirective",
+                "26:--27:- functionBody",
+                "29:--30:- functionBody",
+            ]);
+        } else {
+            expect(folds).toEqual([
+                "2:0-4:1 functionBody",
+                "6:9-8:16 functionParams",
+                "9:0-11:1 functionBody",
+                "14:0-16:1 class",
+                "18:0-20:1 namespace",
+                "21:11-23:0 conditionDirective",
+                "23:5-25:0 conditionDirective",
+                "26:0-28:1 functionBody",
+                "29:21-31:1 functionBody",
             ]);
         }
     });

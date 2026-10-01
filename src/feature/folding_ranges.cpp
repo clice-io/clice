@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -144,7 +145,7 @@ private:
                                     : tag->isClass() ? "class"
                                     : tag->isUnion() ? "union"
                                                      : "enum";
-            add_range(tag->getBraceRange(), kind, "{...}");
+            add_declaration_block(tag->getBraceRange(), tag->getLocation(), kind);
 
             if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(tag);
                record && !record->isLambda() && !record->isImplicit()) {
@@ -156,7 +157,9 @@ private:
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
             collect_parameter_list(function);
             if(function->doesThisDeclarationHaveABody()) {
-                add_range(function->getBody()->getSourceRange(), "functionBody", "{...}");
+                add_declaration_block(function->getBody()->getSourceRange(),
+                                      function->getLocation(),
+                                      "functionBody");
             }
         }
     }
@@ -395,9 +398,40 @@ private:
                               return token.kind() == clang::tok::l_brace;
                           });
         if(!tokens.empty()) {
-            add_range(clang::SourceRange(tokens.front().location(), right_brace),
-                      std::move(kind),
-                      "{...}");
+            add_declaration_block(clang::SourceRange(tokens.front().location(), right_brace),
+                                  decl->getBeginLoc(),
+                                  std::move(kind));
+        }
+    }
+
+    /// A line-folding client starts a declaration's block on the line of its
+    /// name when the brace sits below it, so the folded block keeps the name
+    /// visible. A directive between the two would make that fold cut across
+    /// a conditional branch's.
+    void add_declaration_block(clang::SourceRange braces,
+                               clang::SourceLocation name,
+                               protocol::FoldingRangeKind kind) {
+        auto count = ranges.size();
+        add_range(braces, std::move(kind), "{...}");
+        if(ranges.size() == count) {
+            return;
+        }
+
+        auto& fold = ranges.back();
+        auto [fid, offset] = unit.decompose_location(unit.file_location(name));
+        if(fid != unit.main_file() ||
+           line_begin(content, offset) >= line_begin(content, fold.range.begin)) {
+            return;
+        }
+        auto directives = unit.semantics().block_directives();
+        auto next = std::ranges::lower_bound(directives,
+                                             offset,
+                                             {},
+                                             [](const LexicalInfo::BlockDirective& directive) {
+                                                 return directive.range.begin;
+                                             });
+        if(next == directives.end() || next->range.begin > fold.range.begin) {
+            fold.lines = LocalSourceRange{offset, fold.range.end};
         }
     }
 
@@ -552,6 +586,18 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
         }
 
         result.push_back(std::move(range));
+    }
+
+    // VS Code keeps only the first fold it sees starting on a line. A body
+    // starting on its declaration's line must win over the parameter list
+    // folding from that line, so outer folds go first.
+    if(line_folding_only) {
+        std::ranges::stable_sort(
+            result,
+            [](const protocol::FoldingRange& lhs, const protocol::FoldingRange& rhs) {
+                return std::tie(lhs.start_line, rhs.end_line) <
+                       std::tie(rhs.start_line, lhs.end_line);
+            });
     }
 
     return result;
