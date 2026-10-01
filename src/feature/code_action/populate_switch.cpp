@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <format>
 #include <string>
 #include <vector>
@@ -8,6 +9,7 @@
 
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
@@ -17,23 +19,12 @@
 
 namespace clice::feature::action {
 
-/// The first label of a switch body that declares something at its own
-/// scope past that label, which a label added after the declaration would
-/// jump past; null for a body declaring nothing there.
-const static clang::SwitchCase* first_label_if_declaring(const clang::CompoundStmt* body) {
-    const clang::SwitchCase* first = nullptr;
-    for(const clang::Stmt* statement: body->body()) {
-        if(const auto* label = llvm::dyn_cast<clang::SwitchCase>(statement)) {
-            first = first ? first : label;
-            while(const auto* nested = llvm::dyn_cast<clang::SwitchCase>(statement)) {
-                statement = nested->getSubStmt();
-            }
-        }
-        if(first && llvm::isa<clang::DeclStmt>(statement)) {
-            return first;
-        }
-    }
-    return nullptr;
+/// Whether a switch body declares something at its own scope, which a
+/// label added after the declaration would jump past.
+static bool declares_in_scope(const clang::CompoundStmt* body) {
+    return llvm::any_of(body->body(), [](const clang::Stmt* statement) {
+        return llvm::isa<clang::DeclStmt>(statement->stripLabelLikeStatements());
+    });
 }
 
 void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
@@ -96,20 +87,32 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
 
     // The labels go before `default`, falling through into it as the
     // missing cases already did; else with a `break` of their own at the
-    // end, or before the first label when a declaration lies in between,
-    // where nothing falls into them. Either way on the labels' own
-    // indentation.
+    // end, or at the top of the body when it declares something a label
+    // would jump past — nothing falls into them there, and no conditional
+    // directive around the first label takes them along. Either way on
+    // the labels' own indentation.
     auto content = unit.main_content();
-    const clang::SwitchCase* next = default_stmt ? default_stmt : first_label_if_declaring(body);
-    auto anchor = main_range(unit, next ? next->getKeywordLoc() : body->getRBracLoc());
+    auto anchor_loc = body->getRBracLoc();
+    if(default_stmt) {
+        anchor_loc = default_stmt->getKeywordLoc();
+    } else if(declares_in_scope(body)) {
+        auto brace = main_range(unit, body->getLBracLoc());
+        if(!brace) {
+            return;
+        }
+        auto tokens = unit.spelled_tokens(unit.main_file());
+        auto after = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
+            return unit.file_offset(token.location()) <= brace->begin;
+        });
+        anchor_loc = after->location();
+    }
+    auto anchor = main_range(unit, anchor_loc);
     if(!anchor) {
         return;
     }
     std::string indent;
-    if(next) {
-        indent = line_indent(content, anchor->begin).str();
-    } else if(const auto* first = stmt->getSwitchCaseList()) {
-        auto range = main_range(unit, first->getKeywordLoc());
+    if(const auto* label = stmt->getSwitchCaseList()) {
+        auto range = main_range(unit, label->getKeywordLoc());
         if(!range) {
             return;
         }
