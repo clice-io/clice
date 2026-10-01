@@ -255,7 +255,8 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb);
 /// reads a `-` spelling as its own option where one exists (`-Wall` is
 /// `/Wall`, -Weverything) and drops the GCC-style ones it lacks, so an
 /// argument the parse unaliased out of a cl spelling (`/W3` is -Wall, `/J`
-/// -funsigned-char) reaches it through `/clang:`.
+/// -funsigned-char) is spelled through a cl alias of its option, else
+/// through `/clang:`.
 void render_driver_arg(const Arg& arg,
                        CompilerFamily family,
                        llvm::function_ref<void(std::string_view)> cb);

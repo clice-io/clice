@@ -83,7 +83,7 @@ TEST_CASE(DefaultFilters) {
     EXPECT_STRIP("clang++ -c -o main.o main.cpp", "clang++ {}");
     EXPECT_STRIP("cl.exe /c /Fomain.cpp.o main.cpp", "cl.exe {}");
     /// CL options stay visible under Windows's free-form driver casing.
-    EXPECT_STRIP("CL.exe /FIfoo.h /c main.cpp", "CL.exe /clang:-include /clang:foo.h {}");
+    EXPECT_STRIP("CL.exe /FIfoo.h /c main.cpp", "CL.exe /FIfoo.h {}");
 
     /// Filter PCH related.
 
@@ -94,7 +94,7 @@ TEST_CASE(DefaultFilters) {
         "clang++ -Winvalid-pch -Xclang -include-pch -Xclang cmake_pch.hxx.pch -Xclang -include -Xclang cmake_pch.hxx -o main.cpp.o -c main.cpp",
         "clang++ -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx {}");
     EXPECT_STRIP("cl.exe /Yufoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp",
-                 "cl.exe /clang:-include /clang:foo.h {}");
+                 "cl.exe /FIfoo.h {}");
 };
 
 TEST_CASE(ConfigDedup) {
@@ -272,21 +272,27 @@ TEST_CASE(PerFileClSelectors) {
 
 TEST_CASE(ClAliasesRender) {
     /// cl spellings unalias to options a cl-mode driver reads as another
-    /// (`-Wall` is its /Wall) or not at all: they pass through /clang:.
+    /// (`-Wall` is its /Wall) or not at all: a cl alias spells them in
+    /// place, `/clang:` (appended last by the driver) only when none does.
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake",
                          "/fake/a.cpp",
-                         "cl.exe /W3 /J /Zp4 /Iinc /FIpre.h /std:c++17 /c /fake/a.cpp"sv);
+                         "cl.exe /W3 -Wno-unused-variable /J /Zp4 /Iinc /FIpre.h /std:c++17 /c "
+                         "/fake/a.cpp"sv);
 
     auto argv = print_argv(render_entry(database, "/fake/a.cpp"));
-    EXPECT_CONTAINS(argv, "/clang:-Wall");
-    EXPECT_CONTAINS(argv, "/clang:-funsigned-char");
-    EXPECT_CONTAINS(argv, "/clang:-fpack-struct=4");
-    EXPECT_CONTAINS(argv, "/clang:-include /clang:pre.h");
-    EXPECT_CONTAINS(argv, "/std:c++17");
+    EXPECT_CONTAINS(argv, "/W1 -Wno-unused-variable");
+    EXPECT_CONTAINS(argv, "/J");
+    EXPECT_CONTAINS(argv, "/Zp4");
+    EXPECT_CONTAINS(argv, "/FIpre.h");
     EXPECT_CONTAINS(argv, "-I /fake/inc");
-    EXPECT_NOT_CONTAINS(argv, "/clang:-I");
+    EXPECT_CONTAINS(argv, "/std:c++17");
+    EXPECT_NOT_CONTAINS(argv, "/clang:");
+
+    /// GCC-style, with no cl spelling at all.
+    database.add_command("/fake", "/fake/b.cpp", "cl.exe -std=c++20 /c /fake/b.cpp"sv);
+    EXPECT_CONTAINS(print_argv(render_entry(database, "/fake/b.cpp")), "/clang:-std=c++20");
 };
 
 TEST_CASE(IdentityHashes) {
