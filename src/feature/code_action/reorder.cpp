@@ -7,15 +7,18 @@
 
 #include "compile/compilation_unit.h"
 #include "feature/code_action/action.h"
+#include "semantic/semantics.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/RawCommentList.h"
+#include "clang/Lex/MacroInfo.h"
 
 namespace clice::feature::action {
 
@@ -38,29 +41,18 @@ struct Slot {
 };
 
 /// The innermost conditional branch open at `offset` of the main file.
+/// The lexical block directives rather than the directive table: the
+/// preamble's conditionals are compiled into the PCH and never reach it.
 std::optional<std::uint32_t> enclosing_branch(CompilationUnitRef unit, std::uint32_t offset) {
-    auto main = unit.main_file();
-    auto it = unit.directives().find(main);
-    if(it == unit.directives().end()) {
-        return std::nullopt;
-    }
     llvm::SmallVector<std::uint32_t, 4> open;
-    for(const auto& condition: it->second.conditions) {
-        if(condition.loc.isInvalid() || unit.file_id(condition.loc) != main) {
-            continue;
-        }
-        auto at = unit.file_offset(condition.loc);
+    for(const auto& directive: unit.semantics().block_directives()) {
+        auto at = directive.range.begin;
         if(at >= offset) {
             break;
         }
-        using enum Condition::BranchKind;
-        switch(condition.kind) {
-            case If:
-            case Ifdef:
-            case Ifndef: open.push_back(at); break;
-            case Elif:
-            case Elifdef:
-            case Elifndef:
+        using enum LexicalInfo::BlockDirective::Kind;
+        switch(directive.kind) {
+            case If: open.push_back(at); break;
             case Else:
                 if(!open.empty()) {
                     open.back() = at;
@@ -71,6 +63,8 @@ std::optional<std::uint32_t> enclosing_branch(CompilationUnitRef unit, std::uint
                     open.pop_back();
                 }
                 break;
+            case Region:
+            case EndRegion: break;
         }
     }
     if(open.empty()) {
@@ -91,6 +85,25 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
     auto content = unit.main_content();
     auto main = unit.main_file();
     auto begin = range->begin;
+
+    // A leading attribute specifier (`[[deprecated]]` on a line of its
+    // own) lies outside the declaration's range, and the `[[` opening it
+    // outside the attribute's.
+    for(const auto* attr: definition->attrs()) {
+        auto location = unit.expansion_location(attr->getLocation());
+        if(!attr->isImplicit() && !attr->isInherited() && unit.file_id(location) == main) {
+            begin = std::min(begin, unit.file_offset(location));
+        }
+    }
+    auto tokens = unit.spelled_tokens(main);
+    auto first = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
+        return unit.file_offset(token.location()) < begin;
+    });
+    while(first - tokens.begin() >= 2 && std::prev(first)->kind() == clang::tok::l_square &&
+          std::prev(first, 2)->kind() == clang::tok::l_square) {
+        first -= 2;
+        begin = unit.file_offset(first->location());
+    }
 
     // Comments directly above the definition travel with it: each on
     // lines of its own, separated from what follows by nothing but
@@ -118,21 +131,150 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
     }
     LocalSourceRange lines{begin, line_end(content, range->end - 1)};
 
-    if(auto it = unit.directives().find(main); it != unit.directives().end()) {
-        for(const auto& condition: it->second.conditions) {
-            if(condition.loc.isValid() && unit.file_id(condition.loc) == main &&
-               lines.contains(unit.file_offset(condition.loc))) {
-                return std::nullopt;
-            }
+    for(const auto& directive: unit.semantics().block_directives()) {
+        using enum LexicalInfo::BlockDirective::Kind;
+        if(llvm::is_contained({If, Else, EndIf}, directive.kind) &&
+           directive.range.begin >= lines.begin && directive.range.begin < lines.end) {
+            return std::nullopt;
         }
     }
     return lines;
 }
 
+/// An order the text relies on, between two offsets of the main file: a
+/// name's declaration and its use, a macro's definition and its
+/// expansion, an expansion and the macro's `#undef`, a using-declaration
+/// and the definitions after it, an include and the definitions around
+/// it.
+struct Dependency {
+    std::uint32_t before;
+    std::uint32_t after;
+};
+
+/// The declaration a use of `decl` needs ahead of it: the definition when
+/// the use may need what only the definition says — a complete type, a
+/// deduced return type, a value for constant evaluation — else the first
+/// declaration.
+const clang::Decl* required_declaration(clang::ASTContext& context, const clang::NamedDecl* decl) {
+    if(auto* described = llvm::dyn_cast<clang::RedeclarableTemplateDecl>(decl)) {
+        decl = described->getTemplatedDecl();
+    }
+    const clang::Decl* definition = nullptr;
+    if(auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
+        definition = tag->getDefinition();
+    } else if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        if(function->isConstexpr() ||
+           function->getDeclaredReturnType()->getContainedDeducedType()) {
+            definition = function->getDefinition();
+        }
+    } else if(auto* variable = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        if(variable->isUsableInConstantExpressions(context)) {
+            definition = variable->getInitializingDeclaration();
+        }
+    }
+    return definition ? definition : decl->getCanonicalDecl();
+}
+
+/// The orders the text between the first and the last slot relies on.
+std::vector<Dependency> dependencies(CompilationUnitRef unit, llvm::ArrayRef<Slot> slots) {
+    auto main = unit.main_file();
+    LocalSourceRange region{slots.front().range.begin, slots.back().range.end};
+    auto offset_of = [&](clang::SourceLocation location) -> std::optional<std::uint32_t> {
+        location = unit.expansion_location(location);
+        if(location.isInvalid() || unit.file_id(location) != main) {
+            return std::nullopt;
+        }
+        auto offset = unit.file_offset(location);
+        return offset >= region.begin && offset < region.end ? std::optional(offset) : std::nullopt;
+    };
+    std::vector<Dependency> out;
+    auto depend = [&](clang::SourceLocation before, clang::SourceLocation after) {
+        auto first = offset_of(before);
+        auto second = offset_of(after);
+        if(first && second && *first < *second) {
+            out.push_back({*first, *second});
+        }
+    };
+
+    const auto& semantics = unit.semantics();
+    auto entries = semantics.node_entries();
+    for(std::uint32_t i = 0; i < entries.size() && entries[i].node.is_ast();) {
+        const auto* decl = entries[i].node.get<clang::Decl>();
+        if(decl) {
+            auto range = main_range(unit, decl->getSourceRange());
+            if(range && (range->end <= region.begin || range->begin >= region.end)) {
+                i = entries[i].subtree_end;
+                continue;
+            }
+            // Lookup after a using-declaration or -directive may find
+            // what it brings in.
+            if(llvm::isa<clang::UsingDecl, clang::UsingDirectiveDecl, clang::UsingEnumDecl>(decl) &&
+               at_file_scope(decl->getDeclContext())) {
+                if(auto at = offset_of(decl->getLocation())) {
+                    for(const auto& slot: slots) {
+                        if(slot.range.begin > *at) {
+                            out.push_back({*at, slot.range.begin});
+                        }
+                    }
+                }
+            }
+        }
+        for(const auto& occurrence: resolve_occurrences(semantics, i)) {
+            if(!occurrence.kind.isDeclOrDef()) {
+                depend(required_declaration(unit.context(), occurrence.decl)->getLocation(),
+                       occurrence.location);
+            }
+        }
+        i += 1;
+    }
+
+    // An included file may rely on the definitions above it and provide
+    // for those below: no definition crosses it. One inside a definition
+    // moves with it.
+    for(const auto& include: semantics.include_directives()) {
+        if(include.begin <= region.begin || include.begin >= region.end ||
+           llvm::any_of(slots, [&](const Slot& slot) {
+               return include.begin >= slot.range.begin && include.begin < slot.range.end;
+           })) {
+            continue;
+        }
+        for(const auto& slot: slots) {
+            if(slot.range.begin < include.begin) {
+                out.push_back({slot.range.begin, include.begin});
+            } else {
+                out.push_back({include.begin, slot.range.begin});
+            }
+        }
+    }
+
+    if(auto it = unit.directives().find(main); it != unit.directives().end()) {
+        llvm::DenseMap<const clang::MacroInfo*, llvm::SmallVector<clang::SourceLocation, 1>> undefs;
+        for(const auto& macro: it->second.macros) {
+            if(macro.kind == MacroRef::Undef) {
+                undefs[macro.macro].push_back(macro.loc);
+            }
+        }
+        for(const auto& macro: it->second.macros) {
+            if(macro.kind != MacroRef::Ref) {
+                continue;
+            }
+            depend(macro.macro->getDefinitionLoc(), macro.loc);
+            if(auto undef = undefs.find(macro.macro); undef != undefs.end()) {
+                for(auto location: undef->second) {
+                    depend(macro.loc, location);
+                }
+            }
+        }
+    }
+    return out;
+}
+
 /// The edits permuting the slots of each block and branch into rank
 /// order; empty when they already are, or when two definitions share a
-/// line and their slots overlap.
-std::vector<TextReplacement> permutation(llvm::StringRef content, std::vector<Slot> slots) {
+/// line and their slots overlap. A definition whose move would break an
+/// order the text relies on stays where it is, the others ordered around
+/// it.
+std::vector<TextReplacement> permutation(CompilationUnitRef unit, std::vector<Slot> slots) {
     std::ranges::sort(slots, {}, [](const Slot& slot) { return slot.range.begin; });
     for(auto [previous, slot]: llvm::zip(slots, llvm::drop_begin(slots))) {
         if(slot.range.begin < previous.range.end) {
@@ -140,21 +282,95 @@ std::vector<TextReplacement> permutation(llvm::StringRef content, std::vector<Sl
         }
     }
     llvm::MapVector<std::pair<const clang::DeclContext*, std::optional<std::uint32_t>>,
-                    std::vector<Slot>>
+                    llvm::SmallVector<std::size_t>>
         blocks;
-    for(auto& slot: slots) {
-        blocks[{slot.block, slot.branch}].push_back(slot);
+    for(auto [index, slot]: llvm::enumerate(slots)) {
+        blocks[{slot.block, slot.branch}].push_back(index);
     }
-    std::vector<TextReplacement> edits;
-    for(auto& [block, members]: blocks) {
-        auto ordered = members;
-        std::ranges::sort(ordered, {}, &Slot::rank);
-        for(auto [slot, target]: llvm::zip(members, ordered)) {
-            if(slot.range != target.range) {
-                edits.push_back(
-                    {slot.range, content.substr(target.range.begin, target.range.length()).str()});
+
+    // The slot whose text lands in each slot, and where each slot's text
+    // lands.
+    std::vector<std::size_t> source(slots.size());
+    std::vector<std::size_t> target(slots.size());
+    std::vector<bool> pinned(slots.size(), false);
+    // Whether any slot's text moves.
+    auto assign = [&] {
+        for(auto& [block, members]: blocks) {
+            llvm::SmallVector<std::size_t> movable;
+            for(auto index: members) {
+                if(pinned[index]) {
+                    source[index] = index;
+                } else {
+                    movable.push_back(index);
+                }
+            }
+            auto ordered = movable;
+            std::ranges::sort(ordered, {}, [&](std::size_t index) { return slots[index].rank; });
+            for(auto [position, text]: llvm::zip(movable, ordered)) {
+                source[position] = text;
             }
         }
+        bool moves = false;
+        for(auto [position, text]: llvm::enumerate(source)) {
+            target[text] = position;
+            moves |= position != text;
+        }
+        return moves;
+    };
+    auto slot_of = [&](std::uint32_t offset) -> std::optional<std::size_t> {
+        auto it = std::ranges::upper_bound(slots, offset, {}, [](const Slot& slot) {
+            return slot.range.begin;
+        });
+        if(it == slots.begin() || offset >= std::prev(it)->range.end) {
+            return std::nullopt;
+        }
+        return static_cast<std::size_t>(std::prev(it) - slots.begin());
+    };
+    // The order of an offset's text after the permutation.
+    auto landing = [&](std::uint32_t offset) -> std::pair<std::uint32_t, std::uint32_t> {
+        if(auto slot = slot_of(offset)) {
+            return std::pair(slots[target[*slot]].range.begin, offset - slots[*slot].range.begin);
+        }
+        return {offset, 0};
+    };
+
+    if(!assign()) {
+        return {};
+    }
+    auto orders = dependencies(unit, slots);
+    // A broken order has an end in a moved slot: pinning it terminates.
+    while(true) {
+        bool broken = false;
+        for(const auto& order: orders) {
+            if(landing(order.before) > landing(order.after)) {
+                for(auto offset: {order.before, order.after}) {
+                    if(auto slot = slot_of(offset)) {
+                        pinned[*slot] = true;
+                    }
+                }
+                broken = true;
+            }
+        }
+        if(!broken) {
+            break;
+        }
+        assign();
+    }
+
+    auto content = unit.main_content();
+    std::vector<TextReplacement> edits;
+    for(auto [position, text]: llvm::enumerate(source)) {
+        if(position == text) {
+            continue;
+        }
+        auto range = slots[text].range;
+        auto moved = content.substr(range.begin, range.length()).str();
+        // The file's last line may lack its newline: text moved off it
+        // must not run into the next definition.
+        if(!moved.ends_with('\n')) {
+            moved += '\n';
+        }
+        edits.push_back({slots[position].range, std::move(moved)});
     }
     return edits;
 }
@@ -163,7 +379,6 @@ std::vector<TextReplacement> permutation(llvm::StringRef content, std::vector<Sl
 
 void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
     auto unit = ctx.unit;
-    auto content = unit.main_content();
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
     const clang::FunctionDecl* anchor = nullptr;
     if(!record) {
@@ -247,7 +462,7 @@ void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
     if(slots.size() < 2) {
         return;
     }
-    auto edits = permutation(content, std::move(slots));
+    auto edits = permutation(unit, std::move(slots));
     if(edits.empty()) {
         return;
     }

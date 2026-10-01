@@ -1,0 +1,7 @@
+---
+created_at: 2026-10-01
+input_file: include_guard_comments.cpp
+---
+string:
+- [quickfix] Add #include <string>
+  7:0-7:0 => "#include <string>\n"
