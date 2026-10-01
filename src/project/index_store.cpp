@@ -517,16 +517,18 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         // PCM) it is the only hash naming the bytes the rows describe.
         auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.path_hash(i);
 
-        fs::file_status status;
-        if(hash == 0 && !fs::status(path, status) && fs::mtime_ns(status) <= baseline_before_ns) {
-            // The worker had no buffer to hash (e.g. behind a PCM) and no
-            // rows recorded one; the unchanged mtime proves the disk still
-            // holds the consumed bytes, so take their hash from the shared
-            // pair — or one read, unless the file moved between the stat
-            // and the read, which voids the proof.
-            auto obs = project.file_table.observe_for(file_ids_map[i], status);
-            if(obs && obs->size == status.getSize() && obs->mtime_ns == fs::mtime_ns(status)) {
-                hash = obs->hash;
+        if(hash == 0) {
+            auto status = vfs::status(path);
+            if(status && status->stamp.mtime_ns <= baseline_before_ns) {
+                // The worker had no buffer to hash (e.g. behind a PCM) and
+                // no rows recorded one; the unchanged mtime proves the disk
+                // still holds the consumed bytes, so take their hash from
+                // the shared pair — or one read, unless the file moved
+                // between the stat and the read, which voids the proof.
+                auto obs = project.file_table.observe_for(file_ids_map[i], *status);
+                if(obs && obs->stamp == status->stamp) {
+                    hash = obs->hash;
+                }
             }
         }
 

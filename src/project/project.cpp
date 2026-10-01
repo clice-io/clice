@@ -361,10 +361,8 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             continue;
         }
 
-        auto size = status->getSize();
-        auto mtime_ns = fs::mtime_ns(*status);
         if(hash == 0) {
-            if(mtime_ns > baseline_before_ns) {
+            if(status->stamp.mtime_ns > baseline_before_ns) {
                 // The worker could not hash the consumed bytes and the file
                 // may have changed during the build — no version can name
                 // them. The dep stays version-less and reads as changed
@@ -376,7 +374,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             // one read, unless the file moved between the stat and the
             // read, which voids the proof.
             auto obs = files.observe_for(dep.path_id, *status);
-            if(!obs || obs->size != size || obs->mtime_ns != mtime_ns) {
+            if(!obs || obs->stamp != status->stamp) {
                 continue;
             }
             hash = obs->hash;

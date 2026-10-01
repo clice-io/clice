@@ -298,16 +298,11 @@ struct FileTable {
         return binding;
     }
 
-    /// The cached hash of exactly this (size, mtime) at exactly this
-    /// filesystem identity, or nullopt when someone must read. Equality
-    /// against the shared pair, never a watermark: the hash is "the hash
-    /// of the bytes that had this stat", nothing else.
-    std::optional<std::uint64_t> cached_hash(Fid fid,
-                                             std::uint64_t size,
-                                             std::int64_t mtime_ns,
-                                             std::uint64_t uid_device,
-                                             std::uint64_t uid_file) {
-        auto& binding = bind(fid, uid_device, uid_file);
+    /// The cached hash of exactly this stamp, or nullopt when someone must
+    /// read. Equality against the shared pair, never a watermark: the hash
+    /// is "the hash of the bytes that had this stamp", nothing else.
+    std::optional<std::uint64_t> cached_hash(Fid fid, const vfs::Stamp& stamp) {
+        auto& binding = bind(fid, stamp.device, stamp.file);
         if(!binding.earned) {
             return std::nullopt;
         }
@@ -316,7 +311,7 @@ struct FileTable {
             return std::nullopt;
         }
         auto& pair = it->second;
-        if(pair.size != size || pair.mtime_ns != mtime_ns) {
+        if(pair.stamp != stamp) {
             return std::nullopt;
         }
         saw(fid, pair.hash);
@@ -386,7 +381,7 @@ struct FileTable {
     /// its binding. Unpaired reads carry a true hash but no stat proof,
     /// so they never become the pair.
     void observe(Fid fid, const DiskObservation& obs) {
-        auto& binding = bind(fid, obs.uid_device, obs.uid_file);
+        auto& binding = bind(fid, obs.stamp.device, obs.stamp.file);
         binding.earned = true;
         saw(fid, obs.hash);
         if(obs.reliable) {
@@ -423,16 +418,10 @@ struct FileTable {
     /// a real read (which repairs the pair for every later consumer; its
     /// observation may describe a newer stat than the caller's, which is
     /// then simply newer truth). nullopt = unreadable right now.
-    std::optional<DiskObservation> observe_for(Fid fid, const llvm::sys::fs::file_status& status) {
-        auto size = status.getSize();
-        auto mtime_ns = fs::mtime_ns(status);
-        auto uid = status.getUniqueID();
-        if(auto hash = cached_hash(fid, size, mtime_ns, uid.getDevice(), uid.getFile())) {
-            return DiskObservation{.size = size,
-                                   .mtime_ns = mtime_ns,
+    std::optional<DiskObservation> observe_for(Fid fid, const vfs::Status& status) {
+        if(auto hash = cached_hash(fid, status.stamp)) {
+            return DiskObservation{.stamp = status.stamp,
                                    .hash = *hash,
-                                   .uid_device = uid.getDevice(),
-                                   .uid_file = uid.getFile(),
                                    .paired = true,
                                    .reliable = true};
         }

@@ -72,9 +72,9 @@ std::shared_ptr<const Listing> list(llvm::StringRef dir) {
         return listing;
     }
     auto after = vfs::status(dir);
-    if(after && fs::mtime_ns(*before) == fs::mtime_ns(*after) &&
-       fs::settled(fs::mtime_ns(*after))) {
-        listing->mtime_ns = fs::mtime_ns(*after);
+    if(after && before->stamp.mtime_ns == after->stamp.mtime_ns &&
+       fs::settled(after->stamp.mtime_ns)) {
+        listing->mtime_ns = after->stamp.mtime_ns;
     }
     return listing;
 }
@@ -94,7 +94,7 @@ const Listing& Scope::list(llvm::StringRef dir) {
     }
 
     if(auto kept = cache.kept(dir)) {
-        if(auto status = vfs::status(dir); status && fs::mtime_ns(*status) == kept->mtime_ns) {
+        if(auto status = vfs::status(dir); status && status->stamp.mtime_ns == kept->mtime_ns) {
             stats.reused += 1;
             return *held.try_emplace(dir, std::move(kept)).first->second;
         }

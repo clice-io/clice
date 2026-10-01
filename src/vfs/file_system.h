@@ -13,22 +13,51 @@
 
 namespace clice {
 
+namespace vfs {
+
+/// What a status says about a file's bytes: two equal stamps of one path
+/// describe the same bytes, as far as a status can tell. The change time
+/// is what makes that hold for a file replaced under its name with its
+/// size and mtime kept (`cp -p`, `rsync -a`): nothing sets it back.
+struct Stamp {
+    std::uint64_t size = 0;
+    std::int64_t mtime_ns = 0;
+    /// The inode change time; ChangeTime on Windows.
+    std::int64_t ctime_ns = 0;
+    /// The file's ID: the device, and the file on it.
+    std::uint64_t device = 0;
+    std::uint64_t file = 0;
+
+    friend bool operator==(const Stamp&, const Stamp&) = default;
+};
+
+/// A file's status, symlinks followed.
+struct Status {
+    llvm::sys::fs::file_type type = llvm::sys::fs::file_type::status_error;
+    Stamp stamp;
+    std::uint32_t links = 0;
+
+    bool is_file() const {
+        return type == llvm::sys::fs::file_type::regular_file;
+    }
+
+    /// As clang's file system interface reports it.
+    llvm::vfs::Status to_llvm(llvm::StringRef name) const;
+};
+
+}  // namespace vfs
+
 /// One observation of a file's on-disk bytes: the xxh3 of the text a single
-/// read returned (see without_bom), and the stat describing the bytes. Captured under
+/// read returned (see without_bom), and the stamp describing the bytes. Captured under
 /// the pairing discipline (see vfs::read_observed) so the two halves are
 /// same-source: `paired` says the pre/post fstats of the read agreed,
 /// `reliable` additionally says the mtime lay outside the filesystem
-/// mtime-granularity guard window — only then may the stat serve as a
+/// mtime-granularity guard window — only then may the stamp serve as a
 /// fast-path baseline for skipping future reads. An unpaired or
 /// unreliable observation still carries a true hash of the bytes read.
 struct DiskObservation {
-    std::uint64_t size = 0;
-    std::int64_t mtime_ns = 0;
+    vfs::Stamp stamp;
     std::uint64_t hash = 0;
-    /// Filesystem identity of the inode the bytes were read from
-    /// (fstat's UniqueID) — what binds a spelling to an entity.
-    std::uint64_t uid_device = 0;
-    std::uint64_t uid_file = 0;
     bool paired = false;
     bool reliable = false;
 };
@@ -86,7 +115,7 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path)
 /// and View reports the same IDs for the files it opens: clang tells files
 /// apart by ID, and one scheme per process keeps one file one file. Network
 /// volumes keep LLVM's scheme, their file IDs can be reused.
-std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRef path);
+std::expected<Status, std::error_code> status(llvm::StringRef path);
 
 /// The file statuses of one operation (a dependency check, a compile). On
 /// Windows a directory asked about often enough within the operation is
@@ -96,7 +125,7 @@ std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRe
 /// hard links take vfs::status. Elsewhere every status is vfs::status.
 class StatusBatch {
 public:
-    std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRef path);
+    std::expected<Status, std::error_code> status(llvm::StringRef path);
 
 #ifdef _WIN32
 
@@ -105,7 +134,7 @@ private:
         unsigned asked = 0;
         bool listed = false;
         /// Empty when the directory could not be listed.
-        llvm::StringMap<llvm::sys::fs::file_status> entries;
+        llvm::StringMap<Status> entries;
     };
 
     llvm::StringMap<Directory> directories;

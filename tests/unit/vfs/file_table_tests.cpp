@@ -29,10 +29,10 @@ void age(llvm::StringRef path) {
     EXPECT_TRUE(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
 }
 
-llvm::sys::fs::file_status stat_of(llvm::StringRef path) {
-    llvm::sys::fs::file_status status;
-    EXPECT_FALSE(bool(llvm::sys::fs::status(path, status)));
-    return status;
+vfs::Stamp stamp_of(llvm::StringRef path) {
+    auto status = vfs::status(path);
+    EXPECT_TRUE(status.has_value());
+    return status ? status->stamp : vfs::Stamp{};
 }
 
 TEST_SUITE(FileTable) {
@@ -55,32 +55,17 @@ TEST_CASE(HardlinkFirstBindReads) {
     auto read = pool.read(a_id);
     ASSERT_TRUE(read.has_value());
 
-    auto status = stat_of(b);
-    auto uid = status.getUniqueID();
-    ASSERT_FALSE(pool.cached_hash(b_id,
-                                  status.getSize(),
-                                  fs::mtime_ns(status),
-                                  uid.getDevice(),
-                                  uid.getFile())
-                     .has_value());
+    auto status = stamp_of(b);
+    ASSERT_FALSE(pool.cached_hash(b_id, status).has_value());
 
     ASSERT_TRUE(pool.read(b_id).has_value());
-    auto earned = pool.cached_hash(b_id,
-                                   status.getSize(),
-                                   fs::mtime_ns(status),
-                                   uid.getDevice(),
-                                   uid.getFile());
+    auto earned = pool.cached_hash(b_id, status);
     ASSERT_TRUE(earned.has_value());
     ASSERT_EQ(*earned, read->hash);
 
     // The earned binding also serves the first spelling still.
-    auto a_status = stat_of(a);
-    ASSERT_TRUE(pool.cached_hash(a_id,
-                                 a_status.getSize(),
-                                 fs::mtime_ns(a_status),
-                                 a_status.getUniqueID().getDevice(),
-                                 a_status.getUniqueID().getFile())
-                    .has_value());
+    auto a_status = stamp_of(a);
+    ASSERT_TRUE(pool.cached_hash(a_id, a_status).has_value());
 }
 
 #ifndef _WIN32
@@ -104,25 +89,17 @@ TEST_CASE(RenameSaveRebinds) {
 
     tmp.touch("f.h.tmp", "int v2();\n");
     ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
-    EXPECT_TRUE(set_file_mtime(f, first->mtime_ns));
+    EXPECT_TRUE(set_file_mtime(f, first->stamp.mtime_ns));
 
-    auto status = stat_of(f);
-    auto uid = status.getUniqueID();
-    ASSERT_EQ(status.getSize(), first->size);
-    ASSERT_EQ(fs::mtime_ns(status), first->mtime_ns);
-    ASSERT_FALSE(pool.cached_hash(fid,
-                                  status.getSize(),
-                                  fs::mtime_ns(status),
-                                  uid.getDevice(),
-                                  uid.getFile())
-                     .has_value());
+    auto status = stamp_of(f);
+    ASSERT_EQ(status.size, first->stamp.size);
+    ASSERT_EQ(status.mtime_ns, first->stamp.mtime_ns);
+    ASSERT_FALSE(pool.cached_hash(fid, status).has_value());
 
     auto reread = pool.read(fid);
     ASSERT_TRUE(reread.has_value());
     ASSERT_NE(reread->hash, first->hash);
-    ASSERT_TRUE(
-        pool.cached_hash(fid, reread->size, reread->mtime_ns, reread->uid_device, reread->uid_file)
-            .has_value());
+    ASSERT_TRUE(pool.cached_hash(fid, reread->stamp).has_value());
 }
 
 TEST_CASE(FastPathChecksIdentity) {
@@ -139,12 +116,11 @@ TEST_CASE(FastPathChecksIdentity) {
     auto read = pool.read(fid);
     ASSERT_TRUE(read.has_value());
     auto vid = pool.intern_version(fid, read->hash);
-    ASSERT_TRUE(pool.cached_hash(fid, read->size, read->mtime_ns, read->uid_device, read->uid_file)
-                    .has_value());
+    ASSERT_TRUE(pool.cached_hash(fid, read->stamp).has_value());
 
     tmp.touch("f.h.tmp", "int v2();\n");
     ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
-    EXPECT_TRUE(set_file_mtime(f, read->mtime_ns));
+    EXPECT_TRUE(set_file_mtime(f, read->stamp.mtime_ns));
 
     auto wave = pool.wave();
     ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Stale);
@@ -214,9 +190,10 @@ TEST_CASE(PairNeedsLiveIdentity) {
     auto fid = pool.intern(Spelling::absolute(f));
     auto read = pool.read(fid);
     ASSERT_TRUE(read.has_value());
-    ASSERT_FALSE(
-        pool.cached_hash(fid, read->size, read->mtime_ns, read->uid_device + 1, read->uid_file + 1)
-            .has_value());
+    auto other = read->stamp;
+    other.device += 1;
+    other.file += 1;
+    ASSERT_FALSE(pool.cached_hash(fid, other).has_value());
 }
 #endif
 
@@ -236,8 +213,7 @@ TEST_CASE(FreshReadNotVouched) {
 
     auto wave = pool.wave();
     ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Fresh);
-    ASSERT_FALSE(pool.cached_hash(fid, read->size, read->mtime_ns, read->uid_device, read->uid_file)
-                     .has_value());
+    ASSERT_FALSE(pool.cached_hash(fid, read->stamp).has_value());
 }
 
 TEST_CASE(ReadDropsBom) {

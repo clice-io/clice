@@ -545,10 +545,9 @@ TEST_CASE(CDBSameStampRewrite) {
     ASSERT_TRUE(tracker.tick_cdb().empty());
 }
 
-TEST_CASE(CDBTrustedStampQuiet) {
-    /// A stat safely in the past vouches for the bytes: the watcher reads
-    /// nothing while it holds, so a rewrite forging it goes unseen — the
-    /// stat polling's accepted blind spot.
+TEST_CASE(CDBForgedStampSeen) {
+    /// A rewrite that puts back a size and mtime safely in the past still
+    /// moves the change time: the watcher reads it and reloads.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     FileTable files;
@@ -573,7 +572,7 @@ TEST_CASE(CDBTrustedStampQuiet) {
     }));
     set_mtime(database, stamp);
     ASSERT_TRUE(tracker.tick_cdb().empty());
-    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_EQ(tracker.tick_cdb().size(), 1u);
 }
 
 /// One workspace sweep and the disk changes the file table saw during it.

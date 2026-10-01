@@ -37,18 +37,8 @@ void age_file(llvm::StringRef path) {
 
 /// Whether the file table answers the file's current stat without a read.
 bool vouched(FileTable& pool, llvm::StringRef path) {
-    llvm::sys::fs::file_status status;
-    if(llvm::sys::fs::status(path, status)) {
-        return false;
-    }
-    auto uid = status.getUniqueID();
-    return pool
-        .cached_hash(pool.intern(Spelling::absolute(path)),
-                     status.getSize(),
-                     fs::mtime_ns(status),
-                     uid.getDevice(),
-                     uid.getFile())
-        .has_value();
+    auto status = vfs::status(path);
+    return status && pool.cached_hash(pool.intern(Spelling::absolute(path)), status->stamp);
 }
 
 bool changed(FileTable& pool, const DepsSnapshot& snap) {

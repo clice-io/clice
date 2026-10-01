@@ -1,6 +1,7 @@
 #include "vfs/file_system.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <mutex>
 #include <optional>
@@ -33,6 +34,9 @@ std::error_code widenPath(const Twine& path8,
                           size_t max_path_len = MAX_PATH);
 
 }  // namespace llvm::sys::windows
+#else
+#include <cerrno>
+#include <sys/stat.h>
 #endif
 
 namespace clice::vfs {
@@ -74,18 +78,14 @@ bool read_starts_with_bom(llvm::StringRef path) {
     return *read == 3 && without_bom(llvm::StringRef(head, 3)).empty();
 }
 
-/// Whether the file a status describes starts with the mark, peeked once
-/// per (file, size, mtime): adding or removing the mark changes the size,
-/// so a verdict holds as long as clang's own size-and-mtime check of what
-/// it read.
-bool starts_with_bom(const llvm::vfs::Status& status, llvm::StringRef path) {
-    using Key = std::tuple<std::uint64_t, std::uint64_t, std::uint64_t, std::int64_t>;
+/// Whether the file a stamp describes starts with the mark, peeked once
+/// per stamp: adding or removing the mark changes the size, so a verdict
+/// holds as long as clang's own size-and-mtime check of what it read.
+bool starts_with_bom(const Stamp& stamp, llvm::StringRef path) {
+    using Key = std::tuple<std::uint64_t, std::uint64_t, std::uint64_t, std::int64_t, std::int64_t>;
     static std::mutex mutex;
     static llvm::DenseMap<Key, bool> verdicts;
-    Key key{status.getUniqueID().getDevice(),
-            status.getUniqueID().getFile(),
-            status.getSize(),
-            status.getLastModificationTime().time_since_epoch().count()};
+    Key key{stamp.device, stamp.file, stamp.size, stamp.mtime_ns, stamp.ctime_ns};
     {
         std::lock_guard lock(mutex);
         if(auto it = verdicts.find(key); it != verdicts.end()) {
@@ -98,36 +98,36 @@ bool starts_with_bom(const llvm::vfs::Status& status, llvm::StringRef path) {
     return verdict;
 }
 
-using StatusResult = std::expected<llvm::sys::fs::file_status, std::error_code>;
+using StatusResult = std::expected<Status, std::error_code>;
 
 #ifdef _WIN32
 
-llvm::sys::fs::file_status make_status(DWORD attributes,
-                                       std::uint64_t last_access,
-                                       std::uint64_t last_write,
-                                       std::uint64_t size,
-                                       std::uint64_t volume,
-                                       const FILE_ID_128& id,
-                                       DWORD links) {
-    auto type = (attributes & FILE_ATTRIBUTE_DIRECTORY) ? llvm::sys::fs::file_type::directory_file
-                                                        : llvm::sys::fs::file_type::regular_file;
-    auto perms = (attributes & FILE_ATTRIBUTE_READONLY)
-                     ? llvm::sys::fs::all_read | llvm::sys::fs::all_exe
-                     : llvm::sys::fs::all_all;
+/// FILETIME ticks (100 ns since 1601) as nanoseconds since the Unix epoch.
+std::int64_t unix_ns(std::uint64_t ticks) {
+    constexpr std::int64_t unix_epoch = 116'444'736'000'000'000;
+    return (static_cast<std::int64_t>(ticks) - unix_epoch) * 100;
+}
+
+Status make_status(DWORD attributes,
+                   std::uint64_t last_write,
+                   std::uint64_t change,
+                   std::uint64_t size,
+                   std::uint64_t volume,
+                   const FILE_ID_128& id,
+                   DWORD links) {
     // All 128 bits: ReFS file IDs do not fit in 64.
     auto hash = static_cast<std::uint64_t>(
         llvm::hash_combine_range(std::begin(id.Identifier), std::end(id.Identifier)));
-    return llvm::sys::fs::file_status(type,
-                                      perms,
-                                      links,
-                                      static_cast<std::uint32_t>(last_access >> 32),
-                                      static_cast<std::uint32_t>(last_access),
-                                      static_cast<std::uint32_t>(last_write >> 32),
-                                      static_cast<std::uint32_t>(last_write),
-                                      static_cast<std::uint32_t>(volume),
-                                      static_cast<std::uint32_t>(size >> 32),
-                                      static_cast<std::uint32_t>(size),
-                                      hash);
+    return {
+        .type = (attributes & FILE_ATTRIBUTE_DIRECTORY) ? llvm::sys::fs::file_type::directory_file
+                                                        : llvm::sys::fs::file_type::regular_file,
+        .stamp = {.size = size,
+                  .mtime_ns = unix_ns(last_write),
+                  .ctime_ns = unix_ns(change),
+                  .device = static_cast<std::uint32_t>(volume),
+                  .file = hash},
+        .links = links,
+    };
 }
 
 std::uint64_t filetime(const FILETIME& time) {
@@ -137,10 +137,14 @@ std::uint64_t filetime(const FILETIME& time) {
 StatusResult handle_status(HANDLE handle) {
     switch(::GetFileType(handle)) {
         case FILE_TYPE_DISK: break;
-        case FILE_TYPE_CHAR:
-            return llvm::sys::fs::file_status(llvm::sys::fs::file_type::character_file);
-        case FILE_TYPE_PIPE: return llvm::sys::fs::file_status(llvm::sys::fs::file_type::fifo_file);
+        case FILE_TYPE_CHAR: return Status{.type = llvm::sys::fs::file_type::character_file};
+        case FILE_TYPE_PIPE: return Status{.type = llvm::sys::fs::file_type::fifo_file};
         default: return std::unexpected(llvm::mapWindowsError(::GetLastError()));
+    }
+    // The handle query below has no change time.
+    FILE_BASIC_INFO basic;
+    if(!::GetFileInformationByHandleEx(handle, FileBasicInfo, &basic, sizeof(basic))) {
+        return std::unexpected(llvm::mapWindowsError(::GetLastError()));
     }
     FILE_REMOTE_PROTOCOL_INFO remote;
     if(::GetFileInformationByHandleEx(handle, FileRemoteProtocolInfo, &remote, sizeof(remote))) {
@@ -148,7 +152,15 @@ StatusResult handle_status(HANDLE handle) {
         if(auto error = llvm::sys::fs::status(handle, status)) {
             return std::unexpected(error);
         }
-        return status;
+        return Status{
+            .type = status.type(),
+            .stamp = {.size = status.getSize(),
+                      .mtime_ns = fs::mtime_ns(status),
+                      .ctime_ns = unix_ns(basic.ChangeTime.QuadPart),
+                      .device = status.getUniqueID().getDevice(),
+                      .file = status.getUniqueID().getFile()},
+            .links = status.getLinkCount(),
+        };
     }
     BY_HANDLE_FILE_INFORMATION info;
     if(!::GetFileInformationByHandle(handle, &info)) {
@@ -163,8 +175,8 @@ StatusResult handle_status(HANDLE handle) {
         std::memcpy(id.FileId.Identifier, &index, sizeof(index));
     }
     return make_status(info.dwFileAttributes,
-                       filetime(info.ftLastAccessTime),
                        filetime(info.ftLastWriteTime),
+                       basic.ChangeTime.QuadPart,
                        (std::uint64_t(info.nFileSizeHigh) << 32) | info.nFileSizeLow,
                        id.VolumeSerialNumber,
                        id.FileId,
@@ -213,8 +225,8 @@ StatusResult by_path(llvm::StringRef path) {
             if(!(info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
                !(info.DeviceCharacteristics & remote_device)) {
                 return make_status(info.FileAttributes,
-                                   info.LastAccessTime.QuadPart,
                                    info.LastWriteTime.QuadPart,
+                                   info.ChangeTime.QuadPart,
                                    info.EndOfFile.QuadPart,
                                    info.VolumeSerialNumber.QuadPart,
                                    info.FileId128,
@@ -247,8 +259,8 @@ constexpr std::size_t list_limit = 4096;
 
 /// The statuses of a directory's entries in the ID scheme by_path() uses,
 /// reparse points left out; empty when it cannot be listed.
-llvm::StringMap<llvm::sys::fs::file_status> list_statuses(llvm::StringRef dir) {
-    llvm::StringMap<llvm::sys::fs::file_status> entries;
+llvm::StringMap<Status> list_statuses(llvm::StringRef dir) {
+    llvm::StringMap<Status> entries;
     llvm::SmallVector<wchar_t, 256> wide;
     if(llvm::sys::windows::widenPath(dir, wide)) {
         return entries;
@@ -285,8 +297,8 @@ llvm::StringMap<llvm::sys::fs::file_status> list_statuses(llvm::StringRef dir) {
                name != L".." && llvm::convertWideToUTF8(name, utf8)) {
                 entries.try_emplace(utf8,
                                     make_status(entry->FileAttributes,
-                                                entry->LastAccessTime.QuadPart,
                                                 entry->LastWriteTime.QuadPart,
+                                                entry->ChangeTime.QuadPart,
                                                 entry->EndOfFile.QuadPart,
                                                 id.VolumeSerialNumber,
                                                 entry->FileId,
@@ -306,21 +318,46 @@ llvm::StringMap<llvm::sys::fs::file_status> list_statuses(llvm::StringRef dir) {
 
 #else
 
+std::int64_t unix_ns(const struct timespec& time) {
+    return static_cast<std::int64_t>(time.tv_sec) * 1'000'000'000 + time.tv_nsec;
+}
+
+Status make_status(const struct stat& info) {
+    using llvm::sys::fs::file_type;
+    auto type = S_ISREG(info.st_mode)    ? file_type::regular_file
+                : S_ISDIR(info.st_mode)  ? file_type::directory_file
+                : S_ISCHR(info.st_mode)  ? file_type::character_file
+                : S_ISBLK(info.st_mode)  ? file_type::block_file
+                : S_ISFIFO(info.st_mode) ? file_type::fifo_file
+                : S_ISSOCK(info.st_mode) ? file_type::socket_file
+                                         : file_type::type_unknown;
+#ifdef __APPLE__
+    auto& mtime = info.st_mtimespec;
+    auto& ctime = info.st_ctimespec;
+#else
+    auto& mtime = info.st_mtim;
+    auto& ctime = info.st_ctim;
+#endif
+    return {
+        .type = type,
+        .stamp = {.size = static_cast<std::uint64_t>(info.st_size),
+                  .mtime_ns = unix_ns(mtime),
+                  .ctime_ns = unix_ns(ctime),
+                  .device = static_cast<std::uint64_t>(info.st_dev),
+                  .file = static_cast<std::uint64_t>(info.st_ino)},
+        .links = static_cast<std::uint32_t>(info.st_nlink),
+    };
+}
+
 StatusResult handle_status(llvm::sys::fs::file_t handle) {
-    llvm::sys::fs::file_status status;
-    if(auto error = llvm::sys::fs::status(handle, status)) {
-        return std::unexpected(error);
+    struct stat info;
+    if(::fstat(handle, &info) != 0) {
+        return std::unexpected(std::error_code(errno, std::generic_category()));
     }
-    return status;
+    return make_status(info);
 }
 
 #endif
-
-bool same_file_state(const llvm::sys::fs::file_status& a, const llvm::sys::fs::file_status& b) {
-    return a.getSize() == b.getSize() &&
-           a.getLastModificationTime() == b.getLastModificationTime() &&
-           a.getUniqueID() == b.getUniqueID();
-}
 
 /// Serves a buffer the process keeps to one compile.
 class SharedBuffer : public llvm::MemoryBuffer {
@@ -352,16 +389,16 @@ private:
 class TextCache {
 public:
     struct Entry {
-        llvm::sys::fs::file_status status;
+        Status status;
         std::string real_name;
         std::shared_ptr<const llvm::MemoryBuffer> text;
         std::uint64_t used = 0;
     };
 
-    std::optional<Entry> find(llvm::StringRef path, const llvm::sys::fs::file_status& status) {
+    std::optional<Entry> find(llvm::StringRef path, const Status& status) {
         std::lock_guard lock(mutex);
         auto it = entries.find(path);
-        if(it == entries.end() || !same_file_state(it->second.status, status)) {
+        if(it == entries.end() || it->second.status.stamp != status.stamp) {
             return std::nullopt;
         }
         clock += 1;
@@ -434,17 +471,17 @@ public:
     /// was named; nullptr when it was not.
     std::shared_ptr<const llvm::MemoryBuffer> map(llvm::StringRef path,
                                                   llvm::sys::fs::file_t handle,
-                                                  const llvm::sys::fs::file_status& status) {
+                                                  const Status& status) {
         auto key = spelling(path);
         std::lock_guard lock(mutex);
         auto it = std::ranges::find(entries, key, &Entry::path);
         if(it == entries.end()) {
             return nullptr;
         }
-        if(!it->buffer || !same_file_state(it->status, status)) {
+        if(!it->buffer || it->status.stamp != status.stamp) {
             auto mapped = llvm::MemoryBuffer::getOpenFile(handle,
                                                           path,
-                                                          status.getSize(),
+                                                          status.stamp.size,
                                                           /*RequiresNullTerminator=*/false,
                                                           /*IsVolatile=*/false);
             if(!mapped) {
@@ -468,7 +505,7 @@ private:
 
     struct Entry {
         std::string path;
-        llvm::sys::fs::file_status status;
+        Status status;
         std::shared_ptr<const llvm::MemoryBuffer> buffer;
     };
 
@@ -491,8 +528,8 @@ public:
         name(std::move(name)), entry(std::move(entry)) {}
 
     llvm::ErrorOr<llvm::vfs::Status> status() override {
-        auto result = llvm::vfs::Status::copyWithNewName(entry.status, name);
-        return llvm::vfs::Status::copyWithNewSize(result, entry.text->getBufferSize());
+        return llvm::vfs::Status::copyWithNewSize(entry.status.to_llvm(name),
+                                                  entry.text->getBufferSize());
     }
 
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
@@ -538,8 +575,8 @@ public:
         if(!status) {
             return status.error();
         }
-        auto result = llvm::vfs::Status::copyWithNewName(*status, name);
-        if(!is_text || result.getType() != llvm::sys::fs::file_type::regular_file) {
+        auto result = status->to_llvm(name);
+        if(!is_text || !status->is_file()) {
             return result;
         }
         if(auto error = load_text()) {
@@ -597,8 +634,8 @@ private:
         }
         text = std::move(*loaded);
         auto after = handle_status(handle);
-        if(before && after && after->type() == llvm::sys::fs::file_type::regular_file &&
-           same_file_state(*before, *after) && fs::settled(fs::mtime_ns(*after))) {
+        if(before && after && after->is_file() && before->stamp == after->stamp &&
+           fs::settled(after->stamp.mtime_ns)) {
             texts().insert(key, {.status = *after, .real_name = real_name, .text = text});
         }
         return {};
@@ -635,8 +672,7 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path)
     }
     auto close = llvm::make_scope_exit([&] { llvm::sys::fs::closeFile(*handle); });
 
-    llvm::sys::fs::file_status before;
-    bool have_before = !llvm::sys::fs::status(*handle, before);
+    auto before = handle_status(*handle);
 
     // The bytes must be a snapshot taken between the two fstats — a mapped
     // buffer would keep tracking the file after the post-fstat, unpairing
@@ -650,34 +686,41 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path)
     result.content = std::move(*buffer);
     result.obs.hash = llvm::xxh3_64bits(result.content->getBuffer());
 
-    llvm::sys::fs::file_status after;
-    if(llvm::sys::fs::status(*handle, after)) {
+    auto after = handle_status(*handle);
+    if(!after) {
         return result;
     }
-    result.obs.size = after.getSize();
-    result.obs.mtime_ns = fs::mtime_ns(after);
-    result.obs.uid_device = after.getUniqueID().getDevice();
-    result.obs.uid_file = after.getUniqueID().getFile();
-    result.obs.paired = have_before && before.getSize() == after.getSize() &&
-                        fs::mtime_ns(before) == result.obs.mtime_ns;
-    result.obs.reliable = result.obs.paired && fs::settled(result.obs.mtime_ns);
+    result.obs.stamp = after->stamp;
+    result.obs.paired = before && before->stamp == after->stamp;
+    result.obs.reliable = result.obs.paired && fs::settled(after->stamp.mtime_ns);
     return result;
 }
 
-std::expected<llvm::sys::fs::file_status, std::error_code> status(llvm::StringRef path) {
+llvm::vfs::Status Status::to_llvm(llvm::StringRef name) const {
+    return llvm::vfs::Status(name,
+                             llvm::sys::fs::UniqueID(stamp.device, stamp.file),
+                             llvm::sys::TimePoint<>(std::chrono::nanoseconds(stamp.mtime_ns)),
+                             0,
+                             0,
+                             stamp.size,
+                             type,
+                             llvm::sys::fs::all_all);
+}
+
+std::expected<Status, std::error_code> status(llvm::StringRef path) {
 #ifdef _WIN32
     return by_path(path);
 #else
-    llvm::sys::fs::file_status status;
-    if(auto error = llvm::sys::fs::status(path, status)) {
-        return std::unexpected(error);
+    llvm::SmallString<256> terminated(path);
+    struct stat info;
+    if(::stat(terminated.c_str(), &info) != 0) {
+        return std::unexpected(std::error_code(errno, std::generic_category()));
     }
-    return status;
+    return make_status(info);
 #endif
 }
 
-std::expected<llvm::sys::fs::file_status, std::error_code>
-    StatusBatch::status(llvm::StringRef path) {
+std::expected<Status, std::error_code> StatusBatch::status(llvm::StringRef path) {
 #ifdef _WIN32
     auto& directory = directories[llvm::sys::path::parent_path(path)];
     if(!directory.listed) {
@@ -687,7 +730,7 @@ std::expected<llvm::sys::fs::file_status, std::error_code>
             // NTFS updates a directory entry's size and time only for the
             // link a write went through: a directory of hard links (Boost's
             // `b2 headers`) cannot be answered from its listing.
-            if(status && status->getLinkCount() > 1) {
+            if(status && status->links > 1) {
                 directory.listed = true;
             }
             return status;
@@ -713,12 +756,11 @@ llvm::ErrorOr<llvm::vfs::Status> View::status(const llvm::Twine& path) {
     if(!status) {
         return status.error();
     }
-    auto result = llvm::vfs::Status::copyWithNewName(*status, path);
-    if(result.getType() != llvm::sys::fs::file_type::regular_file || result.getSize() < 3 ||
-       !starts_with_bom(result, absolute)) {
+    auto result = status->to_llvm(path.str());
+    if(!status->is_file() || status->stamp.size < 3 || !starts_with_bom(status->stamp, absolute)) {
         return result;
     }
-    return llvm::vfs::Status::copyWithNewSize(result, result.getSize() - 3);
+    return llvm::vfs::Status::copyWithNewSize(result, status->stamp.size - 3);
 }
 
 llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::openFileForRead(const llvm::Twine& path) {

@@ -512,10 +512,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         if(!status) {
             return false;
         }
-        auto size = status->getSize();
-        auto mtime_ns = fs::mtime_ns(*status);
-        auto uid = status->getUniqueID();
-        auto hash = file_table.cached_hash(path_id, size, mtime_ns, uid.getDevice(), uid.getFile());
+        auto hash = file_table.cached_hash(path_id, status->stamp);
         if(!hash) {
             return false;
         }
@@ -528,13 +525,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             .path_id = path_id,
             .config_id = config_id,
             .scan_result = it->second,
-            .obs = {.size = size,
-                    .mtime_ns = mtime_ns,
-                    .hash = *hash,
-                    .uid_device = uid.getDevice(),
-                    .uid_file = uid.getFile(),
-                    .paired = true,
-                    .reliable = true}
+            .obs = {.stamp = status->stamp, .hash = *hash, .paired = true, .reliable = true}
         });
         report.scan_cache_hits++;
         return true;
