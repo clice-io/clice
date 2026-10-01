@@ -163,7 +163,7 @@ TEST_CASE(GateSplitsRows) {
     ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
 }
 
-TEST_CASE(DeletedFileKeepsRows) {
+TEST_CASE(DeletedFileWithdrawsRows) {
     add_main("main.cpp", R"(
         int helper() { return 1; }
         int use() { return §(use)helper(); }
@@ -172,11 +172,11 @@ TEST_CASE(DeletedFileKeepsRows) {
     merge_into_workspace();
     auto hash = symbol_at(main_id, point("use"));
     ASSERT_NE(hash, 0UL);
-
-    // A file seen gone keeps serving its last rows: they are the only
-    // remaining truth about it.
-    project.file_table.saw_missing(main_id);
     ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
+
+    // The rows of a file seen gone point at text that is gone with it.
+    project.file_table.saw_missing(main_id);
+    ASSERT_FALSE(std::ranges::contains(reference_files(hash), "main.cpp"));
 }
 
 };  // TEST_SUITE(QueryFreshness)

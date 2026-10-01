@@ -111,8 +111,8 @@ struct FreshnessOptions {
 /// describe the file's content on disk — they would point at text that no
 /// longer exists. The one question every disk-side row source is judged by
 /// (persisted shards, PCH overlay entries), against what the file table
-/// last saw on disk. A file seen missing keeps its last-known rows: they
-/// are the only remaining truth about it.
+/// last saw on disk. A file seen missing serves nothing: its rows describe
+/// text that is gone with it.
 class FreshnessGate {
 public:
     explicit FreshnessGate(FileTable& files, FreshnessOptions options = {}) :

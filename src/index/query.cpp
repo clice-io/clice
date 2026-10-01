@@ -101,9 +101,11 @@ bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
     if(options.check_disk && checked.insert(file).second) {
         files.current(file);
     }
-    auto seen = files.seen_hash(file);
-    if(!seen || *seen == content_hash) {
-        return false;
+    if(!files.seen_missing(file)) {
+        auto seen = files.seen_hash(file);
+        if(!seen || *seen == content_hash) {
+            return false;
+        }
     }
     withheld_files.insert(file);
     return true;
@@ -445,12 +447,13 @@ std::optional<Site> IndexQuery::canonical_site(SymbolHash hash) const {
     // A declaration stands in only for a symbol nothing defines: a file
     // with rows that are not serving — withheld as stale, or an open buffer
     // that moved on from them — may hold the definition, which then stays
-    // unavailable, as documented. The table's HasDefinition cannot decide
+    // unavailable, as documented; a deleted file holds nothing anymore. The table's HasDefinition cannot decide
     // it: the bit stays once some unit reported a definition, even after
     // the definition is deleted.
     bool unavailable = false;
     index.each_reference_file(hash, [&](Fid file) {
-        unavailable = unavailable || (index.shard(file) && !serving(file));
+        unavailable = unavailable ||
+                      (index.shard(file) && !serving(file) && !files.seen_missing(file));
     });
     if(unavailable) {
         return std::nullopt;
