@@ -77,6 +77,8 @@ std::optional<llvm::StringRef> spelled_text(CompilationUnitRef unit, clang::Sour
 /// The whitespace opening the line containing `offset`.
 llvm::StringRef line_indent(llvm::StringRef content, std::uint32_t offset);
 
+bool is_cv(const clang::syntax::Token& token);
+
 /// Whether a context is a file scope a definition is written at: the
 /// translation unit, a namespace, a linkage specification or an export
 /// block.
@@ -87,14 +89,19 @@ bool at_file_scope(const clang::DeclContext* context);
 /// templates spell their parameters as arguments ("S<T>::").
 std::string qualifier_at(const clang::DeclContext* target, const clang::DeclContext* from);
 
-/// A type spelled fully qualified minus the namespaces enclosing `from`
-/// (null: at any scope of the TU), declaring `name` when one is given
-/// ("int (*name)(int)"); nullopt for a type no spelling names, such as a
-/// lambda or an unnamed struct.
+/// A type spelled for `from`, declaring `name` when one is given
+/// ("int (*name)(int)"): each name drops the namespaces enclosing `from`
+/// as far as it still finds its entity there, and the compiler's internal
+/// names become the standard ones `from` sees. Nullopt for a type `from`
+/// cannot name: a lambda or unnamed type, another function's local type,
+/// a member type the text has no access to. The text has the access of
+/// `access`, `from` when null: an out-of-line member definition has its
+/// class's.
 std::optional<std::string> type_name(clang::ASTContext& context,
                                      clang::QualType type,
                                      const clang::DeclContext* from,
-                                     llvm::StringRef name = {});
+                                     llvm::StringRef name = {},
+                                     const clang::DeclContext* access = nullptr);
 
 /// "template <...>" heads of the class templates enclosing `decl` up to
 /// `from`, outermost first, one per line, the parameters spelled without

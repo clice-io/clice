@@ -6,20 +6,8 @@
 import * as fs from "node:fs";
 import type * as proto from "vscode-languageserver-protocol";
 import { type CliceClient, SETTLE_TIME, sleep } from "@clice/tools/client";
-import { applyTextEdits, editsFor } from "@clice/tools/client/edits";
+import { actionsOf, applyTextEdits, editsFor, positionAt } from "@clice/tools/client/edits";
 import { expect, test } from "../fixtures.ts";
-
-function actionsOf(reply: (proto.Command | proto.CodeAction)[] | null): proto.CodeAction[] {
-    return (reply ?? []).filter((item): item is proto.CodeAction => "title" in item);
-}
-
-function positionOf(text: string, needle: string): proto.Position {
-    const offset = text.indexOf(needle);
-    expect(offset, needle).toBeGreaterThanOrEqual(0);
-    const before = text.slice(0, offset);
-    const line = before.split("\n").length - 1;
-    return { line, character: offset - before.lastIndexOf("\n") - 1 };
-}
 
 /// Apply the action titled `title` offered at the start of `needle` to
 /// the open buffer and recompile it under `version`: the text returned is
@@ -32,7 +20,9 @@ async function applyAction(
     needle: string,
     title: string,
 ): Promise<string> {
-    const position = positionOf(text, needle);
+    const offset = text.indexOf(needle);
+    expect(offset, needle).toBeGreaterThanOrEqual(0);
+    const position = positionAt(text, offset);
     const reply = await client.codeActions(uri, { start: position, end: position });
     const action = actionsOf(reply).find((candidate) => candidate.title === title);
     expect(action, title).toBeDefined();
