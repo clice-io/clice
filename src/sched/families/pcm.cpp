@@ -196,6 +196,11 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
                 LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
                 co_return RoundOutcome::Success;
             }
+            // The entry no longer describes the module: an importer
+            // compiling while this build runs, or after it fails, must not
+            // read the previous interface from it.
+            project.pcm_cache.erase(pcm_it);
+            project.mark_artifacts_dirty();
         }
     }
     LOG_PERF("cache",

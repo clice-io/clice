@@ -201,6 +201,37 @@ test("pcm offline edit invalidates", async ({ session }) => {
     await c2.shutdown();
 });
 
+test("pcm offline break drops it", async ({ session }) => {
+    // A module broken while the server is down fails its rebuild on
+    // restart: its importer reports the import instead of compiling
+    // against the PCM of the module's previous interface.
+    const workspace = session.tmpdir();
+    copySaveRecompile(workspace);
+    workspace.pinCacheDir();
+    workspace.generateCDB();
+
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
+    const [midUri] = await c1.openAndWait("mid.cppm");
+    c1.assertCleanCompile(midUri);
+    await c1.shutdown();
+
+    workspace.write(
+        "leaf.cppm",
+        "export module Leaf;\n\nexport int leaf() {\n    return broken_in_leaf;\n}\n",
+    );
+
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
+    const [midUri2] = await c2.openAndWait("mid.cppm");
+    expect(
+        c2
+            .errors(midUri2)
+            .map((diagnostic) => `${diagnostic.range.start.line} ${String(diagnostic.code)}`),
+    ).toEqual(["1 err_module_not_found"]);
+    await c2.shutdown();
+});
+
 test("shared preamble shares pch", async ({ session }) => {
     // Two files with identical preambles should share the same PCH file
     // (content-addressed by preamble hash).
