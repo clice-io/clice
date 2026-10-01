@@ -99,7 +99,7 @@ tests/snap/folding_range/fold_kinds/07_pragma_classification.cpp
 
 多行块注释和连续的行注释支持折叠
 
-相邻各行上的行注释合为一组，从首行之下开始折叠，首行保持可见；空行或代码行会结束这一组，跟在代码后面的注释不并入任何一组。块注释像一对大括号那样在其定界符处折叠。
+相邻各行上的行注释合为一组，从首行之下开始折叠，首行保持可见；空行或代码行会结束这一组。块注释像一对大括号那样在其定界符处折叠。跟在代码后面的注释不折叠。
 
 ```snap
 tests/snap/folding_range/fold_kinds/08_comment_folding.cpp
@@ -141,7 +141,7 @@ tests/snap/folding_range/fold_kinds/10_raw_string_literal.cpp
 
 连续的 using 声明和 using 指令从第一条之下开始折叠
 
-空行或其他任何行都会结束这一组，别名声明不会并入其中。由宏生成的 using 声明在宏调用处折叠。
+空行或其他任何行都会结束这一组，别名声明不会并入其中，与其他代码同处一行的声明也不会。由宏生成的 using 声明在宏调用处折叠。
 
 ```snap
 tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
@@ -155,7 +155,7 @@ tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
 
 多行模板参数列表在其尖括号处折叠
 
-类模板、函数模板、变量模板、别名模板、偏特化、类外成员定义中重复书写的模板参数列表、模板模板参数，以及带显式模板参数的 Lambda 均适用。
+类模板、函数模板、变量模板、别名模板、偏特化、模板模板参数和带显式模板参数的 Lambda 的参数列表都可以折叠，类外成员定义中重复书写的参数列表也是如此。
 
 ```snap
 tests/snap/folding_range/fold_kinds/12_template_parameter_list.cpp

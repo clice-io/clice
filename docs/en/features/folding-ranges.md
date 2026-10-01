@@ -102,9 +102,9 @@ tests/snap/folding_range/fold_kinds/07_pragma_classification.cpp
 Multiline block comments and runs of line comments fold
 
 Line comments on consecutive lines fold as one run below the first line,
-which stays visible; a blank line or a line of code ends the run, and a
-comment trailing code joins none. A block comment folds on its delimiters
-like a brace pair.
+which stays visible; a blank line or a line of code ends the run. A block
+comment folds on its delimiters like a brace pair. A comment trailing code
+does not fold.
 
 ```snap
 tests/snap/folding_range/fold_kinds/08_comment_folding.cpp
@@ -151,7 +151,8 @@ tests/snap/folding_range/fold_kinds/10_raw_string_literal.cpp
 Consecutive using declarations and directives fold below the first one
 
 A blank line or any other line ends the run, and alias declarations do not
-join one. Using declarations produced by macros fold at the invocations.
+join one, nor does a declaration sharing its line with other code. Using
+declarations produced by macros fold at the invocations.
 
 ```snap
 tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
@@ -165,10 +166,10 @@ tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
 
 Multiline template parameter lists fold on their angle brackets
 
-This covers class, function, variable and alias templates, partial
-specializations, the lists an out-of-line member definition repeats,
-template template parameters and lambdas with explicit template
-parameters.
+Class, function, variable and alias templates, partial specializations,
+the lists an out-of-line member definition repeats, template template
+parameters and lambdas with explicit template parameters all fold their
+parameter lists.
 
 ```snap
 tests/snap/folding_range/fold_kinds/12_template_parameter_list.cpp
