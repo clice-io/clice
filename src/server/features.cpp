@@ -641,7 +641,10 @@ Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
     if(!folds.has_value()) {
         co_return kota::outcome_error(std::move(folds.error()));
     }
-    co_return convert(*folds);
+    if(!*folds) {
+        co_return serde_raw{"null"};
+    }
+    co_return convert(**folds);
 }
 
 Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,

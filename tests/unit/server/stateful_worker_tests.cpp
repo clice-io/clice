@@ -353,7 +353,7 @@ TEST_CASE(FoldingRangeWithoutCompile) {
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
-        EXPECT_TRUE(result.value().empty());
+        EXPECT_FALSE(result.value().has_value());
         test_done = true;
     });
 

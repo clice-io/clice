@@ -351,8 +351,8 @@ void StatefulWorker::register_handlers() {
         co_return co_await with_ast_or(
             "FoldingRange",
             params.path,
-            std::vector<feature::FoldingRange>{},
-            [&](DocumentEntry& doc) { return feature::folding_ranges(doc.unit); });
+            std::optional<std::vector<feature::FoldingRange>>{},
+            [&](DocumentEntry& doc) { return std::optional(feature::folding_ranges(doc.unit)); });
     });
 
     // === CodeAction ===

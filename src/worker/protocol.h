@@ -424,7 +424,8 @@ struct RequestTraits<clice::worker::DocumentLinkParams> {
 
 template <>
 struct RequestTraits<clice::worker::FoldingRangeParams> {
-    using Result = std::vector<clice::feature::FoldingRange>;
+    /// Empty without an AST: the client then folds by its own means.
+    using Result = std::optional<std::vector<clice::feature::FoldingRange>>;
     constexpr inline static std::string_view method = "clice/worker/foldingRange";
 };
 

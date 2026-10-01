@@ -271,7 +271,7 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
                              std::move(token));
 }
 
-kota::task<std::vector<feature::FoldingRange>, kota::ipc::Error>
+kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
     Dispatcher::folding_ranges(const Ticket& ticket,
                                std::optional<kota::cancellation_token> token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
