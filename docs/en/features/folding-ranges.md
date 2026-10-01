@@ -95,11 +95,16 @@ tests/snap/folding_range/fold_kinds/07_pragma_classification.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Comment folding**
 
-Multiline block comments and consecutive line comments do not fold yet
+Multiline block comments and runs of line comments fold
+
+Line comments on consecutive lines fold as one run below the first line,
+which stays visible; a blank line or a line of code ends the run, and a
+comment trailing code joins none. A block comment folds on its delimiters
+like a brace pair.
 
 ```snap
 tests/snap/folding_range/fold_kinds/08_comment_folding.cpp
@@ -107,23 +112,31 @@ tests/snap/folding_range/fold_kinds/08_comment_folding.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Include region folding**
 
-Consecutive include directives do not form folding ranges yet
+Consecutive include directives fold as one run below the first include
+
+A blank line, a comment line or another directive ends the run; includes
+inside a conditional branch fold within it, whether or not the branch is
+taken.
 
 ```snap
-tests/snap/folding_range/fold_kinds/09_include_region.cpp
+tests/snap/folding_range/fold_kinds/09_include_region/main.cpp
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Raw string literal folding**
 
-Multiline raw string literals do not form folding ranges yet
+Multiline raw string literals fold on their delimiters
+
+The placeholder repeats the encoding prefix, a custom delimiter and a
+literal suffix. A raw string written in a macro argument folds where it is
+written.
 
 ```snap
 tests/snap/folding_range/fold_kinds/10_raw_string_literal.cpp
@@ -131,11 +144,14 @@ tests/snap/folding_range/fold_kinds/10_raw_string_literal.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`using` declaration blocks**
 
-Consecutive using declarations and directives do not form folding ranges yet
+Consecutive using declarations and directives fold below the first one
+
+A blank line or any other line ends the run, and alias declarations do not
+join one. Using declarations produced by macros fold at the invocations.
 
 ```snap
 tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
@@ -143,11 +159,16 @@ tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Template parameter list folding**
 
-Multiline template parameter lists do not form folding ranges yet
+Multiline template parameter lists fold on their angle brackets
+
+This covers class, function, variable and alias templates, partial
+specializations, the lists an out-of-line member definition repeats,
+template template parameters and lambdas with explicit template
+parameters.
 
 ```snap
 tests/snap/folding_range/fold_kinds/12_template_parameter_list.cpp
@@ -282,20 +303,24 @@ tests/snap/folding_range/refinements/01_collapsed_text.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2666 -->
+<!-- BEGIN CAPABILITY: supported clangd#2666 -->
 
 **Declaration-line folding**
 
-Folding cannot yet keep a declaration signature visible
+A declaration's body folds from the line holding its name
 
-> **Client support**: this depends on the client interpreting
-> `FoldingRange.startLine` correctly. VS Code uses the line _after_
-> `startLine` as the first hidden line, so setting `startLine` to the
-> declaration line achieves the desired effect. However, VS Code still
-> leaves the closing `}` on a separate line rather than collapsing it onto
-> the signature line
+When the opening brace of a function, class or namespace sits below the
+name — on a line of its own, or after a signature spanning several lines —
+a client that folds whole lines starts the fold on the name's line, so the
+folded declaration keeps showing what it is. A client folding by
+characters starts at the brace and keeps everything before it visible
+anyway. A conditional directive between the name and the brace keeps the
+fold at the brace.
+
+> **Client support**: VS Code still leaves the closing `}` on a separate
+> line rather than collapsing it onto the signature line
 > ([vscode#3352](https://github.com/microsoft/vscode/issues/3352) — still
-> open). Other clients may differ.
+> open).
 
 ```snap
 tests/snap/folding_range/refinements/02_fold_from_declaration_line.cpp
@@ -303,19 +328,16 @@ tests/snap/folding_range/refinements/02_fold_from_declaration_line.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**Inactive preprocessor branch indication**
+**Inactive preprocessor branches**
 
-Inactive branches are not visually distinguished or folded automatically yet
+Untaken branches fold like taken ones
 
-Every branch, active or not, has a fold range and can be folded manually.
-Knowing which branch is _inactive_ — to dim or auto-fold it — is not
-implemented here; that information belongs to the inactive-regions feature.
-
-> **Note**: this overlaps with semantic tokens (inactive code dimming) and
-> is partly a client UX concern. The server can mark these ranges with
-> `FoldingRangeKind.Region` and clients can choose to auto-fold them.
+Every branch of a conditional folds whether or not the compile takes it,
+conditionals nested in an untaken branch included, so dead code can be
+folded away by hand. Untaken code is dimmed by the `inactive` modifier of
+semantic tokens; the folds themselves do not tell the branches apart.
 
 ```snap
 tests/snap/folding_range/refinements/03_inactive_preprocessor_branch.cpp
