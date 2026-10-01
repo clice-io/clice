@@ -537,7 +537,8 @@ public:
             // even that is unwritten.
             auto range = CE->getSourceRange();
             auto& SM = unit.context().getSourceManager();
-            if(range.isInvalid() || SM.isBeforeInTranslationUnit(range.getEnd(), range.getBegin())) {
+            if(range.isInvalid() ||
+               SM.isBeforeInTranslationUnit(range.getEnd(), range.getBegin())) {
                 range = CE->getExprLoc();
                 if(range.isInvalid()) {
                     return;

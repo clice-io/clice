@@ -1840,7 +1840,8 @@ void stmt_references(const clang::Stmt* S,
         /// co_await value
         /// ^~~~ reference to the `operator co_await` it selects
         if(llvm::isa<clang::CoawaitExpr>(CSE)) {
-            if(auto* call = llvm::dyn_cast<clang::CallExpr>(CSE->getCommonExpr()->IgnoreImplicit())) {
+            if(auto* call =
+                   llvm::dyn_cast<clang::CallExpr>(CSE->getCommonExpr()->IgnoreImplicit())) {
                 if(auto* callee = call->getDirectCallee();
                    callee && callee->getOverloadedOperator() == clang::OO_Coawait) {
                     refer(out, callee, RelationKind::Reference, CSE->getKeywordLoc());

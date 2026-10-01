@@ -69,8 +69,8 @@ auto CompilationUnitRef::decompose_expansion_range(clang::SourceRange range)
     auto [begin, end] = range;
     // An end inside a macro expansion extends to the invocation's last
     // token: `MAKE_FN(name)` as a whole, not its macro name alone.
-    return decompose_range(clang::SourceRange(expansion_location(begin),
-                                              self->SM().getExpansionRange(end).getEnd()));
+    return decompose_range(
+        clang::SourceRange(expansion_location(begin), self->SM().getExpansionRange(end).getEnd()));
 }
 
 auto CompilationUnitRef::file_id(clang::SourceLocation location) -> clang::FileID {

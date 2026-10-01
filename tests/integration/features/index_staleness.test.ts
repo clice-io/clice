@@ -53,7 +53,10 @@ test("deleted source withdraws its rows", async ({ session }) => {
     ws.pinCacheDir();
     ws.write("h.h", "#pragma once\nint foo(int a);\n");
     ws.write("main.cpp", '#include "h.h"\nint main() { return foo(1); }\n');
-    ws.write("b.cpp", '#include "h.h"\nint foo(int a) { return a; }\nint only_in_b() { return foo(2); }\n');
+    ws.write(
+        "b.cpp",
+        '#include "h.h"\nint foo(int a) { return a; }\nint only_in_b() { return foo(2); }\n',
+    );
     ws.writeCDB(["main.cpp", "b.cpp"]);
     const client = session.spawn(ws);
     await client.initialize(ws);

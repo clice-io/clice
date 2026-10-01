@@ -447,13 +447,13 @@ std::optional<Site> IndexQuery::canonical_site(SymbolHash hash) const {
     // A declaration stands in only for a symbol nothing defines: a file
     // with rows that are not serving — withheld as stale, or an open buffer
     // that moved on from them — may hold the definition, which then stays
-    // unavailable, as documented; a deleted file holds nothing anymore. The table's HasDefinition cannot decide
-    // it: the bit stays once some unit reported a definition, even after
-    // the definition is deleted.
+    // unavailable, as documented; a deleted file holds nothing anymore.
+    // The table's HasDefinition cannot decide it: the bit stays once some
+    // unit reported a definition, even after the definition is deleted.
     bool unavailable = false;
     index.each_reference_file(hash, [&](Fid file) {
-        unavailable = unavailable ||
-                      (index.shard(file) && !serving(file) && !files.seen_missing(file));
+        unavailable =
+            unavailable || (index.shard(file) && !serving(file) && !files.seen_missing(file));
     });
     if(unavailable) {
         return std::nullopt;
