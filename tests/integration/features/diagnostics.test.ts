@@ -198,3 +198,32 @@ test("borrowed header stays a header", async ({ session }) => {
         "err_pp_file_not_found",
     ]);
 });
+
+test("cl warning level stays", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    // /W3 is -Wall; a cl-mode driver reading back `-Wall` gets /Wall, every
+    // warning there is (C++98 compatibility for each `auto`).
+    workspace.write("main.cpp", "int main() {\n    auto x = 1;\n    return x;\n}\n");
+    workspace.write(
+        "compile_commands.json",
+        JSON.stringify([
+            {
+                directory: workspace.root,
+                file: workspace.path("main.cpp"),
+                arguments: [
+                    "cl.exe",
+                    "/nologo",
+                    "/TP",
+                    "/std:c++17",
+                    "/W3",
+                    "-c",
+                    workspace.path("main.cpp"),
+                ],
+            },
+        ]),
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+
+    expect(published(client, uri)).toEqual([]);
+});

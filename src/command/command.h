@@ -251,6 +251,15 @@ struct CompilationEntry {
 /// input slot.
 void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb);
 
+/// Render one argument for the command's own driver. A cl-mode driver
+/// reads a `-` spelling as its own option where one exists (`-Wall` is
+/// `/Wall`, -Weverything) and drops the GCC-style ones it lacks, so an
+/// argument the parse unaliased out of a cl spelling (`/W3` is -Wall, `/J`
+/// -funsigned-char) reaches it through `/clang:`.
+void render_driver_arg(const Arg& arg,
+                       CompilerFamily family,
+                       llvm::function_ref<void(std::string_view)> cb);
+
 /// The option-table visibility mask of a driver family: CL families see
 /// /U-, /D-style options; the rest exclude them so Unix absolute paths
 /// are not misparsed.

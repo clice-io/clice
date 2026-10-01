@@ -942,7 +942,7 @@ Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config) {
             out.argv.push_back(arg.spelling);
             continue;
         }
-        render_arg(arg, emit);
+        render_driver_arg(arg, config.family, emit);
     }
 
     return out;

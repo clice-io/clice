@@ -223,6 +223,33 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
     option::table().render(parsed, forward);
 }
 
+void render_driver_arg(const Arg& arg,
+                       CompilerFamily family,
+                       llvm::function_ref<void(std::string_view)> cb) {
+    if(family != CompilerFamily::MSVC && family != CompilerFamily::ClangCL) {
+        render_arg(arg, cb);
+        return;
+    }
+    std::vector<std::string> fragments;
+    render_arg(arg, [&](std::string_view fragment) { fragments.emplace_back(fragment); });
+
+    // Faithful when the rendering reads back as this very argument under a
+    // cl-mode driver's own visibility.
+    auto parse_options = kota::option::ParseOptions{.visibility = option::CLOption};
+    std::size_t count = 0;
+    bool faithful = true;
+    for(auto& parsed: option::table().parse(fragments, parse_options)) {
+        count += 1;
+        faithful = faithful && parsed && parsed->id == arg.opt_id &&
+                   llvm::equal(parsed->values,
+                               arg.values,
+                               [](std::string_view lhs, const char* rhs) { return lhs == rhs; });
+    }
+    for(auto& fragment: fragments) {
+        cb(faithful && count == 1 ? fragment : "/clang:" + fragment);
+    }
+}
+
 unsigned family_visibility(CompilerFamily family) {
     /// Exclude the slash-prefixed CL and DXC options otherwise (/D and /I
     /// carry both bits), to prevent /U, /D, /I from matching Unix absolute
@@ -1338,7 +1365,7 @@ std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& re
             case ArgClass::Semantic:
             case ArgClass::UserContent:
             case ArgClass::Diagnostics:
-                render_arg(arg, emit);
+                render_driver_arg(arg, cfg.family, emit);
                 if(arg.cls == ArgClass::UserContent) {
                     last_user_content = argv.size();
                 }
