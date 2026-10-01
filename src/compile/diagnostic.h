@@ -66,6 +66,10 @@ struct Diagnostic {
     /// The diagnostic id.
     DiagnosticID id;
 
+    /// Whether clang maps the diagnostic to an error by default; `level`
+    /// also counts the warnings -Werror raises.
+    bool error_by_default = false;
+
     /// The file location of this diagnostic.
     clang::FileID fid;
 
@@ -80,6 +84,7 @@ struct Diagnostic {
 
     /// The error message of this diagnostic.
     std::string message;
+
 };
 
 }  // namespace clice

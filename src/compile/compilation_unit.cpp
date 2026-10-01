@@ -149,6 +149,10 @@ auto CompilationUnitRef::main_file() -> clang::FileID {
     return self->SM().getMainFileID();
 }
 
+bool CompilationUnitRef::is_main_file(clang::FileID fid) {
+    return fid == main_file() || (fid.isValid() && fid == self->SM().getPreambleFileID());
+}
+
 auto CompilationUnitRef::main_content() -> llvm::StringRef {
     return file_content(main_file());
 }
