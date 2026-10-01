@@ -87,8 +87,9 @@ test("include skips embedded and trailing ones", async ({ session }) => {
 
     const [action] = await includeActions(client, uri, at(7, 6));
     expect(action?.title).toBe("Add #include <vector>");
-    const applied = await apply(client, uri, text, action!);
-    expect(applied.split("\n").slice(0, 2)).toEqual(['#include "config.h"', "#include <vector>"]);
+    expect(await apply(client, uri, text, action!)).toBe(
+        text.replace('"config.h"\n', '"config.h"\n#include <vector>\n'),
+    );
     client.assertCleanCompile(uri);
 });
 
@@ -96,8 +97,19 @@ test("standard names skip internal headers", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.write("sys/vector", "#pragma once\n#include <bits/stl_vector.h>\n");
     workspace.write("sys/bits/stl_vector.h", VECTOR);
-    workspace.write("other.cpp", "#include <vector>\nstd::vector<int> used;\n");
-    const text = "using namespace std;\nvector<int> unqualified;\nstd::vector<int> qualified;\n";
+    workspace.write("sys/deque", "#pragma once\n#include <__deque/deque.h>\n");
+    workspace.write(
+        "sys/__deque/deque.h",
+        "#pragma once\nnamespace std {\ntemplate <class T> struct deque {};\n}\n",
+    );
+    workspace.write("sys/string", "#pragma once\n#include <xstring>\n");
+    workspace.write("sys/xstring", "#pragma once\nnamespace std {\nstruct string {};\n}\n");
+    workspace.write(
+        "other.cpp",
+        "#include <vector>\n#include <deque>\n#include <string>\n" +
+            "std::vector<int> a;\nstd::deque<int> b;\nstd::string c;\n",
+    );
+    const text = "using namespace std;\nvector<int> a;\ndeque<int> b;\nstd::string c;\n";
     workspace.write("main.cpp", text);
     workspace.writeCDB(["main.cpp", "other.cpp"], { extraArgs: ["-nostdinc", "-Isys"] });
     const client = await session
@@ -105,14 +117,43 @@ test("standard names skip internal headers", async ({ session }) => {
         .initialize(workspace, { initializationOptions: { project: { enable_indexing: true } } });
     const [uri] = await client.openAndWait("main.cpp");
     await waitIndexed(client, "vector", "/stl_vector.h");
+    await waitIndexed(client, "deque", "/deque.h");
+    await waitIndexed(client, "string", "/xstring");
 
-    for (const range of [at(1, 0), at(2, 6)]) {
-        const titles = (await includeActions(client, uri, range)).map((action) => action.title);
-        expect(titles).toEqual(["Add #include <vector>"]);
+    // libstdc++'s `bits/` and libc++'s `__` headers are filtered from the
+    // index's answer; a qualified standard name asks no index at all,
+    // which would offer the internal <xstring> too.
+    const edits: proto.TextEdit[] = [];
+    for (const [range, header] of [
+        [at(1, 0), "<vector>"],
+        [at(2, 0), "<deque>"],
+        [at(3, 6), "<string>"],
+    ] as const) {
+        const actions = await includeActions(client, uri, range);
+        expect(actions.map((action) => action.title)).toEqual([`Add #include ${header}`]);
+        expect(editsFor(actions[0]!, uri)).toEqual([
+            { range: at(0, 0), newText: `#include ${header}\n` },
+        ]);
+        edits.push(...editsFor(actions[0]!, uri));
     }
-    const [action] = await includeActions(client, uri, at(2, 6));
-    await apply(client, uri, text, action!);
+    client.change(uri, 1, applyTextEdits(text, edits));
+    await client.waitForRecompile(uri);
     client.assertCleanCompile(uri);
+});
+
+test("member access offers no include", async ({ session }) => {
+    const workspace = session.tmpdir();
+    workspace.write("lib.h", "#pragma once\nint count(int);\n");
+    workspace.write("lib.cpp", '#include "lib.h"\nint count(int n) { return n; }\n');
+    workspace.write("main.cpp", "struct Box {};\nint use(Box* box) { return box->count; }\n");
+    workspace.writeCDB(["main.cpp", "lib.cpp"]);
+    const client = await session
+        .spawn(workspace)
+        .initialize(workspace, { initializationOptions: { project: { enable_indexing: true } } });
+    const [uri] = await client.openAndWait("main.cpp");
+    await waitIndexed(client, "count", "/lib.cpp");
+
+    expect(await includeActions(client, uri, at(1, 33))).toEqual([]);
 });
 
 test("context header keeps its directive inside", async ({ session }) => {

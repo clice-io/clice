@@ -7,6 +7,6 @@ struct Box {};
 
 int use(Box box, Box* pointer) {
     box.§(swap)swap(box);
-    box.template §(get)get<0>();
+    box.template §(make_unique)make_unique<int>();
     return pointer->§(count)count;
 }

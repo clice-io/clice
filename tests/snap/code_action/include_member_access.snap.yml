@@ -5,7 +5,7 @@ input_file: include_member_access.cpp
 count:
 (no actions)
 
-get:
+make_unique:
 (no actions)
 
 swap:

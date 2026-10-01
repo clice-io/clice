@@ -4,5 +4,6 @@ input_file: reorder_leading_attributes.cpp
 ---
 cls:
 - [refactor.rewrite] Reorder definitions of 'S' by declaration order
-  11:0-12:0 => "DEPRECATED\nvoid S::a() {}\n"
-  16:0-18:0 => "void S::c() {}\n"
+  11:0-15:0 => "DEPRECATED\nvoid S::a() {}\n"
+  16:0-17:0 => "[[nodiscard]] [[deprecated(\"old\")]]\nint S::b() {\n    return 0;\n}\n"
+  18:0-20:0 => "[[using gnu: cold]] void S::c() {}\n"

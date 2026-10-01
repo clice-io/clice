@@ -148,7 +148,7 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
     enum class Guard : std::uint8_t { None, Opened, Defined, Closed };
     auto guard = Guard::None;
     llvm::StringRef guard_macro;
-    bool code = false;
+    bool seen_code = false;
     std::uint32_t depth = 0;
     std::uint32_t directives = 0;
     Lexer lexer(content, {.lang_opts = &unit.lang_options()});
@@ -157,12 +157,12 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
         if(guard == Guard::Closed) {
             guard = Guard::None;
         }
-        bool fragment = token.is_pp_keyword && token.text(content) == "module";
-        if(!token.is_directive_hash() && !fragment) {
+        bool module_line = token.is_pp_keyword && token.text(content) == "module";
+        if(!token.is_directive_hash() && !module_line) {
             if(guard == Guard::Opened) {
                 guard = Guard::None;
             }
-            code = true;
+            seen_code = true;
             continue;
         }
         llvm::SmallVector<Token, 4> line;
@@ -171,11 +171,11 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
             line.push_back(next);
         }
         auto anchor = line_end(content, next.range.begin);
-        if(fragment) {
-            if(!code && line.size() == 1 && line[0].kind == clang::tok::semi) {
+        if(module_line) {
+            if(!seen_code && line.size() == 1 && line[0].kind == clang::tok::semi) {
                 levels[0].prologue = anchor;
             } else {
-                code = true;
+                seen_code = true;
             }
             continue;
         }
@@ -186,22 +186,23 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
         auto keyword = line[0].text(content);
         auto argument = line.size() > 1 ? line[1].text(content) : llvm::StringRef();
         if(guard == Guard::Opened) {
-            guard = keyword == "define" && argument == guard_macro ? Guard::Defined : Guard::None;
-            if(guard == Guard::Defined) {
+            if(keyword == "define" && argument == guard_macro) {
+                guard = Guard::Defined;
                 levels[1].prologue = anchor;
                 continue;
             }
+            guard = Guard::None;
         }
         if(keyword == "include") {
-            if(!code && depth < levels.size()) {
+            if(!seen_code && depth < levels.size()) {
                 levels[depth].include = anchor;
             }
         } else if(keyword == "pragma") {
-            if(!code && depth < levels.size() && argument == "once") {
+            if(!seen_code && depth < levels.size() && argument == "once") {
                 levels[depth].prologue = anchor;
             }
         } else if(keyword == "if" || keyword == "ifdef" || keyword == "ifndef") {
-            if(keyword == "ifndef" && directives == 1 && !code) {
+            if(keyword == "ifndef" && directives == 1 && !seen_code) {
                 guard = Guard::Opened;
                 guard_macro = argument;
             }

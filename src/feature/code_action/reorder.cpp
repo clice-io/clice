@@ -86,24 +86,42 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
     auto main = unit.main_file();
     auto begin = range->begin;
 
-    // A leading attribute specifier (`[[deprecated]]` on a line of its
-    // own) lies outside the declaration's range, and the `[[` opening it
-    // outside the attribute's.
-    for(const auto* attr: definition->attrs()) {
-        auto location = unit.expansion_location(attr->getLocation());
-        if(!attr->isImplicit() && !attr->isInherited() && unit.file_id(location) == main) {
-            begin = std::min(begin, unit.file_offset(location));
-        }
-    }
+    // Attribute specifiers right before the declaration (`[[deprecated]]`
+    // on a line of its own, or a macro spelling one) lie outside its
+    // range.
     auto tokens = unit.spelled_tokens(main);
     auto first = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
         return unit.file_offset(token.location()) < begin;
     });
-    while(first - tokens.begin() >= 2 && std::prev(first)->kind() == clang::tok::l_square &&
-          std::prev(first, 2)->kind() == clang::tok::l_square) {
-        first -= 2;
-        begin = unit.file_offset(first->location());
+    while(first != tokens.begin()) {
+        auto previous = std::prev(first);
+        if(previous != tokens.begin() && previous->kind() == clang::tok::r_square &&
+           std::prev(previous)->kind() == clang::tok::r_square) {
+            std::uint32_t depth = 0;
+            auto open = previous;
+            for(;; --open) {
+                if(open->kind() == clang::tok::r_square) {
+                    depth += 1;
+                } else if(open->kind() == clang::tok::l_square) {
+                    depth -= 1;
+                }
+                if(depth == 0 || open == tokens.begin()) {
+                    break;
+                }
+            }
+            if(depth != 0) {
+                break;
+            }
+            first = open;
+        } else if(llvm::any_of(definition->attrs(), [&](const clang::Attr* attr) {
+                      return unit.expansion_location(attr->getLocation()) == previous->location();
+                  })) {
+            first = previous;
+        } else {
+            break;
+        }
     }
+    begin = unit.file_offset(first->location());
 
     // Comments directly above the definition travel with it: each on
     // lines of its own, separated from what follows by nothing but
@@ -131,12 +149,12 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
     }
     LocalSourceRange lines{begin, line_end(content, range->end - 1)};
 
-    for(const auto& directive: unit.semantics().block_directives()) {
-        using enum LexicalInfo::BlockDirective::Kind;
-        if(llvm::is_contained({If, Else, EndIf}, directive.kind) &&
-           directive.range.begin >= lines.begin && directive.range.begin < lines.end) {
-            return std::nullopt;
-        }
+    using enum LexicalInfo::BlockDirective::Kind;
+    if(llvm::any_of(unit.semantics().block_directives(), [&](const auto& directive) {
+           return llvm::is_contained({If, Else, EndIf}, directive.kind) &&
+                  directive.range.begin >= lines.begin && directive.range.begin < lines.end;
+       })) {
+        return std::nullopt;
     }
     return lines;
 }
@@ -151,28 +169,45 @@ struct Dependency {
     std::uint32_t after;
 };
 
-/// The declaration a use of `decl` needs ahead of it: the definition when
-/// the use may need what only the definition says — a complete type, a
-/// deduced return type, a value for constant evaluation — else the first
-/// declaration.
-const clang::Decl* required_declaration(clang::ASTContext& context, const clang::NamedDecl* decl) {
+/// The declarations a use of `decl` needs ahead of it: its first
+/// declaration, and its definition when the use may need what only the
+/// definition says — a complete type, a deduced return type, a value for
+/// constant evaluation — along with the definitions of the class types
+/// it passes by value.
+llvm::SmallVector<const clang::Decl*, 4> requirements(clang::ASTContext& context,
+                                                      const clang::NamedDecl* decl) {
+    llvm::SmallVector<const clang::Decl*, 4> out{decl->getCanonicalDecl()};
+    auto add = [&](const clang::Decl* definition) {
+        if(definition) {
+            out.push_back(definition);
+        }
+    };
+    auto complete = [&](clang::QualType type) {
+        if(auto* tag = type->getAsTagDecl()) {
+            add(tag->getDefinition());
+        }
+    };
     if(auto* described = llvm::dyn_cast<clang::RedeclarableTemplateDecl>(decl)) {
         decl = described->getTemplatedDecl();
     }
-    const clang::Decl* definition = nullptr;
     if(auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
-        definition = tag->getDefinition();
+        add(tag->getDefinition());
     } else if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
         if(function->isConstexpr() ||
            function->getDeclaredReturnType()->getContainedDeducedType()) {
-            definition = function->getDefinition();
+            add(function->getDefinition());
+        }
+        complete(function->getReturnType());
+        for(const auto* parameter: function->parameters()) {
+            complete(parameter->getType());
         }
     } else if(auto* variable = llvm::dyn_cast<clang::VarDecl>(decl)) {
         if(variable->isUsableInConstantExpressions(context)) {
-            definition = variable->getInitializingDeclaration();
+            add(variable->getInitializingDeclaration());
         }
+        complete(variable->getType());
     }
-    return definition ? definition : decl->getCanonicalDecl();
+    return out;
 }
 
 /// The orders the text between the first and the last slot relies on.
@@ -199,8 +234,7 @@ std::vector<Dependency> dependencies(CompilationUnitRef unit, llvm::ArrayRef<Slo
     const auto& semantics = unit.semantics();
     auto entries = semantics.node_entries();
     for(std::uint32_t i = 0; i < entries.size() && entries[i].node.is_ast();) {
-        const auto* decl = entries[i].node.get<clang::Decl>();
-        if(decl) {
+        if(const auto* decl = entries[i].node.get<clang::Decl>()) {
             auto range = main_range(unit, decl->getSourceRange());
             if(range && (range->end <= region.begin || range->begin >= region.end)) {
                 i = entries[i].subtree_end;
@@ -220,9 +254,11 @@ std::vector<Dependency> dependencies(CompilationUnitRef unit, llvm::ArrayRef<Slo
             }
         }
         for(const auto& occurrence: resolve_occurrences(semantics, i)) {
-            if(!occurrence.kind.isDeclOrDef()) {
-                depend(required_declaration(unit.context(), occurrence.decl)->getLocation(),
-                       occurrence.location);
+            if(occurrence.kind.isDeclOrDef()) {
+                continue;
+            }
+            for(const auto* required: requirements(unit.context(), occurrence.decl)) {
+                depend(required->getLocation(), occurrence.location);
             }
         }
         i += 1;
@@ -293,9 +329,9 @@ std::vector<TextReplacement> permutation(CompilationUnitRef unit, std::vector<Sl
     std::vector<std::size_t> source(slots.size());
     std::vector<std::size_t> target(slots.size());
     std::vector<bool> pinned(slots.size(), false);
-    // Whether any slot's text moves.
+    // Orders each block's unpinned slots by rank; whether any text moves.
     auto assign = [&] {
-        for(auto& [block, members]: blocks) {
+        for(const auto& members: llvm::make_second_range(blocks)) {
             llvm::SmallVector<std::size_t> movable;
             for(auto index: members) {
                 if(pinned[index]) {
