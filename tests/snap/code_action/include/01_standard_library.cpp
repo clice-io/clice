@@ -6,8 +6,8 @@
 ///
 /// An unresolved standard library name offers the header declaring it, from the standard library mapping
 ///
-/// The directive goes after the file's last include. An unqualified name
-/// also tries the `std` namespace.
+/// The directive goes after the includes at the top of the file. An
+/// unqualified name also tries the `std` namespace.
 
 #include "support.h"
 
