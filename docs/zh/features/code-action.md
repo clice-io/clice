@@ -785,9 +785,9 @@ tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp
 
 **只能移动的字段**
 
-类型只能移动、不能复制的字段按值接收并移动到字段中，右值引用字段绑定的对象也以同样方式移动
+类型只能移动、不能复制的字段按值接收并移动到字段中，右值引用字段则经 `std::move` 绑定到传入的实参
 
-文件包含的内容中尚未声明 `std::move` 时，会为文件加上 `#include <utility>`。既不能复制也不能移动的类不会得到构造函数。
+类之前没有任何地方声明 `std::move` 时，会为文件加上 `#include <utility>`。既不能复制也不能移动的类不会得到构造函数。
 
 ```snap
 tests/snap/code_action/constructor/07_move_only_fields.cpp

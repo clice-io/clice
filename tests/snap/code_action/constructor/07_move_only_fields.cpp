@@ -2,10 +2,10 @@
 ///
 /// - status: supported
 ///
-/// A field whose class moves but does not copy is taken by value and moved from, as is the object an rvalue reference field binds
+/// A field whose class moves but does not copy is taken by value and moved from, and an rvalue reference field binds its argument through `std::move`
 ///
-/// The file gains `#include <utility>` when nothing it includes declares
-/// `std::move` yet. A class that neither copies nor moves gets no
+/// The file gains `#include <utility>` when nothing declares `std::move`
+/// before the class. A class that neither copies nor moves gets no
 /// constructor.
 
 struct Handle {
