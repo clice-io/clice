@@ -2,8 +2,13 @@
 created_at: 2026-08-01
 input_file: fold_kinds/02_nested_compound_statement.cpp
 ---
-- { range: "6:24-22:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "6:24-40:1", kind: functionBody, collapsed_text: "{...}" }
 - { range: "7:19-11:5", kind: compoundStmt, collapsed_text: "{...}" }
 - { range: "8:43-10:9", kind: compoundStmt, collapsed_text: "{...}" }
 - { range: "13:22-15:5", kind: compoundStmt, collapsed_text: "{...}" }
 - { range: "18:4-21:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "25:20-27:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "27:11-29:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "31:8-33:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "33:18-35:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "37:7-39:5", kind: compoundStmt, collapsed_text: "{...}" }

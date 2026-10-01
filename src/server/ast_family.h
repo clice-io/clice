@@ -266,6 +266,7 @@ private:
 /// Discriminators for Quarantine's per-kind ledgers.
 enum class EvidenceKind : std::uint8_t {
     DocumentLink,
+    FoldingRange,
     CodeAction,
     PCH,
     Completion,

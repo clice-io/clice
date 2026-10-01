@@ -69,6 +69,10 @@ public:
     kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         document_links(const Ticket& ticket, std::optional<kota::cancellation_token> token = {});
 
+    /// The folding ranges from the stateful worker holding the AST.
+    kota::task<std::vector<feature::FoldingRange>, kota::ipc::Error>
+        folding_ranges(const Ticket& ticket, std::optional<kota::cancellation_token> token = {});
+
     /// The code actions on a range of the buffer, from the stateful worker
     /// holding the AST; index requests come back unresolved.
     kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>

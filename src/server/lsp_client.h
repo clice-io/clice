@@ -98,6 +98,9 @@ private:
     bool inlay_hint_refresh = false;
     bool folding_range_refresh = false;
 
+    /// Whether the client folds whole lines only.
+    bool line_folding_only = false;
+
     /// What the client takes from a completion item.
     feature::CompletionClient completion_client;
 

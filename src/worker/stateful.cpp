@@ -345,6 +345,16 @@ void StatefulWorker::register_handlers() {
             [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
     });
 
+    // === FoldingRange ===
+    peer.on_request([this](RequestContext& ctx, const worker::FoldingRangeParams& params)
+                        -> RequestResult<worker::FoldingRangeParams> {
+        co_return co_await with_ast_or(
+            "FoldingRange",
+            params.path,
+            std::vector<feature::FoldingRange>{},
+            [&](DocumentEntry& doc) { return feature::folding_ranges(doc.unit); });
+    });
+
     // === CodeAction ===
     peer.on_request(
         [this](RequestContext& ctx,
@@ -410,11 +420,6 @@ void StatefulWorker::register_handlers() {
                                                        range,
                                                        params.config.inlay_hints,
                                                        feature::PositionEncoding::UTF16));
-                });
-            case K::FoldingRange:
-                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
-                    return to_raw(
-                        feature::folding_ranges(doc.unit, feature::PositionEncoding::UTF16));
                 });
             case K::DocumentSymbol:
                 co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {

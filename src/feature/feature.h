@@ -297,6 +297,8 @@ struct SemanticToken {
     std::uint32_t modifiers = 0;
 };
 
+/// A fold in byte offsets of the main file; it becomes an LSP FoldingRange
+/// only at the reply edge, which knows how the client folds.
 struct FoldingRange {
     LocalSourceRange range;
     std::optional<protocol::FoldingRangeKind> kind;
@@ -376,13 +378,15 @@ auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
                                  PositionEncoding encoding) -> protocol::SemanticTokens;
 
 auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange>;
-auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
-    -> std::vector<protocol::FoldingRange>;
 
+/// Wire encoding of computed folds, for the worker's AST results and the
+/// master's index projections alike. A `line_folding_only` client folds
+/// whole lines and ignores the character offsets.
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
                                 llvm::StringRef content,
                                 llvm::ArrayRef<std::uint32_t> line_starts,
-                                PositionEncoding encoding) -> std::vector<protocol::FoldingRange>;
+                                PositionEncoding encoding,
+                                bool line_folding_only) -> std::vector<protocol::FoldingRange>;
 
 auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)

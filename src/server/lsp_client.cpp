@@ -264,6 +264,11 @@ void LSPClient::register_lifecycle() {
         }
 
         if(init.capabilities.text_document.has_value() &&
+           init.capabilities.text_document->folding_range.has_value()) {
+            line_folding_only = init.capabilities.text_document->folding_range->line_folding_only;
+        }
+
+        if(init.capabilities.text_document.has_value() &&
            init.capabilities.text_document->completion.has_value() &&
            init.capabilities.text_document->completion->completion_item.has_value()) {
             auto& item = *init.capabilities.text_document->completion->completion_item;
@@ -647,7 +652,9 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(unserved(path));
-            co_return co_await project->features.folding_range(session, ctx.cancellation);
+            co_return co_await project->features.folding_range(session,
+                                                               line_folding_only,
+                                                               ctx.cancellation);
         });
 
     peer.on_request(

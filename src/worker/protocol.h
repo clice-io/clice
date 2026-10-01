@@ -90,7 +90,6 @@ enum class QueryKind : uint8_t {
     Hover,
     SemanticTokens,
     InlayHints,
-    FoldingRange,
     DocumentSymbol,
 };
 
@@ -354,6 +353,13 @@ struct DocumentLinkParams {
     std::string path;
 };
 
+/// Request the folding ranges of an open file's AST. Unlike the links they
+/// cover the preamble too: a preamble holds only directives, whose folds
+/// come from a lexical scan of the whole file.
+struct FoldingRangeParams {
+    std::string path;
+};
+
 /// Request the code actions of an open file's AST on a byte range of its
 /// text: fully computed against the worker's AST, index requests included
 /// (see feature::CodeAction).
@@ -414,6 +420,12 @@ template <>
 struct RequestTraits<clice::worker::DocumentLinkParams> {
     using Result = std::vector<clice::feature::DocumentLink>;
     constexpr inline static std::string_view method = "clice/worker/documentLink";
+};
+
+template <>
+struct RequestTraits<clice::worker::FoldingRangeParams> {
+    using Result = std::vector<clice::feature::FoldingRange>;
+    constexpr inline static std::string_view method = "clice/worker/foldingRange";
 };
 
 template <>

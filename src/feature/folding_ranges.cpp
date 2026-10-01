@@ -371,18 +371,11 @@ auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange> {
     return FoldingRangeCollector(unit).collect();
 }
 
-auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
-    -> std::vector<protocol::FoldingRange> {
-    return folding_ranges_to_protocol(folding_ranges(unit),
-                                      unit.main_content(),
-                                      unit.line_starts(),
-                                      encoding);
-}
-
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
                                 llvm::StringRef content,
                                 llvm::ArrayRef<std::uint32_t> line_starts,
-                                PositionEncoding encoding) -> std::vector<protocol::FoldingRange> {
+                                PositionEncoding encoding,
+                                bool line_folding_only) -> std::vector<protocol::FoldingRange> {
     LineMap map(content,
                 std::span<const std::uint32_t>(line_starts.data(), line_starts.size()),
                 encoding);
@@ -396,12 +389,23 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
         if(!start || !end)
             continue;
 
-        protocol::FoldingRange range{
-            .start_line = start->line,
-            .start_character = start->character,
-            .end_line = end->line,
-            .end_character = end->character,
-        };
+        protocol::FoldingRange range;
+        if(line_folding_only) {
+            // The client hides whole lines below the start line. The line a
+            // fold ends on holds its closing delimiter or the next header —
+            // `} else {`, `#else`, `private:` — and must stay visible.
+            if(end->line <= start->line + 1) {
+                continue;
+            }
+            range = {.start_line = start->line, .end_line = end->line - 1};
+        } else {
+            range = {
+                .start_line = start->line,
+                .start_character = start->character,
+                .end_line = end->line,
+                .end_character = end->character,
+            };
+        }
 
         if(item.kind.has_value()) {
             range.kind = *item.kind;
