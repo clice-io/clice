@@ -9,7 +9,6 @@
 #include "compile/compilation_unit.h"
 #include "feature/code_action/action.h"
 #include "semantic/display.h"
-#include "syntax/lexer.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "clang/AST/ASTContext.h"
@@ -554,28 +553,39 @@ const clang::CXXRecordDecl* outermost_record(const clang::CXXRecordDecl* record)
     return record;
 }
 
-/// The offset of the `;` ending a declaration that ends at `end`, past the
-/// GNU attributes a class's closing brace may carry (`} __attribute__((packed));`).
-std::optional<std::uint32_t> semicolon_after(CompilationUnitRef unit, std::uint32_t end) {
-    auto rest = unit.main_content().substr(end);
-    Lexer lexer(rest, {.lang_opts = &unit.lang_options()});
-    auto token = lexer.advance();
-    while(token.is_identifier() && token.text(rest) == "__attribute__") {
+/// The offset of the `;` ending a declaration whose last token is at
+/// `end`, past the GNU attributes a class's closing brace may carry, a
+/// macro's expansion included (`} __attribute__((packed));`); nullopt when
+/// something else follows.
+std::optional<std::uint32_t> semicolon_after(CompilationUnitRef unit, clang::SourceLocation end) {
+    auto& sm = unit.context().getSourceManager();
+    auto tokens = unit.expanded_tokens();
+    auto token = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
+        return !sm.isBeforeInTranslationUnit(end, token.location());
+    });
+    while(token != tokens.end() && token->kind() == clang::tok::kw___attribute) {
         std::uint32_t depth = 0;
         do {
-            token = lexer.advance();
-            if(token.kind == clang::tok::l_paren) {
+            ++token;
+            if(token == tokens.end()) {
+                return std::nullopt;
+            }
+            if(token->kind() == clang::tok::l_paren) {
                 depth += 1;
-            } else if(token.kind == clang::tok::r_paren) {
+            } else if(token->kind() == clang::tok::r_paren) {
                 depth -= 1;
             }
-        } while(depth > 0 && !token.is_eof());
-        token = lexer.advance();
+        } while(depth > 0);
+        ++token;
     }
-    if(token.kind != clang::tok::semi) {
+    if(token == tokens.end() || token->kind() != clang::tok::semi) {
         return std::nullopt;
     }
-    return end + token.range.begin;
+    auto range = main_range(unit, token->location());
+    if(!range) {
+        return std::nullopt;
+    }
+    return range->begin;
 }
 
 /// After the declaration statement `anchor` is part of (`struct S {...}
@@ -609,7 +619,7 @@ std::optional<Placement> placement_after(CompilationUnitRef unit, const clang::D
     }
     auto content = unit.main_content();
     auto offset = range->end;
-    if(auto semicolon = semicolon_after(unit, offset)) {
+    if(auto semicolon = semicolon_after(unit, end)) {
         offset = *semicolon + 1;
     }
     auto line = line_end(content, offset);
@@ -771,8 +781,9 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
        (!*needed ||
         !sm.isBeforeInTranslationUnit(outermost_record(method->getParent())->getEndLoc(),
                                       (*needed)->getEndLoc()))) {
-        auto range = main_range(unit, written_declaration(decl)->getSourceRange());
-        if(auto semicolon = range ? semicolon_after(unit, range->end) : std::nullopt) {
+        auto written = written_declaration(decl)->getSourceRange();
+        if(auto semicolon =
+               main_range(unit, written) ? semicolon_after(unit, written.getEnd()) : std::nullopt) {
             out.push_back(define_action(std::format("Define '{}' inline", name),
                                         DefineRequest{
                                             .range = {*semicolon, *semicolon + 1},

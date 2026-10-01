@@ -393,19 +393,28 @@ int after;
 
 TEST_CASE(AttributeAfterClass) {
     run(R"(
+#define PACKED __attribute__((packed))
 struct Packed { void §(f)f(); char c; } __attribute__((packed));
-int after;
+struct Macro { void §(g)g(); char c; } PACKED;
 )");
     apply("f", "Define 'Packed::f' out of line");
     EXPECT_COMPILES(R"(
+#define PACKED __attribute__((packed))
 struct Packed { void f(); char c; } __attribute__((packed));
 
 void Packed::f() {
 }
 
-int after;
+struct Macro { void g(); char c; } PACKED;
 )",
                     "f");
+
+    run(R"(
+#define PACKED __attribute__((packed))
+struct Macro { void §(g)g(); char c; } PACKED;
+)");
+    apply("g", "Define 'Macro::g' out of line");
+    EXPECT_APPENDED("void Macro::g() {\n}\n", "g");
 }
 
 TEST_CASE(NestedClassMember) {
