@@ -304,9 +304,9 @@ struct FoldingRange {
     std::optional<protocol::FoldingRangeKind> kind;
     std::string collapsed_text;
 
-    /// What a client folding whole lines folds, when it differs from
-    /// `range`: the line holding `begin` stays visible, the lines after it
-    /// hide up to the line holding `end`, which stays visible again.
+    /// What a client folding whole lines folds, when it differs from what
+    /// `range` implies: the line holding `begin` stays visible and the
+    /// lines after it hide through the line holding `end`.
     std::optional<LocalSourceRange> lines;
 };
 

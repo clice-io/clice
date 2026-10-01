@@ -75,7 +75,6 @@ public:
         collect_comments(unit.semantics().comments());
         add_runs(unit.semantics().include_directives(), protocol::FoldingRangeKind::imports);
         collect_raw_strings(unit.semantics().raw_strings());
-        std::ranges::sort(usings, {}, &LocalSourceRange::begin);
         add_runs(usings, "usingDeclaration");
 
         // Order by kind and text after position so equal entries are adjacent
@@ -107,11 +106,16 @@ private:
     void collect_decl(const clang::Decl* decl) {
         collect_template_parameters(decl);
 
-        if(llvm::isa<clang::UsingDecl, clang::UsingDirectiveDecl, clang::UsingEnumDecl>(decl)) {
-            auto begin = unit.file_location(decl->getBeginLoc());
-            auto end = unit.file_location(decl->getEndLoc());
-            if(auto [fid, local] = unit.decompose_range(clang::SourceRange(begin, end));
-               fid == unit.main_file() && local.valid()) {
+        if(llvm::isa<clang::UsingDecl,
+                     clang::UsingDirectiveDecl,
+                     clang::UsingEnumDecl,
+                     clang::UnresolvedUsingValueDecl,
+                     clang::UnresolvedUsingTypenameDecl>(decl)) {
+            // A declaration a macro produces spans the whole invocation.
+            auto range =
+                unit.context().getSourceManager().getExpansionRange(decl->getSourceRange());
+            if(auto [fid, local] = unit.decompose_range(range.getAsRange());
+               fid == unit.main_file()) {
                 usings.push_back(local);
             }
             return;
@@ -263,7 +267,7 @@ private:
                 unit.decompose_location(unit.file_location(previous->getColonLoc()));
             auto [next_fid, end] = unit.decompose_location(unit.file_location(next));
             if(header_fid == unit.main_file() && next_fid == unit.main_file()) {
-                add_section(header_end(header), end, "accessSpecifier");
+                add_section(line_text_end(header), end, "accessSpecifier");
             }
         };
         for(auto* member: record->decls()) {
@@ -358,18 +362,19 @@ private:
                 const auto& next = modules[index + 1];
                 end = next.export_keyword.valid() ? next.export_keyword.begin : next.keyword.begin;
             }
-            add_section(header_end(module.keyword.begin), end, "moduleFragment");
+            add_section(line_text_end(module.keyword.begin), end, "moduleFragment");
         }
     }
 
-    /// A block comment folds on its delimiters; line comments fold by runs.
     void collect_comments(llvm::ArrayRef<LexicalInfo::Comment> comments) {
         llvm::SmallVector<LocalSourceRange> line_comments;
         for(const auto& comment: comments) {
-            if(comment.kind == LexicalInfo::Comment::Kind::Block) {
-                add_range(comment.range, protocol::FoldingRangeKind::comment, "/*...*/");
-            } else {
+            if(comment.kind == LexicalInfo::Comment::Kind::Line) {
                 line_comments.push_back(comment.range);
+            } else if(begins_line(comment.range.begin)) {
+                // A block comment trailing code would cut across the folds
+                // that start at the end of that code's line.
+                add_range(comment.range, protocol::FoldingRangeKind::comment, "/*...*/");
             }
         }
         add_runs(line_comments, protocol::FoldingRangeKind::comment);
@@ -404,23 +409,23 @@ private:
         }
     }
 
-    /// A line-folding client starts a declaration's block on the line of its
-    /// name when the brace sits below it, so the folded block keeps the name
-    /// visible. A directive between the two would make that fold cut across
-    /// a conditional branch's.
+    /// A line-folding client starts a declaration's block on the line of
+    /// `head` — the declaration's name, or the keyword opening a namespace,
+    /// linkage or export block — when the brace sits below it, so the
+    /// folded block keeps the head visible. A block hiding nothing but its
+    /// brace line stays unfolded, and a directive between head and brace
+    /// would make the fold cut across a conditional branch's.
     void add_declaration_block(clang::SourceRange braces,
-                               clang::SourceLocation name,
+                               clang::SourceLocation head,
                                protocol::FoldingRangeKind kind) {
-        auto count = ranges.size();
-        add_range(braces, std::move(kind), "{...}");
-        if(ranges.size() == count) {
+        auto* fold = add_range(braces, std::move(kind), "{...}");
+        if(!fold || content.slice(fold->range.begin, fold->range.end).count('\n') < 2) {
             return;
         }
 
-        auto& fold = ranges.back();
-        auto [fid, offset] = unit.decompose_location(unit.file_location(name));
+        auto [fid, offset] = unit.decompose_location(unit.file_location(head));
         if(fid != unit.main_file() ||
-           line_begin(content, offset) >= line_begin(content, fold.range.begin)) {
+           line_begin(content, offset) >= line_begin(content, fold->range.begin)) {
             return;
         }
         auto directives = unit.semantics().block_directives();
@@ -429,16 +434,17 @@ private:
             offset,
             {},
             [](const LexicalInfo::BlockDirective& directive) { return directive.range.begin; });
-        if(next == directives.end() || next->range.begin > fold.range.begin) {
-            fold.lines = LocalSourceRange{offset, fold.range.end};
+        if(next == directives.end() || next->range.begin > fold->range.begin) {
+            fold->lines = LocalSourceRange{offset, line_begin(content, fold->range.end) - 1};
         }
     }
 
-    void add_range(clang::SourceRange range,
-                   std::optional<protocol::FoldingRangeKind> kind,
-                   std::string collapsed_text) {
+    /// The fold added, if any.
+    FoldingRange* add_range(clang::SourceRange range,
+                            std::optional<protocol::FoldingRangeKind> kind,
+                            std::string collapsed_text) {
         if(range.isInvalid()) {
-            return;
+            return nullptr;
         }
 
         // What macro arguments spell folds where it is written; what a
@@ -446,65 +452,67 @@ private:
         auto begin = unit.file_location(range.getBegin());
         auto end = unit.file_location(range.getEnd());
         if(begin == end) {
-            return;
+            return nullptr;
         }
 
         auto [fid, local] = unit.decompose_range(clang::SourceRange(begin, end));
         if(fid != unit.main_file() || !local.valid() || local.end <= local.begin) {
-            return;
+            return nullptr;
         }
-        add_range(local, std::move(kind), std::move(collapsed_text));
+        return add_range(local, std::move(kind), std::move(collapsed_text));
     }
 
-    void add_range(LocalSourceRange range,
-                   std::optional<protocol::FoldingRangeKind> kind,
-                   std::string collapsed_text) {
+    FoldingRange* add_range(LocalSourceRange range,
+                            std::optional<protocol::FoldingRangeKind> kind,
+                            std::string collapsed_text) {
         // Single-line ranges are not worth folding.
         if(!content.substr(range.begin, range.length()).contains('\n')) {
-            return;
+            return nullptr;
         }
 
-        ranges.push_back({
+        return &ranges.emplace_back(FoldingRange{
             .range = range,
             .kind = std::move(kind),
             .collapsed_text = std::move(collapsed_text),
         });
     }
 
-    /// Folds each run of items on consecutive lines below the run's first
-    /// line. An item that does not begin its line joins no run. Nothing
-    /// closes a run on its last line, so a line-folding client hides that
-    /// line too.
+    /// Folds each run of two or more items on consecutive lines below the
+    /// run's first line. Only an item alone on its lines, trailed by nothing
+    /// but its `;` and a line comment, joins a run. Nothing closes a run on
+    /// its last line, so a line-folding client hides that line too.
     void add_runs(llvm::ArrayRef<LocalSourceRange> items, protocol::FoldingRangeKind kind) {
-        std::optional<LocalSourceRange> run;
+        std::optional<LocalSourceRange> first;
+        LocalSourceRange last;
         auto flush = [&] {
-            if(!run) {
-                return;
-            }
-            auto begin = header_end(run->begin);
-            auto end = header_end(run->end);
-            if(begin != end) {
+            if(first && last != *first) {
+                auto end = line_text_end(last.end);
                 ranges.push_back({
-                    .range = {begin, end},
+                    .range = {line_text_end(first->begin), end},
                     .kind = kind,
-                    .lines = LocalSourceRange{run->begin, line_end(content, run->end)},
+                    .lines = LocalSourceRange{first->begin,                end},
                 });
             }
         };
 
         for(auto item: items) {
-            auto first = line_begin(content, item.begin);
-            if(!content.slice(first, item.begin).trim(" \t").empty()) {
+            auto rest = content.slice(item.end, line_text_end(item.end)).ltrim(" \t;");
+            if(!begins_line(item.begin) || !(rest.empty() || rest.starts_with("//"))) {
                 continue;
             }
-            if(run && first == line_end(content, run->end)) {
-                run->end = item.end;
+            if(first && line_begin(content, item.begin) == line_end(content, last.end)) {
+                last = item;
                 continue;
             }
             flush();
-            run = item;
+            first = last = item;
         }
         flush();
+    }
+
+    /// Whether only blanks precede `offset` on its line.
+    bool begins_line(std::uint32_t offset) {
+        return content.slice(line_begin(content, offset), offset).trim(" \t").empty();
     }
 
     /// `begin` ends a header line; a section hiding no whole line is noise.
@@ -519,7 +527,7 @@ private:
     }
 
     /// Where the text of the line holding `offset` ends.
-    std::uint32_t header_end(std::uint32_t offset) {
+    std::uint32_t line_text_end(std::uint32_t offset) {
         return static_cast<std::uint32_t>(
             std::min(content.find_first_of("\r\n", offset), content.size()));
     }
@@ -528,7 +536,7 @@ private:
     llvm::StringRef content;
     std::vector<FoldingRange> ranges;
 
-    /// Using declarations and directives met on the walk, folded by runs.
+    /// Using declarations and directives met on the walk, in source order.
     llvm::SmallVector<LocalSourceRange> usings;
 };
 
@@ -560,13 +568,14 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
         protocol::FoldingRange range;
         if(line_folding_only) {
             // The client hides whole lines below the start line. The line a
-            // fold ends on holds its closing delimiter or the next header —
-            // `} else {`, `#else`, `private:` — or follows a run of lines,
-            // and must stay visible.
-            if(end->line <= start->line + 1) {
+            // fold's range ends on holds its closing delimiter or the next
+            // header — `} else {`, `#else`, `private:` — and must stay
+            // visible; `lines` ends on its last hidden line instead.
+            auto shown = item.lines ? end->line + 1 : end->line;
+            if(shown <= start->line + 1) {
                 continue;
             }
-            range = {.start_line = start->line, .end_line = end->line - 1};
+            range = {.start_line = start->line, .end_line = shown - 1};
         } else {
             range = {
                 .start_line = start->line,

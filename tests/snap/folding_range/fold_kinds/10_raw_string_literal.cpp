@@ -38,3 +38,15 @@ const char* call(const char*);
 auto argument = call(R"(
     nested in a call
 )");
+
+auto joined = R"(
+    each piece of a concatenation
+)" R"(
+    folds on its own
+)";
+
+#if 0
+auto skipped = R"(
+    raw strings in skipped branches fold too
+)";
+#endif

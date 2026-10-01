@@ -17,8 +17,9 @@
 #include "alpha.h"
 // a comment line ends the run
 #include "beta.h"
-#define AFTER_BETA
-#include "gamma.h"
+#define HEADER "delta.h"
+#include "gamma.h"           // ┐ a header named by a macro
+#include HEADER              // ┘ joins the run as well
 
 #ifdef _WIN32
 #include "windows_api.h" // ┐ a run in a skipped branch

@@ -19,7 +19,7 @@ namespace clice {
 /// callbacks skip the branches nested in a skipped block, a `#else` behind
 /// a taken `#elif`, and everything a preamble PCH consumed), the include
 /// directives (a preamble PCH consumes those too) and the extents of raw
-/// string literals.
+/// string literals (the AST keeps only where a literal's tokens start).
 struct LexicalInfo {
     struct Comment {
         enum class Kind : std::uint8_t {

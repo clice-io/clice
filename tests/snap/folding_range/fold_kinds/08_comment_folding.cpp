@@ -5,9 +5,9 @@
 /// Multiline block comments and runs of line comments fold
 ///
 /// Line comments on consecutive lines fold as one run below the first line,
-/// which stays visible; a blank line or a line of code ends the run, and a
-/// comment trailing code joins none. A block comment folds on its delimiters
-/// like a brace pair.
+/// which stays visible; a blank line or a line of code ends the run. A block
+/// comment folds on its delimiters like a brace pair. A comment trailing code
+/// does not fold.
 
 // This is a long
 // multi-line comment
@@ -26,6 +26,9 @@
 
 int counter = 0;  // a comment trailing code
                   // does not start a run
+
+int limit = 0; /* nor does a block comment
+                  trailing code fold */
 
 /* a block comment
    next to */

@@ -4,10 +4,10 @@
 ///
 /// Multiline template parameter lists fold on their angle brackets
 ///
-/// This covers class, function, variable and alias templates, partial
-/// specializations, the lists an out-of-line member definition repeats,
-/// template template parameters and lambdas with explicit template
-/// parameters.
+/// Class, function, variable and alias templates, partial specializations,
+/// the lists an out-of-line member definition repeats, template template
+/// parameters and lambdas with explicit template parameters all fold their
+/// parameter lists.
 
 template<typename T>
 struct Less;
@@ -53,9 +53,24 @@ template<
 >
 constexpr bool always = true;
 
+template<
+    typename T
+>
+constexpr bool always<T*> = false;
+
 template<typename T,
          typename U>
 using First = T;
+
+template<typename T>
+struct Outer {
+    struct Inner;
+};
+
+template<
+    typename T
+>
+struct Outer<T>::Inner {};
 
 auto generic = []<
     typename T,

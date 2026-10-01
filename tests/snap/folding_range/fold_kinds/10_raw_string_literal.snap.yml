@@ -9,3 +9,7 @@ input_file: fold_kinds/10_raw_string_literal.cpp
 - { range: "31:20-33:2", kind: rawString, collapsed_text: "R\"(...)\"" }
 - { range: "37:20-39:3", kind: functionCall, collapsed_text: "(...)" }
 - { range: "37:21-39:2", kind: rawString, collapsed_text: "R\"(...)\"" }
+- { range: "41:14-43:2", kind: rawString, collapsed_text: "R\"(...)\"" }
+- { range: "43:3-45:2", kind: rawString, collapsed_text: "R\"(...)\"" }
+- { range: "47:5-51:0", kind: conditionDirective }
+- { range: "48:15-50:2", kind: rawString, collapsed_text: "R\"(...)\"" }
