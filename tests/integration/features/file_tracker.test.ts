@@ -307,7 +307,7 @@ test("cdb polling loop live", async ({ session }) => {
     workspace.write("main.cpp", GATED_MAIN);
     workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace, {
-        initializationOptions: { tracker: { cdb_poll_seconds: 1 } },
+        initializationOptions: { tracker: { workspace_poll_seconds: 1 } },
     });
 
     const mainUri = workspace.uri("main.cpp");
@@ -315,7 +315,7 @@ test("cdb polling loop live", async ({ session }) => {
     client.assertHasErrors(mainUri);
 
     workspace.writeCDB(["main.cpp"], { extraArgs: ["-DFEATURE"] });
-    // No hook: the 1s poll loop needs two stable ticks (settle debounce),
+    // No hook: the poll loop needs two stable ticks (settle debounce),
     // so poll for the errors to clear instead of trusting one fixed sleep.
     // Until the reload lands the hover fast-paths on a clean AST and no
     // diagnostics arrive — that round just times out and retries.

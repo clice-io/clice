@@ -14,16 +14,34 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice::vfs {
 
+/// A file watched by its path, a symlink followed anew at each look: the
+/// markers of a git checkout, a package environment, a compilation
+/// database.
+struct Flag {
+    std::string path;
+    /// The content hash at the last look; nullopt while the file is
+    /// missing or unreadable.
+    std::optional<std::uint64_t> hash;
+    /// Whether the last look found no file at all.
+    bool missing = false;
+    /// The stamp a reliable read of `hash` was taken under.
+    std::optional<Stamp> stamp;
+
+    /// Look again; whether the finding differs from the last one.
+    bool look();
+};
+
 /// What the master knows of the files on disk: per file, what the last
 /// look through its fid found, and the changes those looks saw. A look is
 /// a status of the file and, unless an earlier read vouches for that
-/// status, a read. Whoever looks — a freshness check, a rescan, a save,
-/// the workspace sweep — records it here, so this is the single source of
-/// disk change events.
+/// status, a read. Whoever looks — a freshness check, a rescan, a save, a
+/// background tick — records it here, so this is the single source of disk
+/// change events.
 ///
 /// Every spelling of a file shares its fid (see FileTable::intern), while
 /// hardlinks are distinct fids, each with its own reads: nothing here is
@@ -165,37 +183,35 @@ public:
     /// deepest root deciding; files under none follow workspace_policy.
     void add_root(llvm::StringRef dir, Policy policy);
 
+    /// A directory a toolchain installed (an identity): its files follow
+    /// package_policy, and when it lies in a conda environment (pixi's
+    /// included), the environment's install history is watched — an
+    /// install or upgrade makes everything in the environment due.
+    void add_package(llvm::StringRef dir);
+
     /// A build read this file's bytes, hashing to `hash`: for a file nobody
     /// looked at yet, that read is the first look, so that a change after
     /// it is a change.
     void consumed(Fid fid, std::uint64_t hash);
 
-    /// Make files due now.
-    void expire(Fid fid);
+    /// Make every file under the directory `dir` (an identity) due now.
     void expire_under(llvm::StringRef dir);
-    void expire_all();
 
     /// Look at every watched flag, then at the files that are due, longest
     /// due first, for about `budget` of wall time.
     void tick(Clock::duration budget);
 
-    /// A file looked at by its path at every tick, a symlink followed anew
-    /// each time: the markers of a git checkout, a package environment, a
-    /// compilation database.
-    struct Flag {
-        std::string path;
-        /// The content hash at the last look; nullopt while the file is
-        /// missing or unreadable.
-        std::optional<std::uint64_t> hash;
-        /// Called at a look that finds other content than the one before.
-        std::function<void()> on_change;
-        /// The stamp a reliable read of `hash` was taken under.
-        std::optional<Stamp> stamp;
-    };
+    /// Look at these files now, due or not, under any policy.
+    void look(llvm::ArrayRef<Fid> fids);
 
-    /// Watch `path` until the returned flag is dropped; its first look is
-    /// taken now.
-    std::shared_ptr<Flag> watch(std::string path, std::function<void()> on_change = {});
+    /// Look at every watched flag and every file now: the test hook's
+    /// deterministic stand-in for the ticks.
+    void look_all();
+
+    /// Look at `path` at every tick from now on, calling `on_change` at a
+    /// look that finds other content than the one before, until the
+    /// returned flag is dropped. Its first look is taken now.
+    std::shared_ptr<const Flag> watch(std::string path, std::function<void()> on_change);
 
     /// The time of the schedule; tests turn it.
     std::function<Clock::time_point()> now = Clock::now;
@@ -273,7 +289,15 @@ private:
     /// already will bring it up.
     void schedule(Fid fid, File& file, Clock::time_point at);
 
-    void look_flag(Flag& flag);
+    void look_flags();
+
+    /// A background look at a file.
+    void look_at(Fid fid, StatusBatch& statuses);
+
+    struct Watch {
+        Flag flag;
+        std::function<void()> on_change;
+    };
 
     const llvm::SmallVectorImpl<llvm::StringRef>& paths;
 
@@ -293,7 +317,10 @@ private:
     /// is a leftover of a rescheduling, skipped when it comes up.
     std::vector<Due> queue;
 
-    std::vector<std::weak_ptr<Flag>> flags;
+    std::vector<std::weak_ptr<Watch>> watches;
+
+    /// The install history watched for each conda environment.
+    llvm::StringMap<std::shared_ptr<const Flag>> environments;
 };
 
 const inline DiskState::Policy DiskState::workspace_policy{};

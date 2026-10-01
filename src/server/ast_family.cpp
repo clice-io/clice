@@ -201,6 +201,26 @@ bool ASTFamily::is_stale(const Session& session) {
     return false;
 }
 
+void ASTFamily::closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files) {
+    auto add = [&](const DepsSnapshot& deps) {
+        for(auto& dep: deps) {
+            files.push_back(dep.path_id);
+        }
+    };
+    if(auto it = projections.entries.find(path_id);
+       it != projections.entries.end() && it->second.deps) {
+        add(*it->second.deps);
+    }
+    if(auto* header_context = contexts.header_context(path_id)) {
+        add(header_context->deps);
+    }
+    if(auto projection = projections.projection(path_id); projection && projection->pch_key) {
+        if(auto it = project.pch_cache.find(*projection->pch_key); it != project.pch_cache.end()) {
+            add(it->second.deps);
+        }
+    }
+}
+
 void ASTFamily::touch(Fid path_id) {
     auto& entry = projections.entries[path_id];
     entry.current = false;
@@ -321,7 +341,7 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
             co_return true;
         }
         // A dependency changed on disk behind this session's back — the
-        // lazy twin of the workspace sweep. The document recompiles now,
+        // lazy twin of the background ticks. The document recompiles now,
         // whether or not the dependency graph knows the edge (a macro
         // include); the changed file's cascade follows from the file
         // table's change queue. The handler re-resolves the session by

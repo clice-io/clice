@@ -164,15 +164,24 @@ TEST_CASE(ExpiredLooksAgain) {
     Fixture f;
     auto a = f.file("pkg/a.h", "int a;\n");
     auto b = f.file("pkg/sub/b.h", "int b;\n");
-    auto hash = f.hash_of(a);
-    f.hash_of(b);
+    auto hash = f.hash_of(b);
+    f.hash_of(a);
     f.rewrite("pkg/a.h", "int c;\n");
     f.rewrite("pkg/sub/b.h", "int d;\n");
 
-    f.disk.expire(a);
-    ASSERT_TRUE(f.check(a, hash) == Verdict::Stale);
     f.disk.expire_under(f.identity("pkg/sub"));
-    ASSERT_EQ(f.tick(), (llvm::SmallVector<Fid>{a, b}));
+    ASSERT_TRUE(f.check(b, hash) == Verdict::Stale);
+    ASSERT_EQ(f.tick(), llvm::SmallVector<Fid>{b});
+}
+
+TEST_CASE(LookNowAtAny) {
+    // A save looks at the open documents' files at once, due or not.
+    Fixture f;
+    auto a = f.file("pkg/a.h", "int a;\n");
+    f.hash_of(a);
+    f.rewrite("pkg/a.h", "int c;\n");
+    f.disk.look(llvm::ArrayRef<Fid>{a, a});
+    ASSERT_EQ(f.disk.take_changes(), llvm::SmallVector<Fid>{a});
 }
 
 TEST_CASE(RootAddedLater) {
@@ -233,6 +242,21 @@ TEST_CASE(FlagHearsChange) {
     f.rewrite(".git/HEAD", "ref: refs/heads/main\n");
     f.tick();
     ASSERT_EQ(heard, 1);
+}
+
+TEST_CASE(EnvironmentInstallMakesDue) {
+    // An install rewrites the environment's history: everything installed
+    // in it falls due.
+    Fixture f;
+    f.file("env/conda-meta/history", "==> 1 <==\n");
+    auto fid = f.file("env/include/a.h", "int a;\n");
+    f.disk.add_package(f.identity("env/include"));
+    auto hash = f.hash_of(fid);
+    f.rewrite("env/include/a.h", "int b;\n");
+    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+
+    f.rewrite("env/conda-meta/history", "==> 2 <==\n");
+    ASSERT_EQ(f.tick(), llvm::SmallVector<Fid>{fid});
 }
 
 TEST_CASE(ShadowReportsStaleTrust) {

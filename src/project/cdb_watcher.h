@@ -17,12 +17,11 @@ namespace clice {
 /// files their commands name. Every reload reports its per-file delta; the
 /// caller turns it into invalidation.
 ///
-/// Each tick looks at a source's inputs through the file table and
+/// Each tick looks at a source's inputs by their paths (see vfs::Flag) and
 /// compares their content with what its load read (see
 /// CompilationDatabase::inputs), never with a stat taken afterwards: a
 /// rewrite landing between the load and the first poll still reads as a
-/// change. Whether a stat can stand for the bytes is the file table's
-/// call, as for every other file.
+/// change.
 class CDBWatcher {
 public:
     /// Construct after the project is loaded: every registered source is
@@ -71,17 +70,21 @@ private:
         /// Half-write guard: what the previous tick saw while it differed
         /// from `applied`; a tick seeing it again reloads.
         std::optional<Hashes> pending;
+        /// The source's inputs, in CompilationDatabase::inputs order. The
+        /// database is watched by the path the source names: a symlinked
+        /// one may be pointed elsewhere since its load.
+        llvm::SmallVector<vfs::Flag> inputs;
     };
 
     /// The hashes of the source's last load.
     Hashes loaded(SourceID id) const;
 
     /// Look at each of the source's inputs on disk now.
-    Hashes look(SourceID id);
+    Hashes look(TrackedSource& tracked);
 
-    /// The file the source's path names now: a symlinked database may have
-    /// been pointed elsewhere since its load.
-    Fid database(SourceID id);
+    /// Watch the response files the source's last load read, besides the
+    /// database.
+    void watch_inputs(TrackedSource& tracked);
 
     /// Register `id` for watching, from its last load.
     void track(SourceID id);

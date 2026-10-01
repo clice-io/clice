@@ -152,19 +152,9 @@ Upper bound for dynamic stateless-worker scaling; `0` means the machine's parall
 
 ## `[tracker]`
 
-The file tracker polls for changes that happen outside the editor (a `git checkout`, a regenerated `compile_commands.json`, code generators writing headers) so the server picks them up without a restart. Setting an interval to `0` disables that polling loop.
+clice looks at files on disk in the background to notice changes made outside the editor (a `git checkout`, a regenerated `compile_commands.json`, an agent or a code generator writing files), so the server picks them up without a restart. A workspace file is also looked at before every request that depends on it; headers the toolchain installed are looked at every few minutes, whenever their environment is updated, and at every save. Setting `workspace_poll_seconds` to `0` turns the background polling off.
 
 <!-- BEGIN GENERATED CONFIG: tracker -->
-
-<div class="config-option">
-
-| Option             | Type     | Default |
-| ------------------ | -------- | ------- |
-| `cdb_poll_seconds` | `uint32` | `3`     |
-
-Compilation database poll interval in seconds; 0 disables polling.
-
-</div>
 
 <div class="config-option">
 
@@ -172,7 +162,7 @@ Compilation database poll interval in seconds; 0 disables polling.
 | ------------------------ | -------- | ------- |
 | `workspace_poll_seconds` | `uint32` | `30`    |
 
-Workspace file sweep interval in seconds; 0 disables polling.
+Longest interval in seconds between two background looks at a workspace file: the interval doubles at every look that finds the file unchanged, up to this. 0 disables background polling, compilation databases included.
 
 </div>
 

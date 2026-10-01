@@ -1475,6 +1475,11 @@ SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
     auto [it, inserted] = search_configs.try_emplace(*resolved);
     if(inserted) {
         it->second = extract_search_config(chain->resolved(*resolved).args, directory);
+        for(auto& dir: it->second.dirs) {
+            if(dir.driver) {
+                file_table.disk.add_package(CanonicalPath(Spelling::absolute(dir.path)).str());
+            }
+        }
     }
     return it->second;
 }

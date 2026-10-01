@@ -88,6 +88,10 @@ public:
     /// services (sessions, editor context, background indexer).
     void dispatch(llvm::ArrayRef<FileEvent> events);
 
+    /// The files every open document's compile depends on (see
+    /// ASTFamily::closure).
+    void open_closures(llvm::SmallVectorImpl<Fid>& files);
+
     /// Whether anything here derives from the file: an open document, a
     /// command, an include edge, index rows, a compile that read it or
     /// looked for it. The disk changes of files it does not know are not
@@ -127,10 +131,10 @@ public:
     Features features;
     Invalidator invalidator;
 
-    /// Stat-polling discovery of CDB and on-disk file changes. Created by
-    /// start() once the project is loaded (null before that and for the
-    /// rootless project); its polling loops run in bg_tasks, and the
-    /// clice/internal/poll test hook drives ticks directly.
+    /// Polling of the project's databases, default sources and checkout.
+    /// Created by start() once the project is loaded (null before that and
+    /// for the rootless project); its polling loops run in bg_tasks, and
+    /// the clice/internal/poll test hook drives ticks directly.
     std::unique_ptr<FileTracker> tracker;
 
     /// Problems found while loading clice.toml, kept so LSPClient can
@@ -196,10 +200,9 @@ private:
     void drain_store_evictions();
 
     /// The file tracker's polling loops: each tick hands the tracker's
-    /// event batch to dispatch(). Spawned by start() when the configured
-    /// interval is non-zero.
+    /// event batch to dispatch(). Spawned by start() unless polling is off.
     kota::task<> cdb_poll_task();
-    kota::task<> workspace_poll_task();
+    kota::task<> sources_poll_task();
 
     /// The project's background tasks (checkpoints, flushes, polls, the
     /// control listener); cancelled and joined in shutdown().

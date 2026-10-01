@@ -929,6 +929,10 @@ void LSPClient::register_extensions() {
                                                  R"(loop must be "cdb" or "workspace")"});
                         }
                         // Every project ticks; the reply counts the events of all.
+                        // A workspace tick looks at every file first.
+                        if(params.loop == "workspace") {
+                            srv.files.disk.look_all();
+                        }
                         std::uint32_t count = 0;
                         bool loaded = false;
                         for(std::size_t i = 0; i < srv.projects.size(); i += 1) {
@@ -941,7 +945,7 @@ void LSPClient::register_extensions() {
                             if(params.loop == "cdb") {
                                 events = project->tracker->tick_cdb(params.force.value_or(true));
                             } else {
-                                events = co_await project->tracker->tick_workspace();
+                                events = project->tracker->tick_sources();
                             }
                             count += static_cast<std::uint32_t>(events.size());
                             if(!events.empty()) {

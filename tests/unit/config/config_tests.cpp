@@ -255,7 +255,6 @@ TEST_CASE(BornValidDefaults) {
               default_max_stateless_worker_count());
     EXPECT_GE(config.project.max_stateless_worker_count.value,
               config.project.min_stateless_worker_count.value);
-    EXPECT_EQ(config.tracker.cdb_poll_seconds.value, 3u);
     EXPECT_EQ(config.tracker.workspace_poll_seconds.value, 30u);
     EXPECT_EQ(config.inlay_hints.enabled.value, true);
     EXPECT_EQ(config.inlay_hints.parameters.value, true);

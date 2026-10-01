@@ -132,12 +132,6 @@ void DiskState::consumed(Fid fid, std::uint64_t hash) {
     }
 }
 
-void DiskState::expire(Fid fid) {
-    if(auto it = files.find(fid); it != files.end()) {
-        schedule(fid, it->second, now());
-    }
-}
-
 void DiskState::expire_under(llvm::StringRef dir) {
     auto at = now();
     for(auto& [fid, file]: files) {
@@ -147,23 +141,26 @@ void DiskState::expire_under(llvm::StringRef dir) {
     }
 }
 
-void DiskState::expire_all() {
-    auto at = now();
-    for(auto& [fid, file]: files) {
-        schedule(fid, file, at);
+void DiskState::add_package(llvm::StringRef dir) {
+    if(std::ranges::find(roots, dir, &Root::dir) != roots.end()) {
+        return;
     }
+    add_root(dir, package_policy);
+    path::walk_ancestors(dir, "", [&](llvm::StringRef ancestor) {
+        auto history = path::join(ancestor, "conda-meta", "history");
+        if(!vfs::status(history)) {
+            return true;
+        }
+        if(!environments.contains(ancestor)) {
+            environments[ancestor] =
+                watch(history, [this, environment = ancestor.str()] { expire_under(environment); });
+        }
+        return false;
+    });
 }
 
 void DiskState::tick(Clock::duration budget) {
-    // A flag's owner may watch or drop flags when it hears of a change.
-    std::erase_if(flags, [](const std::weak_ptr<Flag>& flag) { return flag.expired(); });
-    llvm::SmallVector<std::shared_ptr<Flag>> live;
-    for(auto& flag: flags) {
-        live.push_back(flag.lock());
-    }
-    for(auto& flag: live) {
-        look_flag(*flag);
-    }
+    look_flags();
 
     // Due by the schedule's clock; the budget is wall time, and every tick
     // looks at one file at least.
@@ -205,11 +202,7 @@ void DiskState::tick(Clock::duration budget) {
                 return;
             }
             looked += 1;
-            if(auto status = statuses.status(path(fid)); !status) {
-                saw_missing(fid);
-            } else {
-                observe_for(fid, *status);
-            }
+            look_at(fid, statuses);
             // An unreadable file records nothing: look again after its
             // interval.
             if(auto& file = files.find(fid)->second; file.queued == Clock::time_point::max()) {
@@ -219,13 +212,29 @@ void DiskState::tick(Clock::duration budget) {
     }
 }
 
-std::shared_ptr<DiskState::Flag> DiskState::watch(std::string path,
-                                                  std::function<void()> on_change) {
-    auto flag = std::make_shared<Flag>(Flag{.path = std::move(path)});
-    look_flag(*flag);
-    flag->on_change = std::move(on_change);
-    flags.push_back(flag);
-    return flag;
+void DiskState::look(llvm::ArrayRef<Fid> fids) {
+    auto sorted = llvm::to_vector(fids);
+    std::ranges::sort(sorted, {}, [&](Fid fid) { return path(fid); });
+    sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+    StatusBatch statuses;
+    for(auto fid: sorted) {
+        look_at(fid, statuses);
+    }
+}
+
+void DiskState::look_all() {
+    look_flags();
+    look(llvm::to_vector(llvm::make_first_range(files)));
+}
+
+std::shared_ptr<const Flag> DiskState::watch(std::string path, std::function<void()> on_change) {
+    auto watch = std::make_shared<Watch>(Watch{
+        .flag = {.path = std::move(path)},
+        .on_change = std::move(on_change),
+    });
+    watch->flag.look();
+    watches.push_back(watch);
+    return std::shared_ptr<const Flag>(watch, &watch->flag);
 }
 
 void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool settled) {
@@ -331,29 +340,46 @@ void DiskState::schedule(Fid fid, File& file, Clock::time_point at) {
     std::ranges::push_heap(queue, std::ranges::greater{}, &Due::at);
 }
 
-void DiskState::look_flag(Flag& flag) {
-    std::optional<std::uint64_t> hash;
-    auto status = vfs::status(flag.path);
-    if(status && flag.stamp == status->stamp) {
-        hash = flag.hash;
+void DiskState::look_flags() {
+    // An owner may watch or drop flags when it hears of a change.
+    std::erase_if(watches, [](const std::weak_ptr<Watch>& watch) { return watch.expired(); });
+    llvm::SmallVector<std::shared_ptr<Watch>> live;
+    for(auto& watch: watches) {
+        live.push_back(watch.lock());
+    }
+    for(auto& watch: live) {
+        if(watch->flag.look()) {
+            watch->on_change();
+        }
+    }
+}
+
+void DiskState::look_at(Fid fid, StatusBatch& statuses) {
+    if(auto status = statuses.status(path(fid)); !status) {
+        saw_missing(fid);
     } else {
-        flag.stamp.reset();
+        observe_for(fid, *status);
+    }
+}
+
+bool Flag::look() {
+    std::optional<std::uint64_t> found;
+    auto status = vfs::status(path);
+    if(status && stamp == status->stamp) {
+        found = hash;
+    } else {
+        stamp.reset();
         if(status) {
-            if(auto observed = read_observed(flag.path)) {
-                hash = observed->obs.hash;
+            if(auto observed = read_observed(path)) {
+                found = observed->obs.hash;
                 if(observed->obs.reliable) {
-                    flag.stamp = observed->obs.stamp;
+                    stamp = observed->obs.stamp;
                 }
             }
         }
     }
-    if(hash == flag.hash) {
-        return;
-    }
-    flag.hash = hash;
-    if(flag.on_change) {
-        flag.on_change();
-    }
+    bool was_missing = std::exchange(missing, !status);
+    return std::exchange(hash, found) != found || was_missing != missing;
 }
 
 }  // namespace clice::vfs
