@@ -1,7 +1,8 @@
 /// Integration tests for the two folding modes a client can ask for. A
 /// `lineFoldingOnly` client hides whole lines below the start line, so a
 /// fold must end before the line holding its closing brace or the next
-/// section's header.
+/// section's header, while a run of comment, include or using lines hides
+/// its last line too.
 
 import type * as proto from "vscode-languageserver-protocol";
 import { expect, test } from "../fixtures.ts";
@@ -35,6 +36,29 @@ int y;
 #endif
 int g(int a,
       int b);
+`;
+
+const RUNS = `// run of
+// line comments
+#include "a.h"
+#include "b.h"
+#include "c.h"
+namespace lib {
+int a, b;
+}
+using lib::a;
+using lib::b;
+/* block
+   comment
+*/
+const char* text = R"(
+raw
+)";
+template <typename T,
+          typename U>
+struct S {};
+// a run ending
+// the file
 `;
 
 function render(folds: proto.FoldingRange[] | null): string[] {
@@ -84,6 +108,46 @@ for (const lineFoldingOnly of [true, false]) {
                 "22:11-24:0 conditionDirective",
                 "24:5-26:0 conditionDirective",
                 "27:5-28:12 functionParams",
+            ]);
+        }
+    });
+}
+
+for (const lineFoldingOnly of [true, false]) {
+    test(`run folds with lineFoldingOnly ${lineFoldingOnly}`, async ({ session }) => {
+        const { client, workspace } = session.tmp();
+        workspace.write("main.cpp", RUNS);
+        for (const header of ["a.h", "b.h", "c.h"]) {
+            workspace.write(header, "#pragma once\n");
+        }
+        workspace.writeCDB(["main.cpp"]);
+        await client.initialize(workspace, {
+            capabilities: { textDocument: { foldingRange: { lineFoldingOnly } } },
+        });
+        const [uri] = await client.openAndWait("main.cpp");
+        client.assertNoErrors(uri);
+
+        const folds = render(await client.foldingRanges(uri));
+        if (lineFoldingOnly) {
+            expect(folds).toEqual([
+                "0:--1:- comment",
+                "2:--4:- imports",
+                "5:--6:- namespace",
+                "8:--9:- usingDeclaration",
+                "10:--11:- comment",
+                "13:--14:- rawString",
+                "19:--20:- comment",
+            ]);
+        } else {
+            expect(folds).toEqual([
+                "0:9-1:16 comment",
+                "2:14-4:14 imports",
+                "5:14-7:1 namespace",
+                "8:13-9:13 usingDeclaration",
+                "10:0-12:2 comment",
+                "13:19-15:2 rawString",
+                "16:9-17:21 templateParams",
+                "19:15-20:11 comment",
             ]);
         }
     });
