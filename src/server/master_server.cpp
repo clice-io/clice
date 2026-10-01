@@ -44,7 +44,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
     // A disk change can be seen deep inside any operation — a staleness
     // check, a rescan inside a cascade: the drain runs on a later loop
     // turn, outside it.
-    files.on_change = [this] {
+    files.disk.on_change = [this] {
         bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
             co_await kota::sleep(std::chrono::milliseconds(0));
             server.drain_disk_changes();

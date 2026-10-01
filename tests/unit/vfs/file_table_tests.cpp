@@ -37,11 +37,9 @@ vfs::Stamp stamp_of(llvm::StringRef path) {
 
 TEST_SUITE(FileTable) {
 
-TEST_CASE(HardlinkFirstBindReads) {
-    // Two spellings hardlinked to one inode: the second spelling's first
-    // sight of the (already known) entity must not inherit the pair — a
-    // recycled inode can hand an unrelated new file an equal-looking stat.
-    // After one read through the second spelling, the twins share.
+TEST_CASE(HardlinksReadApart) {
+    // Two spellings hardlinked to one file are two files: a read through
+    // one never vouches for the other.
     TempDir tmp;
     tmp.touch("a.h", "int shared();\n");
     auto a = tmp.path("a.h");
@@ -52,31 +50,20 @@ TEST_CASE(HardlinkFirstBindReads) {
     FileTable pool;
     auto a_id = pool.intern(Spelling::absolute(a));
     auto b_id = pool.intern(Spelling::absolute(b));
-    auto read = pool.read(a_id);
-    ASSERT_TRUE(read.has_value());
+    ASSERT_NE(a_id, b_id);
+    ASSERT_TRUE(pool.read(a_id).has_value());
 
-    auto status = stamp_of(b);
-    ASSERT_FALSE(pool.cached_hash(b_id, status).has_value());
-
+    auto stamp = stamp_of(b);
+    ASSERT_TRUE(pool.cached_hash(a_id, stamp).has_value());
+    ASSERT_FALSE(pool.cached_hash(b_id, stamp).has_value());
     ASSERT_TRUE(pool.read(b_id).has_value());
-    auto earned = pool.cached_hash(b_id, status);
-    ASSERT_TRUE(earned.has_value());
-    ASSERT_EQ(*earned, read->hash);
-
-    // The earned binding also serves the first spelling still.
-    auto a_status = stamp_of(a);
-    ASSERT_TRUE(pool.cached_hash(a_id, a_status).has_value());
+    ASSERT_TRUE(pool.cached_hash(b_id, stamp).has_value());
 }
 
-#ifndef _WIN32
-// The four tests below pin identity-based defenses (rename-over rebinds,
-// hardlink merging, live-identity stamp gates) that require file-stable
-// UniqueIDs — POSIX-only; see fs::stable_file_ids and FileTable::entity_key.
-TEST_CASE(RenameSaveRebinds) {
-    // An editor-style save (write tmp, rename over) replaces the inode.
-    // The forged stat makes the old pair match by (size, mtime): only the
-    // rebind on the changed UniqueID keeps it from vouching for the new
-    // bytes.
+TEST_CASE(RenameSaveReads) {
+    // An editor-style save (write tmp, rename over) replaces the file.
+    // The forged size and mtime match the old pair: the file ID and change
+    // time in the stamp keep it from vouching for the new bytes.
     TempDir tmp;
     tmp.touch("f.h", "int v1();\n");
     auto f = tmp.path("f.h");
@@ -123,9 +110,29 @@ TEST_CASE(FastPathChecksIdentity) {
     EXPECT_TRUE(set_file_mtime(f, read->stamp.mtime_ns));
 
     auto wave = pool.wave();
-    ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Stale);
+    ASSERT_TRUE(pool.check_version(vid) == vfs::DiskState::Verdict::Stale);
 }
 
+TEST_CASE(PairNeedsSameFile) {
+    // A pair answers only the stamp it was read under: a status carrying
+    // another file ID (a same-stat replace) must read, even when size and
+    // times match.
+    TempDir tmp;
+    tmp.touch("f.h", "int v1();\n");
+    auto f = tmp.path("f.h");
+    age(f);
+
+    FileTable pool;
+    auto fid = pool.intern(Spelling::absolute(f));
+    auto read = pool.read(fid);
+    ASSERT_TRUE(read.has_value());
+    auto other = read->stamp;
+    other.device += 1;
+    other.file += 1;
+    ASSERT_FALSE(pool.cached_hash(fid, other).has_value());
+}
+
+#ifndef _WIN32
 TEST_CASE(SymlinkShownAsSpelled) {
     // A file is its resolved path; results name it the way the user does:
     // the open document's spelling, else the workspace root's — never the
@@ -176,25 +183,6 @@ TEST_CASE(RootClimbPastSymlink) {
     auto fid = out.intern(header);
     ASSERT_EQ(out.display(fid), out.resolve(fid).str());
 }
-
-TEST_CASE(PairNeedsLiveIdentity) {
-    // The shared pair answers only through the identity it was earned
-    // under: a stat carrying another UniqueID (a same-stat replace) must
-    // read, even when size and mtime match.
-    TempDir tmp;
-    tmp.touch("f.h", "int v1();\n");
-    auto f = tmp.path("f.h");
-    age(f);
-
-    FileTable pool;
-    auto fid = pool.intern(Spelling::absolute(f));
-    auto read = pool.read(fid);
-    ASSERT_TRUE(read.has_value());
-    auto other = read->stamp;
-    other.device += 1;
-    other.file += 1;
-    ASSERT_FALSE(pool.cached_hash(fid, other).has_value());
-}
 #endif
 
 TEST_CASE(FreshReadNotVouched) {
@@ -212,7 +200,7 @@ TEST_CASE(FreshReadNotVouched) {
     auto vid = pool.intern_version(fid, read->hash);
 
     auto wave = pool.wave();
-    ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Fresh);
+    ASSERT_TRUE(pool.check_version(vid) == vfs::DiskState::Verdict::Fresh);
     ASSERT_FALSE(pool.cached_hash(fid, read->stamp).has_value());
 }
 

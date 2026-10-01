@@ -390,7 +390,7 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         if(dep.missing) {
             // Gone at build time: reappearing is the change; still-missing
             // stays unchanged (see the capture).
-            if(files.current(dep.path_id)) {
+            if(files.present(dep.path_id)) {
                 return true;
             }
             continue;
@@ -404,7 +404,7 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         // Missing means gone now — a change, since the build saw the file.
         // Unreadable cannot prove the disk unchanged and counts as changed
         // — conservative, retried by the rebuild's capture.
-        if(files.check_version(dep.version) != FileTable::Verdict::Fresh) {
+        if(files.check_version(dep.version) != vfs::DiskState::Verdict::Fresh) {
             return true;
         }
     }

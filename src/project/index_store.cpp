@@ -1818,7 +1818,7 @@ bool IndexStore::file_version_stale(VersionID fv_id) {
 
     // Missing and unreadable both read as stale — conservative, the
     // reindex re-observes.
-    bool stale = project.file_table.check_version(fv_id) != FileTable::Verdict::Fresh;
+    bool stale = project.file_table.check_version(fv_id) != vfs::DiskState::Verdict::Fresh;
     fv_verdicts[fv_id] = stale;
     return stale;
 }
@@ -1843,7 +1843,7 @@ bool IndexStore::need_update(Fid file) {
         }
     }
     return llvm::any_of(manifest.absent, [&](VersionID fv) {
-        return project.file_table.current(project.file_table.version(fv).fid).has_value();
+        return project.file_table.present(project.file_table.version(fv).fid);
     });
 }
 

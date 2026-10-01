@@ -11,7 +11,9 @@
 #include "support/filesystem.h"
 #include "syntax/scan.h"
 #include "vfs/dir_cache.h"
+#include "vfs/disk_state.h"
 #include "vfs/file_system.h"
+#include "vfs/ids.h"
 #include "vfs/path.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -21,73 +23,6 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
-
-namespace clice {
-
-/// A file id: the FileTable's compact handle for one interned path
-/// spelling. A distinct type so fids, version ids and other integers
-/// cannot mix silently. Default-constructed = invalid ("no file").
-struct Fid {
-    std::uint32_t raw = ~0u;
-
-    constexpr bool valid() const {
-        return raw != ~0u;
-    }
-
-    friend constexpr auto operator<=>(Fid, Fid) = default;
-};
-
-/// A version id: the FileTable's handle for one (file, content hash)
-/// pair. Default-constructed = invalid ("no version").
-struct VersionID {
-    std::uint32_t raw = ~0u;
-
-    constexpr bool valid() const {
-        return raw != ~0u;
-    }
-
-    friend constexpr auto operator<=>(VersionID, VersionID) = default;
-};
-
-}  // namespace clice
-
-template <>
-struct llvm::DenseMapInfo<clice::Fid> {
-    static unsigned getHashValue(clice::Fid fid) {
-        return DenseMapInfo<std::uint32_t>::getHashValue(fid.raw);
-    }
-
-    static bool isEqual(clice::Fid lhs, clice::Fid rhs) {
-        return lhs == rhs;
-    }
-};
-
-template <>
-struct llvm::DenseMapInfo<clice::VersionID> {
-    static unsigned getHashValue(clice::VersionID vid) {
-        return DenseMapInfo<std::uint32_t>::getHashValue(vid.raw);
-    }
-
-    static bool isEqual(clice::VersionID lhs, clice::VersionID rhs) {
-        return lhs == rhs;
-    }
-};
-
-/// Ids appear directly in log messages and test-failure output; format
-/// as the raw id.
-template <>
-struct std::formatter<clice::Fid> : std::formatter<std::uint32_t> {
-    auto format(clice::Fid fid, auto& ctx) const {
-        return std::formatter<std::uint32_t>::format(fid.raw, ctx);
-    }
-};
-
-template <>
-struct std::formatter<clice::VersionID> : std::formatter<std::uint32_t> {
-    auto format(clice::VersionID vid, auto& ctx) const {
-        return std::formatter<std::uint32_t>::format(vid.raw, ctx);
-    }
-};
 
 namespace clice {
 
@@ -230,202 +165,48 @@ struct FileTable {
     llvm::DenseMap<Fid, std::string> spelled;
     llvm::SmallVector<std::pair<CanonicalPath, Spelling>> spelled_roots;
 
-    /// Entities: on-disk files merged by filesystem UniqueID, the way
-    /// clang's FileManager merges FileEntries — hardlinked or symlinked
-    /// spellings of one file share the content-derived facts below. A
-    /// fid's binding to an entity is itself stat-verified: every
-    /// observation carries the UniqueID its stat returned, and a mismatch
-    /// rebinds (editors save via tmp+rename, so a spelling changes inode
-    /// on every save). What was last seen on disk (`seen`) stays per fid:
-    /// shared per entity, a save through one hardlink spelling would
-    /// swallow the other spelling's change event.
-    ///
-    /// FIXME: UniqueID reliability on network filesystems is inherited
-    /// from clang's known limitation — some report unstable or colliding
-    /// ids, which here degrades to spurious rebinds (extra reads), never
-    /// wrong hashes (the first read through a rebound fid re-earns trust).
-    /// On Windows the ids are not file-stable everywhere (see
-    /// fs::stable_file_ids), so entity merging is disabled there wholesale
-    /// via entity_key: identity-based defenses are POSIX-only.
-    llvm::DenseMap<std::pair<std::uint64_t, std::uint64_t>, std::uint32_t> entity_ids;
+    /// What the disk held at each file's last look, and the changes those
+    /// looks saw.
+    vfs::DiskState disk{spellings};
 
-    struct EntityBinding {
-        std::uint32_t entity = ~0u;
-
-        /// A read through THIS fid confirmed the binding. Until then the
-        /// entity's pair is withheld from the fid: a recycled inode can
-        /// hand an unrelated new file an existing entity with an
-        /// equal-looking stat, and inheriting its pair would serve the
-        /// old file's hash for the new file's bytes.
-        bool earned = false;
-    };
-
-    llvm::DenseMap<Fid, EntityBinding> bindings;
-
-    /// Last reliable same-source {stat, hash} pair per entity: the shared
-    /// baseline every consumer's staleness check draws from and repairs —
-    /// computed once, shared by every spelling of the file.
-    llvm::DenseMap<std::uint32_t, DiskObservation> disk_states;
-
-    /// The entity-map key for an identity observed through a fid. Where
-    /// file IDs are not file-stable (see fs::stable_file_ids), every
-    /// spelling is its own entity and the observed id is ignored:
-    /// hardlinks stay unmerged, and replace detection falls back to the
-    /// stat pair — the pre-entity behavior.
-    static std::pair<std::uint64_t, std::uint64_t> entity_key(Fid fid,
-                                                              std::uint64_t uid_device,
-                                                              std::uint64_t uid_file) {
-        if constexpr(!fs::stable_file_ids) {
-            return {~0ull, fid.raw};
-        }
-        return {uid_device, uid_file};
-    }
-
-    /// Re-verify (and if needed re-establish) the fid's entity binding
-    /// against the identity a live stat just returned. Returns the
-    /// binding; `earned` is false until a read through this fid confirms
-    /// it (see EntityBinding). A fid binding to a brand-new entity has
-    /// nothing to wrongly inherit, so it is born earned.
-    EntityBinding& bind(Fid fid, std::uint64_t uid_device, std::uint64_t uid_file) {
-        auto [it, fresh] = entity_ids.try_emplace(entity_key(fid, uid_device, uid_file),
-                                                  static_cast<std::uint32_t>(entity_ids.size()));
-        auto entity = it->second;
-        auto& binding = bindings[fid];
-        if(binding.entity != entity) {
-            binding.entity = entity;
-            binding.earned = fresh;
-        }
-        return binding;
-    }
-
-    /// The cached hash of exactly this stamp, or nullopt when someone must
-    /// read. Equality against the shared pair, never a watermark: the hash
-    /// is "the hash of the bytes that had this stamp", nothing else.
-    std::optional<std::uint64_t> cached_hash(Fid fid, const vfs::Stamp& stamp) {
-        auto& binding = bind(fid, stamp.device, stamp.file);
-        if(!binding.earned) {
-            return std::nullopt;
-        }
-        auto it = disk_states.find(binding.entity);
-        if(it == disk_states.end()) {
-            return std::nullopt;
-        }
-        auto& pair = it->second;
-        if(pair.stamp != stamp) {
-            return std::nullopt;
-        }
-        saw(fid, pair.hash);
-        return pair.hash;
-    }
-
-    /// What the disk held at the last look through each fid: the content
-    /// hash, or nullopt when the file was missing. No entry before the
-    /// first look. Every read, every stat the shared pair vouches for and
-    /// every failed stat of a freshness check or sweep writes it — the one
-    /// record of "what is on disk now", lagging the disk by at most the
-    /// time since the last look.
-    llvm::DenseMap<Fid, std::optional<std::uint64_t>> seen;
-
-    /// Files whose seen content moved from one known state to another
-    /// since the last take_changes(), in first-change order: the table is
-    /// the single source of disk change events, whoever happened to look
-    /// (the workspace sweep, a save, a rescan, a compile's staleness
-    /// check). A first look is no change — nothing was derived from an
-    /// unseen state.
-    llvm::SmallVector<Fid> changes;
-    llvm::DenseSet<Fid> changed;
-
-    /// Invoked when `changes` goes from empty to non-empty; the owner
-    /// schedules the drain. Unset (batch tools, tests) leaves the queue to
-    /// whoever takes it.
-    std::function<void()> on_change;
-
-    /// The disk content as last seen through this fid, without I/O;
-    /// nullopt before the first look and while the file is missing.
     std::optional<std::uint64_t> seen_hash(Fid fid) const {
-        auto it = seen.find(fid);
-        return it != seen.end() ? it->second : std::nullopt;
+        return disk.seen_hash(fid);
     }
 
-    /// A look found the file missing.
-    void saw_missing(Fid fid) {
-        saw(fid, std::nullopt);
-    }
-
-    /// Whether the last look through this fid found the file missing.
     bool seen_missing(Fid fid) const {
-        auto it = seen.find(fid);
-        return it != seen.end() && !it->second;
+        return disk.seen_missing(fid);
     }
 
-    /// Every fid the last look found missing: deleted files, and the places
-    /// failed lookups looked — where a file appearing is a change.
     llvm::SmallVector<Fid> missing_files() const {
-        llvm::SmallVector<Fid> result;
-        for(auto& [fid, hash]: seen) {
-            if(!hash) {
-                result.push_back(fid);
-            }
-        }
-        return result;
+        return disk.missing_files();
     }
 
-    /// The changed files, in first-change order, emptying the queue.
     llvm::SmallVector<Fid> take_changes() {
-        changed.clear();
-        return std::exchange(changes, {});
+        return disk.take_changes();
     }
 
-    /// Record a same-source read (the scan worker's, or one made through
-    /// read()) as the entity's shared pair; the read also earns the fid
-    /// its binding. Unpaired reads carry a true hash but no stat proof,
-    /// so they never become the pair.
+    void saw_missing(Fid fid) {
+        disk.saw_missing(fid);
+    }
+
     void observe(Fid fid, const DiskObservation& obs) {
-        auto& binding = bind(fid, obs.stamp.device, obs.stamp.file);
-        binding.earned = true;
-        saw(fid, obs.hash);
-        if(obs.reliable) {
-            disk_states[binding.entity] = obs;
-        }
+        disk.observe(fid, obs);
     }
 
-    /// Read the file under the pairing discipline and refresh the shared
-    /// pair. nullopt = unreadable right now (the pair is left untouched;
-    /// what a failed read means is the caller's policy).
     std::optional<DiskObservation> read(Fid fid) {
-        auto observed = vfs::read_observed(resolve(fid));
-        if(!observed) {
-            return std::nullopt;
-        }
-        observe(fid, observed->obs);
-        return observed->obs;
+        return disk.read(fid);
     }
 
-    /// Stat the file and produce a same-source observation of its
-    /// current content. nullopt = missing or unreadable.
     std::optional<DiskObservation> current(Fid fid) {
-        auto status = vfs::status(resolve(fid));
-        if(!status) {
-            saw_missing(fid);
-            return std::nullopt;
-        }
-        return observe_for(fid, *status);
+        return disk.current(fid);
     }
 
-    /// The two-layer primitive: a same-source observation for a live
-    /// stat the caller just took — the shared pair when it matches by
-    /// equality (and the filesystem identity confirms the binding), else
-    /// a real read (which repairs the pair for every later consumer; its
-    /// observation may describe a newer stat than the caller's, which is
-    /// then simply newer truth). nullopt = unreadable right now.
     std::optional<DiskObservation> observe_for(Fid fid, const vfs::Status& status) {
-        if(auto hash = cached_hash(fid, status.stamp)) {
-            return DiskObservation{.stamp = status.stamp,
-                                   .hash = *hash,
-                                   .paired = true,
-                                   .reliable = true};
-        }
-        return read(fid);
+        return disk.observe_for(fid, status);
+    }
+
+    std::optional<std::uint64_t> cached_hash(Fid fid, const vfs::Stamp& stamp) {
+        return disk.cached_hash(fid, stamp);
     }
 
     /// A content version of a file: `content_hash` names the bytes (for
@@ -464,20 +245,6 @@ struct FileTable {
         return it->second;
     }
 
-    /// How one wave's check of a version came out. Policy-free facts;
-    /// what Missing or Unreadable *means* differs per consumer (see the
-    /// policy table in the plan) and stays with the caller.
-    enum class Verdict : std::uint8_t {
-        /// The disk provably holds the version's bytes.
-        Fresh,
-        /// The disk holds different bytes.
-        Stale,
-        /// The file does not exist now.
-        Missing,
-        /// The file exists but cannot be read right now.
-        Unreadable,
-    };
-
     /// The lexical scan of a version's bytes: scan_quick is a pure
     /// function of the content, so the result is pinned by the version
     /// identity (fid, content hash) and every consumer at that version
@@ -515,87 +282,21 @@ struct FileTable {
     /// Directory listings kept across operations.
     vfs::DirCache dirs;
 
-    /// Wave-scoped verdict memo: one top-level check operation (a
-    /// deps_changed chain, an index need_update batch) opens a Wave, and
-    /// every version is settled at most once inside it.
-    llvm::DenseMap<VersionID, Verdict> wave_verdicts;
-    vfs::StatusBatch wave_statuses;
-    bool wave_open = false;
-
-    /// RAII scope of one memo wave: verdicts live exactly as long as the
-    /// guard, so a memo of one operation can never leak into the next.
-    /// Waves do not nest, and a wave must not span a suspension point —
-    /// a save landing mid-wave would leave memoized verdicts describing
-    /// the old disk.
-    class [[nodiscard]] Wave {
-    public:
-        explicit Wave(FileTable& table) : table(table) {
-            assert(!table.wave_open && "waves do not nest");
-            table.wave_open = true;
-        }
-
-        ~Wave() {
-            table.wave_verdicts.clear();
-            table.wave_statuses = {};
-            table.wave_open = false;
-        }
-
-        Wave(const Wave&) = delete;
-        Wave& operator=(const Wave&) = delete;
-
-    private:
-        FileTable& table;
-    };
-
-    Wave wave() {
-        return Wave(*this);
+    vfs::DiskState::Wave wave() {
+        return disk.wave();
     }
 
-    /// Whether the disk still holds a version's bytes: a live stat, the
-    /// file's observation for it (observe_for: the shared pair, else a
-    /// read), and the hash compared. Memoized within the current wave.
-    Verdict check_version(VersionID vid) {
-        assert(wave_open && "check_version outside a Wave");
-        if(auto it = wave_verdicts.find(vid); it != wave_verdicts.end()) {
-            return it->second;
-        }
-        auto verdict = check_version_uncached(vid);
-        wave_verdicts.try_emplace(vid, verdict);
-        return verdict;
-    }
-
-private:
-    void saw(Fid fid, std::optional<std::uint64_t> hash) {
-        auto [it, first] = seen.try_emplace(fid, hash);
-        if(first || it->second == hash) {
-            return;
-        }
-        it->second = hash;
-        if(changed.insert(fid).second) {
-            changes.push_back(fid);
-            if(changes.size() == 1 && on_change) {
-                on_change();
-            }
-        }
-    }
-
-    Verdict check_version_uncached(VersionID vid) {
+    /// Whether the disk still holds a version's bytes, looked at once per
+    /// wave.
+    vfs::DiskState::Verdict check_version(VersionID vid) {
         auto& version = this->version(vid);
-        auto status = wave_statuses.status(resolve(version.fid));
-        if(!status) {
-            saw_missing(version.fid);
-            return Verdict::Missing;
-        }
-        // 0 is the consumed-hash sentinel for "the worker had no bytes to
-        // hash": nothing to compare against, never fresh.
-        if(version.content_hash == 0) {
-            return Verdict::Stale;
-        }
-        auto obs = observe_for(version.fid, *status);
-        if(!obs) {
-            return Verdict::Unreadable;
-        }
-        return obs->hash == version.content_hash ? Verdict::Fresh : Verdict::Stale;
+        return disk.check(version.fid, version.content_hash);
+    }
+
+    /// Whether a place a build found empty holds a readable file now,
+    /// looked at once per wave.
+    bool present(Fid fid) {
+        return disk.present(fid);
     }
 };
 

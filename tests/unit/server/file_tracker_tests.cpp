@@ -270,47 +270,44 @@ TEST_CASE(ResponseRewriteBeforeWatch) {
 
 TEST_CASE(CDBTickRenameOver) {
     /// A same-size rewrite renamed over the database within one mtime
-    /// tick is a new file: an ordinary tick sees it where stable file
-    /// identities exist.
-    if constexpr(fs::stable_file_ids) {
-        TempDir tmp;
-        tmp.touch("main.cpp", R"(int main() {})");
-        FileTable files;
-        Project project{files};
-        SessionStore store;
-        write_cdb(tmp,
-                  project.cdb,
-                  build_cdb_json({
-                      {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
-        }));
-        FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-        llvm::sys::fs::file_status before;
-        ASSERT_FALSE(
-            static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
+    /// tick is a new file: an ordinary tick sees it.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
+    }));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    llvm::sys::fs::file_status before;
+    ASSERT_FALSE(
+        static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
 
-        tmp.touch("replacement.json",
-                  build_cdb_json({
-                      {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
-        }));
-        int fd = 0;
-        ASSERT_FALSE(
-            static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("replacement.json"),
-                                                              fd,
-                                                              llvm::sys::fs::CD_OpenExisting)));
-        ASSERT_FALSE(static_cast<bool>(
-            llvm::sys::fs::setLastAccessAndModificationTime(fd,
-                                                            before.getLastAccessedTime(),
-                                                            before.getLastModificationTime())));
-        llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-        ASSERT_TRUE(fs::rename(tmp.path("replacement.json"), tmp.path("compile_commands.json"))
-                        .has_value());
+    tmp.touch("replacement.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
+    }));
+    int fd = 0;
+    ASSERT_FALSE(
+        static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("replacement.json"),
+                                                          fd,
+                                                          llvm::sys::fs::CD_OpenExisting)));
+    ASSERT_FALSE(static_cast<bool>(
+        llvm::sys::fs::setLastAccessAndModificationTime(fd,
+                                                        before.getLastAccessedTime(),
+                                                        before.getLastModificationTime())));
+    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+    ASSERT_TRUE(
+        fs::rename(tmp.path("replacement.json"), tmp.path("compile_commands.json")).has_value());
 
-        ASSERT_TRUE(tracker.tick_cdb().empty());
-        auto events = tracker.tick_cdb();
-        ASSERT_EQ(events.size(), 1u);
-        auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-        ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
-    }
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    auto events = tracker.tick_cdb();
+    ASSERT_EQ(events.size(), 1u);
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
 }
 
 TEST_CASE(CDBDiscoverRetriesRegistered) {
