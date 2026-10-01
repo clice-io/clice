@@ -69,7 +69,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     ASSERT_TRUE(full_index.loaded());
 
     auto blob_path = dir.path("overlay.pch.idx");
-    dir.touch("overlay.pch.idx", index::build_preamble_index(*unit, {}, {}, {}));
+    dir.touch("overlay.pch.idx", index::build_preamble_index(*unit, {}, {}, {}, {}));
 
     auto& st = project.pch_cache["key"];
     st.path = "unused.pch";

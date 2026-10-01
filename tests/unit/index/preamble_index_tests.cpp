@@ -20,6 +20,7 @@ std::shared_ptr<index::TUIndex> state;
 std::vector<feature::DocumentLink> links;
 std::vector<std::uint32_t> inactive;
 std::vector<std::uint8_t> conditionals;
+std::string diagnostics;
 
 /// Compile, build a preamble envelope, persist it as the `.pch.idx` pair
 /// and load it back through the production gate.
@@ -31,8 +32,10 @@ void build_state(std::source_location location = std::source_location::current()
     links[0].target = "/include/foo.h";
     inactive = {4, 9, 30, 42};
     conditionals = {1, 0, 2};
+    diagnostics = R"([{"range":{},"message":"'M' macro redefined"}])";
 
-    dir.touch("state.pch.idx", index::build_preamble_index(*unit, links, inactive, conditionals));
+    dir.touch("state.pch.idx",
+              index::build_preamble_index(*unit, links, inactive, conditionals, diagnostics));
     state = load_pch_envelope(dir.path("state.pch.idx"));
     ASSERT_TRUE(state != nullptr);
 }
@@ -91,7 +94,7 @@ TEST_CASE(ForcedIncludeServed) {
     }
     ASSERT_TRUE(try_compile());
 
-    dir.touch("state.pch.idx", index::build_preamble_index(*unit, {}, {}, {}));
+    dir.touch("state.pch.idx", index::build_preamble_index(*unit, {}, {}, {}, {}));
     state = load_pch_envelope(dir.path("state.pch.idx"));
     ASSERT_TRUE(state != nullptr);
 
@@ -221,6 +224,7 @@ int main() { return 0; }
 
     EXPECT_EQ(state->inactive_regions(), llvm::ArrayRef<std::uint32_t>(inactive));
     EXPECT_EQ(state->open_conditionals(), llvm::ArrayRef<std::uint8_t>(conditionals));
+    EXPECT_EQ(state->preamble_diagnostics(), diagnostics);
 
     // An envelope with no header sections answers lookups with silence,
     // not UB.
@@ -256,6 +260,24 @@ TEST_CASE(RejectVersionMismatch) {
     dir.touch("stale.pch.idx",
               llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
     EXPECT_TRUE(load_pch_envelope(blob_path) == nullptr);
+}
+
+TEST_CASE(RejectPreviousVersion) {
+    // A pair the previous format wrote carries no preamble diagnostics:
+    // serving it would publish none, so it rebuilds like any stale layout.
+    struct VersionAndPaths {
+        std::uint32_t format_version = 0;
+        std::int64_t built_at = 0;
+        std::vector<std::string> paths = {"/proj/main.cpp"};
+    };
+
+    auto blob = kota::codec::fbs::to_bytes(
+        VersionAndPaths{.format_version = index::index_format_version - 1});
+    ASSERT_TRUE(blob.has_value());
+
+    dir.touch("previous.pch.idx",
+              llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
+    EXPECT_TRUE(load_pch_envelope(dir.path("previous.pch.idx")) == nullptr);
 }
 
 TEST_CASE(AcceptCurrentVersionBlob) {

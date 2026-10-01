@@ -15,7 +15,9 @@
 #include "worker/protocol.h"
 
 #include "kota/async/async.h"
+#include "kota/codec/json/json.h"
 #include "kota/ipc/codec/bincode.h"
+#include "kota/ipc/codec/json.h"
 #include "kota/ipc/peer.h"
 #include "kota/ipc/transport.h"
 #include "llvm/Support/Regex.h"
@@ -43,7 +45,7 @@ using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::BincodePeer::RequestContext;
 
 /// Serialize the preamble's index envelope (full index + document links
-/// + inactive regions) into a string. Runs while the freshly parsed AST
+/// + inactive regions + diagnostics) into a string. Runs while the freshly parsed AST
 /// is still in memory — the only moment the preamble's index is
 /// obtainable without deserializing the whole PCH. The file write
 /// happens separately, after the PCH itself is flushed.
@@ -53,9 +55,15 @@ static std::string serialize_preamble_envelope(CompilationUnit& unit,
     auto links = feature::document_links(unit);
     auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
     auto links_ms = links_timer.ms_f();
+    auto diagnostics =
+        kota::codec::json::to_string<kota::ipc::lsp_config>(feature::diagnostics(unit));
 
     ScopedTimer blob_timer;
-    auto blob = index::build_preamble_index(unit, links, inactive.regions, inactive.open_stack);
+    auto blob = index::build_preamble_index(unit,
+                                            links,
+                                            inactive.regions,
+                                            inactive.open_stack,
+                                            diagnostics ? *diagnostics : "[]");
     LOG_PERF("index_detail",
              "op=preamble links_ms={:.2f} blob_ms={:.2f} bytes={}",
              links_ms,

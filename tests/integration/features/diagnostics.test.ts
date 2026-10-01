@@ -125,6 +125,29 @@ test("preamble errors keep their place", async ({ session }) => {
     expect(span(unterminated!.range)).toBe("1:1-1:6");
 });
 
+test("preamble warnings are published", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("c.h", "#pragma once\nint c_val = 1;\n");
+    // Both files open with the same preamble and share its PCH; each sees
+    // the warnings of the PCH's build pointing into itself.
+    const preamble = '#define M 1\n#define M 2\n#pragma message("built")\n#include "c.h"\n';
+    workspace.write("a.cpp", preamble + "int a = M;\n");
+    workspace.write("b.cpp", preamble + "int b = M;\n");
+    workspace.writeCDB(["a.cpp", "b.cpp"]);
+    await client.initialize(workspace);
+
+    for (const file of ["a.cpp", "b.cpp"]) {
+        const [uri] = await client.openAndWait(file);
+        const diagnostics = published(client, uri);
+        expect(
+            diagnostics.map((diagnostic) => `${span(diagnostic.range)} ${diagnostic.code}`),
+        ).toEqual(["1:8-1:9 ext_pp_macro_redef", "2:8-2:15 warn_pragma_message"]);
+        expect(related(client, diagnostics[0]!)).toEqual([
+            `${file}@0:8-0:9 previous definition is here`,
+        ]);
+    }
+});
+
 test("header warnings stay in the header", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("redef.h", "#define LIMIT 1\n#define LIMIT 2\n");

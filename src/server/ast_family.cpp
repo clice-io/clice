@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "command/argument_parser.h"
+#include "feature/feature.h"
 #include "index/tu_index.h"
 #include "sched/families/build_common.h"
 #include "server/context_service.h"
@@ -46,6 +47,44 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
         "the file is quarantined until it is edited",
         crashes);
     auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostics);
+    return kota::codec::RawValue{json ? std::move(*json) : "[]"};
+}
+
+/// The compile's diagnostics behind the ones its PCH's build raised in the
+/// preamble, which the parse consuming the PCH never raises again. Files
+/// with one preamble share the PCH: related information the build placed
+/// in its own main file moves to `path`.
+static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
+                                           const index::TUIndex& preamble,
+                                           llvm::StringRef path) {
+    std::vector<protocol::Diagnostic> merged;
+    auto parsed = kota::codec::json::from_string<kota::ipc::lsp_config>(
+        preamble.preamble_diagnostics(),
+        merged);
+    if(!parsed || merged.empty()) {
+        return diagnostics;
+    }
+    auto builder = feature::to_uri(preamble.path(preamble.path_count() - 1));
+    auto uri = feature::to_uri(path);
+    for(auto& diagnostic: merged) {
+        if(!diagnostic.related_information) {
+            continue;
+        }
+        for(auto& related: *diagnostic.related_information) {
+            if(related.location.uri == builder) {
+                related.location.uri = uri;
+            }
+        }
+    }
+    std::vector<protocol::Diagnostic> own;
+    if(!diagnostics.empty()) {
+        [[maybe_unused]] auto status =
+            kota::codec::json::from_string<kota::ipc::lsp_config>(diagnostics.data, own);
+    }
+    merged.insert(merged.end(),
+                  std::make_move_iterator(own.begin()),
+                  std::make_move_iterator(own.end()));
+    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(merged);
     return kota::codec::RawValue{json ? std::move(*json) : "[]"};
 }
 
@@ -848,10 +887,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
+        auto& diagnostics = result.value().diagnostics;
         next->output = CompileOutput{
             .version = session->version,
             .source = source,
-            .diagnostics = std::move(result.value().diagnostics),
+            .diagnostics = preamble_state && preamble_state->matches_prefix(params.text)
+                               ? with_preamble(std::move(diagnostics), *preamble_state, file_path)
+                               : std::move(diagnostics),
             .line_limit = suffix_line_limit,
         };
 
