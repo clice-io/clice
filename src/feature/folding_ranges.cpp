@@ -424,12 +424,11 @@ private:
             return;
         }
         auto directives = unit.semantics().block_directives();
-        auto next = std::ranges::lower_bound(directives,
-                                             offset,
-                                             {},
-                                             [](const LexicalInfo::BlockDirective& directive) {
-                                                 return directive.range.begin;
-                                             });
+        auto next = std::ranges::lower_bound(
+            directives,
+            offset,
+            {},
+            [](const LexicalInfo::BlockDirective& directive) { return directive.range.begin; });
         if(next == directives.end() || next->range.begin > fold.range.begin) {
             fold.lines = LocalSourceRange{offset, fold.range.end};
         }
