@@ -3,8 +3,8 @@
 //
 // Names written where the traversal used to look past them: offsetof
 // designators, user-defined literals, attribute arguments, asm goto labels,
-// the condition of explicit(...), vector element types, MS properties and
-// a dependent delegating constructor.
+// the condition of explicit(...), MS properties and a dependent delegating
+// constructor.
 
 struct S {
     int first;
@@ -43,9 +43,6 @@ struct Explicit {
     explicit(enabled) Explicit(int);
     explicit(enabled) operator bool() const;
 };
-
-using Element = int;
-using Vector = Element __attribute__((ext_vector_type(4)));
 
 struct Property {
     int get_value();

@@ -96,8 +96,8 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
         return SymbolScope::FileLocal;
     }
     // An alias has no linkage of its own, yet names one entity wherever its
-    // scope reaches: at namespace and class scope it is as global as what
-    // it names, inside a function as local.
+    // scope reaches: at namespace and class scope it is global (TU-local in
+    // an anonymous namespace), inside a function local.
     if(llvm::isa<clang::TypedefNameDecl, clang::NamespaceAliasDecl>(decl)) {
         if(decl->getParentFunctionOrMethod()) {
             return SymbolScope::FileLocal;
@@ -235,16 +235,13 @@ public:
         if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl); ns && ns->isInline()) {
             flags |= SymbolFlags::InlineNamespace;
         }
-        // Written source spells the name when any declaration of it is
-        // written by hand: `FWD(Expr)` forward-declares a class that is
-        // defined by hand.
+        // `FWD(Expr)` forward-declares a class defined by hand.
         if(llvm::all_of(decl->redecls(), [](const clang::Decl* redecl) {
                return redecl->getLocation().isMacroID();
            })) {
             flags |= SymbolFlags::SpelledInMacro;
         }
-        auto location = decl->getLocation();
-        if(unit.context().getSourceManager().isInSystemHeader(location)) {
+        if(unit.context().getSourceManager().isInSystemHeader(decl->getLocation())) {
             flags |= SymbolFlags::SystemHeader;
         }
         if(is_completable(decl)) {

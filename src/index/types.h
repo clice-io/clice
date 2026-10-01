@@ -99,8 +99,8 @@ enum class SymbolFlags : std::uint16_t {
     /// No name of its own; `Symbol::name` holds a presentation such as
     /// "(anonymous struct)".
     Unnamed = 1 << 5,
-    /// The declaring token comes out of a macro expansion, so no written
-    /// source spells the name.
+    /// Every declaration's name token comes out of a macro expansion, so no
+    /// written source spells the name.
     SpelledInMacro = 1 << 6,
     /// The canonical declaration sits in a system header.
     SystemHeader = 1 << 7,

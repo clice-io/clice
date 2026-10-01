@@ -419,6 +419,25 @@ TEST_CASE(ClassNameOverConstructor) {
     ASSERT_EQ(locate("outer::Widget::Widget").size(), 2U);
 }
 
+TEST_CASE(UndefinedBesideStaleUse) {
+    add_file("header.h", R"(
+        int external();
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int use() { return external(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    // A file using the symbol moved on; nothing defines the symbol, so the
+    // declaration still places it.
+    project.file_table.observe(main_id, DiskObservation{.hash = 1});
+    auto results = search("external");
+    ASSERT_EQ(results.size(), 1U);
+    ASSERT_TRUE(results.front().site.path.ends_with("header.h"));
+}
+
 TEST_CASE(DeletedDefinitionFallsBack) {
     llvm::StringRef header = R"(
         int removed();

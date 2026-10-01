@@ -93,8 +93,8 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
     // module's symbols and their dep snapshots never named the
     // interface, so the content-hash gate would filter a DepsOnly
     // reindex — ContentChanged bypasses it. Nothing is dropped: a
-    // rebuild replaces the rows, and a unit that can no longer build
-    // (retired entry, deleted file) keeps serving its last-known ones.
+    // rebuild replaces the rows, and a unit that can no longer build keeps
+    // its last-known ones (queries withhold those of a deleted file).
     for(auto id: pcm.provider_appeared(module_name)) {
         if(PCMFamily::is_unresolved(id)) {
             continue;
@@ -254,14 +254,13 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // A removed module unit takes its PCM with it: importers'
                 // build products went stale.
                 cascade_compile_graph(path_id, dirty);
-                // The file's shard stays behind (queries withhold the rows
-                // of a file seen missing), so any pending reindex reason
-                // recorded before the removal — e.g. a DiskChanged observed
-                // moments earlier — must be dropped: there is nothing to
-                // reindex any more. Emitted
-                // after the compile-graph cascade, which lists the removed
-                // module itself among its dirtied units: the removal is this
-                // event's final word for the file itself.
+                // Any reindex reason recorded before the removal — e.g. a
+                // DiskChanged observed moments earlier — is dropped: there
+                // is nothing to reindex any more, and the file's shard stays
+                // behind (queries withhold the rows of a file seen missing).
+                // Emitted after the compile-graph cascade, which lists the
+                // removed module itself among its dirtied units: the removal
+                // is this event's final word for the file itself.
                 dirty.add_clear_reindex(path_id);
                 project.forget_file(path_id);
                 // Contexts hosted by (or chained through) the removed file

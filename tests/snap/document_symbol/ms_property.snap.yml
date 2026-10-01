@@ -1,0 +1,8 @@
+---
+created_at: 2026-10-01
+input_file: ms_property.cpp
+---
+- { name: "Holder", kind: Struct, range: "5:0-9:1", selection_range: "5:7-5:13", detail: "struct" }
+-   { name: "get_value", kind: Method, range: "6:4-6:19", selection_range: "6:8-6:17", detail: "int ()" }
+-   { name: "put_value", kind: Method, range: "7:4-7:23", selection_range: "7:9-7:18", detail: "void (int)" }
+-   { name: "value", kind: Field, range: "8:4-8:68", selection_range: "8:63-8:68", detail: "int" }

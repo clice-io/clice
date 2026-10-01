@@ -3,7 +3,8 @@
 // Declarations without a written name of their own record no occurrence:
 // a structured binding's holder (the bindings spell the names), unnamed
 // parameters and template parameters. A constrained template parameter is
-// one definition, not a definition plus the constraint's implicit use.
+// one definition, not a definition plus the constraint's implicit use; the
+// `auto` of an abbreviated template references the parameter it invents.
 
 struct Pair {
     int first;

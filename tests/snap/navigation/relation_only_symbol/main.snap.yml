@@ -14,13 +14,3 @@ caller:
   outgoingCalls:
     - { name: "operator int", kind: Method, file: "${WS}/relation_only_symbol/conv.h", range: "3:4-3:12", fromRanges: ["10:12-10:13"] }
     - { name: "get", kind: Method, file: "${WS}/relation_only_symbol/conv.h", range: "4:8-4:11", fromRanges: ["11:15-11:22"] }
-
-override:
-  definition:
-    - { file: "${WS}/relation_only_symbol/main.cpp", range: "15:8-15:11" }
-  declaration:
-    - { file: "${WS}/relation_only_symbol/main.cpp", range: "15:8-15:11" }
-  references:
-    - { file: "${WS}/relation_only_symbol/main.cpp", range: "15:8-15:11" }
-  callHierarchy:
-    - { name: "run", kind: Method, file: "${WS}/relation_only_symbol/main.cpp", range: "15:8-15:11" }

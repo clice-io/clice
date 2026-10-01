@@ -10,6 +10,8 @@ struct §(type)Widget {
     int value;
 };
 
+using §(pointer_alias)WidgetPointer = Widget*;
+
 struct Holder {
     Widget* §(field_pointer)pointer;
     Widget& §(field_reference)reference;

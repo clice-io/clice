@@ -117,18 +117,6 @@ void remove_database_files(llvm::StringRef path) {
     fs::remove(path + "-lock");
 }
 
-/// The bytes the database's pages occupy, per its newest meta. A file
-/// shorter than that — a truncated copy, a write a full disk cut short —
-/// maps the missing pages, and touching them raises SIGBUS instead of
-/// returning an error.
-std::uint64_t page_bytes(MDB_env* env) {
-    MDB_envinfo info;
-    MDB_stat stat;
-    mdb_env_info(env, &info);
-    mdb_env_stat(env, &stat);
-    return (static_cast<std::uint64_t>(info.me_last_pgno) + 1) * stat.ms_psize;
-}
-
 class LmdbDatabase final : public BlobDatabase {
 public:
     LmdbDatabase(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, std::string path, bool read_only) :
@@ -495,13 +483,6 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
 
         if(int rc = mdb_env_open(env, path.c_str(), flags, 0644)) {
             if(fail(rc, "open")) {
-                continue;
-            }
-            return nullptr;
-        }
-        std::uint64_t size = 0;
-        if(llvm::sys::fs::file_size(path, size) || size < page_bytes(env)) {
-            if(fail(MDB_CORRUPTED, "size")) {
                 continue;
             }
             return nullptr;

@@ -416,6 +416,10 @@ private:
     /// One canonical site per distinct relation target.
     std::vector<Located> located_targets(SymbolHash hash, RelationKind kind) const;
 
+    /// Whether some unit reported a definition of the symbol: an open
+    /// session's table knows only its own unit, the project table all.
+    bool reported_defined(SymbolHash hash) const;
+
     /// The one federation walk every relation query is a fold over. The
     /// visitor returns false to stop.
     void for_each_relation(SymbolHash hash,

@@ -250,36 +250,6 @@ TEST_CASE(FullMapFailsWholeBatchThenGrows) {
                 large_value('x'));
 }
 
-TEST_CASE(TruncatedDatabaseRebuilds) {
-    TempDir tmp;
-    auto store = open_store(tmp, "lmdb");
-    {
-        auto db = index::open_database(store, "");
-        ASSERT_TRUE(db != nullptr);
-        ASSERT_TRUE(
-            db->write({blob(index::IndexBlobKind::Shard, "big", large_value('x'))}, {}).empty());
-    }
-    // Fewer bytes than the pages its meta claims: mapping the missing ones
-    // would fault on first touch.
-    auto file = path::join(index::library_directory(store, ""), "index.mdb");
-    int fd = -1;
-    require(!llvm::sys::fs::openFileForReadWrite(file,
-                                                 fd,
-                                                 llvm::sys::fs::CD_OpenExisting,
-                                                 llvm::sys::fs::OF_None),
-            "opening the database failed");
-    require(!llvm::sys::fs::resize_file(fd, 3 * 4096), "truncating the database failed");
-    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-
-    {
-        auto reader = open_store(tmp, "lmdb", /*read_only=*/true);
-        ASSERT_TRUE(index::open_database(reader, "", /*read_only=*/true) == nullptr);
-    }
-    auto db = index::open_database(store, "");
-    ASSERT_TRUE(db != nullptr);
-    ASSERT_FALSE(db->contains(index::IndexBlobKind::Shard, "big"));
-}
-
 TEST_CASE(ReadOnlyMissingDatabase) {
     TempDir tmp;
     { auto store = open_store(tmp, "empty"); }

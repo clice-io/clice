@@ -402,8 +402,10 @@ public:
             instantiation_depth += 1;
         }
         bool ret = traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)), [&] {
-            // RAV leaves out the condition of `explicit(cond)`.
-            if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(X)) {
+            // RAV leaves out the condition of `explicit(cond)`, written on the
+            // first declaration only — every redeclaration reports it.
+            if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(X);
+               function && function->isFirstDecl()) {
                 if(auto* condition = clang::ExplicitSpecifier::getFromDecl(function).getExpr()) {
                     if(!TraverseStmt(condition)) {
                         return false;
@@ -459,25 +461,6 @@ public:
 
         return traverse_node(SemanticNode(X),
                              [&] { return Base::TraverseTypeLoc(X, traverse_qualifier); });
-    }
-
-    // RAV visits these written components as types rather than type
-    // locations, so the names they spell would go unrecorded.
-    bool TraverseVectorTypeLoc(clang::VectorTypeLoc X, bool = true) {
-        return TraverseTypeLoc(X.getElementLoc());
-    }
-
-    bool TraverseExtVectorTypeLoc(clang::ExtVectorTypeLoc X, bool = true) {
-        return TraverseTypeLoc(X.getElementLoc());
-    }
-
-    bool TraverseDependentVectorTypeLoc(clang::DependentVectorTypeLoc X, bool = true) {
-        return TraverseStmt(X.getTypePtr()->getSizeExpr()) && TraverseTypeLoc(X.getElementLoc());
-    }
-
-    bool TraverseDependentSizedExtVectorTypeLoc(clang::DependentSizedExtVectorTypeLoc X,
-                                                bool = true) {
-        return TraverseStmt(X.getTypePtr()->getSizeExpr()) && TraverseTypeLoc(X.getElementLoc());
     }
 
     bool TraverseTemplateArgumentLoc(const clang::TemplateArgumentLoc& X) {

@@ -444,21 +444,31 @@ std::optional<Site> IndexQuery::canonical_site(SymbolHash hash) const {
     if(auto site = first_site(hash, RelationKind::Definition)) {
         return site;
     }
-    // A declaration stands in only for a symbol nothing defines: a file
-    // with rows that are not serving — withheld as stale, or an open buffer
-    // that moved on from them — may hold the definition, which then stays
-    // unavailable, as documented; a deleted file holds nothing anymore.
-    // The table's HasDefinition cannot decide it: the bit stays once some
-    // unit reported a definition, even after the definition is deleted.
-    bool unavailable = false;
-    index.each_reference_file(hash, [&](Fid file) {
-        unavailable =
-            unavailable || (index.shard(file) && !serving(file) && !files.seen_missing(file));
-    });
-    if(unavailable) {
-        return std::nullopt;
+    // A declaration stands in only for a symbol nothing defines. A
+    // reported definition may sit in a file whose rows are not serving —
+    // withheld as stale, or an open buffer that moved on from them — and
+    // then stays unavailable (`clice query` reports such a symbol as not
+    // found). A deleted file holds nothing anymore, and a definition
+    // deleted since its report leaves no such file behind.
+    if(reported_defined(hash)) {
+        bool unavailable = false;
+        index.each_reference_file(hash, [&](Fid file) {
+            unavailable =
+                unavailable || (index.shard(file) && !serving(file) && !files.seen_missing(file));
+        });
+        if(unavailable) {
+            return std::nullopt;
+        }
     }
     return first_site(hash, RelationKind::Declaration);
+}
+
+bool IndexQuery::reported_defined(SymbolHash hash) const {
+    if(auto info = symbol_info(hash); info && has_flag(info->flags, SymbolFlags::HasDefinition)) {
+        return true;
+    }
+    auto row = index.identity_of(hash);
+    return row && has_flag(row->flags, SymbolFlags::HasDefinition);
 }
 
 std::vector<IndexQuery::Edge> IndexQuery::edges(SymbolHash hash, RelationKind kind) const {
@@ -610,14 +620,12 @@ std::vector<Site> IndexQuery::implementation(SymbolHash hash) const {
     if(!info) {
         return {};
     }
-    bool type_like = info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
-                     info->kind == SymbolKind::Union;
-    if(type_like) {
+    if(info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
+       info->kind == SymbolKind::Union) {
         return target_sites(hash, RelationKind::Derived);
     }
     // An override that only declares — a pure virtual of an abstract
-    // intermediate class — implements nothing itself: its own overriders
-    // follow it.
+    // intermediate class — is listed, and its own overriders after it.
     std::vector<Site> result;
     llvm::DenseSet<SymbolHash> seen{hash};
     llvm::SmallVector<SymbolHash> pending{hash};
@@ -627,7 +635,7 @@ std::vector<Site> IndexQuery::implementation(SymbolHash hash) const {
                 continue;
             }
             result.push_back(located.site);
-            if(!has_flag(located.symbol.flags, SymbolFlags::HasDefinition)) {
+            if(!reported_defined(located.symbol.hash)) {
                 pending.push_back(located.symbol.hash);
             }
         }
