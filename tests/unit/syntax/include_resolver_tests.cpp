@@ -372,7 +372,8 @@ TEST_CASE(IncludeNextOutsideDirs) {
 
     // src/a.h was found next to its includer, through no search dir: clang
     // looks its #include_next up like a plain include, from the start.
-    auto includer = resolve_include("a.h", false, tmp.path("src"), false, std::nullopt, config, scope);
+    auto includer =
+        resolve_include("a.h", false, tmp.path("src"), false, std::nullopt, config, scope);
     ASSERT_TRUE(includer.has_value());
     EXPECT_EQ(includer->found_dir_idx, std::nullopt);
 

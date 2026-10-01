@@ -58,9 +58,9 @@ static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
                                            const index::TUIndex& preamble,
                                            llvm::StringRef path) {
     std::vector<protocol::Diagnostic> merged;
-    auto parsed = kota::codec::json::from_string<kota::ipc::lsp_config>(
-        preamble.preamble_diagnostics(),
-        merged);
+    auto parsed =
+        kota::codec::json::from_string<kota::ipc::lsp_config>(preamble.preamble_diagnostics(),
+                                                              merged);
     if(!parsed || merged.empty()) {
         return diagnostics;
     }
