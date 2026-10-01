@@ -170,7 +170,8 @@ void ProjectServer::start() {
         if(!report.has_commands) {
             LOG_GUIDANCE(
                 "No compile_commands.json found in workspace {}. Compile commands will be "
-                "guessed; see https://clice.io/en/guide/quick-start for setup.",
+                "guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for "
+                "setup.",
                 project.file_table.display(root));
         }
     }

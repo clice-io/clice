@@ -87,7 +87,7 @@ std::optional<std::string> DiagnosticID::diagnostic_document_uri() const {
             // clice's own guidance diagnostics link to the setup guide that
             // explains how to provide a compilation database.
             if(name == "inferred-compile-command") {
-                return "https://clice.io/en/guide/quick-start";
+                return "https://docs.clice.io/clice/guide/quick-start#project-setup";
             }
             return std::nullopt;
         }
