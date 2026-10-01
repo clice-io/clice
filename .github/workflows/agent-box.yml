@@ -52,7 +52,6 @@ jobs:
       # on these runners. Turned into native objects once, in the background, links take seconds.
       # CI keeps linking the bitcode.
       - name: Native LLVM libraries
-        if: runner.os == 'Linux'
         shell: bash
         run: |
           pixi run cmake-config RelWithDebInfo ON > ~/llvm-native.log 2>&1
@@ -66,8 +65,11 @@ jobs:
           cat > ~/llvm-native.sh <<'SCRIPT'
           set -euo pipefail
           trap 'touch ~/llvm-native.failed' ERR
-          L=$(ls -d ~/.cache/clice/cpm/llvm_prebuilt/*/lib | head -1)
-          CLANG=$(pixi run -- bash -c 'command -v clang')
+          # Where cmake/llvm.cmake put the package: the CPM cache is under %LOCALAPPDATA% on Windows.
+          L=$(sed -n 's/^LLVM_INSTALL_PATH:PATH=//p' build/RelWithDebInfo/CMakeCache.txt)/lib
+          # xclang's: the LLVM that wrote the bitcode, and an ar with N everywhere (macOS's has none).
+          CLANG=$(command -v clang)
+          AR=$(command -v llvm-ar)
           work=$(mktemp -d)
           cd "$work"
           mkdir out
@@ -75,15 +77,27 @@ jobs:
           for a in "$L"/*.a; do
             n=$(basename "$a" .a)
             mkdir -p "x/$n"
-            (cd "x/$n" && ar t "$a" | awk '{ c[$0]++; print c[$0], $0 }' | while read -r k m; do ar xN "$k" "$a" "$m" && mv "$m" "${k}_$m"; done)
+            (cd "x/$n" && "$AR" x "$a" && "$AR" t "$a" | tr -d '\r' | sort | uniq -c | while read -r c m; do
+              [ "$c" -gt 1 ] || continue
+              for k in $(seq "$c"); do "$AR" xN "$k" "$a" "$m" && mv "$m" "${k}_$m"; done
+            done)
           done
-          convert() { if [ "$(head -c 2 "$1")" = BC ]; then "$CLANG" -c -O2 -x ir "$1" -o "$1.native"; else cp "$1" "$1.native"; fi; }
+          # Bitcode starts with BC, or with the wrapper Darwin targets put it in. The sections are
+          # those lld's LTO would give, for --gc-sections to drop what LTO drops.
+          convert() {
+            case $(od -An -tx1 -N4 "$1" | tr -d ' \r\n') in
+              4243c0de | dec0170b) "$CLANG" -c -O2 -ffunction-sections -fdata-sections -x ir "$1" -o "$1.native" ;;
+              *) cp "$1" "$1.native" ;;
+            esac
+          }
           export -f convert
           export CLANG
-          find x -name '*.o' -print0 | xargs -0 -P "$(nproc)" -I{} bash -c 'convert "$1"' _ {}
-          for d in x/*; do ar rcs "out/$(basename "$d").a" "$d"/*.native; done
+          find x -type f ! -name '*.native' -print0 |
+            xargs -0 -P "$(nproc 2>/dev/null || sysctl -n hw.ncpu)" -I{} bash -c 'convert "$1"' _ {}
+          for d in x/*; do (cd "$d" && "$AR" rcs "../../out/${d#x/}.a" *.native); done
           cp out/*.a "$L/"
           rm -rf "$work"
+          echo "native in $SECONDS s"
           touch ~/llvm-native.done
           SCRIPT
           nohup bash ~/llvm-native.sh >> ~/llvm-native.log 2>&1 < /dev/null &
