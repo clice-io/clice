@@ -21,7 +21,7 @@
 #include "gamma.h"           // ┐ a header named by a macro
 #include HEADER              // ┘ joins the run as well
 
-#ifdef _WIN32
+#ifdef WINDOWS_BACKEND
 #include "windows_api.h" // ┐ a run in a skipped branch
 #include "windows_io.h"  // ┘
 #else

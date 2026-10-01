@@ -5,7 +5,7 @@ input_file: fold_kinds/09_include_region/main.cpp
 - { range: "0:28-8:10", kind: comment }
 - { range: "10:29-12:29", kind: imports }
 - { range: "20:59-21:55", kind: imports }
-- { range: "23:13-26:0", kind: conditionDirective }
+- { range: "23:22-26:0", kind: conditionDirective }
 - { range: "24:55-25:29", kind: imports }
 - { range: "26:5-29:0", kind: conditionDirective }
 - { range: "27:55-28:29", kind: imports }
