@@ -2,7 +2,19 @@
 created_at: 2026-10-01
 input_file: enum_value_wide.cpp
 ---
-narrow: { range: "7:17-7:23" }
+huge: { range: "12:15-12:19" }
+### variable `huge`  
+
+---
+Type: `const Huge`  
+Value = `Top`  
+
+---
+```cpp
+constexpr Huge huge = Top
+```
+
+narrow: { range: "8:17-8:23" }
 ### variable `narrow`  
 
 ---
@@ -14,7 +26,7 @@ Value = `Small (0x5)`
 constexpr Narrow narrow = Small
 ```
 
-wide: { range: "6:15-6:19" }
+wide: { range: "7:15-7:19" }
 ### variable `wide`  
 
 ---

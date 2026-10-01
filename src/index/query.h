@@ -312,6 +312,10 @@ public:
 
     std::optional<Located> resolve(SymbolHash hash) const;
 
+    /// The symbol under a cursor with its canonical site — or, for a
+    /// symbol of the cursor file's own, its definition or declaration there.
+    std::optional<Located> resolve_at(const Cursor& cursor) const;
+
     /// One neighbour of a symbol in a graph: the symbol at its canonical
     /// site and the sites of the relation rows that connect them.
     struct Edge {

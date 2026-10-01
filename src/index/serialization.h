@@ -135,8 +135,10 @@ namespace clice::index {
 /// is read in place; v16: entity hashes follow clang 23's node kinds;
 /// v17: file versions carry no stat stamps; v18: files under the
 /// workspace root are named, and hashed into symbols, by their portable
-/// names; v19: entity hashes follow clang 23.1.2, xclang's).
-constexpr inline std::uint32_t index_format_version = 19;
+/// names; v19: entity hashes follow clang 23.1.2, xclang's; v20: aliases at
+/// namespace scope are global symbols, and the rows cover weak call
+/// edges, implicit calls and the names the traversal used to skip).
+constexpr inline std::uint32_t index_format_version = 20;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

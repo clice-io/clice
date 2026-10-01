@@ -807,6 +807,9 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
         for(const clang::EnumConstantDecl* enumerator:
             type->castAs<clang::EnumType>()->getDecl()->enumerators()) {
             if(llvm::APSInt::isSameValue(enumerator->getInitVal(), constant.Val.getInt())) {
+                if(constant.Val.getInt().getSignificantBits() > 64) {
+                    return enumerator->getNameAsString();
+                }
                 return llvm::formatv("{0} ({1})",
                                      enumerator->getNameAsString(),
                                      print_hex(constant.Val.getInt()))

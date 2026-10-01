@@ -1046,7 +1046,7 @@ Features::RawResult Features::call_hierarchy_prepare(std::shared_ptr<Session> se
     // symbol's canonical site, expanding from a use renders the same root
     // as expanding from the declaration. A symbol no source places (an
     // implicitly declared `operator delete`) has no item.
-    auto located = query.resolve(cursor->symbol);
+    auto located = query.resolve_at(*cursor);
     if(!located)
         co_return serde_raw{"null"};
     auto kind = located->symbol.kind;
@@ -1128,7 +1128,7 @@ Features::RawResult Features::type_hierarchy_prepare(std::shared_ptr<Session> se
     if(!cursor)
         co_return serde_raw{"null"};
     // Anchored at the canonical site, like the call hierarchy item.
-    auto located = query.resolve(cursor->symbol);
+    auto located = query.resolve_at(*cursor);
     if(!located)
         co_return serde_raw{"null"};
     auto kind = located->symbol.kind;

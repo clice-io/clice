@@ -450,8 +450,19 @@ TEST_CASE(DeletedDefinitionFallsBack) {
     ASSERT_TRUE(compile());
     merge_into_workspace();
 
+    clear();
+    add_file("header.h", header);
+    add_main("use.cpp", R"(
+        #include "header.h"
+        int use() { return removed(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+    auto use_id = main_id;
+
     // The table keeps the definition the first unit reported; the rows
-    // no longer hold it, so the declaration places the symbol.
+    // no longer hold it, so the declaration places the symbol — a file
+    // that only used it moving on changes nothing.
     clear();
     add_file("header.h", header);
     add_main("main.cpp", R"(
@@ -460,6 +471,7 @@ TEST_CASE(DeletedDefinitionFallsBack) {
     )");
     ASSERT_TRUE(compile());
     merge_into_workspace();
+    project.file_table.observe(use_id, DiskObservation{.hash = 1});
 
     auto results = search("removed");
     ASSERT_EQ(results.size(), 1U);

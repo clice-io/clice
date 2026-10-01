@@ -449,12 +449,18 @@ std::optional<Site> IndexQuery::canonical_site(SymbolHash hash) const {
     // withheld as stale, or an open buffer that moved on from them — and
     // then stays unavailable (`clice query` reports such a symbol as not
     // found). A deleted file holds nothing anymore, and a definition
-    // deleted since its report leaves no such file behind.
+    // deleted since its report leaves no such row behind.
     if(reported_defined(hash)) {
         bool unavailable = false;
         index.each_reference_file(hash, [&](Fid file) {
-            unavailable =
-                unavailable || (index.shard(file) && !serving(file) && !files.seen_missing(file));
+            auto* shard = index.shard(file);
+            if(unavailable || !shard || serving(file) || files.seen_missing(file)) {
+                return;
+            }
+            shard->lookup(hash, RelationKind::Definition, [&](const Relation&) {
+                unavailable = true;
+                return false;
+            });
         });
         if(unavailable) {
             return std::nullopt;
@@ -707,6 +713,31 @@ std::string IndexQuery::context_line(const Site& site) const {
     return text ? extract_line(*text, site.range.begin) : std::string{};
 }
 
+std::optional<IndexQuery::Located> IndexQuery::resolve_at(const Cursor& cursor) const {
+    if(auto located = resolve(cursor.symbol)) {
+        return located;
+    }
+    // A symbol of the file's own (a static function, a local) has no row
+    // in the global table to fan out from: its sites are in the cursor's
+    // serving source itself.
+    auto info = symbol_info(cursor.symbol);
+    auto source = serving(cursor.site.file);
+    if(!info || !source) {
+        return std::nullopt;
+    }
+    std::optional<Site> site;
+    for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
+        source->rows->lookup(cursor.symbol, kind, [&](const Relation& relation) {
+            site = source->site(relation.range);
+            return !site;
+        });
+        if(site) {
+            return Located{.symbol = std::move(*info), .site = *site};
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<IndexQuery::Located> IndexQuery::resolve(SymbolHash hash) const {
     auto info = symbol_info(hash);
     if(!info) {
@@ -907,27 +938,8 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
             if(!cursor) {
                 return {};
             }
-            if(auto located = resolve(cursor->symbol)) {
+            if(auto located = resolve_at(*cursor)) {
                 return {std::move(*located)};
-            }
-            // A symbol of the file's own (a static function, a local) has
-            // no row in the global table to fan out from: its sites are
-            // in the serving source itself.
-            auto info = symbol_info(cursor->symbol);
-            if(!info) {
-                return {};
-            }
-            std::optional<Site> site;
-            for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
-                source->rows->lookup(cursor->symbol, kind, [&](const Relation& relation) {
-                    site = source->site(relation.range);
-                    return !site;
-                });
-                if(site) {
-                    return {
-                        Located{.symbol = std::move(*info), .site = *site}
-                    };
-                }
             }
             return {};
         }

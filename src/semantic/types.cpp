@@ -142,7 +142,7 @@ auto unwrap(clang::TypeLoc type, bool unwrap_function_type) -> clang::TypeLoc {
 }
 
 auto unwrap(clang::QualType type) -> clang::QualType {
-    while(true) {
+    while(!type.isNull()) {
         const clang::Type* written = type.getTypePtr();
         if(auto* paren = llvm::dyn_cast<clang::ParenType>(written)) {
             type = paren->getInnerType();
@@ -155,9 +155,10 @@ auto unwrap(clang::QualType type) -> clang::QualType {
         } else if(auto* array = llvm::dyn_cast<clang::ArrayType>(written)) {
             type = array->getElementType();
         } else {
-            return type;
+            break;
         }
     }
+    return type;
 }
 
 auto destructor_of(clang::QualType type) -> const clang::CXXDestructorDecl* {
