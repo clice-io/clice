@@ -1,5 +1,7 @@
 // - verify: both
-// - flags: ["-fms-extensions"]
+// - flags: ["-fms-extensions", "--target=x86_64-unknown-linux-gnu"]
+//
+// The target is pinned: MinGW predefines `__declspec` as a macro.
 //
 // An MS `__declspec(property)` member lists like a field.
 

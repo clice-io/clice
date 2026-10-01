@@ -1,5 +1,7 @@
 // - verify: inspect
-// - flags: ["-std=c++23", "-fms-extensions"]
+// - flags: ["-std=c++23", "-fms-extensions", "--target=x86_64-unknown-linux-gnu"]
+//
+// The target is pinned: MinGW predefines `__declspec` as a macro.
 //
 // Names written where the traversal used to look past them: offsetof
 // designators, user-defined literals, attribute arguments, asm goto labels,
