@@ -197,7 +197,9 @@ private:
     /// revalidate on-disk PCM blobs, declare the Ast→PCM durable edges
     /// (scanner truth — they must survive a failed compile or fixing an
     /// import could never re-dirty this document), and wait on each
-    /// import through depend.
+    /// import through depend. Ready unless cancelled: an import whose
+    /// build failed is left to the parse, which reports it on the import
+    /// next to the file's own diagnostics.
     kota::task<DependResult> depend_modules(RoundContext& ctx,
                                             Fid path_id,
                                             llvm::StringRef directory,

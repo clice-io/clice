@@ -467,7 +467,11 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
         for(auto dep: deps.resolved) {
             switch(co_await ctx.depend({Family::PCM, dep.raw})) {
                 case DependResult::Ready: break;
-                case DependResult::Failed: co_return DependResult::Failed;
+                case DependResult::Failed:
+                    LOG_INFO("Import {} of {} failed to build; the parse reports it",
+                             project.file_table.resolve(dep),
+                             project.file_table.resolve(path_id));
+                    break;
                 case DependResult::Cancelled: co_return DependResult::Cancelled;
             }
         }
@@ -547,17 +551,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                            !header_context->synthesized &&
                            contexts.commands.header_mode(path_id) == HeaderMode::Unknown;
 
-        switch(co_await depend_modules(ctx,
-                                       path_id,
-                                       params.directory,
-                                       params.arguments,
-                                       params.text,
-                                       synthesized)) {
-            case DependResult::Ready: break;
-            case DependResult::Failed:
-                LOG_WARN("Dependency preparation failed for {}, skipping compile", file_path);
-                co_return RoundOutcome::Failed;
-            case DependResult::Cancelled: co_return RoundOutcome::Stale;
+        if(co_await depend_modules(ctx,
+                                   path_id,
+                                   params.directory,
+                                   params.arguments,
+                                   params.text,
+                                   synthesized) == DependResult::Cancelled) {
+            co_return RoundOutcome::Stale;
         }
 
         if(session->generation != gen) {

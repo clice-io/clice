@@ -21,9 +21,7 @@ async function definitionUris(
     character: number,
 ): Promise<string[]> {
     const result = (await client.definitionAt(uri, line, character)) as
-        | proto.Location
-        | proto.Location[]
-        | null;
+        proto.Location | proto.Location[] | null;
     return locationsOf(result).map((loc) => loc.uri);
 }
 
@@ -215,6 +213,51 @@ test("module compile error", async ({ session }) => {
         ),
         `Expected an error diagnostic on line 4, got: ${JSON.stringify(diags)}`,
     ).toBe(true);
+});
+
+/// An import whose interface fails to build is reported on the import:
+/// the importer still publishes, and follows its own edits.
+test("failed import reported", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("a.cppm", "export module A;\nexport int a() { return broken_in_a; }\n");
+    workspace.write("main.cpp", "import A;\nint main() { return a(); }\n");
+    workspace.writeEntries(
+        [
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    const importError = () =>
+        client
+            .errors(uri)
+            .filter((d) => d.code === "err_module_not_found" && d.range.start.line === 0);
+    expect(importError(), JSON.stringify(client.diagnostics.get(uri))).toHaveLength(1);
+
+    client.change(uri, 1, "import A;\nint main() { return a() + 1; }\n");
+    await client.waitForRecompile(uri);
+    expect(importError(), JSON.stringify(client.diagnostics.get(uri))).toHaveLength(1);
+});
+
+/// A module whose own import is missing breaks its importers' import too.
+test("nested missing module", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("a.cppm", "export module A;\nimport missing;\n");
+    workspace.write("b.cppm", "export module B;\nimport A;\n");
+    workspace.writeEntries(
+        [
+            ["a.cppm", []],
+            ["b.cppm", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("b.cppm");
+    expect(client.errors(uri).map((d) => `${d.range.start.line} ${String(d.code)}`)).toEqual([
+        "1 err_module_not_found",
+    ]);
 });
 
 /// A 5-level module chain (m1->m2->...->m5) should compile correctly.
