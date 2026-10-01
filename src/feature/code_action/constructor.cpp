@@ -77,10 +77,29 @@ bool copy_constructible(const clang::CXXRecordDecl* record) {
     return record->hasSimpleCopyConstructor() && !record->hasUserDeclaredMoveOperation();
 }
 
-/// Whether the class has a move constructor another class may call.
+/// Whether an rvalue of the class constructs it through a constructor
+/// another class may call: its move constructor, or a constructor template
+/// taking the class by rvalue reference, as MSVC's standard library writes
+/// a constrained one.
 bool move_constructible(const clang::CXXRecordDecl* record) {
     for(const auto* ctor: record->ctors()) {
         if(!ctor->isIneligibleOrNotSelected() && ctor->isMoveConstructor()) {
+            return callable(ctor);
+        }
+    }
+    auto& context = record->getASTContext();
+    auto self = context.getCanonicalTagType(record);
+    for(const auto* decl: record->decls()) {
+        const auto* pattern = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl);
+        const auto* ctor =
+            pattern ? llvm::dyn_cast<clang::CXXConstructorDecl>(pattern->getTemplatedDecl())
+                    : nullptr;
+        if(!ctor || ctor->getNumParams() == 0 || ctor->getMinRequiredArguments() > 1) {
+            continue;
+        }
+        auto parameter = ctor->getParamDecl(0)->getType();
+        if(parameter->isRValueReferenceType() &&
+           context.hasSameUnqualifiedType(parameter.getNonReferenceType(), self)) {
             return callable(ctor);
         }
     }
