@@ -4,7 +4,9 @@
 /// text, compile cleanly and, for a definition, define the function the
 /// action was offered on.
 
+#include <format>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "test/test.h"
@@ -43,9 +45,11 @@ struct FunctionAt : clang::RecursiveASTVisitor<FunctionAt> {
 TEST_SUITE(code_action, Tester) {
 
 std::vector<feature::CodeAction> actions;
+std::string original;
 std::string applied;
 
 void run(llvm::StringRef code, llvm::StringRef main = "main.cpp") {
+    clear();
     add_main(main, code);
     ASSERT_TRUE(compile("-std=c++23"));
 }
@@ -64,7 +68,7 @@ std::vector<std::string> definitions(llvm::StringRef marker) {
 }
 
 /// Apply the action titled `title` offered at the marker, its definitions
-/// resolved as an empty index resolves them.
+/// resolved and formatted as `clice inspect` does without an index.
 void apply(llvm::StringRef marker, llvm::StringRef title) {
     auto offset = point(marker);
     actions = feature::code_actions(*unit, {offset, offset});
@@ -72,6 +76,7 @@ void apply(llvm::StringRef marker, llvm::StringRef title) {
         return action.title == title;
     });
     ASSERT_TRUE(action != actions.end());
+    original = unit->main_content().str();
     auto edits = action->edits;
     if(action->index) {
         auto* request = std::get_if<feature::DefineRequest>(&*action->index);
@@ -79,11 +84,16 @@ void apply(llvm::StringRef marker, llvm::StringRef title) {
         auto text =
             feature::assemble_definitions(request->pieces, [](std::uint64_t) { return false; });
         ASSERT_TRUE(text.has_value());
-        edits.push_back({request->range, request->before + *text + request->after});
+        edits =
+            feature::format_edits(unit->file_path(unit->main_file()),
+                                  original,
+                                  {
+                                      {request->range, request->before + *text + request->after}
+        });
     }
     llvm::sort(edits,
                [](const auto& lhs, const auto& rhs) { return lhs.range.begin > rhs.range.begin; });
-    applied = unit->main_content().str();
+    applied = original;
     for(const auto& edit: edits) {
         applied.replace(edit.range.begin, edit.range.length(), edit.text);
     }
@@ -122,6 +132,11 @@ void EXPECT_COMPILES(llvm::StringRef expected, llvm::StringRef marker = "") {
     }
 }
 
+/// The definition went to the end of the file, after a blank line.
+void EXPECT_APPENDED(llvm::StringRef definition, llvm::StringRef marker = "") {
+    EXPECT_COMPILES(original + "\n" + definition.str(), marker);
+}
+
 TEST_CASE(UnnamedTemplateParameter) {
     run(R"(
 template <typename T, typename = void>
@@ -130,17 +145,30 @@ struct Unnamed {
 };
 )");
     apply("f", "Define 'Unnamed<T, T1>::f' out of line");
-    EXPECT_COMPILES(R"(
-template <typename T, typename = void>
-struct Unnamed {
-    void f();
-};
+    EXPECT_APPENDED("template <typename T, typename T1>\nvoid Unnamed<T, T1>::f() {\n}\n", "f");
 
-template <typename T, typename T1>
-void Unnamed<T, T1>::f() {
-}
-)",
+    run(R"(
+template <class>
+struct O {
+    template <class>
+    struct I {
+        void §(f)f();
+    };
+};
+)");
+    apply("f", "Define 'O<T0>::I<T0_>::f' out of line");
+    EXPECT_APPENDED("template <class T0>\ntemplate <class T0_>\nvoid O<T0>::I<T0_>::f() {\n}\n",
                     "f");
+
+    run(R"(
+struct T1 {};
+template <class T, class = void>
+struct U {
+    T1 §(f)f();
+};
+)");
+    apply("f", "Define 'U<T, T1_>::f' out of line");
+    EXPECT_APPENDED("template <class T, class T1_>\nT1 U<T, T1_>::f() {\n}\n", "f");
 }
 
 TEST_CASE(ConstrainedTemplateParameter) {
@@ -154,148 +182,60 @@ struct Box {
 };
 )");
     apply("f", "Define 'Box<T, Ts...>::f' out of line");
-    EXPECT_COMPILES(R"(
-template <class T>
-concept Small = sizeof(T) <= 4;
-
-template <Small T, Small... Ts>
-struct Box {
-    void f();
-};
-
-template <Small T, Small... Ts>
-void Box<T, Ts...>::f() {
-}
-)",
-                    "f");
+    EXPECT_APPENDED("template <Small T, Small... Ts>\nvoid Box<T, Ts...>::f() {\n}\n", "f");
 }
 
 TEST_CASE(TemplateMemberReturnType) {
     llvm::StringRef code = R"(
 template <class T>
 struct Cont {
+    using value_type = T;
     using size_type = unsigned long;
     struct Node {};
+    value_type §(front)front() const;
     size_type §(size)size() const;
     const Node* §(head)head();
     Cont §(clone)clone();
 };
 )";
-    run(code);
-    apply("size", "Define 'Cont<T>::size' out of line");
-    EXPECT_COMPILES(R"(
-template <class T>
-struct Cont {
-    using size_type = unsigned long;
-    struct Node {};
-    size_type size() const;
-    const Node* head();
-    Cont clone();
-};
-
-template <class T>
-typename Cont<T>::size_type Cont<T>::size() const {
-}
-)",
-                    "size");
-
-    clear();
-    run(code);
-    apply("head", "Define 'Cont<T>::head' out of line");
-    EXPECT_COMPILES(R"(
-template <class T>
-struct Cont {
-    using size_type = unsigned long;
-    struct Node {};
-    size_type size() const;
-    const Node* head();
-    Cont clone();
-};
-
-template <class T>
-const typename Cont<T>::Node* Cont<T>::head() {
-}
-)",
-                    "head");
-
-    clear();
-    run(code);
-    apply("clone", "Define 'Cont<T>::clone' out of line");
-    EXPECT_COMPILES(R"(
-template <class T>
-struct Cont {
-    using size_type = unsigned long;
-    struct Node {};
-    size_type size() const;
-    const Node* head();
-    Cont clone();
-};
-
-template <class T>
-Cont<T> Cont<T>::clone() {
-}
-)",
-                    "clone");
+    std::pair<llvm::StringRef, llvm::StringRef> cases[] = {
+        {"front", "typename Cont<T>::value_type Cont<T>::front() const"},
+        {"size",  "typename Cont<T>::size_type Cont<T>::size() const"  },
+        {"head",  "const typename Cont<T>::Node* Cont<T>::head()"      },
+        {"clone", "Cont<T> Cont<T>::clone()"                           },
+    };
+    for(auto [marker, head]: cases) {
+        run(code);
+        apply(marker, std::format("Define 'Cont<T>::{}' out of line", marker));
+        EXPECT_APPENDED(std::format("template <class T>\n{} {{\n}}\n", head), marker);
+    }
 }
 
 TEST_CASE(SpecifiersAmongReturnType) {
-    run(R"(
+    llvm::StringRef code = R"(
 struct S {
     unsigned static long §(f)f();
     const static int §(k)k();
 };
-)");
+)";
+    run(code);
     apply("f", "Define 'S::f' out of line");
-    EXPECT_COMPILES(R"(
-struct S {
-    unsigned static long f();
-    const static int k();
-};
+    EXPECT_APPENDED("unsigned long S::f() {\n}\n", "f");
 
-unsigned long S::f() {
-}
-)",
-                    "f");
-
-    clear();
-    run(R"(
-struct S {
-    unsigned static long §(f)f();
-    const static int §(k)k();
-};
-)");
+    run(code);
     apply("k", "Define 'S::k' out of line");
-    EXPECT_COMPILES(R"(
-struct S {
-    unsigned static long f();
-    const static int k();
-};
-
-const int S::k() {
-}
-)",
-                    "k");
+    EXPECT_APPENDED("const int S::k() {\n}\n", "k");
 }
 
 TEST_CASE(ConditionalExplicit) {
     run(R"(
-template <bool B>
+template <class T>
 struct Cond {
-    explicit(B) §(c)Cond(int);
+    explicit(sizeof(T) > 1) §(c)Cond(int);
 };
 )");
-    apply("c", "Define 'Cond<B>::Cond' out of line");
-    EXPECT_COMPILES(R"(
-template <bool B>
-struct Cond {
-    explicit(B) Cond(int);
-};
-
-template <bool B>
-Cond<B>::Cond(int) {
-}
-)",
-                    "c");
+    apply("c", "Define 'Cond<T>::Cond' out of line");
+    EXPECT_APPENDED("template <class T>\nCond<T>::Cond(int) {\n}\n", "c");
 }
 
 TEST_CASE(ReturnTypeAroundName) {
@@ -306,16 +246,32 @@ struct S {
 };
 )");
     apply("fp", "Define 'S::fp' out of line");
-    EXPECT_COMPILES(R"(
-struct S {
-    using R = int;
-    R (*fp())(int);
-};
-
-S::R (*S::fp())(int) {
+    EXPECT_APPENDED("S::R (*S::fp())(int) {\n}\n", "fp");
 }
-)",
-                    "fp");
+
+TEST_CASE(ReturnTypeTokenEdges) {
+    llvm::StringRef code = R"(
+template <class T>
+struct V {};
+struct O {
+    struct I {
+        int x;
+    };
+    V<V<int>> §(rows)rows();
+    const V<V<int>>& §(ref)ref();
+    int I::* §(field)field();
+};
+)";
+    std::pair<llvm::StringRef, llvm::StringRef> cases[] = {
+        {"rows",  "V<V<int>> O::rows()"      },
+        {"ref",   "const V<V<int>>& O::ref()"},
+        {"field", "int O::I::* O::field()"   },
+    };
+    for(auto [marker, head]: cases) {
+        run(code);
+        apply(marker, std::format("Define 'O::{}' out of line", marker));
+        EXPECT_APPENDED(std::format("{} {{\n}}\n", head), marker);
+    }
 }
 
 TEST_CASE(OverrideReturnAroundName) {
@@ -342,11 +298,14 @@ struct Derived : Base {
 TEST_CASE(FunctionTypedefMember) {
     run(R"(
 using Handler = void(int);
-struct S {
+struct §(s)S {
     Handler §(h)on_event;
+    void g();
 };
 )");
     EXPECT_EQ(definitions("h"), std::vector<std::string>{});
+    apply("s", "Define missing members of 'S'");
+    EXPECT_APPENDED("void S::g() {\n}\n");
 }
 
 TEST_CASE(SameLineNamespace) {
@@ -362,7 +321,6 @@ void helper() {
 )",
                     "h");
 
-    clear();
     run(R"(
 namespace ns { struct S { void §(f)f(); }; }
 )");
@@ -377,13 +335,14 @@ void S::f() {
 }
 
 TEST_CASE(DeclaratorAfterClass) {
-    run(R"(
+    llvm::StringRef code = R"(
 struct H { void §(f)f(); int* p() { return new int; } } const hs[] = {
     {},
 };
 typedef struct T { void §(g)g(); } Alias;
 int after;
-)");
+)";
+    run(code);
     apply("f", "Define 'H::f' out of line");
     EXPECT_COMPILES(R"(
 struct H { void f(); int* p() { return new int; } } const hs[] = {
@@ -398,14 +357,7 @@ int after;
 )",
                     "f");
 
-    clear();
-    run(R"(
-struct H { void §(f)f(); int* p() { return new int; } } const hs[] = {
-    {},
-};
-typedef struct T { void §(g)g(); } Alias;
-int after;
-)");
+    run(code);
     apply("g", "Define 'T::g' out of line");
     EXPECT_COMPILES(R"(
 struct H { void f(); int* p() { return new int; } } const hs[] = {
@@ -421,20 +373,13 @@ int after;
                     "g");
 }
 
-TEST_CASE(NestedClassOutOfLine) {
+TEST_CASE(NestedClassMember) {
     run(R"(
 struct Outer { struct Inner; };
 struct Outer::Inner { void §(g)g(); };
 )");
     apply("g", "Define 'Outer::Inner::g' out of line");
-    EXPECT_COMPILES(R"(
-struct Outer { struct Inner; };
-struct Outer::Inner { void g(); };
-
-void Outer::Inner::g() {
-}
-)",
-                    "g");
+    EXPECT_APPENDED("void Outer::Inner::g() {\n}\n", "g");
 }
 
 TEST_CASE(BlockScopeDeclaration) {
@@ -445,128 +390,157 @@ void outer() {
 }
 )");
     apply("i", "Define 'inner' out of line");
-    EXPECT_COMPILES(R"(
-void outer() {
-    void inner();
+    EXPECT_APPENDED("void inner() {\n}\n", "i");
+
+    run(R"(
+struct A {
+    void m() {
+        void §(i)inner();
+        inner();
+    }
+};
+)");
+    apply("i", "Define 'inner' out of line");
+    EXPECT_APPENDED("void inner() {\n}\n", "i");
+
+    run(R"(
+auto l = [] {
+    void §(i)inner();
     inner();
+};
+)");
+    EXPECT_EQ(definitions("i"), std::vector<std::string>{});
 }
 
-void inner() {
-}
-)",
-                    "i");
+TEST_CASE(UnclosedClass) {
+    run(R"(
+struct P {
+    P §(c)clone();
+)");
+    EXPECT_EQ(definitions("c"), std::vector<std::string>{"Define 'clone' inline"});
 }
 
 TEST_CASE(TypeCompletedLater) {
     llvm::StringRef code = R"(
 struct Config;
+struct Missing;
 Config §(load)load();
-struct P {
+struct §(p)P {
     void §(take)take(Config c);
+    void §(make)make(Missing m);
+    void plain();
 };
 struct Config {
     int x;
 };
-struct Missing;
-Missing §(make)make();
 )";
     run(code);
     apply("load", "Define 'load' out of line");
-    EXPECT_COMPILES(R"(
-struct Config;
-Config load();
-struct P {
-    void take(Config c);
-};
-struct Config {
-    int x;
-};
+    EXPECT_APPENDED("Config load() {\n}\n", "load");
 
-Config load() {
-}
-
-struct Missing;
-Missing make();
-)",
-                    "load");
-
-    clear();
     run(code);
     EXPECT_EQ(definitions("take"), std::vector<std::string>{"Define 'P::take' out of line"});
     apply("take", "Define 'P::take' out of line");
-    EXPECT_COMPILES(R"(
-struct Config;
-Config load();
-struct P {
-    void take(Config c);
-};
-struct Config {
-    int x;
-};
+    EXPECT_APPENDED("void P::take(Config c) {\n}\n", "take");
 
-void P::take(Config c) {
-}
-
-struct Missing;
-Missing make();
-)",
-                    "take");
-
-    clear();
     run(code);
     EXPECT_EQ(definitions("make"), std::vector<std::string>{});
+    apply("p", "Define missing members of 'P'");
+    EXPECT_APPENDED("void P::take(Config c) {\n}\n\nvoid P::plain() {\n}\n");
+
+    run(R"(
+namespace a { struct C; }
+namespace b { void §(f)f(a::C c); }
+namespace a { struct C {}; }
+)");
+    EXPECT_EQ(definitions("f"), std::vector<std::string>{});
 }
 
 TEST_CASE(LayoutKeptWithoutStyle) {
-    run(R"(
+    llvm::StringRef code = R"(
+namespace app {
 struct  S {   int   §(f)f( ) ;   };
-)");
+}
+)";
+    run(code);
     apply("f", "Define 'f' inline");
     EXPECT_COMPILES(R"(
+namespace app {
 struct  S {   int   f( )  {}   };
+}
+)",
+                    "f");
+
+    run(code);
+    apply("f", "Define 'S::f' out of line");
+    EXPECT_COMPILES(R"(
+namespace app {
+struct  S {   int   f( ) ;   };
+
+int   S::f( ) {
+}
+
+}
 )",
                     "f");
 }
 
 TEST_CASE(HeaderDefinitionInline) {
-    run(R"(
+    llvm::StringRef code = R"(
 struct W {
+    §(ctor)W();
     void §(w)w();
     [[nodiscard]] static int §(n)n();
 };
-void §(f)f();
-static int §(s)s();
-namespace {
-int §(a)a();
-}
-)",
-        "widget.h");
+)";
+    run(code, "widget.h");
     EXPECT_EQ(definitions("w"),
               std::vector<std::string>{
                   "Define 'w' inline",
                   "Define 'W::w' out of line",
                   "Define 'W::w'",
               });
-    EXPECT_EQ(definitions("s"), std::vector<std::string>{"Define 's' out of line"});
-    EXPECT_EQ(definitions("a"), std::vector<std::string>{"Define 'a' out of line"});
-
     apply("n", "Define 'W::n' out of line");
-    EXPECT_COMPILES(R"(
-struct W {
-    void w();
-    [[nodiscard]] static int n();
-};
+    EXPECT_APPENDED("[[nodiscard]] inline int W::n() {\n}\n", "n");
 
-[[nodiscard]] inline int W::n() {
+    run(code, "widget.h");
+    apply("ctor", "Define 'W::W' out of line");
+    EXPECT_APPENDED("inline W::W() {\n}\n", "ctor");
+
+    run("void §(f)f();\n", "widget.h");
+    apply("f", "Define 'f' out of line");
+    EXPECT_APPENDED("inline void f() {\n}\n", "f");
 }
 
-void f();
+TEST_CASE(HeaderInternalLinkage) {
+    run(R"(
+static int §(s)s();
+namespace {
+int §(a)a();
+struct §(hidden)Hidden {
+    void g();
+};
+}
+)",
+        "widget.h");
+    EXPECT_EQ(definitions("s"), std::vector<std::string>{"Define 's' out of line"});
+    EXPECT_EQ(definitions("a"), std::vector<std::string>{"Define 'a' out of line"});
+    EXPECT_EQ(definitions("hidden"),
+              std::vector<std::string>{"Define missing members of 'Hidden'"});
+    apply("hidden", "Define missing members of 'Hidden'");
+    EXPECT_COMPILES(R"(
 static int s();
 namespace {
 int a();
+struct Hidden {
+    void g();
+};
+
+void Hidden::g() {
 }
-)",
-                    "n");
+
+}
+)");
 }
 
 TEST_CASE(MissingFromPreamble) {
@@ -576,7 +550,8 @@ TEST_CASE(MissingFromPreamble) {
 struct Tag {};
 struct Widget {
     explicit Widget(int id);
-    static const Tag& tag();
+    static Tag tag();
+    static const Tag& last();
     virtual void draw(int scale = 1);
     void done();
 };
@@ -586,30 +561,25 @@ struct Widget {
 void Widget::§(d)done() {
 }
 )";
-    llvm::StringRef expected = R"(#include "widget.h"
-
-void Widget::done() {
+    llvm::StringRef expected = R"(Widget::Widget(int id) {
 }
 
-Widget::Widget(int id) {
+Tag Widget::tag() {
 }
 
-const Tag& Widget::tag() {
+const Tag& Widget::last() {
 }
 
 void Widget::draw(int scale) {
 }
 )";
-    add_files("main.cpp", code);
-    ASSERT_TRUE(compile_with_pch("-std=c++23"));
-    apply("d", "Define missing members of 'Widget'");
-    EXPECT_COMPILES(expected);
-
-    clear();
-    add_files("main.cpp", code);
-    ASSERT_TRUE(compile("-std=c++23"));
-    apply("d", "Define missing members of 'Widget'");
-    EXPECT_COMPILES(expected);
+    for(bool pch: {true, false}) {
+        clear();
+        add_files("main.cpp", code);
+        ASSERT_TRUE(pch ? compile_with_pch("-std=c++23") : compile("-std=c++23"));
+        apply("d", "Define missing members of 'Widget'");
+        EXPECT_APPENDED(expected);
+    }
 }
 
 };  // TEST_SUITE(code_action)

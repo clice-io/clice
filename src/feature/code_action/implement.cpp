@@ -58,8 +58,11 @@ std::optional<std::string> override_declaration(CompilationUnitRef unit,
     if(llvm::isa<clang::CXXConversionDecl>(method)) {
         return declarator + " override;";
     }
-    // A return type such as a function pointer wraps the declarator: the
-    // type is printed around a placeholder name standing for it.
+    // A return type such as a function pointer wraps the declarator. The
+    // type is printed around a placeholder rather than the declarator
+    // itself: type_name rewrites its whole output (drops namespace
+    // prefixes, binds `*` and `&` to the type), which must not reach the
+    // parameters or the exception specification.
     constexpr llvm::StringRef placeholder = "clice_override_declarator";
     auto text = type_name(context, method->getReturnType(), record, placeholder);
     if(!text) {

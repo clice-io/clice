@@ -151,7 +151,6 @@ bool is_specifier(const clang::syntax::Token& token) {
     switch(token.kind()) {
         case clang::tok::kw_static:
         case clang::tok::kw_virtual:
-        case clang::tok::kw_explicit:
         case clang::tok::kw_inline:
         case clang::tok::kw_constexpr:
         case clang::tok::kw_consteval:
@@ -166,46 +165,41 @@ bool declaration_only(const clang::syntax::Token& token) {
            token.kind() == clang::tok::kw_explicit;
 }
 
-/// The type the decl-specifiers spell beneath a return type's declarator
-/// (`R` of `const R* (*f())(int)`), with its cv-qualifiers, and where it
-/// is written.
-std::pair<clang::TypeLoc, clang::QualType> specifier_type(clang::TypeLoc loc) {
-    auto type = loc.getType();
+/// Where the type the decl-specifiers spell is written beneath a return
+/// type's declarator (`const R` of `const R* (*f())(int)`).
+clang::TypeLoc specifier_loc(clang::TypeLoc loc) {
     while(true) {
-        clang::TypeLoc next;
-        if(auto qualified = loc.getAs<clang::QualifiedTypeLoc>()) {
-            loc = qualified.getUnqualifiedLoc();
-            continue;
-        }
-        if(auto pointer = loc.getAs<clang::PointerTypeLoc>()) {
-            next = pointer.getPointeeLoc();
-        } else if(auto reference = loc.getAs<clang::ReferenceTypeLoc>()) {
-            next = reference.getPointeeLoc();
-        } else if(auto member = loc.getAs<clang::MemberPointerTypeLoc>()) {
-            next = member.getPointeeLoc();
-        } else if(auto paren = loc.getAs<clang::ParenTypeLoc>()) {
-            next = paren.getInnerLoc();
-        } else if(auto function = loc.getAs<clang::FunctionTypeLoc>()) {
-            next = function.getReturnLoc();
-        } else if(auto array = loc.getAs<clang::ArrayTypeLoc>()) {
-            next = array.getElementLoc();
+        auto unqualified = loc.getUnqualifiedLoc();
+        if(auto pointer = unqualified.getAs<clang::PointerTypeLoc>()) {
+            loc = pointer.getPointeeLoc();
+        } else if(auto reference = unqualified.getAs<clang::ReferenceTypeLoc>()) {
+            loc = reference.getPointeeLoc();
+        } else if(auto paren = unqualified.getAs<clang::ParenTypeLoc>()) {
+            loc = paren.getInnerLoc();
+        } else if(auto function = unqualified.getAs<clang::FunctionTypeLoc>()) {
+            loc = function.getReturnLoc();
+        } else if(auto array = unqualified.getAs<clang::ArrayTypeLoc>()) {
+            loc = array.getElementLoc();
         } else {
-            return {loc, type};
+            return loc;
         }
-        loc = next;
-        type = next.getType();
     }
 }
 
+/// How a declaration turns into the head of its out-of-line definition.
+struct DefinitionOptions {
+    /// Mark the definition `inline`: it stays in a header.
+    bool mark_inline = false;
+};
+
 /// The source transform turning a declaration into the head of its
-/// out-of-line definition, spelled for insertion into `from`; marked
-/// `inline` when it stays in a header.
+/// out-of-line definition, spelled for insertion into `from`.
 class Transform {
 public:
     Transform(CompilationUnitRef unit,
               const clang::FunctionDecl* decl,
               const clang::DeclContext* from,
-              bool mark_inline) : unit(unit), decl(decl), from(from), mark_inline(mark_inline) {}
+              DefinitionOptions options) : unit(unit), decl(decl), from(from), options(options) {}
 
     std::optional<std::string> run() {
         auto range = written_declaration(decl)->getSourceRange();
@@ -226,13 +220,12 @@ public:
         if(!name) {
             return std::nullopt;
         }
-        if(mark_inline) {
-            add_inline();
+        if(options.mark_inline && !add_inline()) {
+            return std::nullopt;
         }
         qualify_return_type(*name);
-        drop_specifiers(*name);
         drop_override_attributes();
-        if(!drop_default_arguments() || !qualify_name(*name)) {
+        if(!drop_specifiers(*name) || !drop_default_arguments() || !qualify_name(*name)) {
             return std::nullopt;
         }
 
@@ -272,8 +265,8 @@ private:
     }
 
     /// The index of the token closing the bracket opened at `open`, a `(`
-    /// or a `[`.
-    std::size_t closing(std::size_t open) {
+    /// or a `[`; nullopt when a macro spells it.
+    std::optional<std::size_t> closing(std::size_t open) {
         auto kind = tokens[open].kind();
         auto close = kind == clang::tok::l_paren ? clang::tok::r_paren : clang::tok::r_square;
         std::uint32_t depth = 0;
@@ -287,24 +280,29 @@ private:
                 }
             }
         }
-        return tokens.size() - 1;
+        return std::nullopt;
     }
 
     /// `inline` joins the decl-specifiers, which only the declaration's
     /// `[[...]]` attributes may precede.
-    void add_inline() {
+    bool add_inline() {
         std::size_t index = 0;
-        while(index + 1 < tokens.size() && tokens[index].kind() == clang::tok::l_square &&
+        while(tokens[index].kind() == clang::tok::l_square &&
               tokens[index + 1].kind() == clang::tok::l_square) {
-            index = closing(index) + 1;
+            auto close = closing(index);
+            if(!close) {
+                return false;
+            }
+            index = *close + 1;
         }
         auto offset = offset_of(tokens[index]);
         patches.push_back({offset, offset, "inline "});
+        return true;
     }
 
     /// `virtual`, `static` and `explicit`, with the condition of an
     /// `explicit(...)`, outside the return type, which drops its own.
-    void drop_specifiers(std::uint32_t name) {
+    bool drop_specifiers(std::uint32_t name) {
         for(std::size_t index = 0; index < tokens.size(); index += 1) {
             auto offset = offset_of(tokens[index]);
             if(offset >= name) {
@@ -315,14 +313,19 @@ private:
                 continue;
             }
             auto last = index;
-            if(tokens[index].kind() == clang::tok::kw_explicit && index + 1 < tokens.size() &&
+            if(tokens[index].kind() == clang::tok::kw_explicit &&
                tokens[index + 1].kind() == clang::tok::l_paren) {
-                last = closing(index + 1);
+                auto close = closing(index + 1);
+                if(!close) {
+                    return false;
+                }
+                last = *close;
             }
             patches.push_back(
                 {offset, past_spaces(offset_of(tokens[last]) + tokens[last].length()), ""});
             index = last;
         }
+        return true;
     }
 
     void drop_override_attributes() {
@@ -419,8 +422,9 @@ private:
                    record->Encloses(decl->getDeclContext());
         };
         std::string spelled;
-        if(named && encloses(llvm::dyn_cast<clang::DeclContext>(named))) {
-            spelled = qualifier_at(llvm::cast<clang::DeclContext>(named), from);
+        if(auto* record = llvm::dyn_cast_if_present<clang::CXXRecordDecl>(named);
+           encloses(record)) {
+            spelled = qualifier_at(record, from);
             spelled.resize(spelled.size() - 2);
         } else if(named && encloses(named->getDeclContext())) {
             spelled = qualifier_at(named->getDeclContext(), from) + named->getName().str();
@@ -443,7 +447,8 @@ private:
     /// long`) fold into the replaced span, the declaration-only ones
     /// dropped.
     void qualify_return_type(std::uint32_t name) {
-        auto [loc, type] = specifier_type(decl->getFunctionTypeLoc().getReturnLoc());
+        auto loc = specifier_loc(decl->getFunctionTypeLoc().getReturnLoc());
+        auto type = loc.getType();
         auto begin = offset_of(loc.getBeginLoc());
         auto end = offset_of(loc.getEndLoc());
         // A constructor's return type has no location; a conversion
@@ -458,9 +463,11 @@ private:
         auto first = std::ranges::find_if(tokens, [&](const clang::syntax::Token& token) {
             return offset_of(token) >= *begin;
         });
-        auto last = std::ranges::find_if(tokens, [&](const clang::syntax::Token& token) {
-            return offset_of(token) >= *end;
-        });
+        // The end may fall inside a token: the `>` of `A<B<int>>` is half
+        // of a `>>`.
+        auto last = std::prev(std::ranges::find_if(tokens, [&](const clang::syntax::Token& token) {
+            return offset_of(token) > *end;
+        }));
         auto absorbed = [](const clang::syntax::Token& token) {
             return is_cv(token) || is_specifier(token);
         };
@@ -485,7 +492,7 @@ private:
     CompilationUnitRef unit;
     const clang::FunctionDecl* decl;
     const clang::DeclContext* from;
-    bool mark_inline;
+    DefinitionOptions options;
 
     clang::FileID fid;
     std::uint32_t base = 0;
@@ -499,8 +506,8 @@ private:
 std::optional<std::string> definition_text(CompilationUnitRef unit,
                                            const clang::FunctionDecl* decl,
                                            const clang::DeclContext* from,
-                                           bool mark_inline) {
-    return Transform(unit, decl, from, mark_inline).run();
+                                           DefinitionOptions options = {}) {
+    return Transform(unit, decl, from, options).run();
 }
 
 /// Where a same-file definition goes and the scope it is spelled for.
@@ -533,11 +540,30 @@ const clang::CXXRecordDecl* outermost_record(const clang::CXXRecordDecl* record)
     return record;
 }
 
+/// The offset of the `;` directly following, past blanks, a declaration
+/// ending at `end`.
+std::optional<std::uint32_t> semicolon_after(llvm::StringRef content, std::uint32_t end) {
+    while(end < content.size() && (content[end] == ' ' || content[end] == '\t')) {
+        end += 1;
+    }
+    if(end < content.size() && content[end] == ';') {
+        return end;
+    }
+    return std::nullopt;
+}
+
 /// After the declaration statement `anchor` is part of (`struct S {...}
-/// s;` and `typedef struct S {...} T;` end past the name): past its `;`, and past the rest of that
-/// line when only blanks or a comment remain there; right after it otherwise, inside whatever
-/// encloses it on that line (`namespace ns { void f(); }`).
+/// s;` and `typedef struct S {...} T;` end past the name): past its `;`,
+/// and past the rest of that line when only blanks or a comment remain
+/// there; right after it otherwise, inside whatever encloses it on that
+/// line (`namespace ns { void f(); }`).
 std::optional<Placement> placement_after(CompilationUnitRef unit, const clang::Decl* anchor) {
+    // A class still being typed has no closing brace, nor has the class of
+    // a lambda, which at file scope sits in a variable's initializer.
+    if(auto* tag = llvm::dyn_cast<clang::TagDecl>(anchor);
+       tag && tag->getBraceRange().getEnd().isInvalid()) {
+        return std::nullopt;
+    }
     auto& sm = unit.context().getSourceManager();
     auto end = anchor->getEndLoc();
     for(auto* next = anchor->getNextDeclInContext(); next; next = next->getNextDeclInContext()) {
@@ -557,12 +583,8 @@ std::optional<Placement> placement_after(CompilationUnitRef unit, const clang::D
     }
     auto content = unit.main_content();
     auto offset = range->end;
-    auto cursor = offset;
-    while(cursor < content.size() && (content[cursor] == ' ' || content[cursor] == '\t')) {
-        cursor += 1;
-    }
-    if(cursor < content.size() && content[cursor] == ';') {
-        offset = cursor + 1;
+    if(auto semicolon = semicolon_after(content, offset)) {
+        offset = *semicolon + 1;
     }
     auto line = line_end(content, offset);
     auto rest = content.slice(offset, line).trim();
@@ -599,7 +621,8 @@ std::optional<Placement> placement_of(CompilationUnitRef unit, const clang::Func
 /// The last definition of the classes a definition of the function needs
 /// complete, its return and parameter types held by value; null when it
 /// needs none, nullopt when one has no definition in this TU. A template
-/// specialization is taken as complete: using it instantiates it.
+/// specialization is taken as complete: using it instantiates it. So is
+/// a class the compiler defines itself, such as AArch64's `va_list`.
 std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnitRef unit,
                                                             const clang::FunctionDecl* decl) {
     auto& sm = unit.context().getSourceManager();
@@ -613,8 +636,8 @@ std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnitRef u
         if(!definition) {
             return false;
         }
-        if(!last || sm.isBeforeInTranslationUnit(last->getBraceRange().getEnd(),
-                                                 definition->getBraceRange().getEnd())) {
+        if(definition->getEndLoc().isValid() &&
+           (!last || sm.isBeforeInTranslationUnit(last->getEndLoc(), definition->getEndLoc()))) {
             last = definition;
         }
         return true;
@@ -638,7 +661,7 @@ std::optional<Placement> placement_past(CompilationUnitRef unit,
                                         const clang::TagDecl* definition,
                                         const clang::FunctionDecl* decl) {
     auto& sm = unit.context().getSourceManager();
-    if(!sm.isBeforeInTranslationUnit(placement.after, definition->getBraceRange().getEnd())) {
+    if(!sm.isBeforeInTranslationUnit(placement.after, definition->getEndLoc())) {
         return placement;
     }
     auto moved = placement_after(unit, file_scope_anchor(definition));
@@ -686,30 +709,25 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
         return qualifier_at(decl->getDeclContext(), from) + name;
     };
     auto needed = last_needed_definition(unit, decl);
+    bool header_once = ctx.main_is_header && defined_once(decl);
 
     // A body written in the class is compiled at the end of the outermost
     // class, where the types it needs must be complete.
     auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl);
     auto& sm = unit.context().getSourceManager();
     if(method && needed &&
-       (!*needed || !sm.isBeforeInTranslationUnit(
-                        outermost_record(method->getParent())->getBraceRange().getEnd(),
-                        (*needed)->getBraceRange().getEnd()))) {
+       (!*needed ||
+        !sm.isBeforeInTranslationUnit(outermost_record(method->getParent())->getEndLoc(),
+                                      (*needed)->getEndLoc()))) {
         auto range = main_range(unit, written_declaration(decl)->getSourceRange());
-        if(range) {
-            auto content = unit.main_content();
-            auto semicolon = range->end;
-            while(semicolon < content.size() && content[semicolon] == ' ') {
-                semicolon += 1;
-            }
-            if(semicolon < content.size() && content[semicolon] == ';') {
-                out.push_back(define_action(std::format("Define '{}' inline", name),
-                                            DefineRequest{
-                                                .range = {semicolon, semicolon + 1},
-                                                .before = " ",
-                                                .pieces = {{entity, "{}"}},
-                }));
-            }
+        if(auto semicolon =
+               range ? semicolon_after(unit.main_content(), range->end) : std::nullopt) {
+            out.push_back(define_action(std::format("Define '{}' inline", name),
+                                        DefineRequest{
+                                            .range = {*semicolon, *semicolon + 1},
+                                            .before = " ",
+                                            .pieces = {{entity, "{}"}},
+            }));
         }
     }
 
@@ -721,10 +739,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
         placement = placement_past(unit, *placement, *needed, decl);
     }
     if(placement) {
-        if(auto text = definition_text(unit,
-                                       decl,
-                                       placement->from,
-                                       ctx.main_is_header && defined_once(decl))) {
+        if(auto text = definition_text(unit, decl, placement->from, {.mark_inline = header_once})) {
             out.push_back(
                 define_action(std::format("Define '{}' out of line", qualified(placement->from)),
                               at_placement(*placement,
@@ -733,8 +748,8 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
             })));
         }
     }
-    if(ctx.main_is_header && defined_once(decl)) {
-        if(auto text = definition_text(unit, decl, unit.tu(), false)) {
+    if(header_once) {
+        if(auto text = definition_text(unit, decl, unit.tu())) {
             out.push_back(define_action(std::format("Define '{}'", qualified(unit.tu())),
                                         DefineInHostRequest{
                                             .container = container_entity(unit, decl),
@@ -760,9 +775,9 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
         return;
     }
 
-    // Every missing member goes to the host; the same-file definitions
-    // only those whose types are complete somewhere in this file, all of
-    // them past the last such type.
+    // The host source takes the missing members defined once; this file
+    // those whose types are complete somewhere in it, all past the last of
+    // those types.
     std::vector<const clang::FunctionDecl*> missing;
     std::vector<const clang::FunctionDecl*> placed;
     auto placement = member_placement(unit, record);
@@ -794,13 +809,12 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
                       bool host) {
         std::vector<DefinitionPiece> pieces;
         for(const auto* function: functions) {
-            if(host && !defined_once(function)) {
+            bool header_once = ctx.main_is_header && defined_once(function);
+            if(host && !header_once) {
                 continue;
             }
-            if(auto text = definition_text(unit,
-                                           function,
-                                           from,
-                                           !host && ctx.main_is_header && defined_once(function))) {
+            if(auto text =
+                   definition_text(unit, function, from, {.mark_inline = !host && header_once})) {
                 pieces.push_back({unit.entity(function), std::move(*text)});
             }
         }

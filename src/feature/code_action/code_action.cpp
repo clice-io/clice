@@ -24,6 +24,7 @@
 #include "clang/AST/QualTypeNames.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/Lex/Lexer.h"
 
 namespace clice::feature {
 
@@ -135,22 +136,47 @@ const clang::TemplateParameterList* template_parameters(const clang::CXXRecordDe
     return nullptr;
 }
 
-/// The name a class template's parameter is spelled with out of line: an
-/// unnamed one needs a name the class qualifier can refer to, `T<index>`
-/// unless a parameter of the template or of one enclosing it already
-/// takes that.
+/// The name a class template's parameter is spelled with out of line. An
+/// unnamed one needs a name the class qualifier can refer to: `T<index>`,
+/// made unlike every identifier the outermost enclosing class spells (the
+/// parameters of its templates and member templates, the names its
+/// members use) and the names given to the parameters of the templates
+/// enclosing this one.
 std::string parameter_name(const clang::NamedDecl* param, std::size_t index) {
     if(!param->getName().empty()) {
         return param->getNameAsString();
     }
     llvm::StringSet<> taken;
-    for(const auto* context = param->getDeclContext(); context; context = context->getParent()) {
+    const clang::Decl* outermost = nullptr;
+    for(const auto* context = param->getDeclContext();
         auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
-        if(auto* params = record ? template_parameters(record) : nullptr) {
-            for(const auto* other: *params) {
-                taken.insert(other->getName());
-            }
+        context = context->getParent()) {
+        if(auto* described = record->getDescribedClassTemplate()) {
+            outermost = described;
+        } else {
+            outermost = record;
         }
+        auto* params = template_parameters(record);
+        if(context == param->getDeclContext() || !params) {
+            continue;
+        }
+        for(auto [other_index, other]: llvm::enumerate(*params)) {
+            taken.insert(parameter_name(other, other_index));
+        }
+    }
+    auto& context = outermost->getASTContext();
+    llvm::StringRef text = clang::Lexer::getSourceText(
+        clang::CharSourceRange::getTokenRange(outermost->getSourceRange()),
+        context.getSourceManager(),
+        context.getLangOpts());
+    auto identifier = [](char c) {
+        return llvm::isAlnum(c) || c == '_';
+    };
+    while(!text.empty()) {
+        text = text.drop_until(identifier);
+        auto word = text.take_while(identifier);
+        taken.insert(word);
+        text = text.drop_front(word.size());
     }
     auto name = std::format("T{}", index);
     while(taken.contains(name)) {

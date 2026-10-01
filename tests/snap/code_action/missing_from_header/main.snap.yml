@@ -4,4 +4,4 @@ input_file: missing_from_header/main.cpp
 ---
 done:
 - [refactor.rewrite] Define missing members of 'Widget'
-  8:0-8:0 => "\nWidget::Widget(int id) {\n}\n\nconst Tag& Widget::tag() {\n}\n\nvoid Widget::draw(int scale) {\n}\n"
+  8:0-8:0 => "\nWidget::Widget(int id) {\n}\n\nTag Widget::tag() {\n}\n\nconst Tag& Widget::last() {\n}\n\nvoid Widget::draw(int scale) {\n}\n"
