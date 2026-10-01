@@ -261,6 +261,32 @@ tests/snap/code_action/implement/04_conversion_and_pointers.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**签名相同的多个基类**
+
+一条声明同时重写所有基类中具有该签名的纯虚方法，其中任一个带 `noexcept` 时它也会带上
+
+```snap
+tests/snap/code_action/implement/05_shared_signatures.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**重写声明的说明符**
+
+C 风格可变参数、`consteval`，以及基类方法是否为 `noexcept`，都会沿用到重写声明上
+
+异常说明依赖于基类模板实参的方法不会得到声明。
+
+```snap
+tests/snap/code_action/implement/06_specifiers.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## switch 分支
@@ -377,7 +403,9 @@ tests/snap/code_action/deduced_type/03_decltype.cpp
 
 **无法命名的类型保持 auto**
 
-Lambda、依赖类型以及其他写不出名字的类型不会展开
+Lambda、依赖类型以及在该声明中无法命名的类型不会展开
+
+以下类型无法命名：另一个函数内部的局部类型、声明无权访问的成员类型，以及标准名字尚未声明时 `sizeof` 的类型（MSVC 兼容模式会隐式声明 `size_t`）。
 
 ```snap
 tests/snap/code_action/deduced_type/04_unnameable_types.cpp
@@ -393,6 +421,48 @@ tests/snap/code_action/deduced_type/04_unnameable_types.cpp
 
 ```snap
 tests/snap/code_action/deduced_type/05_forwarding_reference.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**按作用域书写的名字**
+
+名字省去外层命名空间的程度，以更短的名字仍能找到同一类型为限
+
+被离展开处更近的声明隐藏的名字会保留限定符；连完全限定名也被隐藏时，则从全局作用域写起。
+
+```snap
+tests/snap/code_action/deduced_type/06_shadowed_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**内置类型的标准名字**
+
+在标准名字已声明的位置，`sizeof`、指针相减和 `nullptr` 的类型会展开为对应的标准名字
+
+看不到 `std::nullptr_t` 的声明时，`nullptr` 的类型写作 `decltype(nullptr)`。
+
+```snap
+tests/snap/code_action/deduced_type/07_standard_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**推导出的常量指针**
+
+`const` 写在推导出指针的 `auto` 前面时，会移到 `*` 之后，使指针本身保持为常量
+
+`const` 与 `auto` 之间还有其他说明符时，声明保持原样。
+
+```snap
+tests/snap/code_action/deduced_type/08_const_pointer.cpp
 ```
 
 <!-- END CAPABILITY -->
