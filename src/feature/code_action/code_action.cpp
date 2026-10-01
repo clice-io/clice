@@ -1,5 +1,6 @@
 #include <array>
 #include <bitset>
+#include <format>
 #include <string>
 #include <utility>
 #include <vector>
@@ -13,6 +14,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/raw_ostream.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
@@ -122,6 +124,41 @@ std::string bind_declarators(std::string text) {
     return text;
 }
 
+/// The parameters a class template or partial specialization declares.
+const clang::TemplateParameterList* template_parameters(const clang::CXXRecordDecl* record) {
+    if(auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(record)) {
+        return partial->getTemplateParameters();
+    }
+    if(auto* described = record->getDescribedClassTemplate()) {
+        return described->getTemplateParameters();
+    }
+    return nullptr;
+}
+
+/// The name a class template's parameter is spelled with out of line: an
+/// unnamed one needs a name the class qualifier can refer to, `T<index>`
+/// unless a parameter of the template or of one enclosing it already
+/// takes that.
+std::string parameter_name(const clang::NamedDecl* param, std::size_t index) {
+    if(!param->getName().empty()) {
+        return param->getNameAsString();
+    }
+    llvm::StringSet<> taken;
+    for(const auto* context = param->getDeclContext(); context; context = context->getParent()) {
+        auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
+        if(auto* params = record ? template_parameters(record) : nullptr) {
+            for(const auto* other: *params) {
+                taken.insert(other->getName());
+            }
+        }
+    }
+    auto name = std::format("T{}", index);
+    while(taken.contains(name)) {
+        name += '_';
+    }
+    return name;
+}
+
 /// A record as a qualifier component: its name with the arguments of a
 /// specialization as written, or the parameters of a class template as
 /// arguments.
@@ -138,7 +175,7 @@ std::string record_component(const clang::RecordDecl* record) {
                 if(index) {
                     os << ", ";
                 }
-                os << param->getName();
+                os << parameter_name(param, index);
                 if(param->isParameterPack()) {
                     os << "...";
                 }
@@ -175,17 +212,21 @@ std::string template_head(CompilationUnitRef unit,
         if(index) {
             os << ", ";
         }
+        auto* type = llvm::dyn_cast<clang::TemplateTypeParmDecl>(param);
         if(auto* value = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(param)) {
             os << type_name(unit.context(), value->getType(), from).value_or("auto");
             if(value->isParameterPack()) {
                 os << "...";
             }
+        } else if(type && type->hasTypeConstraint()) {
+            type->getTypeConstraint()->print(os, unit.context().getPrintingPolicy());
+            if(type->isParameterPack()) {
+                os << "...";
+            }
         } else {
             os << display::template_param_type(param).text;
         }
-        if(!param->getName().empty()) {
-            os << ' ' << param->getName();
-        }
+        os << ' ' << parameter_name(param, index);
     }
     os << '>';
     if(auto* requires_clause = params->getRequiresClause()) {
@@ -332,13 +373,8 @@ std::string template_heads(CompilationUnitRef unit,
             break;
         }
         auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
-        if(!record) {
-            continue;
-        }
-        if(auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(record)) {
-            lists.push_back(partial->getTemplateParameters());
-        } else if(auto* described = record->getDescribedClassTemplate()) {
-            lists.push_back(described->getTemplateParameters());
+        if(auto* params = record ? template_parameters(record) : nullptr) {
+            lists.push_back(params);
         }
     }
     std::string heads;

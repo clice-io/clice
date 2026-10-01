@@ -1,8 +1,8 @@
 /// # Dependent return type
 ///
-/// - status: partial
+/// - status: supported
 ///
-/// A dependent return type stays as written, which may need `typename` and qualification outside the class
+/// A return type naming the class template or one of its member types is qualified through the template's parameters
 
 template <typename T>
 struct Container {

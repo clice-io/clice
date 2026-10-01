@@ -24,15 +24,8 @@ std::optional<std::string> override_declaration(CompilationUnitRef unit,
                                                 const clang::CXXMethodDecl* method,
                                                 const clang::CXXRecordDecl* record) {
     auto& context = unit.context();
-    std::string text;
-    llvm::raw_string_ostream os(text);
-    if(!llvm::isa<clang::CXXConversionDecl>(method)) {
-        auto result = type_name(context, method->getReturnType(), record);
-        if(!result) {
-            return std::nullopt;
-        }
-        os << *result << ' ';
-    }
+    std::string declarator;
+    llvm::raw_string_ostream os(declarator);
     os << display::name_of(method, {.qualified = false}) << '(';
     for(auto [index, param]: llvm::enumerate(method->parameters())) {
         if(index) {
@@ -62,8 +55,18 @@ std::optional<std::string> override_declaration(CompilationUnitRef unit,
     if(auto spec = spelled_text(unit, method->getExceptionSpecSourceRange())) {
         os << ' ' << *spec;
     }
-    os << " override;";
-    return text;
+    if(llvm::isa<clang::CXXConversionDecl>(method)) {
+        return declarator + " override;";
+    }
+    // A return type such as a function pointer wraps the declarator: the
+    // type is printed around a placeholder name standing for it.
+    constexpr llvm::StringRef placeholder = "clice_override_declarator";
+    auto text = type_name(context, method->getReturnType(), record, placeholder);
+    if(!text) {
+        return std::nullopt;
+    }
+    text->replace(text->find(placeholder), placeholder.size(), declarator);
+    return *text + " override;";
 }
 
 }  // namespace

@@ -159,7 +159,7 @@ tests/snap/code_action/define/10_missing_from_definition.cpp
 
 在头文件中，成员还可以定义到与该头文件一起编译的源文件里
 
-定义使用完全限定名，并与该文件中该类的其他定义放在一起；已经在某个源文件中定义过的成员不会再次列出。模板和内联函数仍留在头文件中。
+定义使用完全限定名，并与该文件中该类的其他定义放在一起；已经在某个源文件中定义过的成员不会再次列出。模板、内联函数以及其他文件看不到的函数仍留在头文件中，定义写在类外时会标上 `inline`。
 
 ```snap
 tests/snap/code_action/define/11_header_host/main.cpp
@@ -179,11 +179,11 @@ tests/snap/code_action/define/12_nested_class.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **依赖返回类型**
 
-依赖返回类型保持原样照搬，在类外可能需要 `typename` 和限定
+返回类型用到类模板本身或其成员类型时，会通过模板形参写出限定
 
 ```snap
 tests/snap/code_action/define/13_dependent_return_type.cpp
@@ -643,7 +643,7 @@ tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp
 
 - 定义到宿主源文件时，位置在索引已知的、该文件中该类成员的最后一个定义之后；文件中一个都没有时放在文件末尾。哪个源文件充当头文件的宿主，取决于该头文件的编译上下文。
 - 只有当项目索引知道某个定义时，已在另一个源文件中定义的成员才会被“定义缺失的成员”操作排除；关闭索引后，每个未定义的成员都会列出。
-- 依赖返回类型会原样照搬到类外定义中，在那里它可能需要 `typename` 和类限定符。
+- 返回类型用到依赖基类（dependent base class）的成员时，会原样照搬到类外定义中，在那里可能需要 `typename` 和基类的限定符。
 - 缺失包含指令的候选来自标准库映射，以及项目索引见过的头文件；没有任何已索引源文件包含过的头文件不会被建议。
 
 ## 尚未实现
