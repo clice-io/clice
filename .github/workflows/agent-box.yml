@@ -48,6 +48,45 @@ jobs:
           key: ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-RelWithDebInfo-native-ccache-
           restore-keys: |
             ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-RelWithDebInfo-native-ccache-
+      # The prebuilt LLVM is LTO bitcode, so every link of clice redoes LLVM's codegen: 4-9 minutes
+      # on these runners. Turned into native objects once, in the background, links take seconds.
+      # CI keeps linking the bitcode.
+      - name: Native LLVM libraries
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          pixi run cmake-config RelWithDebInfo ON > ~/llvm-native.log 2>&1
+          mkdir -p ~/.box
+          cat > ~/.box/notes <<'NOTES'
+          LLVM's libraries are turning from LTO bitcode into native objects in the background (about 5 min;
+          links then take seconds). Wait before building:
+            box run <id> 'while [ ! -e ~/llvm-native.done ]; do [ -e ~/llvm-native.failed ] && exit 1; sleep 10; done'
+          Build as CI does, so its compiler cache hits: pixi run build RelWithDebInfo ON
+          NOTES
+          cat > ~/llvm-native.sh <<'SCRIPT'
+          set -euo pipefail
+          trap 'touch ~/llvm-native.failed' ERR
+          L=$(ls -d ~/.cache/clice/cpm/llvm_prebuilt/*/lib | head -1)
+          CLANG=$(pixi run -- bash -c 'command -v clang')
+          work=$(mktemp -d)
+          cd "$work"
+          mkdir out
+          # Archives can hold several members of one name (clangDriver has two AMDGPU.cpp.o).
+          for a in "$L"/*.a; do
+            n=$(basename "$a" .a)
+            mkdir -p "x/$n"
+            (cd "x/$n" && ar t "$a" | awk '{ c[$0]++; print c[$0], $0 }' | while read -r k m; do ar xN "$k" "$a" "$m" && mv "$m" "${k}_$m"; done)
+          done
+          convert() { if [ "$(head -c 2 "$1")" = BC ]; then "$CLANG" -c -O2 -x ir "$1" -o "$1.native"; else cp "$1" "$1.native"; fi; }
+          export -f convert
+          export CLANG
+          find x -name '*.o' -print0 | xargs -0 -P "$(nproc)" -I{} bash -c 'convert "$1"' _ {}
+          for d in x/*; do ar rcs "out/$(basename "$d").a" "$d"/*.native; done
+          cp out/*.a "$L/"
+          rm -rf "$work"
+          touch ~/llvm-native.done
+          SCRIPT
+          nohup bash ~/llvm-native.sh >> ~/llvm-native.log 2>&1 < /dev/null &
       - uses: 16bit-ykiko/agent-box@a0fc879b1b1aa0ba8922018c82479a5ca7953c12
         with:
           pubkey: ${{ inputs.pubkey }}
