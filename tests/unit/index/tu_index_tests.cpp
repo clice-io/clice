@@ -928,6 +928,20 @@ TEST_CASE(MacroDefinitionExtent) {
     ASSERT_EQ(dump(definition->definition_range()), dump(range("ext")));
 }
 
+TEST_CASE(SpelledInMacroRedeclarations) {
+    build_index(R"(
+        #define FWD(name) class name;
+        FWD(Written)
+        class Written {};
+
+        #define MAKE(name) class name {};
+        MAKE(Generated)
+    )");
+
+    ASSERT_FALSE(has(symbol_named("Written").second, index::SymbolFlags::SpelledInMacro));
+    ASSERT_TRUE(has(symbol_named("Generated").second, index::SymbolFlags::SpelledInMacro));
+}
+
 TEST_CASE(CrossFileHeaderIndex) {
     add_file("header.h", R"(
             #pragma once

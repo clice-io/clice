@@ -226,10 +226,15 @@ public:
         if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl); ns && ns->isInline()) {
             flags |= SymbolFlags::InlineNamespace;
         }
-        auto location = decl->getLocation();
-        if(location.isMacroID()) {
+        // Written source spells the name when any declaration of it is
+        // written by hand: `FWD(Expr)` forward-declares a class that is
+        // defined by hand.
+        if(llvm::all_of(decl->redecls(), [](const clang::Decl* redecl) {
+               return redecl->getLocation().isMacroID();
+           })) {
             flags |= SymbolFlags::SpelledInMacro;
         }
+        auto location = decl->getLocation();
         if(unit.context().getSourceManager().isInSystemHeader(location)) {
             flags |= SymbolFlags::SystemHeader;
         }
