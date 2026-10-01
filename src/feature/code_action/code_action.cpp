@@ -609,6 +609,17 @@ std::optional<std::string> respell(clang::ASTContext& context,
     std::string result;
     llvm::StringRef rest = printed;
     while(!rest.empty()) {
+        // A literal's text names nothing; the printer escapes its quotes.
+        if(rest.front() == '"' || rest.front() == '\'') {
+            std::size_t end = 1;
+            while(end < rest.size() && rest[end] != rest.front()) {
+                end += rest[end] == '\\' ? 2 : 1;
+            }
+            auto literal = rest.take_front(end + 1);
+            result += literal;
+            rest = rest.drop_front(literal.size());
+            continue;
+        }
         if(!identifier_start(rest.front())) {
             auto token =
                 llvm::isDigit(rest.front()) ? rest.take_while(identifier_char) : rest.take_front();

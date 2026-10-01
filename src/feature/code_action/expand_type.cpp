@@ -1,6 +1,4 @@
-#include <algorithm>
 #include <array>
-#include <cstdint>
 #include <format>
 #include <string>
 #include <vector>
@@ -43,13 +41,14 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     if(!loc) {
         return;
     }
-    const clang::Decl* owner = nullptr;
-    for(const auto* node = ctx.node.parent; node && !owner; node = node->parent) {
-        owner = node->get<clang::Decl>();
-    }
     // A structured binding's declared type must stay `auto`.
-    if(llvm::isa_and_present<clang::DecompositionDecl>(owner)) {
-        return;
+    for(const auto* node = ctx.node.parent; node; node = node->parent) {
+        if(const auto* decl = node->get<clang::Decl>()) {
+            if(llvm::isa<clang::DecompositionDecl>(decl)) {
+                return;
+            }
+            break;
+        }
     }
 
     auto inner = types::unwrap(*loc);
@@ -95,37 +94,40 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     auto printed = declaration->substr(0, declaration->size() - 2);
     // A cv-qualifier written before `auto` qualifies the deduced type; in
     // front of a pointer it would qualify the pointee, so it moves behind
-    // the `*`. That needs every specifier the declaration puts before
-    // `auto` spelled as a keyword, the cv-qualifiers right before it: one
-    // a macro spells, or parted from `auto`, is out of a single edit's
+    // the `*`. The edit reaches the qualifiers right before `auto`, with
+    // nothing but spaces between them; one parted from it by other
+    // specifiers, or possibly spelled by a macro among them, is out of
     // reach.
+    auto content = unit.main_content();
     if(printed.ends_with('*')) {
-        auto start = owner ? main_range(unit, owner->getBeginLoc()) : std::nullopt;
-        if(!start) {
-            return;
-        }
         auto tokens = unit.spelled_tokens(unit.main_file());
-        auto before = [&](std::uint32_t offset) {
-            return llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
-                return unit.file_offset(token.location()) < offset;
-            });
-        };
-        const auto* begin = before(start->begin);
-        const auto* at = before(range->begin);
+        const auto* at = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
+            return unit.file_offset(token.location()) < range->begin;
+        });
         const auto* first = at;
-        while(first != begin && is_cv(*std::prev(first))) {
+        while(first != tokens.begin() && is_cv(*std::prev(first))) {
             first -= 1;
         }
-        if(!std::ranges::all_of(begin, first, is_specifier)) {
-            return;
+        for(const auto* it = first; it != tokens.begin(); it -= 1) {
+            const auto& token = *std::prev(it);
+            if(is_cv(token) || unit.token_buffer().expansionStartingAt(&token)) {
+                return;
+            }
+            if(!is_specifier(token)) {
+                break;
+            }
         }
         for(const auto* it = first; it != at; it += 1) {
+            auto end = unit.file_offset(it->endLocation());
+            auto next = it + 1 == at ? range->begin : unit.file_offset((it + 1)->location());
+            if(!content.substr(end, next - end).trim().empty()) {
+                return;
+            }
             printed += ' ';
             printed += clang::tok::getKeywordSpelling(it->kind());
         }
         range->begin = unit.file_offset(first->location());
     }
-    auto content = unit.main_content();
     out.push_back(CodeAction{
         .title = std::format("Replace '{}' with '{}'",
                              content.substr(range->begin, range->length()),

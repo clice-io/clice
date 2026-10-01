@@ -266,6 +266,20 @@ void g() {
     §(variable)auto y = make_y();
 }
 
+template <class A, class B>
+struct Pair {};
+template <char C>
+struct Tag {};
+Pair<X, Tag<'X'>> make_pair();
+
+namespace literal {
+struct X {};
+void f() {
+    §(literal)auto v = make_pair();
+    static_assert(__is_same(decltype(v), Pair<::X, Tag<'X'>>));
+}
+}  // namespace literal
+
 struct Å {};
 Å make_å();
 
@@ -281,6 +295,9 @@ void f() {
     expect(await buffer.apply("local", "Replace 'auto' with '::X'")).toContain("::X v");
     expect(await buffer.apply("transitive", "Replace 'auto' with '::a::T'")).toContain("::a::T t");
     expect(await buffer.titles("variable")).toEqual([]);
+    expect(await buffer.apply("literal", "Replace 'auto' with 'Pair<::X, Tag<'X'>>'")).toContain(
+        "Pair<::X, Tag<'X'>> v",
+    );
     expect(await buffer.apply("unicode", "Replace 'auto' with '::Å'")).toContain("::Å v");
 });
 
@@ -461,6 +478,9 @@ test("cv-qualifiers stay on the deduced pointer", async ({ session }) => {
         `#define CONST const
 #define STORAGE static
 
+int* pointer();
+using Pointer = §(alias)decltype(pointer());
+
 void f(int* q, int** pp) {
     const §(pointer)auto p = q;
     static_assert(__is_same(decltype(p), int* const));
@@ -470,6 +490,7 @@ void f(int* q, int** pp) {
     static_assert(__is_same(decltype(s), int* const));
     const static §(parted)auto t = q;
     CONST §(macro)auto m = q;
+    const /* owned */ §(comment)auto c = q;
     const STORAGE §(hidden)auto h = q;
 }
 `,
@@ -483,7 +504,10 @@ void f(int* q, int** pp) {
     expect(await buffer.apply("specifiers", "Replace 'const auto' with 'int* const'")).toContain(
         "static int* const s = q;",
     );
-    for (const marker of ["parted", "macro", "hidden"]) {
+    expect(await buffer.apply("alias", "Replace 'decltype(pointer())' with 'int*'")).toContain(
+        "using Pointer = int*;",
+    );
+    for (const marker of ["parted", "macro", "hidden", "comment"]) {
         expect(await buffer.titles(marker), marker).toEqual([]);
     }
 });

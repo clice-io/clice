@@ -22,7 +22,7 @@ function offsetOf(text: string, position: proto.Position): number {
 export function positionAt(text: string, offset: number): proto.Position {
     const before = Buffer.from(text).subarray(0, offset).toString();
     const line = before.split("\n").length - 1;
-    return { line, character: offset - (before.lastIndexOf("\n") + 1) };
+    return { line, character: before.length - (before.lastIndexOf("\n") + 1) };
 }
 
 /// The document after `edits`, each replacing its range of the original
