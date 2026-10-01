@@ -138,8 +138,8 @@ public:
     /// products die with it.
     void drop(Fid path_id);
 
-    /// The files the document's compile depends on, the ones is_stale()
-    /// checks.
+    /// The files the document's compile depends on: the ones is_stale()
+    /// checks, and the inputs of the modules it imports.
     void closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files);
 
     /// clice/switchContext: the new context is a different compilation

@@ -49,8 +49,8 @@ struct Flag {
 /// shared between fids.
 ///
 /// Each file looked at is also due for its next look after an interval
-/// that tick() keeps: one of its class's, doubled at every look that finds
-/// the file unchanged and dropped back to the shortest at a change. A
+/// that tick() keeps: its root's policy's shortest, doubled at every look
+/// that finds the file unchanged and dropped back at a change. A
 /// check of a workspace file always looks; a check of a package file is
 /// answered "unchanged" without a look when the last look, not yet due,
 /// found what the check expects — any other answer is the disk's. No tick
@@ -111,8 +111,8 @@ public:
     void observe(Fid fid, const DiskObservation& obs);
 
     /// Read the file under the pairing discipline and record it. nullopt =
-    /// unreadable right now (what was seen is left untouched; what a failed
-    /// read means is the caller's policy).
+    /// unreadable right now (what was seen is left untouched, though no
+    /// longer trusted; what a failed read means is the caller's policy).
     std::optional<DiskObservation> read(Fid fid);
 
     /// Stat the file and produce a same-source observation of its current
@@ -283,11 +283,6 @@ private:
 
     /// The last look's finding, for a package file not yet due.
     std::optional<Look> trusted(Fid fid);
-
-    /// A look found the file there but could not read it: nothing is
-    /// recorded, and nothing is answered from the last look until a read
-    /// succeeds.
-    void unreadable(File& file);
 
     /// Report a trusted finding a look contradicts.
     void verify(Fid fid, const Look& found);

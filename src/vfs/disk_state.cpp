@@ -41,6 +41,11 @@ void DiskState::observe(Fid fid, const DiskObservation& obs) {
 std::optional<DiskObservation> DiskState::read(Fid fid) {
     auto observed = read_observed(path(fid));
     if(!observed) {
+        // The file is there but could not be read: nothing is recorded,
+        // and nothing is answered from the last look until a read succeeds.
+        if(auto it = files.find(fid); it != files.end()) {
+            it->second.due = std::min(it->second.due, now());
+        }
         return std::nullopt;
     }
     observe(fid, observed->obs);
@@ -103,16 +108,18 @@ bool DiskState::present(Fid fid) {
     return wave_look(fid, Look{.found = Look::Found::Missing}).found == Look::Found::Read;
 }
 
-void DiskState::add_root(llvm::StringRef dir, Policy policy) {
+void DiskState::add_root(llvm::StringRef dir, Policy rule) {
     if(auto it = std::ranges::find(roots, dir, &Root::dir); it != roots.end()) {
-        it->policy = policy;
+        it->policy = rule;
     } else {
-        roots.push_back({.dir = dir.str(), .policy = policy});
+        roots.push_back({.dir = dir.str(), .policy = rule});
     }
     for(auto& [fid, file]: files) {
         if(path::under(path(fid), dir)) {
+            // Under another policy the backoff starts over.
             file.root = root_of(path(fid));
-            schedule(fid, file, file.due);
+            file.interval = policy(file).min;
+            schedule(fid, file, std::min(file.due, now() + file.interval));
         }
     }
 }
@@ -158,12 +165,19 @@ void DiskState::tick(Clock::duration budget) {
     auto at = now();
     auto deadline = Clock::now() + budget;
     std::size_t looked = 0;
+    std::size_t popped = 0;
     // Files are looked at in path order a batch at a time, so a directory
     // the batch asks about often enough is listed once (see StatusBatch).
     constexpr std::size_t batch_size = 256;
     while(true) {
         llvm::SmallVector<Fid> batch;
         while(batch.size() < batch_size && !queue.empty() && queue.front().at <= at) {
+            // A burst of expiries leaves leftovers behind: discarding them
+            // spends the budget too.
+            if(popped != 0 && popped % batch_size == 0 && Clock::now() >= deadline) {
+                break;
+            }
+            popped += 1;
             std::ranges::pop_heap(queue, std::ranges::greater{}, &Due::at);
             auto entry = queue.back();
             queue.pop_back();
@@ -269,16 +283,9 @@ DiskState::Look DiskState::wave_look(Fid fid, std::optional<Look> expected) {
         look = {.found = Look::Found::Read, .hash = obs->hash};
     } else {
         look.found = Look::Found::Unreadable;
-        if(auto it = files.find(fid); it != files.end()) {
-            unreadable(it->second);
-        }
     }
     wave_looks.try_emplace(fid, look);
     return look;
-}
-
-void DiskState::unreadable(File& file) {
-    file.due = std::min(file.due, now());
 }
 
 std::optional<DiskState::Look> DiskState::trusted(Fid fid) {
@@ -363,10 +370,8 @@ void DiskState::look_flags() {
 void DiskState::look_at(Fid fid, StatusBatch& statuses) {
     if(auto status = statuses.status(path(fid)); !status) {
         saw_missing(fid);
-    } else if(!observe_for(fid, *status)) {
-        if(auto it = files.find(fid); it != files.end()) {
-            unreadable(it->second);
-        }
+    } else {
+        observe_for(fid, *status);
     }
 }
 

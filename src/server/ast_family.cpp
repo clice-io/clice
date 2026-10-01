@@ -219,6 +219,17 @@ void ASTFamily::closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files) {
             add(it->second.deps);
         }
     }
+    // A module's snapshot covers the modules it imports in turn.
+    for(auto dep: graph.dependencies(node(path_id))) {
+        if(dep.family != Family::PCM) {
+            continue;
+        }
+        Fid module{static_cast<std::uint32_t>(dep.key)};
+        if(auto it = project.pcm_cache.find(module); it != project.pcm_cache.end()) {
+            files.push_back(module);
+            add(it->second.deps);
+        }
+    }
 }
 
 void ASTFamily::touch(Fid path_id) {
