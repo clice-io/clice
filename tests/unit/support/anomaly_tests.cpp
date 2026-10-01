@@ -157,6 +157,7 @@ TEST_CASE(MarkerNamesStable) {
     LOG_ANOMALY(WorkerCrash, "x");
     LOG_ANOMALY(WorkerSpawnFail, "x");
     LOG_ANOMALY(PositionMapFail, "x");
+    LOG_ANOMALY(StaleTrust, "x");
 
     ASSERT_EQ(capture.notified.size(), logging::anomaly_id_count);
     const char* expected[] = {
@@ -167,6 +168,7 @@ TEST_CASE(MarkerNamesStable) {
         "WorkerCrash",
         "WorkerSpawnFail",
         "PositionMapFail",
+        "StaleTrust",
     };
     for(std::size_t i = 0; i < logging::anomaly_id_count; ++i) {
         EXPECT_EQ(capture.notified[i].second, std::format("[anomaly:{}] x", expected[i]));

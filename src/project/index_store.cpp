@@ -517,7 +517,9 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         // PCM) it is the only hash naming the bytes the rows describe.
         auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.path_hash(i);
 
-        if(hash == 0) {
+        if(hash != 0) {
+            project.file_table.disk.consumed(file_ids_map[i], hash);
+        } else {
             auto status = vfs::status(path);
             if(status && status->stamp.mtime_ns <= baseline_before_ns) {
                 // The worker had no buffer to hash (e.g. behind a PCM) and

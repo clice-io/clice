@@ -378,6 +378,8 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
                 continue;
             }
             hash = obs->hash;
+        } else {
+            files.disk.consumed(dep.path_id, hash);
         }
 
         dep.version = files.intern_version(dep.path_id, hash);

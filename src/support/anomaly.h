@@ -38,6 +38,9 @@ enum class AnomalyId : std::uint8_t {
     WorkerSpawnFail,
     /// An internally-produced offset or range failed to map to a position.
     PositionMapFail,
+    /// A freshness check answered from an earlier look at a file that the
+    /// disk contradicts (reported only while shadow checks run).
+    StaleTrust,
 
     /// Number of ids, not a reportable anomaly — keep last.
     Count,

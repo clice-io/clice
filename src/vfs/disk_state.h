@@ -1,8 +1,12 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "vfs/file_system.h"
 #include "vfs/ids.h"
@@ -24,8 +28,39 @@ namespace clice::vfs {
 /// Every spelling of a file shares its fid (see FileTable::intern), while
 /// hardlinks are distinct fids, each with its own reads: nothing here is
 /// shared between fids.
+///
+/// Each file looked at is also due for its next look after an interval
+/// that tick() keeps: one of its class's, doubled at every look that finds
+/// the file unchanged and dropped back to the shortest at a change. A
+/// check of a workspace file always looks; a check of a package file may
+/// answer from the last look while that one is not due — no tick running
+/// lets every file fall due, so every check looks again.
 class DiskState {
 public:
+    using Clock = std::chrono::steady_clock;
+
+    /// Who changes a file, which decides how a check answers for it.
+    enum class Class : std::uint8_t {
+        /// The user, and the tools they run — sources, generated files,
+        /// anything under no registered root, edited by agents outside the
+        /// editor as often as in it: a check always looks.
+        Workspace,
+        /// An install or upgrade, which replaces a toolchain or an
+        /// environment as a whole: a check trusts a look that is not due.
+        Package,
+    };
+
+    /// How often the files of a root are looked at.
+    struct Policy {
+        Class kind = Class::Workspace;
+        Clock::duration min = std::chrono::seconds(1);
+        /// Zero: never looked at in the background.
+        Clock::duration max = std::chrono::seconds(30);
+    };
+
+    const static Policy workspace_policy;
+    const static Policy package_policy;
+
     /// `paths` names each fid's file, indexed by its raw value.
     explicit DiskState(const llvm::SmallVectorImpl<llvm::StringRef>& paths) : paths(paths) {}
 
@@ -126,6 +161,49 @@ public:
     /// empty.
     bool present(Fid fid);
 
+    /// Files under the directory `dir` (an identity) follow `policy`, the
+    /// deepest root deciding; files under none follow workspace_policy.
+    void add_root(llvm::StringRef dir, Policy policy);
+
+    /// A build read this file's bytes, hashing to `hash`: for a file nobody
+    /// looked at yet, that read is the first look, so that a change after
+    /// it is a change.
+    void consumed(Fid fid, std::uint64_t hash);
+
+    /// Make files due now.
+    void expire(Fid fid);
+    void expire_under(llvm::StringRef dir);
+    void expire_all();
+
+    /// Look at every watched flag, then at the files that are due, longest
+    /// due first, for about `budget` of wall time.
+    void tick(Clock::duration budget);
+
+    /// A file looked at by its path at every tick, a symlink followed anew
+    /// each time: the markers of a git checkout, a package environment, a
+    /// compilation database.
+    struct Flag {
+        std::string path;
+        /// The content hash at the last look; nullopt while the file is
+        /// missing or unreadable.
+        std::optional<std::uint64_t> hash;
+        /// Called at a look that finds other content than the one before.
+        std::function<void()> on_change;
+        /// The stamp a reliable read of `hash` was taken under.
+        std::optional<Stamp> stamp;
+    };
+
+    /// Watch `path` until the returned flag is dropped; its first look is
+    /// taken now.
+    std::shared_ptr<Flag> watch(std::string path, std::function<void()> on_change = {});
+
+    /// The time of the schedule; tests turn it.
+    std::function<Clock::time_point()> now = Clock::now;
+
+    /// Check every answer a check gives without looking against a look,
+    /// reporting a contradiction as an anomaly: the test suites run with it.
+    bool shadow = false;
+
 private:
     /// The last reliable read: the hash of the bytes the stamp described.
     struct Pair {
@@ -137,6 +215,25 @@ private:
         /// The content hash, or nullopt when the file was missing.
         std::optional<std::uint64_t> seen;
         std::optional<Pair> pair;
+        /// The root whose policy the file follows; no_root for none.
+        std::uint32_t root = no_root;
+        Clock::duration interval{};
+        Clock::time_point due;
+        /// When the file's entry in the queue comes up; max() when it has
+        /// none.
+        Clock::time_point queued = Clock::time_point::max();
+    };
+
+    constexpr static std::uint32_t no_root = ~0u;
+
+    struct Root {
+        std::string dir;
+        Policy policy;
+    };
+
+    struct Due {
+        Clock::time_point at;
+        Fid fid;
     };
 
     /// What a wave's look at a file found.
@@ -152,11 +249,31 @@ private:
 
     /// Record a look's finding: a first look is no change — nothing was
     /// derived from an unseen state; any other finding than the last one
-    /// is.
-    void saw(Fid fid, std::optional<std::uint64_t> hash);
+    /// is. The file is due again after its interval: the shortest after a
+    /// first look, a change, or an mtime not yet `settled` (see
+    /// fs::settled), else twice the last one.
+    void saw(Fid fid, std::optional<std::uint64_t> hash, bool settled);
 
     /// The wave's look at a file, taken once per wave.
     Look look(Fid fid);
+
+    /// The last look's finding, for a package file not yet due.
+    std::optional<Look> trusted(Fid fid);
+
+    /// Report a trusted finding a look contradicts.
+    void verify(Fid fid, const Look& found);
+
+    const Policy& policy(const File& file) const {
+        return file.root == no_root ? workspace_policy : roots[file.root].policy;
+    }
+
+    std::uint32_t root_of(llvm::StringRef path) const;
+
+    /// Make the file due at `at`, queueing it unless an earlier entry
+    /// already will bring it up.
+    void schedule(Fid fid, File& file, Clock::time_point at);
+
+    void look_flag(Flag& flag);
 
     const llvm::SmallVectorImpl<llvm::StringRef>& paths;
 
@@ -169,6 +286,22 @@ private:
     llvm::DenseMap<Fid, Look> wave_looks;
     StatusBatch wave_statuses;
     bool wave_open = false;
+
+    std::vector<Root> roots;
+
+    /// A min-heap on `at`. An entry whose time is not its file's `queued`
+    /// is a leftover of a rescheduling, skipped when it comes up.
+    std::vector<Due> queue;
+
+    std::vector<std::weak_ptr<Flag>> flags;
+};
+
+const inline DiskState::Policy DiskState::workspace_policy{};
+
+const inline DiskState::Policy DiskState::package_policy{
+    .kind = Class::Package,
+    .min = std::chrono::seconds(30),
+    .max = std::chrono::minutes(10),
 };
 
 }  // namespace clice::vfs
