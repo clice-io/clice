@@ -340,9 +340,9 @@ public:
 
         Relation relation{
             .kind = kind,
-            .target_symbol = unit.entity(decls::normalize(target)),
+            .target_symbol = ensure_symbol(decls::normalize(target)),
         };
-        index->relations[unit.entity(decls::normalize(decl))].emplace_back(relation);
+        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
 
     /// A call edge, landing at the call expression's location.
@@ -359,9 +359,9 @@ public:
         Relation relation{
             .kind = kind,
             .range = relation_range,
-            .target_symbol = unit.entity(decls::normalize(target)),
+            .target_symbol = ensure_symbol(decls::normalize(target)),
         };
-        index->relations[unit.entity(decls::normalize(decl))].emplace_back(relation);
+        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
 
     /// Module names are indexed like macro names: an occurrence plus a

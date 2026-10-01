@@ -1,0 +1,26 @@
+---
+created_at: 2026-10-01
+input_file: relation_only_symbol/main.cpp
+---
+caller:
+  definition:
+    - { file: "${WS}/relation_only_symbol/main.cpp", range: "8:4-8:12" }
+  declaration:
+    - { file: "${WS}/relation_only_symbol/main.cpp", range: "8:4-8:12" }
+  references:
+    - { file: "${WS}/relation_only_symbol/main.cpp", range: "8:4-8:12" }
+  callHierarchy:
+    - { name: "use_conv", kind: Function, file: "${WS}/relation_only_symbol/main.cpp", range: "8:4-8:12" }
+  outgoingCalls:
+    - { name: "operator int", kind: Method, file: "${WS}/relation_only_symbol/conv.h", range: "3:4-3:12", fromRanges: ["10:12-10:13"] }
+    - { name: "get", kind: Method, file: "${WS}/relation_only_symbol/conv.h", range: "4:8-4:11", fromRanges: ["11:15-11:22"] }
+
+override:
+  definition:
+    - { file: "${WS}/relation_only_symbol/main.cpp", range: "15:8-15:11" }
+  declaration:
+    - { file: "${WS}/relation_only_symbol/main.cpp", range: "15:8-15:11" }
+  references:
+    - { file: "${WS}/relation_only_symbol/main.cpp", range: "15:8-15:11" }
+  callHierarchy:
+    - { name: "run", kind: Method, file: "${WS}/relation_only_symbol/main.cpp", range: "15:8-15:11" }
