@@ -113,6 +113,19 @@ std::optional<std::string> include_spelling(CanonicalRef header,
     return std::nullopt;
 }
 
+/// Whether an include spelling names a library's internal header, which
+/// its public headers include and its users never should: libstdc++'s
+/// and glibc's `bits/`, libc++'s `__`-prefixed directories and files.
+bool internal_header(llvm::StringRef spelling) {
+    if(!spelling.starts_with('<')) {
+        return false;
+    }
+    auto name = spelling.drop_front().drop_back();
+    return llvm::any_of(
+        llvm::make_range(llvm::sys::path::begin(name), llvm::sys::path::end(name)),
+        [](llvm::StringRef part) { return part == "bits" || part.starts_with("__"); });
+}
+
 }  // namespace
 
 kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
@@ -287,16 +300,15 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
         auto search = project.cdb.search_config(ref);
         vfs::Scope scope(project.file_table.dirs);
-        llvm::StringRef text = session->text;
-        std::string before = request.offset == text.size() && !text.ends_with('\n') ? "\n" : "";
         for(const auto& header: headers) {
-            if(auto spelling =
-                   include_spelling(header, search, project.file_table.spelling(path_id), scope)) {
+            auto spelling =
+                include_spelling(header, search, project.file_table.spelling(path_id), scope);
+            if(spelling && !internal_header(*spelling)) {
                 emit(std::format("Add #include {}", *spelling),
                      action.kind,
                      {
                          {{request.offset, request.offset},
-                          std::format("{}#include {}\n", before, *spelling)}
+                          std::format("#include {}\n", *spelling)}
                 });
             }
         }

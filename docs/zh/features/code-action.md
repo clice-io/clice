@@ -523,7 +523,7 @@ tests/snap/code_action/macro/03_directives_and_empty.cpp
 
 无法解析的标准库名字会依据标准库映射，给出声明它的头文件
 
-指令插入在文件最后一条包含指令之后。非限定的名字还会尝试 `std` 命名空间。
+指令插入在文件开头那组包含指令之后。非限定的名字还会尝试 `std` 命名空间。
 
 ```snap
 tests/snap/code_action/include/01_standard_library.cpp
@@ -565,6 +565,18 @@ tests/snap/code_action/include/03_no_include_yet.cpp
 
 ```snap
 tests/snap/code_action/include/04_conditional_includes.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**嵌入的与尾随的包含指令**
+
+位于 `extern "C"` 或类型体内部的包含指令，以及跟在代码之后的包含指令，都不是新指令该去的位置：新指令会加入文件开头的那组包含指令
+
+```snap
+tests/snap/code_action/include/05_trailing_includes.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -621,6 +633,18 @@ tests/snap/code_action/reorder/03_free_functions.cpp
 
 ```snap
 tests/snap/code_action/reorder/04_trailing_comments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**用到中间内容的定义**
+
+如果移动某个定义会把它挪到它所用的东西之前，例如夹在这些定义之间的变量或宏定义，该定义就留在原处，其余定义围绕它重排
+
+```snap
+tests/snap/code_action/reorder/05_dependencies.cpp
 ```
 
 <!-- END CAPABILITY -->
