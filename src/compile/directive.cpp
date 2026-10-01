@@ -219,6 +219,13 @@ public:
         }
     }
 
+    void PragmaDirective(clang::SourceLocation loc, clang::PragmaIntroducerKind kind) override {
+        if(kind != clang::PIK_HashPragma) {
+            auto fid = unit.file_id(unit.expansion_location(loc));
+            unit->directives[fid].pragma_operators.push_back(loc);
+        }
+    }
+
     void PragmaDiagnosticPush(clang::SourceLocation loc, llvm::StringRef) override {
         add_diagnostic_pragma({.kind = DiagnosticPragma::Push, .loc = loc});
     }

@@ -95,6 +95,8 @@ std::optional<QualifiedName> qualified_name_at(CompilationUnitRef unit, std::uin
     return result;
 }
 
+}  // namespace
+
 /// After the main file's last `#include` line at the file's own level —
 /// outside every conditional, or directly inside its include guard; an
 /// include under `#if FEATURE` is no place for one that must always
@@ -149,8 +151,6 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
     }
     return 0;
 }
-
-}  // namespace
 
 void add_include(CompilationUnitRef unit,
                  LocalSourceRange selection,

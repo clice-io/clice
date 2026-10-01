@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// A class receives a constructor taking every field in order, scalars by value and other types by const reference
+/// A class receives a constructor taking every field in order, scalars by value and copyable classes by const reference
 
 struct Name {};
 

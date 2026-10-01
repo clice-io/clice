@@ -1,0 +1,28 @@
+/// # Move-only fields
+///
+/// - status: supported
+///
+/// A field whose class moves but does not copy is taken by value and moved from, as is the object an rvalue reference field binds
+///
+/// The file gains `#include <utility>` when nothing it includes declares
+/// `std::move` yet. A class that neither copies nor moves gets no
+/// constructor.
+
+struct Handle {
+    Handle(Handle&&) = default;
+};
+
+struct §(owner)Owner {
+    Handle handle;
+    int&& pending;
+    int count;
+};
+
+struct Lock {
+    Lock(const Lock&) = delete;
+};
+
+struct §(pinned)Pinned {
+    Lock lock;
+    int count;
+};

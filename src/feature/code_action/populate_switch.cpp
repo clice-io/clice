@@ -6,6 +6,7 @@
 #include "feature/code_action/action.h"
 #include "semantic/display.h"
 
+#include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "clang/AST/ASTContext.h"
@@ -15,6 +16,24 @@
 #include "clang/AST/Type.h"
 
 namespace clice::feature::action {
+
+/// The label opening the first section of a switch body that declares
+/// something at the body's own scope.
+const static clang::SwitchCase* declaring_section(const clang::CompoundStmt* body) {
+    const clang::SwitchCase* section = nullptr;
+    for(const clang::Stmt* statement: body->body()) {
+        if(const auto* label = llvm::dyn_cast<clang::SwitchCase>(statement)) {
+            section = label;
+            while(const auto* nested = llvm::dyn_cast<clang::SwitchCase>(statement)) {
+                statement = nested->getSubStmt();
+            }
+        }
+        if(section && llvm::isa<clang::DeclStmt>(statement)) {
+            return section;
+        }
+    }
+    return nullptr;
+}
 
 void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
     auto unit = ctx.unit;
@@ -36,8 +55,16 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
         return;
     }
 
+    // Case values are converted to the promoted condition type; the
+    // enumerators are brought into it to compare.
     auto& context = unit.context();
-    llvm::DenseSet<std::int64_t> covered;
+    auto condition = stmt->getCond()->getType();
+    auto promoted = [&](llvm::APSInt value) {
+        value = value.extOrTrunc(context.getIntWidth(condition));
+        value.setIsUnsigned(condition->isUnsignedIntegerOrEnumerationType());
+        return value;
+    };
+    llvm::DenseSet<llvm::APSInt> covered;
     const clang::DefaultStmt* default_stmt = nullptr;
     for(const auto* current = stmt->getSwitchCaseList(); current;
         current = current->getNextSwitchCase()) {
@@ -45,17 +72,20 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
             default_stmt = default_case;
             continue;
         }
+        // A label depending on template parameters covers enumerators
+        // only an instantiation knows.
         const auto* case_stmt = llvm::cast<clang::CaseStmt>(current);
         clang::Expr::EvalResult value;
-        if(case_stmt->getRHS() || !case_stmt->getLHS()->EvaluateAsInt(value, context)) {
+        if(case_stmt->getRHS() || case_stmt->getLHS()->isValueDependent() ||
+           !case_stmt->getLHS()->EvaluateAsInt(value, context)) {
             return;
         }
-        covered.insert(value.Val.getInt().getExtValue());
+        covered.insert(promoted(value.Val.getInt()));
     }
 
     llvm::SmallVector<const clang::EnumConstantDecl*> missing;
     for(const auto* enumerator: enum_decl->enumerators()) {
-        if(covered.insert(enumerator->getInitVal().getExtValue()).second) {
+        if(covered.insert(promoted(enumerator->getInitVal())).second) {
             missing.push_back(enumerator);
         }
     }
@@ -64,16 +94,18 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
     }
 
     // The labels go before `default`, falling through into it as the
-    // missing cases already did, else before the closing brace with a
-    // `break` of their own; either way on the labels' own indentation.
+    // missing cases already did; else at the end with a `break` of their
+    // own, though before the first section declaring a variable, which a
+    // label after it would jump past. Either way on the labels' own
+    // indentation.
     auto content = unit.main_content();
-    auto anchor =
-        main_range(unit, default_stmt ? default_stmt->getDefaultLoc() : body->getRBracLoc());
+    const clang::SwitchCase* next = default_stmt ? default_stmt : declaring_section(body);
+    auto anchor = main_range(unit, next ? next->getKeywordLoc() : body->getRBracLoc());
     if(!anchor) {
         return;
     }
     std::string indent;
-    if(default_stmt) {
+    if(next) {
         indent = line_indent(content, anchor->begin).str();
     } else if(const auto* first = stmt->getSwitchCaseList()) {
         auto range = main_range(unit, first->getKeywordLoc());
