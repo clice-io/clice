@@ -90,9 +90,13 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
     // on a line of its own, or a macro spelling one) lie outside its
     // range.
     auto tokens = unit.spelled_tokens(main);
-    auto first = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
-        return unit.file_offset(token.location()) < begin;
-    });
+    auto& SM = unit.context().getSourceManager();
+    auto token_at = [&](std::uint32_t offset) {
+        return std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
+            return unit.file_offset(token.location()) < offset;
+        });
+    };
+    auto first = token_at(begin);
     while(first != tokens.begin()) {
         auto previous = std::prev(first);
         if(previous != tokens.begin() && previous->kind() == clang::tok::r_square &&
@@ -109,17 +113,25 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
                     break;
                 }
             }
-            if(depth != 0) {
+            if(depth != 0 || std::next(open)->kind() != clang::tok::l_square) {
                 break;
             }
             first = open;
-        } else if(llvm::any_of(definition->attrs(), [&](const clang::Attr* attr) {
-                      return unit.expansion_location(attr->getLocation()) == previous->location();
-                  })) {
-            first = previous;
-        } else {
+            continue;
+        }
+        std::optional<clang::SourceLocation> invocation;
+        for(const auto* attr: definition->attrs()) {
+            if(attr->getLocation().isMacroID()) {
+                auto expansion = SM.getExpansionRange(attr->getLocation());
+                if(expansion.getEnd() == previous->location()) {
+                    invocation = expansion.getBegin();
+                }
+            }
+        }
+        if(!invocation) {
             break;
         }
+        first = token_at(unit.file_offset(*invocation));
     }
     begin = unit.file_offset(first->location());
 

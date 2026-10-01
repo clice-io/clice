@@ -2,11 +2,13 @@
 // of their own or not, macro-spelled or not.
 
 #define DEPRECATED [[deprecated]]
+#define OBSOLETE(reason) [[deprecated(reason)]]
 
 struct §(cls)S {
     void a();
     int b();
     void c();
+    void d();
 };
 
 [[nodiscard]] [[deprecated("old")]]
@@ -15,6 +17,9 @@ int S::b() {
 }
 
 [[using gnu: cold]] void S::c() {}
+
+OBSOLETE("old")
+void S::d() {}
 
 DEPRECATED
 void S::a() {}
