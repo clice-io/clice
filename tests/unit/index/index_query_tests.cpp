@@ -399,6 +399,26 @@ TEST_CASE(StaleContributionSuppressed) {
     ASSERT_TRUE(query.sites(symbol, RelationKind::Reference).empty());
 }
 
+TEST_CASE(ClassNameOverConstructor) {
+    add_main("main.cpp", R"(
+        namespace outer {
+        struct Widget {
+            Widget();
+            Widget(int);
+        };
+        }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    for(auto name: {"Widget", "outer::Widget"}) {
+        auto results = locate(name);
+        ASSERT_EQ(results.size(), 1U);
+        ASSERT_EQ(results.front().symbol.kind, SymbolKind::Struct);
+    }
+    ASSERT_EQ(locate("outer::Widget::Widget").size(), 2U);
+}
+
 TEST_CASE(DeletedDefinitionFallsBack) {
     llvm::StringRef header = R"(
         int removed();

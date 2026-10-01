@@ -123,6 +123,12 @@ TEST_CASE(Arguments) {
     EXPECT_EQ(parsed("Foo::operator<").pattern, "operator<");
     EXPECT_EQ(parsed("operator->").pattern, "operator->");
     EXPECT_TRUE(parsed("operator<<").args.empty());
+    auto named = parsed("binary_operator<int>");
+    EXPECT_EQ(named.pattern, "binary_operator");
+    EXPECT_EQ(named.args, "<int>");
+    auto member = parsed("binary_operator<int>::apply");
+    EXPECT_EQ(scope_names(member), (std::vector<std::string>{"binary_operator<int>"}));
+    EXPECT_EQ(member.pattern, "apply");
     EXPECT_TRUE(index::args_match("", "<int>"));
     EXPECT_TRUE(index::args_match("<int,4>", "<int, 4>"));
     EXPECT_FALSE(index::args_match("<int>", "<long>"));

@@ -277,6 +277,26 @@ test("answers for a file only its own symbols name", ({ session }) => {
     expect(onLine.stale).toEqual([]);
 });
 
+test("context of a name opening its line", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("main.cpp", "int\nvalue() { return 1; }\nint use() { return value(); }\n");
+    ws.writeCDB(["main.cpp"]);
+    ws.pinCacheDir();
+    expect(runIndex(ws).status).toBe(0);
+
+    const refs = query<{ references: { context: string }[] }>(
+        ws,
+        "references",
+        "--name",
+        "value",
+        "--include-declaration",
+    );
+    expect(refs.result?.references.map((r) => r.context).sort()).toEqual([
+        "int use() { return value(); }",
+        "value() { return 1; }",
+    ]);
+});
+
 test("moved checkout keeps its index", ({ session }) => {
     const parent = session.tmpdir();
     const before = new Workspace(parent.path("before"));

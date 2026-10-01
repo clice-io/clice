@@ -424,8 +424,9 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
         co_return to_raw(result);
     }
 
+    // A closed file has no worker leg: the index's answer is the answer.
     if(!session)
-        co_return kota::outcome_error(document_not_open());
+        co_return serde_raw{"[]"};
 
     // An index-only session never owes the compile the worker dispatch
     // implies, a session served under freshness clause 4 (escalated,

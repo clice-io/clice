@@ -230,6 +230,19 @@ test("goto definition alternate", async ({ client, workspace }) => {
     client.close(uri);
 });
 
+/// A closed file answers from the index alone: no symbol under the cursor
+/// is an empty answer, not an error.
+test("goto definition closed blank", async ({ client, workspace }) => {
+    const [uri] = await client.openAndWait("main.cpp");
+    expect(await client.waitForIndex(uri, "area"), "Index not ready after 30s").toBe(true);
+
+    // nav.cpp:1 is an empty line.
+    const locs = asLocations(await client.definitionAt(workspace.uri("nav.cpp"), 1, 0));
+    expect(locs).toEqual([]);
+
+    client.close(uri);
+});
+
 /// A symbol with no definition anywhere navigates to its declaration
 /// instead of returning empty.
 test("goto definition declaration only", async ({ client, workspace }) => {

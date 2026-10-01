@@ -34,11 +34,10 @@ LocalSourceRange to_local(const Occurrence& occurrence) {
 std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
     if(content.empty() || offset >= content.size())
         return {};
+    // StringRef::rfind looks strictly before its position.
     std::size_t line_start = 0;
-    if(offset > 0) {
-        auto pos = content.rfind('\n', offset - 1);
-        if(pos != llvm::StringRef::npos)
-            line_start = pos + 1;
+    if(auto pos = content.rfind('\n', offset); pos != llvm::StringRef::npos) {
+        line_start = pos + 1;
     }
     auto line_end = content.find('\n', offset);
     if(line_end == llvm::StringRef::npos)
@@ -949,10 +948,21 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
 
     auto ranked = ranked_search(query, 50).hits;
     // Spelling the name exactly settles it; otherwise every match stands.
-    bool any_exact = llvm::any_of(ranked, [](const Ranked& hit) { return hit.rank.tier <= 1; });
+    // A class and its constructors spell one name: asked by it, the class
+    // answers.
+    llvm::DenseSet<SymbolHash> exact;
+    for(auto& hit: ranked) {
+        if(hit.rank.tier <= 1) {
+            exact.insert(hit.symbol.hash);
+        }
+    }
     std::vector<Located> results;
     for(auto& hit: ranked) {
-        if(any_exact && hit.rank.tier > 1) {
+        if(!exact.empty() && hit.rank.tier > 1) {
+            continue;
+        }
+        if(name_form(hit.symbol.flags) == NameForm::Constructor &&
+           exact.contains(hit.symbol.parent)) {
             continue;
         }
         if(auto site = canonical_site(hit.symbol.hash)) {
