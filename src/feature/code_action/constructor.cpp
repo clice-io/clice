@@ -64,11 +64,13 @@ bool callable(const clang::CXXConstructorDecl* ctor) {
 
 /// Whether a `const T&` argument copy-constructs the class. One not yet
 /// declared is the implicit copy constructor, deleted per the class's
-/// flags or by a user-declared move operation.
+/// flags or by a user-declared move operation; one whose constraints fail
+/// is no candidate.
 bool copy_constructible(const clang::CXXRecordDecl* record) {
     for(const auto* ctor: record->ctors()) {
         unsigned qualifiers = 0;
-        if(ctor->isCopyConstructor(qualifiers) && (qualifiers & clang::Qualifiers::Const)) {
+        if(!ctor->isIneligibleOrNotSelected() && ctor->isCopyConstructor(qualifiers) &&
+           (qualifiers & clang::Qualifiers::Const)) {
             return callable(ctor);
         }
     }
@@ -78,7 +80,7 @@ bool copy_constructible(const clang::CXXRecordDecl* record) {
 /// Whether the class has a move constructor another class may call.
 bool move_constructible(const clang::CXXRecordDecl* record) {
     for(const auto* ctor: record->ctors()) {
-        if(ctor->isMoveConstructor()) {
+        if(!ctor->isIneligibleOrNotSelected() && ctor->isMoveConstructor()) {
             return callable(ctor);
         }
     }

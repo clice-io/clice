@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// A base whose default constructor is deleted, explicitly, by a reference member or by a const member nothing initializes, blocks the memberwise constructor too
+/// A base whose default constructor is deleted explicitly, or implicitly by a reference member or a const member nothing initializes, blocks the memberwise constructor too
 ///
 /// A const member of a class that initializes all its own fields leaves
 /// the base default-constructible.
