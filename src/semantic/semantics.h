@@ -382,6 +382,12 @@ public:
         return lexical.modules;
     }
 
+    /// The main file's conditional and region directives in source order,
+    /// the preamble's and skipped blocks' included.
+    llvm::ArrayRef<LexicalInfo::BlockDirective> block_directives() const {
+        return lexical.block_directives;
+    }
+
 private:
     friend class SemanticsBuilder;
 

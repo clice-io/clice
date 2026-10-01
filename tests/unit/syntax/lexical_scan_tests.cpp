@@ -8,6 +8,7 @@ namespace {
 
 using Comment = LexicalInfo::Comment;
 using ModuleDeclaration = LexicalInfo::ModuleDeclaration;
+using BlockDirective = LexicalInfo::BlockDirective;
 
 llvm::StringRef text(llvm::StringRef content, LocalSourceRange range) {
     return content.substr(range.begin, range.length());
@@ -177,6 +178,58 @@ TEST_CASE(NegativeControls) {
 }
 
 };  // TEST_SUITE(LexicalScanModules)
+
+TEST_SUITE(LexicalScanBlockDirectives) {
+
+TEST_CASE(ConditionalChain) {
+    llvm::StringRef content = R"(#if A // first
+int a;
+#elifdef B
+#else
+#endif
+#define X 1
+)";
+    auto info = lexical_scan(content);
+
+    ASSERT_EQ(info.block_directives.size(), 4U);
+    ASSERT_EQ(info.block_directives[0].kind, BlockDirective::Kind::If);
+    ASSERT_EQ(text(content, info.block_directives[0].range), "#if A // first");
+    ASSERT_EQ(info.block_directives[1].kind, BlockDirective::Kind::Else);
+    ASSERT_EQ(text(content, info.block_directives[1].range), "#elifdef B");
+    ASSERT_EQ(info.block_directives[2].kind, BlockDirective::Kind::Else);
+    ASSERT_EQ(info.block_directives[3].kind, BlockDirective::Kind::EndIf);
+}
+
+TEST_CASE(ContinuedLine) {
+    llvm::StringRef content = "#if defined(A) && \\\n    defined(B)\nint a;\n#endif";
+    auto info = lexical_scan(content);
+
+    ASSERT_EQ(info.block_directives.size(), 2U);
+    ASSERT_EQ(text(content, info.block_directives[0].range),
+              "#if defined(A) && \\\n    defined(B)");
+    ASSERT_EQ(text(content, info.block_directives[1].range), "#endif");
+}
+
+TEST_CASE(PragmaRegions) {
+    llvm::StringRef content = R"(#pragma GCC poison printf
+#pragma region endregion_pair
+#pragma mark see endregion notes
+#pragma endregion
+/* spans
+a line */ #pragma region after_comment
+int x; /* b */ #pragma endregion
+)";
+    auto info = lexical_scan(content);
+
+    ASSERT_EQ(info.block_directives.size(), 3U);
+    ASSERT_EQ(info.block_directives[0].kind, BlockDirective::Kind::Region);
+    ASSERT_EQ(text(content, info.block_directives[0].range), "#pragma region endregion_pair");
+    ASSERT_EQ(info.block_directives[1].kind, BlockDirective::Kind::EndRegion);
+    ASSERT_EQ(info.block_directives[2].kind, BlockDirective::Kind::Region);
+    ASSERT_EQ(text(content, info.block_directives[2].range), "#pragma region after_comment");
+}
+
+};  // TEST_SUITE(LexicalScanBlockDirectives)
 
 }  // namespace
 }  // namespace clice::testing

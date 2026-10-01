@@ -29,9 +29,14 @@ namespace {
 ///
 /// Fold kinds are plain strings on the wire (LSP standardizes only `comment`,
 /// `imports` and `region`; servers may add custom values).
+///
+/// A delimited fold spans its delimiters, which `collapsed_text` repeats; a
+/// section fold (a conditional branch, a region) runs from the end of its
+/// header line to the next header, which stays visible.
 class FoldingRangeCollector {
 public:
-    explicit FoldingRangeCollector(CompilationUnitRef unit) : unit(unit) {}
+    explicit FoldingRangeCollector(CompilationUnitRef unit) :
+        unit(unit), content(unit.main_content()) {}
 
     auto collect() -> std::vector<FoldingRange> {
         auto nodes = unit.semantics().node_entries();
@@ -40,7 +45,7 @@ public:
             const Semantics::Node& entry = nodes[index];
             if(!entry.node.is_ast()) {
                 // The preprocessor segment follows the AST segment; directive
-                // folds are collected from the unit's directive table below.
+                // folds are collected from the lexical scan below.
                 break;
             }
 
@@ -58,11 +63,7 @@ public:
             index += 1;
         }
 
-        auto directives_it = unit.directives().find(unit.main_file());
-        if(directives_it != unit.directives().end()) {
-            collect_condition_directives(directives_it->second.conditions);
-            collect_pragma_region(directives_it->second.pragmas);
-        }
+        collect_block_directives(unit.semantics().block_directives());
 
         // Order by kind and text after position so equal entries are adjacent
         // and the output stays deterministic under the unstable sort.
@@ -271,56 +272,40 @@ private:
                   "(...)");
     }
 
-    void collect_condition_directives(const std::vector<Condition>& conditions) {
-        llvm::SmallVector<const Condition*> stack;
-
-        for(const auto& condition: conditions) {
-            switch(condition.kind) {
-                case Condition::BranchKind::If:
-                case Condition::BranchKind::Ifdef:
-                case Condition::BranchKind::Ifndef:
-                case Condition::BranchKind::Elif:
-                case Condition::BranchKind::Elifdef:
-                case Condition::BranchKind::Elifndef: stack.push_back(&condition); break;
-
-                case Condition::BranchKind::Else: {
-                    if(!stack.empty()) {
-                        auto* previous = stack.pop_back_val();
-                        add_range(
-                            clang::SourceRange(previous->condition_range.getEnd(), condition.loc),
-                            "conditionDirective",
-                            "");
+    void collect_block_directives(llvm::ArrayRef<LexicalInfo::BlockDirective> directives) {
+        using enum LexicalInfo::BlockDirective::Kind;
+        // Each branch folds up to the directive that ends it, so every arm
+        // of a chain folds on its own.
+        llvm::SmallVector<const LexicalInfo::BlockDirective*> branches;
+        llvm::SmallVector<const LexicalInfo::BlockDirective*> regions;
+        for(const auto& directive: directives) {
+            switch(directive.kind) {
+                case If: branches.push_back(&directive); break;
+                case Else:
+                case EndIf: {
+                    if(branches.empty()) {
+                        break;
                     }
-                    stack.push_back(&condition);
+                    add_section(branches.back()->range.end,
+                                directive.range.begin,
+                                "conditionDirective");
+                    if(directive.kind == Else) {
+                        branches.back() = &directive;
+                    } else {
+                        branches.pop_back();
+                    }
                     break;
                 }
-
-                case Condition::BranchKind::EndIf:
-                    if(!stack.empty()) {
-                        (void)stack.pop_back_val();
+                case Region: regions.push_back(&directive); break;
+                case EndRegion: {
+                    if(!regions.empty()) {
+                        add_section(regions.pop_back_val()->range.end,
+                                    directive.range.begin,
+                                    protocol::FoldingRangeKind::region);
                     }
                     break;
+                }
             }
-        }
-    }
-
-    void collect_pragma_region(const std::vector<Pragma>& pragmas) {
-        llvm::SmallVector<const Pragma*> stack;
-
-        for(const auto& pragma: pragmas) {
-            if(pragma.kind == Pragma::Kind::Region) {
-                stack.push_back(&pragma);
-                continue;
-            }
-
-            if(pragma.kind != Pragma::Kind::EndRegion || stack.empty()) {
-                continue;
-            }
-
-            auto* previous = stack.pop_back_val();
-            add_range(clang::SourceRange(previous->loc, pragma.loc),
-                      protocol::FoldingRangeKind::region,
-                      "");
         }
     }
 
@@ -344,8 +329,7 @@ private:
         }
 
         // Single-line ranges are not worth folding.
-        auto content = unit.file_content(fid);
-        if(!content.substr(local.begin, local.end - local.begin).contains('\n')) {
+        if(!content.substr(local.begin, local.length()).contains('\n')) {
             return;
         }
 
@@ -356,7 +340,19 @@ private:
         });
     }
 
+    /// `begin` ends a header line; a section hiding no whole line is noise.
+    void add_section(std::uint32_t begin, std::uint32_t end, protocol::FoldingRangeKind kind) {
+        if(end <= begin || content.substr(begin, end - begin).count('\n') < 2) {
+            return;
+        }
+        ranges.push_back({
+            .range = {begin, end},
+            .kind = std::move(kind)
+        });
+    }
+
     CompilationUnitRef unit;
+    llvm::StringRef content;
     std::vector<FoldingRange> ranges;
 };
 

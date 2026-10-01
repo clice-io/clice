@@ -1,27 +1,27 @@
 /// # Preprocessor conditional folding
 ///
-/// - status: partial
+/// - status: supported
 /// - issues: clangd#1661, clangd#2059
 /// - flags: ["-std=c++23"]
 ///
-/// Conditional branches separated by `#else` form folding ranges
-///
-/// A bare `#if ... #endif` block without an `#else` does not fold yet.
+/// Each branch of a conditional forms a folding range up to the directive that
+/// ends it, which stays visible
 
 #ifdef ENABLE_LOGGING    // ┐
-void log_message();      // │ no fold yet: bare conditional without #else
+void log_message();      // │ folds: a bare conditional
+void log_flush();        // │
 #endif                   // ┘
 
 #ifdef USE_THREADS       // ┐
-void spawn_workers();    // │ folds: branches delimited by #else
-#else                    // │
-void run_inline();       // │
-#endif                   // ┘
+void spawn_workers();    // ┘ folds: the first branch
+#else                    // ┐
+void run_inline();       // ┘ folds: the #else branch
+#endif
 
 #ifdef USE_EPOLL         // ┐
-void poll_epoll();       // │ no fold yet: the branch before #elifdef
-#elifdef USE_KQUEUE      // │ ┐
-void poll_kqueue();      // │ │ folds: the #elifdef branch, delimited by #else
-#else                    // │ ┘
-void poll_select();      // │
-#endif                   // ┘
+void poll_epoll();       // ┘ folds: the branch before #elifdef
+#elifdef USE_KQUEUE      // ┐
+void poll_kqueue();      // ┘ folds: the #elifdef branch
+#else                    // ┐
+void poll_select();      // ┘ folds: the #else branch
+#endif
