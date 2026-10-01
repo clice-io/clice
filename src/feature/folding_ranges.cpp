@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdint>
+#include <format>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -70,6 +71,7 @@ public:
         collect_module_fragments(unit.semantics().module_declarations());
         collect_comments(unit.semantics().comments());
         add_runs(unit.semantics().include_directives(), protocol::FoldingRangeKind::imports);
+        collect_raw_strings(unit.semantics().raw_strings());
 
         // Order by kind and text after position so equal entries are adjacent
         // and the output stays deterministic under the unstable sort.
@@ -319,6 +321,19 @@ private:
             }
         }
         add_runs(line_comments, protocol::FoldingRangeKind::comment);
+    }
+
+    /// A raw string folds on its delimiters, which may carry a custom
+    /// delimiter, an encoding prefix and a literal suffix.
+    void collect_raw_strings(llvm::ArrayRef<LocalSourceRange> literals) {
+        for(auto literal: literals) {
+            auto text = content.substr(literal.begin, literal.length());
+            add_range(literal,
+                      "rawString",
+                      std::format("{}...{}",
+                                  text.take_front(text.find('(') + 1),
+                                  text.drop_front(text.rfind(')'))));
+        }
     }
 
     /// A brace block whose declaration records only its closing brace: the

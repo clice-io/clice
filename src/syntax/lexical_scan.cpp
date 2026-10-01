@@ -120,6 +120,12 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
             continue;
         }
 
+        if(clang::tok::isStringLiteral(token.kind) &&
+           token.text(content).take_until([](char c) { return c == '"'; }).ends_with("R")) {
+            info.raw_strings.push_back(token.range);
+            continue;
+        }
+
         // Valid code cannot begin a logical line with `module` (or `export
         // module`) in any other meaning, so line-start matching is exact;
         // stray matches in invalid code are filtered by the consumers'

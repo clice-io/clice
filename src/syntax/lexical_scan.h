@@ -17,8 +17,9 @@ namespace clice {
 /// through PPCallbacks, but nothing covers the declarations themselves),
 /// the block structure of the conditional and region directives (the
 /// callbacks skip the branches nested in a skipped block, a `#else` behind
-/// a taken `#elif`, and everything a preamble PCH consumed) and the include
-/// directives (a preamble PCH consumes those too).
+/// a taken `#elif`, and everything a preamble PCH consumed), the include
+/// directives (a preamble PCH consumes those too) and the extents of raw
+/// string literals.
 struct LexicalInfo {
     struct Comment {
         enum class Kind : std::uint8_t {
@@ -91,6 +92,9 @@ struct LexicalInfo {
     /// `#include`, `#include_next` and `#import` directives in source
     /// order, each from the `#` to the end of its logical line.
     std::vector<LocalSourceRange> include_directives;
+
+    /// Raw string literal tokens in source order, outside directives.
+    std::vector<LocalSourceRange> raw_strings;
 
     // Both vectors heap-allocate so that payload pointers into them (the
     // Semantics node table stores such pointers) survive moving the info.

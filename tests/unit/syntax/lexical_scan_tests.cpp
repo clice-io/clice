@@ -259,5 +259,27 @@ TEST_CASE(IncludeForms) {
 
 };  // TEST_SUITE(LexicalScanIncludes)
 
+TEST_SUITE(LexicalScanRawStrings) {
+
+TEST_CASE(RawStringTokens) {
+    llvm::StringRef content = R"cpp(auto a = R"(one
+two)";
+auto b = u8R"x(")" inside)x"_suffix;
+auto c = "R(not raw)";
+auto R = 1;
+#define RAW R"(in a directive)"
+)cpp";
+    clang::LangOptions lang_opts;
+    lang_opts.CPlusPlus = lang_opts.CPlusPlus11 = lang_opts.RawStringLiterals = true;
+    auto info = lexical_scan(content, &lang_opts);
+
+    ASSERT_EQ(info.raw_strings.size(), 2U);
+    ASSERT_EQ(text(content, info.raw_strings[0]), R"x(R"(one
+two)")x");
+    ASSERT_EQ(text(content, info.raw_strings[1]), R"y(u8R"x(")" inside)x"_suffix)y");
+}
+
+};  // TEST_SUITE(LexicalScanRawStrings)
+
 }  // namespace
 }  // namespace clice::testing

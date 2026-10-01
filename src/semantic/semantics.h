@@ -394,6 +394,11 @@ public:
         return lexical.include_directives;
     }
 
+    /// The main file's raw string literal tokens in source order.
+    llvm::ArrayRef<LocalSourceRange> raw_strings() const {
+        return lexical.raw_strings;
+    }
+
 private:
     friend class SemanticsBuilder;
 
