@@ -6,6 +6,12 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/TypeLoc.h"
 
+namespace clang {
+
+class CXXDestructorDecl;
+
+}
+
 /// Type-centric AST helpers: mapping types to the declarations they refer
 /// to (dependent or not), type unwrapping and deduction queries.
 /// Declaration navigation lives in decls.h, rendering in display.h.
@@ -35,6 +41,10 @@ auto unwrap(clang::TypeLoc type, bool unwrap_function_type = true) -> clang::Typ
 /// and array layer written in it, e.g. `int` for `const int*(&)[3]`. A
 /// layer behind a type alias stays: the alias is what the type names.
 auto unwrap(clang::QualType type) -> clang::QualType;
+
+/// The destructor a variable or temporary of `type` runs, if a non-trivial
+/// one exists; nothing spells it.
+auto destructor_of(clang::QualType type) -> const clang::CXXDestructorDecl*;
 
 /// Return the type a TypeDecl declares, preferring the sugared form with
 /// template arguments as written for class template specializations.

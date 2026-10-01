@@ -12,3 +12,5 @@ new_kw:
     - { file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "16:14-16:17" }
   callHierarchy:
     - { name: "operator new", kind: Operator, file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "12:17-12:25" }
+  incomingCalls:
+    - { name: "make", kind: Function, file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "15:5-15:9", fromRanges: ["16:14-16:24"] }

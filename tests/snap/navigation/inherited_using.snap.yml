@@ -14,6 +14,8 @@ base_ctor:
     - { file: "${WS}/inherited_using.cpp", range: "13:16-13:20" }
   callHierarchy:
     - { name: "Base", kind: Method, file: "${WS}/inherited_using.cpp", range: "3:4-3:8" }
+  incomingCalls:
+    - { name: "read_derived", kind: Function, file: "${WS}/inherited_using.cpp", range: "17:4-17:16", fromRanges: ["18:12-18:22"] }
 
 base_member:
   definition:
@@ -41,6 +43,8 @@ ctor_using:
     - { file: "${WS}/inherited_using.cpp", range: "13:16-13:20" }
   callHierarchy:
     - { name: "Base", kind: Method, file: "${WS}/inherited_using.cpp", range: "3:4-3:8" }
+  incomingCalls:
+    - { name: "read_derived", kind: Function, file: "${WS}/inherited_using.cpp", range: "17:4-17:16", fromRanges: ["18:12-18:22"] }
 
 derived_use:
   definition:

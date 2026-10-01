@@ -12,6 +12,8 @@ member_call:
     - { file: "${WS}/go_to_definition/10_def_dependent_type.cpp", range: "16:9-16:13" }
   callHierarchy:
     - { name: "push", kind: Method, file: "${WS}/go_to_definition/10_def_dependent_type.cpp", range: "11:9-11:13" }
+  incomingCalls:
+    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/10_def_dependent_type.cpp", range: "15:5-15:10", fromRanges: ["16:4-16:20"] }
 
 member_decl:
   definition:
@@ -23,3 +25,5 @@ member_decl:
     - { file: "${WS}/go_to_definition/10_def_dependent_type.cpp", range: "16:9-16:13" }
   callHierarchy:
     - { name: "push", kind: Method, file: "${WS}/go_to_definition/10_def_dependent_type.cpp", range: "11:9-11:13" }
+  incomingCalls:
+    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/10_def_dependent_type.cpp", range: "15:5-15:10", fromRanges: ["16:4-16:20"] }

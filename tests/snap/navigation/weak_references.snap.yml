@@ -35,4 +35,5 @@ use:
   callHierarchy:
     - { name: "use", kind: Function, file: "${WS}/weak_references.cpp", range: "2:4-2:7" }
   incomingCalls:
+    - { name: "caller", kind: Function, file: "${WS}/weak_references.cpp", range: "7:4-7:10", fromRanges: ["8:11-8:17"] }
     - { name: "direct", kind: Function, file: "${WS}/weak_references.cpp", range: "11:4-11:10", fromRanges: ["12:11-12:17"] }

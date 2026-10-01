@@ -1,0 +1,47 @@
+---
+created_at: 2026-10-01
+input_file: implicit_calls.cpp
+---
+dealloc:
+  definition:
+    - { file: "${WS}/implicit_calls.cpp", range: "8:9-8:17" }
+  declaration:
+    - { file: "${WS}/implicit_calls.cpp", range: "8:9-8:17" }
+  references:
+    - { file: "${WS}/implicit_calls.cpp", range: "8:9-8:17" }
+    - { file: "${WS}/implicit_calls.cpp", range: "15:4-15:10" }
+  callHierarchy:
+    - { name: "operator delete", kind: Operator, file: "${WS}/implicit_calls.cpp", range: "8:9-8:17" }
+  incomingCalls:
+    - { name: "destroy", kind: Function, file: "${WS}/implicit_calls.cpp", range: "14:5-14:12", fromRanges: ["15:4-15:15"] }
+
+dtor:
+  definition:
+    - { file: "${WS}/implicit_calls.cpp", range: "9:4-9:5" }
+  declaration:
+    - { file: "${WS}/implicit_calls.cpp", range: "9:4-9:5" }
+  typeDefinition:
+    - { file: "${WS}/implicit_calls.cpp", range: "7:7-7:11" }
+  references:
+    - { file: "${WS}/implicit_calls.cpp", range: "9:4-9:5" }
+  callHierarchy:
+    - { name: "~Node", kind: Method, file: "${WS}/implicit_calls.cpp", range: "9:4-9:5" }
+  incomingCalls:
+    - { name: "destroy", kind: Function, file: "${WS}/implicit_calls.cpp", range: "14:5-14:12", fromRanges: ["15:4-15:15"] }
+
+global_delete:
+  references:
+    - { file: "${WS}/implicit_calls.cpp", range: "16:4-16:10" }
+
+hit:
+  definition:
+    - { file: "${WS}/implicit_calls.cpp", range: "21:9-21:12" }
+  declaration:
+    - { file: "${WS}/implicit_calls.cpp", range: "21:9-21:12" }
+  references:
+    - { file: "${WS}/implicit_calls.cpp", range: "21:9-21:12" }
+    - { file: "${WS}/implicit_calls.cpp", range: "27:14-27:17" }
+  callHierarchy:
+    - { name: "hit", kind: Method, file: "${WS}/implicit_calls.cpp", range: "21:9-21:12" }
+  incomingCalls:
+    - { name: "run", kind: Method, file: "${WS}/implicit_calls.cpp", range: "26:9-26:12", fromRanges: ["27:8-27:20"] }

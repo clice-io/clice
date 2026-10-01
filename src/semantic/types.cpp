@@ -160,6 +160,14 @@ auto unwrap(clang::QualType type) -> clang::QualType {
     }
 }
 
+auto destructor_of(clang::QualType type) -> const clang::CXXDestructorDecl* {
+    auto* RD = type->getAsCXXRecordDecl();
+    if(!RD || !RD->hasDefinition() || RD->hasTrivialDestructor()) {
+        return nullptr;
+    }
+    return RD->getDestructor();
+}
+
 auto declared_type(const clang::TypeDecl* decl) -> clang::QualType {
     assert(decl);
     clang::ASTContext& context = decl->getASTContext();

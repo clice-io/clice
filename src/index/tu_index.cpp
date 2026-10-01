@@ -481,19 +481,52 @@ public:
         return result;
     }
 
+    /// Hierarchy ranges are positions in the caller's document: a call
+    /// written in a file the caller's body includes (`#include "body.inc"`
+    /// inside a function) lands at that include.
+    clang::SourceRange in_caller_file(const clang::NamedDecl* caller, clang::SourceRange range) {
+        auto& SM = unit.context().getSourceManager();
+        auto caller_file = SM.getFileID(SM.getExpansionLoc(caller->getLocation()));
+        auto location = SM.getExpansionLoc(range.getBegin());
+        if(SM.getFileID(location) == caller_file) {
+            return range;
+        }
+        while(SM.getFileID(location) != caller_file) {
+            location = SM.getIncludeLoc(SM.getFileID(location));
+            if(location.isInvalid()) {
+                return range;
+            }
+        }
+        return location;
+    }
+
     /// Decl-pair relation facts: type definitions, inheritance, overrides,
     /// constructor/destructor ownership and call edges. Only the index
     /// consumes these, so they live here rather than in the semantic layer.
     void project_relations(const Semantics& semantics, std::uint32_t index) {
         const SemanticNode& node = semantics.node(index).node;
 
-        if(auto* CE = node.get<clang::CallExpr>()) {
+        auto call = [&](const clang::NamedDecl* callee, clang::SourceRange range) {
             const clang::NamedDecl* caller = enclosing_function(semantics, index);
-            const clang::NamedDecl* callee =
-                llvm::dyn_cast_if_present<clang::NamedDecl>(CE->getCalleeDecl());
             if(caller && callee) {
-                add_call_relation(caller, RelationKind::Callee, callee, CE->getSourceRange());
-                add_call_relation(callee, RelationKind::Caller, caller, CE->getSourceRange());
+                range = in_caller_file(caller, range);
+                add_call_relation(caller, RelationKind::Callee, callee, range);
+                add_call_relation(callee, RelationKind::Caller, caller, range);
+            }
+        };
+
+        if(auto* CE = node.get<clang::CallExpr>()) {
+            if(auto* callee = llvm::dyn_cast_if_present<clang::NamedDecl>(CE->getCalleeDecl())) {
+                call(callee, CE->getSourceRange());
+                return;
+            }
+            // A dependent call reaches every candidate the resolver finds
+            // for it, as its weak references do.
+            for(auto* candidate: unit.resolver().lookup(CE)) {
+                if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(candidate)) {
+                    candidate = shadow->getTargetDecl();
+                }
+                call(candidate, CE->getSourceRange());
             }
             return;
         }
@@ -505,11 +538,35 @@ public:
             if(!CCE->getParenOrBraceRange().isValid()) {
                 return;
             }
-            const clang::NamedDecl* caller = enclosing_function(semantics, index);
-            const clang::NamedDecl* callee = CCE->getConstructor();
-            if(caller && callee) {
-                add_call_relation(caller, RelationKind::Callee, callee, CCE->getSourceRange());
-                add_call_relation(callee, RelationKind::Caller, caller, CCE->getSourceRange());
+            // An inherited constructor is an implicit declaration standing
+            // in for the base constructor `using Base::Base` names.
+            const clang::CXXConstructorDecl* ctor = CCE->getConstructor();
+            if(auto inherited = ctor->getInheritedConstructor()) {
+                ctor = inherited.getConstructor();
+            }
+            call(ctor, CCE->getSourceRange());
+            return;
+        }
+
+        // `a != b` rewritten to `!(a == b)`: the traversal records only the
+        // written operands, never the call the rewrite made.
+        if(auto* RBO = node.get<clang::CXXRewrittenBinaryOperator>()) {
+            if(auto* inner = llvm::dyn_cast_if_present<clang::CXXOperatorCallExpr>(
+                   RBO->getDecomposedForm().InnerBinOp)) {
+                call(inner->getDirectCallee(), RBO->getSourceRange());
+            }
+            return;
+        }
+
+        if(auto* NE = node.get<clang::CXXNewExpr>()) {
+            call(NE->getOperatorNew(), NE->getSourceRange());
+            return;
+        }
+
+        if(auto* DE = node.get<clang::CXXDeleteExpr>()) {
+            call(DE->getOperatorDelete(), DE->getSourceRange());
+            if(auto type = DE->getDestroyedType(); !type.isNull()) {
+                call(types::destructor_of(type), DE->getSourceRange());
             }
             return;
         }

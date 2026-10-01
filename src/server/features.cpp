@@ -1030,18 +1030,6 @@ Features::RawResult Features::implementation(std::shared_ptr<Session> session,
                                  })));
 }
 
-/// The prepared item stands for the symbol, not the cursor: anchor it at
-/// the symbol's canonical site so expanding from a use renders the same
-/// root as expanding from the declaration.
-template <typename Item>
-static Item prepared_item(const index::IndexQuery& query,
-                          const index::SymbolRef& symbol,
-                          const index::Site& cursor,
-                          Item (*project)(const index::SymbolRef&, const index::Site&)) {
-    auto site = query.canonical_site(symbol.hash);
-    return project(symbol, site ? *site : cursor);
-}
-
 Features::RawResult Features::call_hierarchy_prepare(std::shared_ptr<Session> session,
                                                      Fid path_id,
                                                      const protocol::Position& position) {
@@ -1053,15 +1041,20 @@ Features::RawResult Features::call_hierarchy_prepare(std::shared_ptr<Session> se
     auto cursor = cursor_at(path_id, position);
     if(!cursor)
         co_return serde_raw{"null"};
-    auto info = query.symbol_info(cursor->symbol);
-    if(!info)
+    // The item stands for the symbol, not the cursor: anchored at the
+    // symbol's canonical site, expanding from a use renders the same root
+    // as expanding from the declaration. A symbol no source places (an
+    // implicitly declared `operator delete`) has no item.
+    auto located = query.resolve(cursor->symbol);
+    if(!located)
         co_return serde_raw{"null"};
-    if(!(info->kind == SymbolKind::Function || info->kind == SymbolKind::Method ||
-         info->kind == SymbolKind::Operator))
+    auto kind = located->symbol.kind;
+    if(!(kind == SymbolKind::Function || kind == SymbolKind::Method ||
+         kind == SymbolKind::Operator))
         co_return serde_raw{"null"};
 
     std::vector<protocol::CallHierarchyItem> items{
-        prepared_item(query, *info, cursor->site, &to_lsp::call_hierarchy_item)};
+        to_lsp::call_hierarchy_item(located->symbol, located->site)};
     co_return to_raw(items);
 }
 
@@ -1133,15 +1126,17 @@ Features::RawResult Features::type_hierarchy_prepare(std::shared_ptr<Session> se
     auto cursor = cursor_at(path_id, position);
     if(!cursor)
         co_return serde_raw{"null"};
-    auto info = query.symbol_info(cursor->symbol);
-    if(!info)
+    // Anchored at the canonical site, like the call hierarchy item.
+    auto located = query.resolve(cursor->symbol);
+    if(!located)
         co_return serde_raw{"null"};
-    if(!(info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
-         info->kind == SymbolKind::Enum || info->kind == SymbolKind::Union))
+    auto kind = located->symbol.kind;
+    if(!(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
+         kind == SymbolKind::Union))
         co_return serde_raw{"null"};
 
     std::vector<protocol::TypeHierarchyItem> items{
-        prepared_item(query, *info, cursor->site, &to_lsp::type_hierarchy_item)};
+        to_lsp::type_hierarchy_item(located->symbol, located->site)};
     co_return to_raw(items);
 }
 

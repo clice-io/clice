@@ -1144,16 +1144,6 @@ void refer_hidden(References& out, const clang::Stmt* S, types::TemplateResolver
     }
 }
 
-/// The destructor a variable or temporary of `type` runs, if a non-trivial
-/// one exists; nothing spells it.
-const clang::CXXDestructorDecl* destructor_of(clang::QualType type) {
-    auto* RD = type->getAsCXXRecordDecl();
-    if(!RD || !RD->hasDefinition() || RD->hasTrivialDestructor()) {
-        return nullptr;
-    }
-    return RD->getDestructor();
-}
-
 /// The per-decl-kind extraction below is ported verbatim from the former
 /// SemanticVisitor: the same decls, the same roles, the same name locations.
 void decl_references(const clang::Decl* D, References& out, types::TemplateResolver* resolver) {
@@ -1365,7 +1355,7 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
         /// The variable's destructor runs at the end of its lifetime;
         /// nothing spells it.
         refer(out,
-              destructor_of(VD->getASTContext().getBaseElementType(VD->getType())),
+              types::destructor_of(VD->getASTContext().getBaseElementType(VD->getType())),
               RelationKind::Reference,
               {});
         return;
@@ -1563,7 +1553,7 @@ void stmt_references(const clang::Stmt* S,
                   keyword_after_scope(op, DE->getBeginLoc(), DE->isGlobalDelete()));
         }
         if(auto type = DE->getDestroyedType(); !type.isNull()) {
-            refer(out, destructor_of(type), RelationKind::Reference, {});
+            refer(out, types::destructor_of(type), RelationKind::Reference, {});
         }
         return;
     }
