@@ -45,18 +45,8 @@ std::optional<std::string> override_declaration(clang::ASTContext& context,
                                                 const clang::CXXMethodDecl* method,
                                                 const clang::CXXRecordDecl* record,
                                                 bool is_nothrow) {
-    std::string text;
-    llvm::raw_string_ostream os(text);
-    if(method->isConsteval()) {
-        os << "consteval ";
-    }
-    if(!llvm::isa<clang::CXXConversionDecl>(method)) {
-        auto result = type_name(context, method->getReturnType(), record);
-        if(!result) {
-            return std::nullopt;
-        }
-        os << *result << ' ';
-    }
+    std::string declarator;
+    llvm::raw_string_ostream os(declarator);
     os << display::name_of(method, {.qualified = false}) << '(';
     for(auto [index, param]: llvm::enumerate(method->parameters())) {
         if(index) {
@@ -86,8 +76,23 @@ std::optional<std::string> override_declaration(clang::ASTContext& context,
     if(is_nothrow) {
         os << " noexcept";
     }
-    os << " override;";
-    return text;
+    std::string specifiers = method->isConsteval() ? "consteval " : "";
+    if(llvm::isa<clang::CXXConversionDecl>(method)) {
+        return specifiers + declarator + " override;";
+    }
+    // A return type such as a function pointer wraps the declarator. The
+    // type is printed around a placeholder rather than the declarator
+    // itself: type_name rewrites its whole output (drops namespace
+    // prefixes, binds `*` and `&` to the type), which must not reach the
+    // parameters or the exception specification. No spelling of a type
+    // holds the placeholder's control character.
+    constexpr llvm::StringRef placeholder = "_\x01";
+    auto text = type_name(context, method->getReturnType(), record, placeholder);
+    if(!text) {
+        return std::nullopt;
+    }
+    text->replace(text->find(placeholder), placeholder.size(), declarator);
+    return specifiers + *text + " override;";
 }
 
 }  // namespace

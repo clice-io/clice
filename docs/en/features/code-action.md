@@ -168,7 +168,9 @@ In a header, a member can also be defined in the source file the header is compi
 
 The definition is fully qualified and joins the class's other
 definitions in that file; members already defined in some source file
-are not offered again. Templates and inline functions stay in the header.
+are not offered again. Templates, inline functions and functions other
+files cannot see stay in the header; any other function defined there
+out of the class is marked `inline`.
 
 ```snap
 tests/snap/code_action/define/11_header_host/main.cpp
@@ -188,11 +190,11 @@ tests/snap/code_action/define/12_nested_class.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Dependent return type**
 
-A dependent return type stays as written, which may need `typename` and qualification outside the class
+A return type naming the class template or one of its member types is qualified through the template's parameters
 
 ```snap
 tests/snap/code_action/define/13_dependent_return_type.cpp
@@ -821,7 +823,7 @@ Generated text is formatted with the project's clang-format style when one appli
 
 - A definition placed in the host source goes after the last definition of the class's members the index knows in that file, or at the end of the file when it holds none. Which source file hosts a header follows the header's compilation context.
 - Members already defined in another source file are left out of a "define missing members" action only when the project index knows that definition; with indexing disabled every undefined member is offered.
-- A dependent return type is copied as written into an out-of-line definition, where it may need `typename` and the class qualifier.
+- A return type naming a member of a dependent base class is copied as written into an out-of-line definition, where it may need `typename` and the base's qualifier.
 - Missing-include candidates come from the standard library mapping and from headers the project index has seen; a header no indexed source file includes is not suggested.
 
 ## Not Implemented

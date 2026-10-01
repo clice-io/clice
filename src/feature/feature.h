@@ -540,14 +540,15 @@ auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
                           llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
     -> std::optional<std::string>;
 
-/// Reformat the lines `edits` touch with the file's clang-format style,
-/// folding the formatting back into replacements of the original text.
-/// A style that disables formatting returns the edits unchanged.
+/// Reformat the lines `edits` touch with the clang-format style configured
+/// for the file, folding the formatting back into replacements of the
+/// original text. Without a configured style, or with one that disables
+/// formatting, the edits come back unchanged.
 auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<TextReplacement> edits)
     -> std::vector<TextReplacement>;
 
-/// `text` reformatted as a standalone snippet with the style that applies
-/// to `file`.
+/// `text` reformatted as a standalone snippet with the style configured
+/// for `file`; unchanged without one.
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
 
 /// Index projections: whole-document features computed from index rows plus

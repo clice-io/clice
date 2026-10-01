@@ -14,12 +14,11 @@ namespace clice::feature {
 namespace {
 namespace tooling = clang::tooling;
 
-auto file_style(llvm::StringRef file) -> std::expected<clang::format::FormatStyle, std::string> {
+/// The style the file's `.clang-format` configures, else `fallback`.
+auto file_style(llvm::StringRef file, llvm::StringRef fallback)
+    -> std::expected<clang::format::FormatStyle, std::string> {
     // Set code to empty to avoid meaningless file type guess.
-    auto style = clang::format::getStyle(clang::format::DefaultFormatStyle,
-                                         file,
-                                         clang::format::DefaultFallbackStyle,
-                                         "");
+    auto style = clang::format::getStyle(clang::format::DefaultFormatStyle, file, fallback, "");
     if(!style) {
         return std::unexpected(llvm::toString(style.takeError()));
     }
@@ -28,7 +27,7 @@ auto file_style(llvm::StringRef file) -> std::expected<clang::format::FormatStyl
 
 auto format_content(llvm::StringRef file, llvm::StringRef content, tooling::Range range)
     -> std::expected<tooling::Replacements, std::string> {
-    auto style = file_style(file);
+    auto style = file_style(file, clang::format::DefaultFallbackStyle);
     if(!style) {
         return std::unexpected(std::move(style.error()));
     }
@@ -94,7 +93,7 @@ auto document_format(llvm::StringRef file,
 
 auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<TextReplacement> edits)
     -> std::vector<TextReplacement> {
-    auto style = file_style(file);
+    auto style = file_style(file, "none");
     if(!style) {
         LOG_WARN("Failed to load the format style of {}: {}", file, style.error());
         return edits;
@@ -128,7 +127,7 @@ auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<Tex
 }
 
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string {
-    auto style = file_style(file);
+    auto style = file_style(file, "none");
     if(!style || style->DisableFormat) {
         return text.str();
     }

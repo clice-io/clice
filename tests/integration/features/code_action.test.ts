@@ -127,7 +127,7 @@ test("definitions vetted and placed through the index", async ({ session }) => {
     expect("textDocument" in change && change.textDocument.uri).toBe(uri);
     const [edit] = editsFor(host!, uri);
     expect(edit!.range.start).toEqual({ line: 1, character: 19 });
-    expect(edit!.newText).toBe("\n\nvoid Widget::c() {}\n");
+    expect(edit!.newText).toBe("\n\nvoid Widget::c() {\n}\n");
     client.close(header);
     client.close(uri);
 });

@@ -6,7 +6,7 @@
 ///
 /// Conversion functions and operators keep their full spelling.
 
-struct Meter;
+struct Meter {};
 
 struct S {
     §(ctor)S();
