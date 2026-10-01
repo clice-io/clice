@@ -289,9 +289,10 @@ private:
             return;
         }
 
-        auto [begin, end] = range;
-        begin = unit.expansion_location(begin);
-        end = unit.expansion_location(end);
+        // What macro arguments spell folds where it is written; what a
+        // macro body produces folds at the invocation.
+        auto begin = unit.file_location(range.getBegin());
+        auto end = unit.file_location(range.getEnd());
         if(begin == end) {
             return;
         }
