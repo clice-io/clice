@@ -159,3 +159,19 @@ test("host errors stay out of headers", async ({ session }) => {
         published(client, uri).map((diagnostic) => `${span(diagnostic.range)} ${diagnostic.code}`),
     ).toEqual(["1:10-1:24 err_undeclared_var_use"]);
 });
+
+test("borrowed header stays a header", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    // The broken include keeps the header out of a PCH, so the main parse
+    // sees the #pragma once at its top.
+    workspace.write("src/hdr.h", '#pragma once\n#include "nothere.h"\n');
+    workspace.write("src/user.cpp", '#include "hdr.h"\n');
+    workspace.writeCDB(["src/user.cpp"]);
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("src/hdr.h");
+
+    expect(published(client, uri).map((diagnostic) => diagnostic.code)).toEqual([
+        "inferred-compile-command",
+        "err_pp_file_not_found",
+    ]);
+});
