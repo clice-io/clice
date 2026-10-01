@@ -551,16 +551,6 @@ public:
                              [&] { return TraverseStmt(E->getSyntacticForm()); });
     }
 
-    bool TraverseTypeConstraint(const clang::TypeConstraint* C) {
-        if(auto* E = C->getImmediatelyDeclaredConstraint()) {
-            // Technically this expression is 'implicit' and not traversed by the RAV.
-            // However, the range is correct, so we visit expression to avoid adding
-            // an extra kind to 'SemanticNode' that hold 'TypeConstraint'.
-            return TraverseStmt(E);
-        }
-        return Base::TraverseTypeConstraint(C);
-    }
-
     // Override child traversal for certain node types.
     using RecursiveASTVisitor::getStmtChildren;
 
@@ -1244,11 +1234,14 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
 
     /// template <typename T> / template <int N>
     ///                    ^~~~ definition
+    /// An unnamed one (`template <class>`) is located at the next token.
     if(llvm::isa<clang::TemplateTypeParmDecl,
                  clang::TemplateTemplateParmDecl,
                  clang::NonTypeTemplateParmDecl>(D)) {
         auto* ND = llvm::cast<clang::NamedDecl>(D);
-        refer(out, ND, RelationKind::Definition, ND->getLocation());
+        if(ND->getDeclName()) {
+            refer(out, ND, RelationKind::Definition, ND->getLocation());
+        }
         return;
     }
 
@@ -1348,9 +1341,13 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
             }
         }
 
-        RelationKind kind = VD->isThisDeclarationADefinition() ? RelationKind::Definition
-                                                               : RelationKind::Declaration;
-        refer(out, VD, kind, VD->getLocation());
+        /// An unnamed parameter is located at the next token; a structured
+        /// binding's holder at its `[`, the bindings spell the names.
+        if(VD->getDeclName() && !llvm::isa<clang::DecompositionDecl>(VD)) {
+            RelationKind kind = VD->isThisDeclarationADefinition() ? RelationKind::Definition
+                                                                   : RelationKind::Declaration;
+            refer(out, VD, kind, VD->getLocation());
+        }
 
         /// The variable's destructor runs at the end of its lifetime;
         /// nothing spells it.

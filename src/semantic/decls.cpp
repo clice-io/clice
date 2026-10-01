@@ -74,6 +74,11 @@ bool is_instantiation(const clang::Decl* decl) {
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
         return clang::isTemplateInstantiation(var->getTemplateSpecializationKind());
     }
+    /// A member class of a class template specialization, instantiated
+    /// along with it or explicitly (`template struct Outer<int>::Inner;`).
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+        return clang::isTemplateInstantiation(record->getTemplateSpecializationKind());
+    }
     return false;
 }
 
