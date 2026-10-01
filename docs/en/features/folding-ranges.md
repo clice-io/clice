@@ -58,13 +58,12 @@ tests/snap/folding_range/fold_kinds/04_access_specifier_folding.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1661 clangd#2059 -->
+<!-- BEGIN CAPABILITY: supported clangd#1661 clangd#2059 -->
 
 **Preprocessor conditional folding**
 
-Conditional branches separated by `#else` form folding ranges
-
-A bare `#if ... #endif` block without an `#else` does not fold yet.
+Each branch of a conditional forms a folding range up to the directive that
+ends it, which stays visible
 
 ```snap
 tests/snap/folding_range/fold_kinds/05_preprocessor_conditional.cpp
@@ -221,6 +220,44 @@ tests/snap/folding_range/fold_kinds/17_initializer_list_construction.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macro-argument folding**
+
+Code written inside macro arguments folds where it is written
+
+```snap
+tests/snap/folding_range/fold_kinds/18_macro_argument_folding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Linkage specification blocks**
+
+`extern "C"` blocks form folding ranges, also behind the usual
+`__cplusplus` guards
+
+```snap
+tests/snap/folding_range/fold_kinds/19_linkage_specification.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Module fragments and export blocks**
+
+The global and private module fragments and `export` blocks form folding
+ranges
+
+```snap
+tests/snap/folding_range/fold_kinds/20_module_blocks.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Refinements
@@ -272,11 +309,9 @@ tests/snap/folding_range/refinements/02_fold_from_declaration_line.cpp
 
 Inactive branches are not visually distinguished or folded automatically yet
 
-The server emits a fold range for the region between the condition and
-`#else`, so the first branch can be folded manually; the post-`#else`
-branch gets no range yet. Knowing which branch is _inactive_ — to dim or
-auto-fold it — is not implemented here; that information belongs to the
-inactive-regions feature.
+Every branch, active or not, has a fold range and can be folded manually.
+Knowing which branch is _inactive_ — to dim or auto-fold it — is not
+implemented here; that information belongs to the inactive-regions feature.
 
 > **Note**: this overlaps with semantic tokens (inactive code dimming) and
 > is partly a client UX concern. The server can mark these ranges with

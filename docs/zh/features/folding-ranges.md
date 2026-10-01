@@ -57,13 +57,11 @@ tests/snap/folding_range/fold_kinds/04_access_specifier_folding.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1661 clangd#2059 -->
+<!-- BEGIN CAPABILITY: supported clangd#1661 clangd#2059 -->
 
 **预处理条件折叠**
 
-由 `#else` 分隔的条件分支形成折叠范围
-
-不含 `#else` 的单独 `#if ... #endif` 块尚不支持折叠。
+每个条件分支都形成一个折叠范围，延伸至结束该分支的指令处，该指令本身保持可见
 
 ```snap
 tests/snap/folding_range/fold_kinds/05_preprocessor_conditional.cpp
@@ -215,6 +213,42 @@ tests/snap/folding_range/fold_kinds/17_initializer_list_construction.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**宏实参折叠**
+
+宏实参中书写的代码在其书写位置折叠
+
+```snap
+tests/snap/folding_range/fold_kinds/18_macro_argument_folding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**链接说明（linkage specification）块**
+
+`extern "C"` 块形成折叠范围，被常见的 `__cplusplus` 守卫包裹时也是如此
+
+```snap
+tests/snap/folding_range/fold_kinds/19_linkage_specification.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模块片段与 export 块**
+
+全局模块片段、私有模块片段和 `export` 块形成折叠范围
+
+```snap
+tests/snap/folding_range/fold_kinds/20_module_blocks.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 改进
@@ -266,7 +300,7 @@ tests/snap/folding_range/refinements/02_fold_from_declaration_line.cpp
 
 尚不能在视觉上区分非活动分支，也不支持自动折叠这些分支
 
-服务器会为条件与 `#else` 之间的区域生成折叠范围，因此可以手动折叠第一个分支；`#else` 之后的分支目前还没有折叠范围。此处尚未实现识别哪个分支处于*未激活*状态并将其淡化或自动折叠的功能；这类信息由未激活区域功能提供。
+无论是否处于激活状态，每个分支都有折叠范围，都可以手动折叠。此处尚未实现识别哪个分支处于*未激活*状态并将其淡化或自动折叠的功能；这类信息由未激活区域功能提供。
 
 > **注意**：这与语义 Token（未激活代码淡化）有所重叠，
 > 也部分涉及客户端的用户体验。服务器可以用
