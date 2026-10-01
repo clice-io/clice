@@ -48,7 +48,7 @@ jobs:
           key: ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-RelWithDebInfo-native-ccache-
           restore-keys: |
             ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-RelWithDebInfo-native-ccache-
-      # The prebuilt LLVM is LTO bitcode, so every link of clice redoes LLVM's codegen: 4-9 minutes
+      # The prebuilt LLVM is LTO bitcode, so every link of clice redoes LLVM's codegen: 3-9 minutes
       # on these runners. Turned into native objects once, in the background, links take seconds.
       # CI keeps linking the bitcode.
       - name: Native LLVM libraries
@@ -57,7 +57,7 @@ jobs:
           pixi run cmake-config RelWithDebInfo ON > ~/llvm-native.log 2>&1
           mkdir -p ~/.box
           cat > ~/.box/notes <<'NOTES'
-          LLVM's libraries are turning from LTO bitcode into native objects in the background (about 5 min;
+          LLVM's libraries are turning from LTO bitcode into native objects in the background (3-9 min;
           links then take seconds). Wait before building:
             box run <id> 'while [ ! -e ~/llvm-native.done ]; do [ -e ~/llvm-native.failed ] && exit 1; sleep 10; done'
           Build as CI does, so its compiler cache hits: pixi run build RelWithDebInfo ON
