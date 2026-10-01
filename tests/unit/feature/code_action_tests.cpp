@@ -478,6 +478,15 @@ struct C {};
 
     run(R"(
 struct C;
+C §(h)h();
+extern "C" {
+struct C {};
+}
+)");
+    EXPECT_EQ(definitions("h"), std::vector<std::string>{});
+
+    run(R"(
+struct C;
 namespace a { C §(g)g(); }
 struct C {};
 )");

@@ -656,7 +656,8 @@ std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnitRef u
 /// Whether a definition spelled at `from` defines `decl`. `from` must
 /// enclose it, and a function outside a class must sit in namespaces its
 /// qualifier names: one the qualifier skips, unnamed or inline, would
-/// leave the definition declaring a new function.
+/// leave the definition declaring a new function. Inside `extern "C"`,
+/// the definition would give a C++ function C linkage.
 bool defines_from(const clang::FunctionDecl* decl, const clang::DeclContext* from) {
     auto* scope = from->getRedeclContext();
     if(!scope->Encloses(decl->getDeclContext())) {
@@ -664,6 +665,9 @@ bool defines_from(const clang::FunctionDecl* decl, const clang::DeclContext* fro
     }
     if(llvm::isa<clang::CXXMethodDecl>(decl)) {
         return true;
+    }
+    if(from->isExternCContext() && !decl->isExternC()) {
+        return false;
     }
     for(auto* context = decl->getDeclContext()->getRedeclContext(); !context->Equals(scope);
         context = context->getParent()->getRedeclContext()) {
