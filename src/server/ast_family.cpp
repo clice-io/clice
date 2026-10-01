@@ -793,7 +793,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             std::vector<protocol::Diagnostic> diagnostics;
             if(!result.value().diagnostics.empty()) {
                 [[maybe_unused]] auto status =
-                    kota::codec::json::from_string(result.value().diagnostics.data, diagnostics);
+                    kota::codec::json::from_string<kota::ipc::lsp_config>(
+                        result.value().diagnostics.data,
+                        diagnostics);
             }
             session->trial_done = true;
             contexts.commands.record_header_mode(path_id, HeaderMode::SelfContained);
