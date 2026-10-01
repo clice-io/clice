@@ -206,17 +206,21 @@ struct Cont {
     using value_type = T;
     using size_type = unsigned long;
     struct Node {};
+    template <class U>
+    using Alias = U;
     value_type §(front)front() const;
     size_type §(size)size() const;
     const Node* §(head)head();
     Cont §(clone)clone();
+    Alias<T> §(alias)alias();
 };
 )";
     std::pair<llvm::StringRef, llvm::StringRef> cases[] = {
-        {"front", "typename Cont<T>::value_type Cont<T>::front() const"},
-        {"size",  "typename Cont<T>::size_type Cont<T>::size() const"  },
-        {"head",  "const typename Cont<T>::Node* Cont<T>::head()"      },
-        {"clone", "Cont<T> Cont<T>::clone()"                           },
+        {"front", "typename Cont<T>::value_type Cont<T>::front() const" },
+        {"size",  "typename Cont<T>::size_type Cont<T>::size() const"   },
+        {"head",  "const typename Cont<T>::Node* Cont<T>::head()"       },
+        {"clone", "Cont<T> Cont<T>::clone()"                            },
+        {"alias", "typename Cont<T>::template Alias<T> Cont<T>::alias()"},
     };
     for(auto [marker, head]: cases) {
         run(code);
@@ -385,6 +389,23 @@ void T::g() {
 int after;
 )",
                     "g");
+}
+
+TEST_CASE(AttributeAfterClass) {
+    run(R"(
+struct Packed { void §(f)f(); char c; } __attribute__((packed));
+int after;
+)");
+    apply("f", "Define 'Packed::f' out of line");
+    EXPECT_COMPILES(R"(
+struct Packed { void f(); char c; } __attribute__((packed));
+
+void Packed::f() {
+}
+
+int after;
+)",
+                    "f");
 }
 
 TEST_CASE(NestedClassMember) {

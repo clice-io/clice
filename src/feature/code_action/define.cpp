@@ -9,6 +9,7 @@
 #include "compile/compilation_unit.h"
 #include "feature/code_action/action.h"
 #include "semantic/display.h"
+#include "syntax/lexer.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "clang/AST/ASTContext.h"
@@ -402,38 +403,56 @@ private:
         return true;
     }
 
-    /// The spelling at `from` of the type the decl-specifiers name; nullopt
-    /// for a deduced or a dependent type, which stays as written. A class
-    /// template enclosing the function, or a type one declares, is named
-    /// through the template's parameters (`typename S<T>::size_type`).
-    std::optional<std::string> specifier_spelling(clang::QualType type) {
+    /// The spelling at `from` of the type the decl-specifiers name, written
+    /// at `loc`; nullopt for a deduced or a dependent type, which stays as
+    /// written. A class template enclosing the function, or a type or
+    /// template one declares, is named through the template's parameters
+    /// (`typename S<T>::size_type`, `typename S<T>::template A<T>`).
+    std::optional<std::string> specifier_spelling(clang::TypeLoc loc) {
+        auto type = loc.getType();
         if(type->getContainedAutoType() || llvm::isa<clang::DecltypeType>(type)) {
             return std::nullopt;
-        }
-        const clang::TypeDecl* named = nullptr;
-        if(auto* alias = llvm::dyn_cast<clang::TypedefType>(type.getTypePtr())) {
-            named = alias->getDecl();
-        } else if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr())) {
-            named = tag->getDecl();
         }
         auto encloses = [&](const clang::DeclContext* context) {
             auto* record = llvm::dyn_cast_if_present<clang::CXXRecordDecl>(context);
             return record && record->isDependentContext() &&
                    record->Encloses(decl->getDeclContext());
         };
+        const clang::TypeDecl* named = nullptr;
+        if(auto* alias = llvm::dyn_cast<clang::TypedefType>(type.getTypePtr())) {
+            named = alias->getDecl();
+        } else if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr())) {
+            named = tag->getDecl();
+        }
+        // The context the spelled name is a member of.
+        const clang::DeclContext* scope = nullptr;
         std::string spelled;
         if(auto* record = llvm::dyn_cast_if_present<clang::CXXRecordDecl>(named);
            encloses(record)) {
+            scope = record->getDeclContext();
             spelled = qualifier_at(record, from);
             spelled.resize(spelled.size() - 2);
         } else if(named && encloses(named->getDeclContext())) {
-            spelled = qualifier_at(named->getDeclContext(), from) + named->getName().str();
-        } else if(type->isDependentType()) {
-            return std::nullopt;
-        } else {
+            scope = named->getDeclContext();
+            spelled = qualifier_at(scope, from) + named->getName().str();
+        } else if(auto specialization =
+                      loc.getUnqualifiedLoc().getAs<clang::TemplateSpecializationTypeLoc>()) {
+            auto* tmpl = specialization.getTypePtr()->getTemplateName().getAsTemplateDecl();
+            auto arguments =
+                spelled_text(unit, {specialization.getLAngleLoc(), specialization.getRAngleLoc()});
+            if(tmpl && arguments && encloses(tmpl->getDeclContext())) {
+                scope = tmpl->getDeclContext();
+                spelled = qualifier_at(scope, from) + "template " + tmpl->getName().str() +
+                          arguments->str();
+            }
+        }
+        if(!scope) {
+            if(type->isDependentType()) {
+                return std::nullopt;
+            }
             return type_name(unit.context(), type, from);
         }
-        if(llvm::isa<clang::CXXRecordDecl>(named->getDeclContext())) {
+        if(llvm::isa<clang::CXXRecordDecl>(scope)) {
             spelled = "typename " + spelled;
         }
         auto qualifiers = type.getLocalQualifiers();
@@ -448,7 +467,6 @@ private:
     /// dropped.
     void qualify_return_type(std::uint32_t name) {
         auto loc = specifier_loc(decl->getFunctionTypeLoc().getReturnLoc());
-        auto type = loc.getType();
         auto begin = offset_of(loc.getBeginLoc());
         auto end = offset_of(loc.getEndLoc());
         // A constructor's return type has no location; a conversion
@@ -456,7 +474,7 @@ private:
         if(!begin || !end || *end >= name) {
             return;
         }
-        auto spelling = specifier_spelling(type);
+        auto spelling = specifier_spelling(loc);
         if(!spelling) {
             return;
         }
@@ -540,16 +558,28 @@ const clang::CXXRecordDecl* outermost_record(const clang::CXXRecordDecl* record)
     return record;
 }
 
-/// The offset of the `;` directly following, past blanks, a declaration
-/// ending at `end`.
-std::optional<std::uint32_t> semicolon_after(llvm::StringRef content, std::uint32_t end) {
-    while(end < content.size() && (content[end] == ' ' || content[end] == '\t')) {
-        end += 1;
+/// The offset of the `;` ending a declaration that ends at `end`, past the
+/// GNU attributes a class's closing brace may carry (`} __attribute__((packed));`).
+std::optional<std::uint32_t> semicolon_after(CompilationUnitRef unit, std::uint32_t end) {
+    auto rest = unit.main_content().substr(end);
+    Lexer lexer(rest, {.lang_opts = &unit.lang_options()});
+    auto token = lexer.advance();
+    while(token.is_identifier() && token.text(rest) == "__attribute__") {
+        std::uint32_t depth = 0;
+        do {
+            token = lexer.advance();
+            if(token.kind == clang::tok::l_paren) {
+                depth += 1;
+            } else if(token.kind == clang::tok::r_paren) {
+                depth -= 1;
+            }
+        } while(depth > 0 && !token.is_eof());
+        token = lexer.advance();
     }
-    if(end < content.size() && content[end] == ';') {
-        return end;
+    if(token.kind != clang::tok::semi) {
+        return std::nullopt;
     }
-    return std::nullopt;
+    return end + token.range.begin;
 }
 
 /// After the declaration statement `anchor` is part of (`struct S {...}
@@ -583,7 +613,7 @@ std::optional<Placement> placement_after(CompilationUnitRef unit, const clang::D
     }
     auto content = unit.main_content();
     auto offset = range->end;
-    if(auto semicolon = semicolon_after(content, offset)) {
+    if(auto semicolon = semicolon_after(unit, offset)) {
         offset = *semicolon + 1;
     }
     auto line = line_end(content, offset);
@@ -746,8 +776,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
         !sm.isBeforeInTranslationUnit(outermost_record(method->getParent())->getEndLoc(),
                                       (*needed)->getEndLoc()))) {
         auto range = main_range(unit, written_declaration(decl)->getSourceRange());
-        if(auto semicolon =
-               range ? semicolon_after(unit.main_content(), range->end) : std::nullopt) {
+        if(auto semicolon = range ? semicolon_after(unit, range->end) : std::nullopt) {
             out.push_back(define_action(std::format("Define '{}' inline", name),
                                         DefineRequest{
                                             .range = {*semicolon, *semicolon + 1},
