@@ -220,6 +220,13 @@ public:
     /// reporting a contradiction as an anomaly: the test suites run with it.
     bool shadow = false;
 
+    /// How the waves' checks were answered: by a look at the disk, or from
+    /// a look not yet due.
+    struct Checks {
+        std::uint64_t looked = 0;
+        std::uint64_t trusted = 0;
+    } checks;
+
 private:
     /// The last reliable read: the hash of the bytes the stamp described.
     struct Pair {
@@ -271,7 +278,7 @@ private:
     void saw(Fid fid, std::optional<std::uint64_t> hash, bool settled);
 
     /// The wave's look at a file, taken once per wave.
-    Look look(Fid fid);
+    Look wave_look(Fid fid);
 
     /// The last look's finding, for a package file not yet due.
     std::optional<Look> trusted(Fid fid);

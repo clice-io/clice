@@ -90,6 +90,16 @@ TEST_CASE(PackageTrustedUntilDue) {
     ASSERT_EQ(f.disk.take_changes(), llvm::SmallVector<Fid>{fid});
 }
 
+TEST_CASE(ChecksCounted) {
+    Fixture f;
+    auto installed = f.file("pkg/a.h", "int a;\n");
+    auto local = f.file("src/b.h", "int b;\n");
+    f.check(installed, f.hash_of(installed));
+    f.check(local, f.hash_of(local));
+    ASSERT_EQ(f.disk.checks.trusted, 1u);
+    ASSERT_EQ(f.disk.checks.looked, 1u);
+}
+
 TEST_CASE(TrustedMissingStays) {
     // A place a build found empty under a package root is not looked at
     // again before it is due.

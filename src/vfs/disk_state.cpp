@@ -99,7 +99,7 @@ DiskState::Wave::~Wave() {
 }
 
 DiskState::Verdict DiskState::check(Fid fid, std::uint64_t hash) {
-    auto found = look(fid);
+    auto found = wave_look(fid);
     switch(found.kind) {
         case Look::Missing: return Verdict::Missing;
         case Look::Unreadable: return Verdict::Unreadable;
@@ -109,7 +109,7 @@ DiskState::Verdict DiskState::check(Fid fid, std::uint64_t hash) {
 }
 
 bool DiskState::present(Fid fid) {
-    return look(fid).kind == Look::Read;
+    return wave_look(fid).kind == Look::Read;
 }
 
 void DiskState::add_root(llvm::StringRef dir, Policy policy) {
@@ -257,15 +257,19 @@ void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool settled) {
     }
 }
 
-DiskState::Look DiskState::look(Fid fid) {
+DiskState::Look DiskState::wave_look(Fid fid) {
     assert(wave_open && "a check outside a Wave");
     if(auto it = wave_looks.find(fid); it != wave_looks.end()) {
         return it->second;
     }
     auto found = trusted(fid);
-    if(found && shadow) {
-        verify(fid, *found);
-    } else if(!found) {
+    if(found) {
+        checks.trusted += 1;
+        if(shadow) {
+            verify(fid, *found);
+        }
+    } else {
+        checks.looked += 1;
         found = Look{.kind = Look::Missing};
         if(auto status = wave_statuses.status(path(fid)); !status) {
             saw_missing(fid);

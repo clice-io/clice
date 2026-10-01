@@ -13,6 +13,7 @@ import {
     withTimeout,
     type CliceClient,
 } from "@clice/tools/client";
+import type { Workspace } from "@clice/tools/workspace";
 import { test, expect } from "../fixtures.ts";
 
 const GATED_MAIN = `#ifndef FEATURE
@@ -464,4 +465,53 @@ test("same stamp cdb rewrite applied", async ({ session }) => {
     expect(await eventsOf(client, "cdb", stamped)).toBe(1);
     await client.waitForRecompile(main);
     client.assertNoErrors(main, "the rewritten flag must reach the open file");
+});
+
+/// Flags giving the TU a sysroot inside the workspace: the driver adds its
+/// include directories itself, so the headers there count as installed
+/// ones, like a toolchain's.
+function sysrootArgs(workspace: Workspace): string[] {
+    return ["--target=x86_64-unknown-linux-gnu", `--sysroot=${workspace.path("sysroot")}`];
+}
+
+test("requests look at workspace files only", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("sysroot/usr/include/installed.h", "#define INSTALLED 1\n");
+    workspace.write("local.h", "#define LOCAL 1\n");
+    workspace.write(
+        "main.cpp",
+        '#include <installed.h>\n#include "local.h"\nint main() { return INSTALLED + LOCAL; }\n',
+    );
+    workspace.writeCDB(["main.cpp"], { extraArgs: sysrootArgs(workspace) });
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+    const [main] = await client.openAndWait("main.cpp");
+    client.assertNoErrors(main);
+    await client.hoverAt(main, 2, 4);
+
+    const before = await client.stats();
+    await client.hoverAt(main, 2, 4);
+    const after = await client.stats();
+    expect(after.checksLooked - before.checksLooked, "the workspace header is looked at").toBe(1);
+    expect(after.checksTrusted - before.checksTrusted, "the installed header is not").toBe(1);
+});
+
+test("save looks at installed headers", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("sysroot/usr/include/installed.h", "#define INSTALLED 1\n");
+    workspace.write("main.cpp", '#include <installed.h>\nstatic_assert(INSTALLED == 2, "");\n');
+    workspace.writeCDB(["main.cpp"], { extraArgs: sysrootArgs(workspace) });
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+    const [main] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(main, "the installed header defines 1");
+
+    // An upgrade rewrites the installed header; nothing asks until a save.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("sysroot/usr/include/installed.h", "#define INSTALLED 2\n");
+    client.save(main);
+    await client.waitForRecompile(main);
+    client.assertNoErrors(main, "the save must look at the installed header");
 });

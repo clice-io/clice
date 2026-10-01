@@ -1021,6 +1021,8 @@ void LSPClient::register_extensions() {
                     [](const HeaderContext& context) { return context.synthesized != nullptr; }));
                 stats.sessions += static_cast<std::uint32_t>(served->sessions.sessions.size());
             }
+            stats.checks_looked = this->server.files.disk.checks.looked;
+            stats.checks_trusted = this->server.files.disk.checks.trusted;
             co_return to_raw(stats);
         });
 }
