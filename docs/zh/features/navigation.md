@@ -724,6 +724,18 @@ tests/snap/navigation/go_to_type_definition/06_typedef_structured_binding.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**指针、引用和数组**
+
+“跳转到类型定义”会透过指针、引用和数组，跳转到元素类型的定义
+
+```snap
+tests/snap/navigation/go_to_type_definition/07_typedef_pointer_reference.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 查找引用

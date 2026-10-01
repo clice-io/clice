@@ -809,6 +809,19 @@ tests/snap/navigation/go_to_type_definition/06_typedef_structured_binding.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Pointers, references and arrays**
+
+Go-to-type-definition looks through pointers, references and arrays to the
+definition of the element type
+
+```snap
+tests/snap/navigation/go_to_type_definition/07_typedef_pointer_reference.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Find References
