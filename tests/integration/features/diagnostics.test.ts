@@ -13,6 +13,10 @@ function withCode(client: CliceClient, uri: string, code: string): proto.Diagnos
     return published(client, uri).filter((diagnostic) => diagnostic.code === code);
 }
 
+function text(diagnostic: proto.Diagnostic): string {
+    return typeof diagnostic.message === "string" ? diagnostic.message : diagnostic.message.value;
+}
+
 function span(range: proto.Range): string {
     return `${range.start.line}:${range.start.character}-${range.end.line}:${range.end.character}`;
 }
@@ -71,7 +75,7 @@ test("header errors land on the include", async ({ session }) => {
         // header's business, visible once bad.h itself is open.
         expect(
             published(client, uri).map(
-                (diagnostic) => `${span(diagnostic.range)} ${diagnostic.message}`,
+                (diagnostic) => `${span(diagnostic.range)} ${text(diagnostic)}`,
             ),
         ).toEqual([
             "2:9-2:16 In included file: use of undeclared identifier 'undefined_one'",
@@ -101,7 +105,7 @@ test("instantiation errors land on the request", async ({ session }) => {
     const [error] = published(client, uri);
     expect(published(client, uri)).toHaveLength(1);
     expect(span(error!.range)).toBe("3:9-3:12");
-    expect(error!.message).toBe(
+    expect(text(error!)).toBe(
         "In template: member reference base type 'int' is not a structure or union",
     );
     expect(related(client, error!)).toEqual([
