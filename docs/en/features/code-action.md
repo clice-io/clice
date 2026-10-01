@@ -516,8 +516,8 @@ tests/snap/code_action/macro/05_token_boundaries.cpp
 
 An unresolved standard library name offers the header declaring it, from the standard library mapping
 
-The directive goes after the file's last include. An unqualified name
-also tries the `std` namespace.
+The directive goes after the includes at the top of the file. An
+unqualified name also tries the `std` namespace.
 
 ```snap
 tests/snap/code_action/include/01_standard_library.cpp
@@ -560,6 +560,18 @@ An include nested in a feature condition is not where a directive that must alwa
 
 ```snap
 tests/snap/code_action/include/04_conditional_includes.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Embedded and trailing includes**
+
+An include inside `extern "C"` or a type body, or one following the code, is no place for a new directive: it joins the includes at the top of the file
+
+```snap
+tests/snap/code_action/include/05_trailing_includes.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -616,6 +628,18 @@ A comment ending a definition's line moves with that definition, never with the 
 
 ```snap
 tests/snap/code_action/reorder/04_trailing_comments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Definitions using what lies between**
+
+A definition stays where it is when moving it would put it before something it uses, such as a variable or macro defined between the definitions; the others are reordered around it
+
+```snap
+tests/snap/code_action/reorder/05_dependencies.cpp
 ```
 
 <!-- END CAPABILITY -->
