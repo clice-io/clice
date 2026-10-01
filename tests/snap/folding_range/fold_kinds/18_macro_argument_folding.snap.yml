@@ -2,6 +2,7 @@
 created_at: 2026-10-01
 input_file: fold_kinds/18_macro_argument_folding.cpp
 ---
+- { range: "0:28-4:65", kind: comment }
 - { range: "11:14-21:1", kind: functionBody, collapsed_text: "{...}" }
 - { range: "12:17-15:10", kind: functionCall, collapsed_text: "(...)" }
 - { range: "17:13-20:5", kind: compoundStmt, collapsed_text: "{...}" }

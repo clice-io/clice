@@ -2,5 +2,6 @@
 created_at: 2026-10-01
 input_file: refinements/03_inactive_preprocessor_branch.cpp
 ---
+- { range: "0:45-12:73", kind: comment }
 - { range: "14:13-16:0", kind: conditionDirective }
 - { range: "16:5-18:0", kind: conditionDirective }

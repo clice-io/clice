@@ -10,6 +10,7 @@
 #include "feature/feature.h"
 #include "semantic/decls.h"
 #include "semantic/semantics.h"
+#include "support/text.h"
 
 #include "llvm/Support/Casting.h"
 #include "clang/AST/Decl.h"
@@ -33,7 +34,8 @@ namespace {
 /// A delimited fold spans its delimiters, which `collapsed_text` repeats; a
 /// section fold (an access-specifier section, a conditional branch, a
 /// region, a module fragment) runs from the end of its header line to the
-/// next header, which stays visible.
+/// next header, which stays visible; a run of line comments folds below its
+/// first line.
 class FoldingRangeCollector {
 public:
     explicit FoldingRangeCollector(CompilationUnitRef unit) :
@@ -66,6 +68,7 @@ public:
 
         collect_block_directives(unit.semantics().block_directives());
         collect_module_fragments(unit.semantics().module_declarations());
+        collect_comments(unit.semantics().comments());
 
         // Order by kind and text after position so equal entries are adjacent
         // and the output stays deterministic under the unstable sort.
@@ -304,6 +307,19 @@ private:
         }
     }
 
+    /// A block comment folds on its delimiters; line comments fold by runs.
+    void collect_comments(llvm::ArrayRef<LexicalInfo::Comment> comments) {
+        llvm::SmallVector<LocalSourceRange> line_comments;
+        for(const auto& comment: comments) {
+            if(comment.kind == LexicalInfo::Comment::Kind::Block) {
+                add_range(comment.range, protocol::FoldingRangeKind::comment, "/*...*/");
+            } else {
+                line_comments.push_back(comment.range);
+            }
+        }
+        add_runs(line_comments, protocol::FoldingRangeKind::comment);
+    }
+
     /// A brace block whose declaration records only its closing brace: the
     /// opening one is the declaration's first `{`.
     void add_block(const clang::Decl* decl,
@@ -339,17 +355,58 @@ private:
         if(fid != unit.main_file() || !local.valid() || local.end <= local.begin) {
             return;
         }
+        add_range(local, std::move(kind), std::move(collapsed_text));
+    }
 
+    void add_range(LocalSourceRange range,
+                   std::optional<protocol::FoldingRangeKind> kind,
+                   std::string collapsed_text) {
         // Single-line ranges are not worth folding.
-        if(!content.substr(local.begin, local.length()).contains('\n')) {
+        if(!content.substr(range.begin, range.length()).contains('\n')) {
             return;
         }
 
         ranges.push_back({
-            .range = local,
+            .range = range,
             .kind = std::move(kind),
             .collapsed_text = std::move(collapsed_text),
         });
+    }
+
+    /// Folds each run of items on consecutive lines below the run's first
+    /// line. An item that does not begin its line joins no run. Nothing
+    /// closes a run on its last line, so a line-folding client hides that
+    /// line too.
+    void add_runs(llvm::ArrayRef<LocalSourceRange> items, protocol::FoldingRangeKind kind) {
+        std::optional<LocalSourceRange> run;
+        auto flush = [&] {
+            if(!run) {
+                return;
+            }
+            auto begin = header_end(run->begin);
+            auto end = header_end(run->end);
+            if(begin != end) {
+                ranges.push_back({
+                    .range = {begin, end},
+                    .kind = kind,
+                    .lines = LocalSourceRange{run->begin, line_end(content, run->end)},
+                });
+            }
+        };
+
+        for(auto item: items) {
+            auto first = line_begin(content, item.begin);
+            if(!content.slice(first, item.begin).trim(" \t").empty()) {
+                continue;
+            }
+            if(run && first == line_end(content, run->end)) {
+                run->end = item.end;
+                continue;
+            }
+            flush();
+            run = item;
+        }
+        flush();
     }
 
     /// `begin` ends a header line; a section hiding no whole line is noise.
@@ -393,8 +450,9 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
     result.reserve(ranges.size());
 
     for(const auto& item: ranges) {
-        auto start = to_position(map, item.range.begin);
-        auto end = to_position(map, item.range.end);
+        auto bounds = line_folding_only ? item.lines.value_or(item.range) : item.range;
+        auto start = to_position(map, bounds.begin);
+        auto end = to_position(map, bounds.end);
         if(!start || !end)
             continue;
 
@@ -402,7 +460,8 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
         if(line_folding_only) {
             // The client hides whole lines below the start line. The line a
             // fold ends on holds its closing delimiter or the next header —
-            // `} else {`, `#else`, `private:` — and must stay visible.
+            // `} else {`, `#else`, `private:` — or follows a run of lines,
+            // and must stay visible.
             if(end->line <= start->line + 1) {
                 continue;
             }

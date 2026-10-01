@@ -1,0 +1,15 @@
+---
+created_at: 2026-10-01
+input_file: fold_kinds/08_comment_folding.cpp
+---
+- { range: "0:21-9:22", kind: comment }
+- { range: "11:17-13:24", kind: comment }
+- { range: "15:34-16:15", kind: comment }
+- { range: "18:0-21:3", kind: comment, collapsed_text: "/*...*/" }
+- { range: "29:0-30:13", kind: comment, collapsed_text: "/*...*/" }
+- { range: "31:11-32:16", kind: comment }
+- { range: "35:14-39:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "36:30-37:25", kind: comment }
+- { range: "42:4-43:24", kind: comment, collapsed_text: "/*...*/" }
+- { range: "45:5-48:0", kind: conditionDirective }
+- { range: "46:31-47:15", kind: comment }
