@@ -11,6 +11,8 @@
 #include "semantic/display.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
@@ -445,13 +447,50 @@ private:
             if(type->isDependentType()) {
                 return std::nullopt;
             }
-            return type_name(unit.context(), type, from, {}, decl->getDeclContext());
+            auto spelled = type_name(unit.context(), type, from, {}, decl->getDeclContext());
+            if(spelled && names_parameter(*spelled)) {
+                return std::nullopt;
+            }
+            return spelled;
         }
         if(llvm::isa<clang::CXXRecordDecl>(scope)) {
             spelled = "typename " + spelled;
         }
         auto qualifiers = type.getLocalQualifiers();
         return qualifiers.empty() ? spelled : qualifiers.getAsString() + " " + spelled;
+    }
+
+    /// Whether a name `spelling` leaves unqualified is a template parameter
+    /// of the function or a class around it: the definition's template
+    /// heads declare those again, in front of `from`, which type_name looks
+    /// names up in. Inside the class the declaration had to spell around
+    /// them too, so it is copied as written instead.
+    bool names_parameter(llvm::StringRef spelling) {
+        llvm::StringSet<> parameters;
+        for(const clang::DeclContext* context = decl;
+            llvm::isa<clang::FunctionDecl, clang::CXXRecordDecl>(context);
+            context = context->getParent()) {
+            if(auto* params = llvm::cast<clang::Decl>(context)->getDescribedTemplateParams()) {
+                for(const auto* param: *params) {
+                    parameters.insert(param->getName());
+                }
+            }
+        }
+        auto identifier = [](char c) {
+            return llvm::isAlnum(c) || c == '_';
+        };
+        for(std::size_t at = 0; at < spelling.size();) {
+            auto word = spelling.substr(at).take_while(identifier);
+            if(word.empty()) {
+                at += 1;
+                continue;
+            }
+            if(!spelling.take_front(at).ends_with("::") && parameters.contains(word)) {
+                return true;
+            }
+            at += word.size();
+        }
+        return false;
     }
 
     /// The decl-specifiers are looked up at the definition's scope, unlike

@@ -717,6 +717,29 @@ std::optional<std::string> respell(clang::ASTContext& context,
     return result;
 }
 
+/// A type constraint: its concept spelled for `from`, which may lie
+/// outside the concept's namespace, and its arguments as written.
+void print_constraint(llvm::raw_ostream& os,
+                      clang::ASTContext& context,
+                      const clang::ConceptReference* reference,
+                      const clang::DeclContext* from) {
+    auto* named = reference->getNamedConcept();
+    os << qualifier_at(named->getDeclContext(), from) << named->getName();
+    // A placeholder's constraint carries an empty argument list even when
+    // none is written; only a written one has its angle brackets.
+    auto* arguments = reference->getTemplateArgsAsWritten();
+    if(arguments && arguments->getRAngleLoc().isValid()) {
+        os << '<';
+        for(auto [index, argument]: llvm::enumerate(arguments->arguments())) {
+            if(index) {
+                os << ", ";
+            }
+            argument.getArgument().print(context.getPrintingPolicy(), os, false);
+        }
+        os << '>';
+    }
+}
+
 /// One "template <...>" head of `record`, the parameters spelled without
 /// defaults, followed by the requires-clause when the list has one.
 std::string template_head(CompilationUnitRef unit,
@@ -732,12 +755,22 @@ std::string template_head(CompilationUnitRef unit,
         }
         auto* type = llvm::dyn_cast<clang::TemplateTypeParmDecl>(param);
         if(auto* value = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(param)) {
-            os << type_name(unit.context(), value->getType(), from, {}, record).value_or("auto");
+            auto placeholder = value->getTypeSourceInfo()->getTypeLoc().getAs<clang::AutoTypeLoc>();
+            if(placeholder && placeholder.isConstrained()) {
+                print_constraint(os, unit.context(), placeholder.getConceptReference(), from);
+                os << (placeholder.getTypePtr()->isDecltypeAuto() ? " decltype(auto)" : " auto");
+            } else {
+                os << type_name(unit.context(), value->getType(), from, {}, record)
+                          .value_or("auto");
+            }
             if(value->isParameterPack()) {
                 os << "...";
             }
         } else if(type && type->hasTypeConstraint()) {
-            type->getTypeConstraint()->print(os, unit.context().getPrintingPolicy());
+            print_constraint(os,
+                             unit.context(),
+                             type->getTypeConstraint()->getConceptReference(),
+                             from);
             if(type->isParameterPack()) {
                 os << "...";
             }

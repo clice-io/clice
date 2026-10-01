@@ -197,6 +197,96 @@ struct Box {
 )");
     apply("f", "Define 'Box<T, Ts...>::f' out of line");
     EXPECT_APPENDED("template <Small T, Small... Ts>\nvoid Box<T, Ts...>::f() {\n}\n", "f");
+
+    run(R"(
+namespace ns {
+template <class T>
+concept Small = sizeof(T) <= 4;
+}
+template <ns::Small auto V, ns::Small auto... Vs>
+struct Value {
+    void §(f)f();
+};
+)");
+    apply("f", "Define 'Value<V, Vs...>::f' out of line");
+    EXPECT_APPENDED(
+        "template <ns::Small auto V, ns::Small auto... Vs>\nvoid Value<V, Vs...>::f() {\n}\n",
+        "f");
+
+    run(R"(
+struct Cfg;
+namespace ns {
+template <class T>
+concept Tiny = true;
+template <class T, class U>
+concept Same = true;
+template <Tiny T, Same<int> U>
+struct B {
+    void §(f)f(Cfg c);
+};
+}
+struct Cfg {};
+)");
+    apply("f", "Define 'ns::B<T, U>::f' out of line");
+    EXPECT_APPENDED("template <ns::Tiny T, ns::Same<int> U>\nvoid ns::B<T, U>::f(Cfg c) {\n}\n",
+                    "f");
+}
+
+TEST_CASE(ShadowedByParameter) {
+    llvm::StringRef code = R"(
+struct G {};
+namespace app {
+struct T {};
+template <class T>
+struct S {
+    ::app::T §(f)f();
+    template <class G>
+    ::G §(g)g();
+};
+}
+)";
+    run(code);
+    apply("f", "Define 'S<T>::f' out of line");
+    EXPECT_COMPILES(R"(
+struct G {};
+namespace app {
+struct T {};
+template <class T>
+struct S {
+    ::app::T f();
+    template <class G>
+    ::G g();
+};
+
+template <class T>
+::app::T S<T>::f() {
+}
+
+}
+)",
+                    "f");
+
+    run(code);
+    apply("g", "Define 'S<T>::g' out of line");
+    EXPECT_COMPILES(R"(
+struct G {};
+namespace app {
+struct T {};
+template <class T>
+struct S {
+    ::app::T f();
+    template <class G>
+    ::G g();
+};
+
+template <class T>
+template <class G>
+::G S<T>::g() {
+}
+
+}
+)",
+                    "g");
 }
 
 TEST_CASE(TemplateMemberReturnType) {
