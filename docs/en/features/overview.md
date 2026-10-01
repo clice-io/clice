@@ -26,7 +26,7 @@ Language Server Protocol features available when using clice as an editor backen
 | [Document Symbols](./document-symbols.md) | 19 supported · 1 partial · 7 unsupported   |
 | [Formatting](./formatting.md)             | Implemented                                |
 | [Diagnostics](./diagnostics.md)           | Partial                                    |
-| [Code Action](./code-action.md)           | 47 supported                               |
+| [Code Action](./code-action.md)           | 52 supported                               |
 
 <!-- END GENERATED OVERVIEW -->
 

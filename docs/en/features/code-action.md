@@ -272,6 +272,32 @@ tests/snap/code_action/implement/04_conversion_and_pointers.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Bases sharing a signature**
+
+One declaration overrides the pure virtual methods of every base with that signature, `noexcept` when any of them is
+
+```snap
+tests/snap/code_action/implement/05_shared_signatures.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Specifiers of the override**
+
+A C variadic parameter, `consteval` and whether the base's method is `noexcept` carry over to the override
+
+A method whose exception specification depends on the arguments of a base class template gets no declaration.
+
+```snap
+tests/snap/code_action/implement/06_specifiers.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Switch Cases
@@ -388,7 +414,9 @@ tests/snap/code_action/deduced_type/03_decltype.cpp
 
 **Unnameable types stay auto**
 
-Lambdas, dependent types and other types without a spelling are not expanded
+Lambdas, dependent types and types the declaration cannot name are not expanded
+
+A type cannot be named where it is local to another function, a member type the declaration has no access to, or the type of `sizeof` with no standard name for it declared yet (MSVC compatibility declares `size_t` implicitly).
 
 ```snap
 tests/snap/code_action/deduced_type/04_unnameable_types.cpp
@@ -404,6 +432,48 @@ tests/snap/code_action/deduced_type/04_unnameable_types.cpp
 
 ```snap
 tests/snap/code_action/deduced_type/05_forwarding_reference.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Names spelled for the scope**
+
+A name drops the enclosing namespaces only as far as the shorter name still finds the same type
+
+A name hidden by a declaration closer to the expansion keeps its qualifier, and one hidden even when fully qualified starts from the global scope.
+
+```snap
+tests/snap/code_action/deduced_type/06_shadowed_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Standard names of builtin types**
+
+The types of `sizeof`, a pointer difference and `nullptr` expand to their standard names where those are declared
+
+Without a declaration of `std::nullptr_t` in sight, the type of `nullptr` is written `decltype(nullptr)`.
+
+```snap
+tests/snap/code_action/deduced_type/07_standard_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Constant deduced pointers**
+
+A `const` written before an `auto` that deduced a pointer moves behind the `*`, keeping the pointer itself constant
+
+When other specifiers stand between the `const` and the `auto`, the declaration is left as written.
+
+```snap
+tests/snap/code_action/deduced_type/08_const_pointer.cpp
 ```
 
 <!-- END CAPABILITY -->

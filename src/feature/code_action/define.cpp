@@ -143,10 +143,6 @@ clang::SourceRange default_argument_range(const clang::NamedDecl* param) {
     return {};
 }
 
-bool is_cv(const clang::syntax::Token& token) {
-    return token.kind() == clang::tok::kw_const || token.kind() == clang::tok::kw_volatile;
-}
-
 /// The keywords a function's decl-specifiers may mix with its return type.
 bool is_specifier(const clang::syntax::Token& token) {
     switch(token.kind()) {
@@ -450,7 +446,7 @@ private:
             if(type->isDependentType()) {
                 return std::nullopt;
             }
-            return type_name(unit.context(), type, from);
+            return type_name(unit.context(), type, from, {}, decl->getDeclContext());
         }
         if(llvm::isa<clang::CXXRecordDecl>(scope)) {
             spelled = "typename " + spelled;
