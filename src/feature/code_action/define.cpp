@@ -318,7 +318,7 @@ private:
             ++it) {
             *end = offset_of(*it) + it->length();
         }
-        if(auto spelling = type_name(unit.context(), type, from)) {
+        if(auto spelling = type_name(unit.context(), type, from, {}, decl->getDeclContext())) {
             patches.push_back({*begin, *end, std::move(*spelling)});
         }
     }

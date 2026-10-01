@@ -192,14 +192,32 @@ clang::DeclarationName declaration_name(clang::ASTContext& context, llvm::String
     return found->getValue();
 }
 
+using Namespaces = llvm::SmallVector<const clang::NamespaceDecl*, 4>;
+
+/// Add `ns` and the namespaces its using-directives nominate, transitively.
+void add_nominated(Namespaces& nominated, const clang::NamespaceDecl* ns) {
+    ns = ns->getCanonicalDecl();
+    if(llvm::is_contained(nominated, ns)) {
+        return;
+    }
+    nominated.push_back(ns);
+    for(const auto* directive: ns->using_directives()) {
+        add_nominated(nominated, directive->getNominatedNamespace());
+    }
+}
+
 /// Qualified lookup into a namespace or the global scope: its members,
 /// else those of the namespaces its using-directives nominate.
 Entities lookup_qualified(const clang::DeclContext* scope, clang::DeclarationName name) {
     Entities entities;
     add_found(entities, scope->lookup(name));
     if(entities.empty()) {
+        Namespaces nominated;
         for(const auto* directive: scope->using_directives()) {
-            add_found(entities, directive->getNominatedNamespace()->lookup(name));
+            add_nominated(nominated, directive->getNominatedNamespace());
+        }
+        for(const auto* ns: nominated) {
+            add_found(entities, ns->lookup(name));
         }
     }
     return normalized(std::move(entities));
@@ -209,6 +227,22 @@ Entities lookup_qualified(const clang::DeclContext* scope, clang::DeclarationNam
 /// inherits its bases'. Dependent bases stay unsearched, as unqualified
 /// lookup in a template leaves them.
 void add_members(Entities& entities, const clang::DeclContext* scope, clang::DeclarationName name) {
+    // A function's own declarations stay off lookup tables: only the
+    // parser's scopes held them.
+    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(scope)) {
+        for(const auto* decl: function->decls()) {
+            auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
+            if(named && named->getDeclName() == name) {
+                entities.push_back(entity_of(named));
+            }
+        }
+        for(const auto* param: function->parameters()) {
+            if(param->getDeclName() == name) {
+                entities.push_back(param->getCanonicalDecl());
+            }
+        }
+        return;
+    }
     auto found = scope->lookup(name);
     if(!found.empty()) {
         add_found(entities, found);
@@ -253,15 +287,15 @@ void add_template_parameters(Entities& entities,
     }
 }
 
-/// The using-directives of a function body, which belong to no
-/// declaration context.
+/// The namespaces the using-directives of a function body nominate: a
+/// directive at block scope belongs to no declaration context.
 struct BlockDirectives : clang::RecursiveASTVisitor<BlockDirectives> {
     bool VisitUsingDirectiveDecl(clang::UsingDirectiveDecl* directive) {
-        nominated.push_back(directive->getNominatedNamespace());
+        add_nominated(nominated, directive->getNominatedNamespace());
         return true;
     }
 
-    llvm::SmallVector<const clang::NamespaceDecl*, 2> nominated;
+    Namespaces nominated;
 };
 
 /// The scope lookup continues in: a friend function defined in a class
@@ -290,7 +324,7 @@ Entities lookup_unqualified(const clang::DeclContext* from, clang::DeclarationNa
         add_template_parameters(entities, scope, name);
         add_members(entities, scope, name);
         for(const auto* directive: scope->using_directives()) {
-            directives.nominated.push_back(directive->getNominatedNamespace());
+            add_nominated(directives.nominated, directive->getNominatedNamespace());
         }
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(scope)) {
             directives.TraverseStmt(function->getBody());
@@ -304,10 +338,11 @@ Entities lookup_unqualified(const clang::DeclContext* from, clang::DeclarationNa
 
 /// The declarations a type spells by name. A type is unnameable at `from`
 /// when one of them is: another function's local type, a member type
-/// `from` has no access to (friendship aside), an unnamed or closure
-/// type.
+/// `access` has no access to (friendship aside), an unnamed or closure
+/// type, or an expression bound to a context, such as `this`.
 struct SpelledNames : clang::RecursiveASTVisitor<SpelledNames> {
-    explicit SpelledNames(const clang::DeclContext* from) : from(from) {}
+    SpelledNames(const clang::DeclContext* from, const clang::DeclContext* access) :
+        from(from), access(access) {}
 
     bool VisitTagType(clang::TagType* type) {
         return name(type->getDecl());
@@ -334,6 +369,10 @@ struct SpelledNames : clang::RecursiveASTVisitor<SpelledNames> {
     bool VisitPredefinedSugarType(clang::PredefinedSugarType* type) {
         predefined.push_back(type);
         return true;
+    }
+
+    bool VisitCXXThisExpr(clang::CXXThisExpr*) {
+        return nameable = false;
     }
 
     /// An expression prints as written: an unqualified name in it must
@@ -394,14 +433,15 @@ struct SpelledNames : clang::RecursiveASTVisitor<SpelledNames> {
         }
     }
 
-    bool accessible(clang::AccessSpecifier access, const clang::CXXRecordDecl* record) {
-        if(access == clang::AS_public || access == clang::AS_none) {
+    bool accessible(clang::AccessSpecifier specifier, const clang::CXXRecordDecl* record) {
+        if(specifier == clang::AS_public || specifier == clang::AS_none) {
             return true;
         }
-        for(const auto* scope = from; scope; scope = scope->getParent()) {
+        for(const auto* scope = access; scope; scope = scope->getParent()) {
             auto* enclosing = llvm::dyn_cast<clang::CXXRecordDecl>(scope);
-            if(enclosing && (enclosing->getCanonicalDecl() == record->getCanonicalDecl() ||
-                             (access == clang::AS_protected && enclosing->isDerivedFrom(record)))) {
+            if(enclosing &&
+               (enclosing->getCanonicalDecl() == record->getCanonicalDecl() ||
+                (specifier == clang::AS_protected && enclosing->isDerivedFrom(record)))) {
                 return true;
             }
         }
@@ -409,6 +449,7 @@ struct SpelledNames : clang::RecursiveASTVisitor<SpelledNames> {
     }
 
     const clang::DeclContext* from;
+    const clang::DeclContext* access;
     bool nameable = true;
     /// The first component of each name printed from the global scope,
     /// with the entity it denotes there.
@@ -430,9 +471,9 @@ struct LocalScopes : clang::PrintingCallbacks {
 };
 
 /// `std::name`, else `name`, when either declares `type` before `from`
-/// opens, and so before anything inserted into it. An implicit typedef
-/// (MSVC compatibility declares `size_t`) has no location and is seen
-/// everywhere.
+/// opens, and so before anything inserted into it; the global scope opens
+/// before any declaration. An implicit typedef (MSVC compatibility
+/// declares `size_t`) has no location and is seen everywhere.
 std::optional<std::string> standard_name(clang::ASTContext& context,
                                          clang::QualType type,
                                          llvm::StringRef name,
@@ -446,8 +487,10 @@ std::optional<std::string> standard_name(clang::ASTContext& context,
         auto* alias =
             found.size() == 1 ? llvm::dyn_cast<clang::TypedefNameDecl>(found[0]) : nullptr;
         return alias && context.hasSameType(alias->getUnderlyingType(), type) &&
-               (opens.isInvalid() || alias->getLocation().isInvalid() ||
-                context.getSourceManager().isBeforeInTranslationUnit(alias->getLocation(), opens));
+               (alias->getLocation().isInvalid() ||
+                (opens.isValid() &&
+                 context.getSourceManager().isBeforeInTranslationUnit(alias->getLocation(),
+                                                                      opens)));
     };
     if(auto std_name = declaration_name(context, "std"); !std_name.isEmpty()) {
         auto std_scope = lookup_qualified(context.getTranslationUnitDecl(), std_name);
@@ -515,7 +558,7 @@ std::optional<std::string> respell(clang::ASTContext& context,
     }
     std::ranges::reverse(namespaces);
 
-    auto spell = [&](llvm::ArrayRef<llvm::StringRef> components) {
+    auto spell = [&](llvm::ArrayRef<llvm::StringRef> components) -> std::optional<std::string> {
         auto joined = [&](std::size_t skipped) {
             return llvm::join(components.drop_front(skipped), "::");
         };
@@ -538,24 +581,35 @@ std::optional<std::string> respell(clang::ASTContext& context,
             }
             auto name = declaration_name(context, components[depth]);
             auto expected = lookup_qualified(prefix.back(), name);
-            if(!expected.empty() && lookup_unqualified(from, name) == expected) {
+            if(expected.size() == 1 && lookup_unqualified(from, name) == expected) {
                 return joined(depth);
             }
         }
-        auto found = lookup_unqualified(from, declaration_name(context, components[0]));
-        if(found.size() == 1 && found[0] == root->second) {
+        auto first = declaration_name(context, components[0]);
+        Entities expected{root->second};
+        if(lookup_unqualified(from, first) == expected) {
             return joined(0);
         }
-        return "::" + joined(0);
+        // Where a variable or function hides the name in its own scope,
+        // only an elaborated specifier could reach it.
+        if(lookup_qualified(context.getTranslationUnitDecl(), first) == expected) {
+            return "::" + joined(0);
+        }
+        return std::nullopt;
     };
 
+    // A byte outside ASCII belongs to an identifier: one such name is
+    // respelled like any other, never copied past the shadowing check.
+    auto identifier_start = [](char c) {
+        return clang::isAsciiIdentifierStart(c) || !clang::isASCII(c);
+    };
     auto identifier_char = [](char c) {
-        return clang::isAsciiIdentifierContinue(c);
+        return clang::isAsciiIdentifierContinue(c) || !clang::isASCII(c);
     };
     std::string result;
     llvm::StringRef rest = printed;
     while(!rest.empty()) {
-        if(!clang::isAsciiIdentifierStart(rest.front())) {
+        if(!identifier_start(rest.front())) {
             auto token =
                 llvm::isDigit(rest.front()) ? rest.take_while(identifier_char) : rest.take_front();
             result += token;
@@ -575,21 +629,25 @@ std::optional<std::string> respell(clang::ASTContext& context,
         while(true) {
             components.push_back(rest.take_while(identifier_char));
             rest = rest.drop_front(components.back().size());
-            if(!rest.starts_with("::") || rest.size() < 3 ||
-               !clang::isAsciiIdentifierStart(rest[2])) {
+            if(!rest.starts_with("::") || rest.size() < 3 || !identifier_start(rest[2])) {
                 break;
             }
             rest = rest.drop_front(2);
         }
-        result += spell(components);
+        auto spelled = spell(components);
+        if(!spelled) {
+            return std::nullopt;
+        }
+        result += *spelled;
     }
     return result;
 }
 
-/// One "template <...>" head, the parameters spelled without defaults,
-/// followed by the requires-clause when the list has one.
+/// One "template <...>" head of `record`, the parameters spelled without
+/// defaults, followed by the requires-clause when the list has one.
 std::string template_head(CompilationUnitRef unit,
                           const clang::TemplateParameterList* params,
+                          const clang::CXXRecordDecl* record,
                           const clang::DeclContext* from) {
     std::string head;
     llvm::raw_string_ostream os(head);
@@ -599,7 +657,7 @@ std::string template_head(CompilationUnitRef unit,
             os << ", ";
         }
         if(auto* value = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(param)) {
-            os << type_name(unit.context(), value->getType(), from).value_or("auto");
+            os << type_name(unit.context(), value->getType(), from, {}, record).value_or("auto");
             if(value->isParameterPack()) {
                 os << "...";
             }
@@ -704,7 +762,8 @@ std::string qualifier_at(const clang::DeclContext* target, const clang::DeclCont
 std::optional<std::string> type_name(clang::ASTContext& context,
                                      clang::QualType type,
                                      const clang::DeclContext* from,
-                                     llvm::StringRef name) {
+                                     llvm::StringRef name,
+                                     const clang::DeclContext* access) {
     // A deduced type keeps its `auto` as sugar, one layer per deduction
     // chained through, and a decltype names its type by an expression
     // `from` may not see: print the type beneath.
@@ -723,7 +782,7 @@ std::optional<std::string> type_name(clang::ASTContext& context,
         type = context.getQualifiedType(beneath, type.getLocalQualifiers());
     }
 
-    SpelledNames names(from);
+    SpelledNames names(from, access ? access : from);
     names.TraverseType(type);
     if(!names.nameable) {
         return std::nullopt;
@@ -735,17 +794,17 @@ std::optional<std::string> type_name(clang::ASTContext& context,
     policy.FullyQualifiedName = true;
     LocalScopes local_scopes;
     policy.Callbacks = &local_scopes;
-    // The declarator name is printed as `@`, which no respelled name
-    // contains, and put in last.
+    // The declarator name is printed as a control character, which a
+    // printed type escapes even in its literals, and put in last.
     std::string printed;
     llvm::raw_string_ostream os(printed);
-    type.print(os, policy, name.empty() ? "" : "@");
+    type.print(os, policy, name.empty() ? "" : "\x01");
     auto spelled = respell(context, printed, names, from);
     if(!spelled) {
         return std::nullopt;
     }
     if(!name.empty()) {
-        spelled->replace(spelled->find('@'), 1, name);
+        spelled->replace(spelled->find('\x01'), 1, name);
     }
     return bind_declarators(std::move(*spelled));
 }
@@ -753,7 +812,9 @@ std::optional<std::string> type_name(clang::ASTContext& context,
 std::string template_heads(CompilationUnitRef unit,
                            const clang::Decl* decl,
                            const clang::DeclContext* from) {
-    llvm::SmallVector<const clang::TemplateParameterList*, 2> lists;
+    llvm::SmallVector<std::pair<const clang::TemplateParameterList*, const clang::CXXRecordDecl*>,
+                      2>
+        lists;
     for(const auto* context = decl->getDeclContext(); context && !context->isTranslationUnit();
         context = context->getParent()) {
         if(from && context->Encloses(from)) {
@@ -764,14 +825,14 @@ std::string template_heads(CompilationUnitRef unit,
             continue;
         }
         if(auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(record)) {
-            lists.push_back(partial->getTemplateParameters());
+            lists.emplace_back(partial->getTemplateParameters(), record);
         } else if(auto* described = record->getDescribedClassTemplate()) {
-            lists.push_back(described->getTemplateParameters());
+            lists.emplace_back(described->getTemplateParameters(), record);
         }
     }
     std::string heads;
-    for(const auto* params: llvm::reverse(lists)) {
-        heads += template_head(unit, params, from);
+    for(auto [params, record]: llvm::reverse(lists)) {
+        heads += template_head(unit, params, record, from);
         heads += '\n';
     }
     return heads;

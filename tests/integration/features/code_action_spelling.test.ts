@@ -45,7 +45,7 @@ class OpenFile {
     }
 
     /// Apply the action titled `title` at `marker` to the original text:
-    /// the result must compile cleanly. The buffer returns to the original
+    /// the result must compile without errors. The buffer returns to the original
     /// text afterwards.
     async apply(marker: string, title: string): Promise<string> {
         const actions = await this.actions(marker);
@@ -56,7 +56,7 @@ class OpenFile {
         ).toBeDefined();
         const edited = applyTextEdits(this.original, editsFor(action!, this.uri));
         await this.change(edited);
-        this.client.assertCleanCompile(this.uri);
+        this.client.assertNoErrors(this.uri);
         await this.change(this.original);
         return edited;
     }
@@ -121,6 +121,30 @@ void D<V>::a() {
     );
     expect(await buffer.apply("body", "Define missing members of 'D'")).toContain(
         "template <auto V> void D<V>::b() {}",
+    );
+});
+
+test("define members spelling private member types", async ({ session }) => {
+    const buffer = await open(
+        session,
+        `class Owner {
+    enum Kind { A };
+    struct Part {};
+
+    template <Kind K>
+    struct Slot {
+        void §(head)f();
+    };
+
+    Part §(result)part();
+};
+`,
+    );
+    expect(await buffer.apply("head", "Define 'Owner::Slot<K>::f' out of line")).toContain(
+        "template <Owner::Kind K> void Owner::Slot<K>::f() {}",
+    );
+    expect(await buffer.apply("result", "Define 'Owner::part' out of line")).toContain(
+        "Owner::Part Owner::part() {}",
     );
 });
 
@@ -203,6 +227,63 @@ template void g<int>();
     expect(await buffer.apply("parameter", "Replace 'auto' with 'ns::T'")).toContain("ns::T t");
 });
 
+test("names hidden where the type lands", async ({ session }) => {
+    const buffer = await open(
+        session,
+        `struct X {};
+X make_x();
+
+void local() {
+    int X = 0;
+    §(local)auto v = make_x();
+    static_assert(__is_same(decltype(v), ::X));
+}
+
+namespace shadow {
+struct a {};
+}  // namespace shadow
+namespace mid {
+using namespace shadow;
+}  // namespace mid
+namespace a {
+struct T {};
+}  // namespace a
+a::T make_t();
+
+namespace n {
+using namespace mid;
+void f() {
+    §(transitive)auto t = make_t();
+    static_assert(__is_same(decltype(t), ::a::T));
+}
+}  // namespace n
+
+struct Y {};
+Y make_y();
+int Y;
+
+void g() {
+    §(variable)auto y = make_y();
+}
+
+struct Å {};
+Å make_å();
+
+namespace u {
+struct Å {};
+void f() {
+    §(unicode)auto v = make_å();
+    static_assert(__is_same(decltype(v), ::Å));
+}
+}  // namespace u
+`,
+    );
+    expect(await buffer.apply("local", "Replace 'auto' with '::X'")).toContain("::X v");
+    expect(await buffer.apply("transitive", "Replace 'auto' with '::a::T'")).toContain("::a::T t");
+    expect(await buffer.titles("variable")).toEqual([]);
+    expect(await buffer.apply("unicode", "Replace 'auto' with '::Å'")).toContain("::Å v");
+});
+
 test("internal type names become standard ones", async ({ session }) => {
     const buffer = await open(
         session,
@@ -218,6 +299,8 @@ using ptrdiff_t = decltype((int*)0 - (int*)0);
 using nullptr_t = decltype(nullptr);
 }  // namespace std
 
+§(global)auto global_size = sizeof(int);
+
 void g(int* a, int* b) {
     §(size_std)auto n = sizeof(int);
     static_assert(__is_same(decltype(n), std::size_t));
@@ -229,6 +312,7 @@ void g(int* a, int* b) {
 `,
     );
     expect(await buffer.titles("size")).toEqual([]);
+    expect(await buffer.titles("global")).toEqual([]);
     expect(await buffer.apply("null", "Replace 'auto' with 'decltype(nullptr)'")).toContain(
         "decltype(nullptr) p",
     );
@@ -257,6 +341,10 @@ struct Box {};
 
 template <class T>
 T id(T value);
+
+struct Self {
+    auto pointer() -> decltype(this)*;
+};
 
 auto local() {
     struct Hidden {};
@@ -295,10 +383,12 @@ void f() {
     §(closure)auto it = set.begin();
     §(specialization)auto item = id(C::make_item());
     §(expression)auto box = local_box();
+    Self self;
+    §(this)auto pointer = self.pointer();
 }
 `,
     );
-    for (const marker of ["local", "private", "closure", "specialization", "expression"]) {
+    for (const marker of ["local", "private", "closure", "specialization", "expression", "this"]) {
         expect(await buffer.titles(marker), marker).toEqual([]);
     }
     expect(await buffer.apply("member", "Replace 'auto' with 'C::Private'")).toContain(
@@ -368,7 +458,10 @@ template struct S<int>;
 test("cv-qualifiers stay on the deduced pointer", async ({ session }) => {
     const buffer = await open(
         session,
-        `void f(int* q, int** pp) {
+        `#define CONST const
+#define STORAGE static
+
+void f(int* q, int** pp) {
     const §(pointer)auto p = q;
     static_assert(__is_same(decltype(p), int* const));
     const §(pointee)auto* cp = pp;
@@ -376,6 +469,8 @@ test("cv-qualifiers stay on the deduced pointer", async ({ session }) => {
     static const §(specifiers)auto s = q;
     static_assert(__is_same(decltype(s), int* const));
     const static §(parted)auto t = q;
+    CONST §(macro)auto m = q;
+    const STORAGE §(hidden)auto h = q;
 }
 `,
     );
@@ -388,7 +483,9 @@ test("cv-qualifiers stay on the deduced pointer", async ({ session }) => {
     expect(await buffer.apply("specifiers", "Replace 'const auto' with 'int* const'")).toContain(
         "static int* const s = q;",
     );
-    expect(await buffer.titles("parted")).toEqual([]);
+    for (const marker of ["parted", "macro", "hidden"]) {
+        expect(await buffer.titles(marker), marker).toEqual([]);
+    }
 });
 
 test("one override per signature shared by bases", async ({ session }) => {
@@ -411,6 +508,30 @@ static_assert(!__is_abstract(D));
     );
     const edited = await buffer.apply("derived", "Implement pure virtual methods of 'D'");
     expect(edited).toContain("  void f() override;\n  void g() noexcept override;\n");
+});
+
+test("a shared override takes the spelling the class can name", async ({ session }) => {
+    const buffer = await open(
+        session,
+        `class Aliased {
+    using Count = int;
+
+public:
+    virtual void resize(Count) = 0;
+};
+
+struct Plain {
+    virtual void resize(int) = 0;
+};
+
+struct §(spelled)Both : Aliased, Plain {};
+
+static_assert(!__is_abstract(Both));
+`,
+    );
+    expect(await buffer.apply("spelled", "Implement pure virtual methods of 'Both'")).toContain(
+        "  void resize(int) override;\n",
+    );
 });
 
 test("overrides repeat the specifiers they must", async ({ session }) => {

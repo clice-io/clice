@@ -134,8 +134,13 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
         if(!is_nothrow && llvm::is_contained(specs, std::nullopt)) {
             continue;
         }
-        if(auto line = override_declaration(context, group.front(), record, is_nothrow)) {
-            lines.push_back(std::move(*line));
+        // The bases may spell the signature differently, not all of them
+        // nameably here.
+        for(const auto* method: group) {
+            if(auto line = override_declaration(context, method, record, is_nothrow)) {
+                lines.push_back(std::move(*line));
+                break;
+            }
         }
     }
     if(lines.empty()) {

@@ -91,11 +91,14 @@ std::string qualifier_at(const clang::DeclContext* target, const clang::DeclCont
 /// as far as it still finds its entity there, and the compiler's internal
 /// names become the standard ones `from` sees. Nullopt for a type `from`
 /// cannot name: a lambda or unnamed type, another function's local type,
-/// a member type it has no access to.
+/// a member type the text has no access to. The text has the access of
+/// `access`, `from` when null: an out-of-line member definition has its
+/// class's.
 std::optional<std::string> type_name(clang::ASTContext& context,
                                      clang::QualType type,
                                      const clang::DeclContext* from,
-                                     llvm::StringRef name = {});
+                                     llvm::StringRef name = {},
+                                     const clang::DeclContext* access = nullptr);
 
 /// "template <...>" heads of the class templates enclosing `decl` up to
 /// `from`, outermost first, one per line, the parameters spelled without

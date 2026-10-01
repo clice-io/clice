@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <format>
 #include <string>
 #include <vector>
@@ -17,8 +19,8 @@ namespace clice::feature::action {
 
 namespace {
 
-/// A declaration specifier other than a type, which may stand between a
-/// cv-qualifier and the type it qualifies.
+/// A declaration specifier spelled as a keyword, other than a type or a
+/// cv-qualifier.
 bool is_specifier(const clang::syntax::Token& token) {
     using enum clang::tok::TokenKind;
     constexpr std::array specifiers = {kw_static,
@@ -30,7 +32,7 @@ bool is_specifier(const clang::syntax::Token& token) {
                                        kw_thread_local,
                                        kw_register,
                                        kw_friend};
-    return is_cv(token) || llvm::is_contained(specifiers, token.kind());
+    return llvm::is_contained(specifiers, token.kind());
 }
 
 }  // namespace
@@ -41,14 +43,13 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     if(!loc) {
         return;
     }
+    const clang::Decl* owner = nullptr;
+    for(const auto* node = ctx.node.parent; node && !owner; node = node->parent) {
+        owner = node->get<clang::Decl>();
+    }
     // A structured binding's declared type must stay `auto`.
-    for(const auto* node = ctx.node.parent; node; node = node->parent) {
-        if(const auto* decl = node->get<clang::Decl>()) {
-            if(llvm::isa<clang::DecompositionDecl>(decl)) {
-                return;
-            }
-            break;
-        }
+    if(llvm::isa_and_present<clang::DecompositionDecl>(owner)) {
+        return;
     }
 
     auto inner = types::unwrap(*loc);
@@ -94,21 +95,29 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     auto printed = declaration->substr(0, declaration->size() - 2);
     // A cv-qualifier written before `auto` qualifies the deduced type; in
     // front of a pointer it would qualify the pointee, so it moves behind
-    // the `*`. One parted from `auto` by other specifiers stays out of
-    // reach of a single edit.
+    // the `*`. That needs every specifier the declaration puts before
+    // `auto` spelled as a keyword, the cv-qualifiers right before it: one
+    // a macro spells, or parted from `auto`, is out of a single edit's
+    // reach.
     if(printed.ends_with('*')) {
+        auto start = owner ? main_range(unit, owner->getBeginLoc()) : std::nullopt;
+        if(!start) {
+            return;
+        }
         auto tokens = unit.spelled_tokens(unit.main_file());
-        const auto* at = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
-            return unit.file_offset(token.location()) < range->begin;
-        });
+        auto before = [&](std::uint32_t offset) {
+            return llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
+                return unit.file_offset(token.location()) < offset;
+            });
+        };
+        const auto* begin = before(start->begin);
+        const auto* at = before(range->begin);
         const auto* first = at;
-        while(first != tokens.begin() && is_cv(*std::prev(first))) {
+        while(first != begin && is_cv(*std::prev(first))) {
             first -= 1;
         }
-        for(const auto* it = first; it != tokens.begin() && is_specifier(*std::prev(it)); it -= 1) {
-            if(is_cv(*std::prev(it))) {
-                return;
-            }
+        if(!std::ranges::all_of(begin, first, is_specifier)) {
+            return;
         }
         for(const auto* it = first; it != at; it += 1) {
             printed += ' ';
