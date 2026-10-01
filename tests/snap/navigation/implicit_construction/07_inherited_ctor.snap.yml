@@ -11,5 +11,6 @@ inherit:
     - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "13:7-13:11" }
   references:
     - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "14:4-14:8" }
+    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "19:16-19:20" }
   callHierarchy:
     - { name: "Base", kind: Method, file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "14:4-14:8" }

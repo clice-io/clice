@@ -269,9 +269,11 @@ public:
     /// definition, minus the site the cursor stands on.
     std::vector<Site> declaration(const Cursor& cursor) const;
 
-    /// The references of the symbol under the cursor, optionally folding in
-    /// its declarations and definitions, deduplicated across the kinds —
-    /// rows of different kinds can share one anchor.
+    /// The references of the symbol under the cursor, weak ones included (a
+    /// template's call through an overload set or a dependent name, which
+    /// names its candidates only heuristically), optionally folding in its
+    /// declarations and definitions, deduplicated across the kinds — rows of
+    /// different kinds can share one anchor.
     std::vector<Site> references(const Cursor& cursor, bool include_declaration) const;
 
     /// One canonical site per distinct relation target — the two-hop query

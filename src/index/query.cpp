@@ -580,16 +580,15 @@ std::vector<Site> IndexQuery::declaration(const Cursor& cursor) const {
 
 std::vector<Site> IndexQuery::references(const Cursor& cursor, bool include_declaration) const {
     ScopedTimer timer;
-    auto result = sites(cursor.symbol, RelationKind::Reference);
+    llvm::SmallVector<RelationKind, 4> kinds{RelationKind::Reference, RelationKind::WeakReference};
     if(include_declaration) {
-        for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-            auto extra = sites(cursor.symbol, kind);
-            result.insert(result.end(),
-                          std::make_move_iterator(extra.begin()),
-                          std::make_move_iterator(extra.end()));
-        }
-        dedup_sites(result);
+        kinds.append({RelationKind::Declaration, RelationKind::Definition});
     }
+    std::vector<Site> result;
+    for(auto kind: kinds) {
+        llvm::append_range(result, sites(cursor.symbol, kind));
+    }
+    dedup_sites(result);
     LOG_PERF("index_query",
              "kind=references path={} results={} elapsed_ms={:.2f}",
              cursor.site.path,
