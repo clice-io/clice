@@ -84,10 +84,12 @@ bool at_file_scope(const clang::DeclContext* context);
 /// templates spell their parameters as arguments ("S<T>::").
 std::string qualifier_at(const clang::DeclContext* target, const clang::DeclContext* from);
 
-/// A type spelled fully qualified minus the namespaces enclosing `from`
-/// (null: at any scope of the TU), declaring `name` when one is given
-/// ("int (*name)(int)"); nullopt for a type no spelling names, such as a
-/// lambda or an unnamed struct.
+/// A type spelled for `from`, declaring `name` when one is given
+/// ("int (*name)(int)"): each name drops the namespaces enclosing `from`
+/// as far as it still finds its entity there, and the compiler's internal
+/// names become the standard ones `from` sees. Nullopt for a type `from`
+/// cannot name: a lambda or unnamed type, another function's local type,
+/// a member type it has no access to.
 std::optional<std::string> type_name(clang::ASTContext& context,
                                      clang::QualType type,
                                      const clang::DeclContext* from,

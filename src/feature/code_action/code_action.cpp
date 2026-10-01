@@ -19,7 +19,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/PrettyPrinter.h"
-#include "clang/AST/QualTypeNames.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TypeLoc.h"
 
@@ -149,18 +149,348 @@ std::string record_component(const clang::RecordDecl* record) {
     return name;
 }
 
-/// Erase every occurrence of `prefix` that starts a qualified name: at
-/// the beginning or after a character no identifier or qualifier ends
-/// with.
-void strip_qualifier(std::string& text, llvm::StringRef prefix) {
-    for(auto at = text.find(prefix); at != std::string::npos; at = text.find(prefix, at)) {
-        if(at == 0 ||
-           (!llvm::isAlnum(text[at - 1]) && text[at - 1] != '_' && text[at - 1] != ':')) {
-            text.erase(at, prefix.size());
-        } else {
-            at += 1;
+/// The entity a found declaration denotes: through using-declarations and
+/// namespace aliases, a class template as its pattern and an injected
+/// class name as its class.
+const clang::Decl* entity_of(const clang::NamedDecl* decl) {
+    decl = decl->getUnderlyingDecl();
+    if(auto* alias = llvm::dyn_cast<clang::NamespaceAliasDecl>(decl)) {
+        decl = alias->getNamespace();
+    } else if(auto* described = llvm::dyn_cast<clang::ClassTemplateDecl>(decl)) {
+        decl = described->getTemplatedDecl();
+    } else if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
+              record && record->isInjectedClassName()) {
+        decl = llvm::cast<clang::CXXRecordDecl>(record->getDeclContext());
+    }
+    return decl->getCanonicalDecl();
+}
+
+/// The entities a lookup found; normalized, sorted and unique, they
+/// compare as sets.
+using Entities = llvm::SmallVector<const clang::Decl*, 2>;
+
+void add_found(Entities& entities, clang::DeclContext::lookup_result found) {
+    for(const auto* decl: found) {
+        entities.push_back(entity_of(decl));
+    }
+}
+
+Entities normalized(Entities entities) {
+    llvm::sort(entities);
+    entities.erase(llvm::unique(entities), entities.end());
+    return entities;
+}
+
+/// The name an identifier spells; empty when no declaration can have it.
+clang::DeclarationName declaration_name(clang::ASTContext& context, llvm::StringRef identifier) {
+    auto found = context.Idents.find(identifier);
+    if(found == context.Idents.end()) {
+        return {};
+    }
+    return found->getValue();
+}
+
+/// Qualified lookup into a namespace or the global scope: its members,
+/// else those of the namespaces its using-directives nominate.
+Entities lookup_qualified(const clang::DeclContext* scope, clang::DeclarationName name) {
+    Entities entities;
+    add_found(entities, scope->lookup(name));
+    if(entities.empty()) {
+        for(const auto* directive: scope->using_directives()) {
+            add_found(entities, directive->getNominatedNamespace()->lookup(name));
         }
     }
+    return normalized(std::move(entities));
+}
+
+/// The members a scope declares under `name`; a class declaring none
+/// inherits its bases'. Dependent bases stay unsearched, as unqualified
+/// lookup in a template leaves them.
+void add_members(Entities& entities, const clang::DeclContext* scope, clang::DeclarationName name) {
+    auto found = scope->lookup(name);
+    if(!found.empty()) {
+        add_found(entities, found);
+        return;
+    }
+    const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(scope);
+    if(!record || !record->hasDefinition()) {
+        return;
+    }
+    for(const auto& base: record->getDefinition()->bases()) {
+        if(const auto* base_record = base.getType()->getAsCXXRecordDecl()) {
+            add_members(entities, base_record, name);
+        }
+    }
+}
+
+/// What an unqualified `name` written in `from` finds: everything the
+/// innermost scope declaring it offers — its template parameters, its
+/// members and those of the namespaces its using-directives nominate.
+/// Declarations later in the file count as seen, which only ever keeps
+/// a qualifier that was not needed.
+Entities lookup_unqualified(const clang::DeclContext* from, clang::DeclarationName name) {
+    Entities entities;
+    for(const auto* scope = from; scope && entities.empty(); scope = scope->getParent()) {
+        if(scope->isTransparentContext()) {
+            continue;
+        }
+        if(const auto* params = llvm::cast<clang::Decl>(scope)->getDescribedTemplateParams()) {
+            for(const auto* param: *params) {
+                if(param->getDeclName() == name) {
+                    entities.push_back(param->getCanonicalDecl());
+                }
+            }
+        }
+        add_members(entities, scope, name);
+        for(const auto* directive: scope->using_directives()) {
+            add_found(entities, directive->getNominatedNamespace()->lookup(name));
+        }
+    }
+    return normalized(std::move(entities));
+}
+
+/// The declarations a type spells by name. A type is unnameable at `from`
+/// when one of them is: another function's local type, a member type
+/// `from` has no access to (friendship aside), an unnamed or closure
+/// type. Every name printed qualified from the global scope is recorded
+/// by its first component.
+class SpelledNames : public clang::RecursiveASTVisitor<SpelledNames> {
+public:
+    explicit SpelledNames(const clang::DeclContext* from) : from(from) {}
+
+    bool VisitTagType(clang::TagType* type) {
+        auto* decl = type->getDecl();
+        if(auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
+            if(!TraverseTemplateArguments(specialization->getTemplateArgs().asArray())) {
+                return false;
+            }
+        }
+        return name(decl);
+    }
+
+    bool VisitTypedefType(clang::TypedefType* type) {
+        return name(type->getDecl());
+    }
+
+    bool VisitUsingType(clang::UsingType* type) {
+        return name(type->getDecl());
+    }
+
+    bool VisitTemplateSpecializationType(clang::TemplateSpecializationType* type) {
+        auto* decl = type->getTemplateName().getAsTemplateDecl();
+        return !decl || name(decl);
+    }
+
+    bool VisitBuiltinType(clang::BuiltinType* type) {
+        null_pointer |= type->getKind() == clang::BuiltinType::NullPtr;
+        return true;
+    }
+
+    bool VisitPredefinedSugarType(clang::PredefinedSugarType* type) {
+        predefined.push_back(type);
+        return true;
+    }
+
+    bool nameable = true;
+    /// The first component of each name printed from the global scope,
+    /// with the entity it denotes there.
+    llvm::SmallVector<std::pair<llvm::StringRef, const clang::Decl*>, 4> roots;
+    /// `std::nullptr_t` is printed for the type of `nullptr`, declared or not.
+    bool null_pointer = false;
+    /// The compiler's names for the types of `sizeof` and pointer
+    /// differences (`__size_t`), which no user can spell.
+    llvm::SmallVector<const clang::PredefinedSugarType*, 1> predefined;
+
+private:
+    bool name(const clang::NamedDecl* decl) {
+        if(decl->isTemplateParameter()) {
+            return true;
+        }
+        const clang::NamedDecl* root = decl;
+        for(const clang::Decl* member = decl;;) {
+            auto* tag = llvm::dyn_cast<clang::TagDecl>(member);
+            if(tag && !tag->getIdentifier() && !tag->getTypedefNameForAnonDecl()) {
+                return nameable = false;
+            }
+            const auto* context = member->getDeclContext();
+            if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
+               record && !accessible(member->getAccess(), record)) {
+                return nameable = false;
+            }
+            if(context->isFunctionOrMethod()) {
+                return nameable = context->Encloses(from);
+            }
+            if(context->isTranslationUnit()) {
+                roots.emplace_back(root->getName(), entity_of(root));
+                return true;
+            }
+            member = llvm::cast<clang::Decl>(context);
+            auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(member);
+            if(auto* named = llvm::dyn_cast<clang::NamedDecl>(member);
+               named && !(ns && (ns->isAnonymousNamespace() || ns->isInline()))) {
+                root = named;
+            }
+        }
+    }
+
+    bool accessible(clang::AccessSpecifier access, const clang::CXXRecordDecl* record) {
+        if(access == clang::AS_public || access == clang::AS_none) {
+            return true;
+        }
+        for(const auto* scope = from; scope; scope = scope->getParent()) {
+            auto* enclosing = llvm::dyn_cast<clang::CXXRecordDecl>(scope);
+            if(enclosing && (enclosing->getCanonicalDecl() == record->getCanonicalDecl() ||
+                             (access == clang::AS_protected && enclosing->isDerivedFrom(record)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    const clang::DeclContext* from;
+};
+
+/// `std::name`, else `name`, when either declares `type` before `from`
+/// opens, and so before anything inserted into it.
+std::optional<std::string> standard_name(clang::ASTContext& context,
+                                         clang::QualType type,
+                                         llvm::StringRef name,
+                                         const clang::DeclContext* from) {
+    auto member = declaration_name(context, name);
+    if(member.isEmpty()) {
+        return std::nullopt;
+    }
+    auto opens = llvm::cast<clang::Decl>(from)->getBeginLoc();
+    auto declares = [&](const Entities& found) {
+        auto* alias =
+            found.size() == 1 ? llvm::dyn_cast<clang::TypedefNameDecl>(found[0]) : nullptr;
+        return alias && context.hasSameType(alias->getUnderlyingType(), type) &&
+               (opens.isInvalid() ||
+                context.getSourceManager().isBeforeInTranslationUnit(alias->getLocation(), opens));
+    };
+    if(auto std_name = declaration_name(context, "std"); !std_name.isEmpty()) {
+        auto std_scope = lookup_qualified(context.getTranslationUnitDecl(), std_name);
+        auto* ns =
+            std_scope.size() == 1 ? llvm::dyn_cast<clang::NamespaceDecl>(std_scope[0]) : nullptr;
+        if(ns && lookup_unqualified(from, std_name) == std_scope &&
+           declares(lookup_qualified(ns, member))) {
+            return ("std::" + name).str();
+        }
+    }
+    if(declares(lookup_unqualified(from, member))) {
+        return name.str();
+    }
+    return std::nullopt;
+}
+
+bool is_identifier_char(char c) {
+    return llvm::isAlnum(c) || c == '_';
+}
+
+/// Respell the names of a type printed fully qualified for `from`. A name
+/// drops the namespaces enclosing `from` when the shortened name still
+/// finds the same entity there, and is anchored at the global scope when
+/// even its full spelling would find another. The compiler's internal
+/// names become their standard spellings; nullopt when `from` sees none.
+std::optional<std::string> respell(clang::ASTContext& context,
+                                   llvm::StringRef printed,
+                                   const SpelledNames& names,
+                                   const clang::DeclContext* from) {
+    llvm::SmallVector<const clang::NamespaceDecl*, 4> namespaces;
+    for(const auto* scope = from; scope; scope = scope->getParent()) {
+        auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(scope);
+        if(ns && !ns->isAnonymousNamespace() && !ns->isInline()) {
+            namespaces.push_back(ns);
+        }
+    }
+    std::ranges::reverse(namespaces);
+
+    auto spell = [&](llvm::ArrayRef<llvm::StringRef> components) -> std::optional<std::string> {
+        auto joined = [&](std::size_t skipped) {
+            return llvm::join(components.drop_front(skipped), "::");
+        };
+        if(components.size() == 1) {
+            for(const auto* sugar: names.predefined) {
+                if(components[0] != sugar->getIdentifier()->getName()) {
+                    continue;
+                }
+                switch(sugar->getKind()) {
+                    case clang::PredefinedSugarType::Kind::SizeT:
+                        return standard_name(context, clang::QualType(sugar, 0), "size_t", from);
+                    case clang::PredefinedSugarType::Kind::PtrdiffT:
+                        return standard_name(context, clang::QualType(sugar, 0), "ptrdiff_t", from);
+                    case clang::PredefinedSugarType::Kind::SignedSizeT: return std::nullopt;
+                }
+            }
+        }
+        if(names.null_pointer && components.size() == 2 && components[0] == "std" &&
+           components[1] == "nullptr_t") {
+            return standard_name(context, context.NullPtrTy, "nullptr_t", from)
+                .value_or("decltype(nullptr)");
+        }
+        const auto* root = llvm::find_if(names.roots, [&](const auto& entry) {
+            return entry.first == components[0];
+        });
+        if(root == names.roots.end()) {
+            return joined(0);
+        }
+        for(auto depth = std::min(namespaces.size(), components.size() - 1); depth > 0;
+            depth -= 1) {
+            auto prefix = llvm::ArrayRef(namespaces).take_front(depth);
+            if(!llvm::equal(prefix, components.take_front(depth), [](auto* ns, auto component) {
+                   return ns->getName() == component;
+               })) {
+                continue;
+            }
+            auto name = declaration_name(context, components[depth]);
+            auto expected = lookup_qualified(prefix.back(), name);
+            if(!expected.empty() && lookup_unqualified(from, name) == expected) {
+                return joined(depth);
+            }
+        }
+        auto found = lookup_unqualified(from, declaration_name(context, components[0]));
+        if(found.size() == 1 && found[0] == root->second) {
+            return joined(0);
+        }
+        return "::" + joined(0);
+    };
+
+    std::string result;
+    llvm::StringRef rest = printed;
+    while(!rest.empty()) {
+        if(llvm::isDigit(rest.front()) || !is_identifier_char(rest.front())) {
+            auto token = llvm::isDigit(rest.front()) ? rest.take_while(is_identifier_char)
+                                                     : rest.take_front();
+            result += token;
+            rest = rest.drop_front(token.size());
+            continue;
+        }
+        // A component after `::`, `.` or `->` continues a name or an
+        // expression already respelled.
+        llvm::StringRef done = result;
+        if(done.ends_with("::") || done.ends_with(".") || done.ends_with("->")) {
+            auto component = rest.take_while(is_identifier_char);
+            result += component;
+            rest = rest.drop_front(component.size());
+            continue;
+        }
+        llvm::SmallVector<llvm::StringRef, 4> components;
+        while(true) {
+            components.push_back(rest.take_while(is_identifier_char));
+            rest = rest.drop_front(components.back().size());
+            if(!rest.starts_with("::") || rest.size() < 3 || !is_identifier_char(rest[2]) ||
+               llvm::isDigit(rest[2])) {
+                break;
+            }
+            rest = rest.drop_front(2);
+        }
+        auto spelled = spell(components);
+        if(!spelled) {
+            return std::nullopt;
+        }
+        result += *spelled;
+    }
+    return result;
 }
 
 /// One "template <...>" head, the parameters spelled without defaults,
@@ -278,48 +608,47 @@ std::optional<std::string> type_name(clang::ASTContext& context,
                                      clang::QualType type,
                                      const clang::DeclContext* from,
                                      llvm::StringRef name) {
-    clang::PrintingPolicy policy = context.getPrintingPolicy();
-    policy.SuppressScope = false;
-    policy.SuppressUnwrittenScope = true;
-    policy.AnonymousTagNameStyle =
-        std::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
-    policy.FullyQualifiedName = true;
     // A deduced type keeps its `auto` as sugar, one layer per deduction
-    // chained through; the qualified-name printer takes only what lies
-    // beneath.
-    for(const auto* deduced = type->getAs<clang::DeducedType>(); deduced && deduced->isDeduced();
-        deduced = type->getAs<clang::DeducedType>()) {
-        type = context.getQualifiedType(deduced->getDeducedType(), type.getLocalQualifiers());
+    // chained through, and a decltype names its type by an expression
+    // `from` may not see: print the type beneath.
+    while(true) {
+        const auto* sugar = type.getTypePtr();
+        clang::QualType beneath;
+        if(auto* deduced = llvm::dyn_cast<clang::DeducedType>(sugar);
+           deduced && deduced->isSugared()) {
+            beneath = deduced->getDeducedType();
+        } else if(auto* decltype_type = llvm::dyn_cast<clang::DecltypeType>(sugar);
+                  decltype_type && decltype_type->isSugared()) {
+            beneath = decltype_type->getUnderlyingType();
+        } else {
+            break;
+        }
+        type = context.getQualifiedType(beneath, type.getLocalQualifiers());
     }
-    if(!type->isDependentType()) {
-        type = clang::TypeName::getFullyQualifiedType(type, context);
-    }
-    std::string printed;
-    llvm::raw_string_ostream os(printed);
-    type.print(os, policy, name);
-    llvm::StringRef view = printed;
-    if(view.contains("(lambda") || view.contains("(anonymous") || view.contains("(unnamed")) {
+
+    SpelledNames names(from);
+    names.TraverseType(type);
+    if(!names.nameable) {
         return std::nullopt;
     }
 
-    llvm::SmallVector<const clang::NamespaceDecl*, 4> namespaces;
-    for(const auto* scope = from; scope; scope = scope->getParent()) {
-        auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(scope);
-        if(ns && !ns->isAnonymousNamespace() && !ns->isInline()) {
-            namespaces.push_back(ns);
-        }
+    clang::PrintingPolicy policy = context.getPrintingPolicy();
+    policy.SuppressScope = false;
+    policy.SuppressUnwrittenScope = true;
+    policy.FullyQualifiedName = true;
+    // The declarator name is printed as `@`, which no respelled name
+    // contains, and put in last.
+    std::string printed;
+    llvm::raw_string_ostream os(printed);
+    type.print(os, policy, name.empty() ? "" : "@");
+    auto spelled = respell(context, printed, names, from);
+    if(!spelled) {
+        return std::nullopt;
     }
-    llvm::SmallVector<std::string, 4> prefixes;
-    std::string chain;
-    for(const auto* ns: llvm::reverse(namespaces)) {
-        chain += ns->getName();
-        chain += "::";
-        prefixes.push_back(chain);
+    if(!name.empty()) {
+        spelled->replace(spelled->find('@'), 1, name);
     }
-    for(const auto& prefix: llvm::reverse(prefixes)) {
-        strip_qualifier(printed, prefix);
-    }
-    return bind_declarators(std::move(printed));
+    return bind_declarators(std::move(*spelled));
 }
 
 std::string template_heads(CompilationUnitRef unit,

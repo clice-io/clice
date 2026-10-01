@@ -1,3 +1,4 @@
+#include <array>
 #include <format>
 #include <string>
 #include <vector>
@@ -6,11 +7,39 @@
 #include "feature/code_action/action.h"
 #include "semantic/types.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/Basic/TokenKinds.h"
 
 namespace clice::feature::action {
+
+namespace {
+
+bool is_cv(const clang::syntax::Token& token) {
+    return token.kind() == clang::tok::kw_const || token.kind() == clang::tok::kw_volatile;
+}
+
+/// A declaration specifier other than a type, which may stand between a
+/// cv-qualifier and the type it qualifies.
+bool is_specifier(const clang::syntax::Token& token) {
+    using enum clang::tok::TokenKind;
+    constexpr std::array specifiers = {kw_static,
+                                       kw_extern,
+                                       kw_inline,
+                                       kw_constexpr,
+                                       kw_constinit,
+                                       kw_consteval,
+                                       kw_thread_local,
+                                       kw_mutable,
+                                       kw_register,
+                                       kw_virtual,
+                                       kw_friend};
+    return is_cv(token) || llvm::is_contained(specifiers, token.kind());
+}
+
+}  // namespace
 
 void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     auto unit = ctx.unit;
@@ -69,6 +98,30 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         return;
     }
     auto printed = declaration->substr(0, declaration->size() - 2);
+    // A cv-qualifier written before `auto` qualifies the deduced type; in
+    // front of a pointer it would qualify the pointee, so it moves behind
+    // the `*`. One parted from `auto` by other specifiers stays out of
+    // reach of a single edit.
+    if(printed.ends_with('*')) {
+        auto tokens = unit.spelled_tokens(unit.main_file());
+        const auto* at = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
+            return unit.file_offset(token.location()) < range->begin;
+        });
+        const auto* first = at;
+        while(first != tokens.begin() && is_cv(*std::prev(first))) {
+            first -= 1;
+        }
+        for(const auto* it = first; it != tokens.begin() && is_specifier(*std::prev(it)); it -= 1) {
+            if(is_cv(*std::prev(it))) {
+                return;
+            }
+        }
+        for(const auto* it = first; it != at; it += 1) {
+            printed += ' ';
+            printed += clang::tok::getKeywordSpelling(it->kind());
+        }
+        range->begin = unit.file_offset(first->location());
+    }
     auto content = unit.main_content();
     out.push_back(CodeAction{
         .title = std::format("Replace '{}' with '{}'",
