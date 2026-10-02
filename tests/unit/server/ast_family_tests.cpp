@@ -493,6 +493,81 @@ TEST_CASE(BufferImportBuildsPCM) {
     EXPECT_TRUE(stack.project.pcm_cache.contains(mod_ids[0]));
 }
 
+TEST_CASE(ImportScanPerUnit) {
+    // In a project with modules only a unit that can import pays the
+    // precise scan, and an edit off its directive lines reuses it.
+    TempDir tmp;
+    tmp.touch("m.cppm",
+              "export module m;\n"
+              "export int mv() { return 1; }\n");
+    tmp.touch("main.cpp", "import m;\nint main() { return mv(); }\n");
+    tmp.touch("plain.cpp", "int plain() { return 0; }\n");
+
+    Stack stack;
+    write_cdb(tmp,
+              stack.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"),    {}},
+                  {tmp.root, tmp.path("main.cpp"),  {}},
+                  {tmp.root, tmp.path("plain.cpp"), {}},
+    }));
+    scan_all(stack.project.cdb, stack.project.dep_graph);
+    stack.project.dep_graph.build_reverse_map();
+    stack.register_pch_store(tmp);
+    stack.project.store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+
+    auto plain = stack.open(tmp.path("plain.cpp"), "int plain() { return 0; }\n");
+    auto main = stack.open(tmp.path("main.cpp"), "import m;\nint main() { return mv(); }\n");
+    auto edit = [&](const std::shared_ptr<Session>& session, std::string text) {
+        session->text = std::move(text);
+        session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+        session->generation += 1;
+        stack.ast.supersede(session->path_id);
+    };
+
+    std::uint64_t plain_scans = 0;
+    std::uint64_t first_scans = 0;
+    std::uint64_t body_scans = 0;
+    std::uint64_t import_scans = 0;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(plain));
+        plain_scans = stack.pcm.import_scans;
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(main));
+        first_scans = stack.pcm.import_scans;
+
+        edit(main, "import m;\nint main() { return mv() + 1; }\n");
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(main));
+        body_scans = stack.pcm.import_scans;
+
+        edit(main, "import m;\n#define TWO 2\nint main() { return mv() + TWO; }\n");
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(main));
+        import_scans = stack.pcm.import_scans;
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    EXPECT_EQ(plain_scans, 0u);
+    // The document's scan, and the interface's own PCM round.
+    EXPECT_EQ(first_scans, 2u);
+    EXPECT_EQ(body_scans, first_scans);
+    EXPECT_EQ(import_scans, first_scans + 1);
+}
+
 TEST_CASE(BufferImportRecorded) {
     // Zero-provider window: the compile fails on the unresolved import,
     // but the buffer scan must still record the name — the first
@@ -538,8 +613,8 @@ TEST_CASE(BufferImportRecorded) {
 
 TEST_CASE(IncludeImportRecorded) {
     // Zero-provider window, import introduced by the command: the buffer
-    // is lexically importless, so the -include gate must trigger the
-    // precise scan that records the name.
+    // is lexically importless, so the forced header's import syntax, a
+    // graph fact, must trigger the precise scan that records the name.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -553,6 +628,8 @@ TEST_CASE(IncludeImportRecorded) {
               build_cdb_json({
                   {tmp.root, src, {"-include", tmp.path("deps.h")}}
     }));
+    scan_all(stack.project.cdb, stack.project.dep_graph);
+    stack.project.dep_graph.build_reverse_map();
     auto session = stack.open(src, "int main() { return 0; }\n");
 
     bool done = false;
@@ -580,6 +657,104 @@ TEST_CASE(IncludeImportRecorded) {
                 dirtied.end());
 
     logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(HostImportRecorded) {
+    // A header compiled through its host's synthesized prefix: the host's
+    // import syntax, a graph fact, must trigger the precise scan that
+    // records the name.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("part.inc", "int part();\n");
+    tmp.touch("main.cpp", "import m;\n#include \"part.inc\"\nint main() { return 0; }\n");
+
+    Stack stack;
+    write_cdb(tmp,
+              stack.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    scan_all(stack.project.cdb, stack.project.dep_graph);
+    stack.project.dep_graph.build_reverse_map();
+    auto session = stack.open(tmp.path("part.inc"), "int part();\n");
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    auto* context = stack.contexts.header_context(session->path_id);
+    ASSERT_TRUE(context != nullptr && context->synthesized != nullptr);
+    auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
+    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) !=
+                dirtied.end());
+
+    logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(ForcedIncludeSkipsScan) {
+    // Neither the command's forced header nor a header compiled through
+    // its host has import syntax: no compile pays an import scan.
+    TempDir tmp;
+    tmp.touch("force.h", "#define FORCED 1\n");
+    tmp.touch("header.h", "inline int header() { return FORCED; }\n");
+    tmp.touch("main.cpp", "#include \"header.h\"\nint main() { return header(); }\n");
+    auto src = tmp.path("main.cpp");
+
+    Stack stack;
+    write_cdb(tmp,
+              stack.project.cdb,
+              build_cdb_json({
+                  {tmp.root, src, {"-include", "force.h"}}
+    }));
+    scan_all(stack.project.cdb, stack.project.dep_graph);
+    stack.project.dep_graph.build_reverse_map();
+    auto unit = stack.open(src, "#include \"header.h\"\nint main() { return header(); }\n");
+    auto header = stack.open(tmp.path("header.h"), "inline int header() { return FORCED; }\n");
+
+    bool unit_ok = false;
+    bool header_ok = false;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        unit_ok = co_await stack.ast.ensure_compiled(unit);
+        header_ok = co_await stack.ast.ensure_compiled(header);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    EXPECT_TRUE(unit_ok);
+    EXPECT_TRUE(header_ok);
+    EXPECT_TRUE(stack.contexts.header_context(header->path_id) != nullptr);
+    EXPECT_EQ(stack.pcm.import_scans, 0u);
 }
 
 };  // TEST_SUITE(ASTFamilyGuards)

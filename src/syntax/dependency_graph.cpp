@@ -12,12 +12,12 @@
 #include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/StringSaver.h"
-#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -224,33 +224,148 @@ llvm::ArrayRef<Fid> DependencyGraph::get_includers(Fid path_id) const {
     return {};
 }
 
-llvm::SmallVector<Fid, 4> DependencyGraph::find_host_sources(Fid header_path_id) const {
+std::uint32_t DependencyGraph::count_includes(Fid includer, Fid target) const {
+    std::uint32_t most = 0;
+    auto it = file_configs.find(includer);
+    if(it == file_configs.end()) {
+        return most;
+    }
+    for(auto config_id: it->second) {
+        auto count = llvm::count_if(get_includes(includer, config_id),
+                                    [&](IncludeEdge edge) { return edge.fid == target; });
+        most = std::max(most, static_cast<std::uint32_t>(count));
+    }
+    return most;
+}
+
+/// Insert into a sorted list, once.
+static void insert_sorted(llvm::SmallVectorImpl<Fid>& list, Fid fid) {
+    auto it = llvm::lower_bound(list, fid);
+    if(it == list.end() || *it != fid) {
+        list.insert(it, fid);
+    }
+}
+
+void DependencyGraph::add_forced_include(Fid unit, Fid header) {
+    insert_sorted(forced_includes[unit], header);
+    insert_sorted(forcing_units[header], unit);
+}
+
+llvm::ArrayRef<Fid> DependencyGraph::get_forcing_units(Fid header) const {
+    auto it = forcing_units.find(header);
+    if(it != forcing_units.end()) {
+        return it->second;
+    }
+    return {};
+}
+
+std::uint32_t DependencyGraph::add_group(const CommandRef& command) {
+    scan_groups.push_back(command);
+    return static_cast<std::uint32_t>(scan_groups.size() - 1);
+}
+
+const CommandRef& DependencyGraph::group(std::uint32_t id) const {
+    return scan_groups[id];
+}
+
+void DependencyGraph::record_scan(Fid path_id, const ScanResult& scan) {
+    if(scan.has_module_syntax()) {
+        import_candidates.insert(path_id);
+    } else {
+        import_candidates.erase(path_id);
+    }
+    scanned_directives[path_id] = scan.directives_hash;
+}
+
+void DependencyGraph::forget_scan(Fid path_id) {
+    import_candidates.erase(path_id);
+    scanned_directives.erase(path_id);
+}
+
+bool DependencyGraph::scanned(Fid path_id, std::uint64_t directives_hash) const {
+    auto it = scanned_directives.find(path_id);
+    return it != scanned_directives.end() && it->second == directives_hash;
+}
+
+void DependencyGraph::add_context(Fid path_id, ScanContext context) {
+    scan_contexts[path_id].push_back(context);
+}
+
+llvm::ArrayRef<ScanContext> DependencyGraph::contexts(Fid path_id) const {
+    auto it = scan_contexts.find(path_id);
+    if(it != scan_contexts.end()) {
+        return it->second;
+    }
+    return {};
+}
+
+bool DependencyGraph::reaches_import(Fid path_id) const {
+    if(import_candidates.empty()) {
+        return false;
+    }
+    llvm::DenseSet<Fid> visited{path_id};
+    llvm::SmallVector<Fid, 64> queue{path_id};
+    auto visit = [&](Fid fid) {
+        if(visited.insert(fid).second) {
+            queue.push_back(fid);
+        }
+    };
+    while(!queue.empty()) {
+        auto current = queue.pop_back_val();
+        if(import_candidates.contains(current)) {
+            return true;
+        }
+        if(auto it = file_configs.find(current); it != file_configs.end()) {
+            for(auto config_id: it->second) {
+                for(auto edge: get_includes(current, config_id)) {
+                    visit(edge.fid);
+                }
+            }
+        }
+        if(auto it = forced_includes.find(current); it != forced_includes.end()) {
+            for(auto header: it->second) {
+                visit(header);
+            }
+        }
+    }
+    return false;
+}
+
+llvm::SmallVector<Fid, 4> DependencyGraph::find_roots(Fid path_id, bool through_forced) const {
     llvm::SmallVector<Fid, 4> result;
     llvm::DenseSet<Fid> visited;
     llvm::SmallVector<Fid, 16> queue;
 
-    queue.push_back(header_path_id);
-    visited.insert(header_path_id);
+    queue.push_back(path_id);
+    visited.insert(path_id);
 
     while(!queue.empty()) {
         auto current = queue.pop_back_val();
         auto includers = get_includers(current);
-        if(includers.empty()) {
-            // No includers: this is a root (source file).
-            // Exclude the starting header itself.
-            if(current != header_path_id) {
+        auto forcing = through_forced ? get_forcing_units(current) : llvm::ArrayRef<Fid>();
+        if(includers.empty() && forcing.empty()) {
+            // Nothing above it: a root. Exclude the starting file itself.
+            if(current != path_id) {
                 result.push_back(current);
             }
             continue;
         }
-        for(auto includer: includers) {
-            if(visited.insert(includer).second) {
-                queue.push_back(includer);
+        for(auto parent: llvm::concat<const Fid>(includers, forcing)) {
+            if(visited.insert(parent).second) {
+                queue.push_back(parent);
             }
         }
     }
 
     return result;
+}
+
+llvm::SmallVector<Fid, 4> DependencyGraph::find_host_sources(Fid header_path_id) const {
+    return find_roots(header_path_id, false);
+}
+
+llvm::SmallVector<Fid, 4> DependencyGraph::find_readers(Fid path_id) const {
+    return find_roots(path_id, true);
 }
 
 std::vector<Fid> DependencyGraph::find_include_chain(Fid host_path_id, Fid target_path_id) const {
@@ -302,15 +417,19 @@ std::vector<Fid> DependencyGraph::find_include_chain(Fid host_path_id, Fid targe
     return chain;
 }
 
-// Wavefront BFS scanner — async implementation
-
 namespace {
+
+/// A file awaiting its scan, and how the scan reached it.
+struct WaveEntry {
+    Fid path_id;
+    ScanContext context;
+};
 
 /// Result of scanning a single file (returned from worker thread).
 struct FileScanResult {
     const char* path;  // Stable pointer from FileTable.
     Fid path_id;
-    std::uint32_t config_id;
+    ScanContext context;
     ScanResult scan_result;
     /// Same-source {stat, hash} of the bytes scanned — the cold-start
     /// read doubles as the workspace's first disk observation.
@@ -320,27 +439,14 @@ struct FileScanResult {
     std::int64_t scan_us = 0;
 };
 
-/// Semantic identity of a rendered compile command, for keying
-/// configuration-dependent derivations (the module-decl backfill): dense
-/// config ids are CDB-local and unstable across reloads, the flags
-/// themselves are the meaning.
-std::uint64_t hash_rendered_command(llvm::ArrayRef<const char*> rendered) {
-    llvm::SmallString<512> joined;
-    for(auto* arg: rendered) {
-        joined.append(arg);
-        joined.push_back('\0');
-    }
-    return llvm::xxh3_64bits(joined);
-}
-
 /// Scan a single file: read content + lexer scan.
 /// Runs on libuv worker thread via queue().
 /// @param path  Stable pointer from FileTable (must outlive the task).
-FileScanResult scan_file_worker(const char* path, Fid path_id, std::uint32_t config_id) {
+FileScanResult scan_file_worker(const char* path, Fid path_id, ScanContext context) {
     FileScanResult result;
     result.path = path;
     result.path_id = path_id;
-    result.config_id = config_id;
+    result.context = context;
 
     auto t0 = std::chrono::steady_clock::now();
     auto observed = vfs::read_observed(path);
@@ -360,14 +466,210 @@ FileScanResult scan_file_worker(const char* path, Fid path_id, std::uint32_t con
     return result;
 }
 
-/// Per-scan angled-include resolution memo: (config_id bytes + header)
-/// -> {path_id, found_dir_idx}. A repeated angled include across the
-/// scanned files resolves once; the memo dies with the scan, so it can
-/// never serve a stale filesystem.
+/// A resolved include: the file, and the search dir it was found in.
 struct CachedInclude {
     /// Invalid = the include is known-unresolvable under this config.
     Fid path_id;
     std::optional<unsigned> found_dir_idx;
+};
+
+/// The per-file step of every scan, the full one and a single file's
+/// rescan alike: a file's scan under one context becomes its module
+/// syntax, a unit's forced includes, and its include edges. The listings,
+/// the groups' search configurations and the angled-include memo live
+/// as long as the operation, so they never serve a stale filesystem.
+struct FileScanner {
+    FileScanner(CompilationDatabase& cdb, DependencyGraph& graph, ScanReport& report) :
+        cdb(cdb), graph(graph), files(cdb.files()), report(report), scope(files.dirs) {}
+
+    /// Record `path_id`'s scan of the bytes hashing to `hash` under
+    /// `context`. A file it includes or forces in that the scan reaches
+    /// for the first time gets its context and goes to `reach`. Returns
+    /// the module a unit provides as an interface, empty for every other
+    /// file.
+    std::string record(Fid path_id,
+                       ScanContext context,
+                       ScanResult scan,
+                       std::uint64_t hash,
+                       llvm::function_ref<void(Fid, ScanContext)> reach) {
+        auto reached = [&](Fid target, std::optional<unsigned> found_dir_idx) {
+            if(graph.contexts(target).empty()) {
+                ScanContext target_context{.group = context.group, .found_dir_idx = found_dir_idx};
+                graph.add_context(target, target_context);
+                reach(target, target_context);
+            }
+        };
+
+        auto& search = search_of(context.group);
+        std::string module;
+        if(context.unit) {
+            module = module_of(path_id, context, scan, hash);
+            for(auto& header: forced_of(context.group)) {
+                graph.add_forced_include(path_id, header.path_id);
+                reached(header.path_id, header.found_dir_idx);
+            }
+        }
+        graph.record_scan(path_id, scan);
+
+        // Quoted includes start from the directory the build reaches the
+        // includer through, as clang's do.
+        auto includer_spelling = files.spelling(path_id).parent();
+        llvm::StringRef includer_dir = includer_spelling;
+        auto* includer_listing = &scope.list(includer_dir);
+
+        report.includes_found += scan.includes.size();
+        llvm::SmallVector<IncludeEdge> edges;
+        edges.reserve(scan.includes.size());
+        for(auto& include: scan.includes) {
+            // An angled include resolves the same from every includer
+            // under one group: resolve it once per scan.
+            bool memoized = include.is_angled && !include.is_include_next;
+            llvm::SmallString<80> key;
+            if(memoized) {
+                key.append(reinterpret_cast<const char*>(&context.group),
+                           reinterpret_cast<const char*>(&context.group) + sizeof(std::uint32_t));
+                key += include.path;
+            }
+
+            CachedInclude resolved;
+            if(auto it = memoized ? angled.find(key) : angled.end(); it != angled.end()) {
+                report.include_cache_hits += 1;
+                resolved = it->second;
+            } else {
+                auto t0 = std::chrono::steady_clock::now();
+                auto found = resolve_include(include.path,
+                                             include.is_angled,
+                                             includer_listing,
+                                             includer_dir,
+                                             include.is_include_next,
+                                             context.found_dir_idx,
+                                             search.resolved,
+                                             scope);
+                report.p2_resolve_us += std::chrono::duration_cast<std::chrono::microseconds>(
+                                            std::chrono::steady_clock::now() - t0)
+                                            .count();
+                resolved = found ? CachedInclude{.path_id = files.intern_spelled(
+                                                     Spelling::absolute(found->path)),
+                                                 .found_dir_idx = found->found_dir_idx}
+                                 : CachedInclude{};
+                if(memoized) {
+                    angled.try_emplace(key, resolved);
+                }
+            }
+
+            if(!resolved.path_id.valid()) {
+                report.unresolved.push_back({
+                    .header = include.path,
+                    .includer = std::string(files.resolve(path_id)),
+                    .is_angled = include.is_angled,
+                    .conditional = include.conditional,
+                });
+                continue;
+            }
+            report.includes_resolved += 1;
+            report.total_edges += 1;
+            if(include.conditional) {
+                report.conditional_edges += 1;
+            } else {
+                report.unconditional_edges += 1;
+            }
+            edges.push_back({resolved.path_id, include.conditional});
+            reached(resolved.path_id, resolved.found_dir_idx);
+        }
+        graph.set_includes(path_id, context.group, std::move(edges));
+        return module;
+    }
+
+    struct Search {
+        SearchConfig config;
+        ResolvedSearchConfig resolved;
+    };
+
+    /// A group's search configuration against this operation's listings.
+    Search& search_of(std::uint32_t group) {
+        auto& search = searches[group];
+        if(!search) {
+            search = std::make_unique<Search>();
+            search->config = cdb.search_config(graph.group(group));
+            search->resolved = resolve_search_config(search->config, scope);
+        }
+        return *search;
+    }
+
+    /// A group's forced includes, resolved the way clang resolves them:
+    /// from the compile's working directory, then as a quoted include.
+    /// The compile reports the ones that resolve nowhere.
+    llvm::ArrayRef<CachedInclude> forced_of(std::uint32_t group) {
+        auto [it, inserted] = forced_cache.try_emplace(group);
+        if(inserted) {
+            auto& search = search_of(group);
+            llvm::StringRef directory = cdb.config(graph.group(group).config).directory;
+            for(auto& name: search.config.forced_includes) {
+                if(auto found = resolve_include(name,
+                                                false,
+                                                &scope.list(directory),
+                                                directory,
+                                                false,
+                                                std::nullopt,
+                                                search.resolved,
+                                                scope)) {
+                    it->second.push_back({
+                        .path_id = files.intern_spelled(Spelling::absolute(found->path)),
+                        .found_dir_idx = found->found_dir_idx,
+                    });
+                }
+            }
+        }
+        return it->second;
+    }
+
+    /// The module a unit provides as an interface. A declaration inside
+    /// preprocessor conditionals is beyond the lexical scan: a
+    /// preprocessor run under the unit's own group command resolves it —
+    /// only its flags (a define unguarding the declaration) can.
+    std::string module_of(Fid path_id, ScanContext context, ScanResult& scan, std::uint64_t hash) {
+        auto module = scan.module_name;
+        bool interface = scan.is_interface_unit;
+        if(scan.need_preprocess) {
+            if(auto observed = vfs::read_observed(files.resolve(path_id))) {
+                // The preprocessor must consume the bytes that produced
+                // this scan. When the disk moved under the scan, the whole
+                // result is rebuilt from the bytes actually read — includes
+                // and module name out of one version, never a chimera of
+                // two.
+                if(observed->obs.hash != hash) {
+                    files.observe(path_id, observed->obs);
+                    scan =
+                        files.scan_of(path_id, observed->obs.hash, observed->content->getBuffer());
+                }
+                auto& group = graph.group(context.group);
+                auto rendered =
+                    cdb.render({path_id, group.config, group.input, CommandSource::CDBExact});
+                auto declared = scan_module_decl(rendered,
+                                                 cdb.config(group.config).directory,
+                                                 observed->content->getBuffer());
+                module = std::move(declared.module_name);
+                interface = declared.is_interface_unit;
+            }
+        }
+        // Interface units only: an implementation unit (`module foo;`)
+        // must never satisfy lookup_module — importers would edge to it
+        // and try to build it as an interface — nor claim a PCM node of
+        // its own.
+        if(!interface) {
+            module.clear();
+        }
+        return module;
+    }
+
+    CompilationDatabase& cdb;
+    DependencyGraph& graph;
+    FileTable& files;
+    ScanReport& report;
+    vfs::Scope scope;
+    llvm::DenseMap<std::uint32_t, std::unique_ptr<Search>> searches;
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<CachedInclude>> forced_cache;
+    llvm::StringMap<CachedInclude> angled;
 };
 
 /// The async scan implementation that runs on a local event loop.
@@ -379,86 +681,63 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     auto& file_table = cdb.files();
     auto start_time = std::chrono::steady_clock::now();
 
-    llvm::DenseMap<std::uint32_t, SearchConfig> configs;
-
     auto config_start = std::chrono::steady_clock::now();
 
     // One scan group per unique (effective config, input language) — the
     // SearchConfig granularity: different -I sets resolve differently, and
     // the same flags compiled as C and C++ pull different implicit include
-    // sets. Groups are rebuilt on warm runs too: the preprocess fallback
-    // renders each unit's own group command, and the dense group ids
-    // assigned here line up with a warm cache's recorded ids because the
-    // unit order is deterministic.
-    llvm::SmallVector<CommandRef> group_refs;
-    std::vector<WaveEntry> wave0;
-
+    // sets.
+    std::vector<WaveEntry> current_wave;
     {
         llvm::DenseMap<std::pair<std::uint32_t, const char*>, std::uint32_t> group_ids;
         for(auto& unit: units) {
             auto [it, inserted] =
-                group_ids.try_emplace({static_cast<std::uint32_t>(unit.config), unit.input.value},
-                                      static_cast<std::uint32_t>(group_refs.size()));
+                group_ids.try_emplace({static_cast<std::uint32_t>(unit.config), unit.input.value});
             if(inserted) {
-                group_refs.push_back(unit);
+                it->second = graph.add_group(unit);
             }
-            wave0.push_back({.path_id = unit.file, .config_id = it->second});
+            ScanContext context{.group = it->second, .unit = true};
+            graph.add_context(unit.file, context);
+            current_wave.push_back({unit.file, context});
         }
     }
 
-    {
-        // Pre-warm the toolchain cache: probes key by non-user-content
-        // flags, so groups differing only in -D/-I collapse to the same
-        // probe — N groups often yield just 1-2 subprocess calls.
-        auto prewarm_start = std::chrono::steady_clock::now();
-        cdb.warm(group_refs);
-        auto prewarm_end = std::chrono::steady_clock::now();
-        report.prewarm_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start)
-                .count();
+    // Pre-warm the toolchain cache: probes key by non-user-content flags,
+    // so groups differing only in -D/-I collapse to the same probe — N
+    // groups often yield just 1-2 subprocess calls.
+    auto prewarm_start = std::chrono::steady_clock::now();
+    cdb.warm(graph.groups());
+    auto prewarm_end = std::chrono::steady_clock::now();
+    report.prewarm_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start).count();
 
-        // Extract SearchConfig for each group. The toolchain is warm, so
-        // resolution hits the cache.
-        std::int64_t lookup_us = 0;
-        for(std::uint32_t group_id = 0; group_id < group_refs.size(); ++group_id) {
-            auto t0 = std::chrono::steady_clock::now();
-            configs[group_id] = cdb.search_config(group_refs[group_id]);
-            auto t1 = std::chrono::steady_clock::now();
-            lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-        }
-        report.config_loop_ms = lookup_us / 1000;
-        LOG_INFO("Config extracted: {} groups, {:.1f}ms", configs.size(), lookup_us / 1000.0);
-    }
-
-    auto config_end = std::chrono::steady_clock::now();
-    report.config_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
-
-    vfs::Scope scope(file_table.dirs);
-    llvm::StringMap<CachedInclude> include_cache;
-
-    // Collect all unique search dirs and launch readdir tasks on the
-    // thread pool.  Tasks start executing immediately but are NOT awaited
-    // here — instead they run concurrently with Wave 0's file scanning
-    // (Optimization 1: overlap dir cache with Phase 1).  We only await
-    // them before Phase 2 of Wave 0, which is the first consumer.
-
+    // Collect every search dir and every directory quoted includes of
+    // source files start from, and launch readdir tasks on the thread
+    // pool. They run concurrently with Wave 0's file scanning and are
+    // awaited only before its Phase 2, the first consumer.
     struct DirEntry {
         std::string dir_path;
         std::shared_ptr<const vfs::Listing> listing;
     };
 
     std::vector<kota::task<DirEntry, kota::error>> pending_dir_tasks;
-
     {
         llvm::StringSet<> unique_dirs;
-        for(auto& [config_id, config]: configs) {
-            for(auto& dir: config.dirs) {
+        std::int64_t lookup_us = 0;
+        for(auto& group: graph.groups()) {
+            auto t0 = std::chrono::steady_clock::now();
+            auto search = cdb.search_config(group);
+            lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(
+                             std::chrono::steady_clock::now() - t0)
+                             .count();
+            for(auto& dir: search.dirs) {
                 unique_dirs.insert(dir.path);
             }
         }
-        // Also prefetch the directories quoted includes of source files
-        // start from.
+        report.config_loop_ms = lookup_us / 1000;
+        LOG_INFO("Config extracted: {} groups, {:.1f}ms",
+                 graph.groups().size(),
+                 lookup_us / 1000.0);
         for(auto& entry: cdb.entries()) {
             unique_dirs.insert(file_table.spelling(entry.file).parent().str());
         }
@@ -479,16 +758,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         LOG_INFO("Launched {} dir cache tasks (running in background)", pending_dir_tasks.size());
     }
 
-    // Track which files have been scanned (by fid — cheaper than string hash).
-    // Value: found_dir_idx needed for #include_next.
-    llvm::DenseMap<Fid, std::optional<unsigned>> scanned_files;
+    auto config_end = std::chrono::steady_clock::now();
+    report.config_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
 
-    // Wave 0: all source files from CDB (entry file ids are pool ids).
-    // Re-use the cached initial_wave when available.
-    std::vector<WaveEntry> current_wave = std::move(wave0);
-    for(auto& entry: current_wave) {
-        scanned_files.try_emplace(entry.path_id, entry.found_dir_idx);
-    }
+    FileScanner scanner(cdb, graph, report);
+    auto& scope = scanner.scope;
 
     report.source_files = current_wave.size();
     std::size_t wave_num = 0;
@@ -506,7 +781,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     // stat. Recorded at discovery so the prefetch never races the check.
     std::vector<FileScanResult> pending_warm;
     vfs::StatusBatch statuses;
-    auto try_warm = [&](Fid path_id, std::uint32_t config_id) {
+    auto try_warm = [&](Fid path_id, ScanContext context) {
         auto path = file_table.resolve(path_id);
         auto status = statuses.status(path);
         if(!status) {
@@ -523,17 +798,13 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         pending_warm.push_back({
             .path = path.data(),
             .path_id = path_id,
-            .config_id = config_id,
+            .context = context,
             .scan_result = it->second,
             .obs = {.stamp = status->stamp, .hash = *hash, .paired = true, .reliable = true}
         });
         report.scan_cache_hits++;
         return true;
     };
-
-    // Pre-resolved search configs: built once after dir cache is populated,
-    // then reused for all waves.  Eliminates StringMap lookups in Phase 2.
-    llvm::DenseMap<std::uint32_t, ResolvedSearchConfig> resolved_configs;
 
     while(!current_wave.empty()) {
         auto wave_start = std::chrono::steady_clock::now();
@@ -574,14 +845,14 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             scan_tasks.reserve(current_wave.size());
             for(auto& entry: current_wave) {
                 auto pid = entry.path_id;
-                auto cid = entry.config_id;
-                if(settled.contains(pid) || try_warm(pid, cid)) {
+                auto context = entry.context;
+                if(settled.contains(pid) || try_warm(pid, context)) {
                     continue;
                 }
                 auto path = file_table.resolve(pid).data();
-                scan_tasks.push_back(
-                    kota::queue([path, pid, cid]() { return scan_file_worker(path, pid, cid); },
-                                loop));
+                scan_tasks.push_back(kota::queue(
+                    [path, pid, context]() { return scan_file_worker(path, pid, context); },
+                    loop));
             }
             wave_cache_hits += pending_warm.size();
             std::move(pending_warm.begin(), pending_warm.end(), std::back_inserter(scan_results));
@@ -630,222 +901,37 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             report.scan_us += sr.scan_us;
         }
 
-        // Pre-resolve search configs once after dir cache is populated (wave 0).
-        // Converts StringMap lookups into direct pointer dereferences for Phase 2.
-        if(resolved_configs.empty()) {
-            for(auto& [config_id, config]: configs) {
-                resolved_configs[config_id] = resolve_search_config(config, scope);
-            }
-        }
-
-        // Phase 2+3: Resolve includes, intern paths, build graph, collect next wave.
-        // Merged into a single pass to avoid intermediate string allocations.
-        // Optimization 2: newly discovered files are immediately queued for
-        // scanning (prefetch_tasks), overlapping Phase 1 of the next wave
-        // with Phase 2 of the current wave.
+        // Phase 2: record every scan; a file reached for the first time
+        // joins the next wave, its scan started right away on the thread
+        // pool so it is ready when the wave begins — unless the shared
+        // table already pins its scan.
         std::vector<WaveEntry> next_wave;
         next_wave.reserve(current_wave.size());  // Heuristic: next wave ≤ current wave.
         auto stats_before = scope.stats;
+        auto reach = [&](Fid path_id, ScanContext context) {
+            next_wave.push_back({path_id, context});
+            if(!try_warm(path_id, context)) {
+                auto path = file_table.resolve(path_id).data();
+                prefetch_tasks.push_back(kota::queue(
+                    [path, path_id, context]() { return scan_file_worker(path, path_id, context); },
+                    loop));
+            }
+        };
 
         for(auto& scan_result: scan_results) {
             report.total_files++;
-
             if(scan_result.read_failed) {
                 LOG_WARN("Failed to read file for scanning: {}", scan_result.path);
                 continue;
             }
-
-            auto rc_it = resolved_configs.find(scan_result.config_id);
-            if(rc_it == resolved_configs.end()) {
-                continue;
+            auto module = scanner.record(scan_result.path_id,
+                                         scan_result.context,
+                                         std::move(scan_result.scan_result),
+                                         scan_result.obs.hash,
+                                         reach);
+            if(!module.empty()) {
+                graph.add_module(module, scan_result.path_id);
             }
-
-            auto& resolved_config = rc_it->second;
-            // Quoted includes start from the directory the build reaches
-            // the includer through, as clang's do.
-            auto includer_spelling = file_table.spelling(scan_result.path_id).parent();
-            llvm::StringRef includer_dir = includer_spelling;
-            auto* includer_listing = &scope.list(includer_dir);
-
-            // Look up the found_dir_idx for this file (stored when it was discovered).
-            std::optional<unsigned> includer_found_dir_idx;
-            auto sf_it = scanned_files.find(scan_result.path_id);
-            if(sf_it != scanned_files.end()) {
-                includer_found_dir_idx = sf_it->second;
-            }
-
-            // Record module interface unit mapping.
-            // When the module declaration is inside a conditional directive
-            // (need_preprocess=true), fall back to scan_module_decl() which
-            // runs a lightweight preprocessor pass to resolve the actual
-            // module name. This only applies to source files (wave 0) since
-            // headers cannot contain module declarations.
-            if(scan_result.scan_result.need_preprocess && wave_num == 0) {
-                // Preprocess under the scan unit's own group command — only
-                // its flags (e.g. a define unguarding the declaration) can
-                // resolve this unit; a multi-entry file has one group per
-                // candidate.
-                {
-                    auto& group = group_refs[scan_result.config_id];
-                    CommandRef ref{scan_result.path_id,
-                                   group.config,
-                                   group.input,
-                                   CommandSource::CDBExact};
-                    auto rendered = cdb.render(ref);
-                    auto config_hash = hash_rendered_command(rendered);
-                    auto cached = file_table.module_decls.find({scan_result.obs.hash, config_hash});
-                    if(cached != file_table.module_decls.end()) {
-                        if(!cached->second.name.empty()) {
-                            scan_result.scan_result.module_name = cached->second.name;
-                            scan_result.scan_result.is_interface_unit =
-                                cached->second.is_interface_unit;
-                        }
-                    } else if(auto observed = vfs::read_observed(scan_result.path)) {
-                        // The preprocessor must consume the bytes that
-                        // produced this scan. When the disk moved under the
-                        // scan, the whole result is rebuilt from the bytes
-                        // actually read — includes and module name out of
-                        // one version, never a chimera of two.
-                        if(observed->obs.hash != scan_result.obs.hash) {
-                            file_table.observe(scan_result.path_id, observed->obs);
-                            scan_result.scan_result = scan_quick(observed->content->getBuffer());
-                            scan_result.obs = observed->obs;
-                            file_table.scan_results.try_emplace(
-                                {scan_result.path_id, observed->obs.hash},
-                                scan_result.scan_result);
-                        }
-                        if(scan_result.scan_result.need_preprocess) {
-                            auto fallback = scan_module_decl(rendered,
-                                                             cdb.config(ref.config).directory,
-                                                             observed->content->getBuffer());
-                            // Negative results memoize too: preprocessing the
-                            // same bytes under the same flags again cannot
-                            // resolve differently.
-                            file_table.module_decls[{scan_result.obs.hash, config_hash}] = {
-                                fallback.module_name,
-                                fallback.is_interface_unit};
-                            if(!fallback.module_name.empty()) {
-                                scan_result.scan_result.module_name =
-                                    std::move(fallback.module_name);
-                                scan_result.scan_result.is_interface_unit =
-                                    fallback.is_interface_unit;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if(scan_result.scan_result.is_interface_unit) {
-                graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
-            }
-            graph.set_import_candidate(scan_result.path_id, scan_result.scan_result.has_import);
-
-            report.includes_found += scan_result.scan_result.includes.size();
-
-            llvm::SmallVector<IncludeEdge> include_edges;
-            include_edges.reserve(scan_result.scan_result.includes.size());
-
-            for(auto& inc: scan_result.scan_result.includes) {
-                // For angled includes, resolution depends only on config (not includer dir).
-                // Cache these to skip redundant directory searches across files.
-                bool cache_eligible = inc.is_angled && !inc.is_include_next;
-                llvm::SmallString<80> cache_key;
-                if(cache_eligible) {
-                    cache_key.append(reinterpret_cast<const char*>(&scan_result.config_id),
-                                     reinterpret_cast<const char*>(&scan_result.config_id) +
-                                         sizeof(std::uint32_t));
-                    cache_key += inc.path;
-
-                    auto cache_it = include_cache.find(cache_key);
-                    if(cache_it != include_cache.end()) {
-                        report.include_cache_hits++;
-                        auto& cached = cache_it->second;
-                        if(!cached.path_id.valid()) {
-                            report.unresolved.push_back({
-                                std::move(inc.path),
-                                std::string(file_table.resolve(scan_result.path_id)),
-                                inc.is_angled,
-                                inc.conditional,
-                            });
-                            continue;
-                        }
-                        report.includes_resolved++;
-                        if(inc.conditional) {
-                            report.conditional_edges++;
-                        } else {
-                            report.unconditional_edges++;
-                        }
-                        report.total_edges++;
-                        include_edges.push_back({cached.path_id, inc.conditional});
-                        if(scanned_files.try_emplace(cached.path_id, cached.found_dir_idx).second) {
-                            next_wave.push_back(
-                                {cached.path_id, scan_result.config_id, cached.found_dir_idx});
-                        }
-                        continue;
-                    }
-                }
-
-                auto r_t0 = std::chrono::steady_clock::now();
-                auto resolved = resolve_include(inc.path,
-                                                inc.is_angled,
-                                                includer_listing,
-                                                includer_dir,
-                                                inc.is_include_next,
-                                                includer_found_dir_idx,
-                                                resolved_config,
-                                                scope);
-                auto r_t1 = std::chrono::steady_clock::now();
-                report.p2_resolve_us +=
-                    std::chrono::duration_cast<std::chrono::microseconds>(r_t1 - r_t0).count();
-                if(!resolved.has_value()) {
-                    if(cache_eligible) {
-                        include_cache.try_emplace(cache_key, CachedInclude{});
-                    }
-                    report.unresolved.push_back({
-                        std::move(inc.path),
-                        std::string(file_table.resolve(scan_result.path_id)),
-                        inc.is_angled,
-                        inc.conditional,
-                    });
-                    continue;
-                }
-
-                auto inc_path_id = file_table.intern_spelled(Spelling::absolute(resolved->path));
-                report.includes_resolved++;
-
-                if(cache_eligible) {
-                    include_cache.try_emplace(cache_key,
-                                              CachedInclude{inc_path_id, resolved->found_dir_idx});
-                }
-
-                if(inc.conditional) {
-                    report.conditional_edges++;
-                } else {
-                    report.unconditional_edges++;
-                }
-                report.total_edges++;
-                include_edges.push_back({inc_path_id, inc.conditional});
-
-                if(scanned_files.try_emplace(inc_path_id, resolved->found_dir_idx).second) {
-                    next_wave.push_back(
-                        {inc_path_id, scan_result.config_id, resolved->found_dir_idx});
-                    // Prefetch: start scanning this file immediately on the
-                    // thread pool so it's ready when the next wave begins —
-                    // unless the shared table already pins its scan.
-                    if(!try_warm(inc_path_id, scan_result.config_id)) {
-                        auto inc_path = file_table.resolve(inc_path_id).data();
-                        prefetch_tasks.push_back(kota::queue(
-                            [inc_path, inc_path_id, cid = scan_result.config_id]() {
-                                return scan_file_worker(inc_path, inc_path_id, cid);
-                            },
-                            loop));
-                    }
-                }
-            }
-
-            graph.set_includes(scan_result.path_id,
-                               scan_result.config_id,
-                               std::move(include_edges));
         }
 
         auto wave_listed = scope.stats.listed - stats_before.listed;
@@ -856,18 +942,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         report.fs_us += scope.stats.us - stats_before.us;
 
         auto phase2_end = std::chrono::steady_clock::now();
-        auto phase3_end = phase2_end;
-
         auto p1 =
             std::chrono::duration_cast<std::chrono::milliseconds>(phase1_end - wave_start).count();
         auto p2 =
             std::chrono::duration_cast<std::chrono::milliseconds>(phase2_end - phase1_end).count();
-        auto p3 =
-            std::chrono::duration_cast<std::chrono::milliseconds>(phase3_end - phase2_end).count();
-
         report.phase1_ms += p1;
         report.phase2_ms += p2;
-        report.phase3_ms += p3;
 
         // Record per-wave stats for cold start analysis.
         ScanReport::WaveStats ws;
@@ -881,16 +961,13 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         ws.cache_hits = wave_cache_hits;
         report.wave_stats.push_back(ws);
 
-        LOG_INFO(
-            "Wave {}: {} files | read+scan={}ms resolve={}ms graph={}ms | next={} "
-            "prefetch={}",
-            wave_num,
-            current_wave.size(),
-            p1,
-            p2,
-            p3,
-            next_wave.size(),
-            prefetch_tasks.size());
+        LOG_INFO("Wave {}: {} files | read+scan={}ms resolve={}ms | next={} prefetch={}",
+                 wave_num,
+                 current_wave.size(),
+                 p1,
+                 p2,
+                 next_wave.size(),
+                 prefetch_tasks.size());
 
         current_wave = std::move(next_wave);
         wave_num++;
@@ -920,6 +997,48 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
     loop.schedule(scan_impl(cdb, graph, report, loop, units));
     loop.run();
     return report;
+}
+
+void rescan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph, Fid path_id) {
+    auto& files = cdb.files();
+    ScanReport report;
+    FileScanner scanner(cdb, graph, report);
+    llvm::SmallVector<WaveEntry> reached;
+    auto reach = [&](Fid fid, ScanContext context) {
+        reached.push_back({fid, context});
+    };
+    auto scan = [&](Fid fid, llvm::ArrayRef<ScanContext> contexts) {
+        auto observed = vfs::read_observed(files.resolve(fid));
+        if(!observed) {
+            return;
+        }
+        files.observe(fid, observed->obs);
+        auto result = files.scan_of(fid, observed->obs.hash, observed->content->getBuffer());
+        // A unit provides what its commands declare, as on the full scan;
+        // a name it keeps declaring keeps its place among the providers.
+        bool unit = false;
+        llvm::SmallVector<std::string, 1> declared;
+        for(auto context: contexts) {
+            auto module = scanner.record(fid, context, result, observed->obs.hash, reach);
+            unit |= context.unit;
+            if(!module.empty()) {
+                declared.push_back(std::move(module));
+            }
+        }
+        if(unit) {
+            graph.update_module_decl(fid, declared.empty() ? "" : declared.front());
+            for(auto& module: declared) {
+                graph.add_module(module, fid);
+            }
+        }
+    };
+
+    graph.clear_includes(path_id);
+    scan(path_id, llvm::to_vector(graph.contexts(path_id)));
+    while(!reached.empty()) {
+        auto entry = reached.pop_back_val();
+        scan(entry.path_id, entry.context);
+    }
 }
 
 }  // namespace clice

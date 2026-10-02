@@ -184,6 +184,9 @@ struct StatsResult {
     /// a look not yet due (see vfs::DiskState::Checks).
     std::uint64_t checks_looked = 0;
     std::uint64_t checks_trusted = 0;
+
+    /// Preprocessor passes that looked for a unit's imports.
+    std::uint64_t import_scans = 0;
 };
 
 }  // namespace clice::ext

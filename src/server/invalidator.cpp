@@ -52,7 +52,7 @@ void Invalidator::mark_dependent(Fid path_id, DirtySet& dirty) {
 }
 
 llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
-    auto result = project.dep_graph.find_host_sources(path_id);
+    auto result = project.dep_graph.find_readers(path_id);
     auto add = [&](Fid reader) {
         if(reader != path_id && !llvm::is_contained(result, reader)) {
             result.push_back(reader);

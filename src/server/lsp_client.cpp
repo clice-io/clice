@@ -1027,6 +1027,7 @@ void LSPClient::register_extensions() {
                     llvm::make_second_range(served->contexts.header_contexts),
                     [](const HeaderContext& context) { return context.synthesized != nullptr; }));
                 stats.sessions += static_cast<std::uint32_t>(served->sessions.sessions.size());
+                stats.import_scans += served->sched.pcm.import_scans;
             }
             stats.checks_looked = this->server.files.disk.checks.looked;
             stats.checks_trusted = this->server.files.disk.checks.trusted;

@@ -9,15 +9,15 @@ namespace {
 
 /// Build a resolver from a fixed raw-name -> absolute-path mapping.
 auto map_resolver(const llvm::StringMap<std::string>& mapping) {
-    return [&mapping](llvm::StringRef name,
-                      [[maybe_unused]] bool is_angled,
-                      [[maybe_unused]] bool is_include_next,
-                      [[maybe_unused]] llvm::StringRef includer_dir) -> std::optional<std::string> {
-        auto it = mapping.find(name);
+    return [&mapping](const ScanResult::IncludeInfo& include,
+                      [[maybe_unused]] llvm::StringRef includer_dir,
+                      [[maybe_unused]] std::optional<unsigned> includer_found_dir)
+               -> std::optional<ResolveResult> {
+        auto it = mapping.find(include.path);
         if(it == mapping.end()) {
             return std::nullopt;
         }
-        return it->second;
+        return ResolveResult{.path = llvm::SmallString<256>(it->second)};
     };
 }
 
@@ -150,34 +150,6 @@ TEST_CASE(QuotedIncludeKept) {
 )");
 }
 
-TEST_CASE(FilenameFallback) {
-    // Resolution fails entirely — an unambiguous filename match still works.
-    llvm::StringMap<std::string> empty;
-
-    ChainEntry entry{"/proj/main.cpp", R"(#include <vector>
-#include "utils.h"
-)"};
-
-    auto result = prefix_of({entry}, "/proj/utils.h", map_resolver(empty));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
-#include <vector>
-)");
-}
-
-TEST_CASE(AmbiguousFallbackFails) {
-    // Resolution fails and two candidates share the target's filename:
-    // refuse to guess.
-    llvm::StringMap<std::string> empty;
-
-    ChainEntry entry{"/proj/main.cpp", R"(#include "a/config.h"
-#include "b/config.h"
-)"};
-
-    auto result = prefix_of({entry}, "/proj/b/config.h", map_resolver(empty));
-    EXPECT_FALSE(result.has_value());
-}
-
 TEST_CASE(NoMatchFails) {
     llvm::StringMap<std::string> mapping = {
         {"vector", "/sys/vector"},
@@ -294,27 +266,6 @@ TEST_CASE(OnlyConditionalMatch) {
 )");
 }
 
-TEST_CASE(DuplicateSpellingFallback) {
-    // Resolution fails and two directives share the same raw spelling:
-    // they bring in the same file, so prefer the unconditional one instead
-    // of treating this as ambiguous.
-    llvm::StringMap<std::string> empty;
-
-    ChainEntry entry{"/proj/main.cpp", R"(#ifdef FAST
-#include "impl.h"
-#endif
-#include "impl.h"
-)"};
-
-    auto result = prefix_of({entry}, "/proj/impl.h", map_resolver(empty));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
-#ifdef FAST
-#include "impl.h"
-#endif
-)");
-}
-
 TEST_CASE(DuplicateIncludeFirstCut) {
     // Two identical unconditional includes of the target: cut at the first.
     llvm::StringMap<std::string> mapping = {
@@ -367,6 +318,31 @@ TEST_CASE(IncludeNextKeptVerbatim) {
 )");
 }
 
+TEST_CASE(IncludeNextFollowsChain) {
+    // A chain file resolves its #include_next from the search directory
+    // its includer's directive found it in; the host from none.
+    ChainEntry host{"/proj/main.cpp", R"(#include <mid.h>
+)"};
+    ChainEntry mid{"/inc/b/mid.h", R"(#include_next <target.h>
+)"};
+    auto resolver = [](const ScanResult::IncludeInfo& include,
+                       [[maybe_unused]] llvm::StringRef includer_dir,
+                       std::optional<unsigned> includer_found_dir) -> std::optional<ResolveResult> {
+        if(include.path == "mid.h" && !includer_found_dir) {
+            return ResolveResult{.path = llvm::SmallString<256>("/inc/b/mid.h"),
+                                 .found_dir_idx = 1};
+        }
+        if(include.path == "target.h" && includer_found_dir == 1u) {
+            return ResolveResult{.path = llvm::SmallString<256>("/inc/c/target.h"),
+                                 .found_dir_idx = 2};
+        }
+        return std::nullopt;
+    };
+
+    auto result = prefix_of({host, mid}, "/inc/c/target.h", resolver);
+    ASSERT_TRUE(result.has_value());
+}
+
 TEST_CASE(OccurrenceSelectsMatch) {
     // Explicit occurrence indexes the candidate list of the direct
     // includer, overriding the prefer-unconditional default.
@@ -410,26 +386,15 @@ TEST_CASE(OccurrenceOutOfRange) {
     EXPECT_FALSE(result.has_value());
 }
 
-TEST_CASE(CountOccurrences) {
-    llvm::StringMap<std::string> empty;
-
-    auto count = count_include_occurrences(R"(#include "list.def"
-#undef X
-#include "list.def"
-)",
-                                           "/proj/main.cpp",
-                                           "/proj/list.def",
-                                           map_resolver(empty));
-    EXPECT_EQ(count, 2u);
-}
-
 TEST_CASE(CrlfLineEndings) {
-    llvm::StringMap<std::string> empty;
+    llvm::StringMap<std::string> mapping = {
+        {"target.h", "/proj/target.h"},
+    };
 
     // CR cannot appear in a raw literal cleanly; escaped string is clearer.
     ChainEntry entry{"/proj/main.cpp", "#include \"a.h\"\r\n#include \"target.h\"\r\n"};
 
-    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(empty));
+    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, "#line 1 \"/proj/main.cpp\"\n#include \"a.h\"\r\n");
 }

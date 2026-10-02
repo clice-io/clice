@@ -67,11 +67,9 @@ TEST_CASE(RedeclareKeepsProviderOrder) {
 
 TEST_CASE(ModuleOfFollowsDeclarations) {
     clice::DependencyGraph graph;
-    EXPECT_FALSE(graph.has_modules());
     EXPECT_TRUE(graph.module_of(Fid{1}).empty());
 
     graph.add_module("foo", Fid{1});
-    EXPECT_TRUE(graph.has_modules());
     EXPECT_EQ(graph.module_of(Fid{1}), "foo");
 
     // A re-declaration moves the file: the old name loses it, the
@@ -81,10 +79,9 @@ TEST_CASE(ModuleOfFollowsDeclarations) {
     EXPECT_TRUE(graph.lookup_module("foo").empty());
 
     // Dropping the declaration leaves the name behind as an empty
-    // provider list, yet the file declares nothing and no module remains.
+    // provider list, yet the file declares nothing.
     graph.update_module_decl(Fid{1}, {});
     EXPECT_TRUE(graph.module_of(Fid{1}).empty());
-    EXPECT_FALSE(graph.has_modules());
     EXPECT_TRUE(graph.lookup_module("bar").empty());
 }
 
@@ -290,6 +287,52 @@ TEST_CASE(EdgesKeepReverseMap) {
     ASSERT_TRUE(graph.get_includers(Fid{20}).empty());
 }
 
+TEST_CASE(ReadersClimbForcedIncludes) {
+    // Unit 1 includes header 10; units 1 and 2 force header 20 in, which
+    // includes 30. Hosting stops at the forced header, readers do not.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}});
+    graph.set_includes(Fid{20}, 0, {{Fid{30}}});
+    graph.add_forced_include(Fid{2}, Fid{20});
+    graph.add_forced_include(Fid{1}, Fid{20});
+    graph.build_reverse_map();
+
+    ASSERT_EQ(graph.get_forcing_units(Fid{20}), (llvm::ArrayRef<Fid>{Fid{1}, Fid{2}}));
+    ASSERT_TRUE(graph.get_includers(Fid{20}).empty());
+    ASSERT_EQ(graph.find_host_sources(Fid{30}), (llvm::SmallVector<Fid, 4>{Fid{20}}));
+    ASSERT_TRUE(graph.find_include_chain(Fid{1}, Fid{30}).empty());
+
+    auto readers = graph.find_readers(Fid{30});
+    llvm::sort(readers);
+    ASSERT_EQ(readers, (llvm::SmallVector<Fid, 4>{Fid{1}, Fid{2}}));
+    ASSERT_EQ(graph.find_readers(Fid{10}), (llvm::SmallVector<Fid, 4>{Fid{1}}));
+}
+
+TEST_CASE(CountsDuplicateIncludes) {
+    // One edge per directive, under the configuration with the most.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}, {Fid{20}}, {Fid{10}}});
+    graph.set_includes(Fid{1}, 1, {{Fid{10}}});
+
+    EXPECT_EQ(graph.count_includes(Fid{1}, Fid{10}), 2u);
+    EXPECT_EQ(graph.count_includes(Fid{1}, Fid{20}), 1u);
+    EXPECT_EQ(graph.count_includes(Fid{1}, Fid{30}), 0u);
+}
+
+TEST_CASE(ImportReachedThroughForced) {
+    // Unit 1 forces header 20 in, which includes candidate 30; unit 2
+    // includes only header 10.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{20}, 0, {{Fid{30}}});
+    graph.set_includes(Fid{2}, 0, {{Fid{10}}});
+    graph.add_forced_include(Fid{1}, Fid{20});
+    graph.record_scan(Fid{30}, ScanResult{.has_import = true});
+
+    EXPECT_TRUE(graph.reaches_import(Fid{1}));
+    EXPECT_TRUE(graph.reaches_import(Fid{30}));
+    EXPECT_FALSE(graph.reaches_import(Fid{2}));
+}
+
 };  // TEST_SUITE(DependencyGraph)
 
 // ============================================================================
@@ -387,8 +430,8 @@ export module m1;
     EXPECT_TRUE(graph_v2.lookup_module("m1").empty());
     EXPECT_EQ(graph_v2.lookup_module("m2").size(), 1u);
 
-    // A warm run must reproduce both: the module-decl memo keys by
-    // (content, rendered command), so each command resolves its own name.
+    // A warm run reproduces both: each command preprocesses its own
+    // declaration again.
     DependencyGraph graph2;
     scan_all(cdb, graph2);
     EXPECT_EQ(graph2.lookup_module("m1").size(), 1u);
@@ -649,6 +692,160 @@ int main() {}
 
     EXPECT_EQ(graph.file_count(), 1u);
     EXPECT_EQ(graph.edge_count(), 0u);
+}
+
+TEST_CASE(ForcedIncludeScanned) {
+    // A forced header is a scanned node: its includes are edges, its
+    // import syntax reaches the candidate set, and its unit reaches it
+    // through the forced relation only.
+    TempDir tmp;
+    tmp.touch("build/force.h", R"(#include "dep.h"
+import m;
+)");
+    tmp.touch("build/dep.h", "int dep;\n");
+    tmp.touch("src/main.cpp", "int main() {}\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.path("build"), tmp.path("src/main.cpp"), {"-include", "force.h"}}
+    }));
+    scan_all(cdb, graph);
+    graph.build_reverse_map();
+
+    auto main = file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto force = file_table.intern(Spelling::absolute(tmp.path("build/force.h")));
+    auto dep = file_table.intern(Spelling::absolute(tmp.path("build/dep.h")));
+    EXPECT_EQ(graph.get_forcing_units(force), llvm::ArrayRef<Fid>{main});
+    EXPECT_TRUE(graph.get_all_includes(main).empty());
+    EXPECT_EQ(graph.get_all_includes(force), llvm::SmallVector<Fid>{dep});
+    EXPECT_TRUE(graph.reaches_import(main));
+    EXPECT_EQ(graph.find_readers(dep), (llvm::SmallVector<Fid, 4>{main}));
+}
+
+TEST_CASE(ForcedIncludeLookupOrder) {
+    // As clang does: the compile's working directory first, then the
+    // search path as for a quoted include.
+    TempDir tmp;
+    tmp.touch("build/first.h", "\n");
+    tmp.touch("inc/first.h", "\n");
+    tmp.touch("inc/second.h", "\n");
+    tmp.touch("src/main.cpp", "int main() {}\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.path("build"),
+                   tmp.path("src/main.cpp"),
+                   {"-I", tmp.path("inc"), "-include", "first.h", "-include", "second.h"}}
+    }));
+    scan_all(cdb, graph);
+
+    auto main = file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto forced = [&](llvm::StringRef path) {
+        return graph.get_forcing_units(file_table.intern(Spelling::absolute(tmp.path(path))));
+    };
+    EXPECT_EQ(forced("build/first.h"), llvm::ArrayRef<Fid>{main});
+    EXPECT_TRUE(forced("inc/first.h").empty());
+    EXPECT_EQ(forced("inc/second.h"), llvm::ArrayRef<Fid>{main});
+}
+
+TEST_CASE(RescanScansNewHeader) {
+    // A save that includes a file the scan never reached scans it under
+    // the includer's context: its own includes and import syntax join.
+    TempDir tmp;
+    tmp.touch("inc/a.h", "\n");
+    tmp.touch("inc/b.h", "#include <c.h>\nimport m;\n");
+    tmp.touch("inc/c.h", "\n");
+    tmp.touch("src/main.cpp", "#include <a.h>\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
+    }));
+    scan_all(cdb, graph);
+    graph.build_reverse_map();
+    auto main = file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto b = file_table.intern(Spelling::absolute(tmp.path("inc/b.h")));
+    auto c = file_table.intern(Spelling::absolute(tmp.path("inc/c.h")));
+    EXPECT_FALSE(graph.reaches_import(main));
+
+    tmp.touch("src/main.cpp", "#include <a.h>\n#include <b.h>\n");
+    rescan_dependency_graph(cdb, graph, main);
+    EXPECT_EQ(graph.get_all_includes(b), llvm::SmallVector<Fid>{c});
+    EXPECT_TRUE(graph.reaches_import(main));
+}
+
+TEST_CASE(RescanResumesIncludeNext) {
+    // A rescan resumes #include_next after the directory the scan found
+    // the file in, as the full scan and clang do.
+    TempDir tmp;
+    tmp.touch("z/other.h", "\n");
+    tmp.touch("a/x.h", "#include_next <x.h>\n");
+    tmp.touch("b/x.h", "\n");
+    tmp.touch("src/main.cpp", "#include <x.h>\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.root,
+                   tmp.path("src/main.cpp"),
+                   {"-I", tmp.path("z"), "-I", tmp.path("a"), "-I", tmp.path("b")}}
+    }));
+    scan_all(cdb, graph);
+    graph.build_reverse_map();
+    auto wrapper = file_table.intern(Spelling::absolute(tmp.path("a/x.h")));
+    auto next = file_table.intern(Spelling::absolute(tmp.path("b/x.h")));
+    ASSERT_EQ(graph.get_all_includes(wrapper), llvm::SmallVector<Fid>{next});
+
+    tmp.touch("a/x.h", "#include_next <x.h>\n#define CHANGED\n");
+    rescan_dependency_graph(cdb, graph, wrapper);
+    EXPECT_EQ(graph.get_all_includes(wrapper), llvm::SmallVector<Fid>{next});
+}
+
+TEST_CASE(RescanForcedUnderUnit) {
+    // A rescanned forced header resolves its includes under the command
+    // forcing it in, as the full scan did — not under a nearer unit's.
+    TempDir tmp;
+    tmp.touch("a/cfg.h", "\n");
+    tmp.touch("b/cfg.h", "\n");
+    tmp.touch("build/force.h", "#include <cfg.h>\n");
+    tmp.touch("src/main.cpp", "\n");
+    tmp.touch("build/near.cpp", "\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.root,
+                   tmp.path("src/main.cpp"),
+                   {"-I", tmp.path("a"), "-include", tmp.path("build/force.h")}},
+                  {tmp.root, tmp.path("build/near.cpp"), {"-I", tmp.path("b")} },
+    }));
+    scan_all(cdb, graph);
+    graph.build_reverse_map();
+
+    auto force = file_table.intern(Spelling::absolute(tmp.path("build/force.h")));
+    auto cfg = file_table.intern(Spelling::absolute(tmp.path("a/cfg.h")));
+    ASSERT_EQ(graph.get_all_includes(force), llvm::SmallVector<Fid>{cfg});
+    tmp.touch("build/force.h", "#include <cfg.h>\n#define CHANGED\n");
+    rescan_dependency_graph(cdb, graph, force);
+    EXPECT_EQ(graph.get_all_includes(force), llvm::SmallVector<Fid>{cfg});
 }
 
 TEST_CASE(MultipleModules) {

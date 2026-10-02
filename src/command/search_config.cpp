@@ -22,6 +22,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     std::vector<SearchDir> angled;
     std::vector<SearchDir> system;
     std::vector<SearchDir> after;
+    std::vector<std::string> forced_includes;
 
     // A leading `=` names the sysroot: the last -isysroot, else the last
     // --sysroot.
@@ -83,6 +84,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
 
             case OPT_idirafter: after.push_back({make_absolute(value)}); break;
 
+            case OPT_include: forced_includes.emplace_back(value); break;
+
             // TODO: -cxx-isystem (clang: frontend::CXXSystem, C++-only system dirs)
             // TODO: -iwithsysroot (prepends sysroot to path, then adds to System)
             // TODO: HeaderMap support (-I foo.hmap remaps include names)
@@ -92,6 +95,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
 
     // Concatenate: Quoted → Angled → System → After
     SearchConfig config;
+    config.forced_includes = std::move(forced_includes);
     config.dirs.reserve(quoted.size() + angled.size() + system.size() + after.size());
     config.dirs.insert(config.dirs.end(),
                        std::make_move_iterator(quoted.begin()),

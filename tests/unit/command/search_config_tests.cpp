@@ -53,6 +53,25 @@ TEST_CASE(ReordersDirectoryGroups) {
     EXPECT_EQ(config.dirs[4].path, spelled(tmp, "sysroot"));
 }
 
+TEST_CASE(KeepsForcedIncludes) {
+    // In command order and as written: their lookup starts from the
+    // working directory, which extraction does not settle.
+    TempDir tmp;
+    std::vector<const char*> args = {"clang++",
+                                     "-include",
+                                     "b.h",
+                                     "-include-pch",
+                                     "p.pch",
+                                     "-I",
+                                     tmp.c_path("inc"),
+                                     "-include",
+                                     "a.h",
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root.str());
+
+    ASSERT_EQ(config.forced_includes, (std::vector<std::string>{"b.h", "a.h"}));
+}
+
 TEST_CASE(MarksDriverDirs) {
     // Only the driver's own flags add a toolchain directory; a user's
     // -isystem is the user's.

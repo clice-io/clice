@@ -16,7 +16,6 @@
 #include "support/anomaly.h"
 #include "support/logging.h"
 #include "support/timer.h"
-#include "syntax/scan.h"
 #include "vfs/path.h"
 #include "worker/protocol.h"
 
@@ -404,6 +403,7 @@ void ASTFamily::invalidate(Fid path_id) {
 void ASTFamily::drop(Fid path_id) {
     graph.update(node(path_id));
     projections.entries.erase(path_id);
+    pcm.forget_buffer(path_id);
 }
 
 void ASTFamily::switch_identity(Session& session) {
@@ -507,40 +507,11 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
 
 kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
                                            const std::shared_ptr<Session>& session,
+                                           const Resolution& resolution,
                                            llvm::StringRef directory,
                                            const std::vector<std::string>& arguments,
-                                           llvm::StringRef text,
-                                           const SynthesizedContext* synthesized) {
-    // A project with no module code pays nothing — no CDB lookup, no
-    // precise scan. The moment import syntax exists anywhere (the
-    // lexical candidate set), every document scans precisely: that is
-    // the same cost the project pays once providers exist, and per-file
-    // reachability approximations of "could this TU see an import" have
-    // irreducible blind spots (macro includes, unsaved include chains).
+                                           llvm::StringRef text) {
     auto path_id = session->path_id;
-    // The remaining gates catch what the candidate set cannot: this
-    // buffer's own unsaved import, a header context's suffix, a forced
-    // include. The scan's sentinel edges are what let the name's first
-    // provider re-dirty this document.
-    bool scan_worth = project.dep_graph.has_modules() ||
-                      !project.dep_graph.import_candidate_files().empty() ||
-                      contexts.header_context(path_id) != nullptr ||
-                      llvm::any_of(arguments, [](const std::string& arg) {
-                          llvm::StringRef flag = arg;
-                          return flag.starts_with("-include") && flag != "-include-pch";
-                      });
-    if(!scan_worth) {
-        scan_worth = scan_quick(text).has_import;
-    }
-    if(!scan_worth) {
-        // The empty truth is still published: a durable import edge
-        // earned earlier must stop cascading here, even when the compile
-        // itself later fails (failed rounds keep declared edges).
-        graph.declare(node(path_id), {});
-        session->quarantine->on_land(evidence_kind(EvidenceKind::PCM));
-        co_return true;
-    }
-
     // Imports come from the round's buffer snapshot under the round's own
     // resolved command — the same text and flags the parse will consume,
     // so a context choice or donated header host cannot enable an import
@@ -556,17 +527,19 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
     // durable edges before waiting, so a document whose compile fails
     // stays cascade-reachable from its imports — fixing or providing an
     // import must re-dirty the documents it broke. The per-round resolve
-    // keeps the edges honest across CDB, buffer and import changes.
+    // keeps the edges honest across CDB, buffer and import changes, and
+    // the empty truth of a document that can import nothing is published
+    // too: a durable import edge earned earlier must stop cascading here.
     llvm::SmallVector<const char*, 32> argv;
     argv.reserve(arguments.size());
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
     auto deps = co_await pcm.direct_deps(path_id,
+                                         resolution,
                                          argv,
                                          directory,
-                                         std::optional<llvm::StringRef>(text),
-                                         synthesized);
+                                         std::optional<llvm::StringRef>(text));
     graph.declare(node(path_id), deps.declared);
     // Sentinels join the round's candidates too: a successful landing
     // replaces the declaration with them, and a declare-only edge would
@@ -708,10 +681,10 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         if(!co_await depend_modules(ctx,
                                     session,
+                                    resolution,
                                     params.directory,
                                     params.arguments,
-                                    params.text,
-                                    synthesized)) {
+                                    params.text)) {
             co_return RoundOutcome::Stale;
         }
 
@@ -1121,16 +1094,15 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
                                                      llvm::StringRef text,
                                                      const std::string& directory,
                                                      const std::vector<std::string>& arguments,
-                                                     const SynthesizedContext* synthesized,
+                                                     const Resolution& resolution,
                                                      StatelessInputs& inputs) {
+    auto* synthesized = resolution.synthesized.get();
     auto& session = ticket.session;
     auto path_id = session->path_id;
     auto license_epoch = projections.epoch(path_id);
 
-    // A user request waits on these builds: dispatch them High so the
-    // background budget cannot throttle its own foreground. The scan
-    // runs under the request's command with the same text the dispatch
-    // will compile — buffer plus any appended suffix include — so an
+    // The scan runs under the request's command with the same text the
+    // dispatch will compile — buffer plus any appended suffix include — so an
     // unsaved `import m;` (or one inside a contextual header's suffix)
     // builds its PCM before the parse needs it.
     llvm::SmallVector<const char*, 32> argv;
@@ -1142,12 +1114,7 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     if(synthesized) {
         synthesized->append_suffix_include(scan_text);
     }
-    if(!co_await pcm.prepare_deps(path_id,
-                                  argv,
-                                  directory,
-                                  std::optional<llvm::StringRef>(scan_text),
-                                  synthesized,
-                                  /*foreground=*/true)) {
+    if(!co_await pcm.prepare_deps(path_id, resolution, argv, directory, scan_text)) {
         co_return false;
     }
 

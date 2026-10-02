@@ -167,8 +167,7 @@ bool EditorContext::holds_choice(Fid path_id) const {
         // A pinned occurrence can vanish while other inclusions of the
         // header survive (the chain stays non-empty).
         if(saved->occurrence.has_value()) {
-            auto count = project.count_occurrences(host, path_id);
-            if(count > 0 && *saved->occurrence >= count) {
+            if(*saved->occurrence >= project.count_occurrences(host, path_id)) {
                 return false;
             }
         }

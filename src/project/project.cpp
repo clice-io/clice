@@ -1,18 +1,11 @@
 #include "project/project.h"
 
 #include <algorithm>
-#include <chrono>
 #include <ranges>
-#include <tuple>
 
-#include "command/search_config.h"
 #include "index/serialization.h"
-#include "project/hosting.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
-#include "syntax/include_resolver.h"
-#include "syntax/preamble_synthesis.h"
-#include "syntax/scan.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
 
@@ -20,9 +13,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -31,156 +22,17 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
     if(chain.size() < 2) {
         return 0;
     }
-    auto includer_path = file_table.resolve(chain[chain.size() - 2]);
-    auto target_path = file_table.resolve(target_id);
-    auto buf = vfs::read(includer_path);
-    if(!buf) {
-        return 0;
-    }
-    auto null_resolver =
-        [](llvm::StringRef, bool, bool, llvm::StringRef) -> std::optional<std::string> {
-        return std::nullopt;
-    };
-    return count_include_occurrences((*buf)->getBuffer(),
-                                     includer_path,
-                                     target_path,
-                                     null_resolver);
+    return dep_graph.count_includes(chain[chain.size() - 2], target_id);
 }
 
 void Project::rescan_disk_file(Fid path_id) {
-    auto path = file_table.resolve(path_id);
-    dep_graph.clear_includes(path_id);
-
-    // One read serves everything a save invalidates: the file's stamp and
-    // hash (so hash comparisons elsewhere stop re-reading), the lexical scan
-    // (include edges and the module declaration), and the bytes the
-    // module-decl preprocessor fallback must consume.
-    auto observed = vfs::read_observed(path);
-    if(observed) {
-        file_table.observe(path_id, observed->obs);
-        const auto& scan =
-            file_table.scan_of(path_id, observed->obs.hash, observed->content->getBuffer());
-
-        // Search paths come from the file's effective commands, or a host's
-        // for headers without one (the header's own edits on top, as its
-        // compile applies them); the builtin fallback still resolves quote
-        // includes via the includer directory. Every command contributes
-        // its own edges, as the startup scan does.
-        Fid cmd_file = path_id;
-        CanonicalRef cmd_path = path;
-        std::optional<Lender> lender;
-        if(!build.unit(path_id)) {
-            if(auto host = default_host(*this, path_id)) {
-                cmd_file = host->file;
-                cmd_path = file_table.resolve(host->file);
-            } else if(build.commands(path_id).empty()) {
-                if(lender = command_lender(*this, path_id); lender) {
-                    cmd_path = file_table.resolve(lender->unit);
-                }
-            }
-        }
-
-        llvm::SmallVector<CommandRef, 2> refs;
-        if(lender) {
-            refs.push_back(build.resolve(path_id,
-                                         lender->config,
-                                         CommandSource::Inferred,
-                                         {cmd_path, path},
-                                         cmd_path));
-        }
-        for(auto& command: lender ? llvm::SmallVector<Candidate, 2>{} : build.commands(cmd_file)) {
-            refs.push_back(
-                build.resolve(path_id, command.config, command.source, {cmd_path, path}, cmd_path));
-        }
-        if(refs.empty()) {
-            refs.push_back(
-                build.resolve(path_id, build.builtin(path), CommandSource::Fallback, path, path));
-        }
-
-        vfs::Scope scope(file_table.dirs);
-        auto spelled_dir = file_table.spelling(path_id).parent();
-        llvm::StringRef dir = spelled_dir;
-        auto& listing = scope.list(dir);
-        for(auto [index, ref]: llvm::enumerate(refs)) {
-            auto search_config = cdb.search_config(ref);
-            auto resolved_config = resolve_search_config(search_config, scope);
-            llvm::SmallVector<IncludeEdge> edges;
-            for(auto& include: scan.includes) {
-                auto resolved = resolve_include(include.path,
-                                                include.is_angled,
-                                                &listing,
-                                                dir,
-                                                include.is_include_next,
-                                                0,
-                                                resolved_config,
-                                                scope);
-                if(resolved) {
-                    edges.push_back({file_table.intern_spelled(Spelling::absolute(resolved->path)),
-                                     include.conditional});
-                }
-            }
-            dep_graph.set_includes(path_id, static_cast<std::uint32_t>(index), std::move(edges));
-        }
-
-        context_epoch += 1;
-
-        // The graph's module declaration is what import resolution reads —
-        // left stale, an interface saved mid-session could never satisfy
-        // its importers.
-        auto module_name = scan.module_name;
-        bool is_interface_unit = scan.is_interface_unit;
-        // A module declaration inside a preprocessor conditional is beyond
-        // the lexical scan (need_preprocess, name left empty): resolve it
-        // with the same scan_module_decl() fallback the startup scan uses,
-        // or this save would drop a guarded interface from both provider
-        // maps and leave its importers unresolved until a reload.
-        if(scan.need_preprocess) {
-            // Under the default selection, as the startup scan preprocesses
-            // each unit under its own first command.
-            auto& ref = refs.front();
-            auto rendered = cdb.render(ref);
-            llvm::SmallString<512> joined;
-            for(auto* arg: rendered) {
-                joined.append(arg);
-                joined.push_back('\0');
-            }
-            auto key = std::pair{observed->obs.hash, llvm::xxh3_64bits(joined)};
-            auto cached = file_table.module_decls.find(key);
-            if(cached == file_table.module_decls.end()) {
-                // The preprocessor consumes the very bytes that produced
-                // the scan; negative results memoize too.
-                auto fallback = scan_module_decl(rendered,
-                                                 cdb.config(ref.config).directory,
-                                                 observed->content->getBuffer());
-                cached = file_table.module_decls
-                             .try_emplace(key,
-                                          FileTable::ModuleDecl{fallback.module_name,
-                                                                fallback.is_interface_unit})
-                             .first;
-            }
-            if(!cached->second.name.empty()) {
-                module_name = cached->second.name;
-                is_interface_unit = cached->second.is_interface_unit;
-            }
-        }
-        // Interface units only, mirroring the startup scan: an
-        // implementation unit (`module foo;`) must never satisfy
-        // lookup_module — importers would edge to it and try to build it
-        // as an interface — nor claim a PCM node of its own.
-        if(!is_interface_unit) {
-            module_name.clear();
-        }
-        dep_graph.update_module_decl(path_id, module_name);
-        dep_graph.set_import_candidate(path_id, scan.has_import);
-        return;
-    }
-
+    rescan_dependency_graph(cdb, dep_graph, path_id);
     context_epoch += 1;
 }
 
 void Project::forget_file(Fid path_id) {
     dep_graph.update_module_decl(path_id, {});
-    dep_graph.set_import_candidate(path_id, false);
+    dep_graph.forget_scan(path_id);
     dep_graph.clear_includes(path_id);
     context_epoch += 1;
 }

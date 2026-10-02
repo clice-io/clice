@@ -236,6 +236,46 @@ test("failed import reported", async ({ session }) => {
     expect(importError(), JSON.stringify(client.diagnostics.get(uri))).toHaveLength(1);
 });
 
+/// An import reaching the unit only through its command's forced include
+/// is built before the unit compiles.
+test("forced include imports module", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    workspace.write("deps.h", "import A;\n");
+    workspace.write("main.cpp", "int main() { return a(); }\n");
+    workspace.writeEntries(
+        [
+            ["a.cppm", []],
+            ["main.cpp", ["-include", "deps.h"]],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertCleanCompile(uri);
+});
+
+/// An unsaved include of a header that imports builds the module first.
+test("unsaved include imports module", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    workspace.write("deps.h", "import A;\n");
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeEntries(
+        [
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+
+    client.change(uri, 1, '#include "deps.h"\nint main() { return a(); }\n');
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+});
+
 /// A module whose own import is missing breaks its importers' import too.
 test("nested missing module", async ({ session }) => {
     const { client, workspace } = session.tmp();

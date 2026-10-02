@@ -7,6 +7,7 @@
 
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
@@ -287,20 +288,21 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     if(!file) {
         return result;
     }
-    auto direct = ws.dep_graph.get_includers(*file);
     llvm::DenseSet<Fid> seen{*file};
-    for(auto includer: direct) {
-        result.direct_dependents.push_back(ws.file_table.display(includer));
-        seen.insert(includer);
-    }
-    auto hosts = ws.dep_graph.find_host_sources(*file);
-    for(auto host: hosts) {
-        if(seen.insert(host).second) {
-            result.transitive_dependents.push_back(ws.file_table.display(host));
+    for(auto dependent: llvm::concat<const Fid>(ws.dep_graph.get_includers(*file),
+                                                ws.dep_graph.get_forcing_units(*file))) {
+        if(seen.insert(dependent).second) {
+            result.direct_dependents.push_back(ws.file_table.display(dependent));
         }
     }
-    for(auto host: hosts) {
-        auto module_name = ws.dep_graph.module_of(host);
+    auto readers = ws.dep_graph.find_readers(*file);
+    for(auto reader: readers) {
+        if(seen.insert(reader).second) {
+            result.transitive_dependents.push_back(ws.file_table.display(reader));
+        }
+    }
+    for(auto reader: readers) {
+        auto module_name = ws.dep_graph.module_of(reader);
         if(!module_name.empty()) {
             result.affected_modules.push_back(module_name.str());
         }
