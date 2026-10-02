@@ -110,7 +110,7 @@ pixi 环境之外的前置条件：
 pixi run compat-test          # default RelWithDebInfo
 ```
 
-每个场景都按 CI 运行器镜像中的样子指定某一平台的编译器：Linux 上是发行版带版本号的 GCC 与 Clang，以及 bear、ccache、meson、ninja、xmake、bazel、zig、Emscripten，还有 MinGW、RISC-V 和 Arm 交叉编译器；Windows 上是 Visual Studio、LLVM 和 MinGW；macOS 上是 Apple clang 以及 Homebrew 的 GCC 和 LLVM。缺少工具的场景在本地跳过，在 CI 中则判为失败。clice 尚不支持的场景在 `unsupported` 中写明原因：它的检查被跳过，构建照常运行。CI 在改动 `src/command/` 或该套件本身时运行它，并每周针对最新的 nightly 构建运行一次。
+每个场景都按 CI 运行器镜像中的样子指定某一平台的编译器：Linux 上是发行版带版本号的 GCC 与 Clang，以及 bear、ccache、meson、ninja、xmake、bazel、zig、Emscripten，还有 MinGW、RISC-V 和 Arm 交叉编译器；Windows 上是 Visual Studio、LLVM 和 MinGW；macOS 上是 Apple clang 以及 Homebrew 的 GCC 和 LLVM。缺少工具的场景在本地跳过，在 CI 中则判为失败。clice 尚不支持的场景在 `unsupported` 中写明原因：它的检查被跳过，构建照常运行。CI 在命令处理（`src/command/`、命令解析器、`compileCommand` 查询）或该套件本身有改动时运行它，并每周针对最新的发布版本运行一次。
 
 ## 调试
 
