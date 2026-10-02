@@ -313,8 +313,9 @@ void ProjectServer::close_session(Fid path_id) {
     ast.drop(path_id);
     // The session's compile stood in for the file's background index
     // (IndexPump::compiled_by_session); the disk's turn again, unless it
-    // was deleted meanwhile.
-    if(!project.file_table.seen_missing(path_id) &&
+    // was deleted meanwhile or its index run failed for good, which waits
+    // for a change.
+    if(!project.file_table.seen_missing(path_id) && !sched.pump.failed().contains(path_id) &&
        sched.pump.enqueue(path_id, ReindexReason::DepsOnly)) {
         sched.pump.schedule(false);
     }

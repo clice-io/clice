@@ -253,6 +253,11 @@ test("preamble crash is shared", async ({ session }) => {
 test("module crash notes importers", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.copyFiles(path.join(DATA_DIR, "modules", "consumer_imports_module"));
+    workspace.write("other.cpp", "import Math;\nint other() { return add(3, 4); }\n");
+    workspace.write(
+        "CMakeLists.txt",
+        workspace.read("CMakeLists.txt").replace("PRIVATE main.cpp", "PRIVATE main.cpp other.cpp"),
+    );
     workspace.generateCDB();
     const build = `buildPcm ${workspace.displayPath("math.cppm")}`;
     const client = session.spawn(workspace, crashing({ CLICE_TEST_CRASH_REQUEST: build }));
@@ -276,11 +281,17 @@ test("module crash notes importers", async ({ session }) => {
     await client.hoverAt(uri, 3, 12);
     await settleCrashes(workspace, build, 2);
 
-    // Edited, the module is built again without a save.
+    // Another importer learns the crash without one of its own.
+    const [otherUri] = client.open("other.cpp");
+    await client.hoverAt(otherUri, 1, 26);
+    await waitNote(client, otherUri, "while building a module imported by this file");
+    expect(workspace.workerCrashes(build)).toBe(2);
+
+    // Edited, the module is built again for it without a save.
     await sleep(MTIME_GRANULARITY);
     workspace.write("math.cppm", `${workspace.read("math.cppm")}// edited\n`);
     await client.poll("workspace");
-    await client.hoverAt(uri, 3, 12);
+    await client.hoverAt(otherUri, 1, 26);
     await settleCrashes(workspace, build, 3);
 });
 

@@ -422,10 +422,18 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
         auto& to = route(path_id);
         owners[path_id] = &to;
         to.open_session(path_id, session->text, session->version);
+        auto moved = to.sessions.find(path_id);
+        // The crash records move with the document; work still in flight
+        // under the old project books into them.
+        moved->quarantine = session->quarantine;
+        from.sessions.parked.erase(path_id);
+        if(!moved->quarantine->empty()) {
+            to.ast.republish(moved);
+        }
         // The client still shows what the old project gave it, and no
         // request of its own replaces it: compile under the new one, or
         // have an index-served document's features pulled again.
-        if(auto moved = to.sessions.find(path_id); moved->serving == ServingMode::Escalated) {
+        if(moved->serving == ServingMode::Escalated) {
             to.ast.request_compile(moved);
         } else {
             index_served = true;

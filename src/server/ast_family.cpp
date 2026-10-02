@@ -591,6 +591,9 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
                         record_crash(session, kind, *crash);
                     }
                     crashed = true;
+                    // Still an input: the module's fix must re-dirty this
+                    // document.
+                    ctx.reference({Family::PCM, dep.raw});
                     continue;
                 }
                 pcm.forgive(dep);
@@ -754,6 +757,11 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                 record_crash(session, pch_kind, *crash);
                                 co_return RoundOutcome::Failed;
                             }
+                            // A build that failed without a crash answered:
+                            // the preamble no longer crashes.
+                            if(session->generation == gen && ctx.current()) {
+                                session->quarantine->on_land(pch_kind);
+                            }
                             break;
                         case DependResult::Cancelled: co_return RoundOutcome::Stale;
                     }
@@ -815,7 +823,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // pch_suspect gate below never gets a say. The first such death
         // retracts the pair and the round respawns on a rebuilt one; a
         // death on the rebuilt pair is the document's own.
-        bool consuming_pch = adopted_pch.has_value() && !params.pch.first.empty();
+        bool consuming_pch = adopted_pch.has_value();
         bool pch_crashed = false;
         auto result = co_await deliver(
             pool,
@@ -988,8 +996,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // acquittal: the void may BE a fresh blame from another consumer
         // of the shared key, and clearing here would reset the strike
         // count it just paid for.
-        if(current && adopted_pch.has_value() && !params.pch.first.empty() &&
-           !result.value().pch_suspect) {
+        if(current && consuming_pch && !result.value().pch_suspect) {
             pch.consumed_ok(*adopted_pch);
         }
 
