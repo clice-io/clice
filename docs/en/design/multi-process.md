@@ -130,6 +130,7 @@ Blame is recorded per document and per kind of work: the compile, the precompile
 - A crashed query pauses that query alone; the compile's diagnostics stay, with the warning added.
 - A crashed module build is refused to every importer, which still compiles, reports the missing module and carries the warning.
 - A preamble shared by several documents crashes once: the others show the warning without a crash of their own.
+- A compile that crashes while reading its precompiled preamble first rebuilds the preamble, since a corrupted cache file crashes the same way: a corrupted file heals without a warning, and only a crash on the rebuilt preamble is blamed on the document.
 
 A request the workers cannot serve answers empty rather than with an error; the warning on the file explains the gap.
 
