@@ -173,6 +173,10 @@ struct Directive {
     std::vector<Condition> conditions;
     std::vector<MacroRef> macros;
     std::vector<DiagnosticPragma> diagnostic_pragmas;
+    /// The `_Pragma` and `__pragma` operators the preprocessor executed,
+    /// keyed by the file their expansion lies in: the `_Pragma` token,
+    /// a macro location when a macro spelled it.
+    std::vector<clang::SourceLocation> pragma_operators;
     std::vector<Import> imports;
     std::vector<Embed> embeds;
     std::vector<HasEmbed> has_embeds;

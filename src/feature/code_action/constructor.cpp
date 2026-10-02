@@ -6,7 +6,6 @@
 #include "feature/code_action/action.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/raw_ostream.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
 
@@ -17,10 +16,14 @@ namespace {
 /// Whether a derived class's constructor can leave `record` to its
 /// default constructor: one it declares must be neither deleted nor
 /// private; the implicit one exists only without user-declared
-/// constructors, and is deleted by a reference or const member without
-/// an initializer, or by a base or member that cannot default-construct
-/// itself.
+/// constructors, and is deleted by a reference member or a const one
+/// that is not const-default-constructible without an initializer, or
+/// by a base or member that cannot default-construct itself.
 bool default_constructible(const clang::CXXRecordDecl* record) {
+    record = record->getDefinition();
+    if(!record || record->isInvalidDecl()) {
+        return false;
+    }
     for(const auto* ctor: record->ctors()) {
         if(ctor->isDefaultConstructor()) {
             return !ctor->isDeleted() && ctor->getAccess() != clang::AS_private;
@@ -39,16 +42,81 @@ bool default_constructible(const clang::CXXRecordDecl* record) {
         if(field->hasInClassInitializer()) {
             continue;
         }
-        auto type = field->getType();
+        auto type = field->getASTContext().getBaseElementType(field->getType());
         if(type->isReferenceType()) {
             return false;
         }
         const auto* member = type->getAsCXXRecordDecl();
-        if(member ? !default_constructible(member) : type.isConstQualified()) {
+        if(member && !default_constructible(member)) {
+            return false;
+        }
+        if(type.isConstQualified() && (!member || !member->allowConstDefaultInit())) {
             return false;
         }
     }
     return true;
+}
+
+/// Whether another class's constructor may call `ctor`.
+bool callable(const clang::CXXConstructorDecl* ctor) {
+    return !ctor->isDeleted() && ctor->getAccess() == clang::AS_public;
+}
+
+/// Whether a `const T&` argument copy-constructs the class. One not yet
+/// declared is the implicit copy constructor, deleted per the class's
+/// flags or by a user-declared move operation; one whose constraints fail
+/// is no candidate.
+bool copy_constructible(const clang::CXXRecordDecl* record) {
+    for(const auto* ctor: record->ctors()) {
+        unsigned qualifiers = 0;
+        if(!ctor->isIneligibleOrNotSelected() && ctor->isCopyConstructor(qualifiers) &&
+           (qualifiers & clang::Qualifiers::Const)) {
+            return callable(ctor);
+        }
+    }
+    return record->hasSimpleCopyConstructor() && !record->hasUserDeclaredMoveOperation();
+}
+
+/// Whether an rvalue of the class constructs it through a constructor
+/// another class may call: its move constructor, or a constructor template
+/// taking the class by rvalue reference, as MSVC's standard library writes
+/// a constrained one.
+bool move_constructible(const clang::CXXRecordDecl* record) {
+    for(const auto* ctor: record->ctors()) {
+        if(!ctor->isIneligibleOrNotSelected() && ctor->isMoveConstructor()) {
+            return callable(ctor);
+        }
+    }
+    auto& context = record->getASTContext();
+    auto self = context.getCanonicalTagType(record);
+    for(const auto* decl: record->decls()) {
+        const auto* pattern = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl);
+        const auto* ctor =
+            pattern ? llvm::dyn_cast<clang::CXXConstructorDecl>(pattern->getTemplatedDecl())
+                    : nullptr;
+        if(!ctor || ctor->getNumParams() == 0 || ctor->getMinRequiredArguments() > 1) {
+            continue;
+        }
+        auto parameter = ctor->getParamDecl(0)->getType();
+        if(parameter->isRValueReferenceType() &&
+           context.hasSameUnqualifiedType(parameter.getNonReferenceType(), self)) {
+            return callable(ctor);
+        }
+    }
+    return record->hasSimpleMoveConstructor();
+}
+
+/// Whether `std::move` is declared before `location`.
+bool declares_std_move(clang::ASTContext& context, clang::SourceLocation location) {
+    auto& SM = context.getSourceManager();
+    for(auto* decl: context.getTranslationUnitDecl()->lookup(&context.Idents.get("std"))) {
+        if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
+            return llvm::any_of(ns->lookup(&context.Idents.get("move")), [&](const auto* move) {
+                return SM.isBeforeInTranslationUnit(move->getLocation(), location);
+            });
+        }
+    }
+    return false;
 }
 
 }  // namespace
@@ -56,8 +124,8 @@ bool default_constructible(const clang::CXXRecordDecl* record) {
 void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
     auto unit = ctx.unit;
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
-    if(!record || !record->isThisDeclarationADefinition() || record->isUnion() ||
-       record->isLambda() || record->getName().empty()) {
+    if(!record || !record->isThisDeclarationADefinition() || record->isInvalidDecl() ||
+       record->isUnion() || record->isLambda() || record->getName().empty()) {
         return;
     }
     // A base without a usable default constructor would need its own
@@ -86,50 +154,64 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
     }
 
     auto& context = unit.context();
-    std::string line;
-    llvm::raw_string_ostream os(line);
-    if(fields.size() == 1) {
-        os << "explicit ";
-    }
-    os << record->getName() << '(';
+    std::string parameters;
+    std::string initializers;
+    bool moves_any = false;
     for(auto [index, field]: llvm::enumerate(fields)) {
-        if(index) {
-            os << ", ";
-        }
         auto type = field->getType();
-        std::optional<std::string> parameter;
-        if(type->isReferenceType()) {
-            parameter = type_name(context, type, record, field->getName());
-        } else if(type.getUnqualifiedType()->isScalarType()) {
-            parameter = type_name(context, type.getUnqualifiedType(), record, field->getName());
-        } else {
-            parameter =
-                type_name(context,
-                          context.getLValueReferenceType(type.getUnqualifiedType().withConst()),
-                          record,
-                          field->getName());
+        bool moves = type->isRValueReferenceType();
+        if(!type->isReferenceType()) {
+            type = type.getUnqualifiedType();
+            const auto* tag =
+                llvm::dyn_cast_if_present<clang::CXXRecordDecl>(unit.resolver().resolve_tag(type));
+            if(const auto* member = tag ? tag->getDefinition() : nullptr;
+               member && !copy_constructible(member)) {
+                if(!move_constructible(member)) {
+                    return;
+                }
+                moves = true;
+            } else if(!type->isScalarType()) {
+                type = context.getLValueReferenceType(type.withConst());
+            }
         }
+        auto name = field->getName();
+        auto parameter = type_name(context, type, record, name);
         if(!parameter) {
             return;
         }
-        os << *parameter;
-    }
-    os << ") : ";
-    for(auto [index, field]: llvm::enumerate(fields)) {
         if(index) {
-            os << ", ";
+            parameters += ", ";
+            initializers += ", ";
         }
-        os << field->getName() << '(' << field->getName() << ')';
+        parameters += *parameter;
+        initializers +=
+            moves ? std::format("{0}(std::move({0}))", name) : std::format("{0}({0})", name);
+        moves_any |= moves;
     }
-    os << " {}";
+    auto line = std::format("{}{}({}) : {} {{}}",
+                            fields.size() == 1 ? "explicit " : "",
+                            record->getName(),
+                            parameters,
+                            initializers);
 
-    if(auto edit = insert_members(unit, record, {line})) {
-        out.push_back(CodeAction{
-            .title = std::format("Generate a memberwise constructor for '{}'", record->getName()),
-            .kind = protocol::CodeActionKind::refactor_rewrite,
-            .edits = {std::move(*edit)},
+    auto members = insert_members(unit, record, {line});
+    if(!members) {
+        return;
+    }
+    std::vector<TextReplacement> edits;
+    if(moves_any && !declares_std_move(context, record->getBeginLoc())) {
+        auto offset = include_insertion_offset(unit);
+        edits.push_back({
+            .range = {offset, offset},
+            .text = "#include <utility>\n"
         });
     }
+    edits.push_back(std::move(*members));
+    out.push_back(CodeAction{
+        .title = std::format("Generate a memberwise constructor for '{}'", record->getName()),
+        .kind = protocol::CodeActionKind::refactor_rewrite,
+        .edits = std::move(edits),
+    });
 }
 
 }  // namespace clice::feature::action

@@ -121,6 +121,8 @@ std::uint32_t text_end(CompilationUnitRef unit) {
     return content.size();
 }
 
+}  // namespace
+
 /// After the last `#include` of the file's leading directives — those
 /// before its first declaration — at the file's own level: outside every
 /// conditional, or directly inside its include guard. An include under
@@ -222,8 +224,6 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
     const auto& level = levels[guard == Guard::Closed ? 1 : 0];
     return level.include.value_or(level.prologue.value_or(0));
 }
-
-}  // namespace
 
 void add_include(CompilationUnitRef unit,
                  LocalSourceRange selection,

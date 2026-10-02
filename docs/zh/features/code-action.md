@@ -357,6 +357,34 @@ tests/snap/code_action/switch_cases/05_selection_range.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**依赖模板的标签**
+
+switch 中有标签依赖模板参数时不给出操作，因为只有实例化之后才知道它覆盖了哪些枚举项
+
+模板中的 switch 若标签不依赖模板参数，仍会像在其他地方一样补全分支。
+
+```snap
+tests/snap/code_action/switch_cases/06_dependent_labels.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**声明变量的分支**
+
+没有 `default` 时，若 switch 在自身作用域内声明了变量，缺失的分支会插在它的第一个标签之前，因为放在声明之后的标签会跳过该声明
+
+原有的分支都不会落入插在那里的分支。
+
+```snap
+tests/snap/code_action/switch_cases/07_declaring_section.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 推导类型
@@ -503,10 +531,34 @@ tests/snap/code_action/macro/02_nested_expansion.cpp
 
 **预处理指令中的宏引用与空宏**
 
-预处理条件中出现的宏名不是可以替换的展开，而展开为空的宏会被删除
+预处理条件中出现的宏名，无论位于条件的哪一行，都不是可以替换的展开，而展开为空的宏会被删除
 
 ```snap
 tests/snap/code_action/macro/03_directives_and_empty.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**执行 pragma 的宏**
+
+展开时会执行 `_Pragma` 运算符的宏不给出展开操作，因为 pragma 不会留下可以写回原处的 Token
+
+```snap
+tests/snap/code_action/macro/04_pragma_operator.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Token 不会粘连**
+
+展开结果会插入适当的空格，使其中的 Token 既不会彼此粘连，也不会与紧贴宏调用书写的文本粘连
+
+```snap
+tests/snap/code_action/macro/05_token_boundaries.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -659,7 +711,7 @@ tests/snap/code_action/reorder/05_dependencies.cpp
 
 **逐成员构造函数**
 
-为类生成按顺序接收全部字段的构造函数，标量按值传递，其他类型按 const 引用传递
+为类生成按顺序接收全部字段的构造函数，标量按值传递，可复制的类按 const 引用传递
 
 ```snap
 tests/snap/code_action/constructor/01_memberwise.cpp
@@ -719,10 +771,26 @@ tests/snap/code_action/constructor/05_base_without_default.cpp
 
 **默认构造函数被删除的基类**
 
-当基类的默认构造函数被删除时，无论是显式删除还是因引用成员而隐式删除，同样不会生成逐成员构造函数
+当基类的默认构造函数被删除时，无论是显式删除，还是因引用成员或没有初始化的 const 成员而隐式删除，同样不会生成逐成员构造函数
+
+若基类自己初始化了全部字段，其中的 const 成员不会让它失去默认构造函数。
 
 ```snap
 tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**只能移动的字段**
+
+类型只能移动、不能复制的字段按值接收并移动到字段中，右值引用字段则经 `std::move` 绑定到传入的实参
+
+类之前没有任何地方声明 `std::move` 时，会为文件加上 `#include <utility>`。既不能复制也不能移动的类不会得到构造函数。
+
+```snap
+tests/snap/code_action/constructor/07_move_only_fields.cpp
 ```
 
 <!-- END CAPABILITY -->
