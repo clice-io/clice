@@ -44,6 +44,10 @@ struct CompileCommandResult {
     /// rule's default command), "inferred" (borrowed from a nearby unit)
     /// or "fallback" (nothing declared it).
     std::string source;
+
+    /// Why querying the compiler failed, leaving `arguments` at driver
+    /// level instead of the resolved frontend command; absent on success.
+    std::optional<std::string> toolchain_error;
 };
 
 struct FileInfo {

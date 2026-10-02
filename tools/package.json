@@ -19,6 +19,9 @@
     "./snap/server": "./snap/server.ts",
     "./snap/inspect": "./snap/inspect.ts",
     "./protocol": "./protocol/protocol.ts",
+    "./compat/clice": "./compat/clice.ts",
+    "./compat/macros": "./compat/macros.ts",
+    "./compat/scenario": "./compat/scenario.ts",
     "./compile-commands": "./compile_commands.ts"
   },
   "scripts": {

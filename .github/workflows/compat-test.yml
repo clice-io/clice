@@ -1,0 +1,61 @@
+name: compat-test
+
+# Real build systems and compilers (tests/compat): called from main for
+# changes to command handling, with that run's build; weekly and on demand
+# with the latest nightly, so a new compiler or build-tool release that
+# breaks command handling shows up without a code change.
+on:
+  workflow_call:
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compat:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+          activate-environment: node
+
+      # The runner image already has gcc, clang, cmake, make and bazelisk.
+      - name: Install build systems and cross compilers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bear ccache meson ninja-build xmake g++-mingw-w64-x86-64
+
+      - name: Download binaries
+        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        uses: actions/download-artifact@v8
+        with:
+          name: native-build-ubuntu-24.04-RelWithDebInfo
+          path: build/RelWithDebInfo/
+
+      - name: Download the latest nightly
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'clice-*.x86_64-unknown-linux-gnu.tar.gz' --dir "$RUNNER_TEMP/nightly"
+          tar -xzf "$RUNNER_TEMP"/nightly/clice-*.tar.gz -C "$RUNNER_TEMP/nightly"
+          mkdir -p build/RelWithDebInfo
+          cp -r "$RUNNER_TEMP/nightly/clice/bin" "$RUNNER_TEMP/nightly/clice/lib" build/RelWithDebInfo/
+
+      - name: Make binaries executable
+        run: chmod +x build/RelWithDebInfo/bin/*
+
+      - name: Compat tests
+        timeout-minutes: 15
+        run: pixi run -e node compat-test RelWithDebInfo

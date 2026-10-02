@@ -2,7 +2,7 @@
 
 ## Run Tests
 
-clice has four types of tests: unit tests, integration tests, smoke tests, and snap tests.
+clice has four types of tests that run on every change: unit tests, integration tests, smoke tests, and snap tests. Compatibility tests, which need real build systems and compilers, run separately.
 
 All test dependencies (node/npm for the integration suite and tools, python for scripts/) are managed by pixi — no separate installation needed.
 
@@ -102,6 +102,16 @@ Prerequisites outside the pixi env:
 - `nvim` (stable) on `PATH` for `nvim-e2e`.
 - A system `cmake`/`ninja`/`clang` for `editor-prepare` to configure the CMake-based module fixture (same assumption the integration tests make).
 - A display (or `xvfb-run`) plus the usual Electron system libraries for `vscode-e2e`.
+
+## Compatibility Tests
+
+Real build systems and real compilers: each scenario in `tests/compat/scenarios.ts` builds the small project under `tests/compat/project/` with one build system and one toolchain, then runs clice over the compilation database that build wrote. Every translation unit must parse without errors, as it compiled for the real compiler; clice must agree with that compiler on the macros the command's flags imply, which a generated header compares inside clice's own parse; and each file's command must resolve through the compiler and keep or drop the flags the scenario lists. No database is committed: the suite checks what the tools write today.
+
+```bash
+pixi run compat-test          # default RelWithDebInfo
+```
+
+The scenarios need their tools installed (bear, ccache, meson, ninja, xmake, the MinGW cross compiler, bazel). A scenario whose tools are missing is skipped locally and fails in CI. CI runs the suite on pull requests that touch `src/command/` or the suite itself, and weekly against the latest nightly.
 
 ## Debug
 

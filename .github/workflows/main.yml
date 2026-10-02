@@ -23,6 +23,7 @@ jobs:
       vscode: ${{ steps.filter.outputs.vscode }}
       zed: ${{ steps.filter.outputs.zed }}
       cmake: ${{ steps.filter.outputs.cmake }}
+      compat: ${{ steps.filter.outputs.compat }}
 
     steps:
       - uses: actions/checkout@v7
@@ -72,6 +73,12 @@ jobs:
               - '.github/workflows/cross-test.yml'
               - '.github/workflows/cross-pair.yml'
               - '.github/workflows/editor-test.yml'
+              - '.github/workflows/compat-test.yml'
+            compat:
+              - 'src/command/**'
+              - 'tests/compat/**'
+              - 'tools/compat/**'
+              - '.github/workflows/compat-test.yml'
 
   lint:
     needs: changes
@@ -134,6 +141,11 @@ jobs:
     if: ${{ needs.changes.outputs.cmake == 'true' }}
     uses: ./.github/workflows/editor-test.yml
 
+  compat-test:
+    needs: [changes, native-test]
+    if: ${{ needs.changes.outputs.compat == 'true' }}
+    uses: ./.github/workflows/compat-test.yml
+
   # Instant builds: repackage the test-suite binaries as installable vsix
   # artifacts so a fix can be tried the moment CI is green.
   instant-vscode:
@@ -173,6 +185,7 @@ jobs:
       - native-test
       - cross-test
       - editor-test
+      - compat-test
       - instant-vscode
 
     runs-on: ubuntu-latest
@@ -182,5 +195,5 @@ jobs:
         with:
           allowed-skips: >-
             lint,deploy,vscode,zed,
-            native-test,cross-test,editor-test,instant-vscode
+            native-test,cross-test,editor-test,compat-test,instant-vscode
           jobs: ${{ toJSON(needs) }}
