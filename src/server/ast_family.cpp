@@ -591,8 +591,8 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
                         record_crash(session, kind, *crash);
                     }
                     crashed = true;
-                    // Still an input: the module's fix must re-dirty this
-                    // document.
+                    // Still an input: a later build of it, by an importer
+                    // holding a license, must re-dirty this document.
                     ctx.reference({Family::PCM, dep.raw});
                     continue;
                 }
