@@ -23,6 +23,10 @@ package = ["build", "test", "package"]
 node = ["node"]
 format = ["format"]
 test-run = ["test", "cuda"]
+# The CUDA toolkit alone, for the compat suite's nvcc scenarios. The suite
+# runs it without activating the environment, whose activation would point
+# nvcc at conda's g++ and every other build at conda's flags.
+cuda = ["cuda"]
 editor = ["editor", "node"]
 
 # ============================================================================== #
@@ -69,12 +73,7 @@ nodejs = ">=24"
 # tests drive it on real files.
 clang-format = "==23.1.1"
 
-# ToolchainTests.GCC queries the g++ found in PATH and compiles C++23
-# (<print>), so the test env must provide the same pinned gcc the build
-# env uses — runner system gcc is too old.
 [feature.test.target.linux-64.dependencies]
-gcc = "==15.2.0"
-gxx = "==15.2.0"
 # The symbolization round-trip test replays the release strip/GSYM flow
 # (linux-only, like the crash tests it builds on) with xclang's LLVM tools.
 xclang = "==23.1.2.4"
@@ -235,8 +234,9 @@ CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm run snap --wo
 depends-on = ["install-tests"]
 
 # Real build systems and toolchains over tests/compat/project; the tools each
-# scenario names come from the system (CI installs them, see compat-test.yml).
-# Workspace-level so CI can run it from the bare `node` env.
+# scenario names come from the system (CI installs them, see compat-test.yml),
+# nvcc from the `cuda` environment. Workspace-level so CI can run it from
+# the bare `node` env.
 [tasks.compat-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """

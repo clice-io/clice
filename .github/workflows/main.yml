@@ -23,7 +23,6 @@ jobs:
       vscode: ${{ steps.filter.outputs.vscode }}
       zed: ${{ steps.filter.outputs.zed }}
       cmake: ${{ steps.filter.outputs.cmake }}
-      compat: ${{ steps.filter.outputs.compat }}
 
     steps:
       - uses: actions/checkout@v7
@@ -73,13 +72,6 @@ jobs:
               - '.github/workflows/cross-test.yml'
               - '.github/workflows/cross-pair.yml'
               - '.github/workflows/editor-test.yml'
-              - '.github/workflows/compat-test.yml'
-            compat:
-              - 'src/command/**'
-              - 'src/project/command_resolver.*'
-              - 'src/server/query_commands.*'
-              - 'tests/compat/**'
-              - 'tools/compat/**'
               - '.github/workflows/compat-test.yml'
 
   lint:
@@ -145,7 +137,7 @@ jobs:
 
   compat-test:
     needs: [changes, native-test]
-    if: ${{ needs.changes.outputs.compat == 'true' }}
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
     uses: ./.github/workflows/compat-test.yml
 
   # Instant builds: repackage the test-suite binaries as installable vsix

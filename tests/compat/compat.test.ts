@@ -19,18 +19,14 @@ for (const scenario of SCENARIOS) {
         (missingTools(scenario).length > 0 && process.env["CI"] === undefined);
     test.skipIf(skip || scenario.unsupported !== undefined)(
         `${scenario.name} (${platforms})`,
-        () => {
-            // checkScenario throws with everything clice got wrong.
-            expect(() => {
-                checkScenario(cliceExecutable(), scenario);
-            }).not.toThrow();
+        async () => {
+            // checkScenario rejects with everything clice got wrong.
+            await expect(checkScenario(cliceExecutable(), scenario)).resolves.toBeUndefined();
         },
     );
     if (scenario.unsupported !== undefined) {
-        test.skipIf(skip)(`${scenario.name} (${platforms}) builds`, () => {
-            expect(() => {
-                checkBuild(scenario);
-            }).not.toThrow();
+        test.skipIf(skip)(`${scenario.name} (${platforms}) builds`, async () => {
+            await expect(checkBuild(scenario)).resolves.toBeUndefined();
         });
     }
 }

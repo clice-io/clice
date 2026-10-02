@@ -3,7 +3,7 @@
 /// builds a throwaway copy of the project, so the compilation database it
 /// is checked against is what the tools write today, never a stored copy.
 
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -47,8 +47,45 @@ export interface Scenario {
     /// Build steps run in order in the project copy, each an argv.
     build: [string, ...string[]][];
 
+    /// The project's clice.toml: rules a user writes on top of the build.
+    config?: string;
+
     /// The project's source files under check, project-relative.
     files: Record<string, FileExpectation>;
+}
+
+export interface ProcessRun {
+    /// The exit status, null when the process could not run or was killed.
+    status: number | null;
+    stdout: string;
+    stderr: string;
+    /// Why the process did not run to an exit status.
+    error?: string;
+}
+
+/// Run a process to completion without blocking the event loop: vitest's
+/// worker must keep answering its runner while a build takes a minute.
+export function run(
+    tool: string,
+    args: string[],
+    options: { cwd?: string; env: NodeJS.ProcessEnv },
+): Promise<ProcessRun> {
+    return new Promise((resolve) => {
+        execFile(
+            tool,
+            args,
+            { ...options, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 300_000 },
+            (error, stdout, stderr) => {
+                if (error === null) {
+                    resolve({ status: 0, stdout, stderr });
+                } else if (typeof error.code === "number") {
+                    resolve({ status: error.code, stdout, stderr });
+                } else {
+                    resolve({ status: null, stdout, stderr, error: error.message });
+                }
+            },
+        );
+    });
 }
 
 /// A copy of Windows' case-insensitive environment is an ordinary object,
@@ -57,16 +94,23 @@ function pathKey(env: NodeJS.ProcessEnv): string {
     return Object.keys(env).find((name) => name.toUpperCase() === "PATH") ?? "PATH";
 }
 
-/// The environment clice runs in: the caller's, minus pixi environments,
-/// whose compilers and build tools would otherwise shadow the system
+/// The environment clice runs in: the caller's, minus pixi environments.
+/// Their compilers and build tools would otherwise shadow the system
 /// toolchain a scenario names by bare name (meson and bear write `cc`,
-/// `x86_64-w64-mingw32-g++` as found on PATH).
+/// `x86_64-w64-mingw32-g++` as found on PATH), and the flags their
+/// activation exports (LDFLAGS with the environment's library paths) would
+/// reach every build.
 export function systemEnv(): NodeJS.ProcessEnv {
-    const env = { ...process.env };
-    const key = pathKey(env);
+    const pixi = `.pixi${path.sep}envs`;
+    const key = pathKey(process.env);
+    const env: NodeJS.ProcessEnv = Object.fromEntries(
+        Object.entries(process.env).filter(
+            ([name, value]) => name === key || value?.includes(pixi) !== true,
+        ),
+    );
     env[key] = (env[key] ?? "")
         .split(path.delimiter)
-        .filter((entry) => !entry.includes(`.pixi${path.sep}envs`))
+        .filter((entry) => !entry.includes(pixi))
         .join(path.delimiter);
     return env;
 }

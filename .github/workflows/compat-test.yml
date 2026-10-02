@@ -1,10 +1,9 @@
 name: compat-test
 
-# Real build systems and compilers (tests/compat): called from main for
-# changes to command handling, with that run's build; weekly and on demand
-# with the newest release and the commit it was built from, so a compiler
-# or build-tool release that breaks command handling shows up without a
-# code change.
+# Real build systems and compilers (tests/compat): called from main with
+# every build; weekly and on demand with the newest release and the commit
+# it was built from, so a compiler or build-tool release that breaks
+# command handling shows up without a code change.
 on:
   workflow_call:
   schedule:
@@ -49,7 +48,8 @@ jobs:
 
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: node
+          environments: node cuda
+          activate-environment: node
 
       # The Windows and macOS scenarios use what the runner images ship
       # (Visual Studio, LLVM, MinGW; Xcode, Homebrew GCC and LLVM), and
@@ -61,7 +61,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             bear ccache meson ninja-build xmake emscripten \
             g++-mingw-w64-x86-64 g++-riscv64-linux-gnu \
-            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+            gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf
 
       - name: Install zig
         if: runner.os == 'Linux'

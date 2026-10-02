@@ -2,7 +2,9 @@
 /// path where the system has several, so the database records the
 /// toolchain under test rather than whatever PATH finds first.
 
+import * as path from "node:path";
 import type { FileExpectation, Scenario } from "@clice/tools/compat/scenario";
+import { REPO_ROOT } from "@clice/tools/compile-commands";
 
 const GCC = "/usr/bin/gcc";
 const GXX = "/usr/bin/g++";
@@ -49,6 +51,26 @@ function cmakeNinja(
 
 const LLVM_WINDOWS = "C:/Program Files/LLVM/bin";
 const MINGW = "C:/mingw64/bin";
+
+/// The CUDA toolkit of the pixi `cuda` environment, run without its
+/// activation, so nvcc picks the system GCC as its host compiler.
+const NVCC = path.join(REPO_ROOT, ".pixi", "envs", "cuda", "bin", "nvcc");
+
+/// nvcc builds of the CUDA part, captured with bear.
+function nvcc(
+    name: string,
+    config: string | undefined,
+    files: Record<string, FileExpectation>,
+): Scenario {
+    return {
+        name,
+        platforms: ["linux"],
+        requires: ["bear", "make", NVCC],
+        build: [["bear", "--", "make", "cuda", `NVCC=${NVCC}`]],
+        ...(config === undefined ? {} : { config }),
+        files,
+    };
+}
 
 export const SCENARIOS: Scenario[] = [
     cmakeNinja("cmake ninja gcc", ["linux"], GCC, GXX),
@@ -205,6 +227,29 @@ export const SCENARIOS: Scenario[] = [
         },
     },
     {
+        // Semantic flags an external clang turns into frontend options come
+        // back from the query instead of being dropped with the toolchain's.
+        name: "make bear clang flags",
+        platforms: ["linux"],
+        requires: ["bear", "make", CLANG, CLANGXX],
+        build: [
+            [
+                "bear",
+                "--",
+                "make",
+                `CC=${CLANG}`,
+                `CXX=${CLANGXX}`,
+                "CXXFLAGS=-std=c++23 -fms-extensions -Wno-everything",
+            ],
+        ],
+        files: {
+            "src/main.cpp": {
+                contains: [["-std=c++23"], ["-fms-extensions"], ["-Wno-everything"]],
+            },
+            "src/util.c": {},
+        },
+    },
+    {
         name: "bazel hedron gcc",
         platforms: ["linux"],
         requires: ["bazel", GCC],
@@ -254,5 +299,45 @@ export const SCENARIOS: Scenario[] = [
             ],
         ],
         files: BOTH,
+    },
+    // A CUDA source parses in the device view, a host-language source nvcc
+    // compiles stays a plain host compile under nvcc's macros.
+    nvcc("make bear nvcc", undefined, {
+        "cuda/kernel.cu": { contains: [["-fcuda-is-device"], ["CUDA_DOUBLE_MATH_FUNCTIONS"]] },
+        "cuda/host.cpp": { excludes: ["-fcuda-is-device"] },
+    }),
+    // A rule appending a view selector picks the host pass, with the
+    // defines that only nvcc's device line carries gone too.
+    nvcc(
+        "make bear nvcc host view",
+        '[[rules]]\npatterns = ["cuda/kernel.cu"]\nappend = ["--cuda-host-only"]\n',
+        {
+            "cuda/kernel.cu": { excludes: ["-fcuda-is-device", "CUDA_DOUBLE_MATH_FUNCTIONS"] },
+            "cuda/host.cpp": {},
+        },
+    ),
+    // A rule appending a special architecture resolves through nvcc
+    // instead of falling back to clang's default sm_52.
+    nvcc(
+        "make bear nvcc arch rule",
+        '[[rules]]\npatterns = ["cuda/kernel.cu"]\nappend = ["-arch=all"]\n',
+        { "cuda/kernel.cu": { excludes: ["sm_52"] }, "cuda/host.cpp": {} },
+    ),
+    {
+        name: "make bear riscv bare metal",
+        platforms: ["linux"],
+        unsupported: "clice finds no header search paths for the bare-metal GCC (#327)",
+        requires: ["bear", "make", "/usr/bin/riscv64-unknown-elf-gcc"],
+        build: [
+            [
+                "bear",
+                "--",
+                "make",
+                "build/util.o",
+                "CC=/usr/bin/riscv64-unknown-elf-gcc",
+                "CFLAGS=--specs=picolibc.specs -march=rv32imac_zba_zbb_zbc_zbs -mabi=ilp32 -mtune=sifive-7-series -msave-restore -Os -ffunction-sections -fdata-sections -fno-common",
+            ],
+        ],
+        files: { "src/util.c": {} },
     },
 ];

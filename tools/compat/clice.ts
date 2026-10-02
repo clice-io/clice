@@ -2,8 +2,7 @@
 /// compilation database (every unit must parse clean, as it compiled clean
 /// for the real compiler) and the compile command it resolves per file.
 
-import { spawnSync } from "node:child_process";
-import { systemEnv } from "./scenario.ts";
+import { run, systemEnv } from "./scenario.ts";
 
 export interface LintRun {
     status: number | null;
@@ -20,35 +19,26 @@ export interface CompileCommand {
     toolchainError: string | null;
 }
 
-function runClice(clice: string, args: string[]) {
-    return spawnSync(clice, args, {
-        env: systemEnv(),
-        encoding: "utf8",
-        timeout: 300_000,
-        maxBuffer: 64 * 1024 * 1024,
-    });
-}
-
 /// `clice lint --index`: the parse of every unit, and the index the
 /// queries below read.
-export function lint(clice: string, root: string): LintRun {
-    const run = runClice(clice, ["lint", "--workspace", root, "--index"]);
-    return { status: run.status, report: run.stdout, log: run.stderr };
+export async function lint(clice: string, root: string): Promise<LintRun> {
+    const linted = await run(clice, ["lint", "--workspace", root, "--index"], { env: systemEnv() });
+    return { status: linted.status, report: linted.stdout, log: linted.stderr };
 }
 
-export function compileCommand(clice: string, root: string, file: string): CompileCommand {
-    const run = runClice(clice, [
-        "query",
-        "--workspace",
-        root,
-        "--method",
-        "compileCommand",
-        "--path",
-        file,
-    ]);
-    const answer = JSON.parse(run.stdout) as { result?: CompileCommand; error?: string };
+export async function compileCommand(
+    clice: string,
+    root: string,
+    file: string,
+): Promise<CompileCommand> {
+    const query = await run(
+        clice,
+        ["query", "--workspace", root, "--method", "compileCommand", "--path", file],
+        { env: systemEnv() },
+    );
+    const answer = JSON.parse(query.stdout) as { result?: CompileCommand; error?: string };
     if (answer.result === undefined) {
-        throw new Error(`compileCommand ${file}: ${answer.error ?? run.stderr}`);
+        throw new Error(`compileCommand ${file}: ${answer.error ?? query.stderr}`);
     }
     return answer.result;
 }
