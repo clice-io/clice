@@ -1,0 +1,16 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+# A ThinLTO bitcode library and a program linking it: where the linker can
+# write its cache under each sandbox, in seconds (scripts/lto-bench.sh).
+cc_library(
+    name = "lib",
+    srcs = ["lib.cc"],
+    copts = ["-flto=thin"],
+)
+
+cc_binary(
+    name = "main",
+    srcs = ["main.cc"],
+    deps = [":lib"],
+)

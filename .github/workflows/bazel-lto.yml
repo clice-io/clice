@@ -1,0 +1,100 @@
+name: bazel-lto
+
+# ThinLTO link-cache measurements on the Bazel spike (scripts/lto-bench.sh),
+# on every push of this branch. MODE=full times every variant and saves the
+# caches; MODE=ci restores them as a CI run would.
+
+on:
+  push:
+    branches: [exp/bazel-lto]
+
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            lto_cache: /var/tmp/xclang-thinlto
+          - os: macos-15
+            lto_cache: /var/tmp/xclang-thinlto
+          - os: windows-2025
+            lto_cache: C:/xclang-thinlto
+            startup: --output_user_root=C:/b
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 330
+    defaults:
+      run:
+        shell: bash
+    env:
+      MODE: full
+      STARTUP: ${{ matrix.startup }}
+      LTO_CACHE: ${{ matrix.lto_cache }}
+      DISK_CACHE: ${{ github.workspace }}/.cache/bazel-disk
+      REPO_CACHE: ${{ github.workspace }}/.cache/bazel-repo
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: default
+          activate-environment: default
+
+      - name: Restore Bazel caches
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            .cache/bazel-disk
+            .cache/bazel-repo
+          key: lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-${{ github.run_id }}
+          restore-keys: |
+            lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-
+
+      - name: Restore the ThinLTO cache
+        if: env.MODE == 'ci'
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ matrix.lto_cache }}
+          key: lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-thinlto-${{ github.run_id }}
+          restore-keys: |
+            lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-thinlto-
+
+      - name: Build
+        timeout-minutes: 120
+        run: scripts/lto-bench.sh build
+
+      - name: Save Bazel caches
+        if: env.MODE == 'full'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            .cache/bazel-disk
+            .cache/bazel-repo
+          key: lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-${{ github.run_id }}
+
+      - name: Probes
+        run: scripts/lto-bench.sh probes
+
+      - name: Measure
+        run: scripts/lto-bench.sh "$MODE"
+
+      - name: Save the ThinLTO cache
+        if: env.MODE == 'full'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ matrix.lto_cache }}
+          key: lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-thinlto-${{ github.run_id }}
+
+      - name: Results
+        if: always()
+        run: cat lto-out/results.txt
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lto-${{ runner.os }}
+          path: lto-out
