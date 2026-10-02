@@ -59,7 +59,8 @@ bool default_constructible(const clang::CXXRecordDecl* record) {
 }
 
 /// Whether the constructor of `caller` may call `ctor`: a public one, or
-/// any its class grants `caller` friendship to.
+/// any its class grants `caller` friendship to, as a class or as a class
+/// template (`template <class> friend struct Holder;`).
 bool callable(const clang::CXXConstructorDecl* ctor, const clang::CXXRecordDecl* caller) {
     if(ctor->isDeleted()) {
         return false;
@@ -68,8 +69,13 @@ bool callable(const clang::CXXConstructorDecl* ctor, const clang::CXXRecordDecl*
         return true;
     }
     return llvm::any_of(ctor->getParent()->friends(), [&](const clang::FriendDecl* friend_decl) {
-        const auto* type = friend_decl->getFriendType();
-        const auto* befriended = type ? type->getType()->getAsCXXRecordDecl() : nullptr;
+        const clang::CXXRecordDecl* befriended = nullptr;
+        if(const auto* type = friend_decl->getFriendType()) {
+            befriended = type->getType()->getAsCXXRecordDecl();
+        } else if(const auto* pattern = llvm::dyn_cast_if_present<clang::ClassTemplateDecl>(
+                      friend_decl->getFriendDecl())) {
+            befriended = pattern->getTemplatedDecl();
+        }
         return befriended && befriended->getCanonicalDecl() == caller->getCanonicalDecl();
     });
 }

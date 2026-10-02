@@ -129,8 +129,13 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
             if(!content.substr(end, next - end).trim().empty()) {
                 return;
             }
-            printed += ' ';
-            printed += clang::tok::getKeywordSpelling(it->kind());
+            // decltype of a const pointer has the qualifier already.
+            bool has = it->kind() == clang::tok::kw_const ? deduced->isConstQualified()
+                                                          : deduced->isVolatileQualified();
+            if(!has) {
+                printed += ' ';
+                printed += clang::tok::getKeywordSpelling(it->kind());
+            }
         }
         range->begin = unit.file_offset(first->location());
     }

@@ -11,7 +11,6 @@
 #include "semantic/display.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "clang/AST/ASTContext.h"
@@ -162,34 +161,6 @@ bool is_specifier(const clang::syntax::Token& token) {
 bool declaration_only(const clang::syntax::Token& token) {
     return token.kind() == clang::tok::kw_virtual || token.kind() == clang::tok::kw_static ||
            token.kind() == clang::tok::kw_explicit;
-}
-
-/// Where the type the decl-specifiers spell is written beneath a return
-/// type's declarator (`const R` of `const R* (*f())(int)`). A member
-/// pointer is part of that declarator only when it wraps the name
-/// (`R (S::*f())()`); one before the name is the type spelled
-/// (`int S::* f()`).
-clang::TypeLoc specifier_loc(clang::TypeLoc loc,
-                             llvm::function_ref<bool(clang::TypeLoc)> wraps_name) {
-    while(true) {
-        auto unqualified = loc.getUnqualifiedLoc();
-        if(auto pointer = unqualified.getAs<clang::PointerTypeLoc>()) {
-            loc = pointer.getPointeeLoc();
-        } else if(auto reference = unqualified.getAs<clang::ReferenceTypeLoc>()) {
-            loc = reference.getPointeeLoc();
-        } else if(auto paren = unqualified.getAs<clang::ParenTypeLoc>()) {
-            loc = paren.getInnerLoc();
-        } else if(auto function = unqualified.getAs<clang::FunctionTypeLoc>()) {
-            loc = function.getReturnLoc();
-        } else if(auto array = unqualified.getAs<clang::ArrayTypeLoc>()) {
-            loc = array.getElementLoc();
-        } else if(auto member = unqualified.getAs<clang::MemberPointerTypeLoc>();
-                  member && wraps_name(loc)) {
-            loc = member.getPointeeLoc();
-        } else {
-            return loc;
-        }
-    }
 }
 
 /// How a declaration turns into the head of its out-of-line definition.
@@ -524,6 +495,53 @@ private:
         return offsets;
     }
 
+    /// Where the type the decl-specifiers spell is written beneath a
+    /// return type's declarator (`const R` of `const R* (*f())(int)`). A
+    /// member pointer is part of that declarator only when it wraps the
+    /// name (`R (C::*f())()`); its class, written before the name too, is
+    /// then respelled for `from` on the way. One before the name is the
+    /// type spelled (`int C::* f()`).
+    clang::TypeLoc specifier_loc(clang::TypeLoc loc, std::uint32_t name) {
+        while(true) {
+            auto unqualified = loc.getUnqualifiedLoc();
+            if(auto pointer = unqualified.getAs<clang::PointerTypeLoc>()) {
+                loc = pointer.getPointeeLoc();
+            } else if(auto reference = unqualified.getAs<clang::ReferenceTypeLoc>()) {
+                loc = reference.getPointeeLoc();
+            } else if(auto paren = unqualified.getAs<clang::ParenTypeLoc>()) {
+                loc = paren.getInnerLoc();
+            } else if(auto function = unqualified.getAs<clang::FunctionTypeLoc>()) {
+                loc = function.getReturnLoc();
+            } else if(auto array = unqualified.getAs<clang::ArrayTypeLoc>()) {
+                loc = array.getElementLoc();
+            } else if(auto member = unqualified.getAs<clang::MemberPointerTypeLoc>()) {
+                auto end = offset_of(member.getEndLoc());
+                if(!end || *end <= name) {
+                    return loc;
+                }
+                qualify_member_class(member);
+                loc = member.getPointeeLoc();
+            } else {
+                return loc;
+            }
+        }
+    }
+
+    void qualify_member_class(clang::MemberPointerTypeLoc member) {
+        auto begin = offset_of(member.getQualifierLoc().getBeginLoc());
+        auto star = offset_of(member.getStarLoc());
+        if(!begin || !star) {
+            return;
+        }
+        clang::QualType type(member.getTypePtr()->getQualifier().getAsType(), 0);
+        if(type->isDependentType()) {
+            return;
+        }
+        if(auto spelled = type_name(unit.context(), type, from, {}, decl->getDeclContext())) {
+            patches.push_back({*begin, *star, *spelled + "::"});
+        }
+    }
+
     /// The decl-specifiers are looked up at the definition's scope, unlike
     /// the parameters and the rest of the declarator, which follow the
     /// qualified name into the class's scope: spell the type they name for
@@ -531,11 +549,7 @@ private:
     /// long`) fold into the replaced span, the declaration-only ones
     /// dropped.
     void qualify_return_type(std::uint32_t name) {
-        auto loc =
-            specifier_loc(decl->getFunctionTypeLoc().getReturnLoc(), [&](clang::TypeLoc loc) {
-                auto end = offset_of(loc.getEndLoc());
-                return end && *end > name;
-            });
+        auto loc = specifier_loc(decl->getFunctionTypeLoc().getReturnLoc(), name);
         auto begin = offset_of(loc.getBeginLoc());
         auto end = offset_of(loc.getEndLoc());
         // A constructor's return type has no location; a conversion

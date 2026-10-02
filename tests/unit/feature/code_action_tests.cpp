@@ -458,6 +458,8 @@ struct S {
     using R = int;
     R (*§(fp)fp())(int);
     const R (S::*§(mp)mp(int x) const noexcept)();
+    struct C {};
+    R (C::*§(cp)cp())();
 };
 )";
     run(code);
@@ -467,6 +469,10 @@ struct S {
     run(code);
     apply("mp", "Define 'S::mp' out of line");
     EXPECT_APPENDED("const S::R (S::*S::mp(int x) const noexcept)() {\n}\n", "mp");
+
+    run(code);
+    apply("cp", "Define 'S::cp' out of line");
+    EXPECT_APPENDED("S::R (S::C::*S::cp())() {\n}\n", "cp");
 }
 
 TEST_CASE(ReturnTypeTokenEdges) {
@@ -817,6 +823,16 @@ int* get();
 auto a = get();
 int* const b = a;
 )");
+
+    run(R"(
+int* const p = nullptr;
+const §(q)decltype(p) q = p;
+)");
+    apply("q", "Replace 'const decltype(p)' with 'int* const'");
+    EXPECT_COMPILES(R"(
+int* const p = nullptr;
+int* const q = p;
+)");
 }
 
 TEST_CASE(ConstructorParameters) {
@@ -884,6 +900,41 @@ struct Door {
     Door(const Key& key, int n) : key(key), n(n) {}
 };
 Door door(Key(), 1);
+)");
+
+    run(move.str() + R"(
+class Token {
+    template <class>
+    friend struct Keeper;
+    Token(const Token&) = default;
+
+public:
+    Token() = default;
+};
+template <class T>
+struct §(keeper)Keeper {
+    Token token;
+    T value;
+};
+Keeper<int> kept(Token(), 1);
+)");
+    apply("keeper", "Generate a memberwise constructor for 'Keeper'");
+    EXPECT_COMPILES(move.str() + R"(
+class Token {
+    template <class>
+    friend struct Keeper;
+    Token(const Token&) = default;
+
+public:
+    Token() = default;
+};
+template <class T>
+struct Keeper {
+    Token token;
+    T value;
+    Keeper(const Token& token, T value) : token(token), value(std::move(value)) {}
+};
+Keeper<int> kept(Token(), 1);
 )");
 
     run(R"(
