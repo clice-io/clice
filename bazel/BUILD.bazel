@@ -1,46 +1,11 @@
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-
 exports_files(["workspace_status.sh", "unit_tests.sh"])
 
-# The canonical triples of cmake/llvm.cmake's clice_target_triple: the
-# version and the release asset names use them.
-TRIPLES = {
-    "linux_x86_64": "x86_64-unknown-linux-gnu",
-    "linux_aarch64": "aarch64-unknown-linux-gnu",
-    "macos_x86_64": "x86_64-apple-darwin",
-    "macos_aarch64": "aarch64-apple-darwin",
-    "windows_x86_64": "x86_64-w64-mingw32",
-    "windows_aarch64": "aarch64-w64-mingw32",
-}
-
+# The canonical triples of cmake/llvm.cmake's clice_target_triple: version.h
+# and the release asset names use them.
 [config_setting(
-    name = setting,
+    name = "%s_%s" % (os, cpu),
     constraint_values = [
-        "@platforms//os:" + setting.split("_", 1)[0],
-        "@platforms//cpu:" + setting.split("_", 1)[1],
+        "@platforms//os:" + os,
+        "@platforms//cpu:" + cpu,
     ],
-) for setting in TRIPLES]
-
-# Stamped from bazel/workspace_status.sh; rebuilt when the version changes.
-genrule(
-    name = "version_cpp",
-    srcs = ["version/version.cpp.in"],
-    outs = ["generated/version.cpp"],
-    cmd = select({
-        ":" + setting: (
-            "version=$$(sed -n 's/^STABLE_CLICE_VERSION //p' bazel-out/stable-status.txt); " +
-            "sed -e \"s|@CLICE_VERSION_STRING@|$${version:-0.1.0}|\" " +
-            "-e 's|@CLICE_TARGET_STRING@|%s|' $< > $@" % triple
-        )
-        for setting, triple in TRIPLES.items()
-    }),
-    stamp = 1,
-)
-
-cc_library(
-    name = "version",
-    srcs = [":version_cpp"],
-    hdrs = ["version/version.h"],
-    strip_include_prefix = "version",
-    visibility = ["//visibility:public"],
-)
+) for os in ("linux", "macos", "windows") for cpu in ("x86_64", "aarch64")]

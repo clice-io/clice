@@ -2,19 +2,9 @@ common --enable_platform_specific_config
 # The toolchain is toolchain/xclang.bzl's, on every platform.
 common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 common --cxxopt=-std=c++23 --host_cxxopt=-std=c++23
-# clice builds without exceptions or RTTI; kotatsu has to match.
-common --@kotatsu//bazel:exceptions=false --@kotatsu//bazel:rtti=false
-# Third-party headers are system headers (-isystem), whose warnings are not
-# clice's.
-common --features=external_include_paths
 # RelWithDebInfo, as CI builds.
 common -c opt --copt=-g
 # cmake/toolchain.cmake's CMAKE_OSX_DEPLOYMENT_TARGET.
 common:macos --macos_minimum_os=15.0
-# The unit tests read the fixtures from their runfiles tree.
-common:windows --enable_runfiles
-# The unit tests' compile commands name a bare clang++: xclang's, from pixi's
-# environment.
-test --test_env=PATH
 # version.h, as cmake/generate_version.cmake stamps it.
 common --workspace_status_command=bazel/workspace_status.sh

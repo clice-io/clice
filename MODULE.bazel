@@ -12,24 +12,47 @@ single_version_override(
     patches = ["//toolchain:rules_cc-mingw-artifacts.patch"],
 )
 
-bazel_dep(name = "kotatsu", version = "0.1.0")
-local_path_override(
-    module_name = "kotatsu",
-    path = "../kotatsu-bazel",
-)
-
-# The libraries kotatsu builds on are its extension's repos, so that clice
-# links the same copy.
-kotatsu_deps = use_extension("@kotatsu//bazel:extensions.bzl", "kotatsu_deps")
-use_repo(kotatsu_deps, "simdjson")
-
-# From the Bazel Central Registry, at the versions cmake/package.cmake pins.
+# From the Bazel Central Registry, at the versions cmake/package.cmake and
+# kotatsu pin.
+bazel_dep(name = "libdwarf", version = "2.2.0.bcr.1")
 bazel_dep(name = "zlib", version = "1.3.1.bcr.5")
 bazel_dep(name = "zstd", version = "1.5.7")
 
 # Sources whose configuration or version the registry does not offer, each
 # with a BUILD file of its own.
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "kotatsu",
+    build_file = "//third_party:kotatsu.BUILD",
+    sha256 = "964aecb30b2da5c24fe5326ddec8f35a23e76c9d7ae410dc1a888430cfe375bf",
+    strip_prefix = "kotatsu-626bb08d9221aeb611cb61da617d715ea1c14f71",
+    urls = ["https://github.com/clice-io/kotatsu/archive/626bb08d9221aeb611cb61da617d715ea1c14f71.tar.gz"],
+)
+
+http_archive(
+    name = "flatbuffers",
+    build_file = "//third_party:flatbuffers.BUILD",
+    sha256 = "b9c2df49707c57a48fc0923d52b8c73beb72d675f9d44b2211e4569be40a7421",
+    strip_prefix = "flatbuffers-25.2.10",
+    urls = ["https://github.com/google/flatbuffers/archive/refs/tags/v25.2.10.tar.gz"],
+)
+
+http_archive(
+    name = "cpptrace",
+    build_file = "//third_party:cpptrace.BUILD",
+    sha256 = "5c9f5b301e903714a4d01f1057b9543fa540f7bfcc5e3f8bd1748e652e24f9ea",
+    strip_prefix = "cpptrace-1.0.4",
+    urls = ["https://github.com/jeremy-rifkin/cpptrace/archive/refs/tags/v1.0.4.tar.gz"],
+)
+
+http_archive(
+    name = "tomlplusplus",
+    build_file = "//third_party:tomlplusplus.BUILD",
+    sha256 = "8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155",
+    strip_prefix = "tomlplusplus-3.4.0",
+    urls = ["https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz"],
+)
 
 http_archive(
     name = "mimalloc",
@@ -45,6 +68,22 @@ http_archive(
     sha256 = "15a04e69c222eb6c01094b5c7ff8a249b36bb22788d72519646fb85feb267e67",
     strip_prefix = "spdlog-1.15.3",
     urls = ["https://github.com/gabime/spdlog/archive/refs/tags/v1.15.3.tar.gz"],
+)
+
+http_archive(
+    name = "simdjson",
+    build_file = "//third_party:simdjson.BUILD",
+    sha256 = "6f942d018561a6c30838651a386a17e6e4abbfc396afd0f62740dea1810dedea",
+    strip_prefix = "simdjson-4.2.4",
+    urls = ["https://github.com/simdjson/simdjson/archive/refs/tags/v4.2.4.tar.gz"],
+)
+
+http_archive(
+    name = "libuv",
+    build_file = "//third_party:libuv.BUILD",
+    sha256 = "eee139c05f7c868f5ae7a54b1e155fd5b6ed13a22329958d2ba711faad016353",
+    strip_prefix = "libuv-1.52.0",
+    urls = ["https://github.com/libuv/libuv/archive/refs/tags/v1.52.0.tar.gz"],
 )
 
 http_archive(

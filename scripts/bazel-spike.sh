@@ -2,8 +2,7 @@
 # Bazel spike checks on a box: the unit tests through bazel test, and
 # build timings against CMake. MODE=stage|cold|incremental|cmake-cold|cache|ci.
 set -u
-# npm's bazelisk (package-lock.json), as the workflow runs it.
-bazel() { npx --no bazel "$@"; }
+export PATH=$HOME/opt/bin:$PATH
 T="//:clice //:unit_tests"
 
 case "${MODE:-stage}" in

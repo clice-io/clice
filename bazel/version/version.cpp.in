@@ -1,8 +1,0 @@
-#include "version.h"
-
-namespace clice {
-
-const std::string_view version = "@CLICE_VERSION_STRING@";
-const std::string_view target = "@CLICE_TARGET_STRING@";
-
-}  // namespace clice
