@@ -10,7 +10,7 @@ derived:
   references:
     - { file: "${WS}/type_hierarchy/02_types_supertypes.cpp", range: "12:7-12:12" }
   typeHierarchy:
-    - { name: "Gamma", kind: Struct, file: "${WS}/type_hierarchy/02_types_supertypes.cpp", range: "12:7-12:12" }
+    - { name: "Gamma", kind: Struct, file: "${WS}/type_hierarchy/02_types_supertypes.cpp", range: "12:0-12:29", selection: "12:7-12:12" }
   supertypes:
-    - { name: "Alpha", kind: Struct, file: "${WS}/type_hierarchy/02_types_supertypes.cpp", range: "8:7-8:12" }
-    - { name: "Beta", kind: Struct, file: "${WS}/type_hierarchy/02_types_supertypes.cpp", range: "10:7-10:11" }
+    - { name: "Alpha", kind: Struct, file: "${WS}/type_hierarchy/02_types_supertypes.cpp", range: "8:0-8:15", selection: "8:7-8:12" }
+    - { name: "Beta", kind: Struct, file: "${WS}/type_hierarchy/02_types_supertypes.cpp", range: "10:0-10:14", selection: "10:7-10:11" }

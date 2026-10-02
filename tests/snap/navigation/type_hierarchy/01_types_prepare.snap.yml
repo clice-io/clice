@@ -10,7 +10,7 @@ cls:
   references:
     - { file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "8:6-8:12" }
   typeHierarchy:
-    - { name: "Handle", kind: Class, file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "8:6-8:12" }
+    - { name: "Handle", kind: Class, file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "8:0-8:15", selection: "8:6-8:12" }
 
 enm:
   definition:
@@ -20,7 +20,7 @@ enm:
   references:
     - { file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "12:11-12:15" }
   typeHierarchy:
-    - { name: "Mode", kind: Enum, file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "12:11-12:15" }
+    - { name: "Mode", kind: Enum, file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "12:0-12:18", selection: "12:11-12:15" }
 
 strct:
   definition:
@@ -30,7 +30,7 @@ strct:
   references:
     - { file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "10:7-10:12" }
   typeHierarchy:
-    - { name: "Point", kind: Struct, file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "10:7-10:12" }
+    - { name: "Point", kind: Struct, file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "10:0-10:15", selection: "10:7-10:12" }
 
 uni:
   definition:
@@ -40,4 +40,4 @@ uni:
   references:
     - { file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "14:6-14:13" }
   typeHierarchy:
-    - { name: "Storage", kind: Class, file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "14:6-14:13" }
+    - { name: "Storage", kind: Class, file: "${WS}/type_hierarchy/01_types_prepare.cpp", range: "14:0-17:1", selection: "14:6-14:13" }

@@ -12,7 +12,7 @@ base:
   references:
     - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "11:17-11:20" }
   callHierarchy:
-    - { name: "run", kind: Method, file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "11:17-11:20" }
+    - { name: "run", kind: Method, file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "11:4-11:26", selection: "11:17-11:20" }
 
 middle:
   definition:
@@ -24,4 +24,4 @@ middle:
   references:
     - { file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "15:9-15:12" }
   callHierarchy:
-    - { name: "run", kind: Method, file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "15:9-15:12" }
+    - { name: "run", kind: Method, file: "${WS}/go_to_implementation/01_impl_virtual_chain.cpp", range: "15:4-15:26", selection: "15:9-15:12" }

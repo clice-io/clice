@@ -20,9 +20,9 @@ fn_use:
     - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "11:4-11:9" }
     - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "20:11-20:16" }
   callHierarchy:
-    - { name: "probe", kind: Function, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "11:4-11:9" }
+    - { name: "probe", kind: Function, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "11:0-11:20", selection: "11:4-11:9" }
   incomingCalls:
-    - { name: "watch", kind: Function, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "18:4-18:9", fromRanges: ["20:11-20:23"] }
+    - { name: "watch", kind: Function, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "18:0-21:1", selection: "18:4-18:9", fromRanges: ["20:11-20:16"] }
 
 pure_use:
   definition:
@@ -33,9 +33,9 @@ pure_use:
     - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "15:17-15:24" }
     - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "19:11-19:18" }
   callHierarchy:
-    - { name: "refresh", kind: Method, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "15:17-15:24" }
+    - { name: "refresh", kind: Method, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "15:4-15:30", selection: "15:17-15:24" }
   incomingCalls:
-    - { name: "watch", kind: Function, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "18:4-18:9", fromRanges: ["19:4-19:20"] }
+    - { name: "watch", kind: Function, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "18:0-21:1", selection: "18:4-18:9", fromRanges: ["19:11-19:18"] }
 
 var_use:
   definition:

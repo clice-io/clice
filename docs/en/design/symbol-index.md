@@ -43,6 +43,8 @@ The index stores two kinds of core data: symbol occurrences (`Occurrence`) and s
 
 An `Occurrence` records a symbol's presence at a source location, containing only a source range and the target symbol's `SymbolHash`. It answers the question "what symbol is under the cursor."
 
+Occurrences never overlap. A name written with several tokens (`~Foo`, `operator==`, `operator""_km`) is one occurrence of the function spanning all of them, so the class name inside `~Foo` is the destructor's, the class keeping only a reference row there. A conversion function is the exception: its occurrence is the `operator` keyword alone, since the type its name embeds (`Foo` in `operator Foo*`) is a use of that type. The function's own rows span the whole written name in every case.
+
 A `Relation` records richer semantic information, consisting of three elements: the relation kind (`RelationKind`), a source location, and a target symbol. Relation kinds cover common inter-symbol semantics:
 
 - Definition and declaration (Definition, Declaration)

@@ -67,22 +67,34 @@ auto site_key(const Site& site) {
     return std::tie(site.path, site.range.begin, site.range.end);
 }
 
-bool same_site(const Site& lhs, const Site& rhs) {
-    return lhs.path == rhs.path && lhs.range == rhs.range;
+/// The whole declaration a declaring row names, when the row carries its
+/// extent in this source's text.
+std::optional<Site> extent_of(const RowSource& source, const Relation& relation) {
+    if(!RelationKind(relation.kind).isDeclOrDef()) {
+        return std::nullopt;
+    }
+    auto extent = std::bit_cast<LocalSourceRange>(relation.target_symbol);
+    if(extent.begin >= extent.end || extent.end > source.coords.size()) {
+        return std::nullopt;
+    }
+    return source.site(extent);
 }
 
 /// Drop the cursor's own site from an answer set — standing on a
 /// declaration or definition navigates to the other sites — unless it is
 /// the only site the symbol has (an inline definition, nowhere else to go).
-/// Occurrences and self-relations are written from the same record with
-/// identical ranges, so an exact compare suffices.
 void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
     if(sites.size() > 1) {
-        std::erase_if(sites, [&](const Site& site) { return same_site(site, cursor); });
+        std::erase_if(sites, [&](const Site& site) { return covers(site, cursor); });
     }
 }
 
 }  // namespace
+
+bool covers(const Site& row, const Site& cursor) {
+    return row.path == cursor.path && row.range.begin <= cursor.range.begin &&
+           cursor.range.end <= row.range.end;
+}
 
 void dedup_sites(std::vector<Site>& sites) {
     std::ranges::sort(sites, [](const Site& lhs, const Site& rhs) {
@@ -452,23 +464,35 @@ std::vector<Site> IndexQuery::sites(SymbolHash hash, Fid anchor, RelationKind ki
     return result;
 }
 
-std::optional<Site> IndexQuery::first_site(SymbolHash hash, Fid anchor, RelationKind kind) const {
-    std::optional<Site> result;
+std::optional<IndexQuery::Placed> IndexQuery::first_placed(SymbolHash hash,
+                                                           Fid anchor,
+                                                           RelationKind kind) const {
+    std::optional<Placed> result;
     for_each_relation(hash,
                       anchor,
                       kind,
                       Order::LiveFirst,
                       {},
                       [&](const RowSource& source, const Relation& relation) {
-                          result = source.site(relation.range);
+                          if(auto site = source.site(relation.range)) {
+                              result = Placed{.site = *site, .extent = *site};
+                              if(auto extent = extent_of(source, relation)) {
+                                  result->extent = *extent;
+                              }
+                          }
                           return !result;
                       });
     return result;
 }
 
-std::optional<Site> IndexQuery::canonical_site(SymbolHash hash, Fid anchor) const {
-    if(auto site = first_site(hash, anchor, RelationKind::Definition)) {
-        return site;
+std::optional<Site> IndexQuery::first_site(SymbolHash hash, Fid anchor, RelationKind kind) const {
+    auto placed = first_placed(hash, anchor, kind);
+    return placed ? std::optional(placed->site) : std::nullopt;
+}
+
+std::optional<IndexQuery::Placed> IndexQuery::canonical_placed(SymbolHash hash, Fid anchor) const {
+    if(auto placed = first_placed(hash, anchor, RelationKind::Definition)) {
+        return placed;
     }
     // A declaration stands in only for a symbol nothing defines. A
     // reported definition may sit in a file whose rows are not serving —
@@ -492,7 +516,7 @@ std::optional<Site> IndexQuery::canonical_site(SymbolHash hash, Fid anchor) cons
             return std::nullopt;
         }
     }
-    return first_site(hash, anchor, RelationKind::Declaration);
+    return first_placed(hash, anchor, RelationKind::Declaration);
 }
 
 bool IndexQuery::reported_defined(SymbolHash hash, Fid anchor) const {
@@ -600,7 +624,7 @@ std::vector<Site> IndexQuery::definition(const Cursor& cursor) const {
     for(auto symbol: cursor.symbols) {
         auto found = sites(symbol, anchor, RelationKind::Definition);
         if(found.empty() || std::ranges::any_of(found, [&](const Site& site) {
-               return same_site(site, cursor.site);
+               return covers(site, cursor.site);
            })) {
             llvm::append_range(found, sites(symbol, anchor, RelationKind::Declaration));
             dedup_sites(found);
@@ -723,14 +747,11 @@ std::optional<IndexQuery::Definition> IndexQuery::definition_text(SymbolHash has
                       Order::LiveFirst,
                       {},
                       [&](const RowSource& source, const Relation& relation) {
-                          auto extent = std::bit_cast<LocalSourceRange>(relation.target_symbol);
-                          if(extent.begin >= extent.end || extent.end > source.coords.size()) {
-                              return true;
-                          }
-                          auto site = source.site(extent);
+                          auto site = extent_of(source, relation);
                           if(!site) {
                               return true;
                           }
+                          auto extent = site->range;
                           std::unique_ptr<llvm::MemoryBuffer> storage;
                           auto text = source_text(source, storage);
                           if(!text) {
@@ -777,11 +798,11 @@ std::optional<IndexQuery::Located> IndexQuery::resolve(SymbolHash hash, Fid anch
     if(!info) {
         return std::nullopt;
     }
-    auto site = canonical_site(hash, anchor);
-    if(!site) {
+    auto placed = canonical_placed(hash, anchor);
+    if(!placed) {
         return std::nullopt;
     }
-    return Located{.symbol = std::move(*info), .site = *site};
+    return Located{.symbol = std::move(*info), .site = placed->site, .extent = placed->extent};
 }
 
 IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
@@ -920,8 +941,10 @@ std::vector<IndexQuery::Located> IndexQuery::search(const SymbolQuery& query,
             if(results.size() == limit) {
                 break;
             }
-            if(auto site = canonical_site(hit.symbol.hash, Fid{})) {
-                results.push_back({.symbol = std::move(hit.symbol), .site = *site});
+            if(auto placed = canonical_placed(hit.symbol.hash, Fid{})) {
+                results.push_back({.symbol = std::move(hit.symbol),
+                                   .site = placed->site,
+                                   .extent = placed->extent});
             }
         }
         if(results.size() == limit || ranked.exhausted) {
@@ -988,7 +1011,9 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
                 return true;
             }
             if(auto info = symbol_info(hash, *path_id)) {
-                defined.push_back({.symbol = std::move(*info), .site = *site});
+                defined.push_back({.symbol = std::move(*info),
+                                   .site = *site,
+                                   .extent = extent_of(*source, r).value_or(*site)});
             }
             return true;
         });
@@ -1014,8 +1039,9 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
            exact.contains(hit.symbol.parent)) {
             continue;
         }
-        if(auto site = canonical_site(hit.symbol.hash, Fid{})) {
-            results.push_back({.symbol = std::move(hit.symbol), .site = *site});
+        if(auto placed = canonical_placed(hit.symbol.hash, Fid{})) {
+            results.push_back(
+                {.symbol = std::move(hit.symbol), .site = placed->site, .extent = placed->extent});
         }
     }
     return results;
@@ -1045,7 +1071,9 @@ std::vector<IndexQuery::Located> IndexQuery::definitions_in(Fid file) const {
             return true;
         }
         if(auto site = source->site(r.range)) {
-            result.push_back({.symbol = SymbolRef::from(hash, *identity), .site = *site});
+            result.push_back({.symbol = SymbolRef::from(hash, *identity),
+                              .site = *site,
+                              .extent = extent_of(*source, r).value_or(*site)});
         }
         return true;
     });

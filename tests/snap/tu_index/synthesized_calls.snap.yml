@@ -26,6 +26,6 @@ input_file: synthesized_calls.cpp
 - { loc: "27:22", kind: Struct, text: "S", relations: [Reference] }
 - { loc: "27:25", kind: Method, text: "func", relations: [Reference] }
 - { loc: "27:31", kind: Namespace, text: "std", relations: [Reference] }
-- { loc: "27:36", kind: Function, text: "ref", relations: [Reference] }
+- { loc: "27:36", kind: Function, text: "ref", relations: [Reference, Caller] }
 - { loc: "27:40", kind: Variable, text: "s", relations: [Reference] }
 - { loc: "28:4", kind: Function, text: "__noop", relations: [Reference, Caller] }

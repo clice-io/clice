@@ -4,13 +4,17 @@ input_file: implicit_construction/07_inherited_ctor.cpp
 ---
 inherit:
   definition:
-    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "14:4-14:8" }
+    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "12:4-12:8" }
+    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "13:4-13:8" }
   declaration:
-    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "14:4-14:8" }
+    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "12:4-12:8" }
+    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "13:4-13:8" }
   typeDefinition:
-    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "13:7-13:11" }
+    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "11:7-11:11" }
   references:
-    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "14:4-14:8" }
-    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "19:16-19:20" }
+    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "12:4-12:8" }
+    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "13:4-13:8" }
+    - { file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "17:16-17:20" }
   callHierarchy:
-    - { name: "Base", kind: Method, file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "14:4-14:8" }
+    - { name: "Base", kind: Method, file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "12:4-12:15", selection: "12:4-12:8" }
+    - { name: "Base", kind: Method, file: "${WS}/implicit_construction/07_inherited_ctor.cpp", range: "13:4-13:22", selection: "13:4-13:8" }

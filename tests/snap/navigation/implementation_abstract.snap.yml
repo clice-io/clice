@@ -12,7 +12,7 @@ concrete_root:
   references:
     - { file: "${WS}/implementation_abstract.cpp", range: "19:17-19:18" }
   callHierarchy:
-    - { name: "g", kind: Method, file: "${WS}/implementation_abstract.cpp", range: "19:17-19:18" }
+    - { name: "g", kind: Method, file: "${WS}/implementation_abstract.cpp", range: "19:4-19:24", selection: "19:17-19:18" }
 
 pure_root:
   definition:
@@ -25,4 +25,4 @@ pure_root:
   references:
     - { file: "${WS}/implementation_abstract.cpp", range: "7:17-7:18" }
   callHierarchy:
-    - { name: "f", kind: Method, file: "${WS}/implementation_abstract.cpp", range: "7:17-7:18" }
+    - { name: "f", kind: Method, file: "${WS}/implementation_abstract.cpp", range: "7:4-7:24", selection: "7:17-7:18" }

@@ -8,7 +8,7 @@ input_file: occurrence_coverage.cpp
 - { loc: "15:4", kind: Function, text: "by_offsetof", relations: [Definition] }
 - { loc: "16:30", kind: Struct, text: "S", relations: [Reference] }
 - { loc: "16:33", kind: Field, text: "field", relations: [Reference] }
-- { loc: "19:4", kind: Function, text: "operator", relations: [Declaration] }
+- { loc: "19:4", kind: Function, text: "operator\"\"_unit", relations: [Declaration] }
 - { loc: "19:39", kind: Parameter, text: "value", relations: [Definition] }
 - { loc: "21:4", kind: Function, text: "literal", relations: [Definition] }
 - { loc: "22:11", kind: Function, text: "12_unit", relations: [Reference, Caller] }

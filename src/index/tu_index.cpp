@@ -150,6 +150,62 @@ bool is_specialization(const clang::NamedDecl* decl) {
     return false;
 }
 
+/// Occurrences claim disjoint ranges: a name inside another symbol's
+/// written name — the class in `~Foo` — is that name's, and the symbol it
+/// names keeps only its relation row there.
+void drop_nested(std::vector<Occurrence>& occurrences) {
+    std::ranges::sort(occurrences, [](const Occurrence& lhs, const Occurrence& rhs) {
+        return std::tuple(lhs.range.begin, rhs.range.end) <
+               std::tuple(rhs.range.begin, lhs.range.end);
+    });
+    std::optional<LocalSourceRange> outer;
+    std::erase_if(occurrences, [&](const Occurrence& occurrence) {
+        auto range = occurrence.range;
+        if(outer && range != *outer && range.end <= outer->end) {
+            return true;
+        }
+        if(!outer || range.end > outer->end) {
+            outer = range;
+        }
+        return false;
+    });
+}
+
+/// The name a call is written through, where call hierarchy points at it:
+/// `f` of `ns::f(x)`, `operator==` of `a.operator==(b)`, the operator token
+/// of `a == b`, the pointer of `(*fp)(x)` or `(obj.*pmf)(x)`.
+clang::SourceRange callee_name(const clang::CallExpr* call, const clang::SourceManager& SM) {
+    // `12_km` names its operator with a suffix no token of its own spells.
+    if(auto* UDL = llvm::dyn_cast<clang::UserDefinedLiteral>(call)) {
+        return UDL->getBeginLoc();
+    }
+
+    const clang::Expr* callee = call->getCallee()->IgnoreParenImpCasts();
+    if(auto* UO = llvm::dyn_cast<clang::UnaryOperator>(callee);
+       UO && UO->getOpcode() == clang::UO_Deref) {
+        callee = UO->getSubExpr()->IgnoreParenImpCasts();
+    } else if(auto* BO = llvm::dyn_cast<clang::BinaryOperator>(callee); BO && BO->isPtrMemOp()) {
+        callee = BO->getRHS()->IgnoreParenImpCasts();
+    }
+
+    if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(callee)) {
+        return written_name(DRE->getNameInfo(), SM);
+    }
+    if(auto* ME = llvm::dyn_cast<clang::MemberExpr>(callee)) {
+        return written_name(ME->getMemberNameInfo(), SM);
+    }
+    if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
+        return written_name(OE->getNameInfo(), SM);
+    }
+    if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {
+        return written_name(DSDRE->getNameInfo(), SM);
+    }
+    if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
+        return written_name(DSME->getMemberNameInfo(), SM);
+    }
+    return callee->getExprLoc();
+}
+
 /// The template an explicit or partial specialization specializes: a
 /// class, variable or function template's pattern, or the member of a
 /// class template a member specialization replaces. Null for every other
@@ -301,10 +357,8 @@ public:
         return symbol;
     }
 
-    void add_occurrence(const clang::NamedDecl* decl,
-                        RelationKind kind,
-                        clang::SourceLocation location) {
-        auto [fid, range] = unit.decompose_range(location);
+    void add_occurrence(const clang::NamedDecl* decl, clang::SourceRange name) {
+        auto [fid, range] = unit.decompose_range(name);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -365,8 +419,8 @@ public:
     /// declaration's full extent for definition-text consumers.
     void add_self_relation(const clang::NamedDecl* decl,
                            RelationKind kind,
-                           clang::SourceLocation location) {
-        auto [fid, range] = unit.decompose_range(location);
+                           clang::SourceRange name) {
+        auto [fid, range] = unit.decompose_range(name);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -576,16 +630,12 @@ public:
             }
         };
 
+        auto& context = unit.context();
         if(auto* CE = node.get<clang::CallExpr>()) {
-            // Some calls span no written extent: the ones Sema synthesizes
-            // for `__builtin_invoke` start nowhere or end before they
-            // begin, a bare MS `__noop` ends nowhere. They land at their
-            // expression location — the builtin's name — or nowhere when
-            // even that is unwritten.
-            auto range = CE->getSourceRange();
-            auto& SM = unit.context().getSourceManager();
-            if(range.isInvalid() ||
-               SM.isBeforeInTranslationUnit(range.getEnd(), range.getBegin())) {
+            // A call no name is written for — the conversion `int i = c`
+            // makes — lands at the expression it converts.
+            auto range = callee_name(CE, context.getSourceManager());
+            if(range.isInvalid()) {
                 range = CE->getExprLoc();
                 if(range.isInvalid()) {
                     return;
@@ -619,7 +669,7 @@ public:
             if(auto inherited = ctor->getInheritedConstructor()) {
                 ctor = inherited.getConstructor();
             }
-            call(ctor, CCE->getSourceRange());
+            call(ctor, CCE->getParenOrBraceRange().getBegin());
             return;
         }
 
@@ -628,20 +678,22 @@ public:
         if(auto* RBO = node.get<clang::CXXRewrittenBinaryOperator>()) {
             if(auto* inner = llvm::dyn_cast_if_present<clang::CXXOperatorCallExpr>(
                    RBO->getDecomposedForm().InnerBinOp)) {
-                call(inner->getDirectCallee(), RBO->getSourceRange());
+                call(inner->getDirectCallee(), RBO->getOperatorLoc());
             }
             return;
         }
 
         if(auto* NE = node.get<clang::CXXNewExpr>()) {
-            call(NE->getOperatorNew(), NE->getSourceRange());
+            call(NE->getOperatorNew(),
+                 keyword_after_scope(context, NE->getBeginLoc(), NE->isGlobalNew()));
             return;
         }
 
         if(auto* DE = node.get<clang::CXXDeleteExpr>()) {
-            call(DE->getOperatorDelete(), DE->getSourceRange());
+            auto keyword = keyword_after_scope(context, DE->getBeginLoc(), DE->isGlobalDelete());
+            call(DE->getOperatorDelete(), keyword);
             if(auto type = DE->getDestroyedType(); !type.isNull()) {
-                call(types::destructor_of(type), DE->getSourceRange());
+                call(types::destructor_of(type), keyword);
             }
             return;
         }
@@ -812,6 +864,20 @@ public:
                 // expansion assigns one, and projecting a TU's expansion
                 // back into the shared definition is deliberately banned.
                 auto location = unit.file_location(occurrence.location);
+                auto spelled = location == unit.spelling_location(occurrence.location);
+
+                // A name of several tokens spans them all where they are
+                // written in one file; a macro that spells part of it
+                // leaves the first token alone.
+                clang::SourceRange name(location);
+                if(occurrence.name_end.isValid()) {
+                    auto end = unit.file_location(occurrence.name_end);
+                    if(spelled && end == unit.spelling_location(occurrence.name_end) &&
+                       unit.file_id(end) == unit.file_id(location) &&
+                       unit.file_offset(location) <= unit.file_offset(end)) {
+                        name.setEnd(end);
+                    }
+                }
 
                 // An occurrence claims "this range spells the name", so it
                 // exists only where that holds. Names conjured by a macro
@@ -819,15 +885,17 @@ public:
                 // reference lists and jump targets keep the invocation row —
                 // but the invocation token itself stays the macro's, not
                 // theirs.
-                if(location == unit.spelling_location(occurrence.location)) {
-                    add_occurrence(occurrence.decl, occurrence.kind, location);
+                if(spelled) {
+                    add_occurrence(occurrence.decl,
+                                   occurrence.owns_whole_name() ? name
+                                                                : clang::SourceRange(location));
                 }
 
-                // Every occurrence is mirrored as a self-relation with the
-                // identical range, so find-references on the occurring decl
-                // finds this row and cursor-site detection can match the
-                // two ranges exactly.
-                add_self_relation(occurrence.decl, occurrence.kind, location);
+                // Every occurrence is mirrored as a self-relation spanning
+                // the whole name, so find-references on the occurring decl
+                // finds this row and cursor-site detection finds the
+                // occurrence inside it.
+                add_self_relation(occurrence.decl, occurrence.kind, name);
             }
 
             project_relations(semantics, i);
@@ -911,6 +979,10 @@ public:
                 auto& group = into.relations[hash];
                 group.insert(group.end(), relations.begin(), relations.end());
             }
+        }
+
+        for(auto& rows: llvm::make_second_range(by_path)) {
+            drop_nested(rows.occurrences);
         }
 
         // The canonical file is decided across every file's rows: a

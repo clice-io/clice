@@ -15,6 +15,6 @@ co_yield_kw:
     - { file: "${WS}/implicit_targets/11_coroutine.cpp", range: "42:16-42:27" }
     - { file: "${WS}/implicit_targets/11_coroutine.cpp", range: "50:4-50:12" }
   callHierarchy:
-    - { name: "yield_value", kind: Method, file: "${WS}/implicit_targets/11_coroutine.cpp", range: "42:16-42:27" }
+    - { name: "yield_value", kind: Method, file: "${WS}/implicit_targets/11_coroutine.cpp", range: "42:8-42:38", selection: "42:16-42:27" }
   incomingCalls:
-    - { name: "example", kind: Function, file: "${WS}/implicit_targets/11_coroutine.cpp", range: "48:5-48:12", fromRanges: ["50:4-50:14"] }
+    - { name: "example", kind: Function, file: "${WS}/implicit_targets/11_coroutine.cpp", range: "48:0-52:1", selection: "48:5-48:12", fromRanges: ["50:4-50:12"] }

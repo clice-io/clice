@@ -13,6 +13,6 @@ use:
     - { file: "${WS}/go_to_declaration/01_decl_cross_tu/main.cpp", range: "12:11-12:16" }
     - { file: "${WS}/go_to_declaration/01_decl_cross_tu/shared.h", range: "2:4-2:9" }
   callHierarchy:
-    - { name: "scale", kind: Function, file: "${WS}/go_to_declaration/01_decl_cross_tu/lib.cpp", range: "2:4-2:9" }
+    - { name: "scale", kind: Function, file: "${WS}/go_to_declaration/01_decl_cross_tu/lib.cpp", range: "2:0-4:1", selection: "2:4-2:9" }
   incomingCalls:
-    - { name: "run", kind: Function, file: "${WS}/go_to_declaration/01_decl_cross_tu/main.cpp", range: "11:4-11:7", fromRanges: ["12:11-12:23"] }
+    - { name: "run", kind: Function, file: "${WS}/go_to_declaration/01_decl_cross_tu/main.cpp", range: "11:0-13:1", selection: "11:4-11:7", fromRanges: ["12:11-12:16"] }

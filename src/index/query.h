@@ -138,6 +138,11 @@ private:
 /// indexes) comes out identical.
 void dedup_sites(std::vector<Site>& sites);
 
+/// Whether a row's site spells the name a cursor stands on: a row spans
+/// the whole written name, an occurrence only the tokens the name owns
+/// (`operator` of `operator Foo*`, whose `Foo` is the class's).
+bool covers(const Site& row, const Site& cursor);
+
 /// Read-only queries over every index source: disk shards, open sessions'
 /// file indexes, PCH overlays and the buffers' own preamble rows. Holds no
 /// index data of its own — ProjectIndex owns the disk-derived index, the
@@ -267,10 +272,6 @@ public:
     /// indexed), then disk shards.
     std::optional<Site> first_site(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
-    /// The symbol's canonical site: its definition, or a declaration when
-    /// nothing defines it (pure virtuals, externs, decl-only APIs).
-    std::optional<Site> canonical_site(SymbolHash hash, Fid anchor) const;
-
     /// Go-to-definition from a cursor: the definition sites, or — standing
     /// on the definition itself, or when nothing defines the symbol — the
     /// declarations (and sibling definitions), so definition and
@@ -317,10 +318,12 @@ public:
     /// is unavailable (see definition_text on the disk re-read).
     std::string context_line(const Site& site) const;
 
-    /// A symbol together with its canonical site.
+    /// A symbol together with its canonical site, and the whole
+    /// declaration there.
     struct Located {
         SymbolRef symbol;
         Site site;
+        Site extent;
     };
 
     std::optional<Located> resolve(SymbolHash hash, Fid anchor) const;
@@ -444,6 +447,21 @@ private:
     /// Whether some unit reported a definition of the symbol: an open
     /// session's table knows only its own unit, the project table all.
     bool reported_defined(SymbolHash hash, Fid anchor) const;
+
+    /// A declaring row's site and the whole declaration it names (the
+    /// definition's body included); the site itself when the row carries
+    /// no extent.
+    struct Placed {
+        Site site;
+        Site extent;
+    };
+
+    /// first_site with the declaration's extent.
+    std::optional<Placed> first_placed(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// The symbol's canonical site: its definition, or a declaration when
+    /// nothing defines it (pure virtuals, externs, decl-only APIs).
+    std::optional<Placed> canonical_placed(SymbolHash hash, Fid anchor) const;
 
     /// The disk files holding the symbol's rows, by its scope (see the
     /// class comment on anchors).

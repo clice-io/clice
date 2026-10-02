@@ -14,9 +14,9 @@ base_init:
     - { file: "${WS}/implicit_construction/05_member_init.cpp", range: "21:13-21:17" }
     - { file: "${WS}/implicit_construction/05_member_init.cpp", range: "23:12-23:16" }
   typeHierarchy:
-    - { name: "Base", kind: Struct, file: "${WS}/implicit_construction/05_member_init.cpp", range: "13:7-13:11" }
+    - { name: "Base", kind: Struct, file: "${WS}/implicit_construction/05_member_init.cpp", range: "13:0-15:1", selection: "13:7-13:11" }
   subtypes:
-    - { name: "App", kind: Struct, file: "${WS}/implicit_construction/05_member_init.cpp", range: "21:7-21:10" }
+    - { name: "App", kind: Struct, file: "${WS}/implicit_construction/05_member_init.cpp", range: "21:0-24:1", selection: "21:7-21:10" }
 
 base_paren:
   definition:
@@ -29,9 +29,9 @@ base_paren:
     - { file: "${WS}/implicit_construction/05_member_init.cpp", range: "14:4-14:8" }
     - { file: "${WS}/implicit_construction/05_member_init.cpp", range: "23:16-23:17" }
   callHierarchy:
-    - { name: "Base", kind: Method, file: "${WS}/implicit_construction/05_member_init.cpp", range: "14:4-14:8" }
+    - { name: "Base", kind: Method, file: "${WS}/implicit_construction/05_member_init.cpp", range: "14:4-14:15", selection: "14:4-14:8" }
   incomingCalls:
-    - { name: "App", kind: Method, file: "${WS}/implicit_construction/05_member_init.cpp", range: "23:4-23:7", fromRanges: ["23:12-23:20"] }
+    - { name: "App", kind: Method, file: "${WS}/implicit_construction/05_member_init.cpp", range: "23:4-23:34", selection: "23:4-23:7", fromRanges: ["23:16-23:17"] }
 
 member_init:
   definition:
@@ -55,6 +55,6 @@ member_paren:
     - { file: "${WS}/implicit_construction/05_member_init.cpp", range: "18:4-18:10" }
     - { file: "${WS}/implicit_construction/05_member_init.cpp", range: "23:28-23:29" }
   callHierarchy:
-    - { name: "Logger", kind: Method, file: "${WS}/implicit_construction/05_member_init.cpp", range: "18:4-18:10" }
+    - { name: "Logger", kind: Method, file: "${WS}/implicit_construction/05_member_init.cpp", range: "18:4-18:21", selection: "18:4-18:10" }
   incomingCalls:
-    - { name: "App", kind: Method, file: "${WS}/implicit_construction/05_member_init.cpp", range: "23:4-23:7", fromRanges: ["23:22-23:31"] }
+    - { name: "App", kind: Method, file: "${WS}/implicit_construction/05_member_init.cpp", range: "23:4-23:34", selection: "23:4-23:7", fromRanges: ["23:28-23:29"] }

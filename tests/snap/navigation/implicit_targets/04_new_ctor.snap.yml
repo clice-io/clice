@@ -4,13 +4,13 @@ input_file: implicit_targets/04_new_ctor.cpp
 ---
 new_kw:
   definition:
-    - { file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "12:17-12:25" }
+    - { file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "12:17-12:29" }
   declaration:
-    - { file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "12:17-12:25" }
+    - { file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "12:17-12:29" }
   references:
-    - { file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "12:17-12:25" }
+    - { file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "12:17-12:29" }
     - { file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "16:14-16:17" }
   callHierarchy:
-    - { name: "operator new", kind: Operator, file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "12:17-12:25" }
+    - { name: "operator new", kind: Operator, file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "12:4-12:55", selection: "12:17-12:29" }
   incomingCalls:
-    - { name: "make", kind: Function, file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "15:5-15:9", fromRanges: ["16:14-16:24"] }
+    - { name: "make", kind: Function, file: "${WS}/implicit_targets/04_new_ctor.cpp", range: "15:0-17:1", selection: "15:5-15:9", fromRanges: ["16:14-16:17"] }

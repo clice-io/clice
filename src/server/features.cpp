@@ -410,7 +410,7 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
                                   return from.sites(named, path_id, RelationKind::Definition);
                               });
         if(!defined.empty() && llvm::none_of(defined, [&](const index::Site& site) {
-               return site.path == cursor->site.path && site.range == cursor->site.range;
+               return index::covers(site, cursor->site);
            })) {
             return to_lsp::locations(defined);
         }
@@ -888,7 +888,7 @@ llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol,
         // flags can hold another declaration there.
         auto same_name = [&](const index::Site& site) -> std::optional<index::SymbolHash> {
             auto cursor = peer->symbol_at(site.file, site.range.begin);
-            if(!info || !cursor || cursor->site.range != site.range) {
+            if(!info || !cursor || !index::covers(site, cursor->site)) {
                 return std::nullopt;
             }
             for(auto candidate: cursor->symbols) {
@@ -1071,7 +1071,8 @@ Features::RawResult Features::call_hierarchy_prepare(std::shared_ptr<Session> se
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Function || kind == SymbolKind::Method ||
            kind == SymbolKind::Operator) {
-            items.push_back(to_lsp::call_hierarchy_item(located.symbol, located.site));
+            items.push_back(
+                to_lsp::call_hierarchy_item(located.symbol, located.site, located.extent));
         }
     }
     if(items.empty())
@@ -1097,7 +1098,8 @@ static std::optional<index::SymbolHash>
 
 Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
                                                       const protocol::CallHierarchyItem& item) {
-    auto symbol = item_symbol(query, path_id, cursor_at(path_id, item.range.start), item.data);
+    auto symbol =
+        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("call hierarchy"));
 
@@ -1110,15 +1112,17 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
     }
     std::vector<protocol::CallHierarchyIncomingCall> results;
     for(auto& edge: callers) {
-        results.push_back({to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site),
-                           to_lsp::ranges(edge.sites)});
+        results.push_back(
+            {to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site, edge.symbol.extent),
+             to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
 }
 
 Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
                                                       const protocol::CallHierarchyItem& item) {
-    auto symbol = item_symbol(query, path_id, cursor_at(path_id, item.range.start), item.data);
+    auto symbol =
+        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("call hierarchy"));
 
@@ -1131,8 +1135,9 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
     }
     std::vector<protocol::CallHierarchyOutgoingCall> results;
     for(auto& edge: callees) {
-        results.push_back({to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site),
-                           to_lsp::ranges(edge.sites)});
+        results.push_back(
+            {to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site, edge.symbol.extent),
+             to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
 }
@@ -1154,7 +1159,8 @@ Features::RawResult Features::type_hierarchy_prepare(std::shared_ptr<Session> se
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
            kind == SymbolKind::Union) {
-            items.push_back(to_lsp::type_hierarchy_item(located.symbol, located.site));
+            items.push_back(
+                to_lsp::type_hierarchy_item(located.symbol, located.site, located.extent));
         }
     }
     if(items.empty())
@@ -1166,14 +1172,16 @@ static std::vector<protocol::TypeHierarchyItem>
     type_items(llvm::ArrayRef<index::IndexQuery::Located> types) {
     std::vector<protocol::TypeHierarchyItem> results;
     for(auto& located: types) {
-        results.push_back(to_lsp::type_hierarchy_item(located.symbol, located.site));
+        results.push_back(
+            to_lsp::type_hierarchy_item(located.symbol, located.site, located.extent));
     }
     return results;
 }
 
 Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
                                                         const protocol::TypeHierarchyItem& item) {
-    auto symbol = item_symbol(query, path_id, cursor_at(path_id, item.range.start), item.data);
+    auto symbol =
+        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("type hierarchy"));
     std::vector<index::IndexQuery::Located> supertypes;
@@ -1188,7 +1196,8 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
 
 Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
                                                       const protocol::TypeHierarchyItem& item) {
-    auto symbol = item_symbol(query, path_id, cursor_at(path_id, item.range.start), item.data);
+    auto symbol =
+        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("type hierarchy"));
     std::vector<index::IndexQuery::Located> subtypes;

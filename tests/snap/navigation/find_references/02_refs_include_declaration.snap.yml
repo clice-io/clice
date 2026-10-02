@@ -12,9 +12,9 @@ decl:
     - { file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "11:4-11:9" }
     - { file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "16:11-16:16" }
   callHierarchy:
-    - { name: "scale", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "11:4-11:9" }
+    - { name: "scale", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "11:0-13:1", selection: "11:4-11:9" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "15:4-15:7", fromRanges: ["16:11-16:19"] }
+    - { name: "use", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "15:0-17:1", selection: "15:4-15:7", fromRanges: ["16:11-16:16"] }
 
 def:
   definition:
@@ -26,9 +26,9 @@ def:
     - { file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "11:4-11:9" }
     - { file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "16:11-16:16" }
   callHierarchy:
-    - { name: "scale", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "11:4-11:9" }
+    - { name: "scale", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "11:0-13:1", selection: "11:4-11:9" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "15:4-15:7", fromRanges: ["16:11-16:19"] }
+    - { name: "use", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "15:0-17:1", selection: "15:4-15:7", fromRanges: ["16:11-16:16"] }
 
 use:
   definition:
@@ -41,6 +41,6 @@ use:
     - { file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "11:4-11:9" }
     - { file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "16:11-16:16" }
   callHierarchy:
-    - { name: "scale", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "11:4-11:9" }
+    - { name: "scale", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "11:0-13:1", selection: "11:4-11:9" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "15:4-15:7", fromRanges: ["16:11-16:19"] }
+    - { name: "use", kind: Function, file: "${WS}/find_references/02_refs_include_declaration.cpp", range: "15:0-17:1", selection: "15:4-15:7", fromRanges: ["16:11-16:16"] }

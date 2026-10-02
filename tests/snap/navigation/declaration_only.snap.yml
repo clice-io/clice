@@ -10,9 +10,9 @@ caller:
   references:
     - { file: "${WS}/declaration_only.cpp", range: "9:4-9:9" }
   callHierarchy:
-    - { name: "watch", kind: Function, file: "${WS}/declaration_only.cpp", range: "9:4-9:9" }
+    - { name: "watch", kind: Function, file: "${WS}/declaration_only.cpp", range: "9:0-11:1", selection: "9:4-9:9" }
   outgoingCalls:
-    - { name: "probe", kind: Function, file: "${WS}/declaration_only.cpp", range: "7:4-7:9", fromRanges: ["10:11-10:23"] }
+    - { name: "probe", kind: Function, file: "${WS}/declaration_only.cpp", range: "7:0-7:20", selection: "7:4-7:9", fromRanges: ["10:11-10:16"] }
 
 fn_decl:
   definition:
@@ -23,9 +23,9 @@ fn_decl:
     - { file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
     - { file: "${WS}/declaration_only.cpp", range: "10:11-10:16" }
   callHierarchy:
-    - { name: "probe", kind: Function, file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
+    - { name: "probe", kind: Function, file: "${WS}/declaration_only.cpp", range: "7:0-7:20", selection: "7:4-7:9" }
   incomingCalls:
-    - { name: "watch", kind: Function, file: "${WS}/declaration_only.cpp", range: "9:4-9:9", fromRanges: ["10:11-10:23"] }
+    - { name: "watch", kind: Function, file: "${WS}/declaration_only.cpp", range: "9:0-11:1", selection: "9:4-9:9", fromRanges: ["10:11-10:16"] }
 
 fn_use:
   definition:
@@ -36,9 +36,9 @@ fn_use:
     - { file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
     - { file: "${WS}/declaration_only.cpp", range: "10:11-10:16" }
   callHierarchy:
-    - { name: "probe", kind: Function, file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
+    - { name: "probe", kind: Function, file: "${WS}/declaration_only.cpp", range: "7:0-7:20", selection: "7:4-7:9" }
   incomingCalls:
-    - { name: "watch", kind: Function, file: "${WS}/declaration_only.cpp", range: "9:4-9:9", fromRanges: ["10:11-10:23"] }
+    - { name: "watch", kind: Function, file: "${WS}/declaration_only.cpp", range: "9:0-11:1", selection: "9:4-9:9", fromRanges: ["10:11-10:16"] }
 
 var_decl:
   definition:

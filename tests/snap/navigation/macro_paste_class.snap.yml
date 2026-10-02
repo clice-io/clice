@@ -14,9 +14,9 @@ base:
     - { file: "${WS}/macro_paste_class.cpp", range: "9:13-9:21" }
     - { file: "${WS}/macro_paste_class.cpp", range: "18:0-18:13" }
   typeHierarchy:
-    - { name: "TestBase", kind: Struct, file: "${WS}/macro_paste_class.cpp", range: "7:7-7:15" }
+    - { name: "TestBase", kind: Struct, file: "${WS}/macro_paste_class.cpp", range: "7:0-10:1", selection: "7:7-7:15" }
   subtypes:
-    - { name: "Parser_HandlesEmpty_Test", kind: Struct, file: "${WS}/macro_paste_class.cpp", range: "18:0-18:13" }
+    - { name: "Parser_HandlesEmpty_Test", kind: Struct, file: "${WS}/macro_paste_class.cpp", range: "18:0-18:35", selection: "18:0-18:13" }
 
 class_use:
   definition:
@@ -27,9 +27,9 @@ class_use:
     - { file: "${WS}/macro_paste_class.cpp", range: "18:0-18:13" }
     - { file: "${WS}/macro_paste_class.cpp", range: "22:11-22:35" }
   typeHierarchy:
-    - { name: "Parser_HandlesEmpty_Test", kind: Struct, file: "${WS}/macro_paste_class.cpp", range: "18:0-18:13" }
+    - { name: "Parser_HandlesEmpty_Test", kind: Struct, file: "${WS}/macro_paste_class.cpp", range: "18:0-18:35", selection: "18:0-18:13" }
   supertypes:
-    - { name: "TestBase", kind: Struct, file: "${WS}/macro_paste_class.cpp", range: "7:7-7:15" }
+    - { name: "TestBase", kind: Struct, file: "${WS}/macro_paste_class.cpp", range: "7:0-10:1", selection: "7:7-7:15" }
 
 register_site:
   definition:
@@ -50,7 +50,7 @@ run_decl:
   references:
     - { file: "${WS}/macro_paste_class.cpp", range: "8:17-8:20" }
   callHierarchy:
-    - { name: "run", kind: Method, file: "${WS}/macro_paste_class.cpp", range: "8:17-8:20" }
+    - { name: "run", kind: Method, file: "${WS}/macro_paste_class.cpp", range: "8:4-8:26", selection: "8:17-8:20" }
 
 run_use:
   definition:
@@ -61,6 +61,6 @@ run_use:
     - { file: "${WS}/macro_paste_class.cpp", range: "18:0-18:13" }
     - { file: "${WS}/macro_paste_class.cpp", range: "23:13-23:16" }
   callHierarchy:
-    - { name: "run", kind: Method, file: "${WS}/macro_paste_class.cpp", range: "18:0-18:13" }
+    - { name: "run", kind: Method, file: "${WS}/macro_paste_class.cpp", range: "18:0-19:1", selection: "18:0-18:13" }
   incomingCalls:
-    - { name: "drive", kind: Function, file: "${WS}/macro_paste_class.cpp", range: "21:5-21:10", fromRanges: ["23:4-23:18"] }
+    - { name: "drive", kind: Function, file: "${WS}/macro_paste_class.cpp", range: "21:0-24:1", selection: "21:5-21:10", fromRanges: ["23:13-23:16"] }

@@ -912,6 +912,23 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
     auto spelled = semantics.spelled_tokens();
     llvm::SmallVector<const clang::NamedDecl*, 4> decls;
 
+    auto written = [&](clang::SourceLocation location) {
+        return location.isMacroID() ? unit.spelling_location(location) : location;
+    };
+
+    /// Whether the token is a later token the occurrence's name owns: any
+    /// token of `~Foo` or `operator==` names the function, `Foo` the
+    /// destructor rather than the class.
+    auto inside = [&](const NameOccurrence& occurrence, clang::SourceLocation token) {
+        if(occurrence.name_end.isInvalid() || !occurrence.owns_whole_name()) {
+            return false;
+        }
+        auto [fid, offset] = unit.decompose_location(token);
+        auto [begin_fid, begin_offset] = unit.decompose_location(written(occurrence.location));
+        auto [end_fid, end_offset] = unit.decompose_location(written(occurrence.name_end));
+        return fid == begin_fid && fid == end_fid && begin_offset < offset && offset <= end_offset;
+    };
+
     for(const auto& token: llvm::reverse(touched)) {
         if(should_ignore_token(token)) {
             continue;
@@ -927,6 +944,7 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
 
         llvm::DenseSet<std::uint32_t> visited;
         llvm::SmallPtrSet<const clang::NamedDecl*, 4> seen;
+        llvm::SmallVector<const clang::NamedDecl*, 4> named;
         for(auto owner: semantics.owners(index)) {
             for(auto n = owner; n != Semantics::invalid; n = semantics.node(n).parent) {
                 /// Owners of a macro token share ancestors; scan each chain
@@ -941,17 +959,21 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
                 }
 
                 for(auto& occurrence: resolve_occurrences(semantics, n, &unit.resolver())) {
-                    auto location = occurrence.location;
-                    if(location.isMacroID()) {
-                        location = unit.spelling_location(location);
-                    }
-                    if(location == token.location() && seen.insert(occurrence.decl).second) {
-                        decls.push_back(occurrence.decl);
+                    if(written(occurrence.location) == token.location()) {
+                        if(seen.insert(occurrence.decl).second) {
+                            decls.push_back(occurrence.decl);
+                        }
+                    } else if(inside(occurrence, token.location()) &&
+                              !llvm::is_contained(named, occurrence.decl)) {
+                        named.push_back(occurrence.decl);
                     }
                 }
             }
         }
 
+        if(!named.empty()) {
+            return named;
+        }
         if(!decls.empty()) {
             break;
         }

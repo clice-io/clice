@@ -651,7 +651,7 @@ TEST_CASE(RewrittenOperatorRef) {
 
             struct S {
                 int v;
-                auto §(def)⟦operator⟧<=>(const S&) const = default;
+                auto §(def)⟦operator<=>⟧(const S&) const = default;
             };
 
             bool lt(S a, S b) { return a §(use)< b; }
