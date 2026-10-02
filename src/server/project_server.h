@@ -83,6 +83,11 @@ public:
     /// FileTracker::discover_around) so the compile finds its entry.
     void discover_around(Fid path_id);
 
+    /// After a tick looked at the flags: weigh what the looks found of the
+    /// project's databases (see FileTracker::tick_cdb) and dispatch the
+    /// reloads. Nothing while the project's polling is off.
+    void tick_databases();
+
     /// The single entry point for file events: fold the batch through the
     /// Invalidator, then execute the resulting effects against the mutable
     /// services (sessions, editor context, background indexer).
@@ -133,8 +138,9 @@ public:
 
     /// Polling of the project's databases, default sources and checkout.
     /// Created by start() once the project is loaded (null before that and
-    /// for the rootless project); its polling loops run in bg_tasks, and
-    /// the clice/internal/poll test hook drives ticks directly.
+    /// for the rootless project); the master's ticks and its sources loop
+    /// in bg_tasks drive it, and the clice/internal/poll test hook drives
+    /// ticks directly.
     std::unique_ptr<FileTracker> tracker;
 
     /// Problems found while loading clice.toml, kept so LSPClient can
@@ -199,9 +205,9 @@ private:
     /// disk (see cache_checkpoint_task).
     void drain_store_evictions();
 
-    /// The file tracker's polling loops: each tick hands the tracker's
-    /// event batch to dispatch(). Spawned by start() unless polling is off.
-    kota::task<> cdb_poll_task();
+    /// The file tracker's default-sources loop: each tick hands the
+    /// tracker's event batch to dispatch(). Spawned by start() unless
+    /// polling is off.
     kota::task<> sources_poll_task();
 
     /// The project's background tasks (checkpoints, flushes, polls, the

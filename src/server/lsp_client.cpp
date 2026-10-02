@@ -937,6 +937,8 @@ void LSPClient::register_extensions() {
                         }
                         if(params.loop == "workspace") {
                             srv.files.disk.look_all();
+                        } else {
+                            srv.files.disk.look_flags();
                         }
                         // Every project ticks; the reply counts the events of all.
                         std::uint32_t count = 0;

@@ -643,6 +643,9 @@ kota::task<> MasterServer::poll_task() {
     while(true) {
         co_await kota::sleep(interval);
         files.disk.tick(budget);
+        for(auto& project: projects) {
+            project->tick_databases();
+        }
     }
 }
 

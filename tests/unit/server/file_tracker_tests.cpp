@@ -27,6 +27,13 @@ void set_mtime(llvm::StringRef path, llvm::sys::TimePoint<> time) {
     llvm::sys::Process::SafelyCloseFileDescriptor(fd);
 }
 
+/// A master tick as the tracker sees it: the file table looks at the
+/// flags, then the tracker weighs what the looks found.
+llvm::SmallVector<FileEvent> tick(FileTracker& tracker, FileTable& files, bool force = false) {
+    files.disk.look_flags();
+    return tracker.tick_cdb(force);
+}
+
 TEST_SUITE(FileTracker) {
 
 TEST_CASE(CDBTickDebounces) {
@@ -52,9 +59,9 @@ TEST_CASE(CDBTickDebounces) {
                   {tmp.root, tmp.path("main.cpp"), {}},
                   {tmp.root, tmp.path("lib.cpp"),  {}}
     }));
-    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tick(tracker, files).empty());
 
-    auto events = tracker.tick_cdb();
+    auto events = tick(tracker, files);
     ASSERT_EQ(events.size(), 1u);
     ASSERT_EQ(events[0].kind, FileEvent::Kind::CDBChanged);
     auto lib_id = project.file_table.intern(Spelling::absolute(tmp.path("lib.cpp")));
@@ -62,7 +69,7 @@ TEST_CASE(CDBTickDebounces) {
     ASSERT_TRUE(events[0].cdb.removed.empty());
 
     // Settled: further ticks are quiet.
-    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tick(tracker, files).empty());
 }
 
 TEST_CASE(CDBTickForceImmediate) {
@@ -84,7 +91,7 @@ TEST_CASE(CDBTickForceImmediate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DFOO"}}
     }));
-    auto events = tracker.tick_cdb(/*force=*/true);
+    auto events = tick(tracker, files, /*force=*/true);
     ASSERT_EQ(events.size(), 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
@@ -100,16 +107,58 @@ TEST_CASE(CDBTickDiscoversLate) {
     SessionStore store;
     // No compile_commands.json at construction time.
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    ASSERT_TRUE(tick(tracker, files, /*force=*/true).empty());
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    auto events = tracker.tick_cdb(/*force=*/true);
+    auto events = tick(tracker, files, /*force=*/true);
     ASSERT_EQ(events.size(), 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{main_id});
+}
+
+TEST_CASE(CDBTickWatchesSubdirectory) {
+    /// A database generated into an existing build directory is found
+    /// where the tick watches for it, and settles like a rewrite.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.mkdir("build");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    ASSERT_TRUE(tick(tracker, files).empty());
+
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    ASSERT_TRUE(tick(tracker, files).empty());
+    auto events = tick(tracker, files);
+    ASSERT_EQ(events.size(), 1u);
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{main_id});
+}
+
+TEST_CASE(CDBTickSeesNewSubdirectory) {
+    /// A build directory created after startup is listed once the root
+    /// directory moves.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    ASSERT_TRUE(tick(tracker, files).empty());
+
+    tmp.touch("out/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    ASSERT_TRUE(tick(tracker, files).empty());
+    ASSERT_EQ(tick(tracker, files).size(), 1u);
 }
 
 TEST_CASE(CDBTickDeleteRecreate) {
@@ -129,14 +178,14 @@ TEST_CASE(CDBTickDeleteRecreate) {
 
     // Deletion (mid-regeneration): keep serving the loaded entries.
     fs::remove_all(tmp.path("compile_commands.json"));
-    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    ASSERT_TRUE(tick(tracker, files, /*force=*/true).empty());
 
     // The rewrite lands as a normal change once the file is back.
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DFOO"}}
     }));
-    auto events = tracker.tick_cdb(/*force=*/true);
+    auto events = tick(tracker, files, /*force=*/true);
     ASSERT_EQ(events.size(), 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
@@ -169,8 +218,8 @@ TEST_CASE(CDBTickRetriesFailedLoad) {
                                                         before.getLastModificationTime())));
     llvm::sys::Process::SafelyCloseFileDescriptor(fd);
 
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tick(tracker, files).empty());
+    ASSERT_TRUE(tick(tracker, files).empty());
     EXPECT_TRUE(project.cdb.loaded(id));
 }
 
@@ -198,7 +247,7 @@ TEST_CASE(CDBTickRelocates) {
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
 
     fs::remove_all(tmp.path("compile_commands.json"));
-    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    ASSERT_TRUE(tick(tracker, files, /*force=*/true).empty());
     EXPECT_FALSE(project.cdb.present(root));
     EXPECT_FALSE(project.cdb.candidate_entries(only_id).empty());
 
@@ -206,7 +255,7 @@ TEST_CASE(CDBTickRelocates) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DMOVED"}}
     }));
-    auto events = tracker.tick_cdb(/*force=*/true);
+    auto events = tick(tracker, files, /*force=*/true);
     auto build =
         *project.cdb.find_source(Spelling::absolute(tmp.path("build/compile_commands.json")));
     ASSERT_EQ(events.size(), 1u);
@@ -215,7 +264,7 @@ TEST_CASE(CDBTickRelocates) {
     EXPECT_EQ(project.build.entries(only_id).front().source, root);
 
     tmp.touch("compile_commands.json", original);
-    events = tracker.tick_cdb(/*force=*/true);
+    events = tick(tracker, files, /*force=*/true);
     ASSERT_EQ(events.size(), 1u);
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
     EXPECT_EQ(project.build.entries(main_id).front().source, root);
@@ -239,8 +288,8 @@ TEST_CASE(CDBDeletedBeforeWatch) {
     ASSERT_TRUE(project.cdb.present(id));
     fs::remove_all(tmp.path("compile_commands.json"));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT_TRUE(tracker.tick_cdb().empty());
-    EXPECT_TRUE(tracker.tick_cdb().empty());
+    EXPECT_TRUE(tick(tracker, files).empty());
+    EXPECT_TRUE(tick(tracker, files).empty());
     EXPECT_FALSE(project.cdb.present(id));
 }
 
@@ -261,12 +310,12 @@ TEST_CASE(ResponseRewriteBeforeWatch) {
     }));
     tmp.touch("flags.rsp", "-DTWO\n");
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT_TRUE(tracker.tick_cdb().empty());
-    auto events = tracker.tick_cdb();
+    EXPECT_TRUE(tick(tracker, files).empty());
+    auto events = tick(tracker, files);
     ASSERT_EQ(events.size(), 1u);
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     EXPECT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main});
-    EXPECT_TRUE(tracker.tick_cdb().empty());
+    EXPECT_TRUE(tick(tracker, files).empty());
 }
 
 TEST_CASE(ResponseAddedByReload) {
@@ -287,11 +336,11 @@ TEST_CASE(ResponseAddedByReload) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
     }));
-    ASSERT_EQ(tracker.tick_cdb(/*force=*/true).size(), 1u);
+    ASSERT_EQ(tick(tracker, files, /*force=*/true).size(), 1u);
 
     tmp.touch("flags.rsp", "-DTWO\n");
-    EXPECT_TRUE(tracker.tick_cdb().empty());
-    auto events = tracker.tick_cdb();
+    EXPECT_TRUE(tick(tracker, files).empty());
+    auto events = tick(tracker, files);
     ASSERT_EQ(events.size(), 1u);
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     EXPECT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main});
@@ -332,8 +381,8 @@ TEST_CASE(CDBTickRenameOver) {
     ASSERT_TRUE(
         fs::rename(tmp.path("replacement.json"), tmp.path("compile_commands.json")).has_value());
 
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-    auto events = tracker.tick_cdb();
+    ASSERT_TRUE(tick(tracker, files).empty());
+    auto events = tick(tracker, files);
     ASSERT_EQ(events.size(), 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
@@ -391,8 +440,8 @@ TEST_CASE(CDBTickFollowsRetarget) {
 
     fs::remove(database);
     ASSERT_EQ(::symlink(tmp.path("release.json").c_str(), database.c_str()), 0);
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-    auto events = tracker.tick_cdb();
+    ASSERT_TRUE(tick(tracker, files).empty());
+    auto events = tick(tracker, files);
     ASSERT_EQ(events.size(), 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
@@ -434,7 +483,7 @@ TEST_CASE(CDBTickDiscoversAround) {
               build_cdb_json({
                   {tmp.root, tmp.path("a/other.cpp"), {}}
     }));
-    events = tracker.tick_cdb(/*force=*/true);
+    events = tick(tracker, files, /*force=*/true);
     ASSERT_EQ(events.size(), 1u);
     ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{other_id});
 }
@@ -460,19 +509,19 @@ TEST_CASE(CDBTickPhantomReplacement) {
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
 
     fs::remove_all(tmp.path("compile_commands.json"));
-    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    ASSERT_TRUE(tick(tracker, files, /*force=*/true).empty());
     tmp.touch("build/compile_commands.json", "not a database");
-    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    ASSERT_TRUE(tick(tracker, files, /*force=*/true).empty());
 
     tmp.touch("compile_commands.json", original);
-    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+    ASSERT_TRUE(tick(tracker, files, /*force=*/true).empty());
     EXPECT_TRUE(project.cdb.present(root));
 
     tmp.touch("build/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("other.cpp"), {}}
     }));
-    auto events = tracker.tick_cdb(/*force=*/true);
+    auto events = tick(tracker, files, /*force=*/true);
     ASSERT_EQ(events.size(), 1u);
     ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{other_id});
     EXPECT_EQ(project.build.entries(main_id).size(), 1u);
@@ -500,8 +549,8 @@ TEST_CASE(CDBTickCoalescesSources) {
               build_cdb_json({
                   {tmp.root, tmp.path("b/other.cpp"), {}}
     }));
-    EXPECT_TRUE(tracker.tick_cdb().empty());
-    auto events = tracker.tick_cdb();
+    EXPECT_TRUE(tick(tracker, files).empty());
+    auto events = tick(tracker, files);
     ASSERT_EQ(events.size(), 1u);
     EXPECT_EQ(events[0].cdb.added.size(), 2u);
     EXPECT_TRUE(project.cdb.loaded(a));
@@ -527,12 +576,12 @@ TEST_CASE(CDBRewriteBeforeWatch) {
     }));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-    auto events = tracker.tick_cdb();
+    ASSERT_TRUE(tick(tracker, files).empty());
+    auto events = tick(tracker, files);
     ASSERT_EQ(events.size(), 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
-    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tick(tracker, files).empty());
 }
 
 TEST_CASE(CDBSameStampRewrite) {
@@ -555,7 +604,7 @@ TEST_CASE(CDBSameStampRewrite) {
     set_mtime(database, stamp);
     ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tick(tracker, files).empty());
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
@@ -563,12 +612,12 @@ TEST_CASE(CDBSameStampRewrite) {
     }));
     set_mtime(database, stamp);
 
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-    auto events = tracker.tick_cdb();
+    ASSERT_TRUE(tick(tracker, files).empty());
+    auto events = tick(tracker, files);
     ASSERT_EQ(events.size(), 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
-    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tick(tracker, files).empty());
 }
 
 TEST_CASE(CDBForgedStampSeen) {
@@ -589,8 +638,8 @@ TEST_CASE(CDBForgedStampSeen) {
     set_mtime(database, stamp);
     ASSERT_TRUE(project.cdb.reload_and_diff(SourceID(0)).has_value());
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-    ASSERT_TRUE(tracker.tick_cdb().empty());
+    ASSERT_TRUE(tick(tracker, files).empty());
+    ASSERT_TRUE(tick(tracker, files).empty());
 
     // Past the coarse clock inode times are taken from.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -599,8 +648,8 @@ TEST_CASE(CDBForgedStampSeen) {
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
     }));
     set_mtime(database, stamp);
-    ASSERT_TRUE(tracker.tick_cdb().empty());
-    ASSERT_EQ(tracker.tick_cdb().size(), 1u);
+    ASSERT_TRUE(tick(tracker, files).empty());
+    ASSERT_EQ(tick(tracker, files).size(), 1u);
 }
 
 /// One workspace tick of the test hook: a look at every file, the

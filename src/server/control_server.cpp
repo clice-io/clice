@@ -37,6 +37,7 @@ void register_control(ProjectServer& srv, kota::ipc::JsonPeer& peer) {
         // Build changes land through the tracker's poll; a request right
         // after a compile_commands.json edit must see the new units.
         if(srv.tracker) {
+            srv.project.file_table.disk.look_flags();
             auto events = srv.tracker->tick_cdb(/*force=*/true);
             if(!events.empty()) {
                 srv.dispatch(events);

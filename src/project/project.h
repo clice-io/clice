@@ -323,10 +323,13 @@ struct Project {
                        Fid exclude_path_id = {}) const;
 };
 
+/// Where a `compile_commands.json` is looked for when no rule declares
+/// one: the workspace root, then its direct subdirectories in name order.
+llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root);
+
 /// The `compile_commands.json` files to load when no rule declares one:
-/// the workspace root's, then those of its direct subdirectories in name
-/// order. Empty when none exists yet — the CDBWatcher keeps looking on
-/// its CDB poll.
+/// those of database_places that exist. Empty when none exists yet — the
+/// CDBWatcher keeps watching the places.
 llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root);
 
 /// Every `compile_commands.json` under `workspace_root` (`.git` and the

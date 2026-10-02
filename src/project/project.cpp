@@ -224,15 +224,12 @@ static std::optional<Spelling> database_in(const Spelling& dir) {
     return candidate;
 }
 
-llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root) {
-    llvm::SmallVector<Spelling> found;
+llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
+    llvm::SmallVector<Spelling> places;
     if(workspace_root.empty()) {
-        return found;
+        return places;
     }
-    Spelling root(workspace_root);
-    if(auto database = database_in(root)) {
-        found.push_back(std::move(*database));
-    }
+    places.emplace_back("compile_commands.json", Spelling(workspace_root));
 
     // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
@@ -247,10 +244,14 @@ llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_roo
     }
     std::ranges::sort(subdirectories, {}, &Spelling::str);
     for(auto& subdirectory: subdirectories) {
-        if(auto database = database_in(subdirectory)) {
-            found.push_back(std::move(*database));
-        }
+        places.emplace_back("compile_commands.json", subdirectory);
     }
+    return places;
+}
+
+llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root) {
+    auto found = database_places(workspace_root);
+    llvm::erase_if(found, [](const Spelling& place) { return !llvm::sys::fs::exists(place); });
     return found;
 }
 

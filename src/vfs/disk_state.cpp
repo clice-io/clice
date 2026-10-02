@@ -375,7 +375,7 @@ void DiskState::look_flags() {
         live.push_back(watch.lock());
     }
     for(auto& watch: live) {
-        if(watch->flag.look()) {
+        if(watch->flag.look() && watch->on_change) {
             watch->on_change();
         }
     }
@@ -396,7 +396,7 @@ bool Flag::look() {
         found = hash;
     } else {
         hashed.reset();
-        if(status) {
+        if(status && status->type != llvm::sys::fs::file_type::directory_file) {
             if(auto observed = read_observed(path)) {
                 found = observed->obs.hash;
                 if(observed->obs.reliable) {

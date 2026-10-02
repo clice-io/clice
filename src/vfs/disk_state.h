@@ -20,7 +20,7 @@ namespace clice::vfs {
 
 /// A file watched by its path, a symlink followed anew at each look: the
 /// markers of a git checkout, a package environment, a compilation
-/// database.
+/// database. A directory has no content: its stamp alone moves.
 struct Flag {
     std::string path;
     /// The content hash at the last look; nullopt while the file is
@@ -203,10 +203,13 @@ public:
     /// deterministic stand-in for the ticks.
     void look_all();
 
-    /// Look at `path` at every tick from now on, calling `on_change` at a
-    /// look that finds other content than the one before, until the
-    /// returned flag is dropped. Its first look is taken now.
-    std::shared_ptr<const Flag> watch(std::string path, std::function<void()> on_change);
+    /// Look at every watched flag now, as a tick does first.
+    void look_flags();
+
+    /// Look at `path` at every tick from now on, until the returned flag is
+    /// dropped, calling `on_change`, when given, at a look that finds other
+    /// content than the one before. Its first look is taken now.
+    std::shared_ptr<const Flag> watch(std::string path, std::function<void()> on_change = {});
 
     /// The time of the schedule; tests turn it.
     std::function<Clock::time_point()> now = Clock::now;
@@ -295,8 +298,6 @@ private:
 
     /// Bring the file up at `at`, unless an earlier entry already will.
     void enqueue(Fid fid, File& file, Clock::time_point at);
-
-    void look_flags();
 
     /// A background look at a file.
     void look_at(Fid fid, StatusBatch& statuses);

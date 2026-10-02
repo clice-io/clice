@@ -22,17 +22,18 @@ namespace clice {
 /// is due for a look.
 ///
 /// The tracker only observes; it never dispatches. Database and source
-/// changes come back as the events the polling loops (and the
-/// clice/internal/poll test hook) hand to dispatch(), which keeps the
-/// tracker unit-testable against plain data structures.
+/// changes come back as the events the master's ticks, the sources loop
+/// (and the clice/internal/poll test hook) hand to dispatch(), which keeps
+/// the tracker unit-testable against plain data structures.
 class FileTracker {
 public:
     /// Construct after the project is loaded: its databases are baselined
     /// at their loads.
     FileTracker(Project& project, const SessionStore& store, CanonicalPath root);
 
-    /// One CDB poll tick (see CDBWatcher::tick), the open files looking
-    /// for a database; the reload's diff as one CDBChanged event.
+    /// One CDB tick (see CDBWatcher::tick), after the file table looked at
+    /// the flags, the open files looking for a database; the reload's diff
+    /// as one CDBChanged event.
     llvm::SmallVector<FileEvent> tick_cdb(bool force = false);
 
     /// See CDBWatcher::discover_around; the loads' diffs as CDBChanged
