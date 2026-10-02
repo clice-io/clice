@@ -380,8 +380,9 @@ public:
     /// matches stand as candidates otherwise.
     std::vector<Located> locate(const SymbolQuery& query) const;
 
-    /// Every project symbol with a definition site in the file's serving
-    /// source, anchored at the definition's name token.
+    /// Every project symbol and internal-linkage symbol with a definition
+    /// site in the file's serving source, anchored at the definition's
+    /// name token.
     std::vector<Located> definitions_in(Fid file) const;
 
     /// The include edges of a document, the input of the document-link

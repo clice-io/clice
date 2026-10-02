@@ -1026,14 +1026,21 @@ std::vector<IndexQuery::Located> IndexQuery::definitions_in(Fid file) const {
     if(!source) {
         return {};
     }
-    // The rows themselves say what is defined in the file; only symbols
-    // of the project table count, in row order.
+    // The rows themselves say what is defined in the file, in row order:
+    // the project table's symbols and the file's internal ones — a
+    // function's locals are no part of it.
     std::vector<Located> result;
     source->rows->for_each_relation([&](SymbolHash hash, const Relation& r) {
         if(r.kind != RelationKind::Definition) {
             return true;
         }
         auto identity = index.identity_of(hash);
+        if(!identity) {
+            identity = source->rows->find_symbol(hash);
+            if(identity && identity->scope != SymbolScope::TULocal) {
+                return true;
+            }
+        }
         if(!identity || identity->name.empty()) {
             return true;
         }

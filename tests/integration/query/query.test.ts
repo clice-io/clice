@@ -305,6 +305,16 @@ test("references reach internal and local symbols", ({ session }) => {
     expect(sites("util.h:2:12")).toEqual(helper);
     expect(sites("a.cpp:2:18")).toEqual(helper);
     expect(sites("b.cpp:2:15")).toEqual(["b.cpp:2", "b.cpp:2", "b.cpp:2"]);
+
+    const outline = (file: string) =>
+        query<{ symbols: { name: string }[] }>(
+            ws,
+            "documentSymbols",
+            "--path",
+            file,
+        ).result!.symbols.map((s) => s.name);
+    expect(outline("util.h")).toEqual(["helper"]);
+    expect(outline("b.cpp")).toEqual(["b"]);
 });
 
 test("context of a name opening its line", ({ session }) => {
