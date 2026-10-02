@@ -6,7 +6,6 @@
 #include "index/database.h"
 #include "index/writer_lock.h"
 #include "support/cache_store.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -344,7 +343,7 @@ ZEST_CASE(LibraryBlockedByFile) {
     auto library = index::library_directory(store, "x");
     auto ec = llvm::sys::fs::create_directories(path::parent_path(library));
     ASSERT(!ec);
-    ASSERT(fs::write(library, "x"));
+    ASSERT(!vfs::write(library, "x"));
     ASSERT(index::open_database(store, "x") == nullptr);
 }
 

@@ -9,7 +9,6 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "support/cache_store.h"
-#include "support/filesystem.h"
 
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
@@ -58,7 +57,7 @@ std::string
     put_aux(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
     auto pending = store.begin_store_aux(ns, key);
     require(!pending.tmp_path.empty(), "begin_store_aux returned no tmp path");
-    require(fs::write(pending.tmp_path, content).has_value(), "tmp write failed");
+    require(!vfs::write(pending.tmp_path, content), "tmp write failed");
     auto committed = store.commit(std::move(pending));
     require(committed.has_value(), "aux commit failed");
     return *committed;
@@ -69,7 +68,7 @@ std::string
     put(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
     auto pending = store.begin_store(ns, key);
     require(!pending.tmp_path.empty(), "begin_store returned no tmp path");
-    require(fs::write(pending.tmp_path, content).has_value(), "tmp write failed");
+    require(!vfs::write(pending.tmp_path, content), "tmp write failed");
     auto committed = store.commit(std::move(pending));
     require(committed.has_value(), "commit failed");
     return *committed;
@@ -125,7 +124,7 @@ ZEST_CASE(MarkersCreateRoot) {
 ZEST_CASE(IgnoreMarkersPreserved) {
     TempDir tmp;
     { auto store = open_store(tmp); }
-    require(fs::write(tmp.path("root/.gitignore"), "custom\n").has_value(), "rewrite failed");
+    require(!vfs::write(tmp.path("root/.gitignore"), "custom\n"), "rewrite failed");
 
     CacheStore::write_ignore_markers(tmp.path("root"));
     ASSERT(read_file(tmp.path("root/.gitignore")).value_or("") == "custom\n");
@@ -143,7 +142,7 @@ ZEST_CASE(DropRemovesTmp) {
     std::string tmp_path;
     {
         auto pending = store.begin_store("pch", "k1");
-        ASSERT(fs::write(pending.tmp_path, "junk"));
+        ASSERT(!vfs::write(pending.tmp_path, "junk"));
         tmp_path = pending.tmp_path;
     }
 
@@ -152,7 +151,7 @@ ZEST_CASE(DropRemovesTmp) {
 
     // A moved-from entry no longer owns the tmp file.
     auto pending = store.begin_store("pch", "k2");
-    ASSERT(fs::write(pending.tmp_path, "junk"));
+    ASSERT(!vfs::write(pending.tmp_path, "junk"));
     auto second = pending.tmp_path;
     {
         auto moved = std::move(pending);
@@ -163,8 +162,8 @@ ZEST_CASE(DropRemovesTmp) {
     // Move assignment cleans the destination's own tmp before adopting.
     auto lhs = store.begin_store("pch", "k3");
     auto rhs = store.begin_store("pch", "k4");
-    ASSERT(fs::write(lhs.tmp_path, "junk"));
-    ASSERT(fs::write(rhs.tmp_path, "junk"));
+    ASSERT(!vfs::write(lhs.tmp_path, "junk"));
+    ASSERT(!vfs::write(rhs.tmp_path, "junk"));
     auto third = lhs.tmp_path;
     auto fourth = rhs.tmp_path;
     lhs = std::move(rhs);
@@ -335,7 +334,7 @@ ZEST_CASE(CommitFailureSurfaces) {
     // commit must report the failure, not silently claim the data is stored.
     tmp.touch("root/cache/v1/pch/k1.pch/squatter", "x");
     auto pending = store.begin_store("pch", "k1");
-    ASSERT(fs::write(pending.tmp_path, "dropped"));
+    ASSERT(!vfs::write(pending.tmp_path, "dropped"));
     ASSERT(!store.commit(std::move(pending)).has_value());
     ASSERT(!store.lookup("pch", "k1").has_value());
 }
@@ -558,7 +557,7 @@ ZEST_CASE(AuxWithoutPrimaryFails) {
     register_paired(store);
 
     auto pending = store.begin_store_aux("pch", "ghost");
-    require(fs::write(pending.tmp_path, "orphan").has_value(), "tmp write failed");
+    require(!vfs::write(pending.tmp_path, "orphan"), "tmp write failed");
     ASSERT(!store.commit(std::move(pending)).has_value());
     ASSERT(!store.lookup_aux("pch", "ghost").has_value());
 }

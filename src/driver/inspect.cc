@@ -15,7 +15,6 @@
 #include "project/configuration.h"
 #include "project/load.h"
 #include "project/project.h"
-#include "support/filesystem.h"
 #include "syntax/annotation.h"
 #include "syntax/scan.h"
 #include "vfs/file_system.h"
@@ -473,9 +472,9 @@ CanonicalPath workspace_of(CanonicalRef start) {
     path::walk_ancestors(start, [&](CanonicalRef dir) {
         bool marked = llvm::any_of(config_file_names,
                                    [&](llvm::StringRef marker) {
-                                       return fs::exists(path::join(dir, marker));
+                                       return vfs::exists(path::join(dir, marker));
                                    }) ||
-                      fs::exists(path::join(dir, "compile_commands.json"));
+                      vfs::exists(path::join(dir, "compile_commands.json"));
         if(marked) {
             workspace = dir;
         }
@@ -737,11 +736,11 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     Spelling abs_path(inputs[1], Spelling::cwd());
-    if(!fs::exists(abs_path)) {
+    if(!vfs::exists(abs_path)) {
         LOG_ERROR("no such file or directory: {}", abs_path);
         return 1;
     }
-    bool is_dir = fs::is_directory(abs_path);
+    bool is_dir = vfs::is_directory(abs_path);
 
     /// (rel key, absolute path) per file, sorted by the map later.
     std::vector<std::pair<std::string, std::string>> files;
@@ -749,25 +748,19 @@ int run_inspect(const InspectOptions& opts) {
     /// above it may list members the suffix filter does not admit.
     llvm::StringSet<> directories;
     if(is_dir) {
-        std::error_code ec;
-        for(llvm::sys::fs::recursive_directory_iterator it(abs_path, ec), end; it != end && !ec;
-            it.increment(ec)) {
-            if(it->type() == llvm::sys::fs::file_type::regular_file) {
-                directories.insert(path::parent_path(it->path()));
+        vfs::walk(abs_path, [&](const vfs::Entry& entry) {
+            if(entry.type == llvm::sys::fs::file_type::regular_file) {
+                directories.insert(path::parent_path(entry.path));
             }
-            if(!is_c_family_file(it->path())) {
-                continue;
+            if(is_c_family_file(entry.path)) {
+                llvm::StringRef rel = entry.path;
+                rel.consume_front(abs_path.str());
+                rel.consume_front("/");
+                rel.consume_front("\\");
+                files.emplace_back(path::convert_to_slash(rel), entry.path);
             }
-            llvm::StringRef rel = it->path();
-            rel.consume_front(abs_path.str());
-            rel.consume_front("/");
-            rel.consume_front("\\");
-            files.emplace_back(path::convert_to_slash(rel), it->path());
-        }
-        if(ec) {
-            LOG_ERROR("cannot walk {}: {}", abs_path, ec.message());
-            return 1;
-        }
+            return true;
+        });
     } else {
         files.emplace_back(path::filename(abs_path.str()).str(), abs_path.str());
         directories.insert(path::parent_path(abs_path.str()));
@@ -976,7 +969,7 @@ int run_inspect(const InspectOptions& opts) {
                 if(!command) {
                     return;
                 }
-                auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
+                auto tmp = vfs::temp_file("clice-pcm", "pcm");
                 if(!tmp) {
                     entry.error = "module_error";
                     entry.diagnostics = {"failed to create temporary PCM file"};
@@ -1028,7 +1021,7 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     for(auto& path: pcm_files) {
-        fs::remove(path);
+        vfs::remove(path);
     }
 
     auto json = kota::codec::json::to_string<InspectJsonConfig>(output);

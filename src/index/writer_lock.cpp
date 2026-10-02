@@ -3,7 +3,6 @@
 #include <format>
 
 #include "version.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
@@ -87,26 +86,16 @@ bool write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint) {
         LOG_WARN("Failed to serialize the server endpoint record: {}", json.error().to_string());
         return false;
     }
-    auto final_path = path::join(cache_dir, endpoint_name);
-    auto tmp_path = final_path + ".tmp";
-    if(auto written = fs::write(tmp_path, *json); !written) {
-        LOG_WARN("Failed to record the server endpoint at {}: {}",
-                 final_path,
-                 written.error().message());
-        return false;
-    }
-    if(auto renamed = fs::rename(tmp_path, final_path); !renamed) {
-        LOG_WARN("Failed to record the server endpoint at {}: {}",
-                 final_path,
-                 renamed.error().message());
-        fs::remove(tmp_path);
+    auto record = path::join(cache_dir, endpoint_name);
+    if(auto error = vfs::write_atomic(record, *json)) {
+        LOG_WARN("Failed to record the server endpoint at {}: {}", record, error.message());
         return false;
     }
     return true;
 }
 
 void remove_endpoint(llvm::StringRef cache_dir) {
-    fs::remove(path::join(cache_dir, endpoint_name));
+    vfs::remove(path::join(cache_dir, endpoint_name));
 }
 
 std::string held_writer_message(const WriterProbe& probe, llvm::StringRef cache_dir) {

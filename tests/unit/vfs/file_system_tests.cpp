@@ -7,16 +7,36 @@
 #include <format>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "vfs/file_system.h"
 
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
+#include "llvm/Support/Program.h"
 
 namespace clice::testing {
 
 namespace {
+
+/// A link to a directory: a symlink, or on Windows a junction, which needs
+/// no privilege to make.
+bool link_directory(const std::string& target, const std::string& link) {
+#ifdef _WIN32
+    auto cmd = llvm::sys::findProgramByName("cmd");
+    std::optional<llvm::StringRef> quiet[] = {std::nullopt,
+                                              llvm::StringRef(""),
+                                              llvm::StringRef("")};
+    return cmd && llvm::sys::ExecuteAndWait(*cmd,
+                                            {"cmd", "/c", "mklink", "/J", link, target},
+                                            {},
+                                            quiet) == 0;
+#else
+    return ::symlink(target.c_str(), link.c_str()) == 0;
+#endif
+}
 
 ZEST_SUITE(FileSystem){
 
@@ -218,6 +238,93 @@ ZEST_CASE(StampSeesKeptTimes) {
     ASSERT(after->stamp.size == before->stamp.size);
     ASSERT(after->stamp.mtime_ns == before->stamp.mtime_ns);
     ASSERT(after->stamp != before->stamp);
+}
+
+ZEST_CASE(WalkPrunesAndSkipsLinks) {
+    TempDir tmp;
+    tmp.touch("src/a.cpp");
+    tmp.touch("src/deep/b.cpp");
+    tmp.touch("skip/c.cpp");
+    tmp.touch("outside/d.cpp");
+    ASSERT(link_directory(tmp.path("outside"), tmp.path("src/link")));
+
+    std::vector<std::string> seen;
+    vfs::walk(tmp.path("src"), [&](const vfs::Entry& entry) {
+        seen.push_back(llvm::sys::path::filename(entry.path).str());
+        if(seen.back() == "link") {
+            EXPECT(entry.type == llvm::sys::fs::file_type::symlink_file);
+        }
+        return true;
+    });
+    std::ranges::sort(seen);
+    ASSERT(seen == (std::vector<std::string>{"a.cpp", "b.cpp", "deep", "link"}));
+
+    seen.clear();
+    vfs::walk(tmp.root, [&](const vfs::Entry& entry) {
+        auto name = llvm::sys::path::filename(entry.path);
+        seen.push_back(name.str());
+        return name != "skip" && name != "src";
+    });
+    std::ranges::sort(seen);
+    ASSERT(seen == (std::vector<std::string>{"d.cpp", "outside", "skip", "src"}));
+}
+
+ZEST_CASE(LinksSeenAsLinks) {
+    TempDir tmp;
+    tmp.mkdir("target");
+    ASSERT(link_directory(tmp.path("target"), tmp.path("link")));
+    ASSERT(vfs::is_symlink(tmp.path("link")));
+    ASSERT(!vfs::is_symlink(tmp.path("target")));
+    ASSERT(vfs::exists(tmp.path("link")));
+    ASSERT(!static_cast<bool>(vfs::remove(tmp.path("target"))));
+    ASSERT(!vfs::exists(tmp.path("link")));
+    ASSERT(vfs::is_symlink(tmp.path("link")));
+}
+
+ZEST_CASE(RemoveAllKeepsLinkTargets) {
+    TempDir tmp;
+    tmp.touch("tree/a/b.h");
+    tmp.touch("tree/c.h");
+    tmp.touch("outside/kept.h");
+    ASSERT(link_directory(tmp.path("outside"), tmp.path("tree/link")));
+    ASSERT(link_directory(tmp.path("outside"), tmp.path("root-link")));
+    ASSERT(!static_cast<bool>(vfs::remove_all(tmp.path("root-link"))));
+    ASSERT(!vfs::is_symlink(tmp.path("root-link")));
+    ASSERT(!static_cast<bool>(vfs::remove_all(tmp.path("tree"))));
+    ASSERT(!vfs::exists(tmp.path("tree")));
+    ASSERT(vfs::exists(tmp.path("outside/kept.h")));
+    ASSERT(!static_cast<bool>(vfs::remove_all(tmp.path("tree"))));
+}
+
+ZEST_CASE(RemoveMappedFile) {
+    // Workers keep PCHs mapped while the store replaces them.
+    TempDir tmp;
+    // Not a whole number of pages: a null-terminated read maps only then.
+    tmp.touch("blob.pch", std::string((1 << 20) + 1, 'x'));
+    auto path = tmp.path("blob.pch");
+    auto mapped = vfs::read(path, vfs::Read::Mapped);
+    ASSERT(mapped);
+    ASSERT((*mapped)->getBufferKind() == llvm::MemoryBuffer::MemoryBuffer_MMap);
+    ASSERT(!static_cast<bool>(vfs::remove(path)));
+    ASSERT(!vfs::exists(path));
+    ASSERT((*mapped)->getBufferSize() == (1u << 20) + 1);
+    tmp.touch("blob.pch", "new");
+    ASSERT(read_file(path).value_or("") == "new");
+    ASSERT(!static_cast<bool>(vfs::remove(path)));
+    ASSERT(!static_cast<bool>(vfs::remove(path)));
+}
+
+ZEST_CASE(AtomicWriteReplaces) {
+    TempDir tmp;
+    auto path = tmp.path("state.json");
+    ASSERT(!static_cast<bool>(vfs::write_atomic(path, "old")));
+    ASSERT(!static_cast<bool>(vfs::write_atomic(path, "new")));
+    ASSERT(read_file(path).value_or("") == "new");
+    auto entries = vfs::read_dir(tmp.root);
+    ASSERT(entries);
+    ASSERT(entries->size() == 1u);
+    ASSERT(entries->front().type == llvm::sys::fs::file_type::regular_file);
+    ASSERT(static_cast<bool>(vfs::write_atomic(tmp.path("none/state.json"), "x")));
 }
 
 };  // namespace clice::testing

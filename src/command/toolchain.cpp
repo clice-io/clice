@@ -11,8 +11,8 @@
 
 #include "command/argument_parser.h"
 #include "command/nvcc.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
 #include "vfs/path.h"
 
 #include "kota/async/async.h"
@@ -143,7 +143,9 @@ std::expected<void, std::string> query_driver(
     /// inject related commands before querying.
     clang::driver::Driver driver(/*DriverExecutable=*/arguments[0],
                                  /*TargetTriple=*/llvm::sys::getDefaultTargetTriple(),
-                                 /*Diags=*/engine);
+                                 /*Diags=*/engine,
+                                 /*Title=*/"clang LLVM compiler",
+                                 /*VFS=*/llvm::makeIntrusiveRefCnt<vfs::View>());
     driver.setCheckInputsExist(false);
     driver.setProbePrecompiled(false);
 
@@ -276,7 +278,7 @@ kota::task<std::expected<GCCToolchainFlags, std::string>> query_gcc_flags(std::s
 /// (a stale CDB directory, or a foreign-platform path): probing from the
 /// process cwd degrades the answer instead of failing the spawn.
 std::string probe_cwd(llvm::StringRef wanted) {
-    if(wanted.empty() || !fs::is_directory(wanted)) {
+    if(wanted.empty() || !vfs::is_directory(wanted)) {
         return {};
     }
     return wanted.str();
@@ -344,7 +346,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
         }
     }
 
-    if(!fs::exists(driver) || !fs::can_execute(driver))
+    if(!vfs::exists(driver) || !llvm::sys::fs::can_execute(driver))
         co_return std::unexpected(
             std::format("Driver {} not found or not executable", driver.str()));
 
@@ -353,11 +355,12 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     /// Create a file with the kind's suffix, because the real input may not
     /// exist on disk (and a borrowed header must probe as the host's
     /// language, not as its own extension).
-    llvm::SmallString<64> src_path;
-    if(auto e = fs::createTemporaryFile("query-toolchain", suffix, src_path))
-        co_return std::unexpected(std::format("Failed to create temp file: {}", e.message()));
+    auto src_path = vfs::temp_file("query-toolchain", suffix);
+    if(!src_path)
+        co_return std::unexpected(
+            std::format("Failed to create temp file: {}", src_path.error().message()));
     auto cleanup = llvm::make_scope_exit([&] {
-        if(auto e = fs::remove(src_path))
+        if(auto e = vfs::remove(*src_path))
             LOG_ERROR("Fail to remove temporary file: {}", e);
     });
 
@@ -367,7 +370,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     llvm::SmallVector<const char*, 256> args;
     args.emplace_back(driver.data());
     args.append(spec.argv.begin() + 1, spec.argv.end());
-    args.insert(args.begin() + spec.slot, src_path.c_str());
+    args.insert(args.begin() + spec.slot, src_path->c_str());
 
     std::vector<std::string> cc1_args;
 
@@ -462,19 +465,16 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
             bool cuda_input = spec.kind == "cuda";
             llvm::StringRef probe_ext = cuda_input ? "cu" : llvm::StringRef(suffix);
 
-            llvm::SmallString<64> nvcc_probe;
-            if(auto e = fs::createTemporaryFile("query-toolchain", probe_ext, nvcc_probe))
+            auto nvcc_probe = vfs::temp_file("query-toolchain", probe_ext);
+            if(!nvcc_probe)
                 co_return std::unexpected(
-                    std::format("Failed to create temp file: {}", e.message()));
+                    std::format("Failed to create temp file: {}", nvcc_probe.error().message()));
             auto nvcc_cleanup = llvm::make_scope_exit([&] {
-                if(auto e = fs::remove(nvcc_probe))
+                if(auto e = vfs::remove(*nvcc_probe))
                     LOG_ERROR("Fail to remove temporary file: {}", e);
             });
 
-            std::vector<std::string> dryrun_args = {driver.str(),
-                                                    "--dryrun",
-                                                    "-c",
-                                                    std::string(nvcc_probe)};
+            std::vector<std::string> dryrun_args = {driver.str(), "--dryrun", "-c", *nvcc_probe};
             for(llvm::StringRef arg: args) {
                 if(is_nvcc_probe_flag(arg))
                     dryrun_args.push_back(arg.str());
@@ -496,14 +496,14 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
                 std::string resolved_host;
                 for(auto& dir: info->search_path) {
                     auto candidate = path::join(dir, host);
-                    if(fs::exists(candidate) && fs::can_execute(candidate)) {
+                    if(vfs::exists(candidate) && llvm::sys::fs::can_execute(candidate)) {
                         resolved_host = std::move(candidate);
                         break;
                     }
                 }
                 if(resolved_host.empty()) {
                     auto sibling = path::join(path::parent_path(driver), host);
-                    if(fs::exists(sibling) && fs::can_execute(sibling))
+                    if(vfs::exists(sibling) && llvm::sys::fs::can_execute(sibling))
                         resolved_host = std::move(sibling);
                 }
                 if(resolved_host.empty()) {
@@ -651,7 +651,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     // paths verbatim, without canonicalizing them.
     std::erase_if(cc1_args, [&](const std::string& arg) {
         llvm::StringRef s(arg);
-        return s == src_path || s == "-fmodules-reduced-bmi" || s.starts_with("-fmodule-output");
+        return s == *src_path || s == "-fmodules-reduced-bmi" || s.starts_with("-fmodule-output");
     });
 
     if(cc1_args.empty())
@@ -1035,8 +1035,7 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
                 break;
             }
         }
-        bool keep_external =
-            uses_windows_gnu_target(config) && llvm::sys::fs::is_directory(old_resource_dir);
+        bool keep_external = uses_windows_gnu_target(config) && vfs::is_directory(old_resource_dir);
         if(!old_resource_dir.empty() && old_resource_dir != resource_dir() && !keep_external) {
             // The remainder below the resource dir when ours ships it (the
             // resource dir itself or its builtin headers), separators dropped.

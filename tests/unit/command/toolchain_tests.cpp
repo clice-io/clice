@@ -237,15 +237,15 @@ Target: x86_64-unknown-linux-gnu
     /// family) that prints a canned `-###` line to stderr, standing in for a
     /// real external driver.
     std::optional<std::string> create_fake_clang(llvm::StringRef cc1_line) {
-        auto file = fs::createTemporaryFile("clice-fake", "clang");
+        auto file = vfs::temp_file("clice-fake", "clang");
         if(!file)
             return std::nullopt;
 
         auto script = "#!/bin/sh\necho '" + cc1_line.str() + "' >&2\n";
-        if(!fs::write(*file, script))
+        if(vfs::write(*file, script))
             return std::nullopt;
 
-        if(fs::setPermissions(*file, fs::all_read | fs::all_exe))
+        if(llvm::sys::fs::setPermissions(*file, llvm::sys::fs::all_read | llvm::sys::fs::all_exe))
             return std::nullopt;
 
         return *file;
@@ -284,8 +284,9 @@ Target: x86_64-unknown-linux-gnu
         EXPECT(eager.db.toolchain().failed_count() == std::size_t(1));
 
         // The driver appears; the expired entry re-queries and succeeds.
-        ASSERT(fs::write(driver, script));
-        ASSERT(!fs::setPermissions(driver, fs::all_read | fs::all_exe));
+        ASSERT(!vfs::write(driver, script));
+        ASSERT(!llvm::sys::fs::setPermissions(driver,
+                                              llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
         ASSERT(eager.db.toolchain().resolve(ref.config, ref.input));
         EXPECT(eager.db.toolchain().failed_count() == std::size_t(0));
         EXPECT(eager.db.toolchain().has_cache());
@@ -297,8 +298,9 @@ Target: x86_64-unknown-linux-gnu
         auto ref2 = patient.add(tmp.root.str(), src, {late.c_str(), "-std=c++23", src.c_str()});
 
         ASSERT(!patient.db.toolchain().resolve(ref2.config, ref2.input).has_value());
-        ASSERT(fs::write(late, script));
-        ASSERT(!fs::setPermissions(late, fs::all_read | fs::all_exe));
+        ASSERT(!vfs::write(late, script));
+        ASSERT(
+            !llvm::sys::fs::setPermissions(late, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
         ASSERT(!patient.db.toolchain().resolve(ref2.config, ref2.input).has_value());
         EXPECT(patient.db.toolchain().failed_count() == std::size_t(1));
         EXPECT(!patient.db.toolchain().has_cache());
@@ -321,8 +323,9 @@ Target: x86_64-unknown-linux-gnu
         EXPECT(!f.db.toolchain().has_cache());
 
         auto script = "#!/bin/sh\necho '" + std::string(fake_cc1_line) + "' >&2\n";
-        ASSERT(fs::write(driver, script));
-        ASSERT(!fs::setPermissions(driver, fs::all_read | fs::all_exe));
+        ASSERT(!vfs::write(driver, script));
+        ASSERT(!llvm::sys::fs::setPermissions(driver,
+                                              llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
 
         f.db.warm(refs);
         EXPECT(f.db.toolchain().failed_count() == std::size_t(0));
@@ -369,7 +372,7 @@ Target: x86_64-unknown-linux-gnu
         // Remove the driver: a re-probe would now fail differently ("not found or
         // not executable"), so getting the original error back proves the second
         // resolve() hit the negative cache without spawning the driver again.
-        ASSERT(!fs::remove(*driver));
+        ASSERT(!vfs::remove(*driver));
         auto second = f.db.toolchain().resolve(ref.config, ref.input);
         ASSERT(!second.has_value());
         EXPECT(second.error() == first.error());
@@ -445,7 +448,7 @@ Target: x86_64-unknown-linux-gnu
                                                  llvm::StringRef name) {
         std::string file;
         if(name.empty()) {
-            auto temp = fs::createTemporaryFile("clice-fake", "clang");
+            auto temp = vfs::temp_file("clice-fake", "clang");
             if(!temp)
                 return std::nullopt;
             file = *temp;
@@ -466,10 +469,10 @@ for a in "$@"; do
 done
 echo " \"/usr/bin/clang-22\" \"-cc1\" \"-resource-dir\" \"$rd\" \"-internal-isystem\" \"$rd/include\" \"-std=c++23\"" >&2
 )";
-        if(!fs::write(file, script))
+        if(vfs::write(file, script))
             return std::nullopt;
 
-        if(fs::setPermissions(file, fs::all_read | fs::all_exe))
+        if(llvm::sys::fs::setPermissions(file, llvm::sys::fs::all_read | llvm::sys::fs::all_exe))
             return std::nullopt;
 
         return file;
@@ -501,14 +504,14 @@ echo " \"/usr/bin/clang-22\" \"-cc1\" \"-resource-dir\" \"$rd\" \"-internal-isys
             f.db.warm(refs);
             // The driver disappears after warming: the resolve below can only
             // succeed from the warmed cache entry, never from a fresh query.
-            fs::remove(*driver);
+            vfs::remove(*driver);
         }
         ASSERT(f.db.toolchain().resolve(ref.config, ref.input));
         auto argv = f.db.render(ref);
         EXPECT(std::ranges::contains(argv, llvm::StringRef(external_dir)));
         EXPECT(!std::ranges::contains(argv, resource_dir()));
 
-        fs::remove(*driver);
+        vfs::remove(*driver);
         if(!driver_name.empty()) {
             llvm::sys::fs::remove(llvm::sys::path::parent_path(*driver));
         }
@@ -551,7 +554,7 @@ echo " \"/usr/bin/clang-22\" \"-cc1\" \"-resource-dir\" \"$rd\" \"-internal-isys
         EXPECT(std::ranges::contains(argv, resource_dir()));
         EXPECT(std::ranges::contains(argv, llvm::StringRef(expected_include)));
 
-        fs::remove(*driver);
+        vfs::remove(*driver);
         llvm::sys::fs::remove(external_dir_buf);
     }
 
@@ -633,7 +636,7 @@ echo " \"/usr/bin/clang-22\" \"-cc1\" \"-resource-dir\" \"$rd\" \"-internal-isys
         EXPECT(f.db.toolchain().probe_count() == std::size_t(2));
 
         // With the driver gone, only the probe cache can still resolve.
-        ASSERT(!fs::remove(*driver));
+        ASSERT(!vfs::remove(*driver));
         auto resolved = f.db.toolchain().resolve(ref1.config, ref1.input);
         ASSERT(resolved);
         EXPECT(f.db.toolchain().resolved(*resolved).is_cc1);

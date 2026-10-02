@@ -27,8 +27,8 @@
 #include "command/argument_parser.h"
 #include "command/command.h"
 #include "compile/compilation.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
 
 #include "kota/deco/deco.h"
 #include "llvm/ADT/StringMap.h"
@@ -160,12 +160,12 @@ struct TempTracker {
 
     ~TempTracker() {
         for(auto& path: paths) {
-            fs::remove(path);
+            vfs::remove(path);
         }
     }
 
     std::string create(llvm::StringRef prefix, llvm::StringRef ext) {
-        auto result = fs::createTemporaryFile(prefix, ext);
+        auto result = vfs::temp_file(prefix, ext);
         if(!result) {
             std::println(stderr, "Failed to create temp file");
             std::exit(1);
@@ -344,7 +344,7 @@ void bench_monolithic(const std::vector<std::string>& headers, std::size_t count
     times.reserve(runs);
 
     for(int r = 0; r < runs; r += 1) {
-        fs::remove(pch_path);
+        vfs::remove(pch_path);
         auto result = build_one_pch(preamble, file_path, pch_path);
         if(!result.success) {
             std::println(stderr, "  Run {}: FAILED - {}", r + 1, result.error);
@@ -514,7 +514,7 @@ void bench_incremental(const std::vector<std::string>& headers, std::size_t base
     std::vector<double> mono_times, chain_times;
 
     for(int r = 0; r < runs; r += 1) {
-        fs::remove(mono_pch);
+        vfs::remove(mono_pch);
         auto result = build_one_pch(mono_preamble, mono_file, mono_pch);
         if(result.success)
             mono_times.push_back(result.ms);
@@ -526,7 +526,7 @@ void bench_incremental(const std::vector<std::string>& headers, std::size_t base
     std::string extra_pch = temps.create("incr-extra", "pch");
 
     for(int r = 0; r < runs; r += 1) {
-        fs::remove(extra_pch);
+        vfs::remove(extra_pch);
         auto result = build_one_pch(extra_text, extra_file, extra_pch, prev_pch);
         if(result.success)
             chain_times.push_back(result.ms);

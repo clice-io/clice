@@ -385,7 +385,7 @@ std::vector<std::string> CompilationUnitRef::absent() {
         // `#include_next` does not start at the first directory, a lookup
         // also fails on a directory of that name): only a place holding
         // nothing is absent.
-        if(!llvm::sys::fs::exists(entry.getKey())) {
+        if(!vfs::exists(entry.getKey())) {
             result.emplace_back(entry.getKey());
         }
     }

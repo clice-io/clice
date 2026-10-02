@@ -15,7 +15,6 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/xxhash.h"
@@ -353,7 +352,7 @@ const kota::ipc::Error* PCMFamily::crashed(Fid module) {
 bool PCMFamily::revalidate_blobs() {
     llvm::SmallVector<Fid> evicted;
     for(auto& [pid, st]: project.pcm_cache) {
-        if(!llvm::sys::fs::exists(st.path)) {
+        if(!vfs::exists(st.path)) {
             evicted.push_back(pid);
         }
     }

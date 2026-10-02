@@ -112,7 +112,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
             }
         }
 
-        auto tmp = fs::createTemporaryFile("test-pcm", "pcm");
+        auto tmp = vfs::temp_file("test-pcm", "pcm");
         if(!tmp) {
             co_return RoundOutcome::Failed;
         }

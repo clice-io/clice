@@ -8,7 +8,6 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "server/file_tracker.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 #include "llvm/Support/Process.h"
@@ -224,7 +223,7 @@ ZEST_CASE(CDBTickDeleteRecreate) {
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     // Deletion (mid-regeneration): keep serving the loaded entries.
-    fs::remove_all(tmp.path("compile_commands.json"));
+    vfs::remove_all(tmp.path("compile_commands.json"));
     ASSERT(tick(tracker, files, /*force=*/true).empty());
 
     // The rewrite lands as a normal change once the file is back.
@@ -291,7 +290,7 @@ ZEST_CASE(CDBTickRelocates) {
     auto only_id = project.file_table.intern(Spelling::absolute(tmp.path("only.cpp")));
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
 
-    fs::remove_all(tmp.path("compile_commands.json"));
+    vfs::remove_all(tmp.path("compile_commands.json"));
     ASSERT(tick(tracker, files, /*force=*/true).empty());
     EXPECT(!project.cdb.present(root));
     EXPECT(!project.cdb.candidate_entries(only_id).empty());
@@ -331,7 +330,7 @@ ZEST_CASE(CDBDeletedBeforeWatch) {
     }));
     auto id = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
     ASSERT(project.cdb.present(id));
-    fs::remove_all(tmp.path("compile_commands.json"));
+    vfs::remove_all(tmp.path("compile_commands.json"));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     EXPECT(tick(tracker, files).empty());
     EXPECT(tick(tracker, files).empty());
@@ -421,7 +420,7 @@ ZEST_CASE(CDBTickRenameOver) {
                                                         before.getLastAccessedTime(),
                                                         before.getLastModificationTime())));
     llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-    ASSERT(fs::rename(tmp.path("replacement.json"), tmp.path("compile_commands.json")));
+    ASSERT(!vfs::rename(tmp.path("replacement.json"), tmp.path("compile_commands.json")));
 
     ASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
@@ -480,7 +479,7 @@ ZEST_CASE(CDBTickFollowsRetarget) {
     ASSERT(project.cdb.load_source(id));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
-    fs::remove(database);
+    vfs::remove(database);
     ASSERT(::symlink(tmp.path("release.json").c_str(), database.c_str()) == 0);
     ASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
@@ -550,7 +549,7 @@ ZEST_CASE(CDBTickPhantomReplacement) {
     auto other_id = project.file_table.intern(Spelling::absolute(tmp.path("other.cpp")));
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
 
-    fs::remove_all(tmp.path("compile_commands.json"));
+    vfs::remove_all(tmp.path("compile_commands.json"));
     ASSERT(tick(tracker, files, /*force=*/true).empty());
     tmp.touch("build/compile_commands.json", "not a database");
     ASSERT(tick(tracker, files, /*force=*/true).empty());
@@ -735,7 +734,7 @@ ZEST_CASE(WorkspaceTickStateMachine) {
     ASSERT(workspace_tick(tracker, files).empty());
 
     // Removal reported once, then quiet while missing.
-    fs::remove_all(tmp.path("header.h"));
+    vfs::remove_all(tmp.path("header.h"));
     auto removed = workspace_tick(tracker, files);
     ASSERT(removed.size() == 1u);
     ASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);
@@ -772,7 +771,7 @@ ZEST_CASE(WorkspaceTickKeepsListedMember) {
     project.file_table.current(both);
     ASSERT(workspace_tick(tracker, files).empty());
 
-    fs::remove_all(tmp.path("src/both.cpp"));
+    vfs::remove_all(tmp.path("src/both.cpp"));
     auto removed = workspace_tick(tracker, files);
     ASSERT(removed.size() == 1u);
     ASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);
@@ -802,7 +801,7 @@ ZEST_CASE(WorkspaceTickSeesOpen) {
     ASSERT(changed[0].path_id == header);
     ASSERT(workspace_tick(tracker, files).empty());
 
-    fs::remove_all(tmp.path("header.h"));
+    vfs::remove_all(tmp.path("header.h"));
     auto removed = workspace_tick(tracker, files);
     ASSERT(removed.size() == 1u);
     ASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);

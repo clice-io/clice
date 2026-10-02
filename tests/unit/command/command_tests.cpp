@@ -9,7 +9,6 @@
 #include "command/argument_parser.h"
 #include "command/command.h"
 #include "project/build.h"
-#include "support/filesystem.h"
 #include "support/shell.h"
 #include "vfs/path.h"
 
@@ -928,7 +927,7 @@ ZEST_SUITE(Command) {
     /// Write JSON to a temp file, load into a CDB, remove the file.
     /// Returns the number of entries loaded.
     std::size_t load_json(CompilationDatabase & database, llvm::StringRef json) {
-        auto path = fs::createTemporaryFile("cdb", "json");
+        auto path = vfs::temp_file("cdb", "json");
         if(!path)
             return 0;
         {

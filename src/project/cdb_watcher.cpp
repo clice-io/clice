@@ -3,8 +3,8 @@
 #include <ranges>
 #include <utility>
 
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
 #include "vfs/path.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -186,9 +186,9 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
         listed = database_places(root);
         // An entry made within the clock tick of the root's last change
         // leaves its stamp as it was: only a settled stamp vouches for the
-        // listing (see fs::settled).
+        // listing (see vfs::settled).
         auto& stamp = root_flag->stamp;
-        listed_at = stamp && fs::settled(stamp->mtime_ns) ? stamp : std::nullopt;
+        listed_at = stamp && vfs::settled(stamp->mtime_ns) ? stamp : std::nullopt;
     }
 
     // In the order a startup discovery would register them, the nearest

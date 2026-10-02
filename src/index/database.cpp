@@ -18,8 +18,8 @@
 
 #include "lmdb.h"
 #include "support/cache_store.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
 #include "vfs/path.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -113,8 +113,8 @@ bool is_corruption(int rc) {
 }
 
 void remove_database_files(llvm::StringRef path) {
-    fs::remove(path);
-    fs::remove(path + "-lock");
+    vfs::remove(path);
+    vfs::remove(path.str() + "-lock");
 }
 
 class LmdbDatabase final : public BlobDatabase {
@@ -439,7 +439,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
         // (make_sparse and mdb_env_open both create on demand): a later
         // session would misread the abandoned uninitialized placeholder as
         // corruption and log a spurious rebuild.
-        bool created = !read_only && !llvm::sys::fs::exists(path);
+        bool created = !read_only && !vfs::exists(path);
         auto discard_created = [&] {
             if(created) {
                 remove_database_files(path);
@@ -615,10 +615,10 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
     read_only = read_only || store.read_only();
     auto library = library_directory(store, configuration);
     if(read_only) {
-        if(!llvm::sys::fs::exists(path::join(library, lmdb_file_name))) {
+        if(!vfs::exists(path::join(library, lmdb_file_name))) {
             return nullptr;
         }
-    } else if(auto ec = llvm::sys::fs::create_directories(library)) {
+    } else if(auto ec = vfs::create_directories(library)) {
         LOG_WARN("Cannot create the index library {}: {}", library, ec.message());
         return nullptr;
     }

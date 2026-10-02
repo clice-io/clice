@@ -753,7 +753,7 @@ static Spelling source_key(const Spelling& path) {
     auto file =
         path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
     auto directory = file.parent();
-    if(llvm::sys::fs::is_symlink_file(directory.str())) {
+    if(vfs::is_symlink(directory.str())) {
         return Spelling(
             path::filename(file.str()),
             Spelling(path::filename(directory.str()), Spelling(CanonicalPath(directory.parent()))));

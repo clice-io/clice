@@ -6,7 +6,6 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "vfs/file_table.h"
 #include "vfs/path.h"
 
@@ -124,7 +123,7 @@ ZEST_CASE(TrustOnlyConfirms) {
     // there, is still filled.
     auto gone = f.file("pkg/gone.h", "int c;\n");
     f.hash_of(gone);
-    fs::remove_all(f.tmp.path("pkg/gone.h"));
+    vfs::remove_all(f.tmp.path("pkg/gone.h"));
     ASSERT(!f.disk.present(gone));
 }
 
@@ -177,7 +176,7 @@ ZEST_CASE(MissingDropsPair) {
     f.hash_of(fid);
     auto stamp = vfs::status(f.tmp.path("src/a.h"))->stamp;
     ASSERT(f.disk.cached_hash(fid, stamp));
-    fs::remove_all(f.tmp.path("src/a.h"));
+    vfs::remove_all(f.tmp.path("src/a.h"));
     f.disk.look(llvm::ArrayRef<Fid>{fid});
     ASSERT(!f.disk.cached_hash(fid, stamp).has_value());
 }

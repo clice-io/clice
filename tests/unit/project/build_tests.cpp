@@ -9,7 +9,6 @@
 #include "project/build.h"
 #include "project/configuration.h"
 #include "project/project.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 namespace clice::testing {
@@ -622,7 +621,7 @@ lint = false
         EXPECT(refresh().empty());
         EXPECT(build.members().size() == 2u);
 
-        fs::remove_all(tmp.path("src/later.cpp"));
+        vfs::remove_all(tmp.path("src/later.cpp"));
         EXPECT(refresh().empty());
         EXPECT(build.members().size() == 1u);
     };

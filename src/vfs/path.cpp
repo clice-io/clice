@@ -5,7 +5,7 @@
 #include "llvm/Support/FileSystem.h"
 
 #ifdef _WIN32
-#include <windows.h>
+#include "vfs/win32.h"
 
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/ConvertUTF.h"
@@ -22,11 +22,11 @@ namespace {
 /// for no data access, so neither a sharing mode nor a missing read
 /// permission refuses it.
 std::optional<std::string> resolve_existing(llvm::StringRef path) {
-    std::wstring wide;
-    if(!llvm::ConvertUTF8toWide(path, wide)) {
+    llvm::SmallVector<wchar_t, 256> wide;
+    if(vfs::widen(path, wide)) {
         return std::nullopt;
     }
-    HANDLE handle = ::CreateFileW(wide.c_str(),
+    HANDLE handle = ::CreateFileW(wide.data(),
                                   0,
                                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                   nullptr,

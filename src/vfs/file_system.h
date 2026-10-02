@@ -3,8 +3,11 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <string>
 #include <system_error>
+#include <vector>
 
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
@@ -30,6 +33,26 @@ struct Stamp {
 
     friend bool operator==(const Stamp&, const Stamp&) = default;
 };
+
+/// Filesystem mtime-granularity guard for freshness baselines: a stat fast
+/// path is only recorded for a file whose mtime precedes the reference
+/// moment by at least this much. Closer to it, a coarse-granularity
+/// filesystem (FAT stores 2s mtimes, several network filesystems whole
+/// seconds) could stamp a write the reference never saw with a timestamp
+/// from before it — so those files re-earn their fast path through one
+/// hash comparison instead.
+constexpr inline std::int64_t mtime_guard_ns = 2'000'000'000;
+
+/// The newest mtime (ns) a file may carry and still be provably untouched
+/// since the reference moment `at_ms` (a build start, or "now" for
+/// content read on the spot).
+constexpr std::int64_t stat_baseline_before_ns(std::int64_t at_ms) {
+    return at_ms * 1'000'000 - mtime_guard_ns;
+}
+
+/// Whether a stat taken now carrying `mtime_ns` may vouch for what it
+/// describes beyond this moment.
+bool settled(std::int64_t mtime_ns);
 
 /// A file's status, symlinks followed.
 struct Status {
@@ -140,6 +163,64 @@ private:
     llvm::StringMap<Directory> directories;
 #endif
 };
+
+/// Whether a path names anything, symlinks followed.
+bool exists(llvm::StringRef path);
+
+/// Whether a path names a regular file, symlinks followed.
+bool is_file(llvm::StringRef path);
+
+/// Whether a path names a directory, symlinks followed.
+bool is_directory(llvm::StringRef path);
+
+/// Whether a path is itself a symlink, or on Windows a junction.
+bool is_symlink(llvm::StringRef path);
+
+/// An entry of a directory: its path, the directory's spelling joined with
+/// its name, and its type, a link (see is_symlink) not followed.
+struct Entry {
+    std::string path;
+    llvm::sys::fs::file_type type;
+};
+
+/// The entries of a directory, in the order the system lists them.
+std::expected<std::vector<Entry>, std::error_code> read_dir(llvm::StringRef dir);
+
+/// Walk the tree under `root` depth first, links not followed: `visit`
+/// sees every entry and answers, for a directory, whether to walk into it.
+/// A directory that cannot be read is skipped, with a warning unless it is
+/// missing.
+void walk(llvm::StringRef root, llvm::function_ref<bool(const Entry&)> visit);
+
+std::error_code create_directories(llvm::StringRef path);
+
+/// Write a file whole, replacing what it held.
+std::error_code write(llvm::StringRef path, llvm::StringRef content);
+
+/// Write a file whole through a sibling renamed over it: a reader sees the
+/// old bytes or the new, never a part, and concurrent writers never mix.
+std::error_code write_atomic(llvm::StringRef path, llvm::StringRef content);
+
+std::error_code rename(llvm::StringRef from, llvm::StringRef to);
+
+/// Remove a file or an empty directory; a missing one is no error. Unlike
+/// llvm::sys::fs::remove, a file another process still maps goes on
+/// Windows as well: its name disappears at once and its content once the
+/// last mapping is gone, as on POSIX. Workers keep PCH blobs mapped across
+/// compiles, and the store retracts and replaces those blobs under them.
+std::error_code remove(llvm::StringRef path);
+
+/// Remove a tree; a missing one is no error. Links (see is_symlink) — a
+/// linked root included — are removed without following them, so the
+/// recursion never escapes into a link's target. Not llvm::sys::fs::remove_directories: on
+/// Windows that runs shell COM, which initializes an apartment on the
+/// calling thread and silently does nothing when that fails.
+std::error_code remove_all(llvm::StringRef path);
+
+/// Create a new empty file in the system's temporary directory, named
+/// `prefix`-<random>.`suffix`.
+std::expected<std::string, std::error_code> temp_file(llvm::StringRef prefix,
+                                                      llvm::StringRef suffix);
 
 /// Keep the mapping of a PCH from clice's store for the process's later
 /// compiles: Windows pages every fresh mapping in fault by fault, on every

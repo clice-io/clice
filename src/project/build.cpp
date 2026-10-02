@@ -4,7 +4,7 @@
 #include <format>
 
 #include "project/configuration.h"
-#include "support/logging.h"
+#include "vfs/file_system.h"
 #include "vfs/path.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -440,31 +440,17 @@ void Build::claim_sources(llvm::ArrayRef<CanonicalPath> walked, std::vector<Fid>
 std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
     std::vector<CanonicalPath> walked;
     for(auto& root: walk.roots) {
-        std::error_code ec;
-        for(llvm::sys::fs::recursive_directory_iterator it(root, ec, /*follow_symlinks=*/false),
-            end;
-            it != end;
-            it.increment(ec)) {
-            // An unreadable directory is skipped, not the rest of the walk.
-            if(ec) {
-                LOG_WARN("Cannot read a directory under {}: {}", root, ec.message());
-                ec.clear();
-                continue;
-            }
-            // The iterator spells paths natively, under the root; only an
+        vfs::walk(root, [&](const vfs::Entry& entry) {
+            // The walk spells paths natively, under the root; only an
             // entry that is itself a symlink names a file elsewhere.
             llvm::SmallString<256> storage;
-            auto spelled = path::canonical(it->path(), storage);
-            auto type = it->type();
-            if(type == llvm::sys::fs::file_type::directory_file) {
+            auto spelled = path::canonical(entry.path, storage);
+            if(entry.type == llvm::sys::fs::file_type::directory_file) {
                 auto name = path::filename(spelled);
-                if(name == ".git" || (name == path::filename(walk.cache_dir) &&
-                                      CanonicalRef(root).entry(spelled) == walk.cache_dir)) {
-                    it.no_push();
-                }
-                continue;
+                return name != ".git" && (name != path::filename(walk.cache_dir) ||
+                                          CanonicalRef(root).entry(spelled) != walk.cache_dir);
             }
-            auto path = type == llvm::sys::fs::file_type::regular_file
+            auto path = entry.type == llvm::sys::fs::file_type::regular_file
                             ? CanonicalRef(root).entry(spelled)
                             : CanonicalPath(Spelling::absolute(spelled));
             if(suffix_type(path) != clang::driver::types::TY_INVALID ||
@@ -473,7 +459,8 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
                })) {
                 walked.push_back(std::move(path));
             }
-        }
+            return false;
+        });
     }
     return walked;
 }

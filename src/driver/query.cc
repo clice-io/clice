@@ -10,10 +10,10 @@
 #include "sched/batch.h"
 #include "server/control_client.h"
 #include "server/query_commands.h"
+#include "vfs/file_system.h"
 
 #include "kota/ipc/codec/json.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/FileSystem.h"
 
 namespace clice::driver {
 
@@ -168,7 +168,7 @@ std::expected<index::SymbolQuery, std::string> locator_of(const QueryOptions& op
     if(opts.line && *opts.line <= 0) {
         return std::unexpected("line must be positive");
     }
-    if(opts.path && !llvm::sys::fs::is_regular_file(absolute)) {
+    if(opts.path && !vfs::is_file(absolute)) {
         return std::unexpected(std::format("no such file: {}", std::string_view(absolute)));
     }
     if(opts.symbol) {

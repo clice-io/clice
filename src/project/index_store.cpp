@@ -13,9 +13,9 @@
 #include "index/tu_index.h"
 #include "project/command_resolver.h"
 #include "project/hosting.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
+#include "vfs/file_system.h"
 #include "vfs/path.h"
 
 #include "kota/codec/json/json.h"
@@ -508,7 +508,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // Intern a FileVersion per file of the parse: the consumed-content hash
     // from the compiler's own buffers, shared by every TU that consumed it
     // (see file_version_stale).
-    auto baseline_before_ns = fs::stat_baseline_before_ns(view.built_at());
+    auto baseline_before_ns = vfs::stat_baseline_before_ns(view.built_at());
     llvm::SmallVector<VersionID> fv_of;
     fv_of.resize_for_overwrite(view.path_count());
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
@@ -1783,7 +1783,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         }
         auto server_id = file_of(old.file);
         if(retired.contains(server_id) || project_index.manifests.contains(server_id) ||
-           !fs::exists(project.file_table.resolve(server_id))) {
+           !vfs::exists(project.file_table.resolve(server_id))) {
             continue;
         }
         LOG_INFO("Index owed from the last session; reindexing {}",

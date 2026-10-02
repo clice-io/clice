@@ -2,7 +2,6 @@
 #include "test/test.h"
 #include "config/config.h"
 #include "project/configuration.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 namespace clice::testing {
@@ -41,7 +40,7 @@ ZEST_SUITE(Configuration) {
         EXPECT(read_selection(cache_dir) == "release");
         ASSERT(write_selection(cache_dir, "debug"));
         EXPECT(read_selection(cache_dir) == "debug");
-        EXPECT(fs::exists(path::join(cache_dir, "state.json")));
+        EXPECT(vfs::exists(path::join(cache_dir, "state.json")));
 
         tmp.touch(".clice/state.json", "not json");
         EXPECT(read_selection(cache_dir).empty());

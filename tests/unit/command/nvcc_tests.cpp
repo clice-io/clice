@@ -5,7 +5,6 @@
 #include "command/command.h"
 #include "command/nvcc.h"
 #include "command/toolchain.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 namespace clice::testing {
@@ -282,9 +281,9 @@ ZEST_SUITE(NVCCTests) {
     }
 
     ZEST_CASE(OptionsFileExpanded) {
-        auto file = fs::createTemporaryFile("clice-nvcc", "rsp");
+        auto file = vfs::temp_file("clice-nvcc", "rsp");
         ASSERT(file);
-        ASSERT(fs::write(*file, "-Igenerated -DAPI=2 -std=c++20\n"));
+        ASSERT(!vfs::write(*file, "-Igenerated -DAPI=2 -std=c++20\n"));
 
         auto args = translate({"nvcc", "--options-file", file->c_str()});
         auto joined = llvm::join(args, " ");
@@ -295,9 +294,9 @@ ZEST_SUITE(NVCCTests) {
         EXPECT(!llvm::StringRef(joined).contains(*file));
 
         // The value is a comma-separated file list: every element expands.
-        auto second = fs::createTemporaryFile("clice-nvcc", "rsp");
+        auto second = vfs::temp_file("clice-nvcc", "rsp");
         ASSERT(second);
-        ASSERT(fs::write(*second, "-DFROM_SECOND=2\n"));
+        ASSERT(!vfs::write(*second, "-DFROM_SECOND=2\n"));
 
         auto pair = *file + "," + *second;
         auto both = llvm::join(translate({"nvcc", "-optf", pair.c_str()}), " ");
@@ -315,18 +314,18 @@ ZEST_SUITE(NVCCTests) {
         EXPECT(!contains(missing, "--options-file=missing.rsp"));
         EXPECT(!contains(missing, "missing.rsp"));
 
-        fs::remove(*file);
-        fs::remove(*second);
+        vfs::remove(*file);
+        vfs::remove(*second);
     }
 
     ZEST_CASE(OptionsFileMarkSkipped) {
         // A byte order mark does not glue itself to the first option.
-        auto file = fs::createTemporaryFile("clice-nvcc", "rsp");
+        auto file = vfs::temp_file("clice-nvcc", "rsp");
         ASSERT(file);
-        ASSERT(fs::write(*file, "\xEF\xBB\xBF-DMARKED=1\n"));
+        ASSERT(!vfs::write(*file, "\xEF\xBB\xBF-DMARKED=1\n"));
         auto joined = llvm::join(translate({"nvcc", "--options-file", file->c_str()}), " ");
         EXPECT(llvm::StringRef(joined).contains("-D MARKED=1"));
-        fs::remove(*file);
+        vfs::remove(*file);
     }
 
     ZEST_CASE(StdNormalized) {

@@ -5,7 +5,6 @@
 #include <initializer_list>
 
 #include "feature/feature.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/shell.h"
 #include "vfs/file_system.h"
@@ -196,7 +195,7 @@ void Config::finalize(CanonicalRef workspace_root) {
             // The directory form is told from the file form by extension
             // everywhere else; only the filesystem knows a directory
             // spelled with a .json suffix.
-            if(fs::is_directory(full.str())) {
+            if(vfs::is_directory(full.str())) {
                 full = Spelling("compile_commands.json", full);
             }
             compiled.compile_commands.push_back(std::move(full));
@@ -372,7 +371,7 @@ Config Config::load_from_workspace(CanonicalRef workspace_root,
         if(!workspace_root.empty()) {
             for(auto name: config_file_names) {
                 auto config_path = path::join(llvm::StringRef(workspace_root), name);
-                if(!llvm::sys::fs::exists(config_path))
+                if(!vfs::exists(config_path))
                     continue;
                 found = true;
                 if(loaded_path)
@@ -409,7 +408,7 @@ std::string cache_dir_owner(llvm::StringRef cache_dir) {
 /// A recorded owner that no longer exists (a moved or deleted checkout)
 /// claims nothing.
 static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
-    return !owner.empty() && owner != root && llvm::sys::fs::is_directory(owner);
+    return !owner.empty() && owner != root && vfs::is_directory(owner);
 }
 
 bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root) {
@@ -425,11 +424,8 @@ void claim_cache_dir(llvm::StringRef cache_dir, CanonicalRef root) {
                                live_owner(owner, root))) {
         return;
     }
-    if(auto written = fs::write(path::join(cache_dir, cache_owner_file), root.str() + "\n");
-       !written) {
-        LOG_WARN("Cannot record the owner of cache directory {}: {}",
-                 cache_dir,
-                 written.error().message());
+    if(auto error = vfs::write(path::join(cache_dir, cache_owner_file), root.str() + "\n")) {
+        LOG_WARN("Cannot record the owner of cache directory {}: {}", cache_dir, error.message());
     }
 }
 

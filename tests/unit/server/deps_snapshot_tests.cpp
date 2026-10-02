@@ -279,7 +279,7 @@ ZEST_CASE(RemovedAfterBuild) {
     },
                                       generous_build_at());
 
-    fs::remove(dep);
+    vfs::remove(dep);
     ASSERT(deps_changed(pool, snap));
 }
 
