@@ -410,13 +410,13 @@ tests/snap/navigation/implicit_construction/06_delegating_ctor.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **继承构造函数**
 
-继承构造函数的声明可跳转到引入的某一个基类构造函数
+继承构造函数的声明可跳转到引入的每一个基类构造函数
 
-在继承构造函数的声明（`using Base::Base;`）上执行“跳转到定义”，可跳转到基类构造函数。当基类声明了多个构造函数时，返回结果会指向其中一个，而不会列出全部构造函数。
+在继承构造函数的声明（`using Base::Base;`）上执行“跳转到定义”，会列出它所引入的基类的每一个构造函数。
 
 ```snap
 tests/snap/navigation/implicit_construction/07_inherited_ctor.cpp

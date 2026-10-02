@@ -462,17 +462,15 @@ tests/snap/navigation/implicit_construction/06_delegating_ctor.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Inherited constructors**
 
-An inherited-constructor declaration navigates to one imported base
+An inherited-constructor declaration navigates to every imported base
 constructor
 
 Go-to-definition on an inherited-constructor declaration
-(`using Base::Base;`) reaches a base constructor. When the base declares
-several constructors the reply resolves to one of them rather than
-listing the whole set.
+(`using Base::Base;`) lists each constructor of the base it imports.
 
 ```snap
 tests/snap/navigation/implicit_construction/07_inherited_ctor.cpp
