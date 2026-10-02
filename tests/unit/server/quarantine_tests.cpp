@@ -159,6 +159,16 @@ TEST_CASE(EditingCrashStaysSilent) {
     EXPECT_EQ(q.notes().size(), 1u);
 }
 
+TEST_CASE(SavedCrashShows) {
+    // Saved code is no half-typed code, however recent the edit.
+    Quarantine q;
+    auto t0 = Clock::now();
+    q.on_change(t0);
+    q.on_save();
+    q.on_crash(compile, "d1", "cause", t0 + seconds(1));
+    EXPECT_TRUE(q.shows(compile));
+}
+
 TEST_CASE(ColdCrashShows) {
     Quarantine q;
     auto t0 = Clock::now();

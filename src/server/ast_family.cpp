@@ -1078,7 +1078,10 @@ kota::task<std::optional<std::string>>
     // (the caller checks); only a compile round's license forgives it.
     auto pch_kind = evidence_kind(EvidenceKind::PCH);
     if(auto* crash = pch.crashed(pch_key)) {
-        record_crash(session, pch_kind, *crash);
+        // Booked once: a request on unchanged inputs is no new crash.
+        if(!session->quarantine->crashed(pch_kind)) {
+            record_crash(session, pch_kind, *crash);
+        }
         co_return std::nullopt;
     }
     if(co_await pch.acquire(std::move(plan.request)) != PCHFamily::Outcome::Ready) {

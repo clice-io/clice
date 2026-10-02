@@ -184,12 +184,15 @@ test.skipIf(process.platform !== "linux")(
             sleep(OUTAGE_RESPONSE_TIMEOUT).then(() => null),
         ]);
         expect(during, "master unresponsive during the outage").not.toBeNull();
-        expect(during!.size, "the outage must strike mid-round").toBeLessThan(FILE_COUNT);
+        const expected = new Set(Array.from({ length: FILE_COUNT }, (_, i) => `func_${i}`));
+        expect(
+            [...expected].filter((name) => during!.has(name)).length,
+            "the outage must strike mid-round",
+        ).toBeLessThan(FILE_COUNT);
 
         // The revival cooldown (30s) re-arms the slot and the parked round
         // must resume and finish every file: lost runs requeue past the
         // round snapshot, so no single file burns its budget.
-        const expected = new Set(Array.from({ length: FILE_COUNT }, (_, i) => `func_${i}`));
         let found = new Set<string>();
         await waitUntil(
             async () => {

@@ -19,7 +19,8 @@ void Quarantine::on_crash(std::uint8_t kind,
     record.last_crash = now;
     record.changed = false;
     record.saved = false;
-    record.visible = record.visible || record.strikes > 1 || now - last_change >= editing_window;
+    record.visible = record.visible || record.strikes > 1 || saved_since_change ||
+                     now - last_change >= editing_window;
 }
 
 void Quarantine::on_land(std::uint8_t kind) {
@@ -28,6 +29,7 @@ void Quarantine::on_land(std::uint8_t kind) {
 
 void Quarantine::on_change(Clock::time_point now) {
     last_change = now;
+    saved_since_change = false;
     changes += 1;
     for(auto& [kind, record]: records) {
         record.changed = true;
@@ -35,6 +37,7 @@ void Quarantine::on_change(Clock::time_point now) {
 }
 
 void Quarantine::on_save() {
+    saved_since_change = true;
     for(auto& [kind, record]: records) {
         record.strikes = 0;
         record.saved = true;

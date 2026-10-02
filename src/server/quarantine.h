@@ -32,9 +32,9 @@ namespace clice {
 ///     worker death counts once however many of the document's requests it
 ///     failed, and only the kind answering (on_land) or a save clears them.
 ///  4. Visibility — a record shows in the document's diagnostics, except a
-///     first crash on inputs changed within editing_window: half-typed code
-///     crashing is the common case there, and the next edit usually fixes
-///     it. A repeat shows.
+///     first crash on inputs changed within editing_window and not saved
+///     since: half-typed code crashing is the common case there, and the
+///     next edit usually fixes it. A repeat shows.
 ///
 /// The record outlives the session: a reopened document is still barred.
 class Quarantine {
@@ -149,6 +149,8 @@ private:
     /// Insertion-ordered, so notes keep a stable order across publishes.
     llvm::MapVector<std::uint8_t, Record> records;
     Clock::time_point last_change;
+    /// The user saved the inputs as they are: nothing half-typed.
+    bool saved_since_change = false;
     /// Bumped by every on_change; an Attempt tells by it whether the inputs
     /// moved during its flight.
     std::uint64_t changes = 0;

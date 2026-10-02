@@ -276,12 +276,15 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // CancelBuild while this frame keeps awaiting the real reply
     // (contract 2 — the slot frees only when the worker is truly idle).
     auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
+    // Sampled before the build reads it: a save landing mid-build is not
+    // what crashed.
+    auto content = content_hash(path_id);
     auto result = co_await deliver(
         pool,
         false,
         [&] { return pool.send_stateless(bp, priority, ctx.token()); },
         [&](const kota::ipc::Error& error) {
-            build_crashes.insert_or_assign(path_id, Crash{content_hash(path_id), error});
+            build_crashes.insert_or_assign(path_id, Crash{content, error});
         });
 
     // A scheduler preemption (foreground reclaim, memory pressure) or an
