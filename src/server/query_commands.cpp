@@ -21,19 +21,6 @@ std::string kind_name(SymbolKind kind) {
     return std::string(kota::meta::enum_name(static_cast<SymbolKind::Kind>(kind), "Unknown"));
 }
 
-std::string symbol_id(index::SymbolHash hash) {
-    return std::format("#{:016x}", hash);
-}
-
-/// The hash a `#<hex>` id names; nullopt for anything else.
-std::optional<index::SymbolHash> parse_symbol_id(llvm::StringRef id) {
-    index::SymbolHash hash = 0;
-    if(!id.consume_front("#") || id.getAsInteger(16, hash) || index::reserved_key(hash)) {
-        return std::nullopt;
-    }
-    return hash;
-}
-
 /// The 1-based lines a site spans, as the answers spell positions.
 struct Lines {
     int start;
@@ -106,7 +93,7 @@ Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQu
             listed += std::format("{}{} ({})",
                                   listed.empty() ? "" : ", ",
                                   ctx.query.qualified_name(candidate.symbol.hash),
-                                  symbol_id(candidate.symbol.hash));
+                                  index::symbol_id(candidate.symbol.hash));
         }
         return std::unexpected(std::format("ambiguous: {} candidates, use --symbol to pick one: {}",
                                            candidates.size(),
@@ -150,7 +137,7 @@ Entry graph_entry(const index::IndexQuery::Located& located) {
         .kind = kind_name(located.symbol.kind),
         .file = std::string(located.site.path),
         .line = lines_of(located.site).start,
-        .symbol_id = symbol_id(located.symbol.hash),
+        .symbol_id = index::symbol_id(located.symbol.hash),
     };
 }
 
@@ -387,7 +374,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
         .start_line = lines.start,
         .end_line = lines.end,
         .text = std::move(definition->text),
-        .symbol_id = symbol_id(resolved->symbol.hash),
+        .symbol_id = index::symbol_id(resolved->symbol.hash),
     };
 }
 
@@ -420,7 +407,7 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
             .kind = kind_name(located.symbol.kind),
             .start_line = lines.start,
             .end_line = lines.end,
-            .symbol_id = symbol_id(located.symbol.hash),
+            .symbol_id = index::symbol_id(located.symbol.hash),
         });
     }
     return result;
@@ -434,7 +421,7 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
     DefinitionResult result{
         .name = resolved->symbol.display_name(),
         .kind = kind_name(resolved->symbol.kind),
-        .symbol_id = symbol_id(resolved->symbol.hash),
+        .symbol_id = index::symbol_id(resolved->symbol.hash),
     };
     if(auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file)) {
         auto lines = lines_of(definition->extent);
@@ -458,7 +445,7 @@ Outcome<ReferencesResult> references(Context& ctx,
     ReferencesResult result{
         .name = resolved->symbol.display_name(),
         .kind = kind_name(resolved->symbol.kind),
-        .symbol_id = symbol_id(resolved->symbol.hash),
+        .symbol_id = index::symbol_id(resolved->symbol.hash),
     };
     index::IndexQuery::Cursor cursor{.symbols = {resolved->symbol.hash}, .site = resolved->site};
     for(auto& site: ctx.query.references(cursor, include_declaration)) {

@@ -9,7 +9,9 @@
 #include "support/logging.h"
 #include "vfs/path.h"
 
+#include "kota/codec/json/json.h"
 #include "kota/deco/deco.h"
+#include "kota/ipc/codec/json.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
@@ -49,6 +51,19 @@ inline bool apply_log_level(const std::string& level_str) {
     }
     logging::options.level = level;
     return true;
+}
+
+/// A JSON answer of a batch subcommand, keyed in camelCase like the
+/// protocol.
+template <typename T>
+std::string render_json(const T& value) {
+    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(value);
+    return json ? *json : "null";
+}
+
+template <typename T>
+void print_json(const T& value) {
+    std::println("{}", render_json(value));
 }
 
 /// The workspace a batch subcommand names: the --workspace argument

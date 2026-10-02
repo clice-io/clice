@@ -562,10 +562,9 @@ std::vector<index::SymbolHash> matching_symbols(Project& project,
                                                 index::IndexQuery& query,
                                                 llvm::StringRef wanted) {
     std::vector<index::SymbolHash> matches;
-    if(wanted.consume_front("#")) {
-        index::SymbolHash hash = 0;
-        if(!wanted.getAsInteger(16, hash) && !index::reserved_key(hash)) {
-            matches.push_back(hash);
+    if(wanted.starts_with("#")) {
+        if(auto hash = index::parse_symbol_id(wanted)) {
+            matches.push_back(*hash);
         }
         return matches;
     }

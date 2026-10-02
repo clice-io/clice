@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <expected>
 #include <optional>
@@ -103,7 +104,8 @@ struct Entity {
     /// class); the entity itself at namespace scope.
     std::uint32_t top = 0;
 
-    /// The line of its first declaration in the owner.
+    /// The line of its first declaration in the owner, or in the fragment
+    /// the owner pastes it in from.
     std::uint32_t line = 0;
 
     /// Times the owner names it beyond declaring it: a TU-local entity an
@@ -206,6 +208,11 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
 struct Partition {
     std::vector<std::string> modules;
     std::vector<std::uint32_t> module_of;
+
+    /// The module so named; `modules.size()` for none.
+    std::uint32_t module_named(llvm::StringRef name) const {
+        return static_cast<std::uint32_t>(std::ranges::find(modules, name) - modules.begin());
+    }
 };
 
 struct PartitionSpec {
@@ -230,9 +237,6 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
 /// members, to another header, existing or hypothetical: what the move
 /// of a declaration would do to the graph, without making it.
 std::expected<void, std::string> move_entities(Facts& facts, llvm::StringRef spec);
-
-/// The answer of each view, shaped for an agent reading JSON: counts first,
-/// names to drill into, long lists capped by `limit`.
 
 struct ModuleSummary {
     std::string name;
@@ -317,8 +321,7 @@ struct MoveCandidate {
     /// Distinct entities it exchanges with the target, both directions.
     std::uint32_t entities = 0;
 
-    /// Modules on cycles before and after the move.
-    std::uint32_t cyclic_before = 0;
+    /// Modules on cycles after the move.
     std::uint32_t cyclic_after = 0;
 };
 
@@ -366,6 +369,9 @@ struct Overview {
     std::vector<ModuleSummary> modules;
     std::vector<EdgeSummary> edges;
     std::vector<Cycle> cycles;
+
+    /// Modules on cycles.
+    std::uint32_t cyclic_modules = 0;
     std::vector<PartitionCycle> partition_cycles;
 
     /// Headers only their own module's sources use, directly or through
@@ -432,6 +438,7 @@ struct NamedUses {
 
 struct AnnotationValue {
     std::string name;
+    std::string unit;
     double value = 0;
 };
 
@@ -524,7 +531,6 @@ struct ContextMacroEntry {
     std::string definition;
     std::string file;
     std::uint32_t line = 0;
-    bool in_condition = false;
 };
 
 struct Obstacles {
@@ -570,6 +576,8 @@ struct MacroUse {
     std::vector<ModuleLink> users;
 };
 
+/// The answer of each view, shaped for an agent reading JSON: counts first,
+/// names to drill into, long lists capped by `limit`.
 struct Report {
     const Facts& facts;
     const Partition& partition;

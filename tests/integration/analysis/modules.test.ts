@@ -4,7 +4,7 @@
 
 import { spawnSync } from "node:child_process";
 import { type Workspace } from "@clice/tools/workspace";
-import { cliceExecutable, expect, test } from "../fixtures.ts";
+import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
 
 interface Overview {
     modules: { name: string; headers: number; sources: number; layer: number }[];
@@ -16,14 +16,18 @@ interface Overview {
         sample: string[];
     }[];
     cycles: { modules: string[]; cut: { from: string; to: string; sample: string[] }[] }[];
+    cyclicModules: number;
     partitionCycles: { module: string; headers: string[] }[];
     moves: { path: string; from: string; to: string }[];
+    splits: { path: string; module: string; parts: unknown[] }[];
     internalHeaders: number;
+    obstacles: { variantHeaders: number };
 }
 
 interface Obstacles {
     variantHeaders: { path: string; variants: number }[];
-    contextMacros: { macro: string; file: string; inCondition: boolean }[];
+    contextMacros: { macro: string; file: string }[];
+    borrowedMacros: { macro: string; file: string; line: number }[];
     internalUses: {
         entity: string;
         owner: string;
@@ -38,13 +42,21 @@ interface Obstacles {
     implicitProviders: { path: string; specializes: string[] }[];
 }
 
+interface Impact {
+    path: string;
+    baseline: number;
+    partitioned: number;
+    churn?: number | null;
+    internal: boolean;
+}
+
 const SCOPE = "core/**,util/**,feature/**,meta/**,lib/**,app/**";
 
 function lines(...text: string[]): string {
     return [...text, ""].join("\n");
 }
 
-function writeProject(session: { tmpdir(): Workspace }): Workspace {
+function writeProject(session: SessionFactory): Workspace {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(
@@ -134,6 +146,15 @@ function writeProject(session: { tmpdir(): Workspace }): Workspace {
         ),
     );
     ws.write(
+        "core/level.h",
+        lines(
+            "#pragma once",
+            "#ifdef CORE_FAST",
+            "#endif",
+            "inline int level() { return CORE_FAST; }",
+        ),
+    );
+    ws.write(
         "core/fast.h",
         lines("#pragma once", "#ifdef CORE_FAST", "inline int fast() { return 1; }", "#endif"),
     );
@@ -167,6 +188,10 @@ function writeProject(session: { tmpdir(): Workspace }): Workspace {
         ),
     );
     ws.write("util/other.h", lines("#pragma once", "int spare();"));
+    ws.write(
+        "util/parts.h",
+        lines("#pragma once", "struct Left { int l; };", "struct Right { int r; };"),
+    );
     ws.write("lib/base.h", lines("#pragma once", "struct Base { int b; };"));
     ws.write(
         "app/detail.h",
@@ -202,8 +227,9 @@ function writeProject(session: { tmpdir(): Workspace }): Workspace {
         lines(
             "#pragma once",
             '#include "util/clock.h"',
+            '#include "util/parts.h"',
             "#define MAKE_CLOCK() Clock{}",
-            "inline int meta_size() { return MAKE_CLOCK().size(); }",
+            "inline int meta_size() { return MAKE_CLOCK().size() + sizeof(Right); }",
         ),
     );
     ws.write(
@@ -222,6 +248,7 @@ function writeProject(session: { tmpdir(): Workspace }): Workspace {
         lines(
             '#include "core/config.h"',
             '#include "core/fast.h"',
+            '#include "core/level.h"',
             '#include "core/log.h"',
             '#include "core/mode.h"',
             '#include "meta/m.h"',
@@ -229,10 +256,11 @@ function writeProject(session: { tmpdir(): Workspace }): Workspace {
             '#include "core/traits.h"',
             '#include "core/key.h"',
             '#include "app/detail.h"',
+            '#include "util/parts.h"',
             '#include "util/fmt.h"',
             '#include "feature/hook.inc"',
             "int main() {",
-            "    Logger logger; ModeA mode; Third third;",
+            "    Logger logger; ModeA mode; Third third; Left left{};",
             "    return logger.clock.size() + helper() + fast() + meta_size() + hooked() +",
             "           format_str(Str{}) + base_size();",
             "}",
@@ -262,7 +290,7 @@ function analyze(ws: Workspace, ...args: string[]): unknown {
     return JSON.parse(run.stdout);
 }
 
-function indexed(session: { tmpdir(): Workspace }): Workspace {
+function indexed(session: SessionFactory): Workspace {
     const ws = writeProject(session);
     const run = runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(run.status, `stderr: ${run.stderr}`).toBe(0);
@@ -299,13 +327,16 @@ test("macro expansions and fragments", ({ session }) => {
     expect(edge(overview, "meta", "util")?.sample).toContain("Clock");
     // A fragment's names are charged to the file pasting it in.
     expect(edge(overview, "feature", "util")).toBeUndefined();
-    expect(edge(overview, "app", "util")?.sample).toContain("Clock::size");
+    expect(edge(overview, "app", "util")?.sample).toContain("Clock");
+    // What a fragment defines belongs to the file pasting it in.
+    expect(edge(overview, "app", "feature")).toBeUndefined();
 });
 
 test("partition cycles and moves", ({ session }) => {
     const ws = indexed(session);
     const overview = analyze(ws) as Overview;
 
+    expect(overview.cyclicModules).toBe(2);
     expect(overview.partitionCycles).toEqual([
         { module: "core", headers: ["core/a.h", "core/b.h"] },
     ]);
@@ -315,10 +346,8 @@ test("partition cycles and moves", ({ session }) => {
         to: "core",
         with: [],
         entities: 3,
-        cyclicBefore: 2,
         cyclicAfter: 2,
     });
-    // The source implementing a header moves along with it.
     // A source moves with the header it implements, and so does every
     // other header it implements.
     expect(overview.moves).toContainEqual({
@@ -327,11 +356,25 @@ test("partition cycles and moves", ({ session }) => {
         to: "app",
         with: ["util/other.h", "util/fmt.cpp"],
         entities: 1,
-        cyclicBefore: 2,
         cyclicAfter: 2,
     });
+    const moved = new Set(overview.moves.map((move) => move.path));
     // Instantiations use a specialization without naming it.
-    expect(overview.moves.some((move) => move.path === "core/traits.h")).toBe(false);
+    expect(moved.has("core/traits.h")).toBe(false);
+    // Moving all of lib is a merge; feature/f.cpp names feature/dup.h.
+    expect(moved.has("lib/base.h")).toBe(false);
+    expect(moved.has("feature/f.h")).toBe(false);
+
+    expect(overview.splits).toContainEqual({
+        path: "util/parts.h",
+        module: "util",
+        parts: [
+            { entities: ["Left:2"], count: 1, consumers: ["app"] },
+            { entities: ["Right:3"], count: 1, consumers: ["meta"] },
+        ],
+    });
+    // Only mode.h's variants declare different entities.
+    expect(overview.obstacles.variantHeaders).toBe(1);
 });
 
 test("module groups and internal headers", ({ session }) => {
@@ -357,8 +400,7 @@ test("module groups and internal headers", ({ session }) => {
     const overview = analyze(ws) as Overview;
     expect(overview.internalHeaders).toBe(6);
 
-    type Impact = { path: string; partitioned: number; internal: boolean }[];
-    const impact = analyze(ws, "--view", "impact") as Impact;
+    const impact = analyze(ws, "--view", "impact") as Impact[];
     expect(impact.find((entry) => entry.path === "core/detail.h")).toMatchObject({
         partitioned: 1,
         internal: true,
@@ -371,6 +413,15 @@ test("module groups and internal headers", ({ session }) => {
 test("hypothetical partitions", ({ session }) => {
     const ws = indexed(session);
 
+    // A module merged away answers to the one it joined.
+    const chained = analyze(ws, "--merge", "core+util,util+meta") as Overview;
+    expect(chained.modules.map((module) => module.name).sort()).toEqual([
+        "app",
+        "core",
+        "feature",
+        "lib",
+    ]);
+
     const merged = analyze(ws, "--merge", "core+util") as Overview;
     expect(merged.cycles).toHaveLength(0);
     expect(merged.modules.map((module) => module.name).sort()).toEqual([
@@ -382,7 +433,7 @@ test("hypothetical partitions", ({ session }) => {
     ]);
 
     const moved = analyze(ws, "--move", "util/strops.h=core") as Overview;
-    expect(moved.modules.find((module) => module.name === "util")?.headers).toBe(4);
+    expect(moved.modules.find((module) => module.name === "util")?.headers).toBe(5);
     expect(moved.moves.some((move) => move.path === "util/strops.h")).toBe(false);
 
     // With Clock declared in core, core no longer names anything of util.
@@ -390,12 +441,66 @@ test("hypothetical partitions", ({ session }) => {
     expect(declared.cycles).toHaveLength(0);
     expect(edge(declared, "meta", "core")?.sample).toContain("Clock");
 
+    const detail = analyze(ws, "--view", "edge", "--from", "core", "--to", "util") as {
+        entities: { id: string; entity: string }[];
+    };
+    const clock = detail.entities.find((entry) => entry.entity === "Clock");
+    const byId = analyze(ws, "--move-entity", `${clock?.id}=core/clock.h`) as Overview;
+    expect(byId.cycles).toHaveLength(0);
+
     // What the moved definition names moves with it.
     const carried = analyze(ws, "--move-entity", "Clock=meta/clock.h") as Overview;
     expect(edge(carried, "meta", "core")?.sample).toEqual(
         expect.arrayContaining(["Str", "length"]),
     );
     expect(edge(carried, "core", "meta")?.sample).toContain("Clock");
+});
+
+test("partition files and limits", ({ session }) => {
+    const ws = indexed(session);
+    ws.write(
+        "partition.json",
+        JSON.stringify({ modules: [{ name: "base", files: ["core/**", "util/**"] }] }),
+    );
+    const grouped = analyze(ws, "--partition", ws.path("partition.json")) as Overview;
+    expect(grouped.cycles).toHaveLength(0);
+    expect(grouped.modules.map((module) => module.name).sort()).toEqual([
+        "app",
+        "base",
+        "feature",
+        "lib",
+        "meta",
+    ]);
+
+    const limited = analyze(ws, "--limit", "1") as Overview & { hotspots: unknown[] };
+    expect(limited.moves).toHaveLength(1);
+    expect(limited.hotspots).toHaveLength(1);
+});
+
+test("file and macro views", ({ session }) => {
+    const ws = indexed(session);
+    const file = analyze(ws, "--view", "file", "--file", "util/clock.h") as {
+        module: string;
+        usedBy: { module: string; entities: string[] }[];
+    };
+    expect(file.module).toBe("util");
+    // feature/hook.inc is pasted into app/main.cpp.
+    expect(file.usedBy.find((uses) => uses.module === "app")?.entities).toContain("Clock");
+    expect(file.usedBy.some((uses) => uses.module === "feature")).toBe(false);
+
+    // ENTRY reaches only the fragment its defining source pastes in.
+    const macros = analyze(ws, "--view", "macros") as {
+        macro: string;
+        definition: string;
+        users: { module: string; entities: number }[];
+    }[];
+    expect(macros).toEqual([
+        {
+            macro: "CORE_FAST",
+            definition: "core/config.h",
+            users: [{ module: "core", entities: 2 }],
+        },
+    ]);
 });
 
 test("edge lists entities and users", ({ session }) => {
@@ -423,7 +528,11 @@ test("obstacles to the rewrite", ({ session }) => {
         }),
     );
     expect(obstacles.contextMacros).toEqual([
-        expect.objectContaining({ macro: "CORE_FAST", file: "core/fast.h", inCondition: true }),
+        expect.objectContaining({ macro: "CORE_FAST", file: "core/fast.h" }),
+    ]);
+    // Tested and expanded: compiled alone it fails rather than misreads.
+    expect(obstacles.borrowedMacros).toEqual([
+        expect.objectContaining({ macro: "CORE_FAST", file: "core/level.h", line: 4 }),
     ]);
     expect(obstacles.internalUses).toContainEqual({
         entity: "helper",
@@ -468,18 +577,44 @@ test("annotations weigh the impact", ({ session }) => {
         JSON.stringify({ name: "compile_time", unit: "s", values: { "app/main.cpp": 10 } }),
     );
 
-    type Impact = { path: string; baseline: number; partitioned: number }[];
-    const plain = analyze(ws, "--view", "impact") as Impact;
+    const plain = analyze(ws, "--view", "impact") as Impact[];
     const weighted = analyze(
         ws,
         "--view",
         "impact",
         "--annotation",
         ws.path("compile_time.json"),
-    ) as Impact;
-    // core/fast.h is entered by app/main.cpp alone.
-    expect(plain.find((entry) => entry.path === "core/fast.h")?.baseline).toBe(1);
-    expect(weighted.find((entry) => entry.path === "core/fast.h")?.baseline).toBe(10);
+    ) as Impact[];
+    // core/fast.h is entered by app/main.cpp alone, but every source
+    // imports core or a module whose interface imports it.
+    expect(plain.find((entry) => entry.path === "core/fast.h")).toMatchObject({
+        baseline: 1,
+        partitioned: 4,
+    });
+    expect(weighted.find((entry) => entry.path === "core/fast.h")).toMatchObject({
+        baseline: 10,
+        partitioned: 13,
+    });
+});
+
+test("churn from git history", ({ session }) => {
+    const ws = indexed(session);
+    const git = (...args: string[]) => {
+        const run = spawnSync(
+            "git",
+            ["-c", "user.name=clice", "-c", "user.email=clice@example.com", ...args],
+            { cwd: ws.root, encoding: "utf8" },
+        );
+        expect(run.status, run.stderr).toBe(0);
+    };
+    git("init", "-q");
+    git("add", "core", "util", "feature", "meta", "lib", "app");
+    git("commit", "-q", "-m", "one");
+
+    const churned = analyze(ws, "--view", "impact") as Impact[];
+    expect(churned.find((entry) => entry.path === "core/fast.h")?.churn).toBe(1);
+    const unweighted = analyze(ws, "--view", "impact", "--churn-since=") as Impact[];
+    expect(unweighted.find((entry) => entry.path === "core/fast.h")?.churn).toBeNull();
 });
 
 test("unknown module fails", ({ session }) => {
@@ -496,4 +631,14 @@ test("unknown module fails", ({ session }) => {
     );
     expect(run.status).toBe(1);
     expect(JSON.parse(run.stdout)).toEqual({ error: "no module nowhere" });
+
+    const failure = (...args: string[]) => {
+        const failed = runClice("analyze", "modules", "--workspace", ws.root, ...args);
+        expect(failed.status).toBe(1);
+        return (JSON.parse(failed.stdout) as { error: string }).error;
+    };
+    expect(failure("--view", "file", "--file", "nowhere.h")).toBe("no scoped file nowhere.h");
+    expect(failure("--view", "nope")).toBe("unknown view nope");
+    expect(failure("--view", "edge", "--from", "core")).toBe("--view edge needs --from and --to");
+    expect(failure("--scope", "[")).toMatch(/^invalid --scope glob '\['/);
 });

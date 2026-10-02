@@ -8,17 +8,15 @@
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 
 namespace clice::analysis {
 
 const Annotation* Annotations::find(llvm::StringRef name) const {
-    for(auto& annotation: list) {
-        if(annotation.name == name) {
-            return &annotation;
-        }
-    }
-    return nullptr;
+    auto it =
+        llvm::find_if(list, [&](const Annotation& annotation) { return annotation.name == name; });
+    return it == list.end() ? nullptr : &*it;
 }
 
 double Annotations::value(llvm::StringRef name, llvm::StringRef path, double fallback) const {

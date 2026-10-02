@@ -13,7 +13,6 @@
 #include "vfs/file_system.h"
 
 #include "kota/codec/json/json.h"
-#include "kota/ipc/codec/json.h"
 #include "kota/support/glob_pattern.h"
 #include "llvm/ADT/StringExtras.h"
 
@@ -132,12 +131,6 @@ auto make_modules_command() {
 struct Failure {
     std::string error;
 };
-
-template <typename T>
-void print_json(const T& value) {
-    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(value);
-    std::println("{}", json ? *json : "null");
-}
 
 std::vector<std::string> comma_list(llvm::StringRef text) {
     llvm::SmallVector<llvm::StringRef> parts;

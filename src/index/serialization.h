@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <limits>
 #include <optional>
 #include <span>
@@ -73,6 +74,21 @@ template <typename T>
 bool reserved_key(T value) {
     static_assert(std::is_unsigned_v<T>);
     return value >= std::numeric_limits<T>::max() - 1;
+}
+
+/// A symbol's id on the command line and in JSON answers: `#<hex>`, which
+/// a JavaScript number would round.
+inline std::string symbol_id(SymbolHash hash) {
+    return std::format("#{:016x}", hash);
+}
+
+/// The hash a `#<hex>` id names; nullopt for anything else.
+inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
+    SymbolHash hash = 0;
+    if(!id.consume_front("#") || id.getAsInteger(16, hash) || reserved_key(hash)) {
+        return std::nullopt;
+    }
+    return hash;
 }
 
 }  // namespace clice::index

@@ -148,17 +148,6 @@ struct Failure {
     std::vector<std::string> stale;
 };
 
-template <typename T>
-std::string render_json(const T& value) {
-    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(value);
-    return json ? *json : "null";
-}
-
-template <typename T>
-void print_json(const T& value) {
-    std::println("{}", render_json(value));
-}
-
 /// The symbol locator the flags spell, as a name query: `--symbol` an id
 /// (anchored at `--path`), `--name` a name query narrowed to `--path`, or
 /// `--path` and `--line` a place. The path must be a file; one the index has no rows for is noted
