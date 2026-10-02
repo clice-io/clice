@@ -1364,6 +1364,19 @@ std::vector<std::string> sample(const Facts& facts, const Graph::Edge& edge, std
     return names;
 }
 
+/// File -> the fragments it pastes in, whose uses are charged to it.
+std::vector<llvm::SmallVector<std::uint32_t, 1>> pasted_fragments(const Facts& facts) {
+    std::vector<llvm::SmallVector<std::uint32_t, 1>> pasted(facts.files.size());
+    for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+        if(facts.files[file].fragment) {
+            for(auto charged: charged_files(facts, file)) {
+                pasted[charged].push_back(file);
+            }
+        }
+    }
+    return pasted;
+}
+
 bool by_entities(const ModuleLink& lhs, const ModuleLink& rhs) {
     return std::tie(rhs.entities, lhs.module) < std::tie(lhs.entities, rhs.module);
 }
@@ -1807,6 +1820,7 @@ Overview Report::overview(std::uint32_t limit) const {
         .duplicate_definitions = static_cast<std::uint32_t>(blocked.duplicate_definitions.size()),
         .configuring_macros = static_cast<std::uint32_t>(blocked.configuring_macros.size()),
         .implicit_providers = static_cast<std::uint32_t>(blocked.implicit_providers.size()),
+        .specializations = static_cast<std::uint32_t>(blocked.specializations.size()),
     };
     return result;
 }
@@ -1828,15 +1842,7 @@ std::expected<EdgeDetail, std::string> Report::edge(llvm::StringRef from,
     }
     // The line of the first use a file's uses (or a fragment it pastes in)
     // hold of the entity.
-    // The fragments each file pastes in, whose uses are charged to it.
-    std::vector<llvm::SmallVector<std::uint32_t, 1>> pasted(facts.files.size());
-    for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
-        if(facts.files[file].fragment) {
-            for(auto charged: charged_files(facts, file)) {
-                pasted[charged].push_back(file);
-            }
-        }
-    }
+    auto pasted = pasted_fragments(facts);
     auto line_in = [&](std::uint32_t user, std::uint32_t entity) {
         for(auto file: llvm::concat<const std::uint32_t>(llvm::ArrayRef(user), pasted[user])) {
             auto& uses = facts.uses[file];
@@ -1885,15 +1891,18 @@ std::expected<ModuleDetail, std::string> Report::module(llvm::StringRef name) co
     // A header's consumers are the other modules using it, directly or
     // through the module's headers using it.
     llvm::DenseMap<std::uint32_t, std::set<std::uint32_t>> consumers;
+    auto pasted = pasted_fragments(facts);
     for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
         if(partition.module_of[file] != module) {
             continue;
         }
         llvm::SmallDenseMap<std::uint32_t, llvm::DenseSet<std::uint32_t>, 8> uses, used_by;
-        for(auto& use: facts.uses[file]) {
-            auto owner = partition.module_of[facts.entities[use.entity].owner];
-            if(owner != module) {
-                uses[owner].insert(use.entity);
+        for(auto named: llvm::concat<const std::uint32_t>(llvm::ArrayRef(file), pasted[file])) {
+            for(auto& use: facts.uses[named]) {
+                auto owner = partition.module_of[facts.entities[use.entity].owner];
+                if(owner != module) {
+                    uses[owner].insert(use.entity);
+                }
             }
         }
         for(auto entity: reverse.owned[file]) {
@@ -1988,10 +1997,13 @@ std::expected<FileDetail, std::string> Report::file(llvm::StringRef path) const 
 
     std::map<std::uint32_t, std::set<std::string>> uses, used_by;
     std::map<std::uint32_t, llvm::DenseSet<std::uint32_t>> exchanged;
-    for(auto& use: facts.uses[file]) {
-        auto module = partition.module_of[facts.entities[use.entity].owner];
-        uses[module].insert(facts.entities[use.entity].name);
-        exchanged[module].insert(use.entity);
+    auto pasted = pasted_fragments(facts);
+    for(auto named: llvm::concat<const std::uint32_t>(llvm::ArrayRef(file), pasted[file])) {
+        for(auto& use: facts.uses[named]) {
+            auto module = partition.module_of[facts.entities[use.entity].owner];
+            uses[module].insert(facts.entities[use.entity].name);
+            exchanged[module].insert(use.entity);
+        }
     }
     Reverse reverse(facts);
     for(auto entity: reverse.owned[file]) {

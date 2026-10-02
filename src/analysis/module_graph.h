@@ -352,6 +352,7 @@ struct ObstacleCounts {
     std::uint32_t duplicate_definitions = 0;
     std::uint32_t configuring_macros = 0;
     std::uint32_t implicit_providers = 0;
+    std::uint32_t specializations = 0;
 };
 
 /// Headers of one module naming each other's entities in a cycle: as

@@ -502,6 +502,10 @@ test("file and macro views", ({ session }) => {
     // feature/hook.inc is pasted into app/main.cpp.
     expect(file.usedBy.find((uses) => uses.module === "app")?.entities).toContain("Clock");
     expect(file.usedBy.some((uses) => uses.module === "feature")).toBe(false);
+    const main = analyze(ws, "--view", "file", "--file", "app/main.cpp") as {
+        uses: { module: string; entities: string[] }[];
+    };
+    expect(main.uses.find((uses) => uses.module === "util")?.entities).toContain("Clock");
 
     // ENTRY reaches only the fragment its defining source pastes in.
     const macros = analyze(ws, "--view", "macros") as {
