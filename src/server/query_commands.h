@@ -269,10 +269,9 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
 /// it yet (see index::RenameScope::units_pending).
 bool units_pending(Project& project);
 
-Outcome<PlannedRename> rename(Context& ctx,
-                              index::SymbolQuery locator,
-                              llvm::StringRef new_name,
-                              const index::RenameScope& scope);
+/// A rename planned against the workspace on disk (see
+/// index::RenameScope).
+Outcome<PlannedRename> rename(Context& ctx, index::SymbolQuery locator, llvm::StringRef new_name);
 
 /// `direction` one of supertypes, subtypes, both.
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,

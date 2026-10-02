@@ -6,7 +6,6 @@
 #include <ranges>
 #include <tuple>
 
-#include "feature/feature.h"
 #include "index/symbol_query.h"
 #include "syntax/lexer.h"
 
@@ -89,6 +88,38 @@ std::string where(const Site& site) {
     return std::format("{}:{}", site.path, site.begin.line + 1);
 }
 
+/// Every symbol named `name` exactly, however many.
+std::vector<IndexQuery::Located> all_named(const IndexQuery& query, llvm::StringRef name) {
+    SymbolQuery exact{.mode = SymbolQuery::Mode::Exact, .pattern = name.str()};
+    for(std::size_t limit = 256;; limit *= 4) {
+        auto hits = query.search(exact, limit);
+        if(hits.size() < limit) {
+            return hits;
+        }
+    }
+}
+
+/// The newest dialect of a language, as the driver sets it up.
+clang::LangOptions dialect(clang::Language language, clang::LangStandard::Kind standard) {
+    clang::LangOptions options;
+    std::vector<std::string> includes;
+    clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
+    // The driver's default, which the language defaults leave off.
+    options.Char8 = options.CPlusPlus20;
+    return options;
+}
+
+/// Read-only once built, so sweeps on other threads may share them.
+const clang::LangOptions& cxx() {
+    const static auto options = dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
+    return options;
+}
+
+const clang::LangOptions& c() {
+    const static auto options = dialect(clang::Language::C, clang::LangStandard::lang_c23);
+    return options;
+}
+
 /// The class template a deduction guide deduces: the one template in the
 /// guide's scope of the name its declaration spells (the symbol is listed
 /// under a label).
@@ -98,11 +129,8 @@ std::optional<IndexQuery::Located> guided_template(const IndexQuery& query,
     if(!text) {
         return std::nullopt;
     }
-    SymbolQuery exact{
-        .mode = SymbolQuery::Mode::Exact,
-        .pattern = llvm::StringRef(*text).slice(guide.site.range.begin, guide.site.range.end).str(),
-    };
-    for(auto& hit: query.search(exact, 64)) {
+    auto spelled = llvm::StringRef(*text).slice(guide.site.range.begin, guide.site.range.end);
+    for(auto& hit: all_named(query, spelled)) {
         if(class_like(hit.symbol.kind) && hit.symbol.parent == guide.symbol.parent &&
            has_flag(hit.symbol.flags, SymbolFlags::Template)) {
             return hit;
@@ -114,26 +142,53 @@ std::optional<IndexQuery::Located> guided_template(const IndexQuery& query,
 }  // namespace
 
 std::optional<std::string> invalid_identifier(llvm::StringRef name) {
-    if(name.empty() || !clang::isAsciiIdentifierStart(name.front()) ||
-       !llvm::all_of(name.drop_front(),
-                     [](char c) { return clang::isAsciiIdentifierContinue(c); })) {
+    std::string text = name.str();
+    Lexer lexer(text, {.lang_opts = &cxx()});
+    auto token = lexer.advance();
+    if(!token.is_identifier() || token.range.begin != 0 || token.range.end != text.size() ||
+       !lexer.advance().is_eof()) {
         return std::format("`{}` is not an identifier", std::string_view(name));
     }
-    for(auto [language, standard]: {
-            std::pair{clang::Language::C,   clang::LangStandard::lang_c23  },
-            std::pair{clang::Language::CXX, clang::LangStandard::lang_cxx26},
-    }) {
-        clang::LangOptions options;
-        std::vector<std::string> includes;
-        clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
-        // The driver's defaults, which the language defaults leave off.
-        options.Char8 = options.CPlusPlus20;
-        clang::IdentifierTable table(options);
+    for(auto* options: {&c(), &cxx()}) {
+        clang::IdentifierTable table(*options);
         if(table.get(name).getTokenID() != clang::tok::identifier) {
             return std::format("`{}` is a keyword", std::string_view(name));
         }
     }
     return std::nullopt;
+}
+
+std::optional<SweptText> sweep_text(std::string text,
+                                    llvm::StringRef old_name,
+                                    llvm::StringRef new_name) {
+    auto size = static_cast<std::uint32_t>(text.size());
+    if(spellings(text, 0, size, old_name).empty() && spellings(text, 0, size, new_name).empty()) {
+        return std::nullopt;
+    }
+    SweptText swept;
+    bool directive = false;
+    Lexer lexer(text, {.lang_opts = &cxx()});
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        if(token.is_directive_hash()) {
+            directive = true;
+        } else if(token.is_eod()) {
+            directive = false;
+        }
+        if(!token.is_identifier()) {
+            continue;
+        }
+        auto spelled = token.text(text);
+        if(spelled == old_name) {
+            swept.old_tokens.push_back({.offset = token.range.begin, .directive = directive});
+        } else if(spelled == new_name) {
+            swept.spells_new = true;
+        }
+    }
+    if(swept.old_tokens.empty() && !swept.spells_new) {
+        return std::nullopt;
+    }
+    swept.text = std::move(text);
+    return swept;
 }
 
 std::expected<RenameTarget, std::string> rename_target(const IndexQuery& query,
@@ -375,10 +430,6 @@ RenamePlan plan_rename(const IndexQuery& query,
         }
     }
 
-    llvm::StringSet<> editable;
-    for(auto& path: scope.files) {
-        editable.insert(path);
-    }
     llvm::DenseSet<Fid> edited;
     for(auto& [key, edit]: edits) {
         auto file = key.first;
@@ -386,7 +437,7 @@ RenamePlan plan_rename(const IndexQuery& query,
             continue;
         }
         auto path = files.resolve(file).str();
-        if(!editable.contains(path)) {
+        if(!scope.editable(path)) {
             plan.conflicts.push_back(
                 std::format("the rename would change {}, which is not a workspace source "
                             "(a system header, a dependency or a generated file)",
@@ -394,46 +445,31 @@ RenamePlan plan_rename(const IndexQuery& query,
             continue;
         }
         // The edits are offsets into the text the rows index; the sweep
-        // below compares only the files that still spell the old name.
+        // below compares only the files that still spell a name.
         auto current = scope.read(path);
-        if(!current || *current != *text_of(file).text) {
+        if(!current || current->text != *text_of(file).text) {
             stale.insert(edit.site.path);
         }
     }
 
-    // Tokens spelling the old name that no edit covers: another symbol's,
-    // or names the index cannot see.
-    auto& lang = feature::index_lang_options("rename.cpp", false);
+    // Tokens spelling the old name that no edit covers — another symbol's,
+    // or names the index cannot see — and the files whose collisions with
+    // the new name the index must see current.
     for(auto& path: scope.files) {
         auto current = scope.read(path);
-        if(!current || spellings(*current, 0, current->size(), old_name).empty()) {
+        if(!current) {
             continue;
         }
         auto file = files.intern(Spelling::absolute(path));
         auto display = files.display(file);
         auto& served = text_of(file);
         bool indexed = served.text.has_value();
-        if(indexed && *served.text != *current) {
+        if(indexed ? *served.text != current->text : query.indexes(file) || scope.units_pending) {
             stale.insert(display);
             continue;
         }
-        if(!indexed && (query.indexes(file) || scope.units_pending)) {
-            stale.insert(display);
-            continue;
-        }
-        Lines lines(*current);
-        bool directive = false;
-        Lexer lexer(*current, {.lang_opts = &lang});
-        for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
-            if(token.is_directive_hash()) {
-                directive = true;
-            } else if(token.is_eod()) {
-                directive = false;
-            }
-            if(!token.is_identifier() || token.text(*current) != old_name) {
-                continue;
-            }
-            auto offset = token.range.begin;
+        Lines lines(current->text);
+        for(auto [offset, directive]: current->old_tokens) {
             if(!indexed) {
                 plan.unconfirmed.push_back(
                     {.site = lines.site(file, display, offset, old_name.size()),
@@ -468,8 +504,7 @@ RenamePlan plan_rename(const IndexQuery& query,
     // declaration in the same scope, a member of a class above or below.
     llvm::SmallVector<IndexQuery::Located> named;
     llvm::DenseSet<SymbolHash> listed;
-    SymbolQuery exact{.mode = SymbolQuery::Mode::Exact, .pattern = new_name.str()};
-    for(auto& hit: query.search(exact, 256)) {
+    for(auto& hit: all_named(query, new_name)) {
         if(listed.insert(hit.symbol.hash).second) {
             named.push_back(std::move(hit));
         }
@@ -529,6 +564,10 @@ RenamePlan plan_rename(const IndexQuery& query,
         }
     }
     bool local = parent && function_like(parent->kind);
+    if(parent && class_like(parent->kind) && parent->name == new_name) {
+        plan.conflicts.push_back(
+            std::format("`{}` names the class the member belongs to", std::string_view(new_name)));
+    }
 
     for(auto& other: named) {
         auto& symbol = other.symbol;
@@ -547,7 +586,8 @@ RenamePlan plan_rename(const IndexQuery& query,
             if(function_like(symbol.kind) && function_like(root.kind)) {
                 plan.warnings.push_back(
                     std::format("`{}` already names a function in the same scope ({}): the "
-                                "renamed function overloads it",
+                                "renamed function overloads it, which fails to build in C or "
+                                "when their parameters are the same",
                                 std::string_view(new_name),
                                 where(other.site)));
             } else if(local) {
@@ -568,6 +608,14 @@ RenamePlan plan_rename(const IndexQuery& query,
                                 std::string_view(new_name),
                                 where(other.site)));
             }
+            continue;
+        }
+        if(class_like(root.kind) && group.contains(other_home)) {
+            plan.conflicts.push_back(
+                std::format("`{}` is a member of the renamed class ({}), which may not share its "
+                            "name",
+                            std::string_view(new_name),
+                            where(other.site)));
             continue;
         }
         if(hierarchy.contains(other_home)) {

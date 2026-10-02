@@ -4,6 +4,7 @@
 
 #include "command/toolchain.h"
 #include "index/serialization.h"
+#include "project/build.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
 
@@ -479,10 +480,7 @@ bool units_pending(Project& project) {
     });
 }
 
-Outcome<PlannedRename> rename(Context& ctx,
-                              index::SymbolQuery locator,
-                              llvm::StringRef new_name,
-                              const index::RenameScope& scope) {
+Outcome<PlannedRename> rename(Context& ctx, index::SymbolQuery locator, llvm::StringRef new_name) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -491,8 +489,36 @@ Outcome<PlannedRename> rename(Context& ctx,
     if(!target) {
         return std::unexpected(target.error());
     }
-    auto plan = index::plan_rename(ctx.query, ctx.project.file_table, *target, new_name, scope);
     auto& symbol = target->symbol.symbol;
+
+    auto& config = ctx.project.config;
+    CanonicalRef root = config.workspace_root;
+    CanonicalPath cache_dir;
+    if(!config.project.cache_dir.empty()) {
+        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
+    }
+    std::vector<std::string> sources;
+    for(auto& source: workspace_sources(root, cache_dir)) {
+        sources.push_back(source.str());
+    }
+    auto editable = [&](llvm::StringRef path) {
+        return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
+    };
+    auto read = [&](llvm::StringRef path) -> std::optional<index::SweptText> {
+        auto text = vfs::read(path);
+        if(!text) {
+            return std::nullopt;
+        }
+        return index::sweep_text((*text)->getBuffer().str(), symbol.name, new_name);
+    };
+    auto plan = index::plan_rename(ctx.query,
+                                   ctx.project.file_table,
+                                   *target,
+                                   new_name,
+                                   {.files = sources,
+                                    .editable = editable,
+                                    .read = read,
+                                    .units_pending = units_pending(ctx.project)});
     RenameResult result{
         .name = symbol.display_name(),
         .kind = kind_name(symbol.kind),

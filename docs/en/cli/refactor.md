@@ -25,8 +25,8 @@ The answer is one JSON object, `{"result": ..., "stale": [...]}`, like a query's
 - `files` lists the tokens replaced in each file, with a 1-based line and byte column. `heuristic` marks one reached through a name the index resolved by heuristics — a call in a template whose callee depends on a template parameter — worth a look.
 - `unconfirmed` lists the places spelling the old name that the rename leaves alone because the index cannot say what they name: the body of a `#define`, a macro whose expansion spells the name, an inactive `#if` branch, a file no unit of the build compiles. Read them before building.
 - `warnings` are made anyway: the new name overloads a function of the same scope, or hides a local of the same function.
-- `conflicts` stop the rename: the new name is declared in the same scope already, is a macro, or names a member of a base or derived class; the rename would edit a file outside the workspace; two namespaces would merge.
-- `stale` lists the files spelling the old name whose indexed rows are not current — changed since they were indexed, or a unit of the build the index never reached. They stop the rename as well; `--fresh` reindexes them first.
+- `conflicts` stop the rename: the new name is declared in the same scope already, is a macro, names a member of a base or derived class, names the class the renamed member belongs to or a member of the renamed class; the rename would edit a file outside the workspace; two namespaces would merge.
+- `stale` lists the files the rename edits, or that spell the old or the new name, whose indexed rows are not current — changed since they were indexed, or never indexed while some unit of the build still is not. They stop the rename as well; `--fresh` reindexes them first.
 
 The exit code is 0 when the rename was written, or planned under `--dry-run`, and 1 when a conflict or a stale file stopped it or the symbol cannot be renamed — with `{"error": "..."}` saying why in the last case.
 
@@ -34,7 +34,7 @@ The exit code is 0 when the rename was written, or planned under `--dry-run`, an
 
 Without `--dry-run` the command writes the files once every new text is computed: a file whose text changed since the plan was made stops the whole rename before anything is written. Each file is rewritten in place, keeping its byte order mark, line endings and permissions; a file that cannot be written — read-only, or a full disk — stops the rename there, and the error names the files already rewritten.
 
-Only the workspace's sources and headers are edited and searched for the old name: hidden directories, the cache directory and build trees (a directory holding `CMakeCache.txt` or `build.ninja`) are left out.
+Only the workspace is edited: hidden directories, the cache directory and build trees (a directory holding `CMakeCache.txt` or `build.ninja`) are left out. Its sources and headers are searched for the two names by suffix; an edit the index places may land in a file of any suffix.
 
 The command reads the disk; unsaved editor buffers are invisible to it. Save them first, or rename from the editor.
 

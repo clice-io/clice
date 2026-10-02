@@ -26,6 +26,8 @@
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace clice {
 
@@ -931,11 +933,11 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         co_return kota::outcome_error(rename_refused(std::move(at.error())));
     }
 
-    // The walk and the reads run off the loop; only the files spelling the
-    // old name come back with their text.
+    // The walk, the reads and the sweep run off the loop; only the files
+    // spelling a name come back with their text.
     struct Swept {
         std::vector<std::string> files;
-        llvm::StringMap<std::string> texts;
+        llvm::StringMap<index::SweptText> texts;
     };
 
     CanonicalPath cache_dir;
@@ -943,13 +945,17 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
     }
     auto swept = co_await kota::queue([root = config.workspace_root,
-                                       cache_dir = std::move(cache_dir),
-                                       name = at->target.symbol.symbol.name] {
+                                       cache_dir,
+                                       old_name = at->target.symbol.symbol.name,
+                                       new_name] {
         Swept result;
         for(auto& source: workspace_sources(root, cache_dir)) {
             auto path = source.str();
-            if(auto text = vfs::read(path); text && (*text)->getBuffer().contains(name)) {
-                result.texts[path] = (*text)->getBuffer().str();
+            if(auto text = vfs::read(path)) {
+                if(auto spelled =
+                       index::sweep_text((*text)->getBuffer().str(), old_name, new_name)) {
+                    result.texts.try_emplace(path, std::move(*spelled));
+                }
             }
             result.files.push_back(std::move(path));
         }
@@ -967,31 +973,45 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
     if(!cursor) {
         co_return kota::outcome_error(content_modified());
     }
-    auto name = std::move(at->target.symbol.symbol.name);
+    auto old_name = std::move(at->target.symbol.symbol.name);
     at = index::rename_at(query, *cursor);
     if(!at) {
         co_return kota::outcome_error(rename_refused(std::move(at.error())));
     }
-    if(at->target.symbol.symbol.name != name) {
+    if(at->target.symbol.symbol.name != old_name) {
         co_return kota::outcome_error(content_modified());
     }
 
-    auto open = [&](llvm::StringRef path) {
-        auto file = project.file_table.find(Spelling::absolute(path));
-        return file ? sessions.find(*file) : nullptr;
+    auto root = config.workspace_root;
+    llvm::StringSet<> walked;
+    for(auto& path: swept->files) {
+        walked.insert(path);
+    }
+    auto editable = [&](llvm::StringRef path) {
+        return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
     };
-    auto read = [&](llvm::StringRef path) -> std::optional<std::string> {
-        if(auto document = open(path)) {
-            return document->text;
+    auto read = [&](llvm::StringRef path) -> std::optional<index::SweptText> {
+        auto file = project.file_table.find(Spelling::absolute(path));
+        if(auto document = file ? sessions.find(*file) : nullptr) {
+            return index::sweep_text(document->text, old_name, new_name);
         }
-        auto it = swept->texts.find(path);
-        return it == swept->texts.end() ? std::nullopt : std::optional(it->second);
+        if(auto it = swept->texts.find(path); it != swept->texts.end()) {
+            return it->second;
+        }
+        // An edited file the walk's suffixes left out.
+        if(!walked.contains(path)) {
+            if(auto text = vfs::read(path)) {
+                return index::sweep_text((*text)->getBuffer().str(), old_name, new_name);
+            }
+        }
+        return std::nullopt;
     };
     auto plan = index::plan_rename(query,
                                    project.file_table,
                                    at->target,
                                    new_name,
                                    {.files = swept->files,
+                                    .editable = editable,
                                     .read = read,
                                     .units_pending = clice::query::units_pending(project)});
     if(plan.blocked()) {

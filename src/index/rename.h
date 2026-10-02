@@ -52,15 +52,43 @@ struct CursorRename {
 std::expected<CursorRename, std::string> rename_at(const IndexQuery& query,
                                                    const IndexQuery::Cursor& cursor);
 
+/// A file's current text as the rename's sweep looks at it: the tokens
+/// spelling the old name, and whether any spells the new one.
+struct SweptText {
+    std::string text;
+
+    struct Token {
+        std::uint32_t offset;
+        /// It stands in a preprocessor directive.
+        bool directive;
+    };
+
+    std::vector<Token> old_tokens;
+    bool spells_new = false;
+};
+
+/// Sweep `text` for the two names; nullopt when it spells neither as a
+/// token. Text work alone, safe on any thread: a server runs it off its
+/// event loop over the whole workspace.
+std::optional<SweptText> sweep_text(std::string text,
+                                    llvm::StringRef old_name,
+                                    llvm::StringRef new_name);
+
 /// Where a rename may change text, and how to read it.
 struct RenameScope {
-    /// The workspace files a rename may edit and searches for the old name,
-    /// absolute: its sources and headers, build and cache directories left
-    /// out. An edit outside them is a conflict.
+    /// The workspace files the sweep looks at, absolute: its sources and
+    /// headers by suffix, build trees, hidden directories and the cache
+    /// directory left out.
     llvm::ArrayRef<std::string> files;
 
-    /// The current text of a file: an open buffer's, else the disk's.
-    llvm::function_ref<std::optional<std::string>(llvm::StringRef path)> read;
+    /// Whether the rename may edit a file: one in the workspace outside
+    /// those directories, whatever its suffix. An edit elsewhere is a
+    /// conflict.
+    llvm::function_ref<bool(llvm::StringRef path)> editable;
+
+    /// A file's current text — an open buffer's, else the disk's — swept
+    /// for the two names (sweep_text).
+    llvm::function_ref<std::optional<SweptText>(llvm::StringRef path)> read;
 
     /// Whether some unit of the build the index is to hold has no record
     /// in it yet: a file the index holds no rows of may then be one the

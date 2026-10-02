@@ -233,4 +233,8 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk);
 /// (a directory holding CMakeCache.txt or build.ninja) left out.
 std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir);
 
+/// Whether a refactoring may edit `file`: it lies under `root` outside the
+/// directories workspace_sources leaves out, whatever its suffix.
+bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
+
 }  // namespace clice

@@ -15,6 +15,7 @@
 #include "index/symbol_query.h"
 #include "vfs/file_system.h"
 
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Path.h"
 
 namespace clice::testing {
@@ -32,8 +33,9 @@ index::IndexQuery query{project.project_index, project.file_table, &gate, nullpt
 
 Fid main_id;
 
-/// The files a rename may edit.
+/// The files the sweep looks at, and those the rename may not edit.
 std::vector<std::string> scope;
+llvm::StringSet<> foreign;
 
 bool units_pending = false;
 
@@ -68,15 +70,22 @@ void write(llvm::StringRef name, llvm::StringRef content) {
 }
 
 RenamePlan plan(const index::RenameTarget& target, llvm::StringRef new_name) {
-    auto read = [](llvm::StringRef path) -> std::optional<std::string> {
-        auto text = vfs::read(path);
-        return text ? std::optional((*text)->getBuffer().str()) : std::nullopt;
+    auto editable = [&](llvm::StringRef path) {
+        return !foreign.contains(path);
     };
-    return index::plan_rename(query,
-                              project.file_table,
-                              target,
-                              new_name,
-                              {.files = scope, .read = read, .units_pending = units_pending});
+    auto read = [&](llvm::StringRef path) -> std::optional<index::SweptText> {
+        auto text = vfs::read(path);
+        if(!text) {
+            return std::nullopt;
+        }
+        return index::sweep_text((*text)->getBuffer().str(), target.symbol.symbol.name, new_name);
+    };
+    return index::plan_rename(
+        query,
+        project.file_table,
+        target,
+        new_name,
+        {.files = scope, .editable = editable, .read = read, .units_pending = units_pending});
 }
 
 /// Rename the one symbol the query `name` finds.
@@ -447,6 +456,10 @@ TEST_CASE(InvalidNewNames) {
         EXPECT_EQ(renamed->warnings.size(), 1U);
     }
 
+    auto unicode = rename_at("cursor", "café");
+    ASSERT_TRUE(unicode.has_value());
+    EXPECT_TRUE(unicode->conflicts.empty());
+
     auto same = rename_at("cursor", "counter");
     ASSERT_TRUE(same.has_value());
     EXPECT_TRUE(same->edits.empty());
@@ -536,6 +549,39 @@ TEST_CASE(EnumeratorLookupScope) {
     EXPECT_TRUE(scoped->conflicts.empty());
 }
 
+TEST_CASE(MemberTakesClassName) {
+    add_main(file("a.cpp"), R"(
+        struct Shape { void §(method)draw(); };
+        struct §(grid)Grid { int cells; };
+    )");
+    merge();
+
+    auto method = rename_at("method", "Shape");
+    ASSERT_TRUE(method.has_value());
+    ASSERT_EQ(method->conflicts.size(), 1U);
+    EXPECT_TRUE(method->conflicts.front().contains("names the class the member belongs to"));
+
+    auto grid = rename_at("grid", "cells");
+    ASSERT_TRUE(grid.has_value());
+    ASSERT_EQ(grid->conflicts.size(), 1U);
+    EXPECT_TRUE(grid->conflicts.front().contains("member of the renamed class"));
+}
+
+TEST_CASE(ManySameNamedSymbols) {
+    std::string source = "int §(cursor)value;\n";
+    for(int i = 0; i < 600; i += 1) {
+        source += std::format("namespace n{} {{ int target; }}\n", i);
+    }
+    source += "int target;\n";
+    add_main(file("a.cpp"), source);
+    merge();
+
+    auto renamed = rename_at("cursor", "target");
+    ASSERT_TRUE(renamed.has_value());
+    ASSERT_EQ(renamed->conflicts.size(), 1U);
+    EXPECT_TRUE(renamed->conflicts.front().contains("already declared in the same scope"));
+}
+
 TEST_CASE(MacroNameConflict) {
     add_main(file("a.cpp"), R"(
         #define SHADOW 1
@@ -619,6 +665,45 @@ int renamed(int x) { return x; }
     EXPECT_TRUE(renamed->stale.front().ends_with("a.cpp"));
 }
 
+TEST_CASE(NewNameInChangedFile) {
+    add_main(file("a.cpp"), R"(
+        int compute(int x) { return x; }
+    )");
+    merge();
+    clear();
+    add_main(file("b.cpp"), R"(
+        int other() { return 0; }
+    )");
+    merge();
+    // A declaration of the new name the index has not seen yet.
+    ASSERT_FALSE(static_cast<bool>(vfs::write(file("b.cpp"), R"(int other() { return 0; }
+int evaluate;
+)")));
+
+    auto renamed = rename("compute", "evaluate");
+    ASSERT_TRUE(renamed.has_value());
+    EXPECT_TRUE(renamed->blocked());
+    ASSERT_EQ(renamed->stale.size(), 1U);
+    EXPECT_TRUE(renamed->stale.front().ends_with("b.cpp"));
+}
+
+TEST_CASE(ExtensionlessHeaderEdited) {
+    add_file(file("config"), R"(
+        int §compute(int x);
+    )");
+    add_main(file("a.cpp"), R"(
+        #include "config"
+        int use() { return §compute(1); }
+    )");
+    merge();
+    std::erase(scope, file("config"));
+
+    auto renamed = rename("compute", "evaluate");
+    ASSERT_TRUE(renamed.has_value());
+    EXPECT_EQ(edits(*renamed), marks());
+    EXPECT_TRUE(clean(*renamed));
+}
+
 TEST_CASE(FilesOutsideTheIndex) {
     add_main(file("a.cpp"), R"(
         int §compute(int x) { return x; }
@@ -653,6 +738,7 @@ TEST_CASE(EditOutsideWorkspace) {
     )");
     merge();
     std::erase(scope, file("vendor/lib.h"));
+    foreign.insert(file("vendor/lib.h"));
 
     auto renamed = rename("compute", "evaluate");
     ASSERT_TRUE(renamed.has_value());

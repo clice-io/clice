@@ -3,7 +3,6 @@
 
 #include "driver/driver.h"
 #include "driver/query_support.h"
-#include "project/build.h"
 #include "project/open_index.h"
 #include "server/query_commands.h"
 #include "vfs/file_system.h"
@@ -83,11 +82,18 @@ auto make_command() {
 /// Write the plan's edits, every file's new text computed before the
 /// first is written: a file whose text moved on since it was indexed
 /// stops the whole rename, never half of it. Files are rewritten in
-/// place, keeping their permissions, owner and links.
+/// place, keeping their permissions, owner and links, each only while its
+/// status still is the one taken before it was read.
 std::expected<void, std::string> apply(FileTable& files,
                                        const index::RenamePlan& plan,
                                        llvm::StringRef new_name) {
-    std::vector<std::pair<std::string, std::string>> written;
+    struct Rewrite {
+        std::string path;
+        vfs::Stamp stamp;
+        std::string text;
+    };
+
+    std::vector<Rewrite> rewrites;
     llvm::DenseSet<Fid> seen;
     for(auto& edit: plan.edits) {
         auto file = edit.site.file;
@@ -95,10 +101,12 @@ std::expected<void, std::string> apply(FileTable& files,
             continue;
         }
         auto path = files.resolve(file).str();
+        auto status = vfs::status(path);
         auto bytes = vfs::read(path, vfs::Read::Bytes);
-        if(!bytes) {
+        if(!status || !bytes) {
+            auto error = status ? bytes.error() : status.error();
             return std::unexpected(
-                std::format("cannot read {}: {}", edit.site.path, bytes.error().message()));
+                std::format("cannot read {}: {}", edit.site.path, error.message()));
         }
         auto content = (*bytes)->getBuffer();
         auto text = vfs::without_bom(content);
@@ -107,23 +115,32 @@ std::expected<void, std::string> apply(FileTable& files,
             return std::unexpected(
                 std::format("{} changed since it was indexed; run with --fresh", edit.site.path));
         }
-        written.emplace_back(path,
-                             content.take_front(content.size() - text.size()).str() + *renamed);
+        rewrites.push_back({
+            .path = std::move(path),
+            .stamp = status->stamp,
+            .text = content.take_front(content.size() - text.size()).str() + *renamed,
+        });
     }
-    for(std::size_t i = 0; i < written.size(); i += 1) {
-        auto& [path, text] = written[i];
-        if(auto error = vfs::write(path, text)) {
-            std::string message = std::format("cannot write {}: {}", path, error.message());
-            if(i != 0) {
-                std::vector<std::string> done;
-                for(auto& entry: llvm::ArrayRef(written).take_front(i)) {
-                    done.push_back(entry.first);
-                }
-                message +=
-                    std::format("; the rename stopped after rewriting {}", llvm::join(done, ", "));
-            }
-            return std::unexpected(std::move(message));
+    for(std::size_t i = 0; i < rewrites.size(); i += 1) {
+        auto& rewrite = rewrites[i];
+        auto status = vfs::status(rewrite.path);
+        std::string failure;
+        if(!status || status->stamp != rewrite.stamp) {
+            failure = std::format("{} changed while the rename was being written", rewrite.path);
+        } else if(auto error = vfs::write(rewrite.path, rewrite.text)) {
+            failure = std::format("cannot write {}: {}", rewrite.path, error.message());
+        } else {
+            continue;
         }
+        if(i != 0) {
+            std::vector<std::string> done;
+            for(auto& written: llvm::ArrayRef(rewrites).take_front(i)) {
+                done.push_back(written.path);
+            }
+            failure +=
+                std::format("; the rename stopped after rewriting {}", llvm::join(done, ", "));
+        }
+        return std::unexpected(std::move(failure));
     }
     return {};
 }
@@ -191,21 +208,7 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
         return 1;
     }
 
-    std::vector<std::string> sources;
-    for(auto& source:
-        workspace_sources(root,
-                          CanonicalPath(Spelling::absolute(project.config.project.cache_dir)))) {
-        sources.push_back(source.str());
-    }
-    auto read = [](llvm::StringRef path) -> std::optional<std::string> {
-        auto text = vfs::read(path);
-        return text ? std::optional((*text)->getBuffer().str()) : std::nullopt;
-    };
-    auto planned = query::rename(
-        ctx,
-        std::move(*locator),
-        *opts.to,
-        {.files = sources, .read = read, .units_pending = query::units_pending(project)});
+    auto planned = query::rename(ctx, std::move(*locator), *opts.to);
     if(!planned) {
         print_json(Failure{.error = planned.error(), .stale = stale({})});
         return 1;
