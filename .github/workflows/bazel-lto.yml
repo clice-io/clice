@@ -30,8 +30,8 @@ jobs:
       MODE: full
       STARTUP: ${{ matrix.startup }}
       LTO_CACHE: ${{ matrix.lto_cache }}
-      DISK_CACHE: ${{ github.workspace }}/.cache/bazel-disk
-      REPO_CACHE: ${{ github.workspace }}/.cache/bazel-repo
+      DISK_CACHE: ${{ github.workspace }}/../bazel-disk
+      REPO_CACHE: ${{ github.workspace }}/../bazel-repo
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -47,8 +47,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: |
-            .cache/bazel-disk
-            .cache/bazel-repo
+            ${{ env.DISK_CACHE }}
+            ${{ env.REPO_CACHE }}
           key: lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-${{ github.run_id }}
           restore-keys: |
             lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-
@@ -71,8 +71,8 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: |
-            .cache/bazel-disk
-            .cache/bazel-repo
+            ${{ env.DISK_CACHE }}
+            ${{ env.REPO_CACHE }}
           key: lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-${{ github.run_id }}
 
       - name: Probes

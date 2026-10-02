@@ -134,7 +134,7 @@ env_info() {
     log "clang: $(clang --version | head -1)"
     [ "$os" = macos ] && log "ld: $(ld -v 2>&1 | head -1)"
     [ "$os" = linux ] && log "fs of $CACHE: $(findmnt -no SOURCE,FSTYPE,OPTIONS -T "$(dirname "$CACHE")")"
-    [ "$os" = macos ] && log "fs of $CACHE: $(mount | grep ' on / ')"
+    [ "$os" = macos ] && log "fs of $CACHE: $(mount | grep "^$(df /private/var/tmp | tail -1 | cut -d' ' -f1) ")"
 }
 
 case ${1:?} in
