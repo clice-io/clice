@@ -947,14 +947,16 @@ std::error_code create_directories(llvm::StringRef path) {
 }
 
 std::error_code write(llvm::StringRef path, llvm::StringRef content) {
-    std::error_code error;
-    llvm::raw_fd_ostream os(path, error, llvm::sys::fs::OF_None);
-    if(error) {
+    // Opened here rather than by the stream, which would take "-" for
+    // stdout and could then not be closed.
+    int fd = -1;
+    if(auto error = llvm::sys::fs::openFileForWrite(path, fd)) {
         return error;
     }
+    llvm::raw_fd_ostream os(fd, /*shouldClose=*/true);
     os << content;
-    os.flush();
-    error = os.error();
+    os.close();
+    auto error = os.error();
     // An uncleared error aborts in the stream's destructor.
     os.clear_error();
     return error;
