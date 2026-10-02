@@ -1,0 +1,83 @@
+module(name = "clice")
+
+bazel_dep(name = "rules_cc", version = "0.2.25")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "bazel_features", version = "1.51.0")
+bazel_dep(name = "bazel_skylib", version = "1.9.2")
+
+# From the Bazel Central Registry, at the versions cmake/package.cmake and
+# kotatsu pin.
+bazel_dep(name = "flatbuffers", version = "25.2.10")
+bazel_dep(name = "tomlplusplus", version = "3.4.0")
+bazel_dep(name = "cpptrace", version = "1.0.4.bcr.1")
+bazel_dep(name = "mimalloc", version = "3.5.3.bcr.1")
+
+# Sources whose configuration or version the registry does not offer, each
+# with a BUILD file of its own.
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "kotatsu",
+    build_file = "//third_party:kotatsu.BUILD",
+    sha256 = "964aecb30b2da5c24fe5326ddec8f35a23e76c9d7ae410dc1a888430cfe375bf",
+    strip_prefix = "kotatsu-626bb08d9221aeb611cb61da617d715ea1c14f71",
+    urls = ["https://github.com/clice-io/kotatsu/archive/626bb08d9221aeb611cb61da617d715ea1c14f71.tar.gz"],
+)
+
+http_archive(
+    name = "spdlog",
+    build_file = "//third_party:spdlog.BUILD",
+    sha256 = "15a04e69c222eb6c01094b5c7ff8a249b36bb22788d72519646fb85feb267e67",
+    strip_prefix = "spdlog-1.15.3",
+    urls = ["https://github.com/gabime/spdlog/archive/refs/tags/v1.15.3.tar.gz"],
+)
+
+http_archive(
+    name = "simdjson",
+    build_file = "//third_party:simdjson.BUILD",
+    sha256 = "6f942d018561a6c30838651a386a17e6e4abbfc396afd0f62740dea1810dedea",
+    strip_prefix = "simdjson-4.2.4",
+    urls = ["https://github.com/simdjson/simdjson/archive/refs/tags/v4.2.4.tar.gz"],
+)
+
+http_archive(
+    name = "libuv",
+    build_file = "//third_party:libuv.BUILD",
+    sha256 = "eee139c05f7c868f5ae7a54b1e155fd5b6ed13a22329958d2ba711faad016353",
+    strip_prefix = "libuv-1.52.0",
+    urls = ["https://github.com/libuv/libuv/archive/refs/tags/v1.52.0.tar.gz"],
+)
+
+http_archive(
+    name = "croaring",
+    build_file = "//third_party:croaring.BUILD",
+    sha256 = "a7d8c10c954a971b7e2996b498cb7600e5002637412f4198dcd600b415e1eb5c",
+    strip_prefix = "CRoaring-5.2.2",
+    urls = ["https://github.com/RoaringBitmap/CRoaring/archive/refs/tags/v5.2.2.tar.gz"],
+)
+
+http_archive(
+    name = "lmdb",
+    build_file = "//third_party:lmdb.BUILD",
+    sha256 = "dd70a8c67807b3b8532b3e987b0a4e998962ecc28643e1af5ec77696b081c9b0",
+    strip_prefix = "lmdb-LMDB_0.9.31/libraries/liblmdb",
+    urls = ["https://github.com/LMDB/lmdb/archive/refs/tags/LMDB_0.9.31.tar.gz"],
+)
+
+# The xclang libclang package. Spike: the directory cmake/llvm.cmake already
+# downloaded (CLICE_LLVM_ROOT); the real setup would http_archive the release.
+env_dir_repository = use_repo_rule("//third_party:local.bzl", "env_dir_repository")
+
+env_dir_repository(
+    name = "llvm",
+    build_file = "//third_party:llvm.BUILD",
+    env = "CLICE_LLVM_ROOT",
+)
+
+# Windows: xclang's clang targeting MinGW; rules_cc's MinGW toolchain is MSYS2
+# gcc.
+xclang_toolchain = use_repo_rule("//toolchain:xclang.bzl", "xclang_toolchain")
+
+xclang_toolchain(name = "xclang_mingw")
+
+register_toolchains("@xclang_mingw//:toolchain")

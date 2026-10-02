@@ -1,0 +1,113 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+# clice_options of CMakeLists.txt.
+COPTS = [
+    "-fno-rtti",
+    "-fno-exceptions",
+    "-Wno-deprecated-declarations",
+    "-Wno-undefined-inline",
+]
+
+DEFINES = ["CLICE_ENABLE_TEST=1"]
+
+genrule(
+    name = "version_h",
+    srcs = ["cmake/version.h.in"],
+    outs = ["generated/version.h"],
+    cmd = "sed -e 's/@CLICE_VERSION_STRING@/0.1.0-bazel/' -e 's/@CLICE_TARGET_STRING@/$(TARGET_CPU)/' $< > $@",
+)
+
+cc_library(
+    name = "version",
+    hdrs = [":version_h"],
+    strip_include_prefix = "generated",
+)
+
+cc_library(
+    name = "clang_tidy_config",
+    hdrs = ["cmake/clang-tidy-config.h"],
+    strip_include_prefix = "cmake",
+)
+
+# Layered targets: core <- config <- {project, worker} <- sched <- server.
+CORE_DIRS = ["support", "vfs", "syntax", "command", "compile", "semantic", "index", "feature"]
+
+cc_library(
+    name = "core",
+    srcs = glob(["src/%s/**/*.cpp" % d for d in CORE_DIRS]),
+    hdrs = glob(["src/%s/**/*.h" % d for d in CORE_DIRS] + ["src/%s/**/*.inc" % d for d in CORE_DIRS]),
+    copts = COPTS,
+    defines = DEFINES,
+    includes = ["src"],
+    deps = [
+        ":clang_tidy_config",
+        ":version",
+        "@croaring",
+        "@kotatsu//:codec_flatbuffers",
+        "@kotatsu//:codec_toml",
+        "@kotatsu//:ipc_lsp",
+        "@kotatsu//:option",
+        "@kotatsu//:support",
+        "@llvm",
+        "@lmdb",
+        "@simdjson",
+        "@spdlog",
+    ],
+)
+
+[cc_library(
+    name = layer,
+    srcs = glob(["src/%s/**/*.cpp" % layer]),
+    hdrs = glob(["src/%s/**/*.h" % layer]),
+    copts = COPTS,
+    deps = deps,
+) for layer, deps in [
+    ("config", [":core"]),
+    ("project", [":config"]),
+    ("worker", [":config"]),
+    ("sched", [":project", ":worker"]),
+    ("server", [":sched"]),
+]]
+
+cc_binary(
+    name = "clice",
+    srcs = ["src/clice.cc"] + glob(["src/driver/*.cc", "src/driver/*.h"]) + select({
+        "@platforms//os:windows": ["src/mimalloc.cc"],
+        "//conditions:default": [],
+    }),
+    copts = COPTS,
+    linkopts = select({
+        "@platforms//os:windows": ["-Wl,--allow-multiple-definition"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":server",
+        "@kotatsu//:deco",
+    ] + select({
+        "@platforms//os:windows": ["@mimalloc"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_binary(
+    name = "unit_tests",
+    srcs = [
+        "tests/unit/test/tester.cpp",
+        "tests/unit/unit_tests.cc",
+    ] + glob([
+        "tests/unit/*/*_tests.cpp",
+        "tests/unit/**/*.h",
+    ]),
+    copts = COPTS + ["-Itests/unit"],
+    linkopts = select({
+        "@platforms//os:windows": ["-Wl,--allow-multiple-definition"],
+        "//conditions:default": [],
+    }),
+    local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
+    deps = [
+        ":server",
+        "@kotatsu//:deco",
+        "@kotatsu//:zest",
+    ],
+)
