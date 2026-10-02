@@ -344,12 +344,11 @@ auto to_protocol_symbol(const DocumentSymbol& symbol, const LineMap& map)
     }
 
     if(!symbol.children.empty()) {
-        std::vector<std::shared_ptr<protocol::DocumentSymbol>> children;
+        std::vector<protocol::DocumentSymbol> children;
         children.reserve(symbol.children.size());
         for(const auto& child: symbol.children) {
             if(auto converted = to_protocol_symbol(child, map)) {
-                children.push_back(
-                    std::make_shared<protocol::DocumentSymbol>(std::move(*converted)));
+                children.push_back(std::move(*converted));
             }
         }
         result.children = std::move(children);

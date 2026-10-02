@@ -79,7 +79,7 @@ namespace {
 
 using namespace clice;
 
-TEST_SUITE(Diagnostic) {
+ZEST_SUITE(Diagnostic) {
 
 /// Holds VFS-backed CompilationParams with proper string ownership.
 struct DiagParams {
@@ -107,7 +107,7 @@ struct DiagParams {
     }
 };
 
-TEST_CASE(TargetError) {
+ZEST_CASE(TargetError) {
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     vfs->add("main.cpp", "");
 
@@ -117,50 +117,50 @@ TEST_CASE(TargetError) {
     params.arguments = {"clang++", "-target", "aa-bb-cc", main_path.c_str()};
 
     auto unit = compile(params);
-    ASSERT_TRUE(unit.setup_fail());
-    ASSERT_TRUE(unit.diagnostics().size() == 1);
+    ASSERT(unit.setup_fail());
+    ASSERT(unit.diagnostics().size() == 1);
 
     auto& diag = unit.diagnostics()[0];
-    EXPECT_EQ(diag.id.diagnostic_code(), "err_target_unknown_triple");
-    EXPECT_EQ(diag.id.level, DiagnosticLevel::Error);
-    EXPECT_EQ(diag.id.source, DiagnosticSource::Clang);
-    EXPECT_TRUE(diag.fid.isInvalid());
-    EXPECT_TRUE(!diag.range.valid());
-    EXPECT_EQ(diag.message, "unknown target triple 'aa-bb-cc'");
+    EXPECT(diag.id.diagnostic_code() == "err_target_unknown_triple");
+    EXPECT(diag.id.level == DiagnosticLevel::Error);
+    EXPECT(diag.id.source == DiagnosticSource::Clang);
+    EXPECT(diag.fid.isInvalid());
+    EXPECT(!diag.range.valid());
+    EXPECT(diag.message == "unknown target triple 'aa-bb-cc'");
 }
 
-TEST_CASE(Error) {
+ZEST_CASE(Error) {
     DiagParams dp("int main() { return 0 }");
 
     auto unit = compile(dp.params);
-    ASSERT_TRUE(unit.completed());
-    ASSERT_TRUE(unit.diagnostics().size() == 1);
+    ASSERT(unit.completed());
+    ASSERT(unit.diagnostics().size() == 1);
 
     auto& diag = unit.diagnostics()[0];
-    EXPECT_EQ(diag.id.diagnostic_code(), "err_expected_semi_after_stmt");
-    EXPECT_EQ(diag.id.level, DiagnosticLevel::Error);
-    EXPECT_EQ(diag.id.source, DiagnosticSource::Clang);
-    EXPECT_EQ(diag.fid, unit.main_file());
-    EXPECT_TRUE(diag.range.valid());
-    EXPECT_EQ(diag.message, "expected ';' after return statement");
+    EXPECT(diag.id.diagnostic_code() == "err_expected_semi_after_stmt");
+    EXPECT(diag.id.level == DiagnosticLevel::Error);
+    EXPECT(diag.id.source == DiagnosticSource::Clang);
+    EXPECT(diag.fid == unit.main_file());
+    EXPECT(diag.range.valid());
+    EXPECT(diag.message == "expected ';' after return statement");
 };
 
-TEST_CASE(Warning) {
+ZEST_CASE(Warning) {
     DiagParams dp("int main() { int x; return 0; }", {"-Wall", "-Wunused-variable"});
 
     auto unit = compile(dp.params);
-    ASSERT_TRUE(unit.completed());
-    ASSERT_EQ(unit.diagnostics().size(), 1);
+    ASSERT(unit.completed());
+    ASSERT(unit.diagnostics().size() == 1);
 
     auto& diag = unit.diagnostics()[0];
-    EXPECT_EQ(diag.id.diagnostic_code(), "warn_unused_variable");
-    EXPECT_EQ(diag.id.level, DiagnosticLevel::Warning);
-    EXPECT_EQ(diag.id.source, DiagnosticSource::Clang);
-    EXPECT_TRUE(diag.range.valid());
-    EXPECT_TRUE(diag.message.find("unused variable") != std::string::npos);
+    EXPECT(diag.id.diagnostic_code() == "warn_unused_variable");
+    EXPECT(diag.id.level == DiagnosticLevel::Warning);
+    EXPECT(diag.id.source == DiagnosticSource::Clang);
+    EXPECT(diag.range.valid());
+    EXPECT(diag.message.find("unused variable") != std::string::npos);
 }
 
-TEST_CASE(PCHError) {
+ZEST_CASE(PCHError) {
     /// Any error in compilation will result in failure on generating PCH or PCM.
     DiagParams dp(R"(
 void foo() {}
@@ -170,10 +170,10 @@ void foo() {}
 
     PCHInfo info;
     auto unit = compile(dp.params, info);
-    ASSERT_TRUE(unit.fatal_error());
+    ASSERT(unit.fatal_error());
 }
 
-TEST_CASE(ASTError) {
+ZEST_CASE(ASTError) {
     /// Event fatal error may generate incomplete AST, but it is fine.
     DiagParams dp(R"(
 void foo() {}
@@ -181,10 +181,10 @@ void foo() {}
 )");
 
     auto unit = compile(dp.params);
-    ASSERT_TRUE(unit.completed());
+    ASSERT(unit.completed());
 }
 
-TEST_CASE(CommandLineNote) {
+ZEST_CASE(CommandLineNote) {
     /// A macro-redefinition note points into <command line>; related
     /// information must skip it instead of emitting an empty URI.
     DiagParams dp(R"(
@@ -194,7 +194,7 @@ int main() { return 0; }
                   {"-DFOO=1"});
 
     auto unit = compile(dp.params);
-    ASSERT_TRUE(unit.completed());
+    ASSERT(unit.completed());
 
     auto diagnostics = feature::diagnostics(unit);
     bool redefined = false;
@@ -204,14 +204,14 @@ int main() { return 0; }
         }
         if(diag.related_information.has_value()) {
             for(auto& related: *diag.related_information) {
-                ASSERT_FALSE(related.location.uri.empty());
+                ASSERT(!related.location.uri.empty());
             }
         }
     }
-    ASSERT_TRUE(redefined);
+    ASSERT(redefined);
 }
 
-};  // TEST_SUITE(Diagnostic)
+};  // ZEST_SUITE(Diagnostic)
 
 }  // namespace
 

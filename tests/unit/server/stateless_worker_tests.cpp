@@ -15,9 +15,9 @@ namespace {
 // Bincode Serialization Tests
 // ============================================================================
 
-TEST_SUITE(BincodeRoundTrip) {
+ZEST_SUITE(BincodeRoundTrip) {
 
-TEST_CASE(CompileParamsRoundTrip) {
+ZEST_CASE(CompileParamsRoundTrip) {
     namespace bincode = kota::codec::bincode;
 
     worker::CompileParams params;
@@ -30,21 +30,22 @@ TEST_CASE(CompileParamsRoundTrip) {
     params.pcms = {};
 
     auto bytes = bincode::to_bytes(params);
-    ASSERT_TRUE(bytes.has_value());
+    ASSERT(bytes);
 
     worker::CompileParams result;
     auto status =
         bincode::from_bytes(std::span<const std::byte>(bytes->data(), bytes->size()), result);
-    ASSERT_TRUE(status.has_value());
+    ASSERT(status);
 
-    EXPECT_EQ(result.path, params.path);
-    EXPECT_EQ(result.version, params.version);
-    EXPECT_EQ(result.text, params.text);
-    EXPECT_EQ(result.directory, params.directory);
-    EXPECT_EQ(result.arguments.size(), params.arguments.size());
-}
+    EXPECT(result.path == params.path);
+    EXPECT(result.version == params.version);
+    EXPECT(result.text == params.text);
+    EXPECT(result.directory == params.directory);
+    EXPECT(result.arguments.size() == params.arguments.size());
 
-TEST_CASE(CompileResultRoundTrip) {
+}  // namespace
+
+ZEST_CASE(CompileResultRoundTrip) {
     namespace bincode = kota::codec::bincode;
 
     worker::CompileResult result;
@@ -52,26 +53,26 @@ TEST_CASE(CompileResultRoundTrip) {
     result.diagnostics = {};  // empty
 
     auto bytes = bincode::to_bytes(result);
-    ASSERT_TRUE(bytes.has_value());
+    ASSERT(bytes);
 
     worker::CompileResult decoded;
     auto status =
         bincode::from_bytes(std::span<const std::byte>(bytes->data(), bytes->size()), decoded);
-    ASSERT_TRUE(status.has_value());
-    EXPECT_EQ(decoded.version, result.version);
+    ASSERT(status);
+    EXPECT(decoded.version == result.version);
 }
 
-};  // TEST_SUITE(BincodeRoundTrip)
+};  // ZEST_SUITE(BincodeRoundTrip)
 
 // ============================================================================
 // StatelessWorker Tests
 // ============================================================================
 
-TEST_SUITE(StatelessWorker) {
+ZEST_SUITE(StatelessWorker) {
 
-TEST_CASE(SpawnAndExit) {
+ZEST_CASE(SpawnAndExit) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn());
+    ASSERT(w.spawn());
 
     // Close stdin pipe to signal worker to exit.
     w.peer->close_output();
@@ -79,13 +80,13 @@ TEST_CASE(SpawnAndExit) {
     w.loop.run();
 }
 
-TEST_CASE(BuildPCHRequest) {
+ZEST_CASE(BuildPCHRequest) {
     TempDir tmp;
     tmp.touch("test_pch.h", "#pragma once\nint pch_global = 42;\n");
     auto hdr = tmp.path("test_pch.h");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn());
+    ASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -101,27 +102,27 @@ TEST_CASE(BuildPCHRequest) {
         params.index_output_path = tmp.path("test_pch.pch.idx");
 
         auto result = co_await w.peer->send_request(params);
-        EXPECT_TRUE(result.has_value());
+        EXPECT(result);
         if(!result.has_value()) {
             w.peer->close_output();
             co_return;
         }
-        EXPECT_TRUE(result.value().success);
-        EXPECT_FALSE(result.value().output_path.empty());
+        EXPECT(result.value().success);
+        EXPECT(!result.value().output_path.empty());
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT_TRUE(test_done);
+    ASSERT(test_done);
 }
 
-TEST_CASE(IndexRequest) {
+ZEST_CASE(IndexRequest) {
     TempDir tmp;
     tmp.touch("test_index.cpp", "int indexed_var = 1;\n");
     auto src = tmp.path("test_index.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn());
+    ASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -133,30 +134,30 @@ TEST_CASE(IndexRequest) {
         params.arguments = make_args(src);
 
         auto result = co_await w.peer->send_request(params);
-        EXPECT_TRUE(result.has_value());
+        EXPECT(result);
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT_TRUE(test_done);
+    ASSERT(test_done);
 }
 
-};  // TEST_SUITE(StatelessWorker)
+};  // ZEST_SUITE(StatelessWorker)
 
 // ============================================================================
 // StatelessWorker Extended Tests
 // ============================================================================
 
-TEST_SUITE(StatelessWorkerExtended) {
+ZEST_SUITE(StatelessWorkerExtended) {
 
-TEST_CASE(BuildPCMRequest) {
+ZEST_CASE(BuildPCMRequest) {
     TempDir tmp;
     tmp.touch("test_module.cppm",
               "export module test_module;\nexport int module_func() { return 1; }\n");
     auto src = tmp.path("test_module.cppm");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn());
+    ASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -174,11 +175,11 @@ TEST_CASE(BuildPCMRequest) {
         params.output_path = tmp.path("test_module.pcm");
 
         auto result = co_await w.peer->send_request(params);
-        EXPECT_TRUE(result.has_value());
+        EXPECT(result);
         if(result.has_value()) {
             auto& build = result.value();
-            EXPECT_TRUE(build.success);
-            EXPECT_TRUE(build.build_at > 0);
+            EXPECT(build.success);
+            EXPECT(build.build_at > 0);
             // The module source itself must be a hashed dependency: the PCM
             // cache key embeds no content, so the deps snapshot is the only
             // thing that can see an offline edit of the interface. Deps name
@@ -191,23 +192,23 @@ TEST_CASE(BuildPCMRequest) {
                     source_dep = dep.hash != 0;
                 }
             }
-            EXPECT_TRUE(source_dep);
+            EXPECT(source_dep);
         }
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT_TRUE(test_done);
+    ASSERT(test_done);
 }
 
-TEST_CASE(CompletionRequest) {
+ZEST_CASE(CompletionRequest) {
     std::string text = "int foo = 1;\nint bar = fo";
     TempDir tmp;
     tmp.touch("completion_test.cpp", text);
     auto src = tmp.path("completion_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn());
+    ASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -220,22 +221,22 @@ TEST_CASE(CompletionRequest) {
         params.offset = 25;  // after "fo" in "int bar = fo" (13 + 12)
 
         auto result = co_await w.peer->send_request(params);
-        EXPECT_TRUE(result.has_value());
+        EXPECT(result);
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT_TRUE(test_done);
+    ASSERT(test_done);
 }
 
-TEST_CASE(SignatureHelpRequest) {
+ZEST_CASE(SignatureHelpRequest) {
     std::string text = "void foo(int a, int b) {}\nint main() { foo(";
     TempDir tmp;
     tmp.touch("sighelp_test.cpp", text);
     auto src = tmp.path("sighelp_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn());
+    ASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -248,18 +249,18 @@ TEST_CASE(SignatureHelpRequest) {
         params.offset = 45;  // after "foo(" (26 + 19)
 
         auto result = co_await w.peer->send_request(params);
-        EXPECT_TRUE(result.has_value());
+        EXPECT(result);
         // Should return signature help for foo(int a, int b).
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT_TRUE(test_done);
+    ASSERT(test_done);
 }
 
 // #701: ordering two constructor templates of a class template whose pack
 // follows another parameter crashed clang (xclang patches/0001).
-TEST_CASE(ConstructorTemplatesOfClassTemplate) {
+ZEST_CASE(ConstructorTemplatesOfClassTemplate) {
     std::string text = R"(template <int> struct index {};
 template <class, class...> struct V {
   template <int I> V(index<I>);
@@ -273,7 +274,7 @@ template <class, class...> struct V {
     auto offset = static_cast<uint32_t>(text.find("V();") + 2);
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn());
+    ASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -285,7 +286,7 @@ template <class, class...> struct V {
         completion.arguments = make_args(src);
         completion.offset = offset;
         auto completed = co_await w.peer->send_request(completion);
-        EXPECT_TRUE(completed.has_value());
+        EXPECT(completed);
 
         worker::SignatureHelpParams help;
         help.file = src;
@@ -294,16 +295,16 @@ template <class, class...> struct V {
         help.arguments = make_args(src);
         help.offset = offset;
         auto helped = co_await w.peer->send_request(help);
-        EXPECT_TRUE(helped.has_value());
+        EXPECT(helped);
 
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT_TRUE(test_done);
+    ASSERT(test_done);
 }
 
-TEST_CASE(MultipleStatelessRequests) {
+ZEST_CASE(MultipleStatelessRequests) {
     TempDir tmp;
     std::vector<std::string> paths;
     for(int i = 0; i < 3; i++) {
@@ -314,7 +315,7 @@ TEST_CASE(MultipleStatelessRequests) {
     }
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn());
+    ASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -328,16 +329,16 @@ TEST_CASE(MultipleStatelessRequests) {
             params.arguments = make_args(paths[i]);
 
             auto result = co_await w.peer->send_request(params);
-            EXPECT_TRUE(result.has_value());
+            EXPECT(result);
         }
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT_TRUE(test_done);
+    ASSERT(test_done);
 }
 
-};  // TEST_SUITE(StatelessWorkerExtended)
+};  // ZEST_SUITE(StatelessWorkerExtended)
 
 }  // namespace
 

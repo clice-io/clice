@@ -477,9 +477,9 @@ struct TextReplacement {
 /// The kinds the actions produce: the advertised capability, and what a
 /// request's `only` filter is matched against.
 constexpr inline std::array<std::string_view, 3> code_action_kinds = {
-    protocol::CodeActionKind::quick_fix,
-    protocol::CodeActionKind::refactor_inline,
-    protocol::CodeActionKind::refactor_rewrite,
+    protocol::CodeActionKind::QuickFix,
+    protocol::CodeActionKind::RefactorInline,
+    protocol::CodeActionKind::RefactorRewrite,
 };
 
 /// One definition the index vets: dropped when any source knows a

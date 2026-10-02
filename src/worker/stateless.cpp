@@ -510,7 +510,7 @@ static void serve(kota::ipc::BincodePeer& peer,
                      handler](RequestContext&, const Params& params) -> RequestResult<Params> {
         auto stop = std::make_shared<std::atomic_bool>(false);
         build_stop = stop;
-        auto result = co_await kota::queue(
+        co_return co_await kota::queue(
             [&]() -> Result {
                 if(stop->load(std::memory_order_relaxed)) {
                     return cancelled;
@@ -521,7 +521,6 @@ static void serve(kota::ipc::BincodePeer& peer,
                 return result;
             },
             [stop] { stop->store(true, std::memory_order_relaxed); });
-        co_return result.value();
     });
 }
 

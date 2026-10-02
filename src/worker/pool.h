@@ -426,7 +426,7 @@ private:
     /// another, worker_died when it names none.
     static kota::ipc::Error death_error(const WorkerDeath& death,
                                         llvm::StringRef tag,
-                                        kota::ipc::protocol::Value identity);
+                                        kota::codec::dyn::Value identity);
 
     // Stateful routing: each open document (path_id) is pinned to one worker.
     llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
@@ -714,7 +714,7 @@ private:
     /// Never cancelled as a group — stop() joins it, so shutdown waits until
     /// every worker process actually exited and its final output (crash
     /// stacktraces, sanitizer reports) was drained to EOF.
-    kota::task_group<> worker_tasks{loop};
+    kota::task_group<> worker_tasks;
     WorkerPoolOptions options;
 
     /// Set once start() succeeded: gates background concerns (slot

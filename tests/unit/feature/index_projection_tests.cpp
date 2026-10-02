@@ -11,7 +11,7 @@ namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(index_projection, Tester) {
+ZEST_SUITE(index_projection, Tester) {
 
 /// The compiled unit's envelope and the main file's rows, extracted the
 /// way the router's index slice does it in production.
@@ -55,7 +55,7 @@ auto resolver() {
     };
 }
 
-TEST_CASE(TokensMatchAst) {
+ZEST_CASE(TokensMatchAst) {
     add_main("main.cpp", R"cpp(
 // a line comment
 #define VALUE 1
@@ -83,7 +83,7 @@ int total(Point point, int base) {
     return 0;
 }
 )cpp");
-    ASSERT_TRUE(compile());
+    ASSERT(compile());
     extract_rows();
 
     auto ast = feature::semantic_tokens(*unit);
@@ -98,16 +98,16 @@ int total(Point point, int base) {
     auto pinned = SymbolModifiers::to_mask(SymbolModifiers::Declaration) |
                   SymbolModifiers::to_mask(SymbolModifiers::Definition);
 
-    ASSERT_EQ(projected.size(), ast.size());
+    ASSERT(projected.size() == ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {
-        ASSERT_EQ(projected[i].range.begin, ast[i].range.begin);
-        ASSERT_EQ(projected[i].range.end, ast[i].range.end);
-        ASSERT_EQ(projected[i].kind.value_of(), ast[i].kind.value_of());
-        ASSERT_EQ(projected[i].modifiers, ast[i].modifiers & pinned);
+        ASSERT(projected[i].range.begin == ast[i].range.begin);
+        ASSERT(projected[i].range.end == ast[i].range.end);
+        ASSERT(projected[i].kind.value_of() == ast[i].kind.value_of());
+        ASSERT(projected[i].modifiers == (ast[i].modifiers & pinned));
     }
 }
 
-TEST_CASE(OutlineMatchesAst) {
+ZEST_CASE(OutlineMatchesAst) {
     add_main("main.cpp", R"cpp(
 #define LIMIT 10
 
@@ -129,7 +129,7 @@ int scale(int value) {
 
 }
 )cpp");
-    ASSERT_TRUE(compile());
+    ASSERT(compile());
     extract_rows();
 
     auto ast = feature::document_symbols(*unit);
@@ -138,17 +138,17 @@ int scale(int value) {
     auto compare = [](auto& self,
                       const std::vector<feature::DocumentSymbol>& lhs,
                       const std::vector<feature::DocumentSymbol>& rhs) -> void {
-        ASSERT_EQ(lhs.size(), rhs.size());
+        ASSERT(lhs.size() == rhs.size());
         for(std::size_t i = 0; i < lhs.size(); i += 1) {
-            ASSERT_EQ(lhs[i].name, rhs[i].name);
-            ASSERT_EQ(lhs[i].kind.value_of(), rhs[i].kind.value_of());
+            ASSERT(lhs[i].name == rhs[i].name);
+            ASSERT(lhs[i].kind.value_of() == rhs[i].kind.value_of());
             self(self, lhs[i].children, rhs[i].children);
         }
     };
     compare(compare, projected, ast);
 }
 
-TEST_CASE(FoldsSubsetOfAst) {
+ZEST_CASE(FoldsSubsetOfAst) {
     add_main("main.cpp", R"cpp(
 namespace app {
 
@@ -168,7 +168,7 @@ int compute() {
 
 }
 )cpp");
-    ASSERT_TRUE(compile());
+    ASSERT(compile());
     extract_rows();
 
     auto ast = feature::folding_ranges(*unit);
@@ -177,12 +177,12 @@ int compute() {
                                                    decls,
                                                    resolver());
 
-    ASSERT_TRUE(!projected.empty());
+    ASSERT(!projected.empty());
     for(auto& fold: projected) {
         bool known = std::ranges::any_of(ast, [&](const feature::FoldingRange& twin) {
             return twin.range == fold.range;
         });
-        ASSERT_TRUE(known);
+        ASSERT(known);
     }
 
     // The constructor's fold anchors at its body, not the member
@@ -191,10 +191,10 @@ int compute() {
     bool anchored = std::ranges::any_of(projected, [&](const feature::FoldingRange& fold) {
         return fold.range.begin == body;
     });
-    ASSERT_TRUE(anchored);
+    ASSERT(anchored);
 }
 
-TEST_CASE(ConditionalBracesSuppressFold) {
+ZEST_CASE(ConditionalBracesSuppressFold) {
     // f's branches unbalance braces: any raw pairing ends the fold in a
     // branch the indexed parse never took, so the fold is suppressed. g's
     // conditional keeps every branch balanced and folds normally.
@@ -231,12 +231,12 @@ void g() {
                                                feature::index_lang_options("main.cpp", false),
                                                rows,
                                                resolve_synthetic);
-    ASSERT_EQ(folds.size(), std::size_t(1));
-    ASSERT_EQ(folds[0].range.begin, static_cast<std::uint32_t>(content.find("{", g_begin)));
-    ASSERT_EQ(folds[0].range.end, g_end);
+    ASSERT(folds.size() == std::size_t(1));
+    ASSERT(folds[0].range.begin == static_cast<std::uint32_t>(content.find("{", g_begin)));
+    ASSERT(folds[0].range.end == g_end);
 }
 
-TEST_CASE(CollapsedRowsBecomeSiblings) {
+ZEST_CASE(CollapsedRowsBecomeSiblings) {
     std::vector<feature::IndexDeclRow> rows = {
         {.range = {8, 9},   .extent = {0, 100}, .symbol = 1, .definition = true},
         {.range = {20, 25}, .extent = {20, 50}, .symbol = 2, .definition = true},
@@ -255,14 +255,14 @@ TEST_CASE(CollapsedRowsBecomeSiblings) {
     };
 
     auto symbols = feature::index_document_symbols(rows, resolve_synthetic);
-    ASSERT_EQ(symbols.size(), std::size_t(1));
-    ASSERT_EQ(symbols[0].name, "outer<int>");
-    ASSERT_EQ(symbols[0].children.size(), std::size_t(2));
-    ASSERT_EQ(symbols[0].children[0].children.size(), std::size_t(0));
-    ASSERT_EQ(symbols[0].children[1].children.size(), std::size_t(0));
+    ASSERT(symbols.size() == std::size_t(1));
+    ASSERT(symbols[0].name == "outer<int>");
+    ASSERT(symbols[0].children.size() == std::size_t(2));
+    ASSERT(symbols[0].children[0].children.size() == std::size_t(0));
+    ASSERT(symbols[0].children[1].children.size() == std::size_t(0));
 }
 
-TEST_CASE(MergedKindsConflict) {
+ZEST_CASE(MergedKindsConflict) {
     llvm::StringRef content = "value;\n";
     std::vector<index::Occurrence> merged = {
         {.range = {0, 5}, .target = 1},
@@ -280,11 +280,11 @@ TEST_CASE(MergedKindsConflict) {
                                                  merged,
                                                  {},
                                                  resolve_synthetic);
-    ASSERT_EQ(tokens.size(), std::size_t(1));
-    ASSERT_EQ(tokens[0].kind.value_of(), SymbolKind(SymbolKind::Conflict).value_of());
+    ASSERT(tokens.size() == std::size_t(1));
+    ASSERT(tokens[0].kind.value_of() == SymbolKind(SymbolKind::Conflict).value_of());
 }
 
-TEST_CASE(ModuleNameComponents) {
+ZEST_CASE(ModuleNameComponents) {
     // The index stores one occurrence spanning the whole written module
     // name; every identifier component must classify, as on the AST path
     // (separators and the contextual `module`/`import` stay unpainted).
@@ -314,10 +314,10 @@ TEST_CASE(ModuleNameComponents) {
         {32, 35},
         {36, 40},
     };
-    ASSERT_EQ(modules, expected);
+    ASSERT(modules == expected);
 }
 
-TEST_CASE(CDialectKeywords) {
+ZEST_CASE(CDialectKeywords) {
     // `class` is a valid C identifier: rows built by C parses must lex
     // under the C keyword table, or the C++ table would take `class` as
     // a keyword and shadow the row's kind.
@@ -334,19 +334,19 @@ TEST_CASE(CDialectKeywords) {
                                                    {},
                                                    rows,
                                                    resolve_synthetic);
-    ASSERT_EQ(c_tokens.size(), std::size_t(2));
-    ASSERT_EQ(c_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Variable).value_of());
+    ASSERT(c_tokens.size() == std::size_t(2));
+    ASSERT(c_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Variable).value_of());
 
     auto cpp_tokens = feature::index_semantic_tokens(content,
                                                      feature::index_lang_options("header.h", false),
                                                      {},
                                                      rows,
                                                      resolve_synthetic);
-    ASSERT_EQ(cpp_tokens.size(), std::size_t(2));
-    ASSERT_EQ(cpp_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Keyword).value_of());
+    ASSERT(cpp_tokens.size() == std::size_t(2));
+    ASSERT(cpp_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Keyword).value_of());
 }
 
-TEST_CASE(StandardFromCommand) {
+ZEST_CASE(StandardFromCommand) {
     // `concept` is a plain identifier in C++17: rows built under an older
     // -std must lex with that standard's keyword table, or a newer
     // table would take `concept` as a keyword and shadow the row.
@@ -364,8 +364,8 @@ TEST_CASE(StandardFromCommand) {
                                        {},
                                        rows,
                                        resolve_synthetic);
-    ASSERT_EQ(cxx17_tokens.size(), std::size_t(2));
-    ASSERT_EQ(cxx17_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Variable).value_of());
+    ASSERT(cxx17_tokens.size() == std::size_t(2));
+    ASSERT(cxx17_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Variable).value_of());
 
     auto cxx20_tokens =
         feature::index_semantic_tokens(content,
@@ -373,8 +373,8 @@ TEST_CASE(StandardFromCommand) {
                                        {},
                                        rows,
                                        resolve_synthetic);
-    ASSERT_EQ(cxx20_tokens.size(), std::size_t(2));
-    ASSERT_EQ(cxx20_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Keyword).value_of());
+    ASSERT(cxx20_tokens.size() == std::size_t(2));
+    ASSERT(cxx20_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Keyword).value_of());
 
     // No -std in the command means the rows were indexed under the
     // driver's default dialect (C++17 today); the fallback matches it.
@@ -384,11 +384,11 @@ TEST_CASE(StandardFromCommand) {
                                        {},
                                        rows,
                                        resolve_synthetic);
-    ASSERT_EQ(default_tokens.size(), std::size_t(2));
-    ASSERT_EQ(default_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Variable).value_of());
+    ASSERT(default_tokens.size() == std::size_t(2));
+    ASSERT(default_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Variable).value_of());
 }
 
-TEST_CASE(LinksFromEdges) {
+ZEST_CASE(LinksFromEdges) {
     llvm::StringRef content = R"cpp(#include "first.h"
 #include "skipped.h"
 #include <second>
@@ -401,14 +401,14 @@ TEST_CASE(LinksFromEdges) {
     auto links = feature::index_document_links(content,
                                                feature::index_lang_options("main.cpp", false),
                                                edges);
-    ASSERT_EQ(links.size(), std::size_t(2));
-    ASSERT_EQ(content.substr(links[0].range.begin, links[0].range.length()), "\"first.h\"");
-    ASSERT_EQ(links[0].target, "/tmp/first.h");
-    ASSERT_EQ(content.substr(links[1].range.begin, links[1].range.length()), "<second>");
-    ASSERT_EQ(links[1].target, "/usr/include/second");
+    ASSERT(links.size() == std::size_t(2));
+    ASSERT(content.substr(links[0].range.begin, links[0].range.length()) == "\"first.h\"");
+    ASSERT(links[0].target == "/tmp/first.h");
+    ASSERT(content.substr(links[1].range.begin, links[1].range.length()) == "<second>");
+    ASSERT(links[1].target == "/usr/include/second");
 }
 
-TEST_CASE(CommentBlockExtraction) {
+ZEST_CASE(CommentBlockExtraction) {
     llvm::StringRef content = R"cpp(int unrelated;
 
 /// Adds two numbers.
@@ -439,36 +439,36 @@ int after();
 )cpp";
 
     auto add_offset = static_cast<std::uint32_t>(content.find("int add"));
-    ASSERT_EQ(feature::preceding_comment(content, add_offset),
-              "Adds two numbers.\nReturns their sum.");
+    ASSERT(feature::preceding_comment(content, add_offset) ==
+           "Adds two numbers.\nReturns their sum.");
 
     // A blank line between the comment and the declaration breaks the
     // attachment.
     auto gap_offset = static_cast<std::uint32_t>(content.find("int gap"));
-    ASSERT_EQ(feature::preceding_comment(content, gap_offset), "");
+    ASSERT(feature::preceding_comment(content, gap_offset) == "");
 
     // A block comment whose closing line only ends with the marker still
     // attaches whole.
     auto scale_offset = static_cast<std::uint32_t>(content.find("int scale"));
-    ASSERT_EQ(feature::preceding_comment(content, scale_offset), "Scales the\ngiven input.");
+    ASSERT(feature::preceding_comment(content, scale_offset) == "Scales the\ngiven input.");
 
     // A code line trailing a self-contained block comment is code, not
     // documentation.
     auto next_offset = static_cast<std::uint32_t>(content.find("int next"));
-    ASSERT_EQ(feature::preceding_comment(content, next_offset), "");
+    ASSERT(feature::preceding_comment(content, next_offset) == "");
 
     // Interior lines of a block comment need no marker of their own.
     auto release_offset = static_cast<std::uint32_t>(content.find("int release"));
-    ASSERT_EQ(feature::preceding_comment(content, release_offset),
-              "Frees the buffer.\nThen clears it.");
+    ASSERT(feature::preceding_comment(content, release_offset) ==
+           "Frees the buffer.\nThen clears it.");
 
     // A block comment opened behind code trails that code, even when it
     // closes directly above the declaration.
     auto after_offset = static_cast<std::uint32_t>(content.find("int after"));
-    ASSERT_EQ(feature::preceding_comment(content, after_offset), "");
+    ASSERT(feature::preceding_comment(content, after_offset) == "");
 }
 
-};  // TEST_SUITE(index_projection)
+};  // ZEST_SUITE(index_projection)
 
 }  // namespace
 

@@ -217,38 +217,39 @@ std::optional<SourceRange> toHalfOpenFileRange(const SourceManager& SM,
 
 }  // namespace
 
-TEST_SUITE(SelectionTree, Tester) {
+ZEST_SUITE(SelectionTree, Tester) {
 
 template <typename Callback>
 void select_right(llvm::StringRef code, Callback&& callback) {
     clear();
     add_main("main.cpp", code);
-    ASSERT_TRUE(compile());
-    /// ASSERT_TRUE(unit->diagnostics().empty());
+    ASSERT(compile());
+    /// ASSERT(unit->diagnostics().empty());
 
     auto points = nameless_points();
-    ASSERT_FALSE(points.empty());
+    ASSERT(!points.empty());
 
     LocalSourceRange selected_range;
     selected_range.begin = points[0];
     selected_range.end = points.size() == 2 ? points[1] : points[0];
     auto tree = SelectionTree::create_right(*unit, selected_range);
     std::forward<Callback>(callback)(tree);
-}
+
+}  // namespace clice::testing
 
 void EXPECT_SELECT(llvm::StringRef code, const char* kind) {
     select_right(code, [&](SelectionTree& tree) {
         auto node = tree.common_ancestor();
         if(!kind) {
-            ASSERT_FALSE(node);
+            ASSERT(!node);
             return;
         }
 
-        ASSERT_TRUE(node);
+        ASSERT(node);
         auto range2 = toHalfOpenFileRange(unit->context().getSourceManager(),
                                           unit->lang_options(),
                                           node->source_range());
-        ASSERT_TRUE(range2.has_value());
+        ASSERT(range2);
 
         LocalSourceRange local_range = {
             unit->file_offset(range2->getBegin()),
@@ -258,12 +259,12 @@ void EXPECT_SELECT(llvm::StringRef code, const char* kind) {
         /// llvm::outs() << tree << "\n";
         /// tree.print(llvm::outs(), *node, 2);
 
-        ASSERT_EQ(node->kind(), llvm::StringRef(kind));
-        ASSERT_EQ(local_range, range());
+        ASSERT(node->kind() == llvm::StringRef(kind));
+        ASSERT(local_range == range());
     });
 }
 
-TEST_CASE(Expressions) {
+ZEST_CASE(Expressions) {
     EXPECT_SELECT(R"(
         struct AAA { struct BBB { static int ccc(); };};
         int x = §⟦AAA::BBB::c§c§c⟧();
@@ -307,7 +308,7 @@ TEST_CASE(Expressions) {
                   "PredefinedExpr");
 }
 
-TEST_CASE(Literals) {
+ZEST_CASE(Literals) {
     EXPECT_SELECT(R"(
         auto lambda = [](const char*){ return 0; };
         int x = lambda(§⟦"y§"⟧);
@@ -325,7 +326,7 @@ TEST_CASE(Literals) {
                   "UserDefinedLiteral");
 }
 
-TEST_CASE(ControlFlow) {
+ZEST_CASE(ControlFlow) {
     EXPECT_SELECT(R"(
         void foo() { §⟦if (1§11) { return; } else {§ }⟧} }
     )",
@@ -353,7 +354,7 @@ TEST_CASE(ControlFlow) {
                   "CallExpr");
 }
 
-TEST_CASE(Declarations) {
+ZEST_CASE(Declarations) {
     /// FIXME: how to handle this?
     /// EXPECT_SELECT(R"(
     ///      #define TARGET void foo()
@@ -394,7 +395,7 @@ TEST_CASE(Declarations) {
                   "VarDecl");
 }
 
-TEST_CASE(Types) {
+ZEST_CASE(Types) {
     EXPECT_SELECT(R"(
         struct AAA { struct BBB { static int ccc(); };};
         int x = AAA::§⟦B§B§B⟧::ccc();
@@ -439,7 +440,7 @@ TEST_CASE(Types) {
                   "TypedefTypeLoc");
 }
 
-TEST_CASE(CXXFeatures) {
+ZEST_CASE(CXXFeatures) {
     /// A dependent qualifier component (`T::U`) is a DependentNameType;
     /// the cursor's innermost node owns its name token.
     EXPECT_SELECT(R"(
@@ -475,7 +476,7 @@ TEST_CASE(CXXFeatures) {
                   "DeclRefExpr");  // Test for overloaded operator->
 }
 
-TEST_CASE(UsingEnum) {
+ZEST_CASE(UsingEnum) {
     EXPECT_SELECT(R"(
         namespace ns { enum class A {}; };
         using enum ns::§⟦§A⟧;
@@ -503,7 +504,7 @@ TEST_CASE(UsingEnum) {
                   "UsingEnumDecl");
 }
 
-TEST_CASE(Templates) {
+ZEST_CASE(Templates) {
     EXPECT_SELECT(R"(template<typename ...T> void foo(§⟦T*§...⟧x);)", "PackExpansionTypeLoc");
     EXPECT_SELECT(R"(template<typename ...T> void foo(§⟦§T⟧*...x);)", "TemplateTypeParmTypeLoc");
     EXPECT_SELECT(R"(template <typename T> void foo() { §⟦§T⟧ t; })", "TemplateTypeParmTypeLoc");
@@ -523,7 +524,7 @@ TEST_CASE(Templates) {
                   "TemplateArgumentLoc");
 }
 
-TEST_CASE(Concepts) {
+ZEST_CASE(Concepts) {
     EXPECT_SELECT(R"(
         template <class> concept C = true;
         auto x = §⟦§C<int>⟧;
@@ -557,7 +558,7 @@ TEST_CASE(Concepts) {
                   "TemplateTypeParmTypeLoc");
 }
 
-TEST_CASE(Attributes) {
+ZEST_CASE(Attributes) {
     EXPECT_SELECT(R"(
         void f(int * __attribute__((§⟦no§nnull⟧)) );
       )",
@@ -569,24 +570,24 @@ TEST_CASE(Attributes) {
                   "BuiltinTypeLoc");
 }
 
-TEST_CASE(PartialCoverage) {
+ZEST_CASE(PartialCoverage) {
     select_right(R"(void foo(int); void bar() { foo§()(1§()); })", [&](SelectionTree& tree) {
         auto* node = tree.common_ancestor();
-        ASSERT_TRUE(node != nullptr);
-        ASSERT_EQ(node->kind(), std::string("CallExpr"));
+        ASSERT(node != nullptr);
+        ASSERT(node->kind() == std::string("CallExpr"));
         // The call owns `(` and `)`, and only `(` is selected.
-        ASSERT_EQ(node->selected, SelectionTree::Partial);
+        ASSERT(node->selected == SelectionTree::Partial);
     });
 
     select_right(R"(void foo(int); void bar() { foo§()(1)§(); })", [&](SelectionTree& tree) {
         auto* node = tree.common_ancestor();
-        ASSERT_TRUE(node != nullptr);
-        ASSERT_EQ(node->kind(), std::string("CallExpr"));
-        ASSERT_EQ(node->selected, SelectionTree::Complete);
+        ASSERT(node != nullptr);
+        ASSERT(node->kind() == std::string("CallExpr"));
+        ASSERT(node->selected == SelectionTree::Complete);
     });
 }
 
-TEST_CASE(Macros) {
+ZEST_CASE(Macros) {
     EXPECT_SELECT(R"(
             int x(int);
             #define M(foo) x(foo)
@@ -614,7 +615,7 @@ TEST_CASE(Macros) {
                   "CallExpr");
 }
 
-TEST_CASE(NullOrInvalid) {
+ZEST_CASE(NullOrInvalid) {
     EXPECT_SELECT(R"(
               void foo();
               #§define CALL_FUNCTION(X) X(§)
@@ -643,17 +644,17 @@ TEST_CASE(NullOrInvalid) {
                   "DeclRefExpr");  // Technically valid, but tricky
 }
 
-TEST_CASE(InjectedClassName) {
+ZEST_CASE(InjectedClassName) {
     llvm::StringRef code = "struct §X { int x; };";
     select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
-        ASSERT_EQ(ancestor->kind(), llvm::StringRef("CXXRecordDecl"));
+        ASSERT(ancestor->kind() == llvm::StringRef("CXXRecordDecl"));
         auto* D = dyn_cast<clang::CXXRecordDecl>(ancestor->get<clang::Decl>());
-        ASSERT_FALSE(D->isInjectedClassName());
+        ASSERT(!D->isInjectedClassName());
     });
 }
 
-TEST_CASE(Metrics) {
+ZEST_CASE(Metrics) {
     llvm::StringRef code = R"cpp(
     // error-ok: testing behavior on recovery expression
     int foo();
@@ -664,15 +665,15 @@ TEST_CASE(Metrics) {
     /// FIXME:
 }
 
-TEST_CASE(Selected) {
+ZEST_CASE(Selected) {
     /// FIXME:
 }
 
-TEST_CASE(PathologicalPreprocessor) {
+ZEST_CASE(PathologicalPreprocessor) {
     /// FIXME:
 }
 
-TEST_CASE(IncludedFile) {
+ZEST_CASE(IncludedFile) {
     /// FIXME:
     llvm::StringRef code = R"(
 #[expand.inc]
@@ -685,18 +686,18 @@ void test() {
 }
 )";
     add_files("main.cpp", code);
-    ASSERT_TRUE(compile());
+    ASSERT(compile());
 
     auto points = nameless_points("main.cpp");
-    ASSERT_FALSE(points.empty());
+    ASSERT(!points.empty());
     auto point = points[0];
     auto tree = SelectionTree::create_right(*unit, {point, point});
-    ASSERT_TRUE(unit->diagnostics().empty());
+    ASSERT(unit->diagnostics().empty());
 
-    ASSERT_EQ(tree.common_ancestor(), nullptr);
+    ASSERT(tree.common_ancestor() == nullptr);
 }
 
-TEST_CASE(Implicit) {
+ZEST_CASE(Implicit) {
     llvm::StringRef code = R"cpp(
     struct S { S(const char*); };
     int f(S);
@@ -705,19 +706,19 @@ TEST_CASE(Implicit) {
 
     select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
-        ASSERT_EQ(ancestor->kind(), llvm::StringRef("StringLiteral"));
-        ASSERT_EQ(ancestor->parent->kind(), llvm::StringRef("ImplicitCastExpr"));
-        ASSERT_EQ(ancestor->parent->parent->kind(), llvm::StringRef("CXXConstructExpr"));
+        ASSERT(ancestor->kind() == llvm::StringRef("StringLiteral"));
+        ASSERT(ancestor->parent->kind() == llvm::StringRef("ImplicitCastExpr"));
+        ASSERT(ancestor->parent->parent->kind() == llvm::StringRef("CXXConstructExpr"));
 
         auto implicit = ancestor->parent->parent->parent;
-        ASSERT_EQ(implicit->kind(), llvm::StringRef("ImplicitCastExpr"));
-        ASSERT_EQ(implicit->parent->kind(), llvm::StringRef("CallExpr"));
-        ASSERT_EQ(ancestor, &implicit->ignore_implicit());
-        ASSERT_EQ(&ancestor->outer_implicit(), implicit);
+        ASSERT(implicit->kind() == llvm::StringRef("ImplicitCastExpr"));
+        ASSERT(implicit->parent->kind() == llvm::StringRef("CallExpr"));
+        ASSERT(ancestor == &implicit->ignore_implicit());
+        ASSERT(&ancestor->outer_implicit() == implicit);
     });
 }
 
-TEST_CASE(DeclContextIsLexical) {
+ZEST_CASE(DeclContextIsLexical) {
     llvm::StringRef code = R"cpp(
 namespace a {
     void f§oo();
@@ -728,7 +729,7 @@ void a::foo() { }
 
     select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
-        ASSERT_FALSE(ancestor->decl_context().isTranslationUnit());
+        ASSERT(!ancestor->decl_context().isTranslationUnit());
     });
 
     code = R"cpp(
@@ -741,11 +742,11 @@ void a::f§oo() { }
 
     select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
-        ASSERT_TRUE(ancestor->decl_context().isTranslationUnit());
+        ASSERT(ancestor->decl_context().isTranslationUnit());
     });
 }
 
-TEST_CASE(DeclContextLambda) {
+ZEST_CASE(DeclContextLambda) {
     llvm::StringRef code = R"cpp(
 void foo();
 auto lambda = [] {
@@ -755,11 +756,11 @@ auto lambda = [] {
 
     select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
-        ASSERT_TRUE(ancestor->decl_context().isFunctionOrMethod());
+        ASSERT(ancestor->decl_context().isFunctionOrMethod());
     });
 }
 
-TEST_CASE(UsingConcepts) {
+ZEST_CASE(UsingConcepts) {
     llvm::StringRef code = R"cpp(
 namespace ns {
 template <typename T>
@@ -776,19 +777,19 @@ auto Func(Fo§o auto V) -> Fo§o decltype(auto) {
   )cpp";
 
     add_main("main.cpp", code);
-    ASSERT_TRUE(compile());
+    ASSERT(compile());
 
     for(auto point: nameless_points()) {
         auto tree = SelectionTree::create_right(*unit, {point, point});
         auto* ancestor = tree.common_ancestor();
-        ASSERT_TRUE(ancestor);
+        ASSERT(ancestor);
         auto* C = ancestor->get<clang::ConceptReference>();
-        ASSERT_TRUE(C);
-        ASSERT_TRUE(C->getFoundDecl());
-        ASSERT_EQ(C->getFoundDecl()->getKind(), clang::Decl::UsingShadow);
+        ASSERT(C);
+        ASSERT(C->getFoundDecl());
+        ASSERT(C->getFoundDecl()->getKind() == clang::Decl::UsingShadow);
     }
 }
 
-};  // TEST_SUITE(SelectionTree)
+};  // ZEST_SUITE(SelectionTree)
 
 }  // namespace clice::testing

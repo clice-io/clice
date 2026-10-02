@@ -192,8 +192,6 @@ public:
     /// graph never destroys a running round.
     using RoundRunner = std::function<kota::task<RoundOutcome>(RoundContext& ctx, NodeId id)>;
 
-    explicit TaskGraph(kota::event_loop& loop);
-
     /// Families register once, before any request for their nodes.
     void register_family(Family family, RoundRunner run);
 

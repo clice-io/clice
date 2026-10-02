@@ -236,7 +236,7 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
     edits.push_back(std::move(*members));
     out.push_back(CodeAction{
         .title = std::format("Generate a memberwise constructor for '{}'", record->getName()),
-        .kind = protocol::CodeActionKind::refactor_rewrite,
+        .kind = protocol::CodeActionKind::RefactorRewrite,
         .edits = std::move(edits),
     });
 }

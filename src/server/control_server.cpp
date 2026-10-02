@@ -99,8 +99,7 @@ kota::task<> run_connection(kota::ipc::JsonPeer* peer,
 }  // namespace
 
 kota::task<> serve_control(ProjectServer& server, kota::tcp::acceptor acceptor) {
-    auto& loop = kota::event_loop::current();
-    kota::task_group<> group(loop);
+    kota::task_group<> group;
     Connections connections;
     group.spawn([](ProjectServer& server,
                    kota::tcp::acceptor& acceptor,

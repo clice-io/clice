@@ -334,7 +334,7 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 
     low_limit = max_low_limit();
 
-    worker_tasks.spawn(kota::with_token(monitor_loop(), stop_scope.token()));
+    worker_tasks.spawn(monitor_loop());
 
     started = true;
     LOG_INFO("WorkerPool started: {} stateless, {} stateful workers",
@@ -366,7 +366,7 @@ kota::task<> WorkerPool::stop() {
 
     // A wedged worker that ignores SIGTERM would otherwise block the join
     // below forever; escalate after a grace period.
-    kota::task_group<> watchdog{loop};
+    kota::task_group<> watchdog;
     watchdog.spawn(kill_stragglers());
 
     co_await worker_tasks.join();
@@ -667,7 +667,7 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
 
 kota::ipc::Error WorkerPool::death_error(const WorkerDeath& death,
                                          llvm::StringRef tag,
-                                         kota::ipc::protocol::Value identity) {
+                                         kota::codec::dyn::Value identity) {
     namespace errc = worker::dispatch_errc;
     auto code = death.culprit.empty()  ? errc::worker_died
                 : death.culprit == tag ? errc::worker_crashed
@@ -895,7 +895,12 @@ std::size_t WorkerPool::pick_idle_stateless() {
 
 kota::task<> WorkerPool::monitor_loop() {
     while(true) {
-        co_await kota::sleep(std::chrono::milliseconds(3000), loop);
+        // A cancelled child would cancel every sibling in worker_tasks, so
+        // the stop ends this loop by returning.
+        co_await kota::with_token(kota::sleep(std::chrono::milliseconds(3000), loop),
+                                  stop_scope.token());
+        if(stop_scope.cancelled())
+            co_return;
 
         tick_foreground();
         tick_cancel_grace();

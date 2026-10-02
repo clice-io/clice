@@ -8,9 +8,9 @@
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(ClangTidy) {
+ZEST_SUITE(ClangTidy) {
 
-TEST_CASE(ModulesLinked) {
+ZEST_CASE(ModulesLinked) {
     llvm::StringSet<> expected = {
         "abseil-module",      "altera-module",   "android-module",     "boost-module",
         "bugprone-module",    "cert-module",     "concurrency-module", "cppcoreguidelines-module",
@@ -23,10 +23,11 @@ TEST_CASE(ModulesLinked) {
     for(auto& entry: clang::tidy::ClangTidyModuleRegistry::entries()) {
         expected.erase(entry.getName());
     }
-    ASSERT_TRUE(expected.empty());
-}
+    ASSERT(expected.empty());
 
-TEST_CASE(Tidy) {
+}  // namespace
+
+ZEST_CASE(Tidy) {
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     vfs->add("main.cpp", "int main() { return 0 }");
 
@@ -36,11 +37,11 @@ TEST_CASE(Tidy) {
     params.vfs = vfs;
     params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
     auto unit = compile(params);
-    ASSERT_TRUE(unit.completed());
-    ASSERT_FALSE(unit.diagnostics().empty());
+    ASSERT(unit.completed());
+    ASSERT(!unit.diagnostics().empty());
 }
 
-TEST_CASE(PlannedCheckFires) {
+ZEST_CASE(PlannedCheckFires) {
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     vfs->add("main.cpp", "double ratio(int a, int b) { return a / b; }\n");
 
@@ -53,19 +54,19 @@ TEST_CASE(PlannedCheckFires) {
     params.vfs = vfs;
     params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
     auto unit = compile(params);
-    ASSERT_TRUE(unit.completed());
+    ASSERT(unit.completed());
 
     bool fired = false;
     for(auto& diag: unit.diagnostics()) {
         if(diag.id.source == DiagnosticSource::ClangTidy) {
-            ASSERT_EQ(diag.id.name, "bugprone-integer-division");
+            ASSERT(diag.id.name == "bugprone-integer-division");
             fired = true;
         }
     }
-    ASSERT_TRUE(fired);
+    ASSERT(fired);
 }
 
-TEST_CASE(HeaderFilterTraversesHeaders) {
+ZEST_CASE(HeaderFilterTraversesHeaders) {
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     vfs->add("ratio.h", "inline double ratio(int a, int b) { return a / b; }\n");
     vfs->add("main.cpp", "#include \"ratio.h\"\nint main() { return 0; }\n");
@@ -81,19 +82,19 @@ TEST_CASE(HeaderFilterTraversesHeaders) {
     params.vfs = vfs;
     params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
     auto unit = compile(params);
-    ASSERT_TRUE(unit.completed());
+    ASSERT(unit.completed());
 
     bool header_finding = false;
     for(auto& diag: unit.diagnostics()) {
         if(diag.id.source == DiagnosticSource::ClangTidy && diag.fid != unit.main_file()) {
-            ASSERT_EQ(diag.id.name, "bugprone-integer-division");
+            ASSERT(diag.id.name == "bugprone-integer-division");
             header_finding = true;
         }
     }
-    ASSERT_TRUE(header_finding);
+    ASSERT(header_finding);
 }
 
-TEST_CASE(HeaderNolint) {
+ZEST_CASE(HeaderNolint) {
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     vfs->add("ratio.h", "inline double ratio(int a, int b) { return a / b; }  // NOLINT\n");
     vfs->add("main.cpp", "#include \"ratio.h\"\n");
@@ -108,20 +109,20 @@ TEST_CASE(HeaderNolint) {
     params.vfs = vfs;
     params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
     auto unit = compile(params);
-    ASSERT_TRUE(unit.completed());
+    ASSERT(unit.completed());
     // A suppressed finding stays in the stream at the Ignored level.
     bool suppressed = false;
     for(auto& diag: unit.diagnostics()) {
-        EXPECT_TRUE(diag.id.source != DiagnosticSource::ClangTidy ||
-                    diag.id.level == DiagnosticLevel::Ignored);
+        EXPECT((diag.id.source != DiagnosticSource::ClangTidy ||
+                diag.id.level == DiagnosticLevel::Ignored));
         suppressed |= diag.id.source == DiagnosticSource::ClangTidy &&
                       diag.id.name == "bugprone-integer-division" &&
                       diag.id.level == DiagnosticLevel::Ignored;
     }
-    ASSERT_TRUE(suppressed);
+    ASSERT(suppressed);
 }
 
-TEST_CASE(ResolveConfigChain) {
+ZEST_CASE(ResolveConfigChain) {
     TempDir tmp;
     tmp.touch(".clang-tidy",
               "Checks: '-*,bugprone-*'\n"
@@ -134,24 +135,24 @@ TEST_CASE(ResolveConfigChain) {
     // Nested configs merge with clang-tidy's own semantics: the child
     // appends to the inherited parent list.
     auto params = tidy::resolve_tidy_params(tmp.path("sub/a.cpp"));
-    ASSERT_TRUE(params.checks.contains("bugprone-*"));
-    ASSERT_TRUE(params.checks.contains("modernize-*"));
+    ASSERT(params.checks.contains("bugprone-*"));
+    ASSERT(params.checks.contains("modernize-*"));
 
     auto parent = tidy::resolve_tidy_params(tmp.path("a.cpp"));
-    ASSERT_TRUE(parent.checks.contains("bugprone-*"));
-    ASSERT_FALSE(parent.checks.contains("modernize-*"));
-    ASSERT_EQ(parent.warnings_as_errors, "bugprone-*");
-    ASSERT_EQ(parent.header_filter, ".*");
-    ASSERT_EQ(parent.exclude_header_filter, "third_party/.*");
+    ASSERT(parent.checks.contains("bugprone-*"));
+    ASSERT(!parent.checks.contains("modernize-*"));
+    ASSERT(parent.warnings_as_errors == "bugprone-*");
+    ASSERT(parent.header_filter == ".*");
+    ASSERT(parent.exclude_header_filter == "third_party/.*");
 }
 
-TEST_CASE(ResolveWithoutConfig) {
+ZEST_CASE(ResolveWithoutConfig) {
     TempDir tmp;
     tmp.touch("a.cpp");
-    ASSERT_TRUE(tidy::resolve_tidy_params(tmp.path("a.cpp")).checks.empty());
+    ASSERT(tidy::resolve_tidy_params(tmp.path("a.cpp")).checks.empty());
 }
 
-TEST_CASE(ExtraArgsCommandSplit) {
+ZEST_CASE(ExtraArgsCommandSplit) {
     // -W warning flags stay on the warning-options path where the Checks
     // gate applies; driver pass-throughs and everything else reach the
     // command halves in order.
@@ -159,8 +160,8 @@ TEST_CASE(ExtraArgsCommandSplit) {
                                           {"-std=c++17", "-Wall", "-fno-exceptions"});
     std::vector<std::string> prepend = {"-std=c++17", "-fno-exceptions"};
     std::vector<std::string> append = {"-DFOO=1", "-Wp,-DY=2"};
-    ASSERT_EQ(split.prepend, prepend);
-    ASSERT_EQ(split.append, append);
+    ASSERT(split.prepend == prepend);
+    ASSERT(split.append == append);
 
     // A -X<tool> pair filters on its operand's verdict — dropping just
     // the operand would leave the forwarder to eat the next argument.
@@ -168,9 +169,9 @@ TEST_CASE(ExtraArgsCommandSplit) {
         {"-Xclang", "-Wno-unused", "-Xclang", "-fno-exceptions", "-Xclang"},
         {});
     std::vector<std::string> kept = {"-Xclang", "-fno-exceptions", "-Xclang"};
-    ASSERT_EQ(pairs.append, kept);
+    ASSERT(pairs.append == kept);
 }
 
-};  // TEST_SUITE(ClangTidy)
+};  // ZEST_SUITE(ClangTidy)
 }  // namespace
 }  // namespace clice::testing

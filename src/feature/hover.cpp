@@ -1197,10 +1197,10 @@ auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const
 
     protocol::MarkupContent content;
     if(options.parse_comment_as_markdown) {
-        content.kind = protocol::MarkupKind::markdown;
+        content.kind = protocol::MarkupKind::Markdown;
         content.value = document.as_markdown();
     } else {
-        content.kind = protocol::MarkupKind::plain_text;
+        content.kind = protocol::MarkupKind::PlainText;
         content.value = document.as_plain_text();
     }
 

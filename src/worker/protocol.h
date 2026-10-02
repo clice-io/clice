@@ -99,7 +99,9 @@ std::string crash_tag(const Params& params) {
 /// in Error::data. One process death fails every request in flight on it;
 /// per-content blame (Quarantine) dedups by this identity so a single death
 /// is counted at most once per document.
-inline protocol::Value death_identity(std::size_t index, unsigned generation, bool stateful) {
+inline kota::codec::dyn::Value death_identity(std::size_t index,
+                                              unsigned generation,
+                                              bool stateful) {
     return std::format("{}:{}:{}", stateful ? "sf" : "sl", index, generation);
 }
 
@@ -107,9 +109,7 @@ inline protocol::Value death_identity(std::size_t index, unsigned generation, bo
 /// error carries none (locally synthesized failures).
 inline std::string_view death_of(const protocol::Error& error) {
     if(error.data.has_value()) {
-        if(auto* id = std::get_if<std::string>(&*error.data)) {
-            return *id;
-        }
+        return error.data->get_string().value_or(std::string_view{});
     }
     return {};
 }

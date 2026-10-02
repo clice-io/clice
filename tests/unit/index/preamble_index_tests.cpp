@@ -21,7 +21,7 @@ struct VersionAndPaths {
     std::vector<std::string> paths = {"/proj/main.cpp"};
 };
 
-TEST_SUITE(PreambleIndex, Tester) {
+ZEST_SUITE(PreambleIndex, Tester) {
 
 TempDir dir;
 std::shared_ptr<index::TUIndex> state;
@@ -34,7 +34,7 @@ std::string diagnostics;
 /// Compile, build a preamble envelope, persist it as the `.pch.idx` pair
 /// and load it back through the production gate.
 void build_state(std::source_location location = std::source_location::current()) {
-    ASSERT_TRUE(compile());
+    ASSERT(compile());
 
     links.resize(1);
     links[0].range = {12, 20};
@@ -46,7 +46,7 @@ void build_state(std::source_location location = std::source_location::current()
     dir.touch("state.pch.idx",
               index::build_preamble_index(*unit, links, inactive, conditionals, diagnostics));
     state = load_pch_envelope(dir.path("state.pch.idx"));
-    ASSERT_TRUE(state != nullptr);
+    ASSERT(state != nullptr);
 }
 
 index::SymbolHash hash_of(llvm::StringRef name,
@@ -61,7 +61,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
             }
             return true;
         });
-    EXPECT_EQ(count, 1);
+    EXPECT(count == 1);
     return hash;
 }
 
@@ -86,7 +86,7 @@ void lookup_headers(index::SymbolHash hash,
     }
 }
 
-TEST_CASE(ForcedIncludeServed) {
+ZEST_CASE(ForcedIncludeServed) {
     add_file("forced.h", R"(int §(def)⟦forced_value⟧ = 1;)");
     add_main("main.cpp", R"(int x = forced_value;)");
 
@@ -101,25 +101,25 @@ TEST_CASE(ForcedIncludeServed) {
     for(auto& arg: owned_args) {
         params.arguments.push_back(arg.c_str());
     }
-    ASSERT_TRUE(try_compile());
+    ASSERT(try_compile());
 
     dir.touch("state.pch.idx", index::build_preamble_index(*unit, {}, {}, {}, {}));
     state = load_pch_envelope(dir.path("state.pch.idx"));
-    ASSERT_TRUE(state != nullptr);
+    ASSERT(state != nullptr);
 
     bool found = false;
     lookup_headers(hash_of("forced_value"),
                    RelationKind::Definition,
                    [&](llvm::StringRef path, const index::Relation& r) {
-                       EXPECT_TRUE(path.ends_with("forced.h"));
-                       EXPECT_EQ(dump(r.range), dump(range("def", "forced.h")));
+                       EXPECT(path.ends_with("forced.h"));
+                       EXPECT(dump(r.range) == dump(range("def", "forced.h")));
                        found = true;
                        return false;
                    });
-    EXPECT_TRUE(found);
+    EXPECT(found);
 }
 
-TEST_CASE(HeaderRelationLookup) {
+ZEST_CASE(HeaderRelationLookup) {
     add_file("foo.h", R"(
 inline void §(def)⟦foo⟧() {}
 inline void bar() { §(href)⟦foo⟧(); }
@@ -137,12 +137,12 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     lookup_headers(foo,
                    RelationKind::Definition,
                    [&](llvm::StringRef path, const index::Relation& r) {
-                       EXPECT_TRUE(path.ends_with("foo.h"));
-                       EXPECT_EQ(dump(r.range), dump(range("def", "foo.h")));
+                       EXPECT(path.ends_with("foo.h"));
+                       EXPECT(dump(r.range) == dump(range("def", "foo.h")));
                        found_def = true;
                        return false;
                    });
-    EXPECT_TRUE(found_def);
+    EXPECT(found_def);
 
     // Header-internal references are in the envelope too.
     bool found_ref = false;
@@ -153,20 +153,20 @@ int main() { §(ref)⟦foo⟧(); return 0; }
         }
         return true;
     });
-    EXPECT_TRUE(found_ref);
+    EXPECT(found_ref);
 
     // Everything needed to map rows to LSP positions rides in each shard;
     // pure-ASCII content itself is omitted.
     for(std::uint32_t i = 0; i < state->section_count(); i += 1) {
         auto& shard = state->shard_of(state->section_path(i));
-        EXPECT_TRUE(shard.content_size() > 0);
-        EXPECT_FALSE(shard.line_starts().empty());
-        EXPECT_TRUE(shard.content().empty());
-        EXPECT_TRUE(shard.content().empty());
+        EXPECT(shard.content_size() > 0);
+        EXPECT(!shard.line_starts().empty());
+        EXPECT(shard.content().empty());
+        EXPECT(shard.content().empty());
     }
 }
 
-TEST_CASE(PreambleLookup) {
+ZEST_CASE(PreambleLookup) {
     add_file("foo.h", R"(
 inline void §(def)⟦foo⟧() {}
 )");
@@ -178,29 +178,29 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 
     auto foo = hash_of("foo");
     const index::Shard& preamble = state->shard_of(state->path_count() - 1);
-    ASSERT_TRUE(preamble.loaded());
+    ASSERT(preamble.loaded());
 
     // Occurrence lookup by offset in the preamble entry.
     bool found_occurrence = false;
     preamble.lookup(point("ref"), [&](const index::Occurrence& occurrence) {
-        EXPECT_EQ(occurrence.target, foo);
-        EXPECT_EQ(dump(occurrence.range), dump(range("ref")));
+        EXPECT(occurrence.target == foo);
+        EXPECT(dump(occurrence.range) == dump(range("ref")));
         found_occurrence = true;
         return false;
     });
-    EXPECT_TRUE(found_occurrence);
+    EXPECT(found_occurrence);
 
     // Relation lookup by symbol in the preamble entry.
     bool found_relation = false;
     preamble.lookup(foo, RelationKind::Reference, [&](const index::Relation& r) {
-        EXPECT_EQ(dump(r.range), dump(range("ref")));
+        EXPECT(dump(r.range) == dump(range("ref")));
         found_relation = true;
         return false;
     });
-    EXPECT_TRUE(found_relation);
+    EXPECT(found_relation);
 }
 
-TEST_CASE(SymbolTableLookup) {
+ZEST_CASE(SymbolTableLookup) {
     add_file("foo.h", R"(
 inline void §(def)⟦foo⟧() {}
 )");
@@ -213,27 +213,27 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     auto foo = hash_of("foo");
 
     auto identity = state->find_symbol(foo);
-    ASSERT_TRUE(identity.has_value());
-    EXPECT_EQ(identity->name, "foo");
-    EXPECT_EQ(identity->kind.value(), SymbolKind(SymbolKind::Function).value());
+    ASSERT(identity);
+    EXPECT(identity->name == "foo");
+    EXPECT(identity->kind.value() == SymbolKind(SymbolKind::Function).value());
 
-    EXPECT_FALSE(state->find_symbol(foo + 1).has_value());
+    EXPECT(!state->find_symbol(foo + 1).has_value());
 }
 
-TEST_CASE(FeatureStateRoundtrip) {
+ZEST_CASE(FeatureStateRoundtrip) {
     add_main("main.cpp", R"(
 int main() { return 0; }
 )");
     build_state();
 
     auto loaded_links = state->links();
-    ASSERT_EQ(loaded_links.size(), 1);
-    EXPECT_EQ(loaded_links[0].range, LocalSourceRange(12, 20));
-    EXPECT_EQ(loaded_links[0].target, "/include/foo.h");
+    ASSERT(loaded_links.size() == 1);
+    EXPECT(loaded_links[0].range == LocalSourceRange(12, 20));
+    EXPECT(loaded_links[0].target == "/include/foo.h");
 
-    EXPECT_EQ(state->inactive_regions(), llvm::ArrayRef<std::uint32_t>(inactive));
-    EXPECT_EQ(state->open_conditionals(), llvm::ArrayRef<std::uint8_t>(conditionals));
-    EXPECT_EQ(state->preamble_diagnostics(), diagnostics);
+    EXPECT(state->inactive_regions() == llvm::ArrayRef<std::uint32_t>(inactive));
+    EXPECT(state->open_conditionals() == llvm::ArrayRef<std::uint8_t>(conditionals));
+    EXPECT(state->preamble_diagnostics() == diagnostics);
 
     // An envelope with no header sections answers lookups with silence,
     // not UB.
@@ -242,57 +242,57 @@ int main() { return 0; }
         visited = true;
         return true;
     });
-    EXPECT_FALSE(visited);
+    EXPECT(!visited);
 }
 
-TEST_CASE(RejectBadBlob) {
-    EXPECT_TRUE(load_pch_envelope(dir.path("missing.pch.idx")) == nullptr);
+ZEST_CASE(RejectBadBlob) {
+    EXPECT(load_pch_envelope(dir.path("missing.pch.idx")) == nullptr);
 
     dir.touch("garbage.pch.idx", "not a flatbuffer at all");
-    EXPECT_TRUE(load_pch_envelope(dir.path("garbage.pch.idx")) == nullptr);
+    EXPECT(load_pch_envelope(dir.path("garbage.pch.idx")) == nullptr);
 }
 
-TEST_CASE(RejectVersionMismatch) {
+ZEST_CASE(RejectVersionMismatch) {
     // A structurally valid blob of another format version — none (0, what a
     // version-less blob reads back) or the one before this build's — must
     // load as missing, so the PCH pair rebuilds instead of serving a stale
     // layout.
     for(auto version: {0u, index::index_format_version - 1}) {
         auto blob = kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = version});
-        ASSERT_TRUE(blob.has_value());
+        ASSERT(blob);
 
         dir.touch("stale.pch.idx",
                   llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
-        EXPECT_TRUE(load_pch_envelope(dir.path("stale.pch.idx")) == nullptr);
+        EXPECT(load_pch_envelope(dir.path("stale.pch.idx")) == nullptr);
     }
 }
 
-TEST_CASE(AcceptCurrentVersionBlob) {
+ZEST_CASE(AcceptCurrentVersionBlob) {
     // Positive control for RejectVersionMismatch: the same blob carrying the
     // CURRENT version loads — the rejection comes from the version's value,
     // not from the blob's shape.
     auto blob =
         kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = index::index_format_version});
-    ASSERT_TRUE(blob.has_value());
+    ASSERT(blob);
 
     dir.touch("current.pch.idx",
               llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
-    EXPECT_TRUE(load_pch_envelope(dir.path("current.pch.idx")) != nullptr);
+    EXPECT(load_pch_envelope(dir.path("current.pch.idx")) != nullptr);
 }
 
-TEST_CASE(RejectCorruptBlob) {
+ZEST_CASE(RejectCorruptBlob) {
     add_main("main.cpp", R"(
 int main() { return 0; }
 )");
     build_state();
 
     auto read = read_file(dir.path("state.pch.idx"));
-    ASSERT_TRUE(read.has_value());
+    ASSERT(read);
     llvm::StringRef bytes = *read;
-    ASSERT_TRUE(bytes.size() > 8);
+    ASSERT(bytes.size() > 8);
 
     dir.touch("truncated.pch.idx", bytes.take_front(bytes.size() / 2));
-    EXPECT_TRUE(load_pch_envelope(dir.path("truncated.pch.idx")) == nullptr);
+    EXPECT(load_pch_envelope(dir.path("truncated.pch.idx")) == nullptr);
 
     // Bytes 4-7 carry the buffer identifier; a blob from another format
     // must be rejected up front.
@@ -301,10 +301,10 @@ int main() { return 0; }
         clobbered[i] = 'X';
     }
     dir.touch("clobbered.pch.idx", clobbered);
-    EXPECT_TRUE(load_pch_envelope(dir.path("clobbered.pch.idx")) == nullptr);
+    EXPECT(load_pch_envelope(dir.path("clobbered.pch.idx")) == nullptr);
 }
 
-TEST_CASE(RejectCorruptSectionBlob) {
+ZEST_CASE(RejectCorruptSectionBlob) {
     add_main("main.cpp", R"(
 int main() { return 0; }
 )");
@@ -314,46 +314,46 @@ int main() { return 0; }
     // structurally valid, but the load gate verifies every blob and must
     // read the pair as missing instead of silently serving nothing.
     auto read = read_file(dir.path("state.pch.idx"));
-    ASSERT_TRUE(read.has_value());
+    ASSERT(read);
     std::string bytes = std::move(*read);
 
     auto view = index::TUIndex::from_bytes(bytes);
-    ASSERT_TRUE(view.loaded());
-    ASSERT_TRUE(view.section_count() > 0);
+    ASSERT(view.loaded());
+    ASSERT(view.section_count() > 0);
     auto blob = view.section_blob(0);
     auto pos = llvm::StringRef(bytes).find(blob);
-    ASSERT_TRUE(pos != llvm::StringRef::npos);
+    ASSERT(pos != llvm::StringRef::npos);
     for(std::size_t i = 0; i < blob.size(); i += 1) {
         bytes[pos + i] = 'X';
     }
 
     dir.touch("bad_section.pch.idx", bytes);
-    EXPECT_TRUE(load_pch_envelope(dir.path("bad_section.pch.idx")) == nullptr);
+    EXPECT(load_pch_envelope(dir.path("bad_section.pch.idx")) == nullptr);
 }
 
-TEST_CASE(SourcePathAndPrefix) {
+ZEST_CASE(SourcePathAndPrefix) {
     add_main("main.cpp", R"(
 int value = 42;
 int other = 1;
 )");
     build_state();
 
-    EXPECT_TRUE(state->path(state->path_count() - 1).ends_with("main.cpp"));
+    EXPECT(state->path(state->path_count() - 1).ends_with("main.cpp"));
 
     // The preamble text itself is not stored; the envelope keeps only the
     // identity of the exact prefix it was built from.
     auto content = unit->main_content();
-    EXPECT_TRUE(state->matches_prefix(content));
-    EXPECT_TRUE(state->matches_prefix(content.str() + "\nint more = 2;"));
-    EXPECT_FALSE(state->matches_prefix(content.drop_back(1)));
-    EXPECT_FALSE(state->matches_prefix("int changed = 0;"));
+    EXPECT(state->matches_prefix(content));
+    EXPECT(state->matches_prefix(content.str() + "\nint more = 2;"));
+    EXPECT(!state->matches_prefix(content.drop_back(1)));
+    EXPECT(!state->matches_prefix("int changed = 0;"));
 
     // An ordinary envelope never serves preamble state.
     auto ordinary = index::build_tu_index(*unit);
-    EXPECT_FALSE(index::TUIndex::from_bytes(ordinary).matches_prefix(content));
+    EXPECT(!index::TUIndex::from_bytes(ordinary).matches_prefix(content));
 }
 
-};  // TEST_SUITE(PreambleIndex)
+};  // ZEST_SUITE(PreambleIndex)
 
 }  // namespace
 

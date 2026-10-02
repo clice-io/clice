@@ -97,7 +97,7 @@ int run_format(BatchFormatOptions options) {
 
 void add_format(kota::deco::cli::SubCommander& root, int& exit_code) {
     auto cmd = make_command();
-    cmd.matchAll([&exit_code](FormatOptions opts) {
+    cmd.match_all([&exit_code](FormatOptions opts) {
            if(opts.help) {
                auto help = make_command();
                print_usage(help);

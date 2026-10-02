@@ -98,14 +98,11 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
             vfs = std::move(overlay);
         }
         import_scans += 1;
-        // A failed scan finds nothing, as a scan that fails to set up does.
         auto scanned = co_await kota::queue(
             [&] { return scan_precise(arguments, directory, content, nullptr, std::move(vfs)); });
-        if(scanned.has_value()) {
-            imports = {.modules = std::move(scanned->modules),
-                       .module_name = std::move(scanned->module_name),
-                       .is_interface_unit = scanned->is_interface_unit};
-        }
+        imports = {.modules = std::move(scanned.modules),
+                   .module_name = std::move(scanned.module_name),
+                   .is_interface_unit = scanned.is_interface_unit};
         if(content) {
             scan_memos[path_id] = {.directives = directives,
                                    .arguments = arguments_hash,
@@ -307,12 +304,12 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // Commit on the thread pool: it fsyncs the freshly written PCM.
     auto committed =
         co_await kota::queue([&] { return project.store->commit(std::move(pending)); });
-    if(!committed.has_value() || !committed.value().has_value()) {
+    if(!committed.has_value()) {
         LOG_WARN("Failed to commit PCM for module {}", module_name);
         co_return RoundOutcome::Failed;
     }
 
-    auto pcm_path = std::move(committed.value().value());
+    auto pcm_path = std::move(committed.value());
     auto snapshot =
         capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
     // The interfaces it imported are inputs as much as its own text — the

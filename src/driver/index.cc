@@ -810,7 +810,7 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
 
 void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path) {
     auto cmd = make_command();
-    cmd.matchAll([&exit_code, self_path](IndexOptions opts) {
+    cmd.match_all([&exit_code, self_path](IndexOptions opts) {
            if(opts.help) {
                auto help = make_command();
                print_usage(help);

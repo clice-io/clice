@@ -135,26 +135,27 @@ std::vector<std::string> names(const Corpus& corpus,
 
 using Names = std::vector<std::string>;
 
-TEST_SUITE(SearchIndex) {
+ZEST_SUITE(SearchIndex) {
 
-TEST_CASE(Loads) {
+ZEST_CASE(Loads) {
     auto corpus = sample();
     corpus.snapshot.generation = 7;
     auto built = corpus.build();
-    EXPECT_TRUE(built.loaded());
-    EXPECT_EQ(built.generation(), std::uint64_t(7));
-    EXPECT_EQ(built.size(), corpus.snapshot.entries.size());
-    EXPECT_TRUE(built.contains(1));
-    EXPECT_FALSE(built.contains(999));
+    EXPECT(built.loaded());
+    EXPECT(built.generation() == std::uint64_t(7));
+    EXPECT(built.size() == corpus.snapshot.entries.size());
+    EXPECT(built.contains(1));
+    EXPECT(!built.contains(999));
     SearchIndex empty;
-    EXPECT_FALSE(empty.load(llvm::MemoryBuffer::getMemBufferCopy("junk")));
-    EXPECT_FALSE(empty.loaded());
-    EXPECT_TRUE(empty.search(*SymbolQuery::parse("foo"), 10, {}).hits.empty());
-    EXPECT_TRUE(built.search(*SymbolQuery::parse("foo"), 100, {}).exhausted);
-    EXPECT_FALSE(built.search(*SymbolQuery::parse("foo"), 2, {}).exhausted);
-}
+    EXPECT(!empty.load(llvm::MemoryBuffer::getMemBufferCopy("junk")));
+    EXPECT(!empty.loaded());
+    EXPECT(empty.search(*SymbolQuery::parse("foo"), 10, {}).hits.empty());
+    EXPECT(built.search(*SymbolQuery::parse("foo"), 100, {}).exhausted);
+    EXPECT(!built.search(*SymbolQuery::parse("foo"), 2, {}).exhausted);
 
-TEST_CASE(DamagedPosting) {
+}  // namespace
+
+ZEST_CASE(DamagedPosting) {
     auto corpus = sample();
     auto bytes = index::build_search_blob(corpus.snapshot);
     // Every bitmap image opens with the portable cookie of a bitmap
@@ -165,144 +166,139 @@ TEST_CASE(DamagedPosting) {
         bytes.replace(at, 4, "\xff\xff\xff\xff");
     }
     SearchIndex built;
-    ASSERT_TRUE(built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
-    EXPECT_FALSE(built.damaged());
+    ASSERT(built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
+    EXPECT(!built.damaged());
     // The exact matches come from the name order, the fuzzy ones from
     // the posting lists.
-    EXPECT_EQ(names(corpus, built, "foo"), (Names{"foo", "Foo"}));
-    EXPECT_TRUE(built.damaged());
+    EXPECT(names(corpus, built, "foo") == (Names{"foo", "Foo"}));
+    EXPECT(built.damaged());
 }
 
-TEST_CASE(FuzzyRanking) {
+ZEST_CASE(FuzzyRanking) {
     auto corpus = sample();
     auto built = corpus.build();
-    EXPECT_EQ(names(corpus, built, "foo"), (Names{"foo", "Foo", "foobar", "bar_foo", "xfoo"}));
-    EXPECT_EQ(names(corpus, built, "Foo"), (Names{"Foo", "foo", "foobar", "bar_foo", "xfoo"}));
-    EXPECT_EQ(names(corpus, built, "LinLis"), (Names{"LinkedList"}));
-    EXPECT_EQ(names(corpus, built, "pconf"), (Names{"parse_config"}));
-    EXPECT_TRUE(names(corpus, built, "pcfg").empty());
-    EXPECT_EQ(names(corpus, built, "up"), (Names{"upper_bound", "unique_ptr"}));
+    EXPECT(names(corpus, built, "foo") == (Names{"foo", "Foo", "foobar", "bar_foo", "xfoo"}));
+    EXPECT(names(corpus, built, "Foo") == (Names{"Foo", "foo", "foobar", "bar_foo", "xfoo"}));
+    EXPECT(names(corpus, built, "LinLis") == (Names{"LinkedList"}));
+    EXPECT(names(corpus, built, "pconf") == (Names{"parse_config"}));
+    EXPECT(names(corpus, built, "pcfg").empty());
+    EXPECT(names(corpus, built, "up") == (Names{"upper_bound", "unique_ptr"}));
     // A short query keys the first two words in the index and in a row.
-    EXPECT_TRUE(names(corpus, built, "qu").empty());
+    EXPECT(names(corpus, built, "qu").empty());
     auto short_query = *SymbolQuery::parse("qu");
     index::NameRanker short_ranker(short_query);
-    EXPECT_FALSE(short_ranker.rank("zap_bar_quux", "", 1).has_value());
-    EXPECT_TRUE(short_ranker.rank("zap_quux", "", 1).has_value());
-    EXPECT_EQ(names(corpus, built, "u_p"), (Names{"unique_ptr"}));
-    EXPECT_TRUE(names(corpus, built, "zzz").empty());
-    EXPECT_EQ(names(corpus, built, "foo", 2), (Names{"foo", "Foo"}));
+    EXPECT(!short_ranker.rank("zap_bar_quux", "", 1).has_value());
+    EXPECT(short_ranker.rank("zap_quux", "", 1));
+    EXPECT(names(corpus, built, "u_p") == (Names{"unique_ptr"}));
+    EXPECT(names(corpus, built, "zzz").empty());
+    EXPECT(names(corpus, built, "foo", 2) == (Names{"foo", "Foo"}));
 }
 
-TEST_CASE(ExactAndGlob) {
+ZEST_CASE(ExactAndGlob) {
     auto corpus = sample();
     auto built = corpus.build();
-    EXPECT_EQ(names(corpus, built, R"("foo")"), (Names{"foo"}));
-    EXPECT_EQ(names(corpus, built, R"("Foo")"), (Names{"Foo"}));
-    EXPECT_TRUE(names(corpus, built, R"("fo")").empty());
-    EXPECT_EQ(names(corpus, built, "foo*"), (Names{"Foo", "foo", "foobar"}));
-    EXPECT_EQ(names(corpus, built, "*foo"), (Names{"Foo", "bar_foo", "foo", "xfoo"}));
-    EXPECT_EQ(names(corpus, built, "str*"), (Names{"strcpy_s", "strncpy"}));
-    EXPECT_EQ(names(corpus, built, "*_*"),
-              (Names{"unique_ptr",
-                     "upper_bound",
-                     "bar_foo",
-                     "parse_config",
-                     "strcpy_s",
-                     "zap_bar_quux",
-                     "MAX_SIZE"}));
-    EXPECT_EQ(names(corpus, built, "MAX_*"), (Names{"MAX_SIZE"}));
-    EXPECT_EQ(names(corpus, built, "??o"), (Names{"Foo", "foo"}));
+    EXPECT(names(corpus, built, R"("foo")") == (Names{"foo"}));
+    EXPECT(names(corpus, built, R"("Foo")") == (Names{"Foo"}));
+    EXPECT(names(corpus, built, R"("fo")").empty());
+    EXPECT(names(corpus, built, "foo*") == (Names{"Foo", "foo", "foobar"}));
+    EXPECT(names(corpus, built, "*foo") == (Names{"Foo", "bar_foo", "foo", "xfoo"}));
+    EXPECT(names(corpus, built, "str*") == (Names{"strcpy_s", "strncpy"}));
+    EXPECT(names(corpus, built, "*_*") == (Names{"unique_ptr",
+                                                 "upper_bound",
+                                                 "bar_foo",
+                                                 "parse_config",
+                                                 "strcpy_s",
+                                                 "zap_bar_quux",
+                                                 "MAX_SIZE"}));
+    EXPECT(names(corpus, built, "MAX_*") == (Names{"MAX_SIZE"}));
+    EXPECT(names(corpus, built, "??o") == (Names{"Foo", "foo"}));
     Corpus wide;
     wide.add((std::string(150, 'a') + "xyz").c_str(), SymbolKind::Function);
     auto wide_index = wide.build();
-    EXPECT_EQ(names(wide, wide_index, "*xyz*").size(), std::size_t(1));
+    EXPECT(names(wide, wide_index, "*xyz*").size() == std::size_t(1));
 }
 
-TEST_CASE(Scopes) {
+ZEST_CASE(Scopes) {
     auto corpus = sample();
     auto built = corpus.build();
-    EXPECT_EQ(names(corpus, built, "inner::paint"), (Names{"paint", "paint"}));
-    EXPECT_EQ(names(corpus, built, "outer::inner::paint").size(), std::size_t(2));
-    EXPECT_EQ(names(corpus, built, "outer::paint").size(), std::size_t(2));
-    EXPECT_TRUE(names(corpus, built, "inner::outer::paint").empty());
-    EXPECT_TRUE(names(corpus, built, "::inner::paint").empty());
-    EXPECT_TRUE(names(corpus, built, "::outer::inner::paint").empty());
-    EXPECT_EQ(names(corpus, built, "::outer::inner::Widget::paint").size(), std::size_t(2));
-    EXPECT_EQ(names(corpus, built, "::outer::inner::Widget<int>::paint").size(), std::size_t(1));
-    EXPECT_EQ(names(corpus, built, "::outer::versioned"), (Names{"versioned"}));
-    EXPECT_EQ(names(corpus, built, "Widget<int>"), (Names{"Widget<int>"}));
-    EXPECT_EQ(names(corpus, built, "Widget<int>::paint"), (Names{"paint"}));
-    EXPECT_EQ(names(corpus, built, "Widget"), (Names{"Widget", "Widget<int>"}));
-    EXPECT_TRUE(names(corpus, built, "v2::Widget").empty());
-    EXPECT_EQ(names(corpus, built, "outer::inner::*"), (Names{"Widget", "Widget<int>"}));
-    EXPECT_EQ(names(corpus, built, "inner::"), (Names{"Widget", "Widget<int>"}));
-    EXPECT_EQ(names(corpus, built, "inner::**"),
-              (Names{"Widget", "Widget<int>", "paint", "paint"}));
-    EXPECT_EQ(names(corpus, built, "::outer::*"), (Names{"inner", "v2", "versioned"}));
-    EXPECT_EQ(names(corpus, built, "::*").size(), std::size_t(10));
-    EXPECT_EQ(names(corpus, built, "*", 100).size(), corpus.snapshot.entries.size());
-    EXPECT_EQ(names(corpus, built, "::outer::**").size(), std::size_t(7));
-    EXPECT_EQ(names(corpus, built, "Widget::*"), (Names{"paint", "paint"}));
-    EXPECT_EQ(names(corpus, built, "Widget<int>::*"), (Names{"paint"}));
+    EXPECT(names(corpus, built, "inner::paint") == (Names{"paint", "paint"}));
+    EXPECT(names(corpus, built, "outer::inner::paint").size() == std::size_t(2));
+    EXPECT(names(corpus, built, "outer::paint").size() == std::size_t(2));
+    EXPECT(names(corpus, built, "inner::outer::paint").empty());
+    EXPECT(names(corpus, built, "::inner::paint").empty());
+    EXPECT(names(corpus, built, "::outer::inner::paint").empty());
+    EXPECT(names(corpus, built, "::outer::inner::Widget::paint").size() == std::size_t(2));
+    EXPECT(names(corpus, built, "::outer::inner::Widget<int>::paint").size() == std::size_t(1));
+    EXPECT(names(corpus, built, "::outer::versioned") == (Names{"versioned"}));
+    EXPECT(names(corpus, built, "Widget<int>") == (Names{"Widget<int>"}));
+    EXPECT(names(corpus, built, "Widget<int>::paint") == (Names{"paint"}));
+    EXPECT(names(corpus, built, "Widget") == (Names{"Widget", "Widget<int>"}));
+    EXPECT(names(corpus, built, "v2::Widget").empty());
+    EXPECT(names(corpus, built, "outer::inner::*") == (Names{"Widget", "Widget<int>"}));
+    EXPECT(names(corpus, built, "inner::") == (Names{"Widget", "Widget<int>"}));
+    EXPECT(names(corpus, built, "inner::**") == (Names{"Widget", "Widget<int>", "paint", "paint"}));
+    EXPECT(names(corpus, built, "::outer::*") == (Names{"inner", "v2", "versioned"}));
+    EXPECT(names(corpus, built, "::*").size() == std::size_t(10));
+    EXPECT(names(corpus, built, "*", 100).size() == corpus.snapshot.entries.size());
+    EXPECT(names(corpus, built, "::outer::**").size() == std::size_t(7));
+    EXPECT(names(corpus, built, "Widget::*") == (Names{"paint", "paint"}));
+    EXPECT(names(corpus, built, "Widget<int>::*") == (Names{"paint"}));
 }
 
-TEST_CASE(Filters) {
+ZEST_CASE(Filters) {
     auto corpus = sample();
     auto built = corpus.build();
-    EXPECT_EQ(names(corpus, built, "foo kind:struct"), (Names{"Foo"}));
-    EXPECT_EQ(names(corpus, built, "foo kind:variable,function"),
-              (Names{"foo", "foobar", "bar_foo", "xfoo"}));
-    EXPECT_EQ(names(corpus, built, "kind:namespace *"), (Names{"inner", "outer", "v2"}));
-    EXPECT_EQ(names(corpus, built, "u path:memory"), (Names{"unique_ptr"}));
-    EXPECT_EQ(names(corpus, built, "u path:/usr/"), (Names{"unique_ptr"}));
-    EXPECT_EQ(names(corpus, built, "* path:src/b/"), (Names{"upper_bound"}));
-    EXPECT_EQ(names(corpus, built, "up path:b/algo.h"), (Names{"upper_bound"}));
-    EXPECT_TRUE(names(corpus, built, "up path:nowhere.h").empty());
-    EXPECT_TRUE(names(corpus, built, "up kind:macro").empty());
+    EXPECT(names(corpus, built, "foo kind:struct") == (Names{"Foo"}));
+    EXPECT(names(corpus, built, "foo kind:variable,function") ==
+           (Names{"foo", "foobar", "bar_foo", "xfoo"}));
+    EXPECT(names(corpus, built, "kind:namespace *") == (Names{"inner", "outer", "v2"}));
+    EXPECT(names(corpus, built, "u path:memory") == (Names{"unique_ptr"}));
+    EXPECT(names(corpus, built, "u path:/usr/") == (Names{"unique_ptr"}));
+    EXPECT(names(corpus, built, "* path:src/b/") == (Names{"upper_bound"}));
+    EXPECT(names(corpus, built, "up path:b/algo.h") == (Names{"upper_bound"}));
+    EXPECT(names(corpus, built, "up path:nowhere.h").empty());
+    EXPECT(names(corpus, built, "up kind:macro").empty());
 }
 
-TEST_CASE(Typos) {
+ZEST_CASE(Typos) {
     auto corpus = sample();
     auto built = corpus.build();
-    EXPECT_EQ(names(corpus, built, "strcpy"), (Names{"strcpy_s", "strncpy"}));
-    EXPECT_EQ(names(corpus, built, "strcpy", 1), (Names{"strcpy_s"}));
-    EXPECT_EQ(names(corpus, built, "strncpx"), (Names{"strncpy"}));
+    EXPECT(names(corpus, built, "strcpy") == (Names{"strcpy_s", "strncpy"}));
+    EXPECT(names(corpus, built, "strcpy", 1) == (Names{"strcpy_s"}));
+    EXPECT(names(corpus, built, "strncpx") == (Names{"strncpy"}));
     // A row the clean pass rejected is judged again as a typo.
-    EXPECT_EQ(names(corpus, built, "aaaaaa"), (Names{"aaaxaaa"}));
-    EXPECT_TRUE(names(corpus, built, "strcp").empty() ||
-                names(corpus, built, "strcp") == Names{"strcpy_s"});
+    EXPECT(names(corpus, built, "aaaaaa") == (Names{"aaaxaaa"}));
+    EXPECT((names(corpus, built, "strcp").empty() ||
+            names(corpus, built, "strcp") == Names{"strcpy_s"}));
 }
 
-TEST_CASE(Quality) {
+ZEST_CASE(Quality) {
     using index::symbol_quality;
     auto plain = symbol_quality("foo", SymbolKind::Function, SymbolFlags::HasDefinition, 1);
-    EXPECT_EQ(plain, 1.0f);
-    EXPECT_GT(symbol_quality("foo", SymbolKind::Function, SymbolFlags::HasDefinition, 1000), 1.9f);
-    EXPECT_LT(symbol_quality("foo", SymbolKind::Function, SymbolFlags::None, 1), plain);
-    EXPECT_LT(symbol_quality("_Foo", SymbolKind::Function, SymbolFlags::HasDefinition, 1), plain);
-    EXPECT_LT(symbol_quality("foo", SymbolKind::Macro, SymbolFlags::HasDefinition, 1), plain);
-    EXPECT_LT(symbol_quality("foo",
-                             SymbolKind::Function,
-                             SymbolFlags::HasDefinition | SymbolFlags::SystemHeader,
-                             1),
-              plain);
-    EXPECT_LT(symbol_quality("foo",
-                             SymbolKind::Function,
-                             SymbolFlags::HasDefinition | SymbolFlags::Deprecated,
-                             1),
-              plain);
-    EXPECT_LT(
+    EXPECT(plain == 1.0f);
+    EXPECT(symbol_quality("foo", SymbolKind::Function, SymbolFlags::HasDefinition, 1000) > 1.9f);
+    EXPECT(symbol_quality("foo", SymbolKind::Function, SymbolFlags::None, 1) < plain);
+    EXPECT(symbol_quality("_Foo", SymbolKind::Function, SymbolFlags::HasDefinition, 1) < plain);
+    EXPECT(symbol_quality("foo", SymbolKind::Macro, SymbolFlags::HasDefinition, 1) < plain);
+    EXPECT(symbol_quality("foo",
+                          SymbolKind::Function,
+                          SymbolFlags::HasDefinition | SymbolFlags::SystemHeader,
+                          1) < plain);
+    EXPECT(symbol_quality("foo",
+                          SymbolKind::Function,
+                          SymbolFlags::HasDefinition | SymbolFlags::Deprecated,
+                          1) < plain);
+    EXPECT(
         symbol_quality("foo",
                        SymbolKind::Function,
                        index::with_form(SymbolFlags::HasDefinition, index::NameForm::Constructor),
-                       1),
-        plain);
+                       1) < plain);
 }
 
 /// The narrowing by tokens and the early stop lose nothing: every hit a
 /// full scan of the rows would rank among the best comes out of the
 /// index, in the same order.
-TEST_CASE(MatchesFullScan) {
+ZEST_CASE(MatchesFullScan) {
     Corpus corpus;
     const char* stems[] = {"get", "set", "parse", "read", "write", "make", "build", "find"};
     const char* tails[] = {"Config", "Value", "Name", "Item", "Node", "Buffer", "Entry", "Path"};
@@ -323,8 +319,8 @@ TEST_CASE(MatchesFullScan) {
     auto built = corpus.build();
     // Queries under three letters key the first two words only, by
     // design: `e` finds the Entry names, not every name with an e.
-    EXPECT_EQ(names(corpus, built, "e", 100).size(), std::size_t(16));
-    EXPECT_EQ(names(corpus, built, "gc", 100).size(), std::size_t(2));
+    EXPECT(names(corpus, built, "e", 100).size() == std::size_t(16));
+    EXPECT(names(corpus, built, "gc", 100).size() == std::size_t(2));
     for(llvm::StringRef text:
         {"get", "cfg", "getcon", "readbuf", "Name", "ent", "buf", "path", "setval", "conf"}) {
         auto query = SymbolQuery::parse(text);
@@ -360,11 +356,11 @@ TEST_CASE(MatchesFullScan) {
                 expected.push_back(scored.name);
             }
         }
-        EXPECT_EQ(names(corpus, built, text, 5), expected);
+        EXPECT(names(corpus, built, text, 5) == expected);
     }
 }
 
-TEST_CASE(PortablePathsFiltered) {
+ZEST_CASE(PortablePathsFiltered) {
     // The index names files under the workspace relative to it; a path
     // filter sees them where the checkout sits now.
     TempDir tmp;
@@ -384,11 +380,11 @@ TEST_CASE(PortablePathsFiltered) {
         }
         return out;
     };
-    EXPECT_EQ(found(std::format("side path:{}/src/", root.str())), Names{"inside"});
-    EXPECT_EQ(found("side path:/opt/"), Names{"outside"});
+    EXPECT(found(std::format("side path:{}/src/", root.str())) == Names{"inside"});
+    EXPECT(found("side path:/opt/") == Names{"outside"});
 }
 
-};  // TEST_SUITE(SearchIndex)
+};  // ZEST_SUITE(SearchIndex)
 
 }  // namespace
 }  // namespace clice::testing

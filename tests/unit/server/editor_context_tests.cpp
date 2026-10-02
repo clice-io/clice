@@ -32,14 +32,14 @@ struct HostedHeader {
         project.dep_graph.build_reverse_map();
 
         auto disk = project.file_table.current(header);
-        ASSERT_TRUE(disk.has_value());
+        ASSERT(disk);
         commands.record_header_mode(header, HeaderMode::NeedsContext, disk->hash);
     }
 };
 
-TEST_SUITE(EditorContext) {
+ZEST_SUITE(EditorContext) {
 
-TEST_CASE(EditorCachesContext) {
+ZEST_CASE(EditorCachesContext) {
     // Both resolutions synthesize the context in memory; only an editor
     // resolution keeps it, and reuses it after.
     HostedHeader fx;
@@ -49,24 +49,25 @@ TEST_CASE(EditorCachesContext) {
     std::vector<std::string> arguments;
 
     auto background = fx.commands.resolve_command(fx.header, directory, arguments);
-    ASSERT_EQ(background.source, CommandSource::IncludeGraph);
-    ASSERT_EQ(background.host, fx.host);
-    ASSERT_TRUE(background.synthesized != nullptr);
-    ASSERT_TRUE(llvm::is_contained(arguments, background.synthesized->prefix));
-    ASSERT_TRUE(editor.header_contexts.empty());
+    ASSERT(background.source == CommandSource::IncludeGraph);
+    ASSERT(background.host == fx.host);
+    ASSERT(background.synthesized != nullptr);
+    ASSERT(llvm::is_contained(arguments, background.synthesized->prefix));
+    ASSERT(editor.header_contexts.empty());
 
     auto resolution = editor.resolve_command(fx.header, directory, arguments);
-    ASSERT_EQ(resolution.source, CommandSource::IncludeGraph);
+    ASSERT(resolution.source == CommandSource::IncludeGraph);
     auto* context = editor.header_context(fx.header);
-    ASSERT_TRUE(context != nullptr);
-    ASSERT_TRUE(resolution.synthesized == context->synthesized);
-    ASSERT_FALSE(blob.dirty);
+    ASSERT(context != nullptr);
+    ASSERT(resolution.synthesized == context->synthesized);
+    ASSERT(!blob.dirty);
 
     auto reused = editor.resolve_command(fx.header, directory, arguments);
-    ASSERT_TRUE(reused.synthesized == context->synthesized);
-}
+    ASSERT(reused.synthesized == context->synthesized);
 
-TEST_CASE(GuessedTracksEditorOnly) {
+}  // namespace
+
+ZEST_CASE(GuessedTracksEditorOnly) {
     // The invalidator recompiles every editor-guessed file on a database
     // change; background resolutions must neither add nor clear entries.
     TempDir tmp;
@@ -83,10 +84,10 @@ TEST_CASE(GuessedTracksEditorOnly) {
     std::vector<std::string> arguments;
 
     commands.resolve_command(file, directory, arguments);
-    ASSERT_FALSE(editor.guessed_commands.contains(file));
+    ASSERT(!editor.guessed_commands.contains(file));
 
-    ASSERT_EQ(editor.resolve_command(file, directory, arguments).source, CommandSource::Fallback);
-    ASSERT_TRUE(editor.guessed_commands.contains(file));
+    ASSERT(editor.resolve_command(file, directory, arguments).source == CommandSource::Fallback);
+    ASSERT(editor.guessed_commands.contains(file));
 
     write_cdb(tmp,
               project.cdb,
@@ -94,12 +95,12 @@ TEST_CASE(GuessedTracksEditorOnly) {
                   {tmp.root, path, {}}
     }));
     commands.resolve_command(file, directory, arguments);
-    ASSERT_TRUE(editor.guessed_commands.contains(file));
-    ASSERT_EQ(editor.resolve_command(file, directory, arguments).source, CommandSource::CDBExact);
-    ASSERT_FALSE(editor.guessed_commands.contains(file));
+    ASSERT(editor.guessed_commands.contains(file));
+    ASSERT(editor.resolve_command(file, directory, arguments).source == CommandSource::CDBExact);
+    ASSERT(!editor.guessed_commands.contains(file));
 }
 
-TEST_CASE(PinSteersEditorOnly) {
+ZEST_CASE(PinSteersEditorOnly) {
     TempDir tmp;
     FileTable files;
     Project project{files};
@@ -117,7 +118,7 @@ TEST_CASE(PinSteersEditorOnly) {
 
     auto file = project.file_table.intern(Spelling::absolute(path));
     auto candidates = project.cdb.candidate_entries(path);
-    ASSERT_EQ(candidates.size(), 2u);
+    ASSERT(candidates.size() == 2u);
     // Pin the non-default candidate (candidate order is content-decided,
     // so the defines are read back rather than assumed).
     auto define_of = [&](ConfigID config) -> llvm::StringRef {
@@ -131,15 +132,15 @@ TEST_CASE(PinSteersEditorOnly) {
     std::string directory;
     std::vector<std::string> arguments;
     resolver.resolve_command(file, directory, arguments);
-    ASSERT_TRUE(llvm::is_contained(arguments, define_of(pinned)));
+    ASSERT(llvm::is_contained(arguments, define_of(pinned)));
 
     // ...but background indexing must never see user choices.
     arguments.clear();
     commands.resolve_command(file, directory, arguments);
-    ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
+    ASSERT(llvm::is_contained(arguments, define_of(candidates.front().config)));
 }
 
-TEST_CASE(PinBaseSurvivesRules) {
+ZEST_CASE(PinBaseSurvivesRules) {
     TempDir tmp;
     FileTable files;
     Project project{files};
@@ -157,7 +158,7 @@ TEST_CASE(PinBaseSurvivesRules) {
 
     auto file = project.file_table.intern(Spelling::absolute(path));
     auto candidates = project.cdb.candidate_entries(path);
-    ASSERT_EQ(candidates.size(), 2u);
+    ASSERT(candidates.size() == 2u);
     auto define_of = [&](ConfigID config) -> llvm::StringRef {
         auto argv = print_argv(project.cdb.render_full(config));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
@@ -171,16 +172,16 @@ TEST_CASE(PinBaseSurvivesRules) {
     std::string directory;
     std::vector<std::string> arguments;
     resolver.resolve_command(file, directory, arguments);
-    ASSERT_TRUE(llvm::is_contained(arguments, define_of(pinned)));
+    ASSERT(llvm::is_contained(arguments, define_of(pinned)));
 
     // ...while the same stale hash without a base falls back to the default.
     resolver.selections[file] = Selection{Fid{}, std::nullopt, "0123456789abcdef", ""};
     arguments.clear();
     resolver.resolve_command(file, directory, arguments);
-    ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
+    ASSERT(llvm::is_contained(arguments, define_of(candidates.front().config)));
 }
 
-TEST_CASE(ValidateKeepsValidChoice) {
+ZEST_CASE(ValidateKeepsValidChoice) {
     TempDir tmp;
     FileTable files;
     Project project{files};
@@ -202,10 +203,10 @@ TEST_CASE(ValidateKeepsValidChoice) {
     resolver.selections[header] = Selection{host, std::nullopt, ""};
 
     resolver.validate_saved_context(header);
-    ASSERT_TRUE(resolver.selections.contains(header));
+    ASSERT(resolver.selections.contains(header));
 }
 
-TEST_CASE(ValidateDropsGoneOccurrence) {
+ZEST_CASE(ValidateDropsGoneOccurrence) {
     // Reopened after the host lost the pinned second include of the header:
     // didOpen judges the choice the way the orphan pass does.
     TempDir tmp;
@@ -229,10 +230,10 @@ TEST_CASE(ValidateDropsGoneOccurrence) {
     resolver.selections[header] = Selection{host, 1, ""};
 
     resolver.validate_saved_context(header);
-    ASSERT_FALSE(resolver.selections.contains(header));
+    ASSERT(!resolver.selections.contains(header));
 }
 
-TEST_CASE(ValidateDropsStaleChoice) {
+ZEST_CASE(ValidateDropsStaleChoice) {
     TempDir tmp;
     FileTable files;
     Project project{files};
@@ -257,16 +258,16 @@ TEST_CASE(ValidateDropsStaleChoice) {
     // resurrects from disk at the next start.
     resolver.selections[header] = Selection{host, std::nullopt, ""};
     resolver.validate_saved_context(header);
-    ASSERT_FALSE(resolver.selections.contains(header));
-    ASSERT_TRUE(blob.dirty);
+    ASSERT(!resolver.selections.contains(header));
+    ASSERT(blob.dirty);
 
     // A command pin whose hash matches no current CDB entry.
     resolver.selections[main_file] = Selection{Fid{}, std::nullopt, "deadbeef"};
     resolver.validate_saved_context(main_file);
-    ASSERT_FALSE(resolver.selections.contains(main_file));
+    ASSERT(!resolver.selections.contains(main_file));
 }
 
-};  // TEST_SUITE(EditorContext)
+};  // ZEST_SUITE(EditorContext)
 
 }  // namespace
 }  // namespace clice::testing

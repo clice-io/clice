@@ -7,211 +7,212 @@
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(FollowsAccessOperator) {
+ZEST_SUITE(FollowsAccessOperator) {
 
-TEST_CASE(MemberAccess) {
-    EXPECT_TRUE(follows_access_operator("w.", 2));
-    EXPECT_TRUE(follows_access_operator("p->", 3));
-    EXPECT_TRUE(follows_access_operator("std::", 5));
+ZEST_CASE(MemberAccess) {
+    EXPECT(follows_access_operator("w.", 2));
+    EXPECT(follows_access_operator("p->", 3));
+    EXPECT(follows_access_operator("std::", 5));
+
+}  // namespace
+
+ZEST_CASE(PackEllipsis) {
+    EXPECT(!follows_access_operator("template <typename..", 20));
+    EXPECT(!follows_access_operator("template <typename...", 21));
 }
 
-TEST_CASE(PackEllipsis) {
-    EXPECT_FALSE(follows_access_operator("template <typename..", 20));
-    EXPECT_FALSE(follows_access_operator("template <typename...", 21));
+ZEST_CASE(NumericLiteral) {
+    EXPECT(!follows_access_operator("float f = 3.", 12));
+    EXPECT(!follows_access_operator("x = 0x1F.", 9));
+    EXPECT(follows_access_operator("x1.", 3));
+    EXPECT(follows_access_operator("f(1).", 5));
 }
 
-TEST_CASE(NumericLiteral) {
-    EXPECT_FALSE(follows_access_operator("float f = 3.", 12));
-    EXPECT_FALSE(follows_access_operator("x = 0x1F.", 9));
-    EXPECT_TRUE(follows_access_operator("x1.", 3));
-    EXPECT_TRUE(follows_access_operator("f(1).", 5));
+ZEST_CASE(TemplateDelimiters) {
+    EXPECT(!follows_access_operator("template<", 9));
+    EXPECT(!follows_access_operator("template<typename T>", 20));
 }
 
-TEST_CASE(TemplateDelimiters) {
-    EXPECT_FALSE(follows_access_operator("template<", 9));
-    EXPECT_FALSE(follows_access_operator("template<typename T>", 20));
+ZEST_CASE(PostfixDecrement) {
+    EXPECT(!follows_access_operator("while (x-->", 11));
 }
 
-TEST_CASE(PostfixDecrement) {
-    EXPECT_FALSE(follows_access_operator("while (x-->", 11));
+ZEST_CASE(NonAsciiOperand) {
+    EXPECT(follows_access_operator("vé2.", 5));
 }
 
-TEST_CASE(NonAsciiOperand) {
-    EXPECT_TRUE(follows_access_operator("vé2.", 5));
-}
-
-TEST_CASE(CursorBeforeOperator) {
+ZEST_CASE(CursorBeforeOperator) {
     // Only the text up to the cursor counts.
-    EXPECT_FALSE(follows_access_operator("w.x", 1));
+    EXPECT(!follows_access_operator("w.x", 1));
 }
 
-};  // TEST_SUITE(FollowsAccessOperator)
+};  // ZEST_SUITE(FollowsAccessOperator)
 
-TEST_SUITE(DetectCompletionContext) {
+ZEST_SUITE(DetectCompletionContext) {
 
-TEST_CASE(IncludeAngled) {
+ZEST_CASE(IncludeAngled) {
     auto ctx = detect_completion_context("#include <vec", 13);
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
-    EXPECT_EQ(ctx.prefix, "vec");
+    EXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    EXPECT(ctx.prefix == "vec");
 }
 
-TEST_CASE(IncludeQuoted) {
+ZEST_CASE(IncludeQuoted) {
     auto ctx = detect_completion_context("#include \"my_header", 19);
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeQuoted);
-    EXPECT_EQ(ctx.prefix, "my_header");
+    EXPECT(ctx.kind == CompletionContext::IncludeQuoted);
+    EXPECT(ctx.prefix == "my_header");
 }
 
-TEST_CASE(IncludeAngledWithSpaces) {
+ZEST_CASE(IncludeAngledWithSpaces) {
     auto ctx = detect_completion_context("  #  include  <sys/", 19);
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
-    EXPECT_EQ(ctx.prefix, "sys/");
+    EXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    EXPECT(ctx.prefix == "sys/");
 }
 
-TEST_CASE(IncludeEmpty) {
+ZEST_CASE(IncludeEmpty) {
     auto ctx = detect_completion_context("#include <", 10);
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
-    EXPECT_EQ(ctx.prefix, "");
+    EXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    EXPECT(ctx.prefix == "");
 }
 
-TEST_CASE(CursorInsideKeyword) {
+ZEST_CASE(CursorInsideKeyword) {
     // A keyword is only "typed" once the cursor passed its end.
-    EXPECT_EQ(detect_completion_context("#include", 5).kind, CompletionContext::None);
-    EXPECT_EQ(detect_completion_context("import", 3).kind, CompletionContext::None);
+    EXPECT(detect_completion_context("#include", 5).kind == CompletionContext::None);
+    EXPECT(detect_completion_context("import", 3).kind == CompletionContext::None);
 }
 
-TEST_CASE(CursorAtNewline) {
+ZEST_CASE(CursorAtNewline) {
     // A cursor sitting on a line's terminating newline still completes the
     // statement that line opened.
     auto ctx = detect_completion_context("import std\nint x;", 10);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "std");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == "std");
 }
 
-TEST_CASE(CrlfLineEndings) {
+ZEST_CASE(CrlfLineEndings) {
     auto ctx = detect_completion_context("#include <a>\r\n#include <ve", 26);
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
-    EXPECT_EQ(ctx.prefix, "ve");
+    EXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    EXPECT(ctx.prefix == "ve");
 }
 
-TEST_CASE(ImportSimple) {
+ZEST_CASE(ImportSimple) {
     auto ctx = detect_completion_context("import std", 10);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "std");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == "std");
 }
 
-TEST_CASE(ExportImport) {
+ZEST_CASE(ExportImport) {
     auto ctx = detect_completion_context("export import my_mod", 20);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "my_mod");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == "my_mod");
 }
 
-TEST_CASE(ImportWithSemicolon) {
+ZEST_CASE(ImportWithSemicolon) {
     auto ctx = detect_completion_context("import std;\n", 7);
-    EXPECT_EQ(ctx.kind, CompletionContext::None);
+    EXPECT(ctx.kind == CompletionContext::None);
 }
 
-TEST_CASE(ImportEmpty) {
+ZEST_CASE(ImportEmpty) {
     auto ctx = detect_completion_context("import ", 7);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == "");
 }
 
-TEST_CASE(NormalCode) {
+ZEST_CASE(NormalCode) {
     auto ctx = detect_completion_context("int main() {", 12);
-    EXPECT_EQ(ctx.kind, CompletionContext::None);
+    EXPECT(ctx.kind == CompletionContext::None);
 }
 
-TEST_CASE(MultilineAtSecondLine) {
+ZEST_CASE(MultilineAtSecondLine) {
     std::string text = "#include <vector>\n#include <str";
     auto ctx = detect_completion_context(text, text.size());
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
-    EXPECT_EQ(ctx.prefix, "str");
+    EXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    EXPECT(ctx.prefix == "str");
 }
 
-TEST_CASE(NotImportKeyword) {
+ZEST_CASE(NotImportKeyword) {
     auto ctx = detect_completion_context("importlib foo", 13);
-    EXPECT_EQ(ctx.kind, CompletionContext::None);
+    EXPECT(ctx.kind == CompletionContext::None);
 }
 
-TEST_CASE(HashOnly) {
+ZEST_CASE(HashOnly) {
     auto ctx = detect_completion_context("#", 1);
-    EXPECT_EQ(ctx.kind, CompletionContext::None);
+    EXPECT(ctx.kind == CompletionContext::None);
 }
 
-TEST_CASE(ImportDottedPrefix) {
+ZEST_CASE(ImportDottedPrefix) {
     auto ctx = detect_completion_context("import std.io", 13);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "std.io");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == "std.io");
 }
 
-TEST_CASE(ImportPartitionPrefix) {
+ZEST_CASE(ImportPartitionPrefix) {
     auto ctx = detect_completion_context("import :core", 12);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, ":core");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == ":core");
 }
 
-TEST_CASE(ImportPartitionEmpty) {
+ZEST_CASE(ImportPartitionEmpty) {
     auto ctx = detect_completion_context("import :", 8);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, ":");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == ":");
 }
 
-TEST_CASE(ImportWithLeadingSpaces) {
+ZEST_CASE(ImportWithLeadingSpaces) {
     auto ctx = detect_completion_context("  import std", 12);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "std");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == "std");
 }
 
-TEST_CASE(ExportImportEmpty) {
+ZEST_CASE(ExportImportEmpty) {
     auto ctx = detect_completion_context("export import ", 14);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == "");
 }
 
-TEST_CASE(ImportAfterNewline) {
+ZEST_CASE(ImportAfterNewline) {
     std::string text = "module foo;\nimport ";
     auto ctx = detect_completion_context(text, text.size());
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == "");
 }
 
-TEST_CASE(ImportCursorMidLine) {
+ZEST_CASE(ImportCursorMidLine) {
     // The prefix is truncated at the cursor; trailing text is ignored.
     auto ctx = detect_completion_context("import std.io", 10);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "std");
+    EXPECT(ctx.kind == CompletionContext::Import);
+    EXPECT(ctx.prefix == "std");
 }
 
-TEST_CASE(IncludeReplaceSpan) {
+ZEST_CASE(IncludeReplaceSpan) {
     // The last path component through its untyped rest, delimiter excluded.
     auto ctx = detect_completion_context("#include <sys/ty.h>", 16);
-    EXPECT_EQ(ctx.prefix, "sys/ty");
-    EXPECT_EQ(ctx.replace.begin, 14u);
-    EXPECT_EQ(ctx.replace.end, 18u);
+    EXPECT(ctx.prefix == "sys/ty");
+    EXPECT(ctx.replace.begin == 14u);
+    EXPECT(ctx.replace.end == 18u);
 }
 
-TEST_CASE(IncludeNameWithSpaces) {
+ZEST_CASE(IncludeNameWithSpaces) {
     auto closed = detect_completion_context("#include \"my header.h\"", 12);
-    EXPECT_EQ(closed.replace.end, 21u);
+    EXPECT(closed.replace.end == 21u);
     auto open = detect_completion_context("#include \"my header.h", 12);
-    EXPECT_EQ(open.replace.end, 12u);
+    EXPECT(open.replace.end == 12u);
 }
 
-TEST_CASE(ImportReplaceSpan) {
+ZEST_CASE(ImportReplaceSpan) {
     auto ctx = detect_completion_context("import std.io", 10);
-    EXPECT_EQ(ctx.replace.begin, 7u);
-    EXPECT_EQ(ctx.replace.end, 13u);
+    EXPECT(ctx.replace.begin == 7u);
+    EXPECT(ctx.replace.end == 13u);
 }
 
-TEST_CASE(ImportMemberAccess) {
-    EXPECT_EQ(detect_completion_context("import->x", 8).kind, CompletionContext::None);
+ZEST_CASE(ImportMemberAccess) {
+    EXPECT(detect_completion_context("import->x", 8).kind == CompletionContext::None);
 }
 
-};  // TEST_SUITE(DetectCompletionContext)
+};  // ZEST_SUITE(DetectCompletionContext)
 
-TEST_SUITE(CompleteModuleImport) {
+ZEST_SUITE(CompleteModuleImport) {
 
-TEST_CASE(PrefixMatch) {
+ZEST_CASE(PrefixMatch) {
     clice::DependencyGraph modules;
     modules.add_module("std", Fid{1});
     modules.add_module("std.io", Fid{2});
@@ -219,37 +220,37 @@ TEST_CASE(PrefixMatch) {
     modules.add_module("my_lib", Fid{4});
 
     auto results = complete_module_import(modules, "std");
-    EXPECT_EQ(results.size(), 3u);
+    EXPECT(results.size() == 3u);
     for(auto& name: results) {
-        EXPECT_TRUE(name.starts_with("std"));
+        EXPECT(name.starts_with("std"));
     }
 }
 
-TEST_CASE(EmptyPrefix) {
+ZEST_CASE(EmptyPrefix) {
     clice::DependencyGraph modules;
     modules.add_module("std", Fid{1});
     modules.add_module("my_lib", Fid{2});
 
     auto results = complete_module_import(modules, "");
-    EXPECT_EQ(results.size(), 2u);
+    EXPECT(results.size() == 2u);
 }
 
-TEST_CASE(NoMatch) {
+ZEST_CASE(NoMatch) {
     clice::DependencyGraph modules;
     modules.add_module("std", Fid{1});
     modules.add_module("my_lib", Fid{2});
 
     auto results = complete_module_import(modules, "xyz");
-    EXPECT_TRUE(results.empty());
+    EXPECT(results.empty());
 }
 
-TEST_CASE(EmptyModules) {
+ZEST_CASE(EmptyModules) {
     clice::DependencyGraph modules;
     auto results = complete_module_import(modules, "std");
-    EXPECT_TRUE(results.empty());
+    EXPECT(results.empty());
 }
 
-TEST_CASE(DottedPrefix) {
+ZEST_CASE(DottedPrefix) {
     clice::DependencyGraph modules;
     modules.add_module("std", Fid{1});
     modules.add_module("std.io", Fid{2});
@@ -257,13 +258,13 @@ TEST_CASE(DottedPrefix) {
     modules.add_module("boost.asio", Fid{4});
 
     auto results = complete_module_import(modules, "std.");
-    EXPECT_EQ(results.size(), 2u);
+    EXPECT(results.size() == 2u);
     for(auto& name: results) {
-        EXPECT_TRUE(name.starts_with("std."));
+        EXPECT(name.starts_with("std."));
     }
 }
 
-TEST_CASE(PartitionPrefix) {
+ZEST_CASE(PartitionPrefix) {
     clice::DependencyGraph modules;
     modules.add_module("foo", Fid{1});
     modules.add_module("foo:core", Fid{2});
@@ -271,22 +272,22 @@ TEST_CASE(PartitionPrefix) {
     modules.add_module("bar:impl", Fid{4});
 
     auto results = complete_module_import(modules, "foo:");
-    EXPECT_EQ(results.size(), 2u);
+    EXPECT(results.size() == 2u);
     for(auto& name: results) {
-        EXPECT_TRUE(name.starts_with("foo:"));
+        EXPECT(name.starts_with("foo:"));
     }
 }
 
-TEST_CASE(PrefixIsFullName) {
+ZEST_CASE(PrefixIsFullName) {
     clice::DependencyGraph modules;
     modules.add_module("std", Fid{1});
     modules.add_module("std.io", Fid{2});
 
     auto results = complete_module_import(modules, "std");
-    EXPECT_EQ(results.size(), 2u);
+    EXPECT(results.size() == 2u);
 }
 
-};  // TEST_SUITE(CompleteModuleImport)
+};  // ZEST_SUITE(CompleteModuleImport)
 
 }  // namespace
 }  // namespace clice::testing

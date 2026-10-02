@@ -32,7 +32,7 @@ struct Probe {
     bool done = false;
 };
 
-TEST_SUITE(TaskGraph) {
+ZEST_SUITE(TaskGraph) {
 
 std::vector<NodeId> ran;
 std::optional<kota::event_loop> loop;
@@ -41,7 +41,7 @@ std::optional<TaskGraph> graph;
 void make_graph() {
     ran.clear();
     loop.emplace();
-    graph.emplace(*loop);
+    graph.emplace();
 }
 
 /// Runner that resolves dependencies from a shared adjacency, then
@@ -117,7 +117,10 @@ struct ManualFamily {
                 co_return g.result;
             }
 
-            auto waited = co_await kota::with_token(g.proceed.wait(), ctx.token());
+            auto proceed = [&]() -> kota::task<> {
+                co_await g.proceed.wait();
+            };
+            auto waited = co_await kota::with_token(proceed(), ctx.token());
             if(waited.is_cancelled()) {
                 co_return RoundOutcome::Stale;
             }
@@ -135,7 +138,7 @@ void execute(F&& fn) {
     auto wrapper = [&]() -> kota::task<> {
         co_await fn();
         co_await graph->shutdown();
-        EXPECT_TRUE(graph->idle());
+        EXPECT(graph->idle());
     };
     auto t = wrapper();
     loop->schedule(t);
@@ -155,7 +158,7 @@ kota::task<> run_request(NodeId id, Probe& probe, JoinOptions options = {}) {
 ///                           Basic rounds & joins
 /// ============================================================================
 
-TEST_CASE(request_no_deps) {
+ZEST_CASE(request_no_deps) {
     // A node without dependencies runs one round and becomes clean.
     make_graph();
     Adjacency adj;
@@ -163,13 +166,13 @@ TEST_CASE(request_no_deps) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph->request(a(1));
-        EXPECT_EQ(outcome, JoinOutcome::Success);
-        EXPECT_EQ(ran.size(), 1u);
-        EXPECT_FALSE(graph->is_dirty(a(1)));
+        EXPECT(outcome == JoinOutcome::Success);
+        EXPECT(ran.size() == 1u);
+        EXPECT(!graph->is_dirty(a(1)));
     });
 }
 
-TEST_CASE(request_dep_chain) {
+ZEST_CASE(request_dep_chain) {
     // 1 -> 2 -> 3: rounds land bottom-up along declared edges, and the
     // durable edge sets reflect the declarations.
     make_graph();
@@ -180,16 +183,16 @@ TEST_CASE(request_dep_chain) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph->request(a(1));
-        EXPECT_EQ(outcome, JoinOutcome::Success);
-        EXPECT_EQ(ran.size(), 3u);
-        EXPECT_TRUE(ranges::find(ran, a(3)) < ranges::find(ran, a(2)));
-        EXPECT_TRUE(ranges::find(ran, a(2)) < ranges::find(ran, a(1)));
-        EXPECT_EQ(graph->dependencies(a(1)).size(), 1u);
-        EXPECT_EQ(graph->dependencies(a(2)).size(), 1u);
+        EXPECT(outcome == JoinOutcome::Success);
+        EXPECT(ran.size() == 3u);
+        EXPECT(ranges::find(ran, a(3)) < ranges::find(ran, a(2)));
+        EXPECT(ranges::find(ran, a(2)) < ranges::find(ran, a(1)));
+        EXPECT(graph->dependencies(a(1)).size() == 1u);
+        EXPECT(graph->dependencies(a(2)).size() == 1u);
     });
 }
 
-TEST_CASE(diamond_dedup) {
+ZEST_CASE(diamond_dedup) {
     // Diamond 1 -> {2, 3} -> 4: the shared dependency is reached through
     // two branches but runs exactly once.
     make_graph();
@@ -201,13 +204,13 @@ TEST_CASE(diamond_dedup) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph->request(a(1));
-        EXPECT_EQ(outcome, JoinOutcome::Success);
-        EXPECT_EQ(ranges::count(ran, a(4)), 1);
-        EXPECT_FALSE(graph->is_dirty(a(4)));
+        EXPECT(outcome == JoinOutcome::Success);
+        EXPECT(ranges::count(ran, a(4)) == 1);
+        EXPECT(!graph->is_dirty(a(4)));
     });
 }
 
-TEST_CASE(second_request_skips) {
+ZEST_CASE(second_request_skips) {
     // A clean node is not re-run by a later request.
     make_graph();
     Adjacency adj;
@@ -215,13 +218,13 @@ TEST_CASE(second_request_skips) {
 
     execute([&]() -> kota::task<> {
         co_await graph->request(a(1));
-        EXPECT_EQ(ran.size(), 1u);
+        EXPECT(ran.size() == 1u);
         co_await graph->request(a(1));
-        EXPECT_EQ(ran.size(), 1u);
+        EXPECT(ran.size() == 1u);
     });
 }
 
-TEST_CASE(reference_survives_landing) {
+ZEST_CASE(reference_survives_landing) {
     // reference() records a candidate edge to a node that never runs: it
     // must survive the successful landing (candidates replace the durable
     // set) so a later update on the referenced node re-dirties this one.
@@ -236,15 +239,15 @@ TEST_CASE(reference_survives_landing) {
     Probe probe;
     execute([&]() -> kota::task<> {
         co_await run_request(a(1), probe);
-        CO_ASSERT_TRUE(probe.outcome == JoinOutcome::Success);
+        CO_ASSERT(probe.outcome == JoinOutcome::Success);
 
         auto dirtied = graph->update(sentinel);
-        EXPECT_TRUE(std::ranges::find(dirtied, a(1)) != dirtied.end());
-        EXPECT_TRUE(graph->is_dirty(a(1)));
+        EXPECT(std::ranges::find(dirtied, a(1)) != dirtied.end());
+        EXPECT(graph->is_dirty(a(1)));
     });
 }
 
-TEST_CASE(artifact_dirty_no_cascade) {
+ZEST_CASE(artifact_dirty_no_cascade) {
     // The eviction tier: the marked node alone rebuilds on next demand.
     // Dependents stay clean — they consumed the content, which did not
     // change — so a later request through them touches nothing.
@@ -256,26 +259,26 @@ TEST_CASE(artifact_dirty_no_cascade) {
     Probe warm, hit, rebuild;
     execute([&]() -> kota::task<> {
         co_await run_request(a(1), warm);
-        CO_ASSERT_EQ(ran.size(), std::size_t(2));
+        CO_ASSERT(ran.size() == std::size_t(2));
 
         graph->mark_dirty(a(2));
-        CO_ASSERT_TRUE(graph->is_dirty(a(2)));
-        CO_ASSERT_FALSE(graph->is_dirty(a(1)));
+        CO_ASSERT(graph->is_dirty(a(2)));
+        CO_ASSERT(!graph->is_dirty(a(1)));
 
         co_await run_request(a(1), hit);
-        CO_ASSERT_EQ(ran.size(), std::size_t(2));
+        CO_ASSERT(ran.size() == std::size_t(2));
 
         co_await run_request(a(2), rebuild);
-        CO_ASSERT_EQ(ran.size(), std::size_t(3));
-        EXPECT_TRUE(ran.back() == a(2));
-        EXPECT_FALSE(graph->is_dirty(a(2)));
+        CO_ASSERT(ran.size() == std::size_t(3));
+        EXPECT(ran.back() == a(2));
+        EXPECT(!graph->is_dirty(a(2)));
     });
-    EXPECT_TRUE(warm.outcome == JoinOutcome::Success);
-    EXPECT_TRUE(hit.outcome == JoinOutcome::Success);
-    EXPECT_TRUE(rebuild.outcome == JoinOutcome::Success);
+    EXPECT(warm.outcome == JoinOutcome::Success);
+    EXPECT(hit.outcome == JoinOutcome::Success);
+    EXPECT(rebuild.outcome == JoinOutcome::Success);
 }
 
-TEST_CASE(artifact_dirty_inflight_lands) {
+ZEST_CASE(artifact_dirty_inflight_lands) {
     // Marking while a round is in flight neither voids nor re-runs it:
     // the round is already producing the fresh artifact, and its landing
     // clears the flag it finds set.
@@ -294,13 +297,13 @@ TEST_CASE(artifact_dirty_inflight_lands) {
 
         co_await kota::when_all(run_request(a(1), probe), driver());
 
-        EXPECT_TRUE(probe.outcome == JoinOutcome::Success);
-        EXPECT_EQ(mf.gate(a(1)).calls, 1);
-        EXPECT_FALSE(graph->is_dirty(a(1)));
+        EXPECT(probe.outcome == JoinOutcome::Success);
+        EXPECT(mf.gate(a(1)).calls == 1);
+        EXPECT(!graph->is_dirty(a(1)));
     });
 }
 
-TEST_CASE(concurrent_requests_share) {
+ZEST_CASE(concurrent_requests_share) {
     // Two concurrent requests for the same node join one round: a single
     // dispatch serves both.
     make_graph();
@@ -311,20 +314,20 @@ TEST_CASE(concurrent_requests_share) {
     execute([&]() -> kota::task<> {
         auto driver = [&]() -> kota::task<> {
             co_await mf.gate(a(1)).started.wait();
-            EXPECT_EQ(graph->refcount(a(1)), 2u);
+            EXPECT(graph->refcount(a(1)) == 2u);
             mf.open({a(1)});
             co_return;
         };
 
         co_await kota::when_all(run_request(a(1), p1), run_request(a(1), p2), driver());
 
-        EXPECT_TRUE(p1.outcome == JoinOutcome::Success);
-        EXPECT_TRUE(p2.outcome == JoinOutcome::Success);
-        EXPECT_EQ(mf.gate(a(1)).calls, 1);
+        EXPECT(p1.outcome == JoinOutcome::Success);
+        EXPECT(p2.outcome == JoinOutcome::Success);
+        EXPECT(mf.gate(a(1)).calls == 1);
     });
 }
 
-TEST_CASE(cross_family_edge) {
+ZEST_CASE(cross_family_edge) {
     // A FamA node depending on a FamB node: the edge crosses families and
     // update() cascades across it.
     make_graph();
@@ -335,13 +338,13 @@ TEST_CASE(cross_family_edge) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph->request(a(1));
-        EXPECT_EQ(outcome, JoinOutcome::Success);
-        EXPECT_EQ(ran.size(), 2u);
-        EXPECT_EQ(graph->dependencies(a(1))[0], b(7));
+        EXPECT(outcome == JoinOutcome::Success);
+        EXPECT(ran.size() == 2u);
+        EXPECT(graph->dependencies(a(1))[0] == b(7));
 
         auto dirtied = graph->update(b(7));
-        EXPECT_TRUE(ranges::contains(dirtied, a(1)));
-        EXPECT_TRUE(graph->is_dirty(a(1)));
+        EXPECT(ranges::contains(dirtied, a(1)));
+        EXPECT(graph->is_dirty(a(1)));
     });
 }
 
@@ -354,7 +357,7 @@ TEST_CASE(cross_family_edge) {
 /// and overtaken rounds' candidates are discarded. declare() commits
 /// facade-known topology into the same durable set without a round.
 
-TEST_CASE(edge_live_before_landing) {
+ZEST_CASE(edge_live_before_landing) {
     // The dependent's round is still in flight when its dependency is
     // updated: the cascade must reach the dependent through the candidate
     // edge — the round never landed, so no durable edge exists yet.
@@ -372,23 +375,23 @@ TEST_CASE(edge_live_before_landing) {
             mf.gate(b(5)).started.reset();
 
             auto dirtied = graph->update(b(5));
-            EXPECT_TRUE(ranges::contains(dirtied, a(1)));
+            EXPECT(ranges::contains(dirtied, a(1)));
 
             co_await mf.gate(b(5)).started.wait();
-            EXPECT_EQ(mf.gate(b(5)).calls, 2);
+            EXPECT(mf.gate(b(5)).calls == 2);
             mf.open({b(5)});
             co_return;
         };
 
         co_await kota::when_all(run_request(a(1), probe), driver());
 
-        EXPECT_TRUE(probe.outcome == JoinOutcome::Success);
-        EXPECT_FALSE(graph->is_dirty(a(1)));
-        EXPECT_FALSE(graph->is_dirty(b(5)));
+        EXPECT(probe.outcome == JoinOutcome::Success);
+        EXPECT(!graph->is_dirty(a(1)));
+        EXPECT(!graph->is_dirty(b(5)));
     });
 }
 
-TEST_CASE(success_replaces_edges) {
+ZEST_CASE(success_replaces_edges) {
     // A re-resolve that drops a dependency detaches its reverse edge once
     // the new round lands: updating the ex-dependency no longer cascades.
     make_graph();
@@ -399,19 +402,19 @@ TEST_CASE(success_replaces_edges) {
 
     execute([&]() -> kota::task<> {
         co_await graph->request(a(1));
-        EXPECT_EQ(graph->dependencies(a(1))[0], b(2));
+        EXPECT(graph->dependencies(a(1))[0] == b(2));
 
         adj[a(1)] = {b(3)};
         graph->update(a(1));
         co_await graph->request(a(1));
 
-        EXPECT_EQ(graph->dependencies(a(1))[0], b(3));
-        EXPECT_FALSE(ranges::contains(graph->update(b(2)), a(1)));
-        EXPECT_TRUE(ranges::contains(graph->update(b(3)), a(1)));
+        EXPECT(graph->dependencies(a(1))[0] == b(3));
+        EXPECT(!ranges::contains(graph->update(b(2)), a(1)));
+        EXPECT(ranges::contains(graph->update(b(3)), a(1)));
     });
 }
 
-TEST_CASE(voided_candidates_discarded) {
+ZEST_CASE(voided_candidates_discarded) {
     // An overtaken round's candidate edges are discarded at landing: the
     // durable set still reflects the last successful round, not the
     // declarations of the round that update() voided.
@@ -425,7 +428,7 @@ TEST_CASE(voided_candidates_discarded) {
     Probe probe;
     execute([&]() -> kota::task<> {
         co_await graph->request(a(1));
-        EXPECT_EQ(graph->dependencies(a(1))[0], b(2));
+        EXPECT(graph->dependencies(a(1))[0] == b(2));
 
         // Flip the imports and drive a new round parked in its dispatch:
         // it has declared the candidate edge to b(3) but not landed. The
@@ -441,8 +444,8 @@ TEST_CASE(voided_candidates_discarded) {
 
             // The candidate edge is already cascade-visible, and the
             // durable edge from the last success still cascades too.
-            EXPECT_TRUE(ranges::contains(graph->update(b(3)), a(1)));
-            EXPECT_TRUE(ranges::contains(graph->update(b(2)), a(1)));
+            EXPECT(ranges::contains(graph->update(b(3)), a(1)));
+            EXPECT(ranges::contains(graph->update(b(2)), a(1)));
             co_return;
         };
 
@@ -451,21 +454,21 @@ TEST_CASE(voided_candidates_discarded) {
 
         // The void discarded the candidates: the durable set still points
         // at b(2), and only it cascades.
-        EXPECT_TRUE(probe.outcome == JoinOutcome::Stale);
-        EXPECT_FALSE(graph->is_compiling(a(1)));
-        EXPECT_EQ(graph->dependencies(a(1))[0], b(2));
-        EXPECT_FALSE(ranges::contains(graph->update(b(3)), a(1)));
-        EXPECT_TRUE(ranges::contains(graph->update(b(2)), a(1)));
+        EXPECT(probe.outcome == JoinOutcome::Stale);
+        EXPECT(!graph->is_compiling(a(1)));
+        EXPECT(graph->dependencies(a(1))[0] == b(2));
+        EXPECT(!ranges::contains(graph->update(b(3)), a(1)));
+        EXPECT(ranges::contains(graph->update(b(2)), a(1)));
 
         // A fresh terminal join lands the flipped imports.
         mf.open({a(1)});
         auto outcome = co_await graph->request(a(1));
-        EXPECT_EQ(outcome, JoinOutcome::Success);
-        EXPECT_EQ(graph->dependencies(a(1))[0], b(3));
+        EXPECT(outcome == JoinOutcome::Success);
+        EXPECT(graph->dependencies(a(1))[0] == b(3));
     });
 }
 
-TEST_CASE(declare_no_round) {
+ZEST_CASE(declare_no_round) {
     // declare() commits durable edges without rounds or interest: the
     // nodes exist, the cascade reaches the declared consumer, and nothing
     // ever compiles.
@@ -473,20 +476,20 @@ TEST_CASE(declare_no_round) {
 
     execute([&]() -> kota::task<> {
         graph->declare(a(2), {a(1)});
-        EXPECT_TRUE(graph->has_node(a(1)));
-        EXPECT_TRUE(graph->has_node(a(2)));
-        EXPECT_EQ(graph->refcount(a(1)), 0u);
-        EXPECT_EQ(graph->refcount(a(2)), 0u);
-        EXPECT_FALSE(graph->is_compiling(a(2)));
+        EXPECT(graph->has_node(a(1)));
+        EXPECT(graph->has_node(a(2)));
+        EXPECT(graph->refcount(a(1)) == 0u);
+        EXPECT(graph->refcount(a(2)) == 0u);
+        EXPECT(!graph->is_compiling(a(2)));
 
         auto dirtied = graph->update(a(1));
-        EXPECT_TRUE(ranges::contains(dirtied, a(1)));
-        EXPECT_TRUE(ranges::contains(dirtied, a(2)));
+        EXPECT(ranges::contains(dirtied, a(1)));
+        EXPECT(ranges::contains(dirtied, a(2)));
         co_return;
     });
 }
 
-TEST_CASE(declare_replaces) {
+ZEST_CASE(declare_replaces) {
     // A later declare replaces the edge set — the no-round analogue of a
     // successful round's promotion. An empty replacement clears the edges
     // but keeps the node: a consumer whose last import was removed stops
@@ -496,17 +499,17 @@ TEST_CASE(declare_replaces) {
     execute([&]() -> kota::task<> {
         graph->declare(a(3), {a(1)});
         graph->declare(a(3), {a(2)});
-        EXPECT_FALSE(ranges::contains(graph->update(a(1)), a(3)));
-        EXPECT_TRUE(ranges::contains(graph->update(a(2)), a(3)));
+        EXPECT(!ranges::contains(graph->update(a(1)), a(3)));
+        EXPECT(ranges::contains(graph->update(a(2)), a(3)));
 
         graph->declare(a(3), {});
-        EXPECT_FALSE(ranges::contains(graph->update(a(2)), a(3)));
-        EXPECT_TRUE(graph->has_node(a(3)));
+        EXPECT(!ranges::contains(graph->update(a(2)), a(3)));
+        EXPECT(graph->has_node(a(3)));
         co_return;
     });
 }
 
-TEST_CASE(round_replaces_declared) {
+ZEST_CASE(round_replaces_declared) {
     // A declared node that later runs a real round: the current
     // successful round's candidates replace the declared edges.
     make_graph();
@@ -517,14 +520,14 @@ TEST_CASE(round_replaces_declared) {
     execute([&]() -> kota::task<> {
         graph->declare(a(2), {a(1)});
         auto outcome = co_await graph->request(a(2));
-        EXPECT_EQ(outcome, JoinOutcome::Success);
+        EXPECT(outcome == JoinOutcome::Success);
 
-        EXPECT_FALSE(ranges::contains(graph->update(a(1)), a(2)));
-        EXPECT_TRUE(ranges::contains(graph->update(a(3)), a(2)));
+        EXPECT(!ranges::contains(graph->update(a(1)), a(2)));
+        EXPECT(ranges::contains(graph->update(a(3)), a(2)));
     });
 }
 
-TEST_CASE(failed_keeps_declared) {
+ZEST_CASE(failed_keeps_declared) {
     // A failed round discards its candidates and leaves the declared
     // topology standing: a unit whose build breaks must stay
     // cascade-reachable from its declared imports, or fixing an import
@@ -539,14 +542,14 @@ TEST_CASE(failed_keeps_declared) {
     execute([&]() -> kota::task<> {
         graph->declare(a(2), {a(1)});
         auto outcome = co_await graph->request(a(2));
-        EXPECT_EQ(outcome, JoinOutcome::Failed);
+        EXPECT(outcome == JoinOutcome::Failed);
 
-        EXPECT_TRUE(ranges::contains(graph->update(a(1)), a(2)));
-        EXPECT_FALSE(ranges::contains(graph->update(a(3)), a(2)));
+        EXPECT(ranges::contains(graph->update(a(1)), a(2)));
+        EXPECT(!ranges::contains(graph->update(a(3)), a(2)));
     });
 }
 
-TEST_CASE(landing_overwrites_declare) {
+ZEST_CASE(landing_overwrites_declare) {
     // A declare against an in-flight round is answered at landing: a
     // current Success promotes its candidates over the interim
     // declaration. Benign by the topology invariant — had the content
@@ -569,9 +572,9 @@ TEST_CASE(landing_overwrites_declare) {
 
         co_await kota::when_all(run_request(a(2), probe), driver());
 
-        EXPECT_TRUE(probe.outcome == JoinOutcome::Success);
-        EXPECT_FALSE(ranges::contains(graph->update(a(1)), a(2)));
-        EXPECT_TRUE(ranges::contains(graph->update(a(3)), a(2)));
+        EXPECT(probe.outcome == JoinOutcome::Success);
+        EXPECT(!ranges::contains(graph->update(a(1)), a(2)));
+        EXPECT(ranges::contains(graph->update(a(3)), a(2)));
     });
 }
 
@@ -582,7 +585,7 @@ TEST_CASE(landing_overwrites_declare) {
 /// The graph never destroys a running round; an overtaken round runs to
 /// its real reply, and whatever it reports lands as Stale.
 
-TEST_CASE(stale_success_discarded) {
+ZEST_CASE(stale_success_discarded) {
     // The closure ignores its token and reports Success after update()
     // overtook the round: the result must not count — the node stays
     // dirty and the waiter drives a fresh round.
@@ -600,23 +603,23 @@ TEST_CASE(stale_success_discarded) {
             graph->update(a(1));
 
             // Advisory cancellation: the round is signalled, not killed.
-            EXPECT_TRUE(graph->is_compiling(a(1)));
+            EXPECT(graph->is_compiling(a(1)));
 
             mf.open({a(1)});
             co_await mf.gate(a(1)).started.wait();
-            EXPECT_EQ(mf.gate(a(1)).calls, 2);
+            EXPECT(mf.gate(a(1)).calls == 2);
             co_return;
         };
 
         co_await kota::when_all(run_request(a(1), probe), driver());
 
-        EXPECT_TRUE(probe.outcome == JoinOutcome::Success);
-        EXPECT_EQ(mf.gate(a(1)).calls, 2);
-        EXPECT_FALSE(graph->is_dirty(a(1)));
+        EXPECT(probe.outcome == JoinOutcome::Success);
+        EXPECT(mf.gate(a(1)).calls == 2);
+        EXPECT(!graph->is_dirty(a(1)));
     });
 }
 
-TEST_CASE(stale_failure_retries) {
+ZEST_CASE(stale_failure_retries) {
     // A Failed reply from an overtaken round is no verdict about the new
     // content: waiters retry instead of propagating the failure.
     make_graph();
@@ -642,12 +645,12 @@ TEST_CASE(stale_failure_retries) {
         co_await kota::when_all(run_request(a(1), probe), driver());
 
         // The stale Failed never reached the waiter.
-        EXPECT_TRUE(probe.outcome == JoinOutcome::Success);
-        EXPECT_EQ(mf.gate(a(1)).calls, 2);
+        EXPECT(probe.outcome == JoinOutcome::Success);
+        EXPECT(mf.gate(a(1)).calls == 2);
     });
 }
 
-TEST_CASE(salvage_before_stale) {
+ZEST_CASE(salvage_before_stale) {
     // A round may publish side effects and then report Stale (bounded-
     // stale publication): the graph has no say over what happened before
     // the report — the side effect stands, and the join retries.
@@ -665,9 +668,9 @@ TEST_CASE(salvage_before_stale) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph->request(a(1));
-        EXPECT_EQ(outcome, JoinOutcome::Success);
-        EXPECT_EQ(calls, 2);
-        EXPECT_EQ(salvaged, 1);
+        EXPECT(outcome == JoinOutcome::Success);
+        EXPECT(calls == 2);
+        EXPECT(salvaged == 1);
     });
 }
 
@@ -675,7 +678,7 @@ TEST_CASE(salvage_before_stale) {
 ///                              Join flavors
 /// ============================================================================
 
-TEST_CASE(one_attempt_stale) {
+ZEST_CASE(one_attempt_stale) {
     // OneAttempt observes exactly one attempt: an overtaken round returns
     // Stale to the caller instead of retrying.
     make_graph();
@@ -693,13 +696,13 @@ TEST_CASE(one_attempt_stale) {
         co_await kota::when_all(run_request(a(1), probe, {.flavor = JoinFlavor::OneAttempt}),
                                 driver());
 
-        EXPECT_TRUE(probe.outcome == JoinOutcome::Stale);
-        EXPECT_EQ(mf.gate(a(1)).calls, 1);
-        EXPECT_TRUE(graph->is_dirty(a(1)));
+        EXPECT(probe.outcome == JoinOutcome::Stale);
+        EXPECT(mf.gate(a(1)).calls == 1);
+        EXPECT(graph->is_dirty(a(1)));
     });
 }
 
-TEST_CASE(one_attempt_clean) {
+ZEST_CASE(one_attempt_clean) {
     // OneAttempt on a clean node succeeds without a round.
     make_graph();
     Adjacency adj;
@@ -707,15 +710,15 @@ TEST_CASE(one_attempt_clean) {
 
     execute([&]() -> kota::task<> {
         co_await graph->request(a(1));
-        EXPECT_EQ(ran.size(), 1u);
+        EXPECT(ran.size() == 1u);
 
         auto outcome = co_await graph->request(a(1), {.flavor = JoinFlavor::OneAttempt});
-        EXPECT_EQ(outcome, JoinOutcome::Success);
-        EXPECT_EQ(ran.size(), 1u);
+        EXPECT(outcome == JoinOutcome::Success);
+        EXPECT(ran.size() == 1u);
     });
 }
 
-TEST_CASE(abandoned_validity) {
+ZEST_CASE(abandoned_validity) {
     // The validity predicate goes false while the join waits: the next
     // continuation point abandons instead of retrying.
     make_graph();
@@ -735,8 +738,8 @@ TEST_CASE(abandoned_validity) {
         co_await kota::when_all(run_request(a(1), probe, {.validity = [&] { return valid; }}),
                                 driver());
 
-        EXPECT_TRUE(probe.outcome == JoinOutcome::Abandoned);
-        EXPECT_EQ(mf.gate(a(1)).calls, 1);
+        EXPECT(probe.outcome == JoinOutcome::Abandoned);
+        EXPECT(mf.gate(a(1)).calls == 1);
     });
 }
 
@@ -744,7 +747,7 @@ TEST_CASE(abandoned_validity) {
 ///                            Failure semantics
 /// ============================================================================
 
-TEST_CASE(failed_propagates) {
+ZEST_CASE(failed_propagates) {
     // A failing dependency fails the depender without dispatching it;
     // both stay dirty.
     make_graph();
@@ -757,15 +760,15 @@ TEST_CASE(failed_propagates) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph->request(a(1));
-        EXPECT_EQ(outcome, JoinOutcome::Failed);
-        EXPECT_EQ(mf.gate(b(2)).calls, 1);
-        EXPECT_EQ(mf.gate(a(1)).calls, 0);
-        EXPECT_TRUE(graph->is_dirty(a(1)));
-        EXPECT_TRUE(graph->is_dirty(b(2)));
+        EXPECT(outcome == JoinOutcome::Failed);
+        EXPECT(mf.gate(b(2)).calls == 1);
+        EXPECT(mf.gate(a(1)).calls == 0);
+        EXPECT(graph->is_dirty(a(1)));
+        EXPECT(graph->is_dirty(b(2)));
     });
 }
 
-TEST_CASE(failure_not_sticky) {
+ZEST_CASE(failure_not_sticky) {
     // Failure propagates without retry, but a new request tries again and
     // succeeds once the dependency compiles.
     make_graph();
@@ -778,13 +781,13 @@ TEST_CASE(failure_not_sticky) {
 
     execute([&]() -> kota::task<> {
         auto first = co_await graph->request(a(1));
-        EXPECT_EQ(first, JoinOutcome::Failed);
+        EXPECT(first == JoinOutcome::Failed);
 
         mf.gate(b(2)).result = RoundOutcome::Success;
         auto second = co_await graph->request(a(1));
-        EXPECT_EQ(second, JoinOutcome::Success);
-        EXPECT_EQ(mf.gate(b(2)).calls, 2);
-        EXPECT_EQ(mf.gate(a(1)).calls, 1);
+        EXPECT(second == JoinOutcome::Success);
+        EXPECT(mf.gate(b(2)).calls == 2);
+        EXPECT(mf.gate(a(1)).calls == 1);
     });
 }
 
@@ -792,7 +795,7 @@ TEST_CASE(failure_not_sticky) {
 ///                        Interest & cancellation
 /// ============================================================================
 
-TEST_CASE(requester_cancel_releases) {
+ZEST_CASE(requester_cancel_releases) {
     // The requester's frame unwinds mid-round: interest drops to zero, the
     // advisory token fires after one tick, the closure winds down and the
     // graph quiesces with the node still dirty.
@@ -807,11 +810,11 @@ TEST_CASE(requester_cancel_releases) {
             probe.source.cancel();
             co_await settle([&] { return !graph->is_compiling(a(1)); });
 
-            EXPECT_TRUE(probe.done);
-            EXPECT_TRUE(probe.outcome == std::nullopt);
-            EXPECT_TRUE(graph->is_dirty(a(1)));
-            EXPECT_EQ(graph->refcount(a(1)), 0u);
-            EXPECT_EQ(mf.gate(a(1)).calls, 1);
+            EXPECT(probe.done);
+            EXPECT(probe.outcome == std::nullopt);
+            EXPECT(graph->is_dirty(a(1)));
+            EXPECT(graph->refcount(a(1)) == 0u);
+            EXPECT(mf.gate(a(1)).calls == 1);
             co_return;
         };
 
@@ -819,7 +822,7 @@ TEST_CASE(requester_cancel_releases) {
     });
 }
 
-TEST_CASE(shared_dep_survives_cancel) {
+ZEST_CASE(shared_dep_survives_cancel) {
     // Two chains share one dependency; cancelling one requester must only
     // wind down its own chain — the shared dependency keeps compiling for
     // the survivor.
@@ -835,14 +838,14 @@ TEST_CASE(shared_dep_survives_cancel) {
     execute([&]() -> kota::task<> {
         auto driver = [&]() -> kota::task<> {
             co_await mf.gate(b(5)).started.wait();
-            EXPECT_EQ(graph->refcount(b(5)), 2u);
+            EXPECT(graph->refcount(b(5)) == 2u);
 
             p1.source.cancel();
             co_await settle([&] { return !graph->is_compiling(a(1)); });
 
-            EXPECT_TRUE(graph->is_compiling(b(5)));
-            EXPECT_EQ(mf.gate(b(5)).calls, 1);
-            EXPECT_EQ(graph->refcount(b(5)), 1u);
+            EXPECT(graph->is_compiling(b(5)));
+            EXPECT(mf.gate(b(5)).calls == 1);
+            EXPECT(graph->refcount(b(5)) == 1u);
 
             mf.open({b(5)});
             co_return;
@@ -850,13 +853,13 @@ TEST_CASE(shared_dep_survives_cancel) {
 
         co_await kota::when_all(run_request(a(1), p1), run_request(a(3), p3), driver());
 
-        EXPECT_TRUE(p1.outcome == std::nullopt);
-        EXPECT_TRUE(p3.outcome == JoinOutcome::Success);
-        EXPECT_EQ(mf.gate(b(5)).calls, 1);
+        EXPECT(p1.outcome == std::nullopt);
+        EXPECT(p3.outcome == JoinOutcome::Success);
+        EXPECT(mf.gate(b(5)).calls == 1);
     });
 }
 
-TEST_CASE(transient_drop_handover) {
+ZEST_CASE(transient_drop_handover) {
     // The depender is updated while waiting on its unchanged dependency:
     // the retry re-acquires the dependency within the same drain cycle, so
     // its in-flight round is handed over — neither cancelled nor
@@ -872,16 +875,16 @@ TEST_CASE(transient_drop_handover) {
     execute([&]() -> kota::task<> {
         auto driver = [&]() -> kota::task<> {
             co_await mf.gate(b(2)).started.wait();
-            EXPECT_TRUE(graph->is_compiling(a(1)));
+            EXPECT(graph->is_compiling(a(1)));
 
             graph->update(a(1));
             co_await kota::sleep(1);
 
             // The depender's round was respawned; the dependency kept
             // compiling throughout.
-            EXPECT_TRUE(graph->is_compiling(b(2)));
-            EXPECT_EQ(mf.gate(b(2)).calls, 1);
-            EXPECT_EQ(graph->refcount(b(2)), 1u);
+            EXPECT(graph->is_compiling(b(2)));
+            EXPECT(mf.gate(b(2)).calls == 1);
+            EXPECT(graph->refcount(b(2)) == 1u);
 
             mf.open({b(2)});
             co_return;
@@ -889,10 +892,10 @@ TEST_CASE(transient_drop_handover) {
 
         co_await kota::when_all(run_request(a(1), probe), driver());
 
-        EXPECT_TRUE(probe.outcome == JoinOutcome::Success);
-        EXPECT_EQ(mf.gate(b(2)).calls, 1);
-        EXPECT_FALSE(graph->is_dirty(a(1)));
-        EXPECT_FALSE(graph->is_dirty(b(2)));
+        EXPECT(probe.outcome == JoinOutcome::Success);
+        EXPECT(mf.gate(b(2)).calls == 1);
+        EXPECT(!graph->is_dirty(a(1)));
+        EXPECT(!graph->is_dirty(b(2)));
     });
 }
 
@@ -900,7 +903,7 @@ TEST_CASE(transient_drop_handover) {
 ///                               Foreground
 /// ============================================================================
 
-TEST_CASE(foreground_late_join) {
+ZEST_CASE(foreground_late_join) {
     // A foreground requester joins a Low round that then reports Stale:
     // the respawn re-reads the interest class, so the retry dispatches
     // foreground instead of staying cancellable Low.
@@ -934,15 +937,15 @@ TEST_CASE(foreground_late_join) {
                                 run_request(a(1), foreground, {.foreground = true}),
                                 driver());
 
-        EXPECT_TRUE(background.outcome == JoinOutcome::Success);
-        EXPECT_TRUE(foreground.outcome == JoinOutcome::Success);
-        CO_ASSERT_EQ(calls, 2);
-        EXPECT_FALSE(classes[0]);
-        EXPECT_TRUE(classes[1]);
+        EXPECT(background.outcome == JoinOutcome::Success);
+        EXPECT(foreground.outcome == JoinOutcome::Success);
+        CO_ASSERT(calls == 2);
+        EXPECT(!classes[0]);
+        EXPECT(classes[1]);
     });
 }
 
-TEST_CASE(foreground_spreads_edges) {
+ZEST_CASE(foreground_spreads_edges) {
     // Foreground must travel the live candidate edges: a foreground join
     // at the root upgrades a deep dependency already parked in a Low
     // round, so its preempted retry dispatches foreground.
@@ -990,15 +993,15 @@ TEST_CASE(foreground_spreads_edges) {
                                 run_request(a(1), foreground, {.foreground = true}),
                                 driver());
 
-        EXPECT_TRUE(background.outcome == JoinOutcome::Success);
-        EXPECT_TRUE(foreground.outcome == JoinOutcome::Success);
-        CO_ASSERT_EQ(deep_calls, 2);
-        EXPECT_FALSE(deep_classes[0]);
-        EXPECT_TRUE(deep_classes[1]);
+        EXPECT(background.outcome == JoinOutcome::Success);
+        EXPECT(foreground.outcome == JoinOutcome::Success);
+        CO_ASSERT(deep_calls == 2);
+        EXPECT(!deep_classes[0]);
+        EXPECT(deep_classes[1]);
     });
 }
 
-TEST_CASE(foreground_skips_clean_deps) {
+ZEST_CASE(foreground_skips_clean_deps) {
     // A foreground request answered by a clean cached chain must not tag
     // the chain's durable dependencies: no request ever acquires a clean
     // dependency, so nothing would reset the mark, and an unrelated
@@ -1031,14 +1034,14 @@ TEST_CASE(foreground_skips_clean_deps) {
         graph->update(a(2));
         co_await run_request(a(2), rebuild);
 
-        EXPECT_TRUE(rebuild.outcome == JoinOutcome::Success);
-        CO_ASSERT_EQ(dep_classes.size(), std::size_t(2));
-        EXPECT_FALSE(dep_classes[0]);
-        EXPECT_FALSE(dep_classes[1]);
+        EXPECT(rebuild.outcome == JoinOutcome::Success);
+        CO_ASSERT(dep_classes.size() == std::size_t(2));
+        EXPECT(!dep_classes[0]);
+        EXPECT(!dep_classes[1]);
     });
 }
 
-TEST_CASE(foreground_resets_zero) {
+ZEST_CASE(foreground_resets_zero) {
     // The foreground flag is sticky while any interest remains and reset
     // when the count returns to zero: a later background request runs Low.
     make_graph();
@@ -1048,12 +1051,12 @@ TEST_CASE(foreground_resets_zero) {
 
     execute([&]() -> kota::task<> {
         co_await graph->request(a(1), {.foreground = true});
-        EXPECT_TRUE(mf.gate(a(1)).classes[0]);
+        EXPECT(mf.gate(a(1)).classes[0]);
 
         graph->update(a(1));
         co_await graph->request(a(1));
-        CO_ASSERT_EQ(mf.gate(a(1)).calls, 2);
-        EXPECT_FALSE(mf.gate(a(1)).classes[1]);
+        CO_ASSERT(mf.gate(a(1)).calls == 2);
+        EXPECT(!mf.gate(a(1)).classes[1]);
     });
 }
 
@@ -1061,7 +1064,7 @@ TEST_CASE(foreground_resets_zero) {
 ///                             Cycle handling
 /// ============================================================================
 
-TEST_CASE(self_depend_fails) {
+ZEST_CASE(self_depend_fails) {
     // A node depending on itself fails immediately.
     make_graph();
     Adjacency adj;
@@ -1070,11 +1073,11 @@ TEST_CASE(self_depend_fails) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph->request(a(1));
-        EXPECT_EQ(outcome, JoinOutcome::Failed);
+        EXPECT(outcome == JoinOutcome::Failed);
     });
 }
 
-TEST_CASE(depend_cycle_fails) {
+ZEST_CASE(depend_cycle_fails) {
     // 1 -> 2 -> 1: the depend that would close the wait loop detects it
     // and fails the round instead of deadlocking.
     make_graph();
@@ -1085,11 +1088,11 @@ TEST_CASE(depend_cycle_fails) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph->request(a(1));
-        EXPECT_EQ(outcome, JoinOutcome::Failed);
+        EXPECT(outcome == JoinOutcome::Failed);
     });
 }
 
-TEST_CASE(update_introduces_cycle) {
+ZEST_CASE(update_introduces_cycle) {
     // The cycle only appears after an update changes the declared imports;
     // the retry detects it and fails instead of hanging.
     make_graph();
@@ -1099,13 +1102,13 @@ TEST_CASE(update_introduces_cycle) {
 
     execute([&]() -> kota::task<> {
         auto first = co_await graph->request(a(1));
-        EXPECT_EQ(first, JoinOutcome::Success);
+        EXPECT(first == JoinOutcome::Success);
 
         adj[a(2)] = {a(1)};
         graph->update(a(2));
 
         auto second = co_await graph->request(a(1));
-        EXPECT_EQ(second, JoinOutcome::Failed);
+        EXPECT(second == JoinOutcome::Failed);
     });
 }
 
@@ -1113,7 +1116,7 @@ TEST_CASE(update_introduces_cycle) {
 ///                                Shutdown
 /// ============================================================================
 
-TEST_CASE(shutdown_with_inflight) {
+ZEST_CASE(shutdown_with_inflight) {
     // shutdown() with rounds in flight: every advisory token fires, the
     // closures wind down with real replies, pending joins resolve with
     // Shutdown, and the graph quiesces.
@@ -1136,16 +1139,16 @@ TEST_CASE(shutdown_with_inflight) {
     loop->schedule(t2);
     loop->run();
 
-    EXPECT_TRUE(probe.done);
-    EXPECT_TRUE(probe.outcome == JoinOutcome::Shutdown);
-    EXPECT_TRUE(graph->idle());
+    EXPECT(probe.done);
+    EXPECT(probe.outcome == JoinOutcome::Shutdown);
+    EXPECT(graph->idle());
 }
 
 /// ============================================================================
 ///                            Randomized stress
 /// ============================================================================
 
-TEST_CASE(randomized_stress) {
+ZEST_CASE(randomized_stress) {
     // A fixed-seed, single-threaded interleaving of requests,
     // cancellations, updates and dispatch completions. Every dispatch
     // races a semaphore against its advisory token — the run-to-reply
@@ -1186,7 +1189,7 @@ TEST_CASE(randomized_stress) {
     execute([&]() -> kota::task<> {
         std::mt19937 rng(20260826u);
         std::vector<std::unique_ptr<Probe>> probes;
-        kota::task_group<> inflight(*loop);
+        kota::task_group<> inflight;
 
         const NodeId roots[] = {a(1), a(6), a(8)};
         const NodeId all[] = {a(1), a(2), a(3), b(4), b(5), a(6), a(7), a(8)};
@@ -1217,7 +1220,7 @@ TEST_CASE(randomized_stress) {
 
             // Let deferred unwinds land, then check structural sanity.
             co_await kota::yield();
-            EXPECT_TRUE(graph->consistent());
+            EXPECT(graph->consistent());
         }
 
         // Drain: cancel every outstanding request and wait for them all.
@@ -1228,7 +1231,7 @@ TEST_CASE(randomized_stress) {
     });
 }
 
-};  // TEST_SUITE(TaskGraph)
+};  // ZEST_SUITE(TaskGraph)
 
 }  // namespace
 }  // namespace clice::testing

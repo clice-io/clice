@@ -48,5 +48,5 @@ int main(int argc, const char** argv) {
 
     clice::logging::stderr_logger("test", clice::logging::options);
 
-    return kota::zest::run_tests(std::move(opts.zest));
+    return kota::zest::run_tests(std::move(opts.zest), argc, argv);
 }
