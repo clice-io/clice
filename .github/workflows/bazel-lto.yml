@@ -17,7 +17,7 @@ jobs:
           - os: windows-2025
             lto_cache: C:/xclang-thinlto
             startup: --output_user_root=C:/b
-            mode: win
+            mode: winrepro
     runs-on: ${{ matrix.os }}
     timeout-minutes: 330
     defaults:
@@ -120,7 +120,8 @@ jobs:
   # The xclang module's thinlto_cache feature (scripts/lto-module.sh): its own
   # toolchain and libclang, no pixi.
   module:
-    # Linux and macOS done in run 37041436235.
+    # Done in runs 37041436235 and 37065094747.
+    if: false
     strategy:
       fail-fast: false
       matrix:

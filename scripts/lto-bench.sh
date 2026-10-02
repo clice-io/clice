@@ -271,6 +271,24 @@ win)
     times win-end
     ;;
 
+winrepro)
+    # Which parts of clice.exe differ between links of the same inputs.
+    stamp=(--linkopt=-Wl,--no-insert-timestamp)
+    mkdir -p "$OUT/bin"
+    keep() { cp "bazel-bin/clice$exe" "$OUT/bin/$1$exe"; }
+    wipe
+    link r-c1 clice "${lto[@]}" "${stamp[@]}"
+    keep r-c1
+    for i in 1 2 3 4; do
+        link "r-w$i" clice "${lto[@]}" "${stamp[@]}"
+        keep "r-w$i"
+    done
+    link r-n1 clice "${stamp[@]}"
+    keep r-n1
+    "$py" scripts/pe-diff.py "$OUT"/bin/*"$exe" | tee -a "$OUT/results.txt"
+    rm -rf "$OUT/bin"
+    ;;
+
 ci)
     times restored
     reset_atimes
