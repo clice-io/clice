@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "index/query.h"
+#include "index/rename.h"
 #include "server/editor_context.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -161,6 +162,58 @@ struct TypeHierarchyResult {
     std::vector<GraphEntry> subtypes;
 };
 
+/// One token a rename replaces: 1-based line and byte column.
+struct RenameEditEntry {
+    int line = 0;
+    int column = 0;
+
+    /// Reached through a name the index resolved heuristically.
+    bool heuristic = false;
+};
+
+struct RenameFileEntry {
+    std::string file;
+    std::vector<RenameEditEntry> edits;
+};
+
+/// A token spelling the old name that the rename leaves alone.
+struct RenameNoteEntry {
+    std::string file;
+    int line = 0;
+    int column = 0;
+    std::string reason;
+    std::string text;
+};
+
+struct RenameResult {
+    std::string name;
+    std::string kind;
+    std::string symbol_id;
+    std::string new_name;
+
+    /// Whether the edits were written.
+    bool applied = false;
+
+    std::vector<RenameFileEntry> files;
+    std::vector<RenameNoteEntry> unconfirmed;
+
+    /// What keeps the rename from being written.
+    std::vector<std::string> conflicts;
+
+    std::vector<std::string> warnings;
+
+    /// Files spelling the old name whose rows are not current; the rename
+    /// is not written while any stands.
+    std::vector<std::string> stale;
+};
+
+/// A rename computed but not applied: the answer, and the plan its edits
+/// come from.
+struct PlannedRename {
+    RenameResult result;
+    index::RenamePlan plan;
+};
+
 /// The file's compile command as the editor would use it: pins and header
 /// context included. Needs the build.
 Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path);
@@ -208,6 +261,18 @@ Outcome<ReferencesResult> references(Context& ctx,
 Outcome<CallGraphResult> call_graph(Context& ctx,
                                     index::SymbolQuery locator,
                                     llvm::StringRef direction);
+
+/// Rename the symbol the locator names to `new_name` within `scope`:
+/// what would change, what the index cannot vouch for, and what keeps the
+/// change from being safe. Nothing is written.
+/// Whether some unit of the build the index is to hold has no record in
+/// it yet (see index::RenameScope::units_pending).
+bool units_pending(Project& project);
+
+Outcome<PlannedRename> rename(Context& ctx,
+                              index::SymbolQuery locator,
+                              llvm::StringRef new_name,
+                              const index::RenameScope& scope);
 
 /// `direction` one of supertypes, subtypes, both.
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,

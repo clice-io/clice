@@ -8,20 +8,24 @@
 #include <vector>
 
 #include "command/search_config.h"
+#include "index/rename.h"
 #include "project/hosting.h"
 #include "sched/index/pump.h"
 #include "semantic/symbol.h"
 #include "server/ast_family.h"
 #include "server/editor_context.h"
 #include "server/lsp_projection.h"
+#include "server/query_commands.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
 #include "vfs/dir_cache.h"
+#include "vfs/file_system.h"
 #include "worker/protocol.h"
 #include "worker/serialize.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 
 namespace clice {
 
@@ -853,6 +857,194 @@ Features::RawResult Features::references(std::shared_ptr<Session> session,
         [&](const index::IndexQuery& from, index::SymbolHash named) {
             return from.references({.symbols = {named}, .site = cursor->site}, include_declaration);
         })));
+}
+
+static kota::ipc::Error rename_refused(std::string message) {
+    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::RequestFailed, std::move(message)};
+}
+
+/// `title` and up to a handful of `items`, one a line.
+static void list_notice(std::string& notice,
+                        std::string_view title,
+                        llvm::ArrayRef<std::string> items) {
+    constexpr std::size_t shown_items = 5;
+    if(items.empty()) {
+        return;
+    }
+    notice += std::format("{}{}:", notice.empty() ? "" : "\n", title);
+    for(auto& item: items.take_front(shown_items)) {
+        notice += std::format("\n  {}", item);
+    }
+    if(items.size() > shown_items) {
+        notice += std::format("\n  and {} more", items.size() - shown_items);
+    }
+}
+
+Features::RawResult Features::prepare_rename(std::shared_ptr<Session> session,
+                                             Fid path_id,
+                                             const protocol::Position& position) {
+    if(session) {
+        if(auto stop = co_await nav_gate(Ticket::take(session))) {
+            co_return co_await stop_reply(std::move(*stop));
+        }
+    }
+    auto cursor = cursor_at(path_id, position);
+    if(!cursor) {
+        co_return serde_raw{"null"};
+    }
+    auto renamed = index::rename_at(query, *cursor);
+    if(!renamed) {
+        co_return kota::outcome_error(rename_refused(std::move(renamed.error())));
+    }
+    co_return to_raw(protocol::PrepareRenamePlaceholder{
+        .range = to_lsp::range(renamed->token),
+        .placeholder = renamed->target.symbol.symbol.name,
+    });
+}
+
+kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
+    Features::rename(std::shared_ptr<Session> session,
+                     Fid path_id,
+                     const protocol::Position& position,
+                     std::string new_name) {
+    std::optional<Ticket> ticket;
+    if(session) {
+        ticket.emplace(Ticket::take(session));
+        if(auto stop = co_await nav_gate(*ticket)) {
+            if(stop->error) {
+                co_return kota::outcome_error(std::move(*stop->error));
+            }
+            co_return std::nullopt;
+        }
+    }
+    auto& config = project.config;
+    if(config.workspace_root.empty()) {
+        co_return kota::outcome_error(
+            rename_refused("a rename edits the sources of a workspace folder; open one"));
+    }
+    auto cursor = cursor_at(path_id, position);
+    if(!cursor) {
+        co_return std::nullopt;
+    }
+    auto at = index::rename_at(query, *cursor);
+    if(!at) {
+        co_return kota::outcome_error(rename_refused(std::move(at.error())));
+    }
+
+    // The walk and the reads run off the loop; only the files spelling the
+    // old name come back with their text.
+    struct Swept {
+        std::vector<std::string> files;
+        llvm::StringMap<std::string> texts;
+    };
+
+    CanonicalPath cache_dir;
+    if(!config.project.cache_dir.empty()) {
+        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
+    }
+    auto swept = co_await kota::queue([root = config.workspace_root,
+                                       cache_dir = std::move(cache_dir),
+                                       name = at->target.symbol.symbol.name] {
+        Swept result;
+        for(auto& source: workspace_sources(root, cache_dir)) {
+            auto path = source.str();
+            if(auto text = vfs::read(path); text && (*text)->getBuffer().contains(name)) {
+                result.texts[path] = (*text)->getBuffer().str();
+            }
+            result.files.push_back(std::move(path));
+        }
+        return result;
+    });
+    if(ticket && !ticket->fresh()) {
+        co_return kota::outcome_error(content_modified());
+    }
+    if(!swept.has_value()) {
+        co_return kota::outcome_error(rename_refused("the workspace could not be read"));
+    }
+    // Rows indexed during the sweep may link the symbol to more: plan
+    // with the group they give now.
+    cursor = cursor_at(path_id, position);
+    if(!cursor) {
+        co_return kota::outcome_error(content_modified());
+    }
+    auto name = std::move(at->target.symbol.symbol.name);
+    at = index::rename_at(query, *cursor);
+    if(!at) {
+        co_return kota::outcome_error(rename_refused(std::move(at.error())));
+    }
+    if(at->target.symbol.symbol.name != name) {
+        co_return kota::outcome_error(content_modified());
+    }
+
+    auto open = [&](llvm::StringRef path) {
+        auto file = project.file_table.find(Spelling::absolute(path));
+        return file ? sessions.find(*file) : nullptr;
+    };
+    auto read = [&](llvm::StringRef path) -> std::optional<std::string> {
+        if(auto document = open(path)) {
+            return document->text;
+        }
+        auto it = swept->texts.find(path);
+        return it == swept->texts.end() ? std::nullopt : std::optional(it->second);
+    };
+    auto plan = index::plan_rename(query,
+                                   project.file_table,
+                                   at->target,
+                                   new_name,
+                                   {.files = swept->files,
+                                    .read = read,
+                                    .units_pending = clice::query::units_pending(project)});
+    if(plan.blocked()) {
+        auto reasons = plan.conflicts;
+        if(!plan.stale.empty()) {
+            reasons.push_back(std::format(
+                "these files changed since they were indexed, or were never indexed: {}",
+                llvm::join(plan.stale, ", ")));
+        }
+        co_return kota::outcome_error(rename_refused(
+            std::format("cannot rename `{}`: {}", plan.old_name, llvm::join(reasons, "; "))));
+    }
+
+    Renamed renamed;
+    using DocumentChange = protocol::variant<protocol::TextDocumentEdit,
+                                             protocol::CreateFile,
+                                             protocol::RenameFile,
+                                             protocol::DeleteFile>;
+    std::vector<DocumentChange> changes;
+    protocol::TextDocumentEdit* change = nullptr;
+    std::vector<std::string> heuristic;
+    for(auto& edit: plan.edits) {
+        if(!change || change->text_document.uri != feature::to_uri(edit.site.path)) {
+            auto document = sessions.find(edit.site.file);
+            protocol::TextDocumentEdit next{
+                .text_document = {.uri = feature::to_uri(edit.site.path),
+                                  .version =
+                                      document ? std::optional(document->version) : std::nullopt},
+            };
+            change = &std::get<protocol::TextDocumentEdit>(changes.emplace_back(std::move(next)));
+        }
+        change->edits.emplace_back(protocol::TextEdit{
+            .range = to_lsp::range(edit.site),
+            .new_text = new_name,
+        });
+        if(edit.heuristic) {
+            heuristic.push_back(std::format("{}:{}", edit.site.path, edit.site.begin.line + 1));
+        }
+    }
+    renamed.edit.document_changes = std::move(changes);
+
+    list_notice(renamed.notice, std::format("Renaming `{}`", plan.old_name), plan.warnings);
+    std::vector<std::string> left;
+    for(auto& note: plan.unconfirmed) {
+        left.push_back(std::format("{}:{}: {} ({})",
+                                   note.site.path,
+                                   note.site.begin.line + 1,
+                                   note.line,
+                                   note.reason));
+    }
+    list_notice(renamed.notice, std::format("Spellings of `{}` left alone", plan.old_name), left);
+    list_notice(renamed.notice, "Renamed through a heuristic resolution", heuristic);
+    co_return renamed;
 }
 
 llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol, Fid anchor) {

@@ -1,0 +1,622 @@
+#include "index/rename.h"
+
+#include <algorithm>
+#include <format>
+#include <map>
+#include <ranges>
+#include <tuple>
+
+#include "feature/feature.h"
+#include "index/symbol_query.h"
+#include "syntax/lexer.h"
+
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringSet.h"
+#include "clang/Basic/CharInfo.h"
+#include "clang/Basic/IdentifierTable.h"
+#include "clang/Basic/LangStandard.h"
+
+namespace clice::index {
+
+namespace {
+
+bool identifier_char(char c) {
+    return clang::isAsciiIdentifierContinue(c) || static_cast<unsigned char>(c) >= 0x80;
+}
+
+/// The offsets in `text[begin, end)` where `name` stands as a whole
+/// identifier.
+llvm::SmallVector<std::uint32_t, 1>
+    spellings(llvm::StringRef text, std::uint32_t begin, std::uint32_t end, llvm::StringRef name) {
+    llvm::SmallVector<std::uint32_t, 1> found;
+    for(auto at = text.find(name, begin); at != llvm::StringRef::npos && at + name.size() <= end;
+        at = text.find(name, at + 1)) {
+        auto after = at + name.size();
+        if((at == 0 || !identifier_char(text[at - 1])) &&
+           (after == text.size() || !identifier_char(text[after]))) {
+            found.push_back(static_cast<std::uint32_t>(at));
+        }
+    }
+    return found;
+}
+
+/// Positions in one text, for the sites of tokens no row spans.
+struct Lines {
+    llvm::StringRef text;
+    std::vector<std::uint32_t> starts{0};
+
+    explicit Lines(llvm::StringRef text) : text(text) {
+        for(std::uint32_t i = 0; i < text.size(); i += 1) {
+            if(text[i] == '\n') {
+                starts.push_back(i + 1);
+            }
+        }
+    }
+
+    /// A token's position: never inside a newline.
+    LineColumn position(std::uint32_t offset) const {
+        return *Coordinates(text, text.size(), starts).position(offset);
+    }
+
+    std::string line_of(std::uint32_t offset) const {
+        auto line = std::ranges::upper_bound(starts, offset) - starts.begin() - 1;
+        auto end =
+            static_cast<std::size_t>(line) + 1 < starts.size() ? starts[line + 1] : text.size();
+        return text.slice(starts[line], end).trim().str();
+    }
+
+    Site site(Fid file, std::string path, std::uint32_t offset, std::uint32_t length) const {
+        return {
+            .file = file,
+            .path = std::move(path),
+            .range = {offset, offset + length},
+            .begin = position(offset),
+            .end = position(offset + length)
+        };
+    }
+};
+
+bool class_like(SymbolKind kind) {
+    return kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Union;
+}
+
+bool function_like(SymbolKind kind) {
+    return kind == SymbolKind::Function || kind == SymbolKind::Method;
+}
+
+std::string where(const Site& site) {
+    return std::format("{}:{}", site.path, site.begin.line + 1);
+}
+
+/// The class template a deduction guide deduces: the one template in the
+/// guide's scope of the name its declaration spells (the symbol is listed
+/// under a label).
+std::optional<IndexQuery::Located> guided_template(const IndexQuery& query,
+                                                   const IndexQuery::Located& guide) {
+    auto text = query.serving_text(guide.site.file);
+    if(!text) {
+        return std::nullopt;
+    }
+    SymbolQuery exact{
+        .mode = SymbolQuery::Mode::Exact,
+        .pattern = llvm::StringRef(*text).slice(guide.site.range.begin, guide.site.range.end).str(),
+    };
+    for(auto& hit: query.search(exact, 64)) {
+        if(class_like(hit.symbol.kind) && hit.symbol.parent == guide.symbol.parent &&
+           has_flag(hit.symbol.flags, SymbolFlags::Template)) {
+            return hit;
+        }
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<std::string> invalid_identifier(llvm::StringRef name) {
+    if(name.empty() || !clang::isAsciiIdentifierStart(name.front()) ||
+       !llvm::all_of(name.drop_front(),
+                     [](char c) { return clang::isAsciiIdentifierContinue(c); })) {
+        return std::format("`{}` is not an identifier", std::string_view(name));
+    }
+    for(auto [language, standard]: {
+            std::pair{clang::Language::C,   clang::LangStandard::lang_c23  },
+            std::pair{clang::Language::CXX, clang::LangStandard::lang_cxx26},
+    }) {
+        clang::LangOptions options;
+        std::vector<std::string> includes;
+        clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
+        // The driver's defaults, which the language defaults leave off.
+        options.Char8 = options.CPlusPlus20;
+        clang::IdentifierTable table(options);
+        if(table.get(name).getTokenID() != clang::tok::identifier) {
+            return std::format("`{}` is a keyword", std::string_view(name));
+        }
+    }
+    return std::nullopt;
+}
+
+std::expected<RenameTarget, std::string> rename_target(const IndexQuery& query,
+                                                       const IndexQuery::Located& named) {
+    auto& symbol = named.symbol;
+    switch(symbol.kind) {
+        case SymbolKind::Namespace:
+        case SymbolKind::Class:
+        case SymbolKind::Struct:
+        case SymbolKind::Union:
+        case SymbolKind::Enum:
+        case SymbolKind::Type:
+        case SymbolKind::Field:
+        case SymbolKind::EnumMember:
+        case SymbolKind::Function:
+        case SymbolKind::Method:
+        case SymbolKind::Variable:
+        case SymbolKind::Parameter:
+        case SymbolKind::Label:
+        case SymbolKind::Concept:
+        case SymbolKind::Operator: break;
+        case SymbolKind::Macro: {
+            return std::unexpected("renaming a macro is not supported yet");
+        }
+        default: {
+            return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
+        }
+    }
+    if(has_flag(symbol.flags, SymbolFlags::Unnamed)) {
+        return std::unexpected(std::format("{} has no name to rename", symbol.name));
+    }
+
+    auto root = named;
+    switch(name_form(symbol.flags)) {
+        case NameForm::Identifier: break;
+        case NameForm::Constructor:
+        case NameForm::Destructor: {
+            auto owner = query.resolve(symbol.parent, named.site.file);
+            if(!owner) {
+                return std::unexpected(
+                    std::format("the class of `{}` is not indexed", symbol.name));
+            }
+            root = std::move(*owner);
+            break;
+        }
+        case NameForm::Other: {
+            auto deduced = guided_template(query, named);
+            if(!deduced) {
+                return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
+            }
+            root = std::move(*deduced);
+            break;
+        }
+        case NameForm::Conversion:
+        case NameForm::Operator:
+        case NameForm::Literal: {
+            return std::unexpected(
+                std::format("`{}` is named by the language, not by an identifier", symbol.name));
+        }
+    }
+    if(has_flag(root.symbol.flags, SymbolFlags::Specialization)) {
+        auto primaries =
+            query.located_targets(root.symbol.hash, root.site.file, RelationKind::Primary);
+        if(!primaries.empty()) {
+            root = std::move(primaries.front());
+        }
+    }
+    if(has_flag(root.symbol.flags, SymbolFlags::SystemHeader)) {
+        return std::unexpected(
+            std::format("`{}` is declared in a system header", root.symbol.display_name()));
+    }
+    if(has_flag(root.symbol.flags, SymbolFlags::SpelledInMacro)) {
+        return std::unexpected(std::format("every declaration of `{}` is spelled by a macro",
+                                           root.symbol.display_name()));
+    }
+
+    RenameTarget target{.symbol = root};
+    llvm::DenseSet<SymbolHash> seen;
+    std::vector<IndexQuery::Located> pending{root};
+    while(!pending.empty()) {
+        auto next = std::move(pending.back());
+        pending.pop_back();
+        if(!seen.insert(next.symbol.hash).second) {
+            continue;
+        }
+        auto follow = [&](RelationKind kind) {
+            llvm::append_range(pending,
+                               query.located_targets(next.symbol.hash, next.site.file, kind));
+        };
+        follow(RelationKind::Specialization);
+        if(class_like(next.symbol.kind)) {
+            follow(RelationKind::Constructor);
+            follow(RelationKind::Destructor);
+        } else if(next.symbol.kind == SymbolKind::Method) {
+            follow(RelationKind::Interface);
+            follow(RelationKind::Implementation);
+        }
+        target.group.push_back(std::move(next));
+    }
+    return target;
+}
+
+std::expected<CursorRename, std::string> rename_at(const IndexQuery& query,
+                                                   const IndexQuery::Cursor& cursor) {
+    std::optional<RenameTarget> found;
+    std::string refused;
+    for(auto& named: query.resolve_at(cursor)) {
+        auto target = rename_target(query, named);
+        if(!target) {
+            refused = std::move(target.error());
+            continue;
+        }
+        if(found && found->symbol.symbol.hash != target->symbol.symbol.hash) {
+            return std::unexpected(
+                "the name here resolves to several symbols; rename from one of their declarations");
+        }
+        found = std::move(*target);
+    }
+    if(!found) {
+        return std::unexpected(refused.empty() ? "no symbol here to rename" : refused);
+    }
+
+    auto& site = cursor.site;
+    auto text = query.serving_text(site.file);
+    if(!text) {
+        return std::unexpected(std::format("{} changed since it was indexed", site.path));
+    }
+    llvm::StringRef name = found->symbol.symbol.name;
+    auto offsets = spellings(*text, site.range.begin, site.range.end, name);
+    if(offsets.empty()) {
+        return std::unexpected(
+            std::format("no name of `{}` is written here", std::string_view(name)));
+    }
+    auto token = Lines(*text).site(site.file, site.path, offsets.front(), name.size());
+    return CursorRename{.target = std::move(*found), .token = std::move(token)};
+}
+
+RenamePlan plan_rename(const IndexQuery& query,
+                       FileTable& files,
+                       const RenameTarget& target,
+                       llvm::StringRef new_name,
+                       const RenameScope& scope) {
+    auto& root = target.symbol.symbol;
+    RenamePlan plan{.old_name = root.name};
+    llvm::StringRef old_name = plan.old_name;
+    if(new_name == old_name) {
+        return plan;
+    }
+    if(auto invalid = invalid_identifier(new_name)) {
+        plan.conflicts.push_back(std::move(*invalid));
+        return plan;
+    }
+    if(new_name.contains("__") ||
+       (new_name.starts_with("_") && new_name.size() > 1 && clang::isUppercase(new_name[1]))) {
+        plan.warnings.push_back(
+            std::format("`{}` is reserved for the implementation", std::string_view(new_name)));
+    }
+
+    llvm::DenseSet<SymbolHash> group;
+    for(auto& member: target.group) {
+        group.insert(member.symbol.hash);
+    }
+    // A deduction guide relates to nothing and has no definition to find
+    // it by: the sweep meets each one where it spells the template's name.
+    bool guided = class_like(root.kind) && has_flag(root.flags, SymbolFlags::Template);
+    auto renames = [&](SymbolHash symbol, Fid file) {
+        if(group.contains(symbol)) {
+            return true;
+        }
+        if(!guided) {
+            return false;
+        }
+        auto info = query.symbol_info(symbol, file);
+        return info && name_form(info->flags) == NameForm::Other && info->parent == root.parent;
+    };
+
+    // The text every row of a file indexes, and its positions.
+    struct Text {
+        std::optional<std::string> text;
+        std::optional<Lines> lines;
+    };
+
+    llvm::DenseMap<Fid, std::unique_ptr<Text>> texts;
+    auto text_of = [&](Fid file) -> Text& {
+        auto& slot = texts[file];
+        if(!slot) {
+            slot = std::make_unique<Text>();
+            slot->text = query.serving_text(file);
+            if(slot->text) {
+                slot->lines.emplace(*slot->text);
+            }
+        }
+        return *slot;
+    };
+
+    llvm::StringSet<> stale;
+    std::map<std::pair<Fid, std::uint32_t>, RenameEdit> edits;
+    auto add_edit = [&](Fid file, const Site& near, std::uint32_t offset, bool heuristic) {
+        auto& text = text_of(file);
+        auto [it, inserted] = edits.try_emplace(
+            {file, offset},
+            RenameEdit{.site = text.lines->site(file, near.path, offset, old_name.size()),
+                       .heuristic = heuristic});
+        if(!inserted) {
+            it->second.heuristic &= heuristic;
+        }
+    };
+
+    for(auto& member: target.group) {
+        for(auto kind: {RelationKind::Definition,
+                        RelationKind::Declaration,
+                        RelationKind::Reference,
+                        RelationKind::WeakReference}) {
+            for(auto& site: query.sites(member.symbol.hash, member.site.file, kind)) {
+                auto& text = text_of(site.file);
+                if(!text.text) {
+                    stale.insert(site.path);
+                    continue;
+                }
+                auto offsets = spellings(*text.text, site.range.begin, site.range.end, old_name);
+                if(offsets.empty()) {
+                    // A row on punctuation (a construction's paren) spells
+                    // no name; one on another name is a macro's invocation.
+                    auto written =
+                        llvm::StringRef(*text.text).slice(site.range.begin, site.range.end);
+                    if(llvm::any_of(written, identifier_char)) {
+                        plan.unconfirmed.push_back(
+                            {.site = site,
+                             .reason = std::format("the name is written here as `{}`",
+                                                   std::string_view(written)),
+                             .line = text.lines->line_of(site.range.begin)});
+                    }
+                    continue;
+                }
+                for(auto offset: offsets) {
+                    add_edit(site.file, site, offset, kind == RelationKind::WeakReference);
+                }
+            }
+        }
+    }
+
+    llvm::StringSet<> editable;
+    for(auto& path: scope.files) {
+        editable.insert(path);
+    }
+    llvm::DenseSet<Fid> edited;
+    for(auto& [key, edit]: edits) {
+        auto file = key.first;
+        if(!edited.insert(file).second) {
+            continue;
+        }
+        auto path = files.resolve(file).str();
+        if(!editable.contains(path)) {
+            plan.conflicts.push_back(
+                std::format("the rename would change {}, which is not a workspace source "
+                            "(a system header, a dependency or a generated file)",
+                            edit.site.path));
+            continue;
+        }
+        // The edits are offsets into the text the rows index; the sweep
+        // below compares only the files that still spell the old name.
+        auto current = scope.read(path);
+        if(!current || *current != *text_of(file).text) {
+            stale.insert(edit.site.path);
+        }
+    }
+
+    // Tokens spelling the old name that no edit covers: another symbol's,
+    // or names the index cannot see.
+    auto& lang = feature::index_lang_options("rename.cpp", false);
+    for(auto& path: scope.files) {
+        auto current = scope.read(path);
+        if(!current || spellings(*current, 0, current->size(), old_name).empty()) {
+            continue;
+        }
+        auto file = files.intern(Spelling::absolute(path));
+        auto display = files.display(file);
+        auto& served = text_of(file);
+        bool indexed = served.text.has_value();
+        if(indexed && *served.text != *current) {
+            stale.insert(display);
+            continue;
+        }
+        if(!indexed && (query.indexes(file) || scope.units_pending)) {
+            stale.insert(display);
+            continue;
+        }
+        Lines lines(*current);
+        bool directive = false;
+        Lexer lexer(*current, {.lang_opts = &lang});
+        for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+            if(token.is_directive_hash()) {
+                directive = true;
+            } else if(token.is_eod()) {
+                directive = false;
+            }
+            if(!token.is_identifier() || token.text(*current) != old_name) {
+                continue;
+            }
+            auto offset = token.range.begin;
+            if(!indexed) {
+                plan.unconfirmed.push_back(
+                    {.site = lines.site(file, display, offset, old_name.size()),
+                     .reason = "the index holds no rows of this file: no unit it indexes "
+                               "compiles or includes it",
+                     .line = lines.line_of(offset)});
+                continue;
+            }
+            if(edits.contains({file, offset})) {
+                continue;
+            }
+            if(auto cursor = query.symbol_at(file, offset);
+               cursor && cursor->site.range.begin <= offset && offset < cursor->site.range.end) {
+                if(llvm::any_of(cursor->symbols,
+                                [&](SymbolHash symbol) { return renames(symbol, file); })) {
+                    add_edit(file, cursor->site, offset, false);
+                }
+                continue;
+            }
+            plan.unconfirmed.push_back(
+                {.site = lines.site(file, display, offset, old_name.size()),
+                 .reason = directive ? "inside a preprocessor directive, which the index does not "
+                                       "resolve"
+                                     : "the index ties no symbol to it: a dependent name it "
+                                       "could not resolve, an inactive #if branch, or code no "
+                                       "unit compiles",
+                 .line = lines.line_of(offset)});
+        }
+    }
+
+    // What the new name would collide with: a macro anywhere, a
+    // declaration in the same scope, a member of a class above or below.
+    llvm::SmallVector<IndexQuery::Located> named;
+    llvm::DenseSet<SymbolHash> listed;
+    SymbolQuery exact{.mode = SymbolQuery::Mode::Exact, .pattern = new_name.str()};
+    for(auto& hit: query.search(exact, 256)) {
+        if(listed.insert(hit.symbol.hash).second) {
+            named.push_back(std::move(hit));
+        }
+    }
+    for(auto file: edited) {
+        auto source = query.serving(file);
+        if(!source) {
+            continue;
+        }
+        source->rows->for_each_relation([&](SymbolHash hash, const Relation&) {
+            if(!listed.insert(hash).second) {
+                return true;
+            }
+            if(auto info = query.symbol_info(hash, file); info && info->name == new_name) {
+                if(auto located = query.resolve(hash, file)) {
+                    named.push_back(std::move(*located));
+                }
+            }
+            return true;
+        });
+    }
+
+    // The scope a name is looked up in: an unscoped enumerator's is its
+    // enum's.
+    auto scope_of = [&](const SymbolRef& symbol, Fid anchor) {
+        if(symbol.kind == SymbolKind::EnumMember &&
+           has_flag(symbol.flags, SymbolFlags::Completable)) {
+            if(auto owner = query.symbol_info(symbol.parent, anchor)) {
+                return owner->parent;
+            }
+        }
+        return symbol.parent;
+    };
+    auto anchor = target.symbol.site.file;
+    auto home = scope_of(root, anchor);
+
+    // The classes above and below the scope: a member of one hides or is
+    // hidden by the renamed member, where a sibling's never meets it.
+    llvm::DenseSet<SymbolHash> hierarchy;
+    auto parent = query.symbol_info(home, anchor);
+    if(parent && class_like(parent->kind)) {
+        if(auto located = query.resolve(home, anchor)) {
+            hierarchy.insert(located->symbol.hash);
+            for(bool up: {true, false}) {
+                std::vector<IndexQuery::Located> pending{*located};
+                while(!pending.empty()) {
+                    auto next = std::move(pending.back());
+                    pending.pop_back();
+                    auto types = query.type_hierarchy(next.symbol.hash, next.site.file, {});
+                    for(auto& type: up ? types.supertypes : types.subtypes) {
+                        if(hierarchy.insert(type.symbol.hash).second) {
+                            pending.push_back(std::move(type));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    bool local = parent && function_like(parent->kind);
+
+    for(auto& other: named) {
+        auto& symbol = other.symbol;
+        if(group.contains(symbol.hash)) {
+            continue;
+        }
+        if(symbol.kind == SymbolKind::Macro) {
+            plan.conflicts.push_back(
+                std::format("`{}` is a macro ({}): it would expand in place of the new name",
+                            std::string_view(new_name),
+                            where(other.site)));
+            continue;
+        }
+        auto other_home = scope_of(symbol, other.site.file);
+        if(other_home == home) {
+            if(function_like(symbol.kind) && function_like(root.kind)) {
+                plan.warnings.push_back(
+                    std::format("`{}` already names a function in the same scope ({}): the "
+                                "renamed function overloads it",
+                                std::string_view(new_name),
+                                where(other.site)));
+            } else if(local) {
+                plan.warnings.push_back(
+                    std::format("`{}` already names a local of the same function ({}): where "
+                                "their scopes overlap, one hides the other",
+                                std::string_view(new_name),
+                                where(other.site)));
+            } else if(symbol.kind == SymbolKind::Namespace && root.kind == SymbolKind::Namespace) {
+                plan.conflicts.push_back(std::format(
+                    "a namespace `{}` already exists in the same scope ({}); merging namespaces "
+                    "is not supported",
+                    std::string_view(new_name),
+                    where(other.site)));
+            } else {
+                plan.conflicts.push_back(
+                    std::format("`{}` is already declared in the same scope ({})",
+                                std::string_view(new_name),
+                                where(other.site)));
+            }
+            continue;
+        }
+        if(hierarchy.contains(other_home)) {
+            plan.conflicts.push_back(
+                std::format("`{}` is a member of {} ({}), which the renamed member would hide or "
+                            "be hidden by",
+                            std::string_view(new_name),
+                            query.qualified_name(other_home),
+                            where(other.site)));
+        }
+    }
+
+    for(auto& [key, edit]: edits) {
+        plan.edits.push_back(std::move(edit));
+    }
+    std::ranges::sort(plan.edits, [](const RenameEdit& lhs, const RenameEdit& rhs) {
+        return std::tie(lhs.site.path, lhs.site.range.begin) <
+               std::tie(rhs.site.path, rhs.site.range.begin);
+    });
+    std::ranges::sort(plan.unconfirmed, [](const RenameNote& lhs, const RenameNote& rhs) {
+        return std::tie(lhs.site.path, lhs.site.range.begin) <
+               std::tie(rhs.site.path, rhs.site.range.begin);
+    });
+    for(auto& entry: stale) {
+        plan.stale.push_back(entry.getKey().str());
+    }
+    std::ranges::sort(plan.stale);
+    return plan;
+}
+
+std::optional<std::string>
+    apply_rename(llvm::StringRef text, const RenamePlan& plan, Fid file, llvm::StringRef new_name) {
+    std::string result;
+    std::uint32_t copied = 0;
+    for(auto& edit: plan.edits) {
+        if(edit.site.file != file) {
+            continue;
+        }
+        auto begin = edit.site.range.begin;
+        auto end = begin + static_cast<std::uint32_t>(plan.old_name.size());
+        if(spellings(text, begin, end, plan.old_name).empty()) {
+            return std::nullopt;
+        }
+        result += text.slice(copied, begin);
+        result += new_name;
+        copied = end;
+    }
+    result += text.substr(copied);
+    return result;
+}
+
+}  // namespace clice::index

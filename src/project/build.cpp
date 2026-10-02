@@ -465,4 +465,29 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
     return walked;
 }
 
+std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir) {
+    std::vector<CanonicalPath> found;
+    vfs::walk(root, [&](const vfs::Entry& entry) {
+        llvm::SmallString<256> storage;
+        auto spelled = path::canonical(entry.path, storage);
+        auto name = path::filename(spelled);
+        if(entry.type == llvm::sys::fs::file_type::directory_file) {
+            return !name.starts_with(".") && name != "node_modules" &&
+                   root.entry(spelled) != cache_dir &&
+                   !vfs::exists(path::join(spelled, "CMakeCache.txt")) &&
+                   !vfs::exists(path::join(spelled, "build.ninja"));
+        }
+        if(entry.type != llvm::sys::fs::file_type::regular_file) {
+            return false;
+        }
+        auto path = root.entry(spelled);
+        if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
+           is_context_header_path(path) || path.str().ends_with(".cuh")) {
+            found.push_back(std::move(path));
+        }
+        return false;
+    });
+    return found;
+}
+
 }  // namespace clice

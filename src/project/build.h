@@ -228,4 +228,9 @@ private:
 /// event loop: a rule without patterns has the whole workspace walked.
 std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk);
 
+/// The C-family sources and headers of the workspace a refactoring may
+/// edit: under `root`, hidden directories, the cache and every build tree
+/// (a directory holding CMakeCache.txt or build.ninja) left out.
+std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir);
+
 }  // namespace clice

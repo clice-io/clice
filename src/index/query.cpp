@@ -765,6 +765,16 @@ std::optional<IndexQuery::Definition> IndexQuery::definition_text(SymbolHash has
     return found;
 }
 
+std::optional<std::string> IndexQuery::serving_text(Fid file) const {
+    auto source = serving(file);
+    if(!source) {
+        return std::nullopt;
+    }
+    std::unique_ptr<llvm::MemoryBuffer> storage;
+    auto text = source_text(*source, storage);
+    return text ? std::optional(text->str()) : std::nullopt;
+}
+
 std::string IndexQuery::context_line(const Site& site) const {
     if(!site.file.valid()) {
         return {};

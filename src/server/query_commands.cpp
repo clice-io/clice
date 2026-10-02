@@ -472,6 +472,58 @@ Outcome<ReferencesResult> references(Context& ctx,
     return result;
 }
 
+bool units_pending(Project& project) {
+    return llvm::any_of(project.build.members(), [&](Fid unit) {
+        return project.build.indexed(project.file_table.resolve(unit)) &&
+               !project.project_index.tu_manifest(unit);
+    });
+}
+
+Outcome<PlannedRename> rename(Context& ctx,
+                              index::SymbolQuery locator,
+                              llvm::StringRef new_name,
+                              const index::RenameScope& scope) {
+    auto resolved = resolve_unique(ctx, std::move(locator));
+    if(!resolved) {
+        return std::unexpected(resolved.error());
+    }
+    auto target = index::rename_target(ctx.query, *resolved);
+    if(!target) {
+        return std::unexpected(target.error());
+    }
+    auto plan = index::plan_rename(ctx.query, ctx.project.file_table, *target, new_name, scope);
+    auto& symbol = target->symbol.symbol;
+    RenameResult result{
+        .name = symbol.display_name(),
+        .kind = kind_name(symbol.kind),
+        .symbol_id = symbol_id(symbol.hash),
+        .new_name = new_name.str(),
+        .conflicts = plan.conflicts,
+        .warnings = plan.warnings,
+        .stale = plan.stale,
+    };
+    for(auto& edit: plan.edits) {
+        if(result.files.empty() || result.files.back().file != edit.site.path) {
+            result.files.push_back({.file = edit.site.path});
+        }
+        result.files.back().edits.push_back({
+            .line = static_cast<int>(edit.site.begin.line) + 1,
+            .column = static_cast<int>(edit.site.begin.column) + 1,
+            .heuristic = edit.heuristic,
+        });
+    }
+    for(auto& note: plan.unconfirmed) {
+        result.unconfirmed.push_back({
+            .file = note.site.path,
+            .line = static_cast<int>(note.site.begin.line) + 1,
+            .column = static_cast<int>(note.site.begin.column) + 1,
+            .reason = note.reason,
+            .text = note.line,
+        });
+    }
+    return PlannedRename{.result = std::move(result), .plan = std::move(plan)};
+}
+
 Outcome<CallGraphResult> call_graph(Context& ctx,
                                     index::SymbolQuery locator,
                                     llvm::StringRef direction) {
