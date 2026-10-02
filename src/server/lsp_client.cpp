@@ -320,6 +320,13 @@ void LSPClient::register_lifecycle() {
         caps.references_provider = protocol::ReferenceOptions{
             .work_done_progress = false,
         };
+        // RenameOptions only for a client that declared prepareSupport.
+        auto& text_document = init.capabilities.text_document;
+        if(text_document && text_document->rename && text_document->rename->prepare_support) {
+            caps.rename_provider = protocol::RenameOptions{.prepare_provider = true};
+        } else {
+            caps.rename_provider = true;
+        }
         caps.document_symbol_provider = true;
         caps.document_link_provider = protocol::DocumentLinkOptions{};
         caps.folding_range_provider = true;
@@ -723,6 +730,40 @@ void LSPClient::register_language_features() {
                                                             pos,
                                                             params.context.include_declaration);
         });
+
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::PrepareRenameParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto& uri = params.text_document_position_params.text_document.uri;
+            auto& pos = params.text_document_position_params.position;
+            auto [path, path_id, session, project] = resolve_uri(uri);
+            co_return co_await project->features.prepare_rename(session, path_id, pos);
+        });
+
+    peer.on_request([this](RequestContext& ctx, const protocol::RenameParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto& uri = params.text_document_position_params.text_document.uri;
+        auto& pos = params.text_document_position_params.position;
+        auto [path, path_id, session, project] = resolve_uri(uri);
+        auto renamed = co_await project->features.rename(session, path_id, pos, params.new_name);
+        if(!renamed.has_value()) {
+            co_return kota::outcome_error(std::move(renamed.error()));
+        }
+        if(!*renamed) {
+            co_return kota::codec::RawValue{"null"};
+        }
+        auto& [edit, notice] = **renamed;
+        if(!versioned_edits) {
+            unversion(edit);
+        }
+        if(!notice.empty()) {
+            peer.send_notification(protocol::ShowMessageParams{
+                .type = protocol::MessageType::Warning,
+                .message = std::move(notice),
+            });
+        }
+        co_return to_raw(edit);
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {

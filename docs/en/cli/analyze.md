@@ -60,4 +60,4 @@ An annotation file is `{"name": "compile_time", "unit": "s", "values": {"src/mai
 
 ## Answers
 
-Every answer is one JSON object, or `{"error": "..."}` with exit code 1 when the question cannot be answered (no index, an index missing some units, an unknown module or file, an invalid glob).
+Every answer is one JSON object, or `{"error": "...", "stale": [...]}` with exit code 1 when the question cannot be answered (no index, an unknown module or file, an invalid glob); an index missing some units fails with those units in `stale`.

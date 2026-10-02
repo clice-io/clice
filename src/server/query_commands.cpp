@@ -4,6 +4,7 @@
 
 #include "command/toolchain.h"
 #include "index/serialization.h"
+#include "project/build.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
 
@@ -457,6 +458,83 @@ Outcome<ReferencesResult> references(Context& ctx,
     }
     result.total = static_cast<int>(result.references.size());
     return result;
+}
+
+bool units_pending(Project& project) {
+    return llvm::any_of(project.build.members(), [&](Fid unit) {
+        return project.build.indexed(project.file_table.resolve(unit)) &&
+               !project.project_index.tu_manifest(unit);
+    });
+}
+
+Outcome<PlannedRename> rename(Context& ctx, index::SymbolQuery locator, llvm::StringRef new_name) {
+    auto resolved = resolve_unique(ctx, std::move(locator));
+    if(!resolved) {
+        return std::unexpected(resolved.error());
+    }
+    auto target = index::rename_target(ctx.query, *resolved);
+    if(!target) {
+        return std::unexpected(target.error());
+    }
+    auto& symbol = target->symbol.symbol;
+
+    auto& config = ctx.project.config;
+    CanonicalRef root = config.workspace_root;
+    CanonicalPath cache_dir;
+    if(!config.project.cache_dir.empty()) {
+        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
+    }
+    std::vector<std::string> sources;
+    for(auto& source: workspace_sources(root, cache_dir)) {
+        sources.push_back(source.str());
+    }
+    auto editable = [&](llvm::StringRef path) {
+        return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
+    };
+    auto read = [&](llvm::StringRef path) -> std::optional<index::SweptText> {
+        auto text = vfs::read(path);
+        if(!text) {
+            return std::nullopt;
+        }
+        return index::sweep_text((*text)->getBuffer().str(), symbol.name, new_name);
+    };
+    auto plan = index::plan_rename(ctx.query,
+                                   ctx.project.file_table,
+                                   *target,
+                                   new_name,
+                                   {.files = sources,
+                                    .editable = editable,
+                                    .read = read,
+                                    .units_pending = units_pending(ctx.project)});
+    RenameResult result{
+        .name = symbol.display_name(),
+        .kind = kind_name(symbol.kind),
+        .symbol_id = index::symbol_id(symbol.hash),
+        .new_name = new_name.str(),
+        .conflicts = plan.conflicts,
+        .warnings = plan.warnings,
+        .stale = plan.stale,
+    };
+    for(auto& edit: plan.edits) {
+        if(result.files.empty() || result.files.back().file != edit.site.path) {
+            result.files.push_back({.file = edit.site.path});
+        }
+        result.files.back().edits.push_back({
+            .line = static_cast<int>(edit.site.begin.line) + 1,
+            .column = static_cast<int>(edit.site.begin.column) + 1,
+            .heuristic = edit.heuristic,
+        });
+    }
+    for(auto& note: plan.unconfirmed) {
+        result.unconfirmed.push_back({
+            .file = note.site.path,
+            .line = static_cast<int>(note.site.begin.line) + 1,
+            .column = static_cast<int>(note.site.begin.column) + 1,
+            .reason = note.reason,
+            .text = note.line,
+        });
+    }
+    return PlannedRename{.result = std::move(result), .plan = std::move(plan)};
 }
 
 Outcome<CallGraphResult> call_graph(Context& ctx,

@@ -658,7 +658,7 @@ test("unknown module fails", ({ session }) => {
         "nowhere",
     );
     expect(run.status).toBe(1);
-    expect(JSON.parse(run.stdout)).toEqual({ error: "no module nowhere" });
+    expect(JSON.parse(run.stdout)).toEqual({ error: "no module nowhere", stale: [] });
 
     const failure = (...args: string[]) => {
         const failed = runClice("analyze", "modules", "--workspace", ws.root, ...args);

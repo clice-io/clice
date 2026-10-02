@@ -426,6 +426,7 @@ export class CliceClient {
             // action replies then carry the buffer version they apply to.
             capabilities: options.capabilities ?? {
                 workspace: { workspaceEdit: { documentChanges: true } },
+                textDocument: { rename: { prepareSupport: true } },
             },
             rootUri: options.folders?.length === 0 ? null : wsUri,
             initializationOptions,
@@ -878,6 +879,20 @@ export class CliceClient {
         return this.sendRequest(proto.ReferencesRequest.type, {
             ...this.textDocumentPosition(uri, line, character),
             context: { includeDeclaration: options.includeDeclaration ?? true },
+        });
+    }
+
+    prepareRenameAt(uri: string, line: number, character: number) {
+        return this.sendRequest(
+            proto.PrepareRenameRequest.type,
+            this.textDocumentPosition(uri, line, character),
+        );
+    }
+
+    renameAt(uri: string, line: number, character: number, newName: string) {
+        return this.sendRequest(proto.RenameRequest.type, {
+            ...this.textDocumentPosition(uri, line, character),
+            newName,
         });
     }
 

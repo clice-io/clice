@@ -7,6 +7,7 @@
 #include "analysis/annotation.h"
 #include "analysis/module_graph.h"
 #include "driver/driver.h"
+#include "driver/query_support.h"
 #include "project/command_resolver.h"
 #include "project/open_index.h"
 #include "project/project.h"
@@ -128,10 +129,6 @@ auto make_modules_command() {
     return kota::deco::cli::command<ModulesOptions>("clice analyze modules [OPTIONS]");
 }
 
-struct Failure {
-    std::string error;
-};
-
 std::vector<std::string> comma_list(llvm::StringRef text) {
     llvm::SmallVector<llvm::StringRef> parts;
     text.split(parts, ',', -1, false);
@@ -177,8 +174,8 @@ std::expected<analysis::PartitionSpec, std::string> partition_spec(const Modules
 }
 
 int run_modules(const ModulesOptions& opts) {
-    auto fail = [](std::string error) {
-        print_json(Failure{.error = std::move(error)});
+    auto fail = [](std::string error, std::vector<std::string> stale = {}) {
+        print_json(Failure{.error = std::move(error), .stale = std::move(stale)});
         return 1;
     };
 
@@ -212,14 +209,12 @@ int run_modules(const ModulesOptions& opts) {
     }
     // A unit withheld as stale or corrupt takes its uses and edges with it.
     if(!loaded->dropped.empty()) {
-        std::vector<std::string> paths;
+        std::vector<std::string> stale;
         for(auto unit: loaded->dropped) {
-            paths.emplace_back(llvm::StringRef(files.resolve(unit)));
+            stale.emplace_back(files.display(unit));
         }
-        std::ranges::sort(paths);
-        return fail(std::format("the index lacks {} units; run `clice index` first: {}",
-                                paths.size(),
-                                llvm::join(paths, ", ")));
+        std::ranges::sort(stale);
+        return fail("the index lacks some units; run `clice index` first", std::move(stale));
     }
 
     auto facts = analysis::collect(project, [&](llvm::StringRef path) {
