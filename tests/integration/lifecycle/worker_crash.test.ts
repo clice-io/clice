@@ -77,6 +77,9 @@ test("compile crash waits for save", async ({ session }) => {
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();
     const note = await waitNote(client, uri, "while compiling this file");
     expect(note).toContain("save it");
+    expect(note).toMatch(
+        /killed by signal \d+ \(SIG[A-Z]+\)|terminated by exception 0x[0-9A-F]{8} \(/,
+    );
     await settleCrashes(workspace, compile, 1);
     expect(workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
 
@@ -327,42 +330,40 @@ test("crash reading a preamble rebuilds it", async ({ session }) => {
     );
 });
 
-test("victims are not blamed", { timeout: 240_000 }, async ({ session }) => {
+test("victims are not blamed", async ({ session }) => {
     const workspace = session.tmpdir();
-    // Slow enough to be in flight when the poison kills the worker.
-    const declarations = Array.from({ length: 20_000 }, (_, i) => `int v_${i} = ${i};`);
-    const slow = `${HEALTHY}${declarations.join("\n")}\n`;
-    workspace.write("healthy.cpp", slow);
+    workspace.write("healthy.cpp", HEALTHY);
     workspace.write("poison.cpp", poison(0));
     workspace.writeCDB(["healthy.cpp", "poison.cpp"]);
-    const client = session.spawn(workspace, crashing());
+    // One thread to compile on: the healthy compile queues behind the
+    // poison's and is still in flight when the worker dies.
+    const client = session.spawn(workspace, crashing({ UV_THREADPOOL_SIZE: "1" }));
     // One stateful worker hosts both documents.
     await client.initialize(workspace, {
         initializationOptions: { project: { stateful_worker_count: 1 } },
     });
     const compile = `compile ${workspace.displayPath("poison.cpp")}`;
-    const healthyCompiles = () =>
-        workspace
-            .log("SF-0.log")
-            .split(`Compile request: path=${workspace.displayPath("healthy.cpp")}`).length - 1;
+    const compiles = (name: string) =>
+        workspace.log("SF-0.log").split(`Compile request: path=${workspace.displayPath(name)}`)
+            .length - 1;
 
     const [healthyUri] = await client.openAndWait("healthy.cpp");
     const [uri] = client.open("poison.cpp");
     for (let round = 1; round <= 3; round++) {
-        // The poison crashes the worker while the healthy document's compile
-        // runs on it: that compile is resent, not blamed.
-        const started = healthyCompiles();
-        client.change(healthyUri, round, `${slow}// round ${round}\n`);
-        const healthy = client.hoverAt(healthyUri, 0, 5);
-        await waitUntil(() => healthyCompiles() > started, {
+        // The healthy document's compile is taken along by the poison's
+        // crash: it is resent, not blamed.
+        const started = compiles("healthy.cpp");
+        const poisoned = client.hoverAt(uri, 0, 5);
+        await waitUntil(() => compiles("poison.cpp") >= round, {
             timeout: 20_000,
             interval: 10,
-            description: `the healthy compile of round ${round} to start`,
+            description: `the poison compile of round ${round} to start`,
         });
-        expect(await client.hoverAt(uri, 0, 5)).toBeNull();
-        expect(await healthy, `healthy hover in round ${round}`).not.toBeNull();
+        client.change(healthyUri, round, `${HEALTHY}// round ${round}\n`);
+        expect(await client.hoverAt(healthyUri, 0, 5), `round ${round}`).not.toBeNull();
+        expect(await poisoned).toBeNull();
         await settleCrashes(workspace, compile, round);
-        expect(healthyCompiles()).toBeGreaterThanOrEqual(started + 2);
+        expect(compiles("healthy.cpp")).toBeGreaterThanOrEqual(started + 2);
         client.save(uri);
     }
     expect(everNoted(client, healthyUri)).toBe(false);

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <csignal>
+#include <cstdint>
 #include <format>
 #include <string>
 #include <utility>
@@ -68,6 +69,22 @@ kota::task<> drain_stderr(kota::pipe stderr_pipe,
 /// How a worker died, worded for the user.
 std::string describe_exit(int exit_code, int exit_signal) {
     if(exit_signal == 0) {
+#ifdef _WIN32
+        // A Windows process that crashed exits with the NTSTATUS of its
+        // exception.
+        auto status = static_cast<std::uint32_t>(exit_code);
+        llvm::StringRef exception;
+        switch(status) {
+            case 0x80000003: exception = "breakpoint"; break;
+            case 0xC0000005: exception = "access violation"; break;
+            case 0xC000001D: exception = "illegal instruction"; break;
+            case 0xC00000FD: exception = "stack overflow"; break;
+            case 0xC0000409: exception = "fail fast"; break;
+        }
+        if(!exception.empty()) {
+            return std::format("terminated by exception 0x{:08X} ({})", status, exception);
+        }
+#endif
         return std::format("exited with code {}", exit_code);
     }
     llvm::StringRef name;
