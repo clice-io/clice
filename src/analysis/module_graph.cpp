@@ -402,7 +402,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         // would redeclare it under the wrong module.
         auto owner = none;
         if(canonical.valid() && id_of(canonical) == none) {
-            if(is_context_header_path(relative_of(canonical))) {
+            if(is_context_header_path(llvm::StringRef(table.resolve(canonical)))) {
                 for(auto includer: included_by.lookup(canonical)) {
                     auto id = id_of(includer);
                     if(id != none &&

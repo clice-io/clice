@@ -58,6 +58,9 @@ function lines(...text: string[]): string {
 
 function writeProject(session: SessionFactory): Workspace {
     const ws = session.tmpdir();
+    // A fragment outside the workspace, as a library's generated table is.
+    const external = session.tmpdir();
+    external.write("names.inc", "NAME(gamma)\n");
     ws.pinCacheDir();
     ws.write(
         "core/str.h",
@@ -94,6 +97,17 @@ function writeProject(session: SessionFactory): Workspace {
     );
     ws.write("core/detail.h", lines("#pragma once", "inline int detail_value() { return 3; }"));
     ws.write("core/sink.h", lines("#pragma once", "struct Sink { int fd; };"));
+    ws.write(
+        "core/names.h",
+        lines(
+            "#pragma once",
+            "enum ExtNames {",
+            "#define NAME(x) x,",
+            '#include "names.inc"',
+            "#undef NAME",
+            "};",
+        ),
+    );
     ws.write("core/table.inc", "ENTRY(alpha)\nENTRY(beta)\n");
     ws.write(
         "core/a.h",
@@ -255,6 +269,7 @@ function writeProject(session: SessionFactory): Workspace {
             '#include "third/lib.h"',
             '#include "core/traits.h"',
             '#include "core/key.h"',
+            '#include "core/names.h"',
             '#include "app/detail.h"',
             '#include "util/parts.h"',
             '#include "util/fmt.h"',
@@ -262,7 +277,7 @@ function writeProject(session: SessionFactory): Workspace {
             "int main() {",
             "    Logger logger; ModeA mode; Third third; Left left{};",
             "    return logger.clock.size() + helper() + fast() + meta_size() + hooked() +",
-            "           format_str(Str{}) + base_size();",
+            "           format_str(Str{}) + base_size() + gamma;",
             "}",
         ),
     );
@@ -271,7 +286,7 @@ function writeProject(session: SessionFactory): Workspace {
         ["core/str.cpp", [include]],
         ["feature/f.cpp", [include]],
         ["util/fmt.cpp", [include]],
-        ["app/main.cpp", [include, "-DMODE_A"]],
+        ["app/main.cpp", [include, `-I${external.root}`, "-DMODE_A"]],
     ]);
     return ws;
 }
@@ -505,6 +520,15 @@ test("file and macro views", ({ session }) => {
 
 test("edge lists entities and users", ({ session }) => {
     const ws = indexed(session);
+    // An enumerator pasted in from a fragment outside the workspace
+    // belongs to the header pasting it.
+    const fromApp = analyze(ws, "--view", "edge", "--from", "app", "--to", "core") as {
+        entities: { entity: string; owner: string }[];
+    };
+    expect(fromApp.entities.find((entry) => entry.entity.endsWith("gamma"))?.owner).toBe(
+        "core/names.h",
+    );
+
     const detail = analyze(ws, "--view", "edge", "--from", "util", "--to", "core") as {
         entities: { id: string; entity: string; users: string[]; interface: boolean }[];
     };
