@@ -1,7 +1,7 @@
 name: bazel-test
 
-# native-test's RelWithDebInfo legs, built by Bazel. Bazel is the runner
-# image's bazelisk, pinned by .bazelversion.
+# native-test's RelWithDebInfo legs, built by Bazel. Bazel is npm's
+# bazelisk (package-lock.json), which fetches .bazelversion's release.
 
 on:
   workflow_call:
@@ -24,7 +24,7 @@ jobs:
       run:
         shell: bash
     env:
-      BAZEL: bazel ${{ matrix.startup }}
+      BAZEL: npx --no bazel ${{ matrix.startup }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -35,6 +35,9 @@ jobs:
         with:
           environments: default test-run
           activate-environment: default
+
+      - name: Install npm packages
+        run: npm ci
 
       # Bazel refuses a repository cache inside the workspace.
       - name: Bazel settings
@@ -67,7 +70,7 @@ jobs:
 
       - name: Integration tests
         timeout-minutes: 30
-        run: pixi run -e test-run -- bash -c 'npm ci && npm run check && npm test --workspace tests'
+        run: pixi run -e test-run -- bash -c 'npm run check && npm test --workspace tests'
 
       - name: Smoke tests
         timeout-minutes: 5
