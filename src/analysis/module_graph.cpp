@@ -1956,10 +1956,12 @@ std::expected<ModuleDetail, std::string> Report::module(llvm::StringRef name) co
         }
         for(auto file: files) {
             group.headers.push_back(facts.files[file].path);
-            for(auto& use: facts.uses[file]) {
-                auto owner = partition.module_of[facts.entities[use.entity].owner];
-                if(owner != module) {
-                    depends_on.insert(partition.modules[owner]);
+            for(auto named: llvm::concat<const std::uint32_t>(llvm::ArrayRef(file), pasted[file])) {
+                for(auto& use: facts.uses[named]) {
+                    auto owner = partition.module_of[facts.entities[use.entity].owner];
+                    if(owner != module) {
+                        depends_on.insert(partition.modules[owner]);
+                    }
                 }
             }
         }

@@ -226,8 +226,11 @@ int run_modules(const ModulesOptions& opts) {
         return fail(partition.error());
     }
 
+    auto view = opts.view.value_or("overview");
+    // Only these views weigh by annotations, and git history is not free.
+    bool weighted = view == "overview" || view == "impact" || view == "file";
     analysis::Annotations annotations;
-    if(auto since = opts.churn_since.value_or("6.months"); !since.empty()) {
+    if(auto since = opts.churn_since.value_or("6.months"); weighted && !since.empty()) {
         // A workspace outside git history has no churn; the results stay
         // unweighted by it rather than failing.
         if(auto churn = analysis::git_churn(llvm::StringRef(root), since)) {
@@ -248,7 +251,6 @@ int run_modules(const ModulesOptions& opts) {
     }
 
     analysis::Report report{.facts = facts, .partition = *partition, .annotations = annotations};
-    auto view = opts.view.value_or("overview");
     auto print = [&](auto result) {
         if(!result) {
             return fail(result.error());
