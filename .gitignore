@@ -77,3 +77,6 @@ tests/unit/Local/
 !.claude/CLAUDE.md
 !.claude/skills/
 !.claude/skills/build/
+/bazel-*
+/MODULE.bazel.lock
+/lto-out/
