@@ -16,24 +16,28 @@ jobs:
         include:
           - os: ubuntu-24.04
             lto_cache: /var/tmp/xclang-thinlto
-          - os: macos-15
-            lto_cache: /var/tmp/xclang-thinlto
+            mode: stamp
     runs-on: ${{ matrix.os }}
     timeout-minutes: 330
     defaults:
       run:
         shell: bash
     env:
-      MODE: ci
+      MODE: ${{ matrix.mode }}
       STARTUP: ${{ matrix.startup }}
       LTO_CACHE: ${{ matrix.lto_cache }}
-      DISK_CACHE: ${{ github.workspace }}/../bazel-disk
-      REPO_CACHE: ${{ github.workspace }}/../bazel-repo
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      # actions/cache takes no '..' in a path, and Bazel no repository cache
+      # inside the workspace.
+      - name: Cache paths
+        run: |
+          echo "DISK_CACHE=$RUNNER_TEMP/bazel-disk" >> "$GITHUB_ENV"
+          echo "REPO_CACHE=$RUNNER_TEMP/bazel-repo" >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/setup-pixi
         with:
@@ -64,7 +68,7 @@ jobs:
         run: scripts/lto-bench.sh build
 
       - name: Save Bazel caches
-        if: env.MODE == 'full'
+        if: env.MODE == 'full' || env.MODE == 'stamp'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -99,6 +103,8 @@ jobs:
   # The xclang module's thinlto_cache feature (scripts/lto-module.sh): its own
   # toolchain and libclang, no pixi.
   module:
+    # Done in run 37041436235.
+    if: false
     strategy:
       fail-fast: false
       matrix:

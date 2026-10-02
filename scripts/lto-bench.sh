@@ -159,6 +159,21 @@ build)
     [ $rc = 0 ] || { tail -40 "$OUT/build.log"; exit 1; }
     ;;
 
+stamp)
+    # Two commits in a row on one disk cache: what the stamped version.h
+    # (bazel/workspace_status.sh) does to the keys of clice's compiles.
+    libs=(//:core //:config //:project //:worker //:sched //:server)
+    "${bazel[@]}" build "${common[@]}" --disk_cache="$DISK_CACHE" "${libs[@]}" > "$OUT/stamp-a.log" 2>&1
+    log "stamp-a	rc=$?	$(procs "$OUT/stamp-a.log")	$(grep -o 'CLICE_VERSION_STRING.*' bazel-bin/generated/version.h)"
+    "${bazel[@]}" clean > /dev/null 2>&1
+    "${bazel[@]}" build "${common[@]}" --disk_cache="$DISK_CACHE" "${libs[@]}" > "$OUT/stamp-same.log" 2>&1
+    log "stamp-same	rc=$?	$(procs "$OUT/stamp-same.log")"
+    git -c user.name=bench -c user.email=bench@localhost commit -q --allow-empty -m stamp
+    "${bazel[@]}" clean > /dev/null 2>&1
+    "${bazel[@]}" build "${common[@]}" --disk_cache="$DISK_CACHE" "${libs[@]}" > "$OUT/stamp-b.log" 2>&1
+    log "stamp-b	rc=$?	$(procs "$OUT/stamp-b.log")	$(grep -o 'CLICE_VERSION_STRING.*' bazel-bin/generated/version.h)"
+    ;;
+
 probes)
     # The tiny program, each time with a cache directory of its own: is the
     # link refused, or does it succeed with the entries written (or lost)?
@@ -252,6 +267,14 @@ ci)
         sandbox_paths "bazel-bin/clice$exe"
         link ci-oso-2 clice "${lto[@]}" "${writable[@]}" "${oso[@]}"
         link ci-oso-n clice "${oso[@]}"
+    fi
+
+    # Windows: lld puts the link's time in the PE header unless told not to.
+    if [ "$os" = windows ]; then
+        stamp=(--linkopt=-Wl,--no-insert-timestamp)
+        link ci-stamp-1 clice "${lto[@]}" "${stamp[@]}"
+        link ci-stamp-2 clice "${lto[@]}" "${stamp[@]}"
+        link ci-stamp-n clice "${stamp[@]}"
     fi
     revert
     ;;
