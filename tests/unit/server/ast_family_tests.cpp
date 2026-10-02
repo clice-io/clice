@@ -592,10 +592,10 @@ TEST_CASE(CrashedCompileBarsBuilds) {
     // empty: the crash note says why, an error would only be a popup.
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
-    session->quarantine.on_crash(evidence_kind(EvidenceKind::Compile),
-                                 "d1",
-                                 "cause",
-                                 Quarantine::Clock::now());
+    session->quarantine->on_crash(evidence_kind(EvidenceKind::Compile),
+                                  "d1",
+                                  "cause",
+                                  Quarantine::Clock::now());
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
@@ -614,10 +614,10 @@ TEST_CASE(CrashedCompileBarsBuilds) {
 TEST_CASE(CrashedFormatBarsFormat) {
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
-    session->quarantine.on_crash(evidence_kind(EvidenceKind::Format),
-                                 "d1",
-                                 "cause",
-                                 Quarantine::Clock::now());
+    session->quarantine->on_crash(evidence_kind(EvidenceKind::Format),
+                                  "d1",
+                                  "cause",
+                                  Quarantine::Clock::now());
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
@@ -703,7 +703,7 @@ TEST_CASE(PCHCrashBarsDocument) {
                                                   arguments);
         EXPECT_FALSE(built);
         EXPECT_TRUE(ASTFamily::compile_barred(*session));
-        auto notes = session->quarantine.notes();
+        auto notes = session->quarantine->notes();
         CO_ASSERT_EQ(notes.size(), 1u);
         EXPECT_EQ(notes[0].kind, evidence_kind(EvidenceKind::PCH));
         EXPECT_EQ(notes[0].strikes, 1u);
@@ -744,7 +744,7 @@ TEST_CASE(PCHCrashStopsBuild) {
         auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
         CO_ASSERT_TRUE(result.has_value());
         EXPECT_EQ(result.value().data, "null");
-        auto notes = session->quarantine.notes();
+        auto notes = session->quarantine->notes();
         CO_ASSERT_EQ(notes.size(), 1u);
         EXPECT_EQ(notes[0].strikes, 1u);
 
@@ -918,7 +918,7 @@ TEST_CASE(HarmlessKindKeepsBar) {
     Stack stack;
     auto session = stack.open(src, "int x;\n");
     constexpr auto tokens_kind = evidence_kind(worker::QueryKind::SemanticTokens);
-    session->quarantine.on_crash(tokens_kind, "w-1", "cause", Quarantine::Clock::now());
+    session->quarantine->on_crash(tokens_kind, "w-1", "cause", Quarantine::Clock::now());
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
@@ -932,7 +932,7 @@ TEST_CASE(HarmlessKindKeepsBar) {
                                                       Ticket::take(session),
                                                       protocol::Position{0, 4});
         EXPECT_TRUE(result.has_value());
-        EXPECT_TRUE(session->quarantine.barred(tokens_kind, Quarantine::Clock::now()));
+        EXPECT_TRUE(session->quarantine->barred(tokens_kind, Quarantine::Clock::now()));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -998,15 +998,15 @@ TEST_CASE(PoisonPreambleShared) {
         };
         auto pch = evidence_kind(EvidenceKind::PCH);
         CO_ASSERT_FALSE(co_await build(first));
-        CO_ASSERT_TRUE(first->quarantine.crashed(pch));
+        CO_ASSERT_TRUE(first->quarantine->crashed(pch));
         EXPECT_EQ(deaths, 1);
 
         // Refused without touching a worker, each session barred by the
         // same death.
         CO_ASSERT_FALSE(co_await build(second));
-        EXPECT_TRUE(second->quarantine.crashed(pch));
+        EXPECT_TRUE(second->quarantine->crashed(pch));
         CO_ASSERT_FALSE(co_await build(third));
-        EXPECT_TRUE(third->quarantine.crashed(pch));
+        EXPECT_TRUE(third->quarantine->crashed(pch));
         EXPECT_EQ(deaths, 1);
 
         co_await stack.pool.stop();
@@ -1034,7 +1034,7 @@ TEST_CASE(EpochGuardsPCHWash) {
     auto session = stack.open(src, "#define X 1\nint x;\n");
     // One prior crash on the PCH record.
     auto pch = evidence_kind(EvidenceKind::PCH);
-    session->quarantine.on_crash(pch, "w-1", "cause", Quarantine::Clock::now());
+    session->quarantine->on_crash(pch, "w-1", "cause", Quarantine::Clock::now());
 
     std::string directory = tmp.path(".");
     auto arguments = make_args(src);
@@ -1072,7 +1072,7 @@ TEST_CASE(EpochGuardsPCHWash) {
         EXPECT_TRUE(built);
         auto projection = stack.ast.projections.projection(session->path_id);
         EXPECT_TRUE(!projection || !projection->pch_key.has_value());
-        EXPECT_TRUE(session->quarantine.crashed(pch));
+        EXPECT_TRUE(session->quarantine->crashed(pch));
 
         // A current request adopts the cached pair and only then clears
         // this session's record.
@@ -1085,7 +1085,7 @@ TEST_CASE(EpochGuardsPCHWash) {
         EXPECT_TRUE(built);
         projection = stack.ast.projections.projection(session->path_id);
         EXPECT_TRUE(projection && projection->pch_key.has_value());
-        EXPECT_FALSE(session->quarantine.crashed(pch));
+        EXPECT_FALSE(session->quarantine->crashed(pch));
 
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();

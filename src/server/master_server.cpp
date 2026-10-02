@@ -138,14 +138,12 @@ void MasterServer::initialize() {
     if(unbounded) {
         pool_opts.max_stateless = 0;
     }
-    // Lets integration tests hang a worker without waiting out the real
-    // deadline.
-    if(auto value = llvm::sys::Process::GetEnv("CLICE_TEST_REQUEST_DEADLINE_MS")) {
-        std::uint64_t ms = 0;
-        if(!llvm::StringRef(*value).getAsInteger(10, ms)) {
-            pool_opts.request_deadline = std::chrono::milliseconds(ms);
-        }
+    // Let integration tests hang a worker without waiting out the real
+    // deadline, and drive eviction through a real server.
+    if(auto ms = env_integer("CLICE_TEST_REQUEST_DEADLINE_MS")) {
+        pool_opts.request_deadline = std::chrono::milliseconds(*ms);
     }
+    pool_opts.max_documents = env_integer("CLICE_TEST_MAX_DOCUMENTS");
 
     auto& first = projects.front()->project.config.project;
     if(!first.logging_dir.empty()) {
@@ -189,10 +187,8 @@ void MasterServer::initialize(const Spelling& root) {
 void MasterServer::wire() {
     pool.on_crash = [this](const WorkerCrashInfo& info) {
         // A stateless crash loses only in-flight requests, which fail back
-        // to their callers with dispatch_errc::worker_crashed — the families
-        // resend idempotent builds, the pump requeues the file. No state
-        // outlives the request, so there is nothing to invalidate and no
-        // event to dispatch.
+        // to their senders (see deliver). No state outlives the request, so
+        // there is nothing to invalidate and no event to dispatch.
         if(!info.stateful)
             return;
         llvm::DenseMap<ProjectServer*, llvm::SmallVector<Fid>> lost;

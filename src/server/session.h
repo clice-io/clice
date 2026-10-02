@@ -87,8 +87,14 @@ struct Session {
 
     /// What this document's worker crashes bar it from, and when it may
     /// try again. All transitions go through the type; see quarantine.h.
-    /// The store parks it across a close.
-    Quarantine quarantine;
+    /// Shared with the store's parked table across a close, so work still
+    /// in flight on a closed session books into the records a reopen
+    /// restores.
+    std::shared_ptr<Quarantine> quarantine = std::make_shared<Quarantine>();
+
+    /// The store closed or replaced this session: nothing of it is
+    /// published any more, its crash notes included.
+    bool closed = false;
 
     /// See ServingMode for the write discipline. Escalated is the
     /// default so a session constructed outside the didOpen path (tests,

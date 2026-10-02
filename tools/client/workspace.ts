@@ -7,6 +7,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { URI } from "vscode-uri";
 import { buildCDBEntry, generateCDB } from "../compile_commands.ts";
+import { logFiles } from "../process_gate.ts";
 
 /// The harness-wide canonical URI spelling: percent-decoded. vscode-uri
 /// encodes the drive colon (file:///c%3A/...) while the server emits it
@@ -88,6 +89,17 @@ export class Workspace {
         fs.writeFileSync(target, content);
     }
 
+    /// Copy the files directly inside `dir` to the workspace root — a data
+    /// workspace's sources, without the build directories a configure left
+    /// beside them.
+    copyFiles(dir: string): void {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (entry.isFile()) {
+                fs.copyFileSync(path.join(dir, entry.name), this.path(entry.name));
+            }
+        }
+    }
+
     mkdir(rel: string): void {
         fs.mkdirSync(this.path(rel), { recursive: true });
     }
@@ -131,15 +143,20 @@ export class Workspace {
     /// the servers wrote under .clice/logs, one session directory each;
     /// empty when none was written.
     log(name: string): string {
-        const logsDir = this.path(".clice/logs");
-        if (!fs.existsSync(logsDir)) {
-            return "";
-        }
-        return fs
-            .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+        return logFiles(this.root)
             .filter((file) => path.basename(file) === name)
-            .map((file) => fs.readFileSync(path.join(logsDir, file), "utf8"))
+            .map((file) => fs.readFileSync(file, "utf8"))
             .join("");
+    }
+
+    /// The workers that crashed on requests whose tag starts with `tag`
+    /// ("compile /abs/path"), counted from the crash lines the master logs
+    /// with the worker's name in front (the crash report repeats them bare).
+    workerCrashes(tag: string): number {
+        return (
+            this.log("master.log").split(`] clice worker crashed in: clice/worker/${tag}`).length -
+            1
+        );
     }
 
     /// Write a clice.toml that pins cache_dir to <workspace>/.clice/.

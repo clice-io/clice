@@ -430,12 +430,12 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
 
     // An index-only session never owes the compile the worker dispatch
     // implies, a session served under freshness clause 4 (escalated,
-    // compile still in flight) already routed to the index, and a
-    // session whose compile a crash bars cannot reach a worker at all. What the worker
-    // leg covers — include directives, which have no symbol occurrence —
-    // the manifest edges answer instead, under the same content gate as
-    // the links projection: manifest lines are meaningless against a
-    // buffer the index never described.
+    // compile still in flight) already routed to the index, and a session
+    // whose compile a crash bars cannot reach a worker at all. What the
+    // worker leg covers — include directives, which have no symbol
+    // occurrence — the manifest edges answer instead, under the same
+    // content gate as the links projection: manifest lines are meaningless
+    // against a buffer the index never described.
     auto serving = query.serving(path_id);
     if(session->serving == ServingMode::IndexOnly || ASTFamily::compile_barred(*session) ||
        (serving && serving->kind == index::RowSource::Kind::Shard)) {

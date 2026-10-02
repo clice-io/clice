@@ -172,7 +172,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     project.fill_pcm_deps(params.pcms, path_id);
 
     ScopedTimer timer;
-    auto result = co_await pool.send_stateless(params, worker::Priority::Low, {}, ctx.token());
+    auto result = co_await pool.send_stateless(params, worker::Priority::Low, ctx.token());
     if(result.has_value() && result.value().success) {
         auto run_ms = timer.ms();
         auto& value = result.value();

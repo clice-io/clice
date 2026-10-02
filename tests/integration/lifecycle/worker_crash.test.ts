@@ -3,7 +3,6 @@
 /// edit (spaced, and bounded) or a save, and no blame for the documents a
 /// crash merely takes along.
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 import type * as proto from "vscode-languageserver-protocol";
 import { sleep, waitUntil, type CliceClient } from "@clice/tools/client";
@@ -57,23 +56,13 @@ async function waitNote(client: CliceClient, uri: string, fragment: string): Pro
     return found;
 }
 
-/// Crashes the workers attributed to requests whose tag starts with `tag`
-/// ("compile /abs/path"), counted from the crash lines the master relays
-/// with the worker's name in front (the crash report repeats them bare).
-function crashes(workspace: Workspace, tag: string): number {
-    return (
-        workspace.log("master.log").split(`] clice worker crashed in: clice/worker/${tag}`).length -
-        1
-    );
-}
-
 async function settleCrashes(workspace: Workspace, tag: string, count: number): Promise<void> {
-    await waitUntil(() => crashes(workspace, tag) >= count, {
+    await waitUntil(() => workspace.workerCrashes(tag) >= count, {
         timeout: 20_000,
         interval: 100,
         description: `${count} crashes of ${tag}`,
     });
-    expect(crashes(workspace, tag)).toBe(count);
+    expect(workspace.workerCrashes(tag)).toBe(count);
 }
 
 test("compile crash waits for save", async ({ session }) => {
@@ -96,14 +85,14 @@ test("compile crash waits for save", async ({ session }) => {
         expect(await client.hoverAt(uri, 0, 5)).toBeNull();
         await client.documentSymbols(uri);
     }
-    expect(crashes(workspace, compile)).toBe(1);
+    expect(workspace.workerCrashes(compile)).toBe(1);
 
     // A save is the user's retry: exactly one more attempt.
     client.save(uri);
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();
     await settleCrashes(workspace, compile, 2);
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();
-    expect(crashes(workspace, compile)).toBe(2);
+    expect(workspace.workerCrashes(compile)).toBe(2);
 });
 
 test("edit retries after a pause", async ({ session }) => {
@@ -131,7 +120,7 @@ test("edit retries after a pause", async ({ session }) => {
         interval: 200,
         description: "the crash note to go",
     });
-    expect(crashes(workspace, `compile ${workspace.path("poison.cpp")}`)).toBe(1);
+    expect(workspace.workerCrashes(`compile ${workspace.path("poison.cpp")}`)).toBe(1);
 });
 
 test("editing crash is bounded", async ({ session }) => {
@@ -167,7 +156,7 @@ test("editing crash is bounded", async ({ session }) => {
     await sleep(RETRY_SPACING);
     client.change(uri, 4, poison(4));
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();
-    expect(crashes(workspace, compile)).toBe(3);
+    expect(workspace.workerCrashes(compile)).toBe(3);
     client.save(uri);
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();
     await settleCrashes(workspace, compile, 4);
@@ -194,7 +183,7 @@ test("query crash pauses that feature", async ({ session }) => {
     await compiled;
     expect(notes(client, uri).length).toBe(1);
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();
-    expect(crashes(workspace, hover)).toBe(1);
+    expect(workspace.workerCrashes(hover)).toBe(1);
 
     client.save(uri);
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();
@@ -218,7 +207,7 @@ test("completion crash pauses completion", async ({ session }) => {
 
     expect(await client.completionAt(uri, 1, 10)).toBeNull();
     expect(await client.hoverAt(uri, 0, 5)).not.toBeNull();
-    expect(crashes(workspace, completion)).toBe(1);
+    expect(workspace.workerCrashes(completion)).toBe(1);
 });
 
 test("preamble crash is shared", async ({ session }) => {
@@ -243,7 +232,7 @@ test("preamble crash is shared", async ({ session }) => {
     const [twinUri] = client.open("twin.cpp");
     expect(await client.hoverAt(twinUri, 1, 5)).toBeNull();
     await waitNote(client, twinUri, "precompiled preamble");
-    expect(crashes(workspace, "buildPch")).toBe(1);
+    expect(workspace.workerCrashes("buildPch")).toBe(1);
 
     expect(await client.hoverAt(healthyUri, 0, 5)).not.toBeNull();
 
@@ -260,10 +249,7 @@ test("preamble crash is shared", async ({ session }) => {
 
 test("module crash notes importers", async ({ session }) => {
     const workspace = session.tmpdir();
-    const src = path.join(DATA_DIR, "modules", "consumer_imports_module");
-    for (const name of fs.readdirSync(src)) {
-        fs.copyFileSync(path.join(src, name), workspace.path(name));
-    }
+    workspace.copyFiles(path.join(DATA_DIR, "modules", "consumer_imports_module"));
     workspace.generateCDB();
     const build = `buildPcm ${workspace.path("math.cppm")}`;
     const client = session.spawn(workspace, crashing({ CLICE_TEST_CRASH_REQUEST: build }));
@@ -277,7 +263,7 @@ test("module crash notes importers", async ({ session }) => {
     // The importer still compiles — its parse reports the missing module —
     // but the module is not rebuilt until the importer changes or saves.
     await client.hoverAt(uri, 3, 12);
-    expect(crashes(workspace, build)).toBe(1);
+    expect(workspace.workerCrashes(build)).toBe(1);
     client.save(uri);
     await client.hoverAt(uri, 3, 12);
     await settleCrashes(workspace, build, 2);
@@ -337,7 +323,7 @@ test("reopen keeps the bar", async ({ session }) => {
     [uri] = client.open("poison.cpp");
     await waitNote(client, uri, "while compiling this file");
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();
-    expect(crashes(workspace, compile)).toBe(1);
+    expect(workspace.workerCrashes(compile)).toBe(1);
 
     client.save(uri);
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();

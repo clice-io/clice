@@ -180,7 +180,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     auto result = co_await deliver(
         pool,
         false,
-        [&] { return pool.send_stateless(bp, worker::Priority::High, {}, ctx.token()); },
+        [&] { return pool.send_stateless(bp, worker::Priority::High, ctx.token()); },
         [&](const kota::ipc::Error& error) { build_crashes.insert_or_assign(pch_key, error); });
 
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
@@ -260,11 +260,6 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         co_return RoundOutcome::Failed;
     }
 
-    // The key built: its strikes were transient, not poison. The shared
-    // account clears unconditionally; per-document ledgers clear on the
-    // adoption side, each joiner for itself, gated on its own validity.
-    build_crashes.erase(pch_key);
-
     auto& st = project.pch_cache[pch_key];
     if(!st.superseded.empty()) {
         project.store->invalidate("pch", st.superseded);
@@ -334,7 +329,7 @@ void PCHFamily::invalidate(llvm::StringRef pch_key) {
 }
 
 void PCHFamily::blame(llvm::StringRef pch_key) {
-    consume_blames.on_crash(pch_key);
+    consume_blames.on_blame(pch_key);
     invalidate(pch_key);
 }
 

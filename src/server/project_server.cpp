@@ -341,7 +341,7 @@ void ProjectServer::open_session(Fid path_id, std::string text, int version) {
     sessions.apply_open(*session, std::move(text), version);
     // A reopened document still barred by a crash says so at once: its
     // requests answer empty, and no compile will run to publish the note.
-    if(!session->quarantine.empty()) {
+    if(!session->quarantine->empty()) {
         ast.republish(session);
     }
     // What the disk holds under the buffer: a later save or outside
@@ -405,7 +405,7 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         if(auto session = sessions.find(path_id)) {
             ast.invalidate(path_id);
             session->trial_done = false;
-            session->quarantine.on_change(Quarantine::Clock::now());
+            session->quarantine->on_change(Quarantine::Clock::now());
         }
         commands.forget_self_contained(path_id);
     }

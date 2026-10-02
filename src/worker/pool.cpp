@@ -42,6 +42,10 @@ kota::task<> drain_stderr(kota::pipe stderr_pipe,
             if(nl == std::string::npos)
                 break;
             auto line = buffer.substr(pos, nl - pos);
+            // The CRT writes a Windows worker's stderr in text mode.
+            if(line.ends_with('\r')) {
+                line.pop_back();
+            }
             if(line.starts_with(worker::crashed_in_marker)) {
                 tail->crashed_in = line.substr(worker::crashed_in_marker.size());
             }
@@ -139,6 +143,10 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
     opts.args = {options.self_path, "worker"};
     if(stateful) {
         opts.args.push_back("--stateful");
+        if(options.max_documents) {
+            opts.args.push_back("--max-documents");
+            opts.args.push_back(std::to_string(*options.max_documents));
+        }
     }
     opts.args.push_back("--worker-name");
     opts.args.push_back(name);
@@ -411,18 +419,6 @@ bool WorkerPool::remove_owner_from(std::uint32_t path_id, std::size_t worker_ind
     return true;
 }
 
-void WorkerPool::clear_owner(std::size_t worker_index) {
-    llvm::SmallVector<std::uint32_t> to_remove;
-    for(auto& [pid, widx]: owner) {
-        if(widx == worker_index) {
-            to_remove.push_back(pid);
-        }
-    }
-    for(auto pid: to_remove) {
-        remove_owner(pid);
-    }
-}
-
 void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_process) {
     auto& w = stateful ? stateful_workers[index] : stateless_workers[index];
     if(w.state != SlotState::Alive)
@@ -439,7 +435,9 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
             if(widx == index)
                 w.lost_documents.push_back(path_id);
         }
-        clear_owner(index);
+        for(auto path_id: w.lost_documents) {
+            remove_owner(path_id);
+        }
     }
     if(w.peer) {
         w.peer->close();
@@ -628,8 +626,7 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     info.will_restart = w.crash_streak <= options.max_crash_streak;
 
     if(stateful) {
-        info.lost_documents.assign(w.lost_documents.begin(), w.lost_documents.end());
-        w.lost_documents.clear();
+        info.lost_documents = std::exchange(w.lost_documents, {});
     } else {
         apply_crash_backoff();
         // The dead worker's claim was released by mark_worker_dead; a queued
@@ -724,9 +721,10 @@ kota::task<> WorkerPool::respawn_after(std::size_t index,
 void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
     auto& w = stateful ? stateful_workers[index] : stateless_workers[index];
     w.state = SlotState::Dead;
+    // If this was the last slot with a future, wake all waiters so they
+    // can return an error instead of hanging.
+    capacity_returned.set();
     if(!stateful) {
-        // If this was the last slot with a future, wake all waiters so they
-        // can return an error instead of hanging.
         try_dispatch_pending();
     }
     // Revival is a running-pool concern: unit fixtures drive slot state
@@ -982,9 +980,6 @@ void WorkerPool::tick_deadlines() {
             w.death->culprit = (*overdue)->tag;
             w.death->cause = std::format("killed after running for over {} seconds", seconds);
             mark_worker_dead(i, stateful, true);
-            if(!stateful) {
-                try_dispatch_pending();
-            }
         }
     }
 }

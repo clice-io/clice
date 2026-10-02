@@ -1,46 +1,20 @@
 /// Crash-recovery of background indexing.
 ///
-/// Kills stateless workers while an indexing round is in flight and verifies the
-/// round still converges: an outside kill names no request, so the in-flight
-/// files are lost rather than blamed, the indexer requeues them, and a
-/// follow-up round indexes every file. The second test
-/// darkens the whole pool (crash budget exhausted) and verifies the round parks
-/// until revival instead of spinning requeues (#611).
+/// Kills stateless workers while an indexing round is in flight and verifies
+/// the round still converges: an outside kill names no request, so the
+/// in-flight files are lost rather than blamed, the indexer requeues them,
+/// and a follow-up round indexes every file. The second test darkens the
+/// whole pool (crash budget exhausted) and verifies the round parks until
+/// revival instead of spinning requeues (#611). The third pins that a file
+/// whose indexing crashed a worker waits for a change instead of being
+/// retried.
 
-import * as fs from "node:fs";
 import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
 const FILE_COUNT = 12;
 const KILL_FILE_COUNT = 3;
 const OUTAGE_RESPONSE_TIMEOUT = 15_000;
-
-function statelessWorkerPids(serverPid: number): number[] {
-    const pids: number[] = [];
-    for (const entry of fs.readdirSync("/proc")) {
-        if (!/^\d+$/.test(entry)) {
-            continue;
-        }
-        let stat: string;
-        let cmdline: Buffer;
-        try {
-            stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
-            cmdline = fs.readFileSync(`/proc/${entry}/cmdline`);
-        } catch {
-            continue;
-        }
-        const ppid = Number(
-            stat
-                .slice(stat.lastIndexOf(")") + 1)
-                .trim()
-                .split(/\s+/)[1],
-        );
-        if (ppid === serverPid && cmdline.includes("SL-")) {
-            pids.push(Number(entry));
-        }
-    }
-    return pids;
-}
 
 async function indexedFunctions(client: CliceClient): Promise<Set<string>> {
     const result = await client.workspaceSymbols("func_");
@@ -90,7 +64,7 @@ test.skipIf(process.platform !== "linux")(
             );
         const killed = await waitUntil(
             () => {
-                const workers = statelessWorkerPids(client.child.pid!);
+                const workers = client.workerPids("SL-");
                 if (begun() && workers.length > 0) {
                     process.kill(workers[0]!, "SIGKILL");
                     return true;
@@ -182,7 +156,7 @@ test.skipIf(process.platform !== "linux")(
         let kills = 0;
         await waitUntil(
             () => {
-                for (const pid of statelessWorkerPids(client.child.pid!)) {
+                for (const pid of client.workerPids("SL-")) {
                     try {
                         process.kill(pid, "SIGKILL");
                         kills += 1;
@@ -214,7 +188,7 @@ test.skipIf(process.platform !== "linux")(
         expect(during, "master unresponsive during the outage").not.toBeNull();
 
         // The revival cooldown (30s) re-arms the slot and the parked round
-        // must resume and finish every file: crash requeues land past the
+        // must resume and finish every file: lost runs requeue past the
         // round snapshot, so no single file burns its budget.
         const expected = new Set(Array.from({ length: FILE_COUNT }, (_, i) => `func_${i}`));
         let found = new Set<string>();
@@ -262,9 +236,7 @@ test.skipIf(process.platform !== "linux")(
         await client.initialize(workspace);
         await client.openAndWait("main.cpp");
 
-        const crashes = () =>
-            workspace.log("master.log").split(`] clice worker crashed in: clice/worker/${run}`)
-                .length - 1;
+        const crashes = () => workspace.workerCrashes(run);
         const symbols = async () =>
             new Set(((await client.workspaceSymbols("_fn")) ?? []).map((s) => s.name));
         await waitUntil(async () => (await symbols()).has("healthy_fn") && crashes() === 1, {

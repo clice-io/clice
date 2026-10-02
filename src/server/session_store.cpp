@@ -41,8 +41,9 @@ void SessionStore::close(Fid path_id) {
 }
 
 void SessionStore::park(Session& session) {
-    if(!session.quarantine.empty()) {
-        parked[session.path_id] = {std::exchange(session.quarantine, {}), session.hash};
+    session.closed = true;
+    if(!session.quarantine->empty()) {
+        parked[session.path_id] = {session.quarantine, session.hash};
     }
 }
 
@@ -64,7 +65,7 @@ void SessionStore::apply_open(Session& session, std::string text, int version) {
     if(auto it = parked.find(session.path_id); it != parked.end()) {
         session.quarantine = std::move(it->second.quarantine);
         if(it->second.hash != session.hash) {
-            session.quarantine.on_change(Quarantine::Clock::now());
+            session.quarantine->on_change(Quarantine::Clock::now());
         }
         parked.erase(it);
     }
@@ -126,7 +127,7 @@ void SessionStore::apply_change(Session& session,
     // A real content change lets crashed kinds retry; a no-op edit leaves
     // the crashing bytes in place.
     if(applied) {
-        session.quarantine.on_change(Quarantine::Clock::now());
+        session.quarantine->on_change(Quarantine::Clock::now());
     }
 
     session.hash = llvm::xxh3_64bits(session.text);

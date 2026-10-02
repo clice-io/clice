@@ -1,26 +1,19 @@
 #include "worker/common.h"
 
+#include "support/environment.h"
 #include "support/logging.h"
 
 #ifdef __GLIBC__
 #include <malloc.h>
 #endif
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
 std::size_t max_index_bytes() {
-    static std::size_t limit = [] {
-        std::size_t bytes = 56 * 1024 * 1024;
-        if(auto value = llvm::sys::Process::GetEnv("CLICE_TEST_MAX_INDEX_BYTES")) {
-            llvm::StringRef(*value).getAsInteger(10, bytes);
-        }
-        return bytes;
-    }();
+    static std::size_t limit = env_integer("CLICE_TEST_MAX_INDEX_BYTES").value_or(56 * 1024 * 1024);
     return limit;
 }
 

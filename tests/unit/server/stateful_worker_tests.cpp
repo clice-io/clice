@@ -301,7 +301,7 @@ TEST_CASE(CompileThenHover) {
     ASSERT_TRUE(test_done);
 }
 
-TEST_CASE(CodeActionReturnsEmpty) {
+TEST_CASE(CodeActionWithoutCompile) {
     WorkerHandle w;
     ASSERT_TRUE(w.spawn(true));
 
@@ -313,8 +313,6 @@ TEST_CASE(CodeActionReturnsEmpty) {
         params.range = {0, 0};
 
         auto result = co_await w.peer->send_request(params);
-        // An unknown document is no empty answer: the master hears it was
-        // evicted (or never sent) and compiles it again.
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
@@ -335,8 +333,6 @@ TEST_CASE(SemanticTokensWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        // An unknown document is no empty answer: the master hears it was
-        // evicted (or never sent) and compiles it again.
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
@@ -356,8 +352,6 @@ TEST_CASE(FoldingRangeWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        // An unknown document is no empty answer: the master hears it was
-        // evicted (or never sent) and compiles it again.
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
@@ -378,8 +372,6 @@ TEST_CASE(DocumentSymbolWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        // An unknown document is no empty answer: the master hears it was
-        // evicted (or never sent) and compiles it again.
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
@@ -399,8 +391,6 @@ TEST_CASE(DocumentLinkWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        // An unknown document is no empty answer: the master hears it was
-        // evicted (or never sent) and compiles it again.
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
@@ -421,8 +411,6 @@ TEST_CASE(InlayHintsWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        // An unknown document is no empty answer: the master hears it was
-        // evicted (or never sent) and compiles it again.
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;

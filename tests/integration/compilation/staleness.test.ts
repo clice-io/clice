@@ -335,13 +335,7 @@ test("didsave triggers recompile for dependents", async ({ session }) => {
 test("didsave with module deps", async ({ session }) => {
     // didSave on a module file should invalidate CompileGraph dependents.
     const { client, workspace } = session.tmp();
-    const src = path.join(DATA_DIR, "modules", "save_recompile");
-    for (const name of fs.readdirSync(src)) {
-        const from = path.join(src, name);
-        if (fs.statSync(from).isFile()) {
-            fs.copyFileSync(from, workspace.path(name));
-        }
-    }
+    workspace.copyFiles(path.join(DATA_DIR, "modules", "save_recompile"));
 
     workspace.generateCDB();
     await client.initialize(workspace);

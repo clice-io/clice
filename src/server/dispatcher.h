@@ -125,17 +125,19 @@ private:
                           Params wp,
                           std::optional<kota::cancellation_token> token);
 
-    /// One attempt of an AST query: the compile, then the send. A resend
-    /// after a worker death recompiles first — the AST died with the
-    /// worker — and a worker that no longer holds the document answers
-    /// document_unloaded, which compiles it there and asks once more.
-    /// `no_ast` reports a compile that produced none.
+    /// Send an AST query of kind `evidence` to the worker holding the
+    /// document, which the caller compiled. A resend after a worker death
+    /// recompiles first — the AST died with the worker — and a worker that
+    /// no longer holds the document answers document_unloaded, which
+    /// compiles it there and asks once more. `unanswered` reports a query
+    /// never sent: its kind barred by a crash, or a recompile that produced
+    /// no AST.
     template <typename Params>
     RequestResult<Params> ask(const Ticket& ticket,
+                              std::uint8_t evidence,
                               const Params& params,
                               std::optional<kota::cancellation_token> token,
-                              bool compile,
-                              bool& no_ast);
+                              bool& unanswered);
 
     /// The single exit of every dispatch: a fresh reply settles the kind's
     /// quarantine record, a stale one never leaves as a value — unless it

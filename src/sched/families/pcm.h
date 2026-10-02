@@ -163,18 +163,19 @@ private:
     CommandResolver& commands;
     WorkerPool& pool;
 
-    /// A module build that killed a worker: the key it was built under —
-    /// the PCM key with the module's content hash — and the death.
+    /// A module build that killed a worker: the content it was built from
+    /// and the death.
     struct Crash {
-        std::string key;
         std::uint64_t content = 0;
         kota::ipc::Error error;
     };
 
+    std::uint64_t content_hash(Fid module);
+
     /// The modules whose build killed a worker (see crashed): refused
-    /// until an importer forgives them or their content — and therefore
-    /// the key — changes. One document's quarantine cannot contain it
-    /// alone: every importer would burn a worker of its own.
+    /// until an importer forgives them or their content changes. One
+    /// document's quarantine cannot contain it alone: every importer would
+    /// burn a worker of its own.
     llvm::DenseMap<Fid, Crash> build_crashes;
 };
 

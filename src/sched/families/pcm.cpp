@@ -213,15 +213,9 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // module's current content: unlike pch_key (which embeds the
     // preamble text), pcm_key is content-free, and the refusal must lift
     // the moment the poison is edited.
-    auto content = vfs::read(file_path);
-    auto content_hash = content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0;
-    auto crash_key = std::format("{}-{:016x}", pcm_key, content_hash);
-    if(auto it = build_crashes.find(path_id); it != build_crashes.end()) {
-        if(it->second.key == crash_key) {
-            LOG_WARN("PCM build for module {} refused: it crashed a worker", module_name);
-            co_return RoundOutcome::Failed;
-        }
-        build_crashes.erase(it);
+    if(crashed(path_id)) {
+        LOG_WARN("PCM build for module {} refused: it crashed a worker", module_name);
+        co_return RoundOutcome::Failed;
     }
 
     bp.module_name = module_name;
@@ -242,9 +236,9 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     auto result = co_await deliver(
         pool,
         false,
-        [&] { return pool.send_stateless(bp, priority, {}, ctx.token()); },
+        [&] { return pool.send_stateless(bp, priority, ctx.token()); },
         [&](const kota::ipc::Error& error) {
-            build_crashes.insert_or_assign(path_id, Crash{crash_key, content_hash, error});
+            build_crashes.insert_or_assign(path_id, Crash{content_hash(path_id), error});
         });
 
     // A scheduler preemption (foreground reclaim, memory pressure) or an
@@ -276,7 +270,6 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Failed;
     }
 
-    build_crashes.erase(path_id);
     auto pcm_path = std::move(committed.value().value());
     auto snapshot =
         capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
@@ -300,13 +293,18 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     co_return RoundOutcome::Success;
 }
 
+std::uint64_t PCMFamily::content_hash(Fid module) {
+    auto content = vfs::read(project.file_table.resolve(module));
+    return content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0;
+}
+
 const kota::ipc::Error* PCMFamily::crashed(Fid module) {
     auto it = build_crashes.find(module);
     if(it == build_crashes.end()) {
         return nullptr;
     }
-    auto content = vfs::read(project.file_table.resolve(module));
-    if(!content || llvm::xxh3_64bits((*content)->getBuffer()) != it->second.content) {
+    if(content_hash(module) != it->second.content) {
+        build_crashes.erase(it);
         return nullptr;
     }
     return &it->second.error;

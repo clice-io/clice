@@ -178,14 +178,11 @@ class StatefulWorker {
     /// document is not held at all — an eviction the master has not learned
     /// of yet, which must not pass for an empty answer. `kind`
     /// discriminates the perf series: query kinds have very different costs
-    /// and must not collapse into one distribution; `tag` names the request
-    /// in a crash report.
-    template <typename R, typename F>
-    kota::task<R, kota::ipc::Error> with_ast_or(llvm::StringRef kind,
-                                                std::string tag,
-                                                llvm::StringRef path,
-                                                R missing,
-                                                F&& fn) {
+    /// and must not collapse into one distribution.
+    template <typename Params, typename R, typename F>
+    kota::task<R, kota::ipc::Error>
+        with_ast_or(llvm::StringRef kind, const Params& params, R missing, F&& fn) {
+        llvm::StringRef path = params.path;
         auto it = documents.find(path);
         if(it == documents.end()) {
             co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::document_unloaded,
@@ -216,7 +213,7 @@ class StatefulWorker {
                 }
                 if(!doc->has_ast || (!doc->unit.completed() && !doc->unit.fatal_error()))
                     return std::move(missing);
-                CrashScope crash_scope(std::move(tag));
+                CrashScope crash_scope(worker::crash_tag(params));
                 ScopedTimer compute_timer;
                 auto value = fn(*doc);
                 compute_ms = compute_timer.ms_f();
@@ -236,12 +233,12 @@ class StatefulWorker {
     }
 
     /// Returns "null" if the AST is not usable.
-    template <typename F>
-    kota::task<kota::codec::RawValue, kota::ipc::Error>
-        with_ast(llvm::StringRef kind, std::string tag, llvm::StringRef path, F&& fn) {
+    template <typename Params, typename F>
+    kota::task<kota::codec::RawValue, kota::ipc::Error> with_ast(llvm::StringRef kind,
+                                                                 const Params& params,
+                                                                 F&& fn) {
         co_return co_await with_ast_or(kind,
-                                       std::move(tag),
-                                       path,
+                                       params,
                                        kota::codec::RawValue{"null"},
                                        std::forward<F>(fn));
     }
@@ -422,8 +419,7 @@ void StatefulWorker::register_handlers() {
                         -> RequestResult<worker::DocumentLinkParams> {
         co_return co_await with_ast_or(
             "DocumentLink",
-            worker::crash_tag(params),
-            params.path,
+            params,
             std::vector<feature::DocumentLink>{},
             [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
     });
@@ -433,8 +429,7 @@ void StatefulWorker::register_handlers() {
                         -> RequestResult<worker::FoldingRangeParams> {
         co_return co_await with_ast_or(
             "FoldingRange",
-            worker::crash_tag(params),
-            params.path,
+            params,
             std::optional<std::vector<feature::FoldingRange>>{},
             [&](DocumentEntry& doc) { return std::optional(feature::folding_ranges(doc.unit)); });
     });
@@ -445,8 +440,7 @@ void StatefulWorker::register_handlers() {
                const worker::CodeActionParams& params) -> RequestResult<worker::CodeActionParams> {
             co_return co_await with_ast_or(
                 "CodeAction",
-                worker::crash_tag(params),
-                params.path,
+                params,
                 std::vector<feature::CodeAction>{},
                 [&](DocumentEntry& doc) { return feature::code_actions(doc.unit, params.range); });
         });
@@ -479,55 +473,38 @@ void StatefulWorker::register_handlers() {
         auto kind = kota::meta::enum_name(params.kind, "Unknown");
         switch(params.kind) {
             case K::Hover:
-                co_return co_await with_ast(
-                    kind,
-                    worker::crash_tag(params),
-                    params.path,
-                    [&](DocumentEntry& doc) {
-                        auto result = feature::hover(doc.unit, params.offset, params.config.hover);
-                        return result ? to_raw(*result) : kota::codec::RawValue{"null"};
-                    });
+                co_return co_await with_ast(kind, params, [&](DocumentEntry& doc) {
+                    auto result = feature::hover(doc.unit, params.offset, params.config.hover);
+                    return result ? to_raw(*result) : kota::codec::RawValue{"null"};
+                });
             case K::SemanticTokens:
-                co_return co_await with_ast(
-                    kind,
-                    worker::crash_tag(params),
-                    params.path,
-                    [&](DocumentEntry& doc) {
-                        // The preamble share from the compile params, then
-                        // the own scan past the PCH bound, seeded by the
-                        // conditional stack the preamble left open.
-                        auto regions = doc.preamble_inactive_regions;
-                        auto scan = feature::inactive_regions(doc.unit,
-                                                              doc.open_conditionals,
-                                                              doc.pch.second);
-                        regions.insert(regions.end(), scan.regions.begin(), scan.regions.end());
-                        return to_raw(feature::semantic_tokens(doc.unit,
-                                                               regions,
-                                                               feature::PositionEncoding::UTF16));
-                    });
-            case K::InlayHints:
-                co_return co_await with_ast(
-                    kind,
-                    worker::crash_tag(params),
-                    params.path,
-                    [&](DocumentEntry& doc) {
-                        auto range = params.range;
-                        if(range.begin == static_cast<uint32_t>(-1))
-                            range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
-                        return to_raw(feature::inlay_hints(doc.unit,
-                                                           range,
-                                                           params.config.inlay_hints,
+                co_return co_await with_ast(kind, params, [&](DocumentEntry& doc) {
+                    // The preamble share from the compile params, then
+                    // the own scan past the PCH bound, seeded by the
+                    // conditional stack the preamble left open.
+                    auto regions = doc.preamble_inactive_regions;
+                    auto scan =
+                        feature::inactive_regions(doc.unit, doc.open_conditionals, doc.pch.second);
+                    regions.insert(regions.end(), scan.regions.begin(), scan.regions.end());
+                    return to_raw(feature::semantic_tokens(doc.unit,
+                                                           regions,
                                                            feature::PositionEncoding::UTF16));
-                    });
+                });
+            case K::InlayHints:
+                co_return co_await with_ast(kind, params, [&](DocumentEntry& doc) {
+                    auto range = params.range;
+                    if(range.begin == static_cast<uint32_t>(-1))
+                        range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
+                    return to_raw(feature::inlay_hints(doc.unit,
+                                                       range,
+                                                       params.config.inlay_hints,
+                                                       feature::PositionEncoding::UTF16));
+                });
             case K::DocumentSymbol:
-                co_return co_await with_ast(
-                    kind,
-                    worker::crash_tag(params),
-                    params.path,
-                    [&](DocumentEntry& doc) {
-                        return to_raw(
-                            feature::document_symbols(doc.unit, feature::PositionEncoding::UTF16));
-                    });
+                co_return co_await with_ast(kind, params, [&](DocumentEntry& doc) {
+                    return to_raw(
+                        feature::document_symbols(doc.unit, feature::PositionEncoding::UTF16));
+                });
         }
         co_return kota::codec::RawValue{"null"};
     });

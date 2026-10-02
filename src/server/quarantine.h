@@ -92,11 +92,15 @@ public:
 
         ~Attempt();
 
+        /// Whether the kind crashed during this attempt's flight: its
+        /// inputs are barred, so it must not dispatch again.
+        bool overtaken() const;
+
     private:
         Quarantine& quarantine;
         std::uint8_t kind;
         std::uint64_t changes;
-        unsigned strikes = 0;
+        std::uint64_t crash = 0;
         bool saved = false;
         bool changed = false;
     };
@@ -125,6 +129,8 @@ public:
 private:
     struct Record {
         unsigned strikes = 0;
+        /// The serial of its last crash (see crashes).
+        std::uint64_t crash = 0;
         std::string cause;
         Clock::time_point last_crash;
         /// The inputs changed since the last crash.
@@ -146,6 +152,10 @@ private:
     /// Bumped by every on_change; an Attempt tells by it whether the inputs
     /// moved during its flight.
     std::uint64_t changes = 0;
+    /// Bumped by every counted crash; an Attempt tells by it whether its
+    /// kind crashed during its flight, which a strike count cannot — a save
+    /// resets that.
+    std::uint64_t crashes = 0;
     std::string last_death;
 };
 

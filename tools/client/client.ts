@@ -546,6 +546,37 @@ export class CliceClient {
         }
     }
 
+    /// The PIDs of the server's worker processes whose command line names
+    /// `kind` ("SF-" stateful, "SL-" stateless; every worker when empty).
+    /// Linux only: read from /proc.
+    workerPids(kind = ""): number[] {
+        const pids: number[] = [];
+        for (const entry of fs.readdirSync("/proc")) {
+            if (!/^\d+$/.test(entry)) {
+                continue;
+            }
+            let stat: string;
+            let cmdline: Buffer;
+            try {
+                stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
+                cmdline = fs.readFileSync(`/proc/${entry}/cmdline`);
+            } catch {
+                continue;
+            }
+            // /proc/<pid>/stat: pid (comm) state ppid ...
+            const ppid = Number(
+                stat
+                    .slice(stat.lastIndexOf(")") + 1)
+                    .trim()
+                    .split(/\s+/)[1],
+            );
+            if (ppid === this.child.pid && cmdline.includes(kind)) {
+                pids.push(Number(entry));
+            }
+        }
+        return pids;
+    }
+
     /// Force-kill the server process, simulating a crash.
     killServer(): void {
         this.child.kill("SIGKILL");

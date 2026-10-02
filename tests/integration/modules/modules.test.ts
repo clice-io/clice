@@ -1,6 +1,5 @@
 /// Integration tests for C++20 module support.
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import {
@@ -166,13 +165,7 @@ test("class export and inheritance", async ({ session }) => {
 /// Closing and reopening a modified module file should recompile without errors.
 test("save recompile", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    const src = path.join(DATA_DIR, "modules", "save_recompile");
-    for (const f of fs.readdirSync(src)) {
-        const full = path.join(src, f);
-        if (fs.statSync(full).isFile()) {
-            fs.copyFileSync(full, workspace.path(f));
-        }
-    }
+    workspace.copyFiles(path.join(DATA_DIR, "modules", "save_recompile"));
 
     workspace.generateCDB();
     await client.initialize(workspace);

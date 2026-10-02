@@ -11,8 +11,10 @@ void Quarantine::on_crash(std::uint8_t kind,
     if(counted(death)) {
         return;
     }
+    crashes += 1;
     auto& record = records[kind];
     record.strikes += 1;
+    record.crash = crashes;
     record.cause = std::move(cause);
     record.last_crash = now;
     record.changed = false;
@@ -59,7 +61,7 @@ Quarantine::Attempt::Attempt(Quarantine& quarantine, std::uint8_t kind) :
         return;
     }
     auto& record = it->second;
-    strikes = record.strikes;
+    crash = record.crash;
     saved = std::exchange(record.saved, false);
     changed = std::exchange(record.changed, false);
 }
@@ -70,12 +72,17 @@ Quarantine::Attempt::~Attempt() {
         return;
     }
     auto& record = it->second;
-    if(record.strikes != strikes) {
+    if(record.crash != crash) {
         record.changed = record.changed || quarantine.changes != changes;
         return;
     }
     record.saved = record.saved || saved;
     record.changed = record.changed || changed;
+}
+
+bool Quarantine::Attempt::overtaken() const {
+    auto it = quarantine.records.find(kind);
+    return it != quarantine.records.end() && it->second.crash != crash;
 }
 
 llvm::SmallVector<Quarantine::Note> Quarantine::notes() const {

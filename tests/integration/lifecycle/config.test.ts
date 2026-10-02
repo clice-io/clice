@@ -4,8 +4,6 @@
 /// rule's `-D<macro>=...` is applied. When rules are applied, compilation is
 /// clean; otherwise an undeclared-identifier diagnostic surfaces.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import { expect, test } from "../fixtures.ts";
 
@@ -131,12 +129,7 @@ test("config dump logged", async ({ session }) => {
     // Shut down before reading so the startup log is fully flushed to disk.
     await client.shutdown();
 
-    const logsDir = workspace.path(".clice/logs");
-    const names = fs
-        .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
-        .filter((name) => path.basename(name) === "master.log");
-    expect(names.length, "expected a master.log").toBeGreaterThan(0);
-    const text = names.map((name) => fs.readFileSync(path.join(logsDir, name), "utf8")).join("");
+    const text = workspace.log("master.log");
     expect(text).toContain("Session log directory:");
     // All three config layers are dumped: file, overlay, merged result.
     expect(text).toContain("Configuration file");

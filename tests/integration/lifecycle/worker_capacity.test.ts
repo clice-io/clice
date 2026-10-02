@@ -1,36 +1,8 @@
 /// Requests ride out windows without a worker — a restart backoff, an LRU
 /// eviction — instead of answering empty or clearing what the file shows.
 
-import * as fs from "node:fs";
 import { waitUntil } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
-
-function workerPids(serverPid: number, name: string): number[] {
-    const pids: number[] = [];
-    for (const entry of fs.readdirSync("/proc")) {
-        if (!/^\d+$/.test(entry)) {
-            continue;
-        }
-        let stat: string;
-        let cmdline: Buffer;
-        try {
-            stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
-            cmdline = fs.readFileSync(`/proc/${entry}/cmdline`);
-        } catch {
-            continue;
-        }
-        const ppid = Number(
-            stat
-                .slice(stat.lastIndexOf(")") + 1)
-                .trim()
-                .split(/\s+/)[1],
-        );
-        if (ppid === serverPid && cmdline.includes(name)) {
-            pids.push(Number(entry));
-        }
-    }
-    return pids;
-}
 
 test.skipIf(process.platform !== "linux")(
     "outage keeps diagnostics",
@@ -55,7 +27,7 @@ test.skipIf(process.platform !== "linux")(
         let previous = 0;
         await waitUntil(
             () => {
-                const [pid] = workerPids(client.child.pid!, "SF-");
+                const [pid] = client.workerPids("SF-");
                 if (pid !== undefined && pid !== previous) {
                     process.kill(pid, "SIGKILL");
                     previous = pid;

@@ -57,7 +57,7 @@ struct WorkerCrashInfo {
 
     /// Stateful only: path_ids of documents owned by the crashed worker.
     /// The on_crash handler should mark these dirty for recompilation.
-    llvm::SmallVector<std::uint32_t> lost_documents;
+    std::vector<std::uint32_t> lost_documents;
 };
 
 /// How one worker incarnation died, shared with every request in flight on
@@ -129,6 +129,10 @@ struct WorkerPoolOptions {
     /// A request running longer than this is taken for a hung worker: the
     /// worker is killed and the request blamed, like a crash.
     std::chrono::milliseconds request_deadline{std::chrono::minutes(10)};
+
+    /// Documents a stateful worker holds before evicting; unset leaves the
+    /// worker's default.
+    std::optional<std::size_t> max_documents;
 
     /// Dynamic scaling bounds for stateless workers.
     /// min_stateless: floor — never retire below this count.
@@ -211,7 +215,6 @@ public:
     template <typename Params>
     RequestResult<Params> send_stateless(const Params& params,
                                          worker::Priority priority,
-                                         kota::ipc::request_options opts = {},
                                          std::optional<kota::cancellation_token> cancel = {});
 
     /// Send a notification to the stateful worker owning path_id (if any).
@@ -427,7 +430,6 @@ private:
     /// worker on first use. SIZE_MAX when no stateful worker is alive. An
     /// owner is always alive: a death takes its documents off the table.
     std::size_t assign_worker(std::uint32_t path_id);
-    void clear_owner(std::size_t worker_index);
     std::size_t pick_least_loaded();
 
     /// A coroutine waiting for a stateless worker slot. Lives on the frame of
@@ -787,7 +789,6 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  worker::Priority priority,
-                                                 kota::ipc::request_options opts,
                                                  std::optional<kota::cancellation_token> cancel) {
     // High-priority stateless work (PCH, completion builds, foreground
     // PCMs) is foreground by the priority taxonomy; while it runs or
@@ -883,7 +884,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     }
 
     Dispatch dispatch(*this, idx, false, worker::crash_tag(params));
-    auto result = co_await peer->send_request(params, opts);
+    auto result = co_await peer->send_request(params);
     // The worker link broke mid-request: declare the slot dead now so a
     // caller-side retry cannot land on the same corpse before the monitor
     // observed the exit. This must precede the cancel classification — a

@@ -51,29 +51,50 @@ Dispatcher::Dispatcher(Project& project,
 
 template <typename Params>
 RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
+                                      std::uint8_t evidence,
                                       const Params& params,
                                       std::optional<kota::cancellation_token> token,
-                                      bool compile,
-                                      bool& no_ast) {
-    for(bool reloaded = false;; reloaded = true) {
-        if(compile && !co_await ast.ensure_compiled(ticket.session)) {
-            no_ast = true;
-            co_return kota::outcome_error(
-                kota::ipc::Error{worker::dispatch_errc::cancelled, "No AST to ask"});
-        }
-        compile = true;
-        auto result =
-            co_await pool.send_stateful(ticket.session->path_id.raw, params, {.token = token});
-        if(reloaded || result.has_value() ||
-           result.error().code != worker::dispatch_errc::document_unloaded) {
-            co_return std::move(result);
-        }
-        // The worker evicted the document behind a projection that still
-        // reads current: its eviction notice crossed a compile of the
-        // document still landing, which the master took for the one that
-        // would put it back. Compile it there again.
-        ast.invalidate(ticket.session->path_id);
+                                      bool& unanswered) {
+    auto unsent = [&] {
+        unanswered = true;
+        return kota::outcome_error(
+            kota::ipc::Error{worker::dispatch_errc::cancelled, "Query not sent"});
+    };
+    // The caller's compile gave a crash of the kind time to settle.
+    if(ticket.session->quarantine->barred(evidence, Quarantine::Clock::now())) {
+        co_return unsent();
     }
+    // A query that kills the worker is this document's doing even though
+    // its compile landed: per-kind record, since only this query kind
+    // answering clears it (see Quarantine).
+    Quarantine::Attempt attempt(*ticket.session->quarantine, evidence);
+    bool compile = false;
+    co_return co_await deliver(
+        pool,
+        true,
+        [&]() -> RequestResult<Params> {
+            for(bool reloaded = false;; reloaded = true) {
+                if(std::exchange(compile, true) && !co_await ast.ensure_compiled(ticket.session)) {
+                    co_return unsent();
+                }
+                if(attempt.overtaken()) {
+                    co_return unsent();
+                }
+                auto result = co_await pool.send_stateful(ticket.session->path_id.raw,
+                                                          params,
+                                                          {.token = token});
+                if(reloaded || result.has_value() ||
+                   result.error().code != worker::dispatch_errc::document_unloaded) {
+                    co_return std::move(result);
+                }
+                // The worker evicted the document behind a projection that
+                // still reads current: its eviction notice crossed a compile
+                // of the document still landing, which the master took for
+                // the one that would put it back. Compile it there again.
+                ast.invalidate(ticket.session->path_id);
+            }
+        },
+        [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
 }
 
 template <typename Outcome>
@@ -113,8 +134,8 @@ Outcome Dispatcher::land(const Ticket& ticket,
         }
         return Outcome{kota::outcome_error(content_modified())};
     }
-    if(session.quarantine.crashed(kind)) {
-        session.quarantine.on_land(kind);
+    if(session.quarantine->crashed(kind)) {
+        session.quarantine->on_land(kind);
         ast.republish(ticket.session);
     }
     return result;
@@ -131,7 +152,7 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
     auto evidence = evidence_kind(kind);
     auto label = kota::meta::enum_name(kind, "Unknown");
 
-    if(session.quarantine.barred(evidence, Quarantine::Clock::now())) {
+    if(session.quarantine->barred(evidence, Quarantine::Clock::now())) {
         co_return serde_raw{"null"};
     }
 
@@ -167,18 +188,9 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
         wp.range = *clamped;
     }
 
-    // A query that kills the worker is this document's doing even though
-    // its compile landed: per-kind record, since only this query kind
-    // answering clears it (see Quarantine).
-    Quarantine::Attempt attempt(session.quarantine, evidence);
-    bool no_ast = false;
-    bool compile = false;
-    auto result = co_await deliver(
-        pool,
-        true,
-        [&] { return ask(ticket, wp, token, std::exchange(compile, true), no_ast); },
-        [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
-    if(no_ast) {
+    bool unanswered = false;
+    auto result = co_await ask(ticket, evidence, wp, token, unanswered);
+    if(unanswered) {
         if(!ticket.fresh()) {
             co_return kota::outcome_error(content_modified());
         }
@@ -208,7 +220,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     auto path_id = session.path_id;
     auto evidence = evidence_kind(kind);
 
-    if(session.quarantine.barred(evidence, Quarantine::Clock::now())) {
+    if(session.quarantine->barred(evidence, Quarantine::Clock::now())) {
         co_return Result{};
     }
 
@@ -224,15 +236,9 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     }
     auto wait_ms = timer.ms_f();
 
-    Quarantine::Attempt attempt(session.quarantine, evidence);
-    bool no_ast = false;
-    bool compile = false;
-    auto result = co_await deliver(
-        pool,
-        true,
-        [&] { return ask(ticket, params, token, std::exchange(compile, true), no_ast); },
-        [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
-    if(no_ast) {
+    bool unanswered = false;
+    auto result = co_await ask(ticket, evidence, params, token, unanswered);
+    if(unanswered) {
         if(!ticket.fresh()) {
             co_return kota::outcome_error(content_modified());
         }
@@ -303,7 +309,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     // This build parses the same content as the compile: a compile or
     // preamble that crashed bars it as well as its own crashes do.
     auto barred = [&] {
-        return session.quarantine.barred(evidence, Quarantine::Clock::now()) ||
+        return session.quarantine->barred(evidence, Quarantine::Clock::now()) ||
                ASTFamily::compile_barred(session);
     };
     if(barred()) {
@@ -357,11 +363,11 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
         resolution.synthesized->append_suffix_include(wp.text);
     }
 
-    Quarantine::Attempt attempt(session.quarantine, evidence);
+    Quarantine::Attempt attempt(*session.quarantine, evidence);
     auto result = co_await deliver(
         pool,
         false,
-        [&] { return pool.send_stateless(wp, worker::Priority::High, {.token = token}); },
+        [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
         [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
     result = land(ticket, evidence, label, std::move(result), snapshot());
     if(result.has_value()) {
@@ -405,7 +411,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
     auto path = std::string(project.file_table.resolve(session.path_id));
     auto evidence = evidence_kind(EvidenceKind::Format);
 
-    if(session.quarantine.barred(evidence, Quarantine::Clock::now())) {
+    if(session.quarantine->barred(evidence, Quarantine::Clock::now())) {
         LOG_DEBUG("Format: {} is barred by a crash", path);
         co_return serde_raw{"null"};
     }
@@ -425,11 +431,11 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
     }
 
     ScopedTimer timer;
-    Quarantine::Attempt attempt(session.quarantine, evidence);
+    Quarantine::Attempt attempt(*session.quarantine, evidence);
     auto result = co_await deliver(
         pool,
         false,
-        [&] { return pool.send_stateless(wp, worker::Priority::High, {.token = token}); },
+        [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
         [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
     result = land(ticket, evidence, "Format", std::move(result));
     if(result.has_value()) {

@@ -135,10 +135,6 @@ struct WorkerPoolFixture {
         pool.remove_owner(path_id);
     }
 
-    void clear_owner(std::size_t idx) {
-        pool.clear_owner(idx);
-    }
-
     std::size_t pick_idle() {
         return pool.pick_idle_stateless();
     }
@@ -610,7 +606,7 @@ TEST_CASE(RemoveNonexistent) {
     f.remove_owner(999);
 }
 
-TEST_CASE(ClearOwner) {
+TEST_CASE(DeathClearsOwner) {
     WorkerPoolFixture f;
     f.add_stateful(true, 0);
     f.add_stateful(true, 0);
@@ -618,7 +614,7 @@ TEST_CASE(ClearOwner) {
     f.assign_worker(200);
     f.assign_worker(300);
     EXPECT_EQ(f.stateful_owned(0), 2u);
-    f.clear_owner(0);
+    f.mark_dead(0, true);
     EXPECT_EQ(f.stateful_owned(0), 0u);
     EXPECT_FALSE(f.has_owner(100));
     EXPECT_FALSE(f.has_owner(300));
@@ -1299,7 +1295,7 @@ TEST_CASE(DeathNamesItsRequest) {
               worker_died);
 }
 
-TEST_CASE(DeathTakesDocumentsAtOnce) {
+TEST_CASE(DeathFreesDocuments) {
     WorkerPoolFixture f;
     f.add_stateful(true);
     f.add_stateful(true);
@@ -1808,7 +1804,7 @@ TEST_CASE(AdvisoryCancelCooperates) {
         bool cancelled = false;
         auto sender = [&]() -> kota::task<> {
             auto result =
-                co_await f.pool.send_stateless(params, worker::Priority::Low, {}, advisory.token());
+                co_await f.pool.send_stateless(params, worker::Priority::Low, advisory.token());
             cancelled =
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
@@ -1982,7 +1978,7 @@ TEST_CASE(ScaleUpReusesRetired) {
     f.run([&]() -> kota::task<> {
         CO_ASSERT_TRUE(f.start(2, 0));
         f.retire_idle();
-        for(int i = 0; i < 50 && !f.slot_retired(1); ++i) {
+        for(int i = 0; i < 50 && !f.slot_retired(1); i += 1) {
             co_await kota::sleep(100);
         }
         CO_ASSERT_TRUE(f.slot_retired(1));
@@ -1991,7 +1987,7 @@ TEST_CASE(ScaleUpReusesRetired) {
         // retire/scale-up cycle must not grow the slot table.
         CO_ASSERT_TRUE(f.scale_up());
         EXPECT_EQ(f.stateless_count(), 2u);
-        for(int i = 0; i < 50 && !f.worker_alive(1); ++i) {
+        for(int i = 0; i < 50 && !f.worker_alive(1); i += 1) {
             co_await kota::sleep(100);
         }
         EXPECT_TRUE(f.worker_alive(1));

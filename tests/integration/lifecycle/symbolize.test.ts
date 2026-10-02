@@ -13,31 +13,6 @@ import { REPO_ROOT } from "@clice/tools/compile-commands";
 import { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
-function childPids(parentPid: number): number[] {
-    const pids: number[] = [];
-    for (const entry of fs.readdirSync("/proc")) {
-        if (!/^\d+$/.test(entry)) {
-            continue;
-        }
-        let stat: string;
-        try {
-            stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
-        } catch {
-            continue;
-        }
-        const ppid = Number(
-            stat
-                .slice(stat.lastIndexOf(")") + 1)
-                .trim()
-                .split(/\s+/)[1],
-        );
-        if (ppid === parentPid) {
-            pids.push(Number(entry));
-        }
-    }
-    return pids;
-}
-
 function which(tool: string): boolean {
     return (process.env["PATH"] ?? "").split(path.delimiter).some((dir) => {
         try {
@@ -120,7 +95,7 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
         try {
             await client.openAndWait("main.cpp");
 
-            const workers = childPids(client.child.pid!);
+            const workers = client.workerPids();
             expect(workers.length, "server should have spawned worker processes").toBeGreaterThan(
                 0,
             );

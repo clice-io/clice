@@ -37,7 +37,7 @@ struct SessionStore {
     /// document is no retry, and a document reopened on other bytes counts
     /// the difference as a change.
     struct Parked {
-        Quarantine quarantine;
+        std::shared_ptr<Quarantine> quarantine;
         std::uint64_t hash = 0;
     };
 
@@ -56,8 +56,8 @@ struct SessionStore {
     /// records are parked for a reopen.
     void close(Fid path_id);
 
-    /// Move the session's crash records to the parked table ahead of the
-    /// close, leaving the session without notes to publish.
+    /// Close the session for publishing and park its crash records ahead
+    /// of the close.
     void park(Session& session);
 
     /// Visit every open Session. The callback returns false to stop early.

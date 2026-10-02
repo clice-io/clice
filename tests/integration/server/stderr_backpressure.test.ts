@@ -1,7 +1,5 @@
 /// A client that never drains stderr must not be able to wedge the server.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { withTimeout } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
@@ -10,18 +8,6 @@ const FLOOD_SIZE = 256;
 
 function floodLinesIn(text: string): number {
     return text.split("[stderr-flood ").length - 1;
-}
-
-/// Concatenate every master.log under a logs directory tree.
-function readMasterLogs(logsDir: string): string {
-    if (!fs.existsSync(logsDir)) {
-        return "";
-    }
-    return fs
-        .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
-        .filter((name) => path.basename(name) === "master.log")
-        .map((name) => fs.readFileSync(path.join(logsDir, name), "utf8"))
-        .join("");
 }
 
 test("log flood gated", async ({ session }) => {
@@ -89,6 +75,6 @@ test("stderr flood never wedges", async ({ session }) => {
 
     // ...while the file log kept every single one: the mirror is
     // best-effort, the file log is the record.
-    const fileText = readMasterLogs(workspace.path(path.join(".clice", "logs")));
+    const fileText = workspace.log("master.log");
     expect(floodLinesIn(fileText)).toBe(FLOOD_LINES);
 }, 600_000);

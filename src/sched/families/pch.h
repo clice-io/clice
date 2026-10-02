@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "project/project.h"
-#include "sched/crash_budget.h"
+#include "sched/blame_budget.h"
 #include "sched/graph.h"
 #include "worker/pool.h"
 
@@ -115,7 +115,7 @@ public:
     void blame(llvm::StringRef pch_key);
 
     /// A parse consumed the key's pair and completed without blaming it:
-    /// clear its consumption strikes (cf. CrashBudget::on_land).
+    /// clear its consumption strikes (cf. BlameBudget::on_land).
     void consumed_ok(llvm::StringRef pch_key) {
         consume_blames.on_land(pch_key);
     }
@@ -185,7 +185,7 @@ private:
 
     /// Consumption strikes per key (see blame); separate from the build
     /// side, which every successful rebuild clears.
-    CrashBudget consume_blames;
+    BlameBudget consume_blames;
 
     /// Keys of pch_cache entries whose envelope is currently loaded,
     /// most recently used first (see enforce_loaded_budget).

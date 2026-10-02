@@ -3,7 +3,7 @@
 #include <string>
 
 #include "test/test.h"
-#include "sched/crash_budget.h"
+#include "sched/blame_budget.h"
 #include "server/quarantine.h"
 
 namespace clice::testing {
@@ -105,6 +105,32 @@ TEST_CASE(AttemptSpendsLicense) {
     EXPECT_TRUE(q.barred(compile, t0 + seconds(10)));
 }
 
+TEST_CASE(SaveThenCrashKeepsBar) {
+    // The strikes a save reset climb back to the count the attempt saw;
+    // the crash still spends the license it carried.
+    Quarantine q;
+    auto t0 = Clock::now();
+    q.on_crash(compile, "d1", "cause", t0);
+    q.on_change(t0);
+    {
+        Quarantine::Attempt attempt(q, compile);
+        q.on_save();
+        q.on_crash(compile, "d2", "cause", t0 + seconds(1));
+    }
+    EXPECT_TRUE(q.barred(compile, t0 + seconds(10)));
+}
+
+TEST_CASE(SiblingCrashOvertakes) {
+    Quarantine q;
+    auto t0 = Clock::now();
+    Quarantine::Attempt attempt(q, hover);
+    EXPECT_FALSE(attempt.overtaken());
+    q.on_crash(compile, "d1", "cause", t0);
+    EXPECT_FALSE(attempt.overtaken());
+    q.on_crash(hover, "d2", "cause", t0);
+    EXPECT_TRUE(attempt.overtaken());
+}
+
 TEST_CASE(ChangeDuringFlightStands) {
     // The crash describes the inputs the attempt carried; an edit during
     // its flight is still untried.
@@ -145,12 +171,12 @@ TEST_CASE(ColdCrashShows) {
 }
 
 TEST_CASE(BudgetBlocksAtThreshold) {
-    CrashBudget budget;
+    BlameBudget budget;
     EXPECT_FALSE(budget.blocked("key-a"));
 
-    budget.on_crash("key-a");
+    budget.on_blame("key-a");
     EXPECT_FALSE(budget.blocked("key-a"));
-    budget.on_crash("key-a");
+    budget.on_blame("key-a");
     EXPECT_TRUE(budget.blocked("key-a"));
 
     // Keys are independent: fresh content (fresh key) starts fresh.
@@ -158,13 +184,13 @@ TEST_CASE(BudgetBlocksAtThreshold) {
 }
 
 TEST_CASE(BudgetClearsOnLand) {
-    // A successful build proves the strikes were transient: without the
+    // A consumer landing proves the blames were transient: without the
     // clear, two unrelated hiccups far apart would block a key that
-    // rebuilds fine in between.
-    CrashBudget budget;
-    budget.on_crash("key");
+    // serves fine in between.
+    BlameBudget budget;
+    budget.on_blame("key");
     budget.on_land("key");
-    budget.on_crash("key");
+    budget.on_blame("key");
     EXPECT_FALSE(budget.blocked("key"));
 }
 
@@ -172,9 +198,9 @@ TEST_CASE(BudgetRearmsAfterCooldown) {
     // The poison may live in content the key cannot see (a header included
     // by the hashed preamble text): a block is a cooldown, not a verdict.
     // Zero cooldown models "elapsed" — the key earns a fresh budget.
-    CrashBudget budget{std::chrono::milliseconds(0)};
-    budget.on_crash("key");
-    budget.on_crash("key");
+    BlameBudget budget{std::chrono::milliseconds(0)};
+    budget.on_blame("key");
+    budget.on_blame("key");
     EXPECT_FALSE(budget.blocked("key"));
 }
 

@@ -233,10 +233,10 @@ TEST_CASE(EditLetsCrashRetry) {
     store.apply_open(*session, "int a;\n", 1);
 
     auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
-    session->quarantine.on_crash(0, "d1", "cause", Quarantine::Clock::now());
-    ASSERT_TRUE(session->quarantine.barred(0, later));
+    session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
+    ASSERT_TRUE(session->quarantine->barred(0, later));
     store.apply_change(*session, partial_change(0, 0, 0, 0, "x"), 2);
-    ASSERT_FALSE(session->quarantine.barred(0, later));
+    ASSERT_FALSE(session->quarantine->barred(0, later));
 }
 
 TEST_CASE(NoopEditNoRetry) {
@@ -244,29 +244,29 @@ TEST_CASE(NoopEditNoRetry) {
     auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
     auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
-    session->quarantine.on_crash(0, "d1", "cause", Quarantine::Clock::now());
+    session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
 
     // A retry needs a real content change: an out-of-range deletion clamps
     // to an empty range at the end of the document, an empty change list
     // and a no-op replacement change nothing — none may send the unchanged
     // crashing bytes to another worker.
     store.apply_change(*session, partial_change(99, 0, 99, 1, ""), 2);
-    ASSERT_TRUE(session->quarantine.barred(0, later));
+    ASSERT_TRUE(session->quarantine->barred(0, later));
 
     store.apply_change(*session, {}, 3);
-    ASSERT_TRUE(session->quarantine.barred(0, later));
+    ASSERT_TRUE(session->quarantine->barred(0, later));
 
     store.apply_change(*session, partial_change(0, 0, 0, 1, "i"), 4);
-    ASSERT_TRUE(session->quarantine.barred(0, later));
+    ASSERT_TRUE(session->quarantine->barred(0, later));
 
     // A whole-document change carrying identical bytes is a no-op too.
     protocol::TextDocumentContentChangeWholeDocument whole;
     whole.text = session->text;
     store.apply_change(*session, protocol::TextDocumentContentChangeEvent(whole), 5);
-    ASSERT_TRUE(session->quarantine.barred(0, later));
+    ASSERT_TRUE(session->quarantine->barred(0, later));
 
     store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 6);
-    ASSERT_FALSE(session->quarantine.barred(0, later));
+    ASSERT_FALSE(session->quarantine->barred(0, later));
 }
 
 TEST_CASE(ReopenKeepsCrashes) {
@@ -274,21 +274,47 @@ TEST_CASE(ReopenKeepsCrashes) {
     auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
     auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
-    session->quarantine.on_crash(0, "d1", "cause", Quarantine::Clock::now());
+    session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
     store.close(Fid{1});
-    ASSERT_TRUE(session->quarantine.empty());
+    ASSERT_TRUE(session->closed);
 
     // Closing and reopening the same bytes is no retry.
     session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
-    ASSERT_TRUE(session->quarantine.barred(0, later));
+    ASSERT_TRUE(session->quarantine->barred(0, later));
 
     // Reopened on other bytes, the difference counts as a change.
     store.close(Fid{1});
     session = store.open(Fid{1});
     store.apply_open(*session, "int b;\n", 1);
-    ASSERT_TRUE(session->quarantine.crashed(0));
-    ASSERT_FALSE(session->quarantine.barred(0, later));
+    ASSERT_TRUE(session->quarantine->crashed(0));
+    ASSERT_FALSE(session->quarantine->barred(0, later));
+}
+
+TEST_CASE(InFlightAcrossClose) {
+    SessionStore store;
+    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
+    auto closed = store.open(Fid{1});
+    store.apply_open(*closed, "int a;\n", 1);
+    closed->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
+    closed->quarantine->on_change(Quarantine::Clock::now());
+
+    // The retry's license, taken before the close, comes back to the
+    // reopened document when the retry ends without an outcome.
+    std::shared_ptr<Session> reopened;
+    {
+        Quarantine::Attempt attempt(*closed->quarantine, 0);
+        store.close(Fid{1});
+        reopened = store.open(Fid{1});
+        store.apply_open(*reopened, "int a;\n", 1);
+        ASSERT_TRUE(reopened->quarantine->barred(0, later));
+    }
+    ASSERT_FALSE(reopened->quarantine->barred(0, later));
+
+    // A crash of work still in flight on the closed session bars the
+    // reopened one.
+    closed->quarantine->on_crash(1, "d2", "cause", Quarantine::Clock::now());
+    ASSERT_TRUE(reopened->quarantine->barred(1, later));
 }
 
 };  // TEST_SUITE(SessionStore)
