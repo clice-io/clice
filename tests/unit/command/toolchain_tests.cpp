@@ -7,8 +7,6 @@
 #include "command/argument_parser.h"
 #include "command/command.h"
 #include "command/toolchain.h"
-#include "compile/compilation.h"
-#include "support/logging.h"
 
 namespace clice::testing {
 namespace {
@@ -57,208 +55,6 @@ TEST_CASE(Family) {
 
     EXPECT_FAMILY("zig", Zig);
     EXPECT_FAMILY("zig.exe", Zig);
-};
-
-TEST_CASE(GCC, skip = !(CIEnvironment && (Windows || Linux))) {
-    auto file = vfs::temp_file("clice", "cpp");
-    if(!file) {
-        LOG_ERROR_RET(void(), "{}", file.error());
-    }
-
-    auto result = Toolchain::query(
-        {"g++", "-std=c++23", "-resource-dir", resource_dir().data(), "-xc++", file->c_str()});
-    ASSERT_TRUE(result.has_value());
-
-    ASSERT_TRUE(result->size() > 2);
-    ASSERT_EQ((*result)[1], "-cc1"sv);
-
-    CompilationParams params;
-    for(auto& arg: *result) {
-        params.arguments.push_back(arg.c_str());
-    }
-    params.add_remapped_file(file->c_str(), R"(
-            #include <print>
-            int main() {
-                std::println("Hello world!");
-                return 0;
-            }
-        )");
-
-    auto unit = compile(params);
-    ASSERT_TRUE(unit.completed());
-    ASSERT_TRUE(unit.diagnostics().empty());
-};
-
-TEST_CASE(Clang, skip = !CIEnvironment) {
-    auto file = vfs::temp_file("clice", "cpp");
-    if(!file) {
-        LOG_ERROR_RET(void(), "{}", file.error());
-    }
-
-    auto result = Toolchain::query(
-        {"clang++", "-std=c++23", "-resource-dir", resource_dir().data(), "-xc++", file->c_str()});
-    ASSERT_TRUE(result.has_value());
-
-    ASSERT_TRUE(result->size() > 2);
-    ASSERT_EQ((*result)[1], "-cc1"sv);
-
-    CompilationParams params;
-    for(auto& arg: *result) {
-        params.arguments.push_back(arg.c_str());
-    }
-    params.add_remapped_file(file->c_str(), R"(
-            #include <print>
-            int main() {
-                std::println("Hello world!");
-                return 0;
-            }
-        )");
-
-    auto unit = compile(params);
-    ASSERT_TRUE(unit.completed());
-    ASSERT_TRUE(unit.diagnostics().empty());
-};
-
-TEST_CASE(NVCC, skip = !(CIEnvironment && Linux)) {
-    auto file = vfs::temp_file("clice", "cu");
-    if(!file) {
-        LOG_ERROR_RET(void(), "{}", file.error());
-    }
-
-    auto result = Toolchain::query({"nvcc", "-resource-dir", resource_dir().data()}, file->c_str());
-    ASSERT_TRUE(result.has_value());
-
-    ASSERT_TRUE(result->size() > 2);
-    ASSERT_EQ((*result)[1], "-cc1"sv);
-
-    // The default view is the device pass — the __CUDA_ARCH__ world.
-    EXPECT_TRUE(std::ranges::contains(*result, "-fcuda-is-device"));
-
-    CompilationParams params;
-    for(auto& arg: *result) {
-        params.arguments.push_back(arg.c_str());
-    }
-    params.add_remapped_file(file->c_str(), R"(
-            #ifndef __CUDACC__
-            #error clang's CUDA wrapper presents __CUDACC__ to user code
-            #endif
-            __global__ void kern(float* p) { p[threadIdx.x] = 1.0f; }
-            int main() {
-                float* d = nullptr;
-                cudaMalloc(&d, 16);
-                kern<<<1, 1>>>(d);
-                return 0;
-            }
-        )");
-
-    auto unit = compile(params);
-    ASSERT_TRUE(unit.completed());
-    ASSERT_TRUE(unit.diagnostics().empty());
-};
-
-TEST_CASE(NVCCCudaHeader, skip = !(CIEnvironment && Linux)) {
-    auto file = vfs::temp_file("clice", "cuh");
-    if(!file) {
-        LOG_ERROR_RET(void(), "{}", file.error());
-    }
-
-    auto result = Toolchain::query({"nvcc", "-resource-dir", resource_dir().data()}, file->c_str());
-    ASSERT_TRUE(result.has_value());
-
-    ASSERT_TRUE(result->size() > 2);
-    ASSERT_EQ((*result)[1], "-cc1"sv);
-    EXPECT_TRUE(std::ranges::contains(*result, "-fcuda-is-device"));
-
-    CompilationParams params;
-    for(auto& arg: *result) {
-        params.arguments.push_back(arg.c_str());
-    }
-    params.add_remapped_file(file->c_str(), R"(
-            __device__ float scale(float* p) { return p[threadIdx.x]; }
-        )");
-
-    auto unit = compile(params);
-    ASSERT_TRUE(unit.completed());
-    ASSERT_TRUE(unit.diagnostics().empty());
-};
-
-TEST_CASE(NVCCViewSelector, skip = !(CIEnvironment && Linux)) {
-    auto file = vfs::temp_file("clice", "cu");
-    if(!file) {
-        LOG_ERROR_RET(void(), "{}", file.error());
-    }
-
-    auto has_define = [](llvm::ArrayRef<std::string> args, llvm::StringRef name) {
-        return std::ranges::any_of(args, [&](llvm::StringRef arg) { return arg.contains(name); });
-    };
-
-    // The last view selector wins, as in clang's driver, and the injected
-    // defines follow the selected pass (CUDA_DOUBLE_MATH_FUNCTIONS appears
-    // only on nvcc's device preprocess line).
-    auto device = Toolchain::query(
-        {"nvcc", "--cuda-host-only", "--cuda-device-only", "-resource-dir", resource_dir().data()},
-        file->c_str());
-    ASSERT_TRUE(device.has_value());
-    EXPECT_TRUE(std::ranges::contains(*device, "-fcuda-is-device"));
-    EXPECT_TRUE(has_define(*device, "CUDA_DOUBLE_MATH_FUNCTIONS"));
-
-    auto host = Toolchain::query(
-        {"nvcc", "--cuda-device-only", "--cuda-host-only", "-resource-dir", resource_dir().data()},
-        file->c_str());
-    ASSERT_TRUE(host.has_value());
-    EXPECT_FALSE(std::ranges::contains(*host, "-fcuda-is-device"));
-    EXPECT_FALSE(has_define(*host, "CUDA_DOUBLE_MATH_FUNCTIONS"));
-};
-
-TEST_CASE(NVCCArchEdit, skip = !(CIEnvironment && Linux)) {
-    auto file = vfs::temp_file("clice", "cu");
-    if(!file) {
-        LOG_ERROR_RET(void(), "{}", file.error());
-    }
-
-    // An edit-appended -arch=<special> arrives as `--no-offload-arch=all`
-    // plus the probe token; the dryrun's resolution must land after the
-    // clear, or clang erases it again and falls back to its sm_52 default.
-    // -arch=all runs one cicc per toolkit architecture and the newest wins.
-    auto result = Toolchain::query(
-        {"nvcc", "--no-offload-arch=all", "-arch=all", "-resource-dir", resource_dir().data()},
-        file->c_str());
-    ASSERT_TRUE(result.has_value());
-
-    auto cpu = std::ranges::find(*result, "-target-cpu");
-    ASSERT_TRUE(cpu != result->end() && cpu + 1 != result->end());
-    EXPECT_NE(*(cpu + 1), "sm_52"sv);
-};
-
-TEST_CASE(NVCCHostInput, skip = !(CIEnvironment && Linux)) {
-    auto file = vfs::temp_file("clice", "cpp");
-    if(!file) {
-        LOG_ERROR_RET(void(), "{}", file.error());
-    }
-
-    // A host-language input compiles in a single host step: no CUDA mode,
-    // but nvcc's injected identity macros still apply.
-    auto result = Toolchain::query({"nvcc", "-resource-dir", resource_dir().data()}, file->c_str());
-    ASSERT_TRUE(result.has_value());
-    EXPECT_FALSE(std::ranges::contains(*result, "-fcuda-is-device"));
-
-    CompilationParams params;
-    for(auto& arg: *result) {
-        params.arguments.push_back(arg.c_str());
-    }
-    params.add_remapped_file(file->c_str(), R"(
-            #ifndef __NVCC__
-            #error the host step keeps nvcc's identity macros
-            #endif
-            #ifdef __CUDACC__
-            #error a host-language input is not a CUDA compile
-            #endif
-            int main() { return 0; }
-        )");
-
-    auto unit = compile(params);
-    ASSERT_TRUE(unit.completed());
-    ASSERT_TRUE(unit.diagnostics().empty());
 };
 
 /// A database wrapping test entries — the unit tests' handle on the two
@@ -776,60 +572,30 @@ TEST_CASE(ResolveMainFileName, skip = Windows) {
     EXPECT_EQ(injected, 1);
 }
 
-TEST_CASE(ResolveKeepsSemanticFlags, skip = !CIEnvironment) {
-    auto file = vfs::temp_file("clice", "cpp");
-    if(!file) {
-        LOG_ERROR_RET(void(), "{}", file.error());
-    }
+TEST_CASE(ResolveAttachesUserContent, skip = Windows) {
+    auto driver = create_fake_clang(fake_cc1_line);
+    ASSERT_TRUE(driver.has_value());
 
-    Fixture f;
-    auto ref =
-        f.add("/tmp",
-              *file,
-              {"clang++", "-std=c++23", "-fms-extensions", "-Wno-everything", file->c_str()});
-    ASSERT_TRUE(f.db.toolchain().resolve(ref.config, ref.input).has_value());
-
-    // Semantic flags must survive resolution to cc1 (they were dropped when
-    // the query only forwarded toolchain options).
-    auto argv = f.db.render(ref);
-    bool has_ms_extensions = false;
-    bool has_wno_everything = false;
-    for(auto* arg: argv) {
-        if(arg == "-fms-extensions"sv)
-            has_ms_extensions = true;
-        if(arg == "-Wno-everything"sv)
-            has_wno_everything = true;
-    }
-    EXPECT_TRUE(has_ms_extensions);
-    EXPECT_TRUE(has_wno_everything);
-}
-
-TEST_CASE(Resolve, skip = !CIEnvironment) {
-    auto file = vfs::temp_file("clice", "cpp");
-    if(!file) {
-        LOG_ERROR_RET(void(), "{}", file.error());
-    }
-
-    /// A platform-native absolute include dir, rendered the way every path
-    /// value is spelled.
     TempDir tmp;
     auto inc_flag = "-I" + tmp.path("inc");
     auto inc = Spelling::absolute(tmp.path("inc")).str();
 
     Fixture f;
-    auto ref =
-        f.add("/tmp", *file, {"clang++", "-std=c++23", inc_flag.c_str(), "-DFOO=1", file->c_str()});
+    auto ref = f.add("/tmp",
+                     "/tmp/a.cpp",
+                     {driver->c_str(), "-std=c++23", inc_flag.c_str(), "-DFOO=1", "/tmp/a.cpp"});
     auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
     ASSERT_TRUE(resolved.has_value());
-    EXPECT_TRUE(f.db.toolchain().has_cache());
     EXPECT_TRUE(f.db.toolchain().resolved(*resolved).is_cc1);
 
+    // The probe never sees user content; the render puts it back on the
+    // driver's cc1 line.
     auto argv = f.db.render(ref);
     bool has_cc1 = false;
     bool has_include = false;
     bool has_define = false;
     bool has_main_file = false;
-    for(std::size_t i = 0; i < argv.size(); ++i) {
+    for(std::size_t i = 0; i < argv.size(); i += 1) {
         if(argv[i] == "-cc1"sv)
             has_cc1 = true;
         if(argv[i] == "-I"sv && i + 1 < argv.size() && llvm::StringRef(argv[i + 1]) == inc)
@@ -845,24 +611,21 @@ TEST_CASE(Resolve, skip = !CIEnvironment) {
     EXPECT_TRUE(has_main_file);
 }
 
-TEST_CASE(Warm, skip = !CIEnvironment) {
-    auto file1 = vfs::temp_file("clice", "cpp");
-    auto file2 = vfs::temp_file("clice", "cpp");
-    auto file3 = vfs::temp_file("clice", "cpp");
-    if(!file1 || !file2 || !file3) {
-        LOG_ERROR_RET(void(), "failed to create temp files");
-    }
+TEST_CASE(WarmDedupesProbes, skip = Windows) {
+    auto driver = create_fake_clang(fake_cc1_line);
+    ASSERT_TRUE(driver.has_value());
 
     Fixture f;
-    auto ref1 = f.add("/tmp", *file1, {"clang++", "-std=c++23", file1->c_str()});
-    auto ref2 = f.add("/tmp", *file2, {"clang++", "-std=c++23", file2->c_str()});
-    auto ref3 = f.add("/tmp", *file3, {"clang++", "-std=c++17", file3->c_str()});
+    auto ref1 = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
+    auto ref2 = f.add("/tmp", "/tmp/b.cpp", {driver->c_str(), "-std=c++23", "/tmp/b.cpp"});
+    auto ref3 = f.add("/tmp", "/tmp/c.cpp", {driver->c_str(), "-std=c++17", "/tmp/c.cpp"});
 
     llvm::SmallVector<CommandRef> refs = {ref1, ref2, ref3};
     f.db.warm(refs);
-    EXPECT_TRUE(f.db.toolchain().has_cache());
+    EXPECT_EQ(f.db.toolchain().probe_count(), std::size_t(2));
 
-    // After warm, resolve should hit the probe cache (no subprocess).
+    // With the driver gone, only the probe cache can still resolve.
+    ASSERT_TRUE(!vfs::remove(*driver));
     auto resolved = f.db.toolchain().resolve(ref1.config, ref1.input);
     ASSERT_TRUE(resolved.has_value());
     EXPECT_TRUE(f.db.toolchain().resolved(*resolved).is_cc1);

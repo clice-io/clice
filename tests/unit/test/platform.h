@@ -25,12 +25,6 @@ constexpr inline bool Linux = true;
 constexpr inline bool Linux = false;
 #endif
 
-#ifdef CLICE_CI_ENVIRONMENT
-constexpr inline bool CIEnvironment = true;
-#else
-constexpr inline bool CIEnvironment = false;
-#endif
-
 /// The checked-in fixture tree, tests/data of the checkout that built this
 /// binary. CLICE_TEST_DATA_DIR in the environment overrides it, the way
 /// CLICE_EXECUTABLE points the TypeScript suites at another build. Absolute

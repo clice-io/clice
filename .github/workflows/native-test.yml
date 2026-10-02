@@ -68,7 +68,7 @@ jobs:
         run: pixi run -- ccache --zero-stats
 
       - name: Build
-        run: pixi run build ${{ matrix.build_type }} ON
+        run: pixi run build ${{ matrix.build_type }}
 
       - name: Save compiler cache
         if: github.ref == 'refs/heads/main'

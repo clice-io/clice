@@ -2,7 +2,7 @@
 
 ## Run Tests
 
-clice has four types of tests: unit tests, integration tests, smoke tests, and snap tests.
+clice has four types of tests that run on every change: unit tests, integration tests, smoke tests, and snap tests. Compatibility tests, which need real build systems and compilers, run separately.
 
 All test dependencies (node/npm for the integration suite and tools, python for scripts/) are managed by pixi — no separate installation needed.
 
@@ -102,6 +102,16 @@ Prerequisites outside the pixi env:
 - `nvim` (stable) on `PATH` for `nvim-e2e`.
 - A system `cmake`/`ninja`/`clang` for `editor-prepare` to configure the CMake-based module fixture (same assumption the integration tests make).
 - A display (or `xvfb-run`) plus the usual Electron system libraries for `vscode-e2e`.
+
+## Compatibility Tests
+
+Real build systems and real compilers: each scenario in `tests/compat/scenarios.ts` builds the small project under `tests/compat/project/` with one build system and one toolchain, then runs clice over the compilation database that build wrote. Every translation unit must parse without errors, as it compiled for the real compiler; clice must agree with that compiler on the macros the command's flags imply, which a generated header compares inside clice's own parse; and each file's command must resolve through the compiler and keep or drop the flags the scenario lists. No database is committed: the suite checks what the tools write today.
+
+```bash
+pixi run compat-test          # default RelWithDebInfo
+```
+
+Each scenario names the compilers of one platform as its CI runner image has them: on Linux the distribution's versioned GCC and Clang plus bear, ccache, meson, ninja, xmake, bazel, zig, Emscripten, the MinGW, RISC-V and Arm cross compilers, and nvcc from the pixi `cuda` environment (`pixi install -e cuda`); on Windows Visual Studio, LLVM and MinGW; on macOS Apple clang and Homebrew's GCC and LLVM. A scenario whose tools are missing is skipped locally and fails in CI. A scenario clice does not support yet names why in `unsupported`: its checks are skipped while its build still runs. CI runs the suite with every build, and weekly against the newest release.
 
 ## Debug
 

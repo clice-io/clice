@@ -146,15 +146,16 @@ test("answers from the persisted index", ({ session }) => {
         "main",
     ]);
 
-    const command = query<{ file: string; arguments: string[]; source: string }>(
-        ws,
-        "compileCommand",
-        "--path",
-        "main.cpp",
-    );
+    const command = query<{
+        file: string;
+        arguments: string[];
+        source: string;
+        toolchainError: string | null;
+    }>(ws, "compileCommand", "--path", "main.cpp");
     expect(asUri(command.result!.file)).toBe(ws.uri("main.cpp"));
     expect(command.result?.source).toBe("database");
-    expect(command.result?.arguments.length).toBeGreaterThan(0);
+    expect(command.result?.toolchainError).toBeNull();
+    expect(command.result?.arguments).toContain("-cc1");
 
     const kinds = query<{ symbols: { name: string; kind: string }[] }>(
         ws,
@@ -256,6 +257,33 @@ test.skipIf(process.platform === "win32")(
         expect(command.result?.arguments, "a's search reaches the header").toContain("FROM_A");
     },
 );
+
+test("names a failed compiler query", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("main.cpp", "int main() { return 0; }\n");
+    const driver = ws.path("missing-cc");
+    ws.write(
+        "compile_commands.json",
+        JSON.stringify([
+            {
+                directory: ws.root,
+                file: ws.path("main.cpp"),
+                arguments: [driver, "-c", "main.cpp"],
+            },
+        ]),
+    );
+    ws.pinCacheDir();
+    expect(runIndex(ws).status, "the unit still parses from its driver-level command").toBe(0);
+
+    const command = query<{ arguments: string[]; toolchainError: string | null }>(
+        ws,
+        "compileCommand",
+        "--path",
+        "main.cpp",
+    );
+    expect(command.result?.toolchainError).toContain("missing-cc");
+    expect(command.result?.arguments).not.toContain("-cc1");
+});
 
 test("answers for a file only its own symbols name", ({ session }) => {
     // Nothing in the global table references the file, so only the
