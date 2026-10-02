@@ -38,7 +38,6 @@
 #include "command/command.h"
 #include "compile/compilation.h"
 #include "index/tu_index.h"
-#include "support/filesystem.h"
 #include "support/format.h"
 #include "support/logging.h"
 #include "vfs/file_system.h"
@@ -1226,12 +1225,12 @@ int main(int argc, const char** argv) {
     }
     auto md_path = std::format("{}/REPORT.md", *opts.out_dir);
     auto json_path = std::format("{}/stats.json", *opts.out_dir);
-    if(auto w = fs::write(md_path, md); !w) {
-        std::println(stderr, "Error: cannot write {}: {}", md_path, w.error().message());
+    if(auto error = vfs::write(md_path, md)) {
+        std::println(stderr, "Error: cannot write {}: {}", md_path, error.message());
         return 1;
     }
-    if(auto w = fs::write(json_path, json); !w) {
-        std::println(stderr, "Error: cannot write {}: {}", json_path, w.error().message());
+    if(auto error = vfs::write(json_path, json)) {
+        std::println(stderr, "Error: cannot write {}: {}", json_path, error.message());
         return 1;
     }
 

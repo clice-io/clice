@@ -4,7 +4,6 @@
 #include <ranges>
 
 #include "index/serialization.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
@@ -12,7 +11,6 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Chrono.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
 namespace clice {
@@ -70,7 +68,7 @@ Project::ProviderChanges Project::rebuild_dependency_graph() {
 
 static std::optional<Spelling> database_in(const Spelling& dir) {
     Spelling candidate("compile_commands.json", dir);
-    if(!llvm::sys::fs::exists(candidate)) {
+    if(!vfs::exists(candidate)) {
         return std::nullopt;
     }
     return candidate;
@@ -86,14 +84,12 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
     llvm::SmallVector<Spelling> subdirectories;
-    std::error_code ec;
-    for(llvm::sys::fs::directory_iterator it(workspace_root, ec), end; it != end && !ec;
-        it.increment(ec)) {
+    for(auto& entry: vfs::read_dir(workspace_root).value_or(std::vector<vfs::Entry>())) {
         // A symlinked build directory is a build directory too, even
         // before its target exists.
-        if(it->type() == llvm::sys::fs::file_type::symlink_file ||
-           llvm::sys::fs::is_directory(it->path())) {
-            subdirectories.push_back(Spelling::absolute(it->path()));
+        if(entry.type == llvm::sys::fs::file_type::symlink_file ||
+           entry.type == llvm::sys::fs::file_type::directory_file) {
+            subdirectories.push_back(Spelling::absolute(entry.path));
         }
     }
     std::ranges::sort(subdirectories, {}, &Spelling::str);
@@ -105,48 +101,37 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
 
 llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root) {
     auto found = database_places(workspace_root);
-    llvm::erase_if(found, [](const Spelling& place) { return !llvm::sys::fs::exists(place); });
+    llvm::erase_if(found, [](const Spelling& place) { return !vfs::exists(place); });
     return found;
 }
 
 llvm::SmallVector<Spelling> compile_commands_below(CanonicalRef workspace_root,
                                                    CanonicalRef cache_dir) {
     llvm::SmallVector<Spelling> found;
-    std::error_code ec;
-    for(llvm::sys::fs::recursive_directory_iterator
-            it(workspace_root, ec, /*follow_symlinks=*/false),
-        end;
-        it != end;
-        it.increment(ec)) {
-        if(ec) {
-            LOG_WARN("Cannot read a directory under {}: {}", workspace_root, ec.message());
-            ec.clear();
-            continue;
+    vfs::walk(workspace_root, [&](const vfs::Entry& entry) {
+        auto spelled = Spelling::absolute(entry.path);
+        if(entry.type == llvm::sys::fs::file_type::directory_file) {
+            return path::filename(spelled.str()) != ".git" &&
+                   workspace_root.entry(spelled) != cache_dir;
         }
-        auto entry = Spelling::absolute(it->path());
-        auto type = it->type();
-        if(type == llvm::sys::fs::file_type::directory_file) {
-            if(path::filename(entry.str()) == ".git" || workspace_root.entry(entry) == cache_dir) {
-                it.no_push();
-            }
-        } else if(path::filename(entry.str()) == "compile_commands.json") {
-            found.push_back(std::move(entry));
-        } else if(type == llvm::sys::fs::file_type::symlink_file &&
-                  llvm::sys::fs::is_directory(entry)) {
+        if(path::filename(spelled.str()) == "compile_commands.json") {
+            found.push_back(std::move(spelled));
+        } else if(entry.type == llvm::sys::fs::file_type::symlink_file &&
+                  vfs::is_directory(spelled)) {
             // Not walked into (links may cycle), but a build directory
             // symlinked elsewhere keeps its database.
-            if(auto database = database_in(entry)) {
+            if(auto database = database_in(spelled)) {
                 found.push_back(std::move(*database));
             }
         }
-    }
+        return false;
+    });
     return found;
 }
 
 static bool configured(const Spelling& dir) {
-    return llvm::any_of(config_file_names, [&](llvm::StringRef name) {
-        return llvm::sys::fs::exists(Spelling(name, dir));
-    });
+    return llvm::any_of(config_file_names,
+                        [&](llvm::StringRef name) { return vfs::exists(Spelling(name, dir)); });
 }
 
 bool defines_project(CanonicalRef dir) {
@@ -178,7 +163,7 @@ llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalR
 llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
                                                    CanonicalRef workspace_root) {
     auto found = database_places_above(start, workspace_root);
-    llvm::erase_if(found, [](const Spelling& place) { return !llvm::sys::fs::exists(place); });
+    llvm::erase_if(found, [](const Spelling& place) { return !vfs::exists(place); });
     return found;
 }
 
@@ -187,7 +172,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
                                    std::int64_t build_at) {
     // Files whose mtime falls within the guard of the build start count as
     // "possibly modified during the build".
-    auto baseline_before_ns = fs::stat_baseline_before_ns(build_at);
+    auto baseline_before_ns = vfs::stat_baseline_before_ns(build_at);
 
     DepsSnapshot snap;
     snap.reserve(deps.size());

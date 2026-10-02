@@ -279,7 +279,7 @@ TEST_CASE(RemovedAfterBuild) {
     },
                                       generous_build_at());
 
-    fs::remove(dep);
+    vfs::remove(dep);
     ASSERT_TRUE(deps_changed(pool, snap));
 }
 

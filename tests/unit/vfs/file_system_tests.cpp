@@ -7,12 +7,14 @@
 #include <format>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "vfs/file_system.h"
 
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 
 namespace clice::testing {
 
@@ -219,6 +221,86 @@ TEST_CASE(StampSeesKeptTimes) {
     ASSERT_EQ(after->stamp.size, before->stamp.size);
     ASSERT_EQ(after->stamp.mtime_ns, before->stamp.mtime_ns);
     ASSERT_TRUE(after->stamp != before->stamp);
+}
+
+TEST_CASE(WalkPrunesAndSkipsLinks) {
+    TempDir tmp;
+    tmp.touch("src/a.cpp");
+    tmp.touch("src/deep/b.cpp");
+    tmp.touch("skip/c.cpp");
+    tmp.touch("outside/d.cpp");
+#ifndef _WIN32
+    ASSERT_EQ(::symlink(tmp.path("outside").c_str(), tmp.path("src/link").c_str()), 0);
+#endif
+
+    std::vector<std::string> seen;
+    vfs::walk(tmp.path("src"), [&](const vfs::Entry& entry) {
+        seen.push_back(llvm::sys::path::filename(entry.path).str());
+        return true;
+    });
+    std::ranges::sort(seen);
+#ifdef _WIN32
+    ASSERT_EQ(seen, (std::vector<std::string>{"a.cpp", "b.cpp", "deep"}));
+#else
+    ASSERT_EQ(seen, (std::vector<std::string>{"a.cpp", "b.cpp", "deep", "link"}));
+#endif
+
+    seen.clear();
+    vfs::walk(tmp.root, [&](const vfs::Entry& entry) {
+        auto name = llvm::sys::path::filename(entry.path);
+        seen.push_back(name.str());
+        return name != "skip" && name != "src";
+    });
+    std::ranges::sort(seen);
+    ASSERT_EQ(seen, (std::vector<std::string>{"d.cpp", "outside", "skip", "src"}));
+}
+
+TEST_CASE(RemoveAllKeepsLinkTargets) {
+    TempDir tmp;
+    tmp.touch("tree/a/b.h");
+    tmp.touch("tree/c.h");
+    tmp.touch("outside/kept.h");
+#ifndef _WIN32
+    ASSERT_EQ(::symlink(tmp.path("outside").c_str(), tmp.path("tree/link").c_str()), 0);
+    ASSERT_EQ(::symlink(tmp.path("outside").c_str(), tmp.path("root-link").c_str()), 0);
+    ASSERT_FALSE(static_cast<bool>(vfs::remove_all(tmp.path("root-link"))));
+    ASSERT_FALSE(vfs::exists(tmp.path("root-link")));
+#endif
+    ASSERT_FALSE(static_cast<bool>(vfs::remove_all(tmp.path("tree"))));
+    ASSERT_FALSE(vfs::exists(tmp.path("tree")));
+    ASSERT_TRUE(vfs::exists(tmp.path("outside/kept.h")));
+    ASSERT_FALSE(static_cast<bool>(vfs::remove_all(tmp.path("tree"))));
+}
+
+TEST_CASE(RemoveMappedFile) {
+    // Workers keep PCHs mapped while the store replaces them.
+    TempDir tmp;
+    // Not a whole number of pages: a null-terminated read maps only then.
+    tmp.touch("blob.pch", std::string((1 << 20) + 1, 'x'));
+    auto path = tmp.path("blob.pch");
+    auto mapped = vfs::read(path, vfs::Read::Mapped);
+    ASSERT_TRUE(mapped.has_value());
+    ASSERT_TRUE((*mapped)->getBufferKind() == llvm::MemoryBuffer::MemoryBuffer_MMap);
+    ASSERT_FALSE(static_cast<bool>(vfs::remove(path)));
+    ASSERT_FALSE(vfs::exists(path));
+    ASSERT_EQ((*mapped)->getBufferSize(), (1u << 20) + 1);
+    tmp.touch("blob.pch", "new");
+    ASSERT_EQ(read_file(path).value_or(""), "new");
+    ASSERT_FALSE(static_cast<bool>(vfs::remove(path)));
+    ASSERT_FALSE(static_cast<bool>(vfs::remove(path)));
+}
+
+TEST_CASE(AtomicWriteReplaces) {
+    TempDir tmp;
+    auto path = tmp.path("state.json");
+    ASSERT_FALSE(static_cast<bool>(vfs::write_atomic(path, "old")));
+    ASSERT_FALSE(static_cast<bool>(vfs::write_atomic(path, "new")));
+    ASSERT_EQ(read_file(path).value_or(""), "new");
+    auto entries = vfs::read_dir(tmp.root);
+    ASSERT_TRUE(entries.has_value());
+    ASSERT_EQ(entries->size(), 1u);
+    ASSERT_TRUE(entries->front().type == llvm::sys::fs::file_type::regular_file);
+    ASSERT_TRUE(static_cast<bool>(vfs::write_atomic(tmp.path("none/state.json"), "x")));
 }
 
 };  // TEST_SUITE(FileSystem)

@@ -3,13 +3,13 @@
 #include <format>
 
 #include "index/serialization.h"
+#include "vfs/file_system.h"
 #include "vfs/path.h"
 
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
 namespace clice::query {
@@ -47,7 +47,7 @@ Lines lines_of(const index::Site& site) {
 /// The file a path names in the index. An error for a path that is not a
 /// file; nullopt (noted as unindexed) for one the index has no rows for.
 Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
-    if(!llvm::sys::fs::is_regular_file(path)) {
+    if(!vfs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     // Interning only names the file; whether the index holds rows for
@@ -174,7 +174,7 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Edge> ed
 }  // namespace
 
 Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path) {
-    if(!llvm::sys::fs::is_regular_file(path)) {
+    if(!vfs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     // The editor compiles such a header under a synthesized preamble, a
@@ -255,7 +255,7 @@ Outcome<FileDepsResult>
     if(depth < 0) {
         return std::unexpected("depth must not be negative");
     }
-    if(!llvm::sys::fs::is_regular_file(path)) {
+    if(!vfs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     auto& ws = ctx.project;
@@ -279,7 +279,7 @@ Outcome<FileDepsResult>
 }
 
 Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path) {
-    if(!llvm::sys::fs::is_regular_file(path)) {
+    if(!vfs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     auto& ws = ctx.project;

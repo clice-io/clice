@@ -44,7 +44,8 @@ Distilled from real correction history — these mistakes keep recurring:
 - `src/syntax/` — Lexer, scanner, token types, dependency graph
 - `src/command/` — CLI parsing, compilation database, toolchain detection
 - `src/driver/` — CLI subcommand entry points: serve, worker, index, inspect, format, lint, query, doc
-- `src/support/` — Utilities: logging, filesystem, JSON, string helpers
+- `src/vfs/` — Disk access: reads, statuses, writes, directory walks; the file table and its freshness checks
+- `src/support/` — Utilities: logging, JSON, string helpers
 
 Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: LSP client, snap machinery, replay, shared protocol types), `tests/` holds all four test suites, `editors/` the vscode/zed/nvim clients. `tools/`, `tests/`, and `editors/vscode` form one npm workspace rooted at the repo top level — run `npm install` and `npm run check` from the root, never inside a package.
 

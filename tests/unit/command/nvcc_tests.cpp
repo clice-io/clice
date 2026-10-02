@@ -5,7 +5,6 @@
 #include "command/command.h"
 #include "command/nvcc.h"
 #include "command/toolchain.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 namespace clice::testing {
@@ -277,9 +276,9 @@ TEST_CASE(ListValuesSplit) {
 }
 
 TEST_CASE(OptionsFileExpanded) {
-    auto file = fs::createTemporaryFile("clice-nvcc", "rsp");
+    auto file = vfs::temp_file("clice-nvcc", "rsp");
     ASSERT_TRUE(file.has_value());
-    ASSERT_TRUE(fs::write(*file, "-Igenerated -DAPI=2 -std=c++20\n"));
+    ASSERT_TRUE(!vfs::write(*file, "-Igenerated -DAPI=2 -std=c++20\n"));
 
     auto args = translate({"nvcc", "--options-file", file->c_str()});
     auto joined = llvm::join(args, " ");
@@ -290,9 +289,9 @@ TEST_CASE(OptionsFileExpanded) {
     EXPECT_FALSE(llvm::StringRef(joined).contains(*file));
 
     // The value is a comma-separated file list: every element expands.
-    auto second = fs::createTemporaryFile("clice-nvcc", "rsp");
+    auto second = vfs::temp_file("clice-nvcc", "rsp");
     ASSERT_TRUE(second.has_value());
-    ASSERT_TRUE(fs::write(*second, "-DFROM_SECOND=2\n"));
+    ASSERT_TRUE(!vfs::write(*second, "-DFROM_SECOND=2\n"));
 
     auto pair = *file + "," + *second;
     auto both = llvm::join(translate({"nvcc", "-optf", pair.c_str()}), " ");
@@ -309,18 +308,18 @@ TEST_CASE(OptionsFileExpanded) {
     EXPECT_FALSE(contains(missing, "--options-file=missing.rsp"));
     EXPECT_FALSE(contains(missing, "missing.rsp"));
 
-    fs::remove(*file);
-    fs::remove(*second);
+    vfs::remove(*file);
+    vfs::remove(*second);
 }
 
 TEST_CASE(OptionsFileMarkSkipped) {
     // A byte order mark does not glue itself to the first option.
-    auto file = fs::createTemporaryFile("clice-nvcc", "rsp");
+    auto file = vfs::temp_file("clice-nvcc", "rsp");
     ASSERT_TRUE(file.has_value());
-    ASSERT_TRUE(fs::write(*file, "\xEF\xBB\xBF-DMARKED=1\n"));
+    ASSERT_TRUE(!vfs::write(*file, "\xEF\xBB\xBF-DMARKED=1\n"));
     auto joined = llvm::join(translate({"nvcc", "--options-file", file->c_str()}), " ");
     EXPECT_TRUE(llvm::StringRef(joined).contains("-D MARKED=1"));
-    fs::remove(*file);
+    vfs::remove(*file);
 }
 
 TEST_CASE(StdNormalized) {

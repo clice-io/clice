@@ -8,7 +8,6 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
-#include "support/filesystem.h"
 #include "syntax/scan.h"
 #include "vfs/path.h"
 
@@ -149,7 +148,7 @@ int main() { return 0; }
     // Switch to Preamble kind for PCH building.
     params.kind = CompilationKind::Preamble;
 
-    auto pch_path = fs::createTemporaryFile("clice-test", "pch");
+    auto pch_path = vfs::temp_file("clice-test", "pch");
     ASSERT_TRUE(pch_path.operator bool());
     params.output_file = *pch_path;
 
@@ -207,7 +206,7 @@ int main() { return preamble_func(); }
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
-    auto pch_path = fs::createTemporaryFile("clice-test", "pch");
+    auto pch_path = vfs::temp_file("clice-test", "pch");
     ASSERT_TRUE(pch_path.operator bool());
 
     auto& source = sources.all_files["main.cpp"];
@@ -243,7 +242,7 @@ int main() { return preamble_func(); }
 
         auto blob = read_file(*pch_path);
         ASSERT_TRUE(blob.operator bool());
-        ASSERT_TRUE(fs::write(*pch_path, corrupt(std::move(*blob), shape)).operator bool());
+        ASSERT_TRUE(!vfs::write(*pch_path, corrupt(std::move(*blob), shape)));
 
         params.kind = CompilationKind::Content;
         params.output_file.clear();
@@ -281,7 +280,7 @@ TEST_CASE(PCHIgnoresInputMtime) {
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
-    auto pch_path = fs::createTemporaryFile("clice-test", "pch");
+    auto pch_path = vfs::temp_file("clice-test", "pch");
     ASSERT_TRUE(pch_path.operator bool());
     auto main_vfs_path = TestVFS::path("main.cpp");
     auto bound = compute_preamble_bound(content);
@@ -415,7 +414,7 @@ export int a_value() { return b_value() + 1; }
     params_b.kind = CompilationKind::ModuleInterface;
     params_b.arguments = render_entry(tmp.path("mod_b.cppm"));
 
-    auto pcm_b_path = fs::createTemporaryFile("mod_b", "pcm");
+    auto pcm_b_path = vfs::temp_file("mod_b", "pcm");
     ASSERT_TRUE(pcm_b_path.operator bool());
     params_b.output_file = *pcm_b_path;
 
@@ -434,7 +433,7 @@ export int a_value() { return b_value() + 1; }
     params_a.arguments = render_entry(tmp.path("mod_a.cppm"));
     params_a.pcms.try_emplace("mod_b", info_b.path);
 
-    auto pcm_a_path = fs::createTemporaryFile("mod_a", "pcm");
+    auto pcm_a_path = vfs::temp_file("mod_a", "pcm");
     ASSERT_TRUE(pcm_a_path.operator bool());
     params_a.output_file = *pcm_a_path;
 

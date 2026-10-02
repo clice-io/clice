@@ -278,7 +278,7 @@ private:
     /// derived from an unseen state; any other finding than the last one
     /// is. The file is due again after its interval: the shortest after a
     /// first look, a change, or an mtime not yet `settled` (see
-    /// fs::settled), else twice the last one.
+    /// vfs::settled), else twice the last one.
     void saw(Fid fid, std::optional<std::uint64_t> hash, bool settled);
 
     /// The turn's look at a file, taken once per turn — unless the last

@@ -6,7 +6,6 @@
 #include "index/database.h"
 #include "index/writer_lock.h"
 #include "support/cache_store.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -348,7 +347,7 @@ TEST_CASE(LibraryBlockedByFile) {
     auto library = index::library_directory(store, "x");
     auto ec = llvm::sys::fs::create_directories(path::parent_path(library));
     ASSERT_TRUE(!ec);
-    ASSERT_TRUE(fs::write(library, "x").has_value());
+    ASSERT_TRUE(!vfs::write(library, "x"));
     ASSERT_TRUE(index::open_database(store, "x") == nullptr);
 }
 

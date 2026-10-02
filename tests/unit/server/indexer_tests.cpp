@@ -2865,10 +2865,10 @@ TEST_CASE(StaleFormatDropsPch) {
         IndexerFixture f;
         setup(f);
         auto pending = f.project.store->begin_store("pch", "k");
-        ASSERT_TRUE(fs::write(pending.tmp_path, "pch-bytes").has_value());
+        ASSERT_TRUE(!vfs::write(pending.tmp_path, "pch-bytes"));
         ASSERT_TRUE(f.project.store->commit(std::move(pending)).has_value());
         auto aux = f.project.store->begin_store_aux("pch", "k");
-        ASSERT_TRUE(fs::write(aux.tmp_path, "idx-bytes").has_value());
+        ASSERT_TRUE(!vfs::write(aux.tmp_path, "idx-bytes"));
         ASSERT_TRUE(f.project.store->commit(std::move(aux)).has_value());
 
         auto dep_id = f.project.file_table.intern(Spelling::absolute(dep_path));
@@ -2926,7 +2926,7 @@ TEST_CASE(DeplessPcmDropped) {
         IndexerFixture f;
         setup(f);
         auto pending = f.project.store->begin_store("pcm", "k");
-        ASSERT_TRUE(fs::write(pending.tmp_path, "pcm-bytes").has_value());
+        ASSERT_TRUE(!vfs::write(pending.tmp_path, "pcm-bytes"));
         ASSERT_TRUE(f.project.store->commit(std::move(pending)).has_value());
 
         auto& st = f.project.pcm_cache[f.project.file_table.intern(Spelling::absolute(src))];

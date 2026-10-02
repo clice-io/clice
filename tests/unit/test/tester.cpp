@@ -46,7 +46,7 @@ std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef
 
 Tester::~Tester() {
     for(auto& path: pcm_paths) {
-        fs::remove(path);
+        vfs::remove(path);
     }
 }
 
@@ -91,7 +91,7 @@ bool Tester::compile(llvm::StringRef standard) {
 bool Tester::compile_with_pch(llvm::StringRef standard) {
     prepare(standard);
 
-    auto pch_path = fs::createTemporaryFile("clice", "pch");
+    auto pch_path = vfs::temp_file("clice", "pch");
     if(!pch_path) {
         LOG_ERROR("{}", pch_path.error().message());
         return false;
@@ -229,7 +229,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     for(auto idx: order) {
         auto& mod = modules[idx];
 
-        auto pcm_path = fs::createTemporaryFile("clice", "pcm");
+        auto pcm_path = vfs::temp_file("clice", "pcm");
         if(!pcm_path) {
             LOG_ERROR("{}", pcm_path.error().message());
             return false;
@@ -401,7 +401,7 @@ void Tester::clear() {
     vfs.reset();
     module_files.clear();
     for(auto& path: pcm_paths) {
-        fs::remove(path);
+        vfs::remove(path);
     }
     pcm_paths.clear();
 }

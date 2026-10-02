@@ -9,9 +9,9 @@
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/stderr_sink.h"
+#include "vfs/file_system.h"
 #include "worker/common.h"
 #include "worker/protocol.h"
 
@@ -22,7 +22,6 @@
 #include "kota/ipc/peer.h"
 #include "kota/ipc/transport.h"
 #include "llvm/Support/Regex.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
@@ -77,21 +76,9 @@ static std::string serialize_preamble_envelope(CompilationUnit& unit,
 /// on failure so the master's anomaly carries the cause.
 static std::optional<std::string> write_preamble_envelope(llvm::StringRef blob,
                                                           llvm::StringRef output_path) {
-    std::error_code ec;
-    llvm::raw_fd_ostream os(output_path, ec);
-    if(ec) {
+    if(auto error = vfs::write(output_path, blob)) {
         auto message =
-            std::format("cannot open pch.idx envelope {}: {}", output_path, ec.message());
-        LOG_ERROR("BuildPCH: {}", message);
-        return message;
-    }
-    os << blob;
-    os.flush();
-    if(os.has_error()) {
-        auto message = std::format("failed writing pch.idx envelope {}: {}",
-                                   output_path,
-                                   os.error().message());
-        os.clear_error();
+            std::format("failed writing pch.idx envelope {}: {}", output_path, error.message());
         LOG_ERROR("BuildPCH: {}", message);
         return message;
     }
@@ -109,7 +96,7 @@ static std::expected<std::string, std::string> artifact_output(llvm::StringRef l
     if(!output_path.empty()) {
         return output_path.str();
     }
-    auto tmp = fs::createTemporaryFile(prefix, extension);
+    auto tmp = vfs::temp_file(prefix, extension);
     if(!tmp) {
         LOG_ERROR("Build{}: failed to create temp file", label);
         return std::unexpected(std::format("Failed to create temporary {} file", label));
@@ -137,7 +124,7 @@ static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
         result.deps = deps;
         return result;
     }
-    fs::remove(tmp_path);
+    vfs::remove(tmp_path);
     result.success = false;
     result.has_user_errors = !internal_error && !errors.empty();
     result.error = errors.empty() ? std::format("{} compilation failed", label) : std::move(errors);

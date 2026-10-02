@@ -6,7 +6,6 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 namespace clice::testing {
@@ -293,7 +292,7 @@ TEST_CASE(MissingFileFails) {
                    {tmp.root.str(), "a.cpp", {}}
     });
     cdb.load(cdb_path);
-    fs::remove_all(cdb_path);
+    vfs::remove_all(cdb_path);
 
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 

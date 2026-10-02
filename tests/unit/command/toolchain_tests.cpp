@@ -60,7 +60,7 @@ TEST_CASE(Family) {
 };
 
 TEST_CASE(GCC, skip = !(CIEnvironment && (Windows || Linux))) {
-    auto file = fs::createTemporaryFile("clice", "cpp");
+    auto file = vfs::temp_file("clice", "cpp");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
@@ -90,7 +90,7 @@ TEST_CASE(GCC, skip = !(CIEnvironment && (Windows || Linux))) {
 };
 
 TEST_CASE(Clang, skip = !CIEnvironment) {
-    auto file = fs::createTemporaryFile("clice", "cpp");
+    auto file = vfs::temp_file("clice", "cpp");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
@@ -120,7 +120,7 @@ TEST_CASE(Clang, skip = !CIEnvironment) {
 };
 
 TEST_CASE(NVCC, skip = !(CIEnvironment && Linux)) {
-    auto file = fs::createTemporaryFile("clice", "cu");
+    auto file = vfs::temp_file("clice", "cu");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
@@ -157,7 +157,7 @@ TEST_CASE(NVCC, skip = !(CIEnvironment && Linux)) {
 };
 
 TEST_CASE(NVCCCudaHeader, skip = !(CIEnvironment && Linux)) {
-    auto file = fs::createTemporaryFile("clice", "cuh");
+    auto file = vfs::temp_file("clice", "cuh");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
@@ -183,7 +183,7 @@ TEST_CASE(NVCCCudaHeader, skip = !(CIEnvironment && Linux)) {
 };
 
 TEST_CASE(NVCCViewSelector, skip = !(CIEnvironment && Linux)) {
-    auto file = fs::createTemporaryFile("clice", "cu");
+    auto file = vfs::temp_file("clice", "cu");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
@@ -211,7 +211,7 @@ TEST_CASE(NVCCViewSelector, skip = !(CIEnvironment && Linux)) {
 };
 
 TEST_CASE(NVCCArchEdit, skip = !(CIEnvironment && Linux)) {
-    auto file = fs::createTemporaryFile("clice", "cu");
+    auto file = vfs::temp_file("clice", "cu");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
@@ -231,7 +231,7 @@ TEST_CASE(NVCCArchEdit, skip = !(CIEnvironment && Linux)) {
 };
 
 TEST_CASE(NVCCHostInput, skip = !(CIEnvironment && Linux)) {
-    auto file = fs::createTemporaryFile("clice", "cpp");
+    auto file = vfs::temp_file("clice", "cpp");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
@@ -434,15 +434,15 @@ constexpr static llvm::StringRef fake_cc1_line =
 /// family) that prints a canned `-###` line to stderr, standing in for a
 /// real external driver.
 std::optional<std::string> create_fake_clang(llvm::StringRef cc1_line) {
-    auto file = fs::createTemporaryFile("clice-fake", "clang");
+    auto file = vfs::temp_file("clice-fake", "clang");
     if(!file)
         return std::nullopt;
 
     auto script = "#!/bin/sh\necho '" + cc1_line.str() + "' >&2\n";
-    if(!fs::write(*file, script))
+    if(vfs::write(*file, script))
         return std::nullopt;
 
-    if(fs::setPermissions(*file, fs::all_read | fs::all_exe))
+    if(llvm::sys::fs::setPermissions(*file, llvm::sys::fs::all_read | llvm::sys::fs::all_exe))
         return std::nullopt;
 
     return *file;
@@ -481,8 +481,9 @@ TEST_CASE(FailedQueryRetries, skip = Windows) {
     EXPECT_EQ(eager.db.toolchain().failed_count(), std::size_t(1));
 
     // The driver appears; the expired entry re-queries and succeeds.
-    ASSERT_TRUE(fs::write(driver, script));
-    ASSERT_TRUE(!fs::setPermissions(driver, fs::all_read | fs::all_exe));
+    ASSERT_TRUE(!vfs::write(driver, script));
+    ASSERT_TRUE(
+        !llvm::sys::fs::setPermissions(driver, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
     ASSERT_TRUE(eager.db.toolchain().resolve(ref.config, ref.input).has_value());
     EXPECT_EQ(eager.db.toolchain().failed_count(), std::size_t(0));
     EXPECT_TRUE(eager.db.toolchain().has_cache());
@@ -494,8 +495,9 @@ TEST_CASE(FailedQueryRetries, skip = Windows) {
     auto ref2 = patient.add(tmp.root.str(), src, {late.c_str(), "-std=c++23", src.c_str()});
 
     ASSERT_FALSE(patient.db.toolchain().resolve(ref2.config, ref2.input).has_value());
-    ASSERT_TRUE(fs::write(late, script));
-    ASSERT_TRUE(!fs::setPermissions(late, fs::all_read | fs::all_exe));
+    ASSERT_TRUE(!vfs::write(late, script));
+    ASSERT_TRUE(
+        !llvm::sys::fs::setPermissions(late, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
     ASSERT_FALSE(patient.db.toolchain().resolve(ref2.config, ref2.input).has_value());
     EXPECT_EQ(patient.db.toolchain().failed_count(), std::size_t(1));
     EXPECT_FALSE(patient.db.toolchain().has_cache());
@@ -518,8 +520,9 @@ TEST_CASE(WarmRetriesExpired, skip = Windows) {
     EXPECT_FALSE(f.db.toolchain().has_cache());
 
     auto script = "#!/bin/sh\necho '" + std::string(fake_cc1_line) + "' >&2\n";
-    ASSERT_TRUE(fs::write(driver, script));
-    ASSERT_TRUE(!fs::setPermissions(driver, fs::all_read | fs::all_exe));
+    ASSERT_TRUE(!vfs::write(driver, script));
+    ASSERT_TRUE(
+        !llvm::sys::fs::setPermissions(driver, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
 
     f.db.warm(refs);
     EXPECT_EQ(f.db.toolchain().failed_count(), std::size_t(0));
@@ -566,7 +569,7 @@ TEST_CASE(ResolveFailNegativeCache, skip = Windows) {
     // Remove the driver: a re-probe would now fail differently ("not found or
     // not executable"), so getting the original error back proves the second
     // resolve() hit the negative cache without spawning the driver again.
-    ASSERT_TRUE(!fs::remove(*driver));
+    ASSERT_TRUE(!vfs::remove(*driver));
     auto second = f.db.toolchain().resolve(ref.config, ref.input);
     ASSERT_FALSE(second.has_value());
     EXPECT_EQ(second.error(), first.error());
@@ -641,7 +644,7 @@ TEST_CASE(ResolveTrailingSlashResourceDir, skip = Windows) {
 std::optional<std::string> create_echo_clang(llvm::StringRef fallback_dir, llvm::StringRef name) {
     std::string file;
     if(name.empty()) {
-        auto temp = fs::createTemporaryFile("clice-fake", "clang");
+        auto temp = vfs::temp_file("clice-fake", "clang");
         if(!temp)
             return std::nullopt;
         file = *temp;
@@ -662,10 +665,10 @@ for a in "$@"; do
 done
 echo " \"/usr/bin/clang-22\" \"-cc1\" \"-resource-dir\" \"$rd\" \"-internal-isystem\" \"$rd/include\" \"-std=c++23\"" >&2
 )";
-    if(!fs::write(file, script))
+    if(vfs::write(file, script))
         return std::nullopt;
 
-    if(fs::setPermissions(file, fs::all_read | fs::all_exe))
+    if(llvm::sys::fs::setPermissions(file, llvm::sys::fs::all_read | llvm::sys::fs::all_exe))
         return std::nullopt;
 
     return file;
@@ -697,14 +700,14 @@ void EXPECT_KEEPS_EXTERNAL(llvm::StringRef driver_name,
         f.db.warm(refs);
         // The driver disappears after warming: the resolve below can only
         // succeed from the warmed cache entry, never from a fresh query.
-        fs::remove(*driver);
+        vfs::remove(*driver);
     }
     ASSERT_TRUE(f.db.toolchain().resolve(ref.config, ref.input).has_value());
     auto argv = f.db.render(ref);
     EXPECT_TRUE(std::ranges::contains(argv, llvm::StringRef(external_dir)));
     EXPECT_FALSE(std::ranges::contains(argv, resource_dir()));
 
-    fs::remove(*driver);
+    vfs::remove(*driver);
     if(!driver_name.empty()) {
         llvm::sys::fs::remove(llvm::sys::path::parent_path(*driver));
     }
@@ -746,7 +749,7 @@ TEST_CASE(ResolveReplacesNonMingwResource, skip = Windows) {
     EXPECT_TRUE(std::ranges::contains(argv, resource_dir()));
     EXPECT_TRUE(std::ranges::contains(argv, llvm::StringRef(expected_include)));
 
-    fs::remove(*driver);
+    vfs::remove(*driver);
     llvm::sys::fs::remove(external_dir_buf);
 }
 
@@ -774,7 +777,7 @@ TEST_CASE(ResolveMainFileName, skip = Windows) {
 }
 
 TEST_CASE(ResolveKeepsSemanticFlags, skip = !CIEnvironment) {
-    auto file = fs::createTemporaryFile("clice", "cpp");
+    auto file = vfs::temp_file("clice", "cpp");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
@@ -802,7 +805,7 @@ TEST_CASE(ResolveKeepsSemanticFlags, skip = !CIEnvironment) {
 }
 
 TEST_CASE(Resolve, skip = !CIEnvironment) {
-    auto file = fs::createTemporaryFile("clice", "cpp");
+    auto file = vfs::temp_file("clice", "cpp");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
@@ -843,9 +846,9 @@ TEST_CASE(Resolve, skip = !CIEnvironment) {
 }
 
 TEST_CASE(Warm, skip = !CIEnvironment) {
-    auto file1 = fs::createTemporaryFile("clice", "cpp");
-    auto file2 = fs::createTemporaryFile("clice", "cpp");
-    auto file3 = fs::createTemporaryFile("clice", "cpp");
+    auto file1 = vfs::temp_file("clice", "cpp");
+    auto file2 = vfs::temp_file("clice", "cpp");
+    auto file3 = vfs::temp_file("clice", "cpp");
     if(!file1 || !file2 || !file3) {
         LOG_ERROR_RET(void(), "failed to create temp files");
     }

@@ -4,7 +4,6 @@
 #include <optional>
 #include <string>
 
-#include "support/filesystem.h"
 #include "vfs/file_system.h"
 
 #include "llvm/ADT/SmallString.h"
@@ -41,7 +40,7 @@ struct TempDir {
     }
 
     ~TempDir() {
-        fs::remove_all(root.str());
+        vfs::remove_all(root.str());
     }
 
     TempDir(const TempDir&) = delete;
@@ -93,11 +92,8 @@ bool set_file_mtime(llvm::StringRef path, std::int64_t mtime_ns);
 
 /// A file's current mtime in nanoseconds, or -1 when it cannot be stat'ed.
 inline std::int64_t file_mtime_ns(llvm::StringRef path) {
-    llvm::sys::fs::file_status status;
-    if(llvm::sys::fs::status(path, status)) {
-        return -1;
-    }
-    return fs::mtime_ns(status);
+    auto status = vfs::status(path);
+    return status ? status->stamp.mtime_ns : -1;
 }
 
 /// A file's bytes, or nullopt when it cannot be read.

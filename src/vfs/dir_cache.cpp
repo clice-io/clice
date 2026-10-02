@@ -2,7 +2,6 @@
 
 #include <chrono>
 
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "vfs/file_system.h"
 
@@ -42,38 +41,35 @@ bool Listing::contains(llvm::StringRef name) const {
     }
     llvm::SmallString<256> path(dir);
     llvm::sys::path::append(path, name);
-    return llvm::sys::fs::exists(path);
+    return vfs::exists(path);
 }
 
 std::shared_ptr<const Listing> list(llvm::StringRef dir) {
     auto listing = std::make_shared<Listing>();
     listing->dir = dir.str();
     auto before = vfs::status(dir);
-    std::error_code ec;
-    llvm::sys::fs::directory_iterator it(dir, ec);
-    if(ec) {
-        LOG_DEBUG("readdir failed for '{}': {}", dir, ec.message());
+    auto entries = read_dir(dir);
+    if(!entries) {
+        LOG_DEBUG("readdir failed for '{}': {}", dir, entries.error().message());
+        return listing;
     }
-    for(; !ec && it != llvm::sys::fs::directory_iterator(); it.increment(ec)) {
-        auto type = it->type();
-        bool directory = type == llvm::sys::fs::file_type::directory_file;
-        if(type == llvm::sys::fs::file_type::symlink_file ||
-           type == llvm::sys::fs::file_type::type_unknown) {
-            directory = llvm::sys::fs::is_directory(it->path());
+    for(auto& entry: *entries) {
+        bool directory = entry.type == llvm::sys::fs::file_type::directory_file;
+        if(entry.type == llvm::sys::fs::file_type::symlink_file) {
+            directory = vfs::is_directory(entry.path);
         }
-        auto name = llvm::sys::path::filename(it->path());
+        auto name = llvm::sys::path::filename(entry.path);
         listing->entries.try_emplace(name, directory);
         if constexpr(case_insensitive) {
             listing->folded.insert(fold(name));
         }
     }
 
-    if(!before || ec) {
+    if(!before) {
         return listing;
     }
     auto after = vfs::status(dir);
-    if(after && before->stamp.mtime_ns == after->stamp.mtime_ns &&
-       fs::settled(after->stamp.mtime_ns)) {
+    if(after && before->stamp.mtime_ns == after->stamp.mtime_ns && settled(after->stamp.mtime_ns)) {
         listing->mtime_ns = after->stamp.mtime_ns;
     }
     return listing;

@@ -14,7 +14,6 @@
 #include "vfs/path.h"
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -50,38 +49,14 @@ struct FileTable {
     /// file by one fid. A spelling stays bound to the file it first
     /// resolved to: one that must follow a retargeted symlink (a database
     /// path) is resolved by its caller.
-    Fid intern(const Spelling& path) {
-        if(auto it = ids.find(path.str()); it != ids.end()) {
-            return it->second;
-        }
-        auto fid = intern(CanonicalPath(path));
-        ids.try_emplace(path.str(), fid);
-        return fid;
-    }
+    Fid intern(const Spelling& path);
 
     /// Intern a path the build reaches its file by, remembering how it
     /// spells the file (spell_as).
-    Fid intern_spelled(const Spelling& path) {
-        auto fid = intern(path);
-        spell_as(fid, path);
-        return fid;
-    }
+    Fid intern_spelled(const Spelling& path);
 
     /// An identity names its own file.
-    Fid intern(CanonicalRef identity) {
-        auto [it, inserted] =
-            ids.try_emplace(identity, Fid{static_cast<std::uint32_t>(spellings.size())});
-        if(inserted) {
-            // Allocate with null terminator so that resolve().data() is safe
-            // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
-            const std::size_t n = identity.size();
-            char* buf = allocator.Allocate<char>(n + 1);
-            std::ranges::copy(llvm::StringRef(identity), buf);
-            buf[n] = '\0';
-            spellings.push_back(llvm::StringRef(buf, n));
-        }
-        return it->second;
-    }
+    Fid intern(CanonicalRef identity);
 
     CanonicalRef resolve(Fid fid) const {
         assert(fid.raw < spellings.size());
@@ -89,45 +64,22 @@ struct FileTable {
     }
 
     /// Look up a path without interning it.
-    std::optional<Fid> find(const Spelling& path) const {
-        auto it = ids.find(path.str());
-        if(it == ids.end()) {
-            it = ids.find(CanonicalPath(path));
-        }
-        if(it == ids.end()) {
-            return std::nullopt;
-        }
-        return it->second;
-    }
+    std::optional<Fid> find(const Spelling& path) const;
 
     /// The path the build reaches a file by, when it differs from its
     /// identity: its database entry's spelling, or the directory an include
     /// lookup found it through; the first one recorded holds. A quoted
     /// include searches from this path's directory, as clang's does from
     /// the name it opened the includer under.
-    void spell_as(Fid fid, const Spelling& path) {
-        if(llvm::StringRef(path) != llvm::StringRef(resolve(fid))) {
-            spelled.try_emplace(fid, path.str());
-        }
-    }
+    void spell_as(Fid fid, const Spelling& path);
 
-    Spelling spelling(Fid fid) const {
-        if(auto it = spelled.find(fid); it != spelled.end()) {
-            return Spelling::absolute(it->second);
-        }
-        return Spelling(resolve(fid));
-    }
+    Spelling spelling(Fid fid) const;
 
     /// The path a user knows a file by: the one its open document was
     /// opened under, else its identity under the workspace folder it lies
     /// in. Everything the user is shown — URIs, query output — names files
     /// this way; a lookup spelling (spelling()) never does.
-    std::string display(Fid fid) const {
-        if(auto it = shown.find(fid); it != shown.end()) {
-            return it->second;
-        }
-        return display(resolve(fid));
-    }
+    std::string display(Fid fid) const;
 
     /// A path by its identity, under the spelling of the workspace folder
     /// it lies in (a folder opened through a symlink) or as it is outside
@@ -227,15 +179,7 @@ struct FileTable {
 
     /// The version id for (fid, content hash), interning a new record on
     /// first sight.
-    VersionID intern_version(Fid fid, std::uint64_t content_hash) {
-        auto [it, inserted] =
-            version_ids.try_emplace({fid, content_hash},
-                                    VersionID{static_cast<std::uint32_t>(versions.size())});
-        if(inserted) {
-            versions.push_back(FileVersion{.fid = fid, .content_hash = content_hash});
-        }
-        return it->second;
-    }
+    VersionID intern_version(Fid fid, std::uint64_t content_hash);
 
     /// The lexical scan of a version's bytes: scan_quick is a pure
     /// function of the content, so the result is pinned by the version
@@ -250,23 +194,14 @@ struct FileTable {
 
     /// The scan of exactly these bytes, whose hash the caller proved to be
     /// `content_hash` (a paired read), computed on first sight.
-    const ScanResult& scan_of(Fid fid, std::uint64_t content_hash, llvm::StringRef content) {
-        auto [it, inserted] = scan_results.try_emplace({fid, content_hash});
-        if(inserted) {
-            it->second = scan_quick(content);
-        }
-        return it->second;
-    }
+    const ScanResult& scan_of(Fid fid, std::uint64_t content_hash, llvm::StringRef content);
 
     /// Directory listings kept across operations.
     vfs::DirCache dirs;
 
     /// Whether the disk still holds a version's bytes, looked at once per
     /// turn.
-    vfs::DiskState::Verdict check_version(VersionID vid) {
-        auto& version = this->version(vid);
-        return disk.check(version.fid, version.content_hash);
-    }
+    vfs::DiskState::Verdict check_version(VersionID vid);
 
     /// Whether a place a build found empty holds a readable file now,
     /// looked at once per turn.

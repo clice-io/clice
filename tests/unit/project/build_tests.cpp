@@ -9,7 +9,6 @@
 #include "project/build.h"
 #include "project/configuration.h"
 #include "project/project.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 namespace clice::testing {
@@ -624,7 +623,7 @@ TEST_CASE(RefreshDefaultSources) {
     EXPECT_TRUE(refresh().empty());
     EXPECT_EQ(build.members().size(), 2u);
 
-    fs::remove_all(tmp.path("src/later.cpp"));
+    vfs::remove_all(tmp.path("src/later.cpp"));
     EXPECT_TRUE(refresh().empty());
     EXPECT_EQ(build.members().size(), 1u);
 };

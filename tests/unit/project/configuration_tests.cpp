@@ -2,7 +2,6 @@
 #include "test/test.h"
 #include "config/config.h"
 #include "project/configuration.h"
-#include "support/filesystem.h"
 #include "vfs/path.h"
 
 namespace clice::testing {
@@ -42,7 +41,7 @@ TEST_CASE(SelectionRoundTrips) {
     EXPECT_EQ(read_selection(cache_dir), "release");
     ASSERT_TRUE(write_selection(cache_dir, "debug").has_value());
     EXPECT_EQ(read_selection(cache_dir), "debug");
-    EXPECT_TRUE(fs::exists(path::join(cache_dir, "state.json")));
+    EXPECT_TRUE(vfs::exists(path::join(cache_dir, "state.json")));
 
     tmp.touch(".clice/state.json", "not json");
     EXPECT_TRUE(read_selection(cache_dir).empty());

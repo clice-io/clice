@@ -5,6 +5,7 @@
 
 #include "feature/feature.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Error.h"
@@ -17,10 +18,10 @@ namespace clice::feature {
 namespace {
 namespace tooling = clang::tooling;
 
-/// The real file system, remembering whether clang-format's search for a
-/// style came across a configuration file.
+/// The disk, remembering whether clang-format's search for a style came
+/// across a configuration file.
 struct StyleSearch : llvm::vfs::ProxyFileSystem {
-    StyleSearch() : ProxyFileSystem(llvm::vfs::getRealFileSystem()) {}
+    StyleSearch() : ProxyFileSystem(llvm::makeIntrusiveRefCnt<vfs::View>()) {}
 
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override {
         auto status = ProxyFileSystem::status(path);

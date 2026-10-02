@@ -11,7 +11,6 @@
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "support/filesystem.h"
 #include "vfs/file_table.h"
 #include "vfs/path.h"
 
@@ -75,7 +74,7 @@ TEST_CASE(RenameSaveReads) {
     ASSERT_TRUE(first.has_value());
 
     tmp.touch("f.h.tmp", "int v2();\n");
-    ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
+    ASSERT_TRUE(!vfs::rename(tmp.path("f.h.tmp"), f));
     EXPECT_TRUE(set_file_mtime(f, first->stamp.mtime_ns));
 
     auto stamp = stamp_of(f);
@@ -106,7 +105,7 @@ TEST_CASE(FastPathChecksIdentity) {
     ASSERT_TRUE(pool.cached_hash(fid, read->stamp).has_value());
 
     tmp.touch("f.h.tmp", "int v2();\n");
-    ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
+    ASSERT_TRUE(!vfs::rename(tmp.path("f.h.tmp"), f));
     EXPECT_TRUE(set_file_mtime(f, read->stamp.mtime_ns));
 
     ASSERT_TRUE(pool.check_version(vid) == vfs::DiskState::Verdict::Stale);

@@ -20,12 +20,14 @@
 #include "support/cache_store.h"
 #include "support/logging.h"
 #include "support/timer.h"
+#include "vfs/file_system.h"
 #include "vfs/path.h"
 #include "worker/pool.h"
 
 #include "kota/async/async.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Program.h"
 
@@ -701,7 +703,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         return result;
     }
 
-    if(!llvm::sys::fs::is_directory(options.root)) {
+    if(!vfs::is_directory(options.root)) {
         result.exit_code = 2;
         result.error = std::format("{}: not a directory", options.root);
         return result;
@@ -733,9 +735,9 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     std::vector<CanonicalPath> directories;
     CanonicalRef root = project.config.workspace_root;
     for(auto& path: options.paths) {
-        if(llvm::sys::fs::is_directory(path)) {
+        if(vfs::is_directory(path)) {
             directories.push_back(CanonicalPath(path));
-        } else if(!llvm::sys::fs::exists(path)) {
+        } else if(!vfs::exists(path)) {
             result.exit_code = 2;
             result.error = std::format("{}: no such file", path);
             return result;

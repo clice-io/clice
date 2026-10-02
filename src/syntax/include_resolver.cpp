@@ -1,6 +1,7 @@
 #include "syntax/include_resolver.h"
 
-#include "llvm/Support/FileSystem.h"
+#include "vfs/file_system.h"
+
 #include "llvm/Support/Path.h"
 
 namespace clice {
@@ -68,7 +69,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              vfs::Scope& scope) {
     // 1. Absolute path: check directly via stat().
     if(llvm::sys::path::is_absolute(filename)) {
-        if(llvm::sys::fs::exists(filename)) {
+        if(vfs::exists(filename)) {
             return ResolveResult{.path = llvm::SmallString<256>(filename)};
         }
         return std::nullopt;
