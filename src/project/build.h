@@ -135,6 +135,10 @@ public:
     /// inside another, and the cache directory a walk of them skips.
     struct SourceWalk {
         llvm::SmallVector<CanonicalPath> roots;
+        /// The roots of rules with patterns: a file there may be claimed
+        /// whatever its suffix (a forced language), elsewhere only one
+        /// clang recognizes.
+        llvm::SmallVector<CanonicalPath> patterned;
         CanonicalPath cache_dir;
     };
 

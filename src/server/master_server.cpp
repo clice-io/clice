@@ -71,6 +71,9 @@ MasterServer::~MasterServer() {
     // The projects go first, while the members their release reads live.
     lifecycle = ServerLifecycle::Exited;
     projects.clear();
+    // A server never shut down (a unit test) still ends the file table's
+    // turns.
+    polling.cancel();
     logging::set_notify_hook(nullptr);
 }
 

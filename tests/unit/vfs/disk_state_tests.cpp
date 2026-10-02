@@ -195,6 +195,21 @@ TEST_CASE(OtherLookReplacesTurn) {
     ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Stale);
 }
 
+TEST_CASE(LookJoinsOpenTurn) {
+    // A look at a file the turn has not checked yet answers its checks too.
+    Fixture f;
+    f.disk.on_turn = [] {
+    };
+    auto a = f.file("src/a.h", "int a;\n");
+    auto b = f.file("src/b.h", "int b;\n");
+    auto hash = f.hash_of(a);
+    ASSERT_TRUE(f.disk.check(b, f.hash_of(b)) == Verdict::Fresh);
+    f.rewrite("src/a.h", "int c;\n");
+    f.disk.look(llvm::ArrayRef<Fid>{a});
+    ASSERT_TRUE(f.disk.check(a, hash) == Verdict::Stale);
+    ASSERT_EQ(f.disk.checks.looked, 1u);
+}
+
 TEST_CASE(UnownedCheckLooksAlone) {
     Fixture f;
     auto fid = f.file("src/a.h", "int a;\n");

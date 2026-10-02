@@ -403,6 +403,7 @@ Build::SourceWalk Build::source_walk() const {
         }
         for(auto& pattern: rule->patterns) {
             add_root(pattern.root);
+            walk.patterned.emplace_back(pattern.root);
         }
     }
     llvm::erase_if(walk.roots, [&](const CanonicalPath& root) {
@@ -463,9 +464,15 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
                 }
                 continue;
             }
-            walked.push_back(type == llvm::sys::fs::file_type::regular_file
-                                 ? CanonicalRef(root).entry(spelled)
-                                 : CanonicalPath(Spelling::absolute(spelled)));
+            auto path = type == llvm::sys::fs::file_type::regular_file
+                            ? CanonicalRef(root).entry(spelled)
+                            : CanonicalPath(Spelling::absolute(spelled));
+            if(suffix_type(path) != clang::driver::types::TY_INVALID ||
+               llvm::any_of(walk.patterned, [&](const CanonicalPath& patterned) {
+                   return path::under(path, patterned);
+               })) {
+                walked.push_back(std::move(path));
+            }
         }
     }
     return walked;

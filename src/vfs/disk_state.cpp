@@ -271,9 +271,10 @@ void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool settled) {
     if(!hash) {
         file.pair.reset();
     }
-    if(auto it = turn_looks.find(fid); it != turn_looks.end()) {
-        it->second = hash ? Look{.found = Look::Found::Read, .hash = *hash}
-                          : Look{.found = Look::Found::Missing};
+    if(turn_open) {
+        turn_looks.insert_or_assign(fid,
+                                    hash ? Look{.found = Look::Found::Read, .hash = *hash}
+                                         : Look{.found = Look::Found::Missing});
     }
     auto& rule = policy(file);
     file.interval = first || moved || !settled ? rule.min : std::min(file.interval * 2, rule.max);
