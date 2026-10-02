@@ -2,6 +2,7 @@ module(name = "clice")
 
 bazel_dep(name = "rules_cc", version = "0.2.25")
 bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_shell", version = "0.6.1")
 
 # Windows names for MinGW executables and DLLs in rules_cc's Unix toolchain
 # config (toolchain/xclang.bzl); not upstream yet.

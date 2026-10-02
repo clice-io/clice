@@ -1,0 +1,11 @@
+exports_files(["workspace_status.sh", "unit_tests.sh"])
+
+# The canonical triples of cmake/llvm.cmake's clice_target_triple: version.h
+# and the release asset names use them.
+[config_setting(
+    name = "%s_%s" % (os, cpu),
+    constraint_values = [
+        "@platforms//os:" + os,
+        "@platforms//cpu:" + cpu,
+    ],
+) for os in ("linux", "macos", "windows") for cpu in ("x86_64", "aarch64")]

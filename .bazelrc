@@ -6,3 +6,5 @@ common --cxxopt=-std=c++23 --host_cxxopt=-std=c++23
 common -c opt --copt=-g
 # cmake/toolchain.cmake's CMAKE_OSX_DEPLOYMENT_TARGET.
 common:macos --macos_minimum_os=15.0
+# version.h, as cmake/generate_version.cmake stamps it.
+common --workspace_status_command=bazel/workspace_status.sh

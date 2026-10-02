@@ -45,18 +45,11 @@ cache)
     ;;
 esac
 
-stage() {
-    local d=build-bazel
-    rm -rf "$d" && mkdir -p "$d/bin" "$d/lib"
-    cp "bazel-bin/clice$exe" "bazel-bin/unit_tests$exe" "$d/bin/"
-    cp -r "$(bazel ${BZ_STARTUP:-} info output_base 2>/dev/null)/external/+libclang_repository+llvm/lib/clang" "$d/lib/"
-}
 
 case "${MODE:-stage}" in
 stage)
-    bazel ${BZ_STARTUP:-} build ${BZ_FLAGS:-} $T 2>&1 | tail -3
-    stage
-    CLICE_TEST_DATA_DIR=$PWD/tests/data ./build-bazel/bin/unit_tests$exe 2>&1 | tail -15
+    bazel ${BZ_STARTUP:-} test ${BZ_FLAGS:-} //:unit_tests_test 2>&1 | tail -6
+    grep -E "tests from|PASSED|FAILED|SKIPPED" bazel-testlogs/unit_tests_test/test.log | tail -5
     ;;
 cold)
     # No local cache at all: the first CI run, or a fresh clone.
