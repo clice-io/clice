@@ -19,22 +19,10 @@
 #include "llvm/Support/xxhash.h"
 
 #ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
+#include "vfs/win32.h"
 
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/WindowsError.h"
-
-namespace llvm::sys::windows {
-
-// Declared by llvm/Support/Windows/WindowsSupport.h, which pins
-// _WIN32_WINNT below the version that declares GetFileInformationByName.
-std::error_code widenPath(const Twine& path8,
-                          SmallVectorImpl<wchar_t>& path16,
-                          size_t max_path_len = MAX_PATH);
-
-}  // namespace llvm::sys::windows
 #else
 #include <cerrno>
 #include <sys/stat.h>
@@ -215,10 +203,9 @@ bool names_nothing(DWORD error) {
 
 StatusResult by_path(llvm::StringRef path) {
     llvm::SmallVector<wchar_t, 256> wide;
-    if(auto error = llvm::sys::windows::widenPath(path, wide)) {
+    if(auto error = widen(path, wide)) {
         return std::unexpected(error);
     }
-    wide.push_back(L'\0');
     if(auto query = by_name()) {
         // Not in the SDK's user-mode headers: the device is on another
         // machine, where file IDs can be reused.
@@ -262,15 +249,12 @@ constexpr unsigned list_after = 8;
 /// about it would pay for all of them.
 constexpr std::size_t list_limit = 4096;
 
-/// The statuses of a directory's entries in the ID scheme by_path() uses,
-/// reparse points left out; empty when it cannot be listed.
-llvm::StringMap<Status> list_statuses(llvm::StringRef dir) {
-    llvm::StringMap<Status> entries;
+/// A handle to list `dir` through.
+std::expected<HANDLE, std::error_code> open_directory(llvm::StringRef dir) {
     llvm::SmallVector<wchar_t, 256> wide;
-    if(llvm::sys::windows::widenPath(dir, wide)) {
-        return entries;
+    if(auto error = widen(dir, wide)) {
+        return std::unexpected(error);
     }
-    wide.push_back(L'\0');
     HANDLE handle = ::CreateFileW(wide.data(),
                                   FILE_LIST_DIRECTORY,
                                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -279,45 +263,77 @@ llvm::StringMap<Status> list_statuses(llvm::StringRef dir) {
                                   FILE_FLAG_BACKUP_SEMANTICS,
                                   nullptr);
     if(handle == INVALID_HANDLE_VALUE) {
-        return entries;
+        return std::unexpected(llvm::mapWindowsError(::GetLastError()));
     }
-    auto close = llvm::make_scope_exit([&] { ::CloseHandle(handle); });
-    FILE_REMOTE_PROTOCOL_INFO remote;
-    FILE_ID_INFO id;
-    if(::GetFileInformationByHandleEx(handle, FileRemoteProtocolInfo, &remote, sizeof(remote)) ||
-       !::GetFileInformationByHandleEx(handle, FileIdInfo, &id, sizeof(id))) {
-        return entries;
-    }
+    return handle;
+}
 
+/// Hand each entry of the directory `handle` lists, `.` and `..` left out,
+/// to `visit` as the information class `Info` describes it, until `visit`
+/// answers false. A failure other than running out of entries is returned.
+template <typename Info>
+std::error_code for_each_entry(HANDLE handle,
+                               FILE_INFO_BY_HANDLE_CLASS restart,
+                               FILE_INFO_BY_HANDLE_CLASS next,
+                               llvm::function_ref<bool(const Info&, llvm::StringRef)> visit) {
     alignas(8) static thread_local char buffer[64 * 1024];
-    auto kind = FileIdExtdDirectoryRestartInfo;
+    auto kind = restart;
     while(::GetFileInformationByHandleEx(handle, kind, buffer, sizeof(buffer))) {
-        kind = FileIdExtdDirectoryInfo;
-        for(auto* entry = reinterpret_cast<FILE_ID_EXTD_DIR_INFO*>(buffer);;
-            entry = reinterpret_cast<FILE_ID_EXTD_DIR_INFO*>(reinterpret_cast<char*>(entry) +
-                                                             entry->NextEntryOffset)) {
-            std::wstring_view name(entry->FileName, entry->FileNameLength / sizeof(wchar_t));
-            std::string utf8;
-            if(!(entry->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && name != L"." &&
-               name != L".." && llvm::convertWideToUTF8(name, utf8)) {
-                entries.try_emplace(utf8,
-                                    make_status(entry->FileAttributes,
-                                                entry->LastWriteTime.QuadPart,
-                                                entry->ChangeTime.QuadPart,
-                                                entry->EndOfFile.QuadPart,
-                                                id.VolumeSerialNumber,
-                                                entry->FileId,
-                                                /*links=*/1));
-            }
-            if(entries.size() > list_limit) {
-                entries.clear();
-                return entries;
+        kind = next;
+        for(auto* entry = reinterpret_cast<const Info*>(buffer);;
+            entry = reinterpret_cast<const Info*>(reinterpret_cast<const char*>(entry) +
+                                                  entry->NextEntryOffset)) {
+            std::wstring_view wide(entry->FileName, entry->FileNameLength / sizeof(wchar_t));
+            std::string name;
+            if(wide != L"." && wide != L".." && llvm::convertWideToUTF8(wide, name) &&
+               !visit(*entry, name)) {
+                return {};
             }
             if(entry->NextEntryOffset == 0) {
                 break;
             }
         }
     }
+    auto error = ::GetLastError();
+    return error == ERROR_NO_MORE_FILES ? std::error_code() : llvm::mapWindowsError(error);
+}
+
+/// The statuses of a directory's entries in the ID scheme by_path() uses,
+/// reparse points left out; empty when it cannot be listed.
+llvm::StringMap<Status> list_statuses(llvm::StringRef dir) {
+    llvm::StringMap<Status> entries;
+    auto handle = open_directory(dir);
+    if(!handle) {
+        return entries;
+    }
+    auto close = llvm::make_scope_exit([&] { ::CloseHandle(*handle); });
+    FILE_REMOTE_PROTOCOL_INFO remote;
+    FILE_ID_INFO id;
+    if(::GetFileInformationByHandleEx(*handle, FileRemoteProtocolInfo, &remote, sizeof(remote)) ||
+       !::GetFileInformationByHandleEx(*handle, FileIdInfo, &id, sizeof(id))) {
+        return entries;
+    }
+    for_each_entry<FILE_ID_EXTD_DIR_INFO>(
+        *handle,
+        FileIdExtdDirectoryRestartInfo,
+        FileIdExtdDirectoryInfo,
+        [&](const FILE_ID_EXTD_DIR_INFO& entry, llvm::StringRef name) {
+            if(!(entry.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+                entries.try_emplace(name,
+                                    make_status(entry.FileAttributes,
+                                                entry.LastWriteTime.QuadPart,
+                                                entry.ChangeTime.QuadPart,
+                                                entry.EndOfFile.QuadPart,
+                                                id.VolumeSerialNumber,
+                                                entry.FileId,
+                                                /*links=*/1));
+            }
+            if(entries.size() > list_limit) {
+                entries.clear();
+                return false;
+            }
+            return true;
+        });
     return entries;
 }
 
@@ -821,10 +837,9 @@ bool exists(llvm::StringRef path) {
     // A status by name needs Windows 11 24H2; attributes are by name
     // everywhere.
     llvm::SmallVector<wchar_t, 256> wide;
-    if(llvm::sys::windows::widenPath(path, wide)) {
+    if(widen(path, wide)) {
         return false;
     }
-    wide.push_back(L'\0');
     auto attributes = ::GetFileAttributesW(wide.data());
     if(attributes == INVALID_FILE_ATTRIBUTES) {
         return false;
@@ -850,10 +865,9 @@ bool is_symlink(llvm::StringRef path) {
 #ifdef _WIN32
     // LLVM's status reports a link as what it points to.
     llvm::SmallVector<wchar_t, 256> wide;
-    if(llvm::sys::windows::widenPath(path, wide)) {
+    if(widen(path, wide)) {
         return false;
     }
-    wide.push_back(L'\0');
     HANDLE handle = ::CreateFileW(wide.data(),
                                   0,
                                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -865,13 +879,9 @@ bool is_symlink(llvm::StringRef path) {
         return false;
     }
     auto close = llvm::make_scope_exit([&] { ::CloseHandle(handle); });
-    // Other reparse points (cloud placeholders, deduplicated files) are
-    // what they are, not links.
     FILE_ATTRIBUTE_TAG_INFO info;
     return ::GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &info, sizeof(info)) &&
-           (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
-           (info.ReparseTag == IO_REPARSE_TAG_SYMLINK ||
-            info.ReparseTag == IO_REPARSE_TAG_MOUNT_POINT);
+           is_link(info.FileAttributes, info.ReparseTag);
 #else
     return llvm::sys::fs::is_symlink_file(path);
 #endif
@@ -879,12 +889,38 @@ bool is_symlink(llvm::StringRef path) {
 
 std::expected<std::vector<Entry>, std::error_code> read_dir(llvm::StringRef dir) {
     std::vector<Entry> entries;
+#ifdef _WIN32
+    // LLVM's listing reports a link as what it points to.
+    auto handle = open_directory(dir);
+    if(!handle) {
+        return std::unexpected(handle.error());
+    }
+    auto close = llvm::make_scope_exit([&] { ::CloseHandle(*handle); });
+    auto error = for_each_entry<FILE_FULL_DIR_INFO>(
+        *handle,
+        FileFullDirectoryRestartInfo,
+        FileFullDirectoryInfo,
+        [&](const FILE_FULL_DIR_INFO& entry, llvm::StringRef name) {
+            llvm::SmallString<256> path(dir);
+            llvm::sys::path::append(path, name);
+            // A reparse point's tag stands where the size of extended
+            // attributes would.
+            auto type = is_link(entry.FileAttributes, entry.EaSize)
+                            ? llvm::sys::fs::file_type::symlink_file
+                        : entry.FileAttributes & FILE_ATTRIBUTE_DIRECTORY
+                            ? llvm::sys::fs::file_type::directory_file
+                            : llvm::sys::fs::file_type::regular_file;
+            entries.push_back({.path = path.str().str(), .type = type});
+            return true;
+        });
+#else
     std::error_code error;
     for(llvm::sys::fs::directory_iterator it(dir, error, /*follow_symlinks=*/false), end;
         !error && it != end;
         it.increment(error)) {
         entries.push_back({.path = it->path(), .type = it->type()});
     }
+#endif
     if(error) {
         return std::unexpected(error);
     }
@@ -946,10 +982,9 @@ std::error_code rename(llvm::StringRef from, llvm::StringRef to) {
 std::error_code remove(llvm::StringRef path) {
 #ifdef _WIN32
     llvm::SmallVector<wchar_t, 256> wide;
-    if(auto error = llvm::sys::windows::widenPath(path, wide)) {
+    if(auto error = widen(path, wide)) {
         return error;
     }
-    wide.push_back(L'\0');
     HANDLE handle = ::CreateFileW(wide.data(),
                                   DELETE,
                                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,

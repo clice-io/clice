@@ -438,6 +438,22 @@ TEST_CASE(WindowsCaseVariantsMerge) {
     EXPECT_EQ(pool.intern(Spelling::absolute(tmp.path("Real/File.h"))), fid);
     EXPECT_TRUE(llvm::StringRef(pool.resolve(fid)).ends_with("/Real/File.h"));
 }
+
+TEST_CASE(LongPathCaseMerges) {
+    // Past MAX_PATH the OS opens a path only with the `\\?\` prefix;
+    // without it the identity falls back to the spelling's own case.
+    TempDir tmp;
+    std::string deep;
+    for(int i = 0; i < 6; i += 1) {
+        deep += std::string(50, static_cast<char>('a' + i)) + "/";
+    }
+    tmp.touch(deep + "Real/File.h", "");
+    ASSERT_TRUE(tmp.path(deep + "Real/File.h").size() > MAX_PATH);
+    FileTable pool;
+    auto fid = pool.intern(Spelling::absolute(tmp.path(deep + "real/file.H")));
+    EXPECT_EQ(pool.intern(Spelling::absolute(tmp.path(deep + "Real/File.h"))), fid);
+    EXPECT_TRUE(llvm::StringRef(pool.resolve(fid)).ends_with("/Real/File.h"));
+}
 #else
 TEST_CASE(PosixBytesPreserved) {
     // '\' and "C:" are ordinary filename characters on POSIX; identity is

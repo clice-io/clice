@@ -247,21 +247,18 @@ TEST_CASE(WalkPrunesAndSkipsLinks) {
     tmp.touch("src/deep/b.cpp");
     tmp.touch("skip/c.cpp");
     tmp.touch("outside/d.cpp");
-#ifndef _WIN32
     ASSERT_TRUE(link_directory(tmp.path("outside"), tmp.path("src/link")));
-#endif
 
     std::vector<std::string> seen;
     vfs::walk(tmp.path("src"), [&](const vfs::Entry& entry) {
         seen.push_back(llvm::sys::path::filename(entry.path).str());
+        if(seen.back() == "link") {
+            EXPECT_TRUE(entry.type == llvm::sys::fs::file_type::symlink_file);
+        }
         return true;
     });
     std::ranges::sort(seen);
-#ifdef _WIN32
-    ASSERT_EQ(seen, (std::vector<std::string>{"a.cpp", "b.cpp", "deep"}));
-#else
     ASSERT_EQ(seen, (std::vector<std::string>{"a.cpp", "b.cpp", "deep", "link"}));
-#endif
 
     seen.clear();
     vfs::walk(tmp.root, [&](const vfs::Entry& entry) {

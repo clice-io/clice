@@ -177,9 +177,7 @@ bool is_directory(llvm::StringRef path);
 bool is_symlink(llvm::StringRef path);
 
 /// An entry of a directory: its path, the directory's spelling joined with
-/// its name, and its type, a symlink not followed. On Windows a link lists
-/// as what it points to — a directory link (symlink or junction) as a
-/// directory: LLVM's listing keeps no reparse attribute.
+/// its name, and its type, a link (see is_symlink) not followed.
 struct Entry {
     std::string path;
     llvm::sys::fs::file_type type;
@@ -188,10 +186,10 @@ struct Entry {
 /// The entries of a directory, in the order the system lists them.
 std::expected<std::vector<Entry>, std::error_code> read_dir(llvm::StringRef dir);
 
-/// Walk the tree under `root` depth first, symlinks not followed (see
-/// Entry): `visit` sees every entry and answers, for a directory, whether
-/// to walk into it. A directory that cannot be read is skipped, with a
-/// warning unless it is missing.
+/// Walk the tree under `root` depth first, links not followed: `visit`
+/// sees every entry and answers, for a directory, whether to walk into it.
+/// A directory that cannot be read is skipped, with a warning unless it is
+/// missing.
 void walk(llvm::StringRef root, llvm::function_ref<bool(const Entry&)> visit);
 
 std::error_code create_directories(llvm::StringRef path);
