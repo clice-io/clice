@@ -3,7 +3,6 @@
 # the unit tests. MODE=stage|cold|incremental|cmake-cold|cache.
 set -u
 export PATH=$HOME/opt/bin:$PATH
-export CLICE_LLVM_ROOT=${CLICE_LLVM_ROOT:-$(sed -n "s/^LLVM_INSTALL_PATH:PATH=//p" build/RelWithDebInfo/CMakeCache.txt)}
 T="//:clice //:unit_tests"
 exe=""
 case "$(uname -s)" in MINGW*|MSYS*) exe=".exe" ;; incremental)
@@ -50,7 +49,7 @@ stage() {
     local d=build-bazel
     rm -rf "$d" && mkdir -p "$d/bin" "$d/lib"
     cp "bazel-bin/clice$exe" "bazel-bin/unit_tests$exe" "$d/bin/"
-    cp -r "$CLICE_LLVM_ROOT/lib/clang" "$d/lib/"
+    cp -r "$(bazel ${BZ_STARTUP:-} info output_base 2>/dev/null)/external/+libclang_repository+llvm/lib/clang" "$d/lib/"
 }
 
 case "${MODE:-stage}" in

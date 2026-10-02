@@ -101,14 +101,13 @@ http_archive(
     urls = ["https://github.com/LMDB/lmdb/archive/refs/tags/LMDB_0.9.31.tar.gz"],
 )
 
-# The xclang libclang package. Spike: the directory cmake/llvm.cmake already
-# downloaded (CLICE_LLVM_ROOT); the real setup would http_archive the release.
-env_dir_repository = use_repo_rule("//third_party:local.bzl", "env_dir_repository")
+# The xclang libclang package of the host; its version is pixi.toml's xclang.
+libclang_repository = use_repo_rule("//third_party:libclang.bzl", "libclang_repository")
 
-env_dir_repository(
+libclang_repository(
     name = "llvm",
     build_file = "//third_party:llvm.BUILD",
-    env = "CLICE_LLVM_ROOT",
+    version = "23.1.2.4",
 )
 
 # The C++ toolchain on every platform, from pixi's xclang.
