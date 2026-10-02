@@ -222,31 +222,29 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
 }
 
 bool ASTFamily::is_stale(const Session& session) {
-    auto wave = project.file_table.wave();
+    // No early return: the changes one check finds cascade together.
+    bool stale = false;
     auto it = projections.entries.find(session.path_id);
-    if(it != projections.entries.end() && it->second.deps.has_value() &&
-       deps_changed(project.file_table, *it->second.deps)) {
-        return true;
+    if(it != projections.entries.end() && it->second.deps.has_value()) {
+        stale = deps_changed(project.file_table, *it->second.deps);
     }
 
     // Chain files of a header context are embedded in the synthesized
     // preamble, invisible to the deps snapshot — check them explicitly.
-    if(auto* header_context = contexts.header_context(session.path_id);
-       header_context && deps_changed(project.file_table, header_context->deps)) {
-        return true;
+    if(auto* header_context = contexts.header_context(session.path_id)) {
+        stale = deps_changed(project.file_table, header_context->deps) || stale;
     }
 
     // Check PCH staleness via the projection's pch_key.
     auto projection = projections.projection(session.path_id);
     if(projection && projection->pch_key.has_value()) {
         auto pch_it = project.pch_cache.find(*projection->pch_key);
-        if(pch_it != project.pch_cache.end() &&
-           deps_changed(project.file_table, pch_it->second.deps)) {
-            return true;
+        if(pch_it != project.pch_cache.end()) {
+            stale = deps_changed(project.file_table, pch_it->second.deps) || stale;
         }
     }
 
-    return false;
+    return stale;
 }
 
 void ASTFamily::closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files) {
@@ -400,12 +398,13 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
             co_return true;
         }
         // A dependency changed on disk behind this session's back — the
-        // lazy twin of the background ticks. The document recompiles now,
-        // whether or not the dependency graph knows the edge (a macro
-        // include); the changed file's cascade follows from the file
-        // table's change queue. The handler re-resolves the session by
-        // path_id; no suspension separates it from this frame, so it
-        // finds the same open session this coroutine holds.
+        // lazy twin of the background ticks. The handler cascades the
+        // changes the check found before this document's round starts, so
+        // their invalidation cannot void the round mid-compile, and
+        // recompiles the document whether or not the dependency graph
+        // knows the edge (a macro include). It re-resolves the session by
+        // path_id; no suspension separates it from this frame, so it finds
+        // the same open session this coroutine holds.
         on_stale(path_id);
     }
 

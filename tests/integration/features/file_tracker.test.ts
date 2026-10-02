@@ -497,6 +497,39 @@ test("requests look at workspace files only", async ({ session }) => {
     expect(after.checksTrusted - before.checksTrusted, "the installed header is not").toBe(1);
 });
 
+test("stale request looks once", async ({ session }) => {
+    // Finding the PCH stale, the request rebuilds it: the check, the PCH's
+    // preparation and its build share one look at each header.
+    const { client, workspace } = session.tmp();
+    workspace.write("a.h", "#pragma once\ninline int a() { return 1; }\n");
+    workspace.write("b.h", "#pragma once\ninline int b() { return 2; }\n");
+    workspace.write(
+        "main.cpp",
+        '#include "a.h"\n#include "b.h"\nint main() { return a() + b(); }\n',
+    );
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+    const [main] = await client.openAndWait("main.cpp");
+
+    const looked = async (request: () => Promise<unknown>) => {
+        const before = await client.stats();
+        await request();
+        return (await client.stats()).checksLooked - before.checksLooked;
+    };
+    const hover = () => client.hoverAt(main, 2, 4);
+    const completion = () => client.completionAt(main, 2, 20);
+    const freshHover = await looked(hover);
+    const freshCompletion = await looked(completion);
+
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("b.h", "#pragma once\ninline int b() { return 22; }\n");
+    expect(await looked(hover)).toBe(freshHover);
+    workspace.write("a.h", "#pragma once\ninline int a() { return 11; }\n");
+    expect(await looked(completion)).toBe(freshCompletion);
+});
+
 test("save looks at installed headers", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("sysroot/usr/include/installed.h", "#define INSTALLED 1\n");

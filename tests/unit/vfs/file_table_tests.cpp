@@ -109,7 +109,6 @@ TEST_CASE(FastPathChecksIdentity) {
     ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
     EXPECT_TRUE(set_file_mtime(f, read->stamp.mtime_ns));
 
-    auto wave = pool.wave();
     ASSERT_TRUE(pool.check_version(vid) == vfs::DiskState::Verdict::Stale);
 }
 
@@ -199,7 +198,6 @@ TEST_CASE(FreshReadNotVouched) {
     ASSERT_TRUE(read.has_value());
     auto vid = pool.intern_version(fid, read->hash);
 
-    auto wave = pool.wave();
     ASSERT_TRUE(pool.check_version(vid) == vfs::DiskState::Verdict::Fresh);
     ASSERT_FALSE(pool.cached_hash(fid, read->stamp).has_value());
 }

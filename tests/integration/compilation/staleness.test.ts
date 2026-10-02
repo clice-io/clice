@@ -521,6 +521,31 @@ test("backdated header change detected", async ({ session }) => {
     client.assertHasErrors(uri, "Expected errors after backdated header change");
 });
 
+test("outside edits compile once", async ({ session }) => {
+    // Headers on both sides of the preamble change behind the server's back:
+    // the request's own check finds both, and their cascade lands before
+    // the recompile, not in the middle of it.
+    const { client, workspace } = session.tmp();
+    workspace.write("pre.h", "#pragma once\ninline int pre() { return 1; }\n");
+    workspace.write("late.h", "#pragma once\ninline int late() { return 1; }\n");
+    workspace.write(
+        "main.cpp",
+        '#include "pre.h"\nint main() { return pre(); }\n#include "late.h"\nint tail() { return late(); }\n',
+    );
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+    const [uri] = await client.openAndWait("main.cpp");
+
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("pre.h", "#pragma once\ninline int pre() { return 22; }\n");
+    workspace.write("late.h", "#pragma once\ninline int late() { return 22; }\n");
+    const before = client.publishCount(uri);
+    await client.hoverAt(uri, 1, 4);
+    expect(client.publishCount(uri) - before).toBe(1);
+});
+
 test("orphan header default command", async ({ session }) => {
     // A header with no CDB entry and no including source falls back to the
     // synthesized default command and still compiles.

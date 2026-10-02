@@ -274,19 +274,15 @@ struct FileTable {
     /// Directory listings kept across operations.
     vfs::DirCache dirs;
 
-    vfs::DiskState::Wave wave() {
-        return disk.wave();
-    }
-
     /// Whether the disk still holds a version's bytes, looked at once per
-    /// wave.
+    /// turn.
     vfs::DiskState::Verdict check_version(VersionID vid) {
         auto& version = this->version(vid);
         return disk.check(version.fid, version.content_hash);
     }
 
     /// Whether a place a build found empty holds a readable file now,
-    /// looked at once per wave.
+    /// looked at once per turn.
     bool present(Fid fid) {
         return disk.present(fid);
     }

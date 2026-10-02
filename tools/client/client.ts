@@ -217,6 +217,7 @@ export class CliceClient {
     disposed = false;
 
     private diagnosticsWaiters = new Map<string, (() => void)[]>();
+    private publishes = new Map<string, number>();
 
     // Retention cap for drained stderr: long stress runs mirror the whole
     // server log, and the teardown scans only need the tail (sanitizer
@@ -244,6 +245,7 @@ export class CliceClient {
             const rawUri = params.uri;
             const normalized = this.normalizeUri(rawUri);
             const diags = [...params.diagnostics];
+            this.publishes.set(normalized, (this.publishes.get(normalized) ?? 0) + 1);
             this.diagnostics.set(rawUri, diags);
             if (rawUri !== normalized) {
                 this.diagnostics.set(normalized, diags);
@@ -722,6 +724,11 @@ export class CliceClient {
         const arrived = this.armDiagnostics(uri);
         await this.hoverAt(uri, 0, 0);
         await withTimeout(arrived, timeout, `diagnostics ${uri}`);
+    }
+
+    /// How many diagnostics publishes the document has received.
+    publishCount(uri: string): number {
+        return this.publishes.get(this.normalizeUri(uri)) ?? 0;
     }
 
     errors(uri: string): proto.Diagnostic[] {

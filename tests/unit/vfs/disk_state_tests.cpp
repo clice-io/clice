@@ -53,7 +53,6 @@ struct Fixture {
     }
 
     Verdict check(Fid fid, std::uint64_t hash) {
-        auto wave = disk.wave();
         return disk.check(fid, hash);
     }
 
@@ -109,12 +108,8 @@ TEST_CASE(TrustedMissingStays) {
     f.disk.saw_missing(fid);
     ASSERT_TRUE(f.disk.take_changes().empty());
     f.file("pkg/none.h", "int a;\n");
-    {
-        auto wave = f.disk.wave();
-        ASSERT_FALSE(f.disk.present(fid));
-    }
+    ASSERT_FALSE(f.disk.present(fid));
     f.time += vfs::DiskState::package_policy.min;
-    auto wave = f.disk.wave();
     ASSERT_TRUE(f.disk.present(fid));
 }
 
@@ -133,18 +128,49 @@ TEST_CASE(TrustOnlyConfirms) {
     auto gone = f.file("pkg/gone.h", "int c;\n");
     f.hash_of(gone);
     fs::remove_all(f.tmp.path("pkg/gone.h"));
-    auto wave = f.disk.wave();
     ASSERT_FALSE(f.disk.present(gone));
 }
 
-TEST_CASE(OneLookPerWave) {
+TEST_CASE(OneLookPerTurn) {
+    Fixture f;
+    int turns = 0;
+    f.disk.on_turn = [&] {
+        turns += 1;
+    };
+    auto fid = f.file("src/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    f.rewrite("src/a.h", "int b;\n");
+    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_EQ(f.disk.checks.looked, 1u);
+    ASSERT_EQ(turns, 1);
+
+    f.disk.end_turn();
+    ASSERT_TRUE(f.check(fid, hash) == Verdict::Stale);
+    ASSERT_EQ(f.disk.checks.looked, 2u);
+    ASSERT_EQ(turns, 2);
+}
+
+TEST_CASE(OtherLookReplacesTurn) {
+    // A save's look within the turn is what the turn's later checks see.
+    Fixture f;
+    f.disk.on_turn = [] {
+    };
+    auto fid = f.file("src/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    f.rewrite("src/a.h", "int b;\n");
+    f.disk.look(llvm::ArrayRef<Fid>{fid});
+    ASSERT_TRUE(f.check(fid, hash) == Verdict::Stale);
+}
+
+TEST_CASE(UnownedTurnIsOneCheck) {
     Fixture f;
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    auto wave = f.disk.wave();
-    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
-    ASSERT_TRUE(f.disk.check(fid, hash + 1) == Verdict::Stale);
-    ASSERT_EQ(f.disk.checks.looked, 1u);
+    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    f.rewrite("src/a.h", "int b;\n");
+    ASSERT_TRUE(f.check(fid, hash) == Verdict::Stale);
 }
 
 TEST_CASE(DeepestRootDecides) {

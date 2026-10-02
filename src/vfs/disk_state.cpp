@@ -1,7 +1,6 @@
 #include "vfs/disk_state.h"
 
 #include <algorithm>
-#include <cassert>
 #include <format>
 #include <utility>
 
@@ -81,21 +80,16 @@ std::optional<std::uint64_t> DiskState::cached_hash(Fid fid, const Stamp& stamp)
     return hash;
 }
 
-DiskState::Wave::Wave(DiskState& state) : state(state) {
-    assert(!state.wave_open && "waves do not nest");
-    state.wave_open = true;
-}
-
-DiskState::Wave::~Wave() {
-    state.wave_looks.clear();
-    state.wave_statuses = {};
-    state.wave_open = false;
+void DiskState::end_turn() {
+    turn_looks.clear();
+    turn_statuses = {};
+    turn_open = false;
 }
 
 DiskState::Verdict DiskState::check(Fid fid, std::uint64_t hash) {
     auto expected =
         hash != 0 ? std::optional(Look{.found = Look::Found::Read, .hash = hash}) : std::nullopt;
-    auto look = wave_look(fid, expected);
+    auto look = turn_look(fid, expected);
     switch(look.found) {
         case Look::Found::Missing: return Verdict::Missing;
         case Look::Found::Unreadable: return Verdict::Unreadable;
@@ -105,7 +99,7 @@ DiskState::Verdict DiskState::check(Fid fid, std::uint64_t hash) {
 }
 
 bool DiskState::present(Fid fid) {
-    return wave_look(fid, Look{.found = Look::Found::Missing}).found == Look::Found::Read;
+    return turn_look(fid, Look{.found = Look::Found::Missing}).found == Look::Found::Read;
 }
 
 void DiskState::add_root(llvm::StringRef dir, Policy rule) {
@@ -249,6 +243,10 @@ void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool settled) {
     }
     auto previous = std::exchange(file.seen, hash);
     bool moved = !first && previous != hash;
+    if(auto it = turn_looks.find(fid); it != turn_looks.end()) {
+        it->second = hash ? Look{.found = Look::Found::Read, .hash = *hash}
+                          : Look{.found = Look::Found::Missing};
+    }
     auto& rule = policy(file);
     file.interval = first || moved || !settled ? rule.min : std::min(file.interval * 2, rule.max);
     schedule(fid, file, now() + file.interval);
@@ -261,9 +259,14 @@ void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool settled) {
     }
 }
 
-DiskState::Look DiskState::wave_look(Fid fid, std::optional<Look> expected) {
-    assert(wave_open && "a check outside a Wave");
-    if(auto it = wave_looks.find(fid); it != wave_looks.end()) {
+DiskState::Look DiskState::turn_look(Fid fid, std::optional<Look> expected) {
+    if(!on_turn) {
+        end_turn();
+    } else if(!turn_open) {
+        turn_open = true;
+        on_turn();
+    }
+    if(auto it = turn_looks.find(fid); it != turn_looks.end()) {
         return it->second;
     }
     // Trust only confirms: a stale last look must never stand for a change
@@ -277,14 +280,14 @@ DiskState::Look DiskState::wave_look(Fid fid, std::optional<Look> expected) {
     }
     checks.looked += 1;
     Look look{.found = Look::Found::Missing};
-    if(auto status = wave_statuses.status(path(fid)); !status) {
+    if(auto status = turn_statuses.status(path(fid)); !status) {
         saw_missing(fid);
     } else if(auto obs = observe_for(fid, *status)) {
         look = {.found = Look::Found::Read, .hash = obs->hash};
     } else {
         look.found = Look::Found::Unreadable;
     }
-    wave_looks.try_emplace(fid, look);
+    turn_looks.try_emplace(fid, look);
     return look;
 }
 

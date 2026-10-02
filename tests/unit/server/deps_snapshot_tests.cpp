@@ -41,11 +41,6 @@ bool vouched(FileTable& pool, llvm::StringRef path) {
     return status && pool.cached_hash(pool.intern(Spelling::absolute(path)), status->stamp);
 }
 
-bool changed(FileTable& pool, const DepsSnapshot& snap) {
-    auto wave = pool.wave();
-    return deps_changed(pool, snap);
-}
-
 TEST_SUITE(DepsSnapshot) {
 
 TEST_CASE(FreshWhenUntouched) {
@@ -61,7 +56,7 @@ TEST_CASE(FreshWhenUntouched) {
     },
                                       generous_build_at());
     ASSERT_EQ(snap.size(), 1u);
-    ASSERT_FALSE(changed(pool, snap));
+    ASSERT_FALSE(deps_changed(pool, snap));
 
     // The check's read left the file's pair behind: the next check is a
     // stat.
@@ -89,9 +84,9 @@ TEST_CASE(SnapshotsShareOneVersion) {
     ASSERT_EQ(pool.versions.size(), 1u);
 
     // One check's read serves the other snapshot.
-    ASSERT_FALSE(changed(pool, first));
+    ASSERT_FALSE(deps_changed(pool, first));
     ASSERT_TRUE(vouched(pool, dep));
-    ASSERT_FALSE(changed(pool, second));
+    ASSERT_FALSE(deps_changed(pool, second));
 }
 
 TEST_CASE(ImmediateEditDetected) {
@@ -108,7 +103,32 @@ TEST_CASE(ImmediateEditDetected) {
     },
                                       generous_build_at());
     tmp.touch("dep.h", "int renamed();\n");
-    ASSERT_TRUE(changed(pool, snap));
+    ASSERT_TRUE(deps_changed(pool, snap));
+}
+
+TEST_CASE(EveryChangeFound) {
+    // One check finds every changed dependency, so they cascade together.
+    TempDir tmp;
+    tmp.touch("a.h", "int a();\n");
+    tmp.touch("b.h", "int b();\n");
+    auto a = tmp.path("a.h");
+    auto b = tmp.path("b.h");
+    age_file(a);
+    age_file(b);
+
+    FileTable pool;
+    pool.read(pool.intern(Spelling::absolute(a)));
+    pool.read(pool.intern(Spelling::absolute(b)));
+    auto snap = capture_deps_snapshot(pool,
+                                      {
+                                          DepFile{a, consumed_hash(a)},
+                                          DepFile{b, consumed_hash(b)},
+    },
+                                      generous_build_at());
+    tmp.touch("a.h", "int a2();\n");
+    tmp.touch("b.h", "int b2();\n");
+    ASSERT_TRUE(deps_changed(pool, snap));
+    ASSERT_EQ(pool.take_changes().size(), 2u);
 }
 
 TEST_CASE(BackdatedEditDetected) {
@@ -132,7 +152,7 @@ TEST_CASE(BackdatedEditDetected) {
 
     tmp.touch("dep.h", "int new_name();\n");  // same length
     ASSERT_TRUE(set_file_mtime(dep, recorded_mtime - 5'000'000'000));
-    ASSERT_TRUE(changed(pool, snap));
+    ASSERT_TRUE(deps_changed(pool, snap));
 }
 
 TEST_CASE(TouchRepairsFastPath) {
@@ -154,7 +174,7 @@ TEST_CASE(TouchRepairsFastPath) {
     tmp.touch("dep.h", "int f();\n");
     ASSERT_TRUE(set_file_mtime(dep, before + 5'000'000'000));
     ASSERT_FALSE(vouched(pool, dep));
-    ASSERT_FALSE(changed(pool, snap));
+    ASSERT_FALSE(deps_changed(pool, snap));
 
     // The check's read moved the pair to the new stat.
     ASSERT_TRUE(vouched(pool, dep));
@@ -176,7 +196,7 @@ TEST_CASE(PoisonedCaptureDetected) {
                                           DepFile{dep, consumed}
     },
                                       /*build_at=*/1);
-    ASSERT_TRUE(changed(pool, snap));
+    ASSERT_TRUE(deps_changed(pool, snap));
 }
 
 TEST_CASE(StalePairRereads) {
@@ -204,7 +224,7 @@ TEST_CASE(StalePairRereads) {
     },
                                       generous_build_at());
     ASSERT_FALSE(vouched(pool, dep));
-    ASSERT_FALSE(changed(pool, snap));
+    ASSERT_FALSE(deps_changed(pool, snap));
     ASSERT_TRUE(vouched(pool, dep));
 }
 
@@ -221,11 +241,11 @@ TEST_CASE(MissingTransitions) {
     ASSERT_TRUE(snap[0].missing);
 
     // Still missing: unchanged.
-    ASSERT_FALSE(changed(pool, snap));
+    ASSERT_FALSE(deps_changed(pool, snap));
 
     // Appearing is a change, and the file table saw it.
     tmp.touch("ghost.h", "int f();\n");
-    ASSERT_TRUE(changed(pool, snap));
+    ASSERT_TRUE(deps_changed(pool, snap));
     ASSERT_FALSE(pool.seen_missing(pool.intern(Spelling::absolute(dep))));
 }
 
@@ -244,7 +264,7 @@ TEST_CASE(AbsentPlaceFilled) {
     },
                                       generous_build_at());
     ASSERT_TRUE(snap[0].missing);
-    ASSERT_TRUE(changed(pool, snap));
+    ASSERT_TRUE(deps_changed(pool, snap));
 }
 
 TEST_CASE(RemovedAfterBuild) {
@@ -260,7 +280,7 @@ TEST_CASE(RemovedAfterBuild) {
                                       generous_build_at());
 
     fs::remove(dep);
-    ASSERT_TRUE(changed(pool, snap));
+    ASSERT_TRUE(deps_changed(pool, snap));
 }
 
 };  // TEST_SUITE(DepsSnapshot)

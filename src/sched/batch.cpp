@@ -47,7 +47,14 @@ struct BatchStack {
     /// logging is off.
     std::string log_dir;
 
-    explicit BatchStack(kota::event_loop& loop) : loop(loop) {}
+    explicit BatchStack(kota::event_loop& loop) : loop(loop) {
+        files.disk.on_turn = [this] {
+            this->loop.schedule([](vfs::DiskState& disk) -> kota::task<> {
+                co_await kota::yield();
+                disk.end_turn();
+            }(files.disk));
+        };
+    }
 };
 
 /// Poll until the pump has drained every round (requeue rounds included)

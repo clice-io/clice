@@ -190,7 +190,6 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
                                     context.host_command_hash != choice->command_hash ||
                                     context.host_base_hash != choice->base_hash);
             bool mode_mismatch = (context.synthesized != nullptr) != synthesize;
-            auto wave = project.file_table.wave();
             if(override_mismatch || mode_mismatch ||
                deps_changed(project.file_table, context.deps)) {
                 cache->erase(cached);

@@ -1827,7 +1827,6 @@ bool IndexStore::file_version_stale(VersionID fv_id) {
 }
 
 bool IndexStore::need_update(Fid file) {
-    auto wave = project.file_table.wave();
     auto& project_index = project.project_index;
     auto manifest_it = project_index.manifests.find(file);
     if(manifest_it == project_index.manifests.end())

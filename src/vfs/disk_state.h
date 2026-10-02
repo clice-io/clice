@@ -55,6 +55,13 @@ struct Flag {
 /// answered "unchanged" without a look when the last look, not yet due,
 /// found what the check expects — any other answer is the disk's. No tick
 /// running lets every file fall due, so every check looks again.
+///
+/// A check looks at a file once per turn of the owner's event loop: the
+/// steps of one request — a staleness check, the PCH it prepares, the
+/// build it starts — run in one turn and share the look. Any other look at
+/// the file replaces what the turn remembers of it, so a turn never answers
+/// against what the master saw since; it only misses a change nobody looked
+/// at yet, like the window between a check and the compile after it.
 class DiskState {
 public:
     using Clock = std::chrono::steady_clock;
@@ -146,27 +153,13 @@ public:
         Unreadable,
     };
 
-    /// RAII scope of one check operation (a deps_changed chain, an index
-    /// need_update batch): every file is looked at at most once inside
-    /// it, so a memo of one operation can never leak into the next. Waves
-    /// do not nest, and a wave must not span a suspension point — a save
-    /// landing mid-wave would leave memoized looks describing the old
-    /// disk.
-    class [[nodiscard]] Wave {
-    public:
-        explicit Wave(DiskState& state);
-        ~Wave();
+    /// Invoked when a check opens a turn: the owner ends it (end_turn) once
+    /// its event loop has run what was pending then. Unset (tests), every
+    /// check is a turn of its own.
+    std::function<void()> on_turn;
 
-        Wave(const Wave&) = delete;
-        Wave& operator=(const Wave&) = delete;
-
-    private:
-        DiskState& state;
-    };
-
-    Wave wave() {
-        return Wave(*this);
-    }
+    /// Forget the turn's looks: the next check looks again.
+    void end_turn();
 
     /// Whether the disk still holds the bytes hashing to `hash`. Hash 0 is
     /// the consumed-hash sentinel for "the worker had no bytes to hash":
@@ -218,7 +211,7 @@ public:
     /// reporting a contradiction as an anomaly: the test suites run with it.
     bool shadow = false;
 
-    /// How the waves' checks were answered: by a look at the disk, or from
+    /// How the turns' checks were answered: by a look at the disk, or from
     /// a look not yet due.
     struct Checks {
         std::uint64_t looked = 0;
@@ -257,7 +250,7 @@ private:
         Fid fid;
     };
 
-    /// What a wave's look at a file found.
+    /// What a turn's look at a file found.
     struct Look {
         enum class Found : std::uint8_t { Missing, Unreadable, Read } found;
 
@@ -277,9 +270,9 @@ private:
     /// fs::settled), else twice the last one.
     void saw(Fid fid, std::optional<std::uint64_t> hash, bool settled);
 
-    /// The wave's look at a file, taken once per wave — unless the last
+    /// The turn's look at a file, taken once per turn — unless the last
     /// look, at a package file not yet due, found what is `expected`.
-    Look wave_look(Fid fid, std::optional<Look> expected);
+    Look turn_look(Fid fid, std::optional<Look> expected);
 
     /// The last look's finding, for a package file not yet due.
     std::optional<Look> trusted(Fid fid);
@@ -317,9 +310,9 @@ private:
     llvm::SmallVector<Fid> changes;
     llvm::DenseSet<Fid> changed;
 
-    llvm::DenseMap<Fid, Look> wave_looks;
-    StatusBatch wave_statuses;
-    bool wave_open = false;
+    llvm::DenseMap<Fid, Look> turn_looks;
+    StatusBatch turn_statuses;
+    bool turn_open = false;
 
     llvm::SmallVector<Root> roots;
 

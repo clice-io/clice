@@ -92,37 +92,34 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // (crash between commits, failed aux commit) rebuilds whole. The
     // store lookup refreshes the blob's LRU position.
     llvm::StringRef pch_miss = "no_entry";
-    {
-        auto wave = project.file_table.wave();
-        if(auto it = project.pch_cache.find(pch_key); it != project.pch_cache.end()) {
-            auto& st = it->second;
-            bool in_store = project.store && project.store->lookup("pch", st.blob) &&
-                            project.store->lookup_aux("pch", st.blob);
-            if(st.path.empty()) {
-                pch_miss = "incomplete_entry";
-            } else if(!in_store) {
-                pch_miss = "evicted";
-            } else if(st.index_path.empty()) {
-                // load_state() found the blob unreadable earlier; republish
-                // the pair rather than serving a PCH with no index forever.
-                pch_miss = "idx_unreadable";
-            } else if(deps_changed(project.file_table, st.deps)) {
-                // FIXME: deps are the only revalidation — the blobs
-                // themselves are not pinned, so metadata surviving a
-                // crashed flush or a concurrent writer's republish is
-                // trusted on its deps alone (see CacheStore's FIXME);
-                // clang's own validation, which checks input sizes only,
-                // backstops.
-                pch_miss = "deps_changed";
-            } else {
-                LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.file);
-                co_return RoundOutcome::Success;
-            }
-            // Blob evicted by the store's LRU: drop the metadata too, or
-            // the content-keyed map grows for the server's lifetime.
-            if(!in_store) {
-                drop(it);
-            }
+    if(auto it = project.pch_cache.find(pch_key); it != project.pch_cache.end()) {
+        auto& st = it->second;
+        bool in_store = project.store && project.store->lookup("pch", st.blob) &&
+                        project.store->lookup_aux("pch", st.blob);
+        if(st.path.empty()) {
+            pch_miss = "incomplete_entry";
+        } else if(!in_store) {
+            pch_miss = "evicted";
+        } else if(st.index_path.empty()) {
+            // load_state() found the blob unreadable earlier; republish
+            // the pair rather than serving a PCH with no index forever.
+            pch_miss = "idx_unreadable";
+        } else if(deps_changed(project.file_table, st.deps)) {
+            // FIXME: deps are the only revalidation — the blobs
+            // themselves are not pinned, so metadata surviving a
+            // crashed flush or a concurrent writer's republish is
+            // trusted on its deps alone (see CacheStore's FIXME);
+            // clang's own validation, which checks input sizes only,
+            // backstops.
+            pch_miss = "deps_changed";
+        } else {
+            LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.file);
+            co_return RoundOutcome::Success;
+        }
+        // Blob evicted by the store's LRU: drop the metadata too, or
+        // the content-keyed map grows for the server's lifetime.
+        if(!in_store) {
+            drop(it);
         }
     }
     LOG_PERF("cache",
@@ -309,7 +306,6 @@ bool PCHFamily::fresh(llvm::StringRef pch_key) {
        !project.store->lookup_aux("pch", st.blob)) {
         return false;
     }
-    auto wave = project.file_table.wave();
     return !deps_changed(project.file_table, st.deps);
 }
 

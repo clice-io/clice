@@ -159,9 +159,9 @@ public:
 
     /// Invoked from ensure_compiled's fast path when the pull-side
     /// staleness check finds an input of the document changed on disk. The
-    /// owner invalidates the document itself (synchronously); the changed
-    /// file's own cascade comes from the file table, whose look during the
-    /// check queued the change like any other.
+    /// owner cascades the changes the check's looks queued in the file
+    /// table, then invalidates the document itself — both synchronously,
+    /// before the document's round starts.
     std::function<void(Fid path_id)> on_stale;
 
     /// Publish the quarantine diagnostic as the document's current output

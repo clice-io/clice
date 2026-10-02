@@ -179,29 +179,26 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     // Check if cached PCM is still valid.
     llvm::StringRef pcm_miss = "no_entry";
-    {
-        auto wave = project.file_table.wave();
-        if(auto pcm_it = project.pcm_cache.find(path_id); pcm_it != project.pcm_cache.end()) {
-            if(pcm_it->second.key != pcm_key) {
-                pcm_miss = "key_changed";
-            } else if(!project.store->lookup("pcm", pcm_key)) {
-                pcm_miss = "evicted";
-            } else if(deps_changed(project.file_table, pcm_it->second.deps)) {
-                // FIXME: deps are the only revalidation, and the key is
-                // content-free — metadata surviving a crashed flush or a
-                // concurrent writer's republish is trusted on its deps alone
-                // (see CacheStore's FIXME); clang's own validation backstops.
-                pcm_miss = "deps_changed";
-            } else {
-                LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
-                co_return RoundOutcome::Success;
-            }
-            // The entry no longer describes the module: an importer
-            // compiling while this build runs, or after it fails, must not
-            // read the previous interface from it.
-            project.pcm_cache.erase(pcm_it);
-            project.mark_artifacts_dirty();
+    if(auto pcm_it = project.pcm_cache.find(path_id); pcm_it != project.pcm_cache.end()) {
+        if(pcm_it->second.key != pcm_key) {
+            pcm_miss = "key_changed";
+        } else if(!project.store->lookup("pcm", pcm_key)) {
+            pcm_miss = "evicted";
+        } else if(deps_changed(project.file_table, pcm_it->second.deps)) {
+            // FIXME: deps are the only revalidation, and the key is
+            // content-free — metadata surviving a crashed flush or a
+            // concurrent writer's republish is trusted on its deps alone
+            // (see CacheStore's FIXME); clang's own validation backstops.
+            pcm_miss = "deps_changed";
+        } else {
+            LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
+            co_return RoundOutcome::Success;
         }
+        // The entry no longer describes the module: an importer
+        // compiling while this build runs, or after it fails, must not
+        // read the previous interface from it.
+        project.pcm_cache.erase(pcm_it);
+        project.mark_artifacts_dirty();
     }
     LOG_PERF("cache",
              "ns=pcm event=miss reason={} key={} module={}",
