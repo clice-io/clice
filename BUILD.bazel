@@ -13,37 +13,6 @@ COPTS = [
 
 DEFINES = ["CLICE_ENABLE_TEST=1"]
 
-TRIPLES = {
-    "linux_x86_64": "x86_64-unknown-linux-gnu",
-    "linux_aarch64": "aarch64-unknown-linux-gnu",
-    "macos_x86_64": "x86_64-apple-darwin",
-    "macos_aarch64": "aarch64-apple-darwin",
-    "windows_x86_64": "x86_64-w64-mingw32",
-    "windows_aarch64": "aarch64-w64-mingw32",
-}
-
-# Stamped from bazel/workspace_status.sh; rebuilt when the version changes.
-genrule(
-    name = "version_h",
-    srcs = ["cmake/version.h.in"],
-    outs = ["generated/version.h"],
-    cmd = select({
-        "//bazel:" + setting: (
-            "version=$$(sed -n 's/^STABLE_CLICE_VERSION //p' bazel-out/stable-status.txt); " +
-            "sed -e \"s|@CLICE_VERSION_STRING@|$${version:-0.1.0}|\" " +
-            "-e 's|@CLICE_TARGET_STRING@|%s|' $< > $@" % triple
-        )
-        for setting, triple in TRIPLES.items()
-    }),
-    stamp = 1,
-)
-
-cc_library(
-    name = "version",
-    hdrs = [":version_h"],
-    strip_include_prefix = "generated",
-)
-
 cc_library(
     name = "clang_tidy_config",
     hdrs = ["cmake/clang-tidy-config.h"],
@@ -62,10 +31,12 @@ cc_library(
     includes = ["src"],
     deps = [
         ":clang_tidy_config",
-        ":version",
+        "//bazel:version",
         "@croaring",
         "@kotatsu//:codec_flatbuffers",
+        "@kotatsu//:codec_json",
         "@kotatsu//:codec_toml",
+        "@kotatsu//:ipc_json",
         "@kotatsu//:ipc_lsp",
         "@kotatsu//:option",
         "@kotatsu//:support",

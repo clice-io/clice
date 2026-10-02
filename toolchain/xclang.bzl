@@ -74,28 +74,39 @@ def _impl(rctx):
         ), executable = True)
     tool_paths["cpp-module-deps-scanner"] = scanner
 
+    # Every tool is one multicall binary. It lives outside the workspace, so
+    # nothing in an action key would change when pixi brings another xclang:
+    # it is made an input of every action instead.
+    rctx.symlink(tool("llvm"), "llvm" + exe)
+
     constraints = json.encode(["@platforms//os:" + os_constraint, "@platforms//cpu:" + ("aarch64" if arm else "x86_64")])
     rctx.file("BUILD.bazel", """\
 load("@rules_cc//cc/private/toolchain:unix_cc_toolchain_config.bzl", "cc_toolchain_config")  # buildifier: disable=bzl-visibility
 load("@rules_cc//cc/toolchains:cc_toolchain.bzl", "cc_toolchain")
 
-filegroup(name = "empty")
+filegroup(
+    name = "tools",
+    srcs = [{llvm}],
+)
 
 filegroup(
-    name = "scanner",
-    srcs = [{scanner}],
+    name = "compiler",
+    srcs = [
+        {llvm},
+        {scanner},
+    ],
 )
 
 cc_toolchain(
     name = "cc",
-    all_files = ":scanner",
-    ar_files = ":empty",
-    as_files = ":empty",
-    compiler_files = ":scanner",
-    dwp_files = ":empty",
-    linker_files = ":empty",
-    objcopy_files = ":empty",
-    strip_files = ":empty",
+    all_files = ":compiler",
+    ar_files = ":tools",
+    as_files = ":tools",
+    compiler_files = ":compiler",
+    dwp_files = ":tools",
+    linker_files = ":tools",
+    objcopy_files = ":tools",
+    strip_files = ":tools",
     supports_param_files = 1,
     toolchain_config = ":config",
 )
@@ -137,6 +148,7 @@ toolchain(
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
 """.format(
+        llvm = json.encode("llvm" + exe),
         scanner = json.encode(scanner),
         compile_flags = json.encode(compile_flags),
         cpu = json.encode(cpu),
