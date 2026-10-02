@@ -10,7 +10,6 @@ bazel_dep(name = "bazel_skylib", version = "1.9.2")
 bazel_dep(name = "libdwarf", version = "2.2.0.bcr.1")
 bazel_dep(name = "zlib", version = "1.3.1.bcr.5")
 bazel_dep(name = "zstd", version = "1.5.7")
-bazel_dep(name = "mimalloc", version = "3.5.3.bcr.1")
 
 # Sources whose configuration or version the registry does not offer, each
 # with a BUILD file of its own.
@@ -46,6 +45,14 @@ http_archive(
     sha256 = "8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155",
     strip_prefix = "tomlplusplus-3.4.0",
     urls = ["https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz"],
+)
+
+http_archive(
+    name = "mimalloc",
+    build_file = "//third_party:mimalloc.BUILD",
+    sha256 = "3b4a15153a59905995f7070296ed604bb5ccc00cabb8b93446931aff77224d47",
+    strip_prefix = "mimalloc-3.5.3",
+    urls = ["https://github.com/microsoft/mimalloc/archive/refs/tags/v3.5.3.tar.gz"],
 )
 
 http_archive(
