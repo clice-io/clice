@@ -290,21 +290,27 @@ template <class G>
 
     llvm::StringRef global = R"(
 struct T {};
+struct Ω {};
 template <char C>
 struct Tag {};
-template <class T>
+template <class T, class Ω>
 struct S {
     ::T §(f)f();
     Tag<'T'> §(tag)tag();
+    ::Ω §(omega)omega();
 };
 )";
     run(global);
-    apply("f", "Define 'S<T>::f' out of line");
-    EXPECT_APPENDED("template <class T>\n::T S<T>::f() {\n}\n", "f");
+    apply("f", "Define 'S<T, Ω>::f' out of line");
+    EXPECT_APPENDED("template <class T, class Ω>\n::T S<T, Ω>::f() {\n}\n", "f");
 
     run(global);
-    apply("tag", "Define 'S<T>::tag' out of line");
-    EXPECT_APPENDED("template <class T>\nTag<'T'> S<T>::tag() {\n}\n", "tag");
+    apply("tag", "Define 'S<T, Ω>::tag' out of line");
+    EXPECT_APPENDED("template <class T, class Ω>\nTag<'T'> S<T, Ω>::tag() {\n}\n", "tag");
+
+    run(global);
+    apply("omega", "Define 'S<T, Ω>::omega' out of line");
+    EXPECT_APPENDED("template <class T, class Ω>\n::Ω S<T, Ω>::omega() {\n}\n", "omega");
 
     run(R"(
 template <class>

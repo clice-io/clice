@@ -483,8 +483,9 @@ private:
                 }
             }
         }
+        // A byte outside ASCII belongs to an identifier.
         auto identifier = [](char c) {
-            return llvm::isAlnum(c) || c == '_';
+            return llvm::isAlnum(c) || c == '_' || !llvm::isASCII(c);
         };
         llvm::SmallVector<std::size_t> offsets;
         for(std::size_t at = 0; at < spelling.size();) {
@@ -503,7 +504,11 @@ private:
                 at += 1;
                 continue;
             }
-            if(!spelling.take_front(at).ends_with("::") && parameters.contains(word)) {
+            // A component after `::`, `.` or `->` continues a name or an
+            // expression.
+            auto before = spelling.take_front(at);
+            if(!before.ends_with("::") && !before.ends_with(".") && !before.ends_with("->") &&
+               parameters.contains(word)) {
                 offsets.push_back(at);
             }
             at += word.size();
