@@ -26,16 +26,17 @@ protocol::TextDocumentContentChangeEvent partial_change(std::uint32_t start_line
     return change;
 }
 
-ZEST_SUITE(SessionStore){
+ZEST_SUITE(SessionStore) {
 
-    ZEST_CASE(ApplyOpenInitializesBuffer){SessionStore store;
-auto session = store.open(Fid{1});
-store.apply_open(*session, "int a;\nint b;\n", 3);
+ZEST_CASE(ApplyOpenInitializesBuffer) {
+    SessionStore store;
+    auto session = store.open(Fid{1});
+    store.apply_open(*session, "int a;\nint b;\n", 3);
 
-ASSERT(session->version == 3);
-ASSERT(session->text == "int a;\nint b;\n");
-ASSERT(session->line_starts == lsp::build_line_starts(session->text));
-ASSERT(session->generation == 1u);
+    ASSERT(session->version == 3);
+    ASSERT(session->text == "int a;\nint b;\n");
+    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->generation == 1u);
 
 }  // namespace
 
@@ -326,7 +327,7 @@ ZEST_CASE(InFlightAcrossClose) {
     ASSERT(again->quarantine->barred(0, later));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(SessionStore)
 
 }  // namespace
 }  // namespace clice::testing

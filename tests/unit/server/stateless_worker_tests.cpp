@@ -15,31 +15,33 @@ namespace {
 // Bincode Serialization Tests
 // ============================================================================
 
-ZEST_SUITE(BincodeRoundTrip){
+ZEST_SUITE(BincodeRoundTrip) {
 
-    ZEST_CASE(CompileParamsRoundTrip){namespace bincode = kota::codec::bincode;
+ZEST_CASE(CompileParamsRoundTrip) {
+    namespace bincode = kota::codec::bincode;
 
-worker::CompileParams params;
-params.path = "/tmp/test.cpp";
-params.version = 1;
-params.text = "int main() { return 0; }";
-params.directory = "/tmp";
-params.arguments = {"clang++", "-c", "test.cpp"};
-params.pch = {"", 0};
-params.pcms = {};
+    worker::CompileParams params;
+    params.path = "/tmp/test.cpp";
+    params.version = 1;
+    params.text = "int main() { return 0; }";
+    params.directory = "/tmp";
+    params.arguments = {"clang++", "-c", "test.cpp"};
+    params.pch = {"", 0};
+    params.pcms = {};
 
-auto bytes = bincode::to_bytes(params);
-ASSERT(bytes);
+    auto bytes = bincode::to_bytes(params);
+    ASSERT(bytes);
 
-worker::CompileParams result;
-auto status = bincode::from_bytes(std::span<const std::byte>(bytes->data(), bytes->size()), result);
-ASSERT(status);
+    worker::CompileParams result;
+    auto status =
+        bincode::from_bytes(std::span<const std::byte>(bytes->data(), bytes->size()), result);
+    ASSERT(status);
 
-EXPECT(result.path == params.path);
-EXPECT(result.version == params.version);
-EXPECT(result.text == params.text);
-EXPECT(result.directory == params.directory);
-EXPECT(result.arguments.size() == params.arguments.size());
+    EXPECT(result.path == params.path);
+    EXPECT(result.version == params.version);
+    EXPECT(result.text == params.text);
+    EXPECT(result.directory == params.directory);
+    EXPECT(result.arguments.size() == params.arguments.size());
 
 }  // namespace
 
@@ -60,21 +62,22 @@ ZEST_CASE(CompileResultRoundTrip) {
     EXPECT(decoded.version == result.version);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(BincodeRoundTrip)
 
 // ============================================================================
 // StatelessWorker Tests
 // ============================================================================
 
-ZEST_SUITE(StatelessWorker){
+ZEST_SUITE(StatelessWorker) {
 
-    ZEST_CASE(SpawnAndExit){WorkerHandle w;
-ASSERT(w.spawn());
+ZEST_CASE(SpawnAndExit) {
+    WorkerHandle w;
+    ASSERT(w.spawn());
 
-// Close stdin pipe to signal worker to exit.
-w.peer->close_output();
-w.loop.schedule(w.peer->run());
-w.loop.run();
+    // Close stdin pipe to signal worker to exit.
+    w.peer->close_output();
+    w.loop.schedule(w.peer->run());
+    w.loop.run();
 }
 
 ZEST_CASE(BuildPCHRequest) {
@@ -138,63 +141,64 @@ ZEST_CASE(IndexRequest) {
 
     ASSERT(test_done);
 }
-}
-;  // ZEST_SUITE(StatelessWorker)
+
+};  // ZEST_SUITE(StatelessWorker)
 
 // ============================================================================
 // StatelessWorker Extended Tests
 // ============================================================================
 
-ZEST_SUITE(StatelessWorkerExtended){
+ZEST_SUITE(StatelessWorkerExtended) {
 
-    ZEST_CASE(BuildPCMRequest){TempDir tmp;
-tmp.touch("test_module.cppm",
-          "export module test_module;\nexport int module_func() { return 1; }\n");
-auto src = tmp.path("test_module.cppm");
+ZEST_CASE(BuildPCMRequest) {
+    TempDir tmp;
+    tmp.touch("test_module.cppm",
+              "export module test_module;\nexport int module_func() { return 1; }\n");
+    auto src = tmp.path("test_module.cppm");
 
-WorkerHandle w;
-ASSERT(w.spawn());
+    WorkerHandle w;
+    ASSERT(w.spawn());
 
-bool test_done = false;
+    bool test_done = false;
 
-w.run([&]() -> kota::task<> {
-    worker::BuildPCMParams params;
-    params.file = src;
-    params.directory = "/tmp";
-    params.arguments = {"clang++",
-                        "-resource-dir",
-                        std::string(resource_dir()),
-                        "-std=c++20",
-                        "--precompile",
-                        src};
-    params.module_name = "test_module";
-    params.output_path = tmp.path("test_module.pcm");
+    w.run([&]() -> kota::task<> {
+        worker::BuildPCMParams params;
+        params.file = src;
+        params.directory = "/tmp";
+        params.arguments = {"clang++",
+                            "-resource-dir",
+                            std::string(resource_dir()),
+                            "-std=c++20",
+                            "--precompile",
+                            src};
+        params.module_name = "test_module";
+        params.output_path = tmp.path("test_module.pcm");
 
-    auto result = co_await w.peer->send_request(params);
-    EXPECT(result);
-    if(result.has_value()) {
-        auto& build = result.value();
-        EXPECT(build.success);
-        EXPECT(build.build_at > 0);
-        // The module source itself must be a hashed dependency: the PCM
-        // cache key embeds no content, so the deps snapshot is the only
-        // thing that can see an offline edit of the interface. Deps name
-        // files by identity (on macOS the temp dir sits behind the
-        // /var -> /private/var symlink).
-        auto identity = CanonicalPath(Spelling::absolute(src)).str();
-        bool source_dep = false;
-        for(auto& dep: build.deps) {
-            if(dep.path == identity) {
-                source_dep = dep.hash != 0;
+        auto result = co_await w.peer->send_request(params);
+        EXPECT(result);
+        if(result.has_value()) {
+            auto& build = result.value();
+            EXPECT(build.success);
+            EXPECT(build.build_at > 0);
+            // The module source itself must be a hashed dependency: the PCM
+            // cache key embeds no content, so the deps snapshot is the only
+            // thing that can see an offline edit of the interface. Deps name
+            // files by identity (on macOS the temp dir sits behind the
+            // /var -> /private/var symlink).
+            auto identity = CanonicalPath(Spelling::absolute(src)).str();
+            bool source_dep = false;
+            for(auto& dep: build.deps) {
+                if(dep.path == identity) {
+                    source_dep = dep.hash != 0;
+                }
             }
+            EXPECT(source_dep);
         }
-        EXPECT(source_dep);
-    }
-    test_done = true;
-    w.peer->close_output();
-});
+        test_done = true;
+        w.peer->close_output();
+    });
 
-ASSERT(test_done);
+    ASSERT(test_done);
 }
 
 ZEST_CASE(CompletionRequest) {
@@ -333,8 +337,8 @@ ZEST_CASE(MultipleStatelessRequests) {
 
     ASSERT(test_done);
 }
-}
-;  // ZEST_SUITE(StatelessWorkerExtended)
+
+};  // ZEST_SUITE(StatelessWorkerExtended)
 
 }  // namespace
 

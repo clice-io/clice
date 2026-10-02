@@ -10,16 +10,17 @@ namespace {
 
 using ModuleDeclaration = LexicalInfo::ModuleDeclaration;
 
-ZEST_SUITE(SemanticsTable, Tester){
+ZEST_SUITE(SemanticsTable, Tester) {
 
-    std::optional<std::uint32_t> token_index_at(const Semantics& semantics, std::uint32_t offset){
-        for(std::uint32_t i = 0; i < semantics.spelled_tokens().size();
-            i += 1){if(semantics.token_offset(i) == offset){return i;
+std::optional<std::uint32_t> token_index_at(const Semantics& semantics, std::uint32_t offset) {
+    for(std::uint32_t i = 0; i < semantics.spelled_tokens().size(); i += 1) {
+        if(semantics.token_offset(i) == offset) {
+            return i;
 
-}  // namespace
-}  // namespace clice::testing
+        }  // namespace
+    }  // namespace clice::testing
 
-return std::nullopt;
+    return std::nullopt;
 }
 
 ZEST_CASE(ModuleNodes) {
@@ -103,8 +104,8 @@ ZEST_CASE(NoModuleNoNodes) {
         ASSERT(entry.node.kind() != SemanticNode::Kind::Module);
     }
 }
-}
-;  // ZEST_SUITE(SemanticsTable)
+
+};  // ZEST_SUITE(SemanticsTable)
 
 }  // namespace
 

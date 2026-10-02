@@ -7,39 +7,39 @@
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(CommandResolver){
+ZEST_SUITE(CommandResolver) {
 
-    ZEST_CASE(DefaultSourceKeepsOwnCommand){
-        /// A unity build under a default command: main.cpp includes part.cpp
-        /// and part.h. The included source is a unit of its own and keeps the
-        /// default command the index compiles it with; the header borrows
-        /// main.cpp's.
-        TempDir tmp;
-tmp.touch("src/main.cpp", R"(#include "part.cpp"
+ZEST_CASE(DefaultSourceKeepsOwnCommand) {
+    /// A unity build under a default command: main.cpp includes part.cpp
+    /// and part.h. The included source is a unit of its own and keeps the
+    /// default command the index compiles it with; the header borrows
+    /// main.cpp's.
+    TempDir tmp;
+    tmp.touch("src/main.cpp", R"(#include "part.cpp"
 #include "part.h")");
-tmp.touch("src/part.cpp", "");
-tmp.touch("src/part.h", "");
-FileTable files;
-Project project{files};
-CommandResolver resolver(project);
-project.config.rules.push_back(ConfigRule{.patterns = {"src/**"},
-                                          .default_command = std::string("clang++ -DDEFAULTED")});
-project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-project.build.reset_active("");
+    tmp.touch("src/part.cpp", "");
+    tmp.touch("src/part.h", "");
+    FileTable files;
+    Project project{files};
+    CommandResolver resolver(project);
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
 
-auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
-auto part = project.file_table.intern(Spelling::absolute(tmp.path("src/part.cpp")));
-auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/part.h")));
-project.dep_graph.set_includes(main, 0, {{part}, {header}});
-project.dep_graph.build_reverse_map();
+    auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto part = project.file_table.intern(Spelling::absolute(tmp.path("src/part.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/part.h")));
+    project.dep_graph.set_includes(main, 0, {{part}, {header}});
+    project.dep_graph.build_reverse_map();
 
-std::string directory;
-std::vector<std::string> arguments;
-EXPECT(resolver.resolve_command(part, directory, arguments).source == CommandSource::Default);
-EXPECT(llvm::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
-auto header_resolution = resolver.resolve_command(header, directory, arguments);
-EXPECT(header_resolution.source == CommandSource::IncludeGraph);
-EXPECT(header_resolution.host == main);
+    std::string directory;
+    std::vector<std::string> arguments;
+    EXPECT(resolver.resolve_command(part, directory, arguments).source == CommandSource::Default);
+    EXPECT(llvm::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
+    auto header_resolution = resolver.resolve_command(header, directory, arguments);
+    EXPECT(header_resolution.source == CommandSource::IncludeGraph);
+    EXPECT(header_resolution.host == main);
 
 }  // namespace
 
@@ -132,7 +132,7 @@ ZEST_CASE(VerdictPersistenceMarksDirty) {
     ASSERT(project.artifacts_dirty);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(CommandResolver)
 
 }  // namespace
 }  // namespace clice::testing

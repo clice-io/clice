@@ -18,14 +18,15 @@ namespace clice::testing {
 
 namespace {
 
-ZEST_SUITE(Compiler, Tester){
+ZEST_SUITE(Compiler, Tester) {
 
-    ZEST_CASE(TopLevelDecls){add_file("header.h", R"(
+ZEST_CASE(TopLevelDecls) {
+    add_file("header.h", R"(
 #pragma once
 int helper();
 )");
 
-llvm::StringRef content = R"(
+    llvm::StringRef content = R"(
 #include "header.h"
 
 int x = 1;
@@ -43,9 +44,9 @@ struct Bar {
 };
 )";
 
-add_main("main.cpp", content);
-ASSERT(compile_with_pch());
-ASSERT(unit->top_level_decls().size() == 4U);
+    add_main("main.cpp", content);
+    ASSERT(compile_with_pch());
+    ASSERT(unit->top_level_decls().size() == 4U);
 
 }  // namespace
 
@@ -483,31 +484,31 @@ int bar() { return 3; }
     ASSERT(unit->top_level_decls().size() >= 1U);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(Compiler)
 
-ZEST_SUITE(PreambleHash){
+ZEST_SUITE(PreambleHash) {
 
-    ZEST_CASE(StableForBodyChanges){
-        // Same preamble (#include lines) but different body → same hash → PCH reusable.
-        llvm::StringRef v1 = R"cpp(
+ZEST_CASE(StableForBodyChanges) {
+    // Same preamble (#include lines) but different body → same hash → PCH reusable.
+    llvm::StringRef v1 = R"cpp(
 #include "a.h"
 #include "b.h"
 int x = 1;
 )cpp";
-llvm::StringRef v2 = R"cpp(
+    llvm::StringRef v2 = R"cpp(
 #include "a.h"
 #include "b.h"
 int x = 2;
 void foo() {}
 )cpp";
 
-auto bound1 = compute_preamble_bound(v1);
-auto bound2 = compute_preamble_bound(v2);
-EXPECT(bound1 == bound2);
+    auto bound1 = compute_preamble_bound(v1);
+    auto bound2 = compute_preamble_bound(v2);
+    EXPECT(bound1 == bound2);
 
-auto hash1 = llvm::xxh3_64bits(v1.substr(0, bound1));
-auto hash2 = llvm::xxh3_64bits(v2.substr(0, bound2));
-EXPECT(hash1 == hash2);
+    auto hash1 = llvm::xxh3_64bits(v1.substr(0, bound1));
+    auto hash2 = llvm::xxh3_64bits(v2.substr(0, bound2));
+    EXPECT(hash1 == hash2);
 }
 
 ZEST_CASE(ChangesForNewInclude) {
@@ -541,8 +542,8 @@ int main() { return 0; }
     auto bound = compute_preamble_bound(code);
     EXPECT(bound == 0u);
 }
-}
-;  // ZEST_SUITE(PreambleHash)
+
+};  // ZEST_SUITE(PreambleHash)
 
 }  // namespace
 

@@ -5,13 +5,13 @@
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(Logging){
+ZEST_SUITE(Logging) {
 
-    ZEST_CASE(VersionStamps){
-        // Guards the cmake target-stamping plumbing: an unset CLICE_TARGET_STRING
-        // would otherwise only surface in crash logs.
-        EXPECT(!clice::version.empty());
-EXPECT(!clice::target.empty());
+ZEST_CASE(VersionStamps) {
+    // Guards the cmake target-stamping plumbing: an unset CLICE_TARGET_STRING
+    // would otherwise only surface in crash logs.
+    EXPECT(!clice::version.empty());
+    EXPECT(!clice::target.empty());
 
 }  // namespace
 
@@ -26,7 +26,7 @@ ZEST_CASE(MainExecutableBase) {
 #endif
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(Logging)
 
 }  // namespace
 }  // namespace clice::testing

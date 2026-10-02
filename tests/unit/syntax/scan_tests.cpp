@@ -4,26 +4,27 @@
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(Scan){
+ZEST_SUITE(Scan) {
 
-    // === scan_quick() — include and conditional extraction; module
-    // declaration coverage lives in module_scan_tests.cpp ===
+// === scan_quick() — include and conditional extraction; module
+// declaration coverage lives in module_scan_tests.cpp ===
 
-    ZEST_CASE(BasicIncludes){auto result = scan_quick(R"(
+ZEST_CASE(BasicIncludes) {
+    auto result = scan_quick(R"(
 #include <vector>
 #include "foo/bar.h"
 int x = 1;
 )");
 
-ASSERT(result.includes.size() == 2u);
-EXPECT(result.includes[0].path == "vector");
-EXPECT(result.includes[0].is_angled);
-EXPECT(!result.includes[0].conditional);
-EXPECT(result.includes[1].path == "foo/bar.h");
-EXPECT(!result.includes[1].is_angled);
-EXPECT(!result.includes[1].conditional);
-EXPECT(result.module_name.empty());
-EXPECT(!result.has_import);
+    ASSERT(result.includes.size() == 2u);
+    EXPECT(result.includes[0].path == "vector");
+    EXPECT(result.includes[0].is_angled);
+    EXPECT(!result.includes[0].conditional);
+    EXPECT(result.includes[1].path == "foo/bar.h");
+    EXPECT(!result.includes[1].is_angled);
+    EXPECT(!result.includes[1].conditional);
+    EXPECT(result.module_name.empty());
+    EXPECT(!result.has_import);
 
 }  // namespace
 
@@ -286,11 +287,12 @@ ZEST_CASE(RemapBypassesSharedCache) {
     EXPECT(disk.includes[0].path.find("header.h") != std::string::npos);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(Scan)
 
-ZEST_SUITE(PreambleBound){
+ZEST_SUITE(PreambleBound) {
 
-    ZEST_CASE(Empty){EXPECT(compute_preamble_bound("") == 0u);
+ZEST_CASE(Empty) {
+    EXPECT(compute_preamble_bound("") == 0u);
 }
 
 ZEST_CASE(NoDirectives) {
@@ -375,14 +377,15 @@ int x;
     auto bound = compute_preamble_bound(src);
     EXPECT(bound > src.find("#endif"));
 }
-}
-;  // ZEST_SUITE(PreambleBound)
 
-ZEST_SUITE(PreambleComplete){
+};  // ZEST_SUITE(PreambleBound)
 
-    ZEST_CASE(CompleteQuotedInclude){llvm::StringRef content = "#include \"foo.h\"\nint x;";
-auto bound = compute_preamble_bound(content);
-EXPECT(is_preamble_complete(content, bound));
+ZEST_SUITE(PreambleComplete) {
+
+ZEST_CASE(CompleteQuotedInclude) {
+    llvm::StringRef content = "#include \"foo.h\"\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT(is_preamble_complete(content, bound));
 }
 
 ZEST_CASE(CompleteAngledInclude) {
@@ -539,8 +542,8 @@ ZEST_CASE(MixedIncludeAndImportAllComplete) {
     auto bound = compute_preamble_bound(content);
     EXPECT(is_preamble_complete(content, bound));
 }
-}
-;  // ZEST_SUITE(PreambleComplete)
+
+};  // ZEST_SUITE(PreambleComplete)
 
 }  // namespace
 }  // namespace clice::testing

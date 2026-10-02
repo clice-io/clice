@@ -217,22 +217,23 @@ std::optional<SourceRange> toHalfOpenFileRange(const SourceManager& SM,
 
 }  // namespace
 
-ZEST_SUITE(SelectionTree, Tester){
+ZEST_SUITE(SelectionTree, Tester) {
 
-    template <typename Callback>
-    void select_right(llvm::StringRef code, Callback&& callback){clear();
-add_main("main.cpp", code);
-ASSERT(compile());
-/// ASSERT(unit->diagnostics().empty());
+template <typename Callback>
+void select_right(llvm::StringRef code, Callback&& callback) {
+    clear();
+    add_main("main.cpp", code);
+    ASSERT(compile());
+    /// ASSERT(unit->diagnostics().empty());
 
-auto points = nameless_points();
-ASSERT(!points.empty());
+    auto points = nameless_points();
+    ASSERT(!points.empty());
 
-LocalSourceRange selected_range;
-selected_range.begin = points[0];
-selected_range.end = points.size() == 2 ? points[1] : points[0];
-auto tree = SelectionTree::create_right(*unit, selected_range);
-std::forward<Callback>(callback)(tree);
+    LocalSourceRange selected_range;
+    selected_range.begin = points[0];
+    selected_range.end = points.size() == 2 ? points[1] : points[0];
+    auto tree = SelectionTree::create_right(*unit, selected_range);
+    std::forward<Callback>(callback)(tree);
 
 }  // namespace clice::testing
 
@@ -788,7 +789,7 @@ auto Func(Fo§o auto V) -> Fo§o decltype(auto) {
         ASSERT(C->getFoundDecl()->getKind() == clang::Decl::UsingShadow);
     }
 }
-}
-;  // ZEST_SUITE(SelectionTree)
+
+};  // ZEST_SUITE(SelectionTree)
 
 }  // namespace clice::testing

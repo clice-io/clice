@@ -7,82 +7,83 @@ namespace clice::testing {
 namespace {
 
 ZEST_SUITE(Directive, Tester) {
-    std::vector<Include> includes;
-    std::vector<HasInclude> has_includes;
-    std::vector<Condition> conditions;
-    std::vector<MacroRef> macros;
-    std::vector<DiagnosticPragma> diagnostic_pragmas;
-    std::vector<Embed> embeds;
-    std::vector<HasEmbed> has_embeds;
 
-    using u32 = std::uint32_t;
+std::vector<Include> includes;
+std::vector<HasInclude> has_includes;
+std::vector<Condition> conditions;
+std::vector<MacroRef> macros;
+std::vector<DiagnosticPragma> diagnostic_pragmas;
+std::vector<Embed> embeds;
+std::vector<HasEmbed> has_embeds;
 
-    void run(llvm::StringRef code) {
-        add_files("main.cpp", code);
-        ASSERT(compile("-std=c++23"));
-        auto fid = unit->main_file();
-        includes = unit->directives()[fid].includes;
-        has_includes = unit->directives()[fid].has_includes;
-        conditions = unit->directives()[fid].conditions;
-        macros = unit->directives()[fid].macros;
-        diagnostic_pragmas = unit->directives()[fid].diagnostic_pragmas;
-        embeds = unit->directives()[fid].embeds;
-        has_embeds = unit->directives()[fid].has_embeds;
-    }
+using u32 = std::uint32_t;
 
-    void EXPECT_INCLUDE(u32 index, llvm::StringRef position, llvm::StringRef path) {
-        auto& include = includes[index];
-        auto [_, offset] = unit->decompose_location(include.location);
-        ASSERT(offset == point(position));
+void run(llvm::StringRef code) {
+    add_files("main.cpp", code);
+    ASSERT(compile("-std=c++23"));
+    auto fid = unit->main_file();
+    includes = unit->directives()[fid].includes;
+    has_includes = unit->directives()[fid].has_includes;
+    conditions = unit->directives()[fid].conditions;
+    macros = unit->directives()[fid].macros;
+    diagnostic_pragmas = unit->directives()[fid].diagnostic_pragmas;
+    embeds = unit->directives()[fid].embeds;
+    has_embeds = unit->directives()[fid].has_embeds;
+}
 
-        auto target = include.skipped ? llvm::StringRef() : unit->file_path(include.fid);
-        ASSERT(target == path);
-    }
+void EXPECT_INCLUDE(u32 index, llvm::StringRef position, llvm::StringRef path) {
+    auto& include = includes[index];
+    auto [_, offset] = unit->decompose_location(include.location);
+    ASSERT(offset == point(position));
 
-    void EXPECT_HAS_INL(u32 index, llvm::StringRef position, llvm::StringRef path) {
-        auto& has_include = has_includes[index];
-        auto [_, offset] = unit->decompose_location(has_include.location);
-        ASSERT(offset == point(position));
+    auto target = include.skipped ? llvm::StringRef() : unit->file_path(include.fid);
+    ASSERT(target == path);
+}
 
-        auto target = has_include.file ? unit->file_path(*has_include.file) : llvm::StringRef();
-        ASSERT(target == path);
-    }
+void EXPECT_HAS_INL(u32 index, llvm::StringRef position, llvm::StringRef path) {
+    auto& has_include = has_includes[index];
+    auto [_, offset] = unit->decompose_location(has_include.location);
+    ASSERT(offset == point(position));
 
-    void EXPECT_CON(u32 index, Condition::BranchKind kind, llvm::StringRef pos) {
-        auto& condition = conditions[index];
-        auto [_, offset] = unit->decompose_location(condition.loc);
-        ASSERT(int(condition.kind) == int(kind));
-        ASSERT(offset == point(pos));
-    }
+    auto target = has_include.file ? unit->file_path(*has_include.file) : llvm::StringRef();
+    ASSERT(target == path);
+}
 
-    void EXPECT_MACRO(u32 index, MacroRef::Kind kind, llvm::StringRef position) {
-        auto& macro = macros[index];
-        auto [_, offset] = unit->decompose_location(macro.loc);
-        ASSERT(int(macro.kind) == int(kind));
-        ASSERT(offset == point(position));
-    }
+void EXPECT_CON(u32 index, Condition::BranchKind kind, llvm::StringRef pos) {
+    auto& condition = conditions[index];
+    auto [_, offset] = unit->decompose_location(condition.loc);
+    ASSERT(int(condition.kind) == int(kind));
+    ASSERT(offset == point(pos));
+}
 
-    void EXPECT_EMBED(u32 index, llvm::StringRef position, llvm::StringRef filename) {
-        auto& embed = embeds[index];
-        auto [_, offset] = unit->decompose_location(embed.loc);
-        ASSERT(offset == point(position));
-        ASSERT(embed.file);
-        ASSERT(embed.file_name == filename);
-    }
+void EXPECT_MACRO(u32 index, MacroRef::Kind kind, llvm::StringRef position) {
+    auto& macro = macros[index];
+    auto [_, offset] = unit->decompose_location(macro.loc);
+    ASSERT(int(macro.kind) == int(kind));
+    ASSERT(offset == point(position));
+}
 
-    void EXPECT_HAS_EMBED(u32 index,
-                          llvm::StringRef position,
-                          llvm::StringRef filename,
-                          bool exists = true) {
-        auto& has_embed = has_embeds[index];
-        auto [_, offset] = unit->decompose_location(has_embed.loc);
-        ASSERT(offset == point(position));
-        ASSERT(has_embed.file.has_value() == exists);
-        ASSERT(has_embed.file_name == filename);
-    }
+void EXPECT_EMBED(u32 index, llvm::StringRef position, llvm::StringRef filename) {
+    auto& embed = embeds[index];
+    auto [_, offset] = unit->decompose_location(embed.loc);
+    ASSERT(offset == point(position));
+    ASSERT(embed.file);
+    ASSERT(embed.file_name == filename);
+}
 
-    ZEST_CASE(Include) {
-        run(R"cpp(
+void EXPECT_HAS_EMBED(u32 index,
+                      llvm::StringRef position,
+                      llvm::StringRef filename,
+                      bool exists = true) {
+    auto& has_embed = has_embeds[index];
+    auto [_, offset] = unit->decompose_location(has_embed.loc);
+    ASSERT(offset == point(position));
+    ASSERT(has_embed.file.has_value() == exists);
+    ASSERT(has_embed.file_name == filename);
+}
+
+ZEST_CASE(Include) {
+    run(R"cpp(
 #[test.h]
 
 #[pragma_once.h]
@@ -102,19 +103,19 @@ ZEST_SUITE(Directive, Tester) {
 #§(5)include "guard_macro.h"
 )cpp");
 
-        ASSERT(includes.size() == 6U);
-        EXPECT_INCLUDE(0, "0", TestVFS::path("test.h"));
-        EXPECT_INCLUDE(1, "1", TestVFS::path("test.h"));
-        EXPECT_INCLUDE(2, "2", TestVFS::path("pragma_once.h"));
-        EXPECT_INCLUDE(3, "3", "");
-        EXPECT_INCLUDE(4, "4", TestVFS::path("guard_macro.h"));
-        EXPECT_INCLUDE(5, "5", "");
+    ASSERT(includes.size() == 6U);
+    EXPECT_INCLUDE(0, "0", TestVFS::path("test.h"));
+    EXPECT_INCLUDE(1, "1", TestVFS::path("test.h"));
+    EXPECT_INCLUDE(2, "2", TestVFS::path("pragma_once.h"));
+    EXPECT_INCLUDE(3, "3", "");
+    EXPECT_INCLUDE(4, "4", TestVFS::path("guard_macro.h"));
+    EXPECT_INCLUDE(5, "5", "");
 
-        /// TODO: test include source range.
-    };
+    /// TODO: test include source range.
+};
 
-    ZEST_CASE(HasInclude) {
-        run(R"cpp(
+ZEST_CASE(HasInclude) {
+    run(R"cpp(
 #[test.h]
 
 #[main.cpp]
@@ -126,13 +127,13 @@ ZEST_SUITE(Directive, Tester) {
 #endif
 )cpp");
 
-        ASSERT(has_includes.size() == 2U);
-        EXPECT_HAS_INL(0, "0", TestVFS::path("test.h"));
-        EXPECT_HAS_INL(1, "1", "");
-    };
+    ASSERT(has_includes.size() == 2U);
+    EXPECT_HAS_INL(0, "0", TestVFS::path("test.h"));
+    EXPECT_HAS_INL(1, "1", "");
+};
 
-    ZEST_CASE(Condition) {
-        run(R"cpp(
+ZEST_CASE(Condition) {
+    run(R"cpp(
 #[main.cpp]
 #§(0)if 0
 #§(1)elif 1
@@ -145,19 +146,19 @@ ZEST_SUITE(Directive, Tester) {
 #§(7)endif
 )cpp");
 
-        ASSERT(conditions.size() == 8U);
-        EXPECT_CON(0, Condition::BranchKind::If, "0");
-        EXPECT_CON(1, Condition::BranchKind::Elif, "1");
-        EXPECT_CON(2, Condition::BranchKind::Else, "2");
-        EXPECT_CON(3, Condition::BranchKind::EndIf, "3");
-        EXPECT_CON(4, Condition::BranchKind::Ifdef, "4");
-        EXPECT_CON(5, Condition::BranchKind::Elifdef, "5");
-        EXPECT_CON(6, Condition::BranchKind::Else, "6");
-        EXPECT_CON(7, Condition::BranchKind::EndIf, "7");
-    };
+    ASSERT(conditions.size() == 8U);
+    EXPECT_CON(0, Condition::BranchKind::If, "0");
+    EXPECT_CON(1, Condition::BranchKind::Elif, "1");
+    EXPECT_CON(2, Condition::BranchKind::Else, "2");
+    EXPECT_CON(3, Condition::BranchKind::EndIf, "3");
+    EXPECT_CON(4, Condition::BranchKind::Ifdef, "4");
+    EXPECT_CON(5, Condition::BranchKind::Elifdef, "5");
+    EXPECT_CON(6, Condition::BranchKind::Else, "6");
+    EXPECT_CON(7, Condition::BranchKind::EndIf, "7");
+};
 
-    ZEST_CASE(ElifndefBranches) {
-        run(R"cpp(
+ZEST_CASE(ElifndefBranches) {
+    run(R"cpp(
 #[main.cpp]
 #define other
 #§(0)ifdef name
@@ -171,23 +172,23 @@ ZEST_SUITE(Directive, Tester) {
 #§(7)endif
 )cpp");
 
-        ASSERT(conditions.size() == 8U);
-        EXPECT_CON(0, Condition::BranchKind::Ifdef, "0");
-        EXPECT_CON(1, Condition::BranchKind::Elifndef, "1");
-        EXPECT_CON(2, Condition::BranchKind::Else, "2");
-        EXPECT_CON(3, Condition::BranchKind::EndIf, "3");
-        EXPECT_CON(4, Condition::BranchKind::Ifdef, "4");
-        EXPECT_CON(5, Condition::BranchKind::Elifndef, "5");
-        EXPECT_CON(6, Condition::BranchKind::Else, "6");
-        EXPECT_CON(7, Condition::BranchKind::EndIf, "7");
-        // The recorded value is the branch truth: an #elifndef of an undefined
-        // macro is taken, of a defined one is not.
-        EXPECT(int(conditions[1].value) == int(Condition::True));
-        EXPECT(int(conditions[5].value) == int(Condition::False));
-    };
+    ASSERT(conditions.size() == 8U);
+    EXPECT_CON(0, Condition::BranchKind::Ifdef, "0");
+    EXPECT_CON(1, Condition::BranchKind::Elifndef, "1");
+    EXPECT_CON(2, Condition::BranchKind::Else, "2");
+    EXPECT_CON(3, Condition::BranchKind::EndIf, "3");
+    EXPECT_CON(4, Condition::BranchKind::Ifdef, "4");
+    EXPECT_CON(5, Condition::BranchKind::Elifndef, "5");
+    EXPECT_CON(6, Condition::BranchKind::Else, "6");
+    EXPECT_CON(7, Condition::BranchKind::EndIf, "7");
+    // The recorded value is the branch truth: an #elifndef of an undefined
+    // macro is taken, of a defined one is not.
+    EXPECT(int(conditions[1].value) == int(Condition::True));
+    EXPECT(int(conditions[5].value) == int(Condition::False));
+};
 
-    ZEST_CASE(Macro) {
-        run(R"cpp(
+ZEST_CASE(Macro) {
+    run(R"cpp(
 #[main.cpp]
 #define §(0)expr(v) v
 
@@ -207,20 +208,20 @@ int y = §(6)expr(§(7)expr(1));
 
 )cpp");
 
-        ASSERT(macros.size() == 9U);
-        EXPECT_MACRO(0, MacroRef::Kind::Def, "0");
-        EXPECT_MACRO(1, MacroRef::Kind::Ref, "1");
-        EXPECT_MACRO(2, MacroRef::Kind::Ref, "2");
-        EXPECT_MACRO(3, MacroRef::Kind::Undef, "3");
-        EXPECT_MACRO(4, MacroRef::Kind::Def, "4");
-        EXPECT_MACRO(5, MacroRef::Kind::Ref, "5");
-        EXPECT_MACRO(6, MacroRef::Kind::Ref, "6");
-        EXPECT_MACRO(7, MacroRef::Kind::Ref, "7");
-        EXPECT_MACRO(8, MacroRef::Kind::Undef, "8");
-    };
+    ASSERT(macros.size() == 9U);
+    EXPECT_MACRO(0, MacroRef::Kind::Def, "0");
+    EXPECT_MACRO(1, MacroRef::Kind::Ref, "1");
+    EXPECT_MACRO(2, MacroRef::Kind::Ref, "2");
+    EXPECT_MACRO(3, MacroRef::Kind::Undef, "3");
+    EXPECT_MACRO(4, MacroRef::Kind::Def, "4");
+    EXPECT_MACRO(5, MacroRef::Kind::Ref, "5");
+    EXPECT_MACRO(6, MacroRef::Kind::Ref, "6");
+    EXPECT_MACRO(7, MacroRef::Kind::Ref, "7");
+    EXPECT_MACRO(8, MacroRef::Kind::Undef, "8");
+};
 
-    ZEST_CASE(DiagnosticPragma) {
-        run(R"cpp(
+ZEST_CASE(DiagnosticPragma) {
+    run(R"cpp(
 #[main.cpp]
 #pragma clang §(0)diagnostic push
 #pragma GCC §(1)diagnostic ignored "-Wunused-variable"
@@ -228,24 +229,24 @@ int y = §(6)expr(§(7)expr(1));
 #pragma clang §(3)diagnostic pop
 )cpp");
 
-        ASSERT(diagnostic_pragmas.size() == 4U);
-        for(u32 index = 0; index < 4; index += 1) {
-            auto [_, offset] =
-                unit->decompose_location(unit->expansion_location(diagnostic_pragmas[index].loc));
-            EXPECT(offset == point(std::to_string(index)));
-        }
-        EXPECT(diagnostic_pragmas[0].kind == DiagnosticPragma::Push);
-        EXPECT(diagnostic_pragmas[1].kind == DiagnosticPragma::Map);
-        EXPECT(diagnostic_pragmas[1].severity == clang::diag::Severity::Ignored);
-        EXPECT(llvm::StringRef(diagnostic_pragmas[1].flag) == "-Wunused-variable");
-        EXPECT(diagnostic_pragmas[2].kind == DiagnosticPragma::Map);
-        EXPECT(diagnostic_pragmas[2].severity == clang::diag::Severity::Warning);
-        EXPECT(llvm::StringRef(diagnostic_pragmas[2].flag) == "-Wshadow");
-        EXPECT(diagnostic_pragmas[3].kind == DiagnosticPragma::Pop);
-    };
+    ASSERT(diagnostic_pragmas.size() == 4U);
+    for(u32 index = 0; index < 4; index += 1) {
+        auto [_, offset] =
+            unit->decompose_location(unit->expansion_location(diagnostic_pragmas[index].loc));
+        EXPECT(offset == point(std::to_string(index)));
+    }
+    EXPECT(diagnostic_pragmas[0].kind == DiagnosticPragma::Push);
+    EXPECT(diagnostic_pragmas[1].kind == DiagnosticPragma::Map);
+    EXPECT(diagnostic_pragmas[1].severity == clang::diag::Severity::Ignored);
+    EXPECT(llvm::StringRef(diagnostic_pragmas[1].flag) == "-Wunused-variable");
+    EXPECT(diagnostic_pragmas[2].kind == DiagnosticPragma::Map);
+    EXPECT(diagnostic_pragmas[2].severity == clang::diag::Severity::Warning);
+    EXPECT(llvm::StringRef(diagnostic_pragmas[2].flag) == "-Wshadow");
+    EXPECT(diagnostic_pragmas[3].kind == DiagnosticPragma::Pop);
+};
 
-    ZEST_CASE(Embed) {
-        run(R"cpp(
+ZEST_CASE(Embed) {
+    run(R"cpp(
 #[bytes10.bin]
 0123456789
 
@@ -275,17 +276,17 @@ const char e4 = {
 
 )cpp");
 
-        // e4 will not be processed by clang::PPCallbacks::EmbedDirective(), so there are only 4
-        // embeds.
-        ASSERT(embeds.size() == 4U);
-        EXPECT_EMBED(0, "0", "bytes10.bin");
-        EXPECT_EMBED(1, "1", "bytes10.bin");
-        EXPECT_EMBED(2, "2", "bytes5.bin");
-        EXPECT_EMBED(3, "3", "bytes5.bin");
-    };
+    // e4 will not be processed by clang::PPCallbacks::EmbedDirective(), so there are only 4
+    // embeds.
+    ASSERT(embeds.size() == 4U);
+    EXPECT_EMBED(0, "0", "bytes10.bin");
+    EXPECT_EMBED(1, "1", "bytes10.bin");
+    EXPECT_EMBED(2, "2", "bytes5.bin");
+    EXPECT_EMBED(3, "3", "bytes5.bin");
+};
 
-    ZEST_CASE(HasEmbed) {
-        run(R"cpp(
+ZEST_CASE(HasEmbed) {
+    run(R"cpp(
 #[test.bin]
 
 #[main.cpp]
@@ -298,13 +299,13 @@ const char e4 = {
 #endif
 )cpp");
 
-        ASSERT(has_embeds.size() == 2U);
-        EXPECT_HAS_EMBED(0, "0", "test.bin");
-        EXPECT_HAS_EMBED(1, "1", "non-existed.bin", /*exists=*/false);
-    };
+    ASSERT(has_embeds.size() == 2U);
+    EXPECT_HAS_EMBED(0, "0", "test.bin");
+    EXPECT_HAS_EMBED(1, "1", "non-existed.bin", /*exists=*/false);
+};
 
-    ZEST_CASE(EmbedInDeps) {
-        run(R"cpp(
+ZEST_CASE(EmbedInDeps) {
+    run(R"cpp(
 #[data.h]
 
 #[data.bin]
@@ -324,45 +325,45 @@ const char e[] = {
 #endif
 )cpp");
 
-        auto deps = unit->deps();
-        bool header_found = false;
-        bool data_found = false;
-        bool probe_found = false;
-        for(auto& dep: deps) {
-            ASSERT(path::is_absolute(dep.path));
-            // Every readable dep ships the consumed-content hash.
-            ASSERT(dep.hash != 0);
-            header_found |= dep.path == TestVFS::path("data.h");
-            data_found |= dep.path == TestVFS::path("data.bin");
-            probe_found |= dep.path == TestVFS::path("probe.bin");
-        }
-        ASSERT(header_found);
-        ASSERT(data_found);
-        ASSERT(probe_found);
-    };
+    auto deps = unit->deps();
+    bool header_found = false;
+    bool data_found = false;
+    bool probe_found = false;
+    for(auto& dep: deps) {
+        ASSERT(path::is_absolute(dep.path));
+        // Every readable dep ships the consumed-content hash.
+        ASSERT(dep.hash != 0);
+        header_found |= dep.path == TestVFS::path("data.h");
+        data_found |= dep.path == TestVFS::path("data.bin");
+        probe_found |= dep.path == TestVFS::path("probe.bin");
+    }
+    ASSERT(header_found);
+    ASSERT(data_found);
+    ASSERT(probe_found);
+};
 
-    ZEST_CASE(FailedIncludeDeps) {
-        // A failed include records an invalid fid, which resolves to no path;
-        // the places its lookup looked are absent inputs instead, hash 0.
-        add_files("main.cpp", R"cpp(
+ZEST_CASE(FailedIncludeDeps) {
+    // A failed include records an invalid fid, which resolves to no path;
+    // the places its lookup looked are absent inputs instead, hash 0.
+    add_files("main.cpp", R"cpp(
 #[test.h]
 
 #[main.cpp]
 #include "test.h"
 #include "missing.h"
 )cpp");
-        prepare();
-        auto built = clice::compile(params);
+    prepare();
+    auto built = clice::compile(params);
 
-        auto deps = built.deps();
-        ASSERT(deps.size() == 2U);
-        ASSERT(deps[0].path == TestVFS::path("test.h"));
-        ASSERT(deps[0].hash != 0);
-        ASSERT(deps[1].path == TestVFS::path("missing.h"));
-        ASSERT(deps[1].hash == 0U);
-        ASSERT(deps[1].absent);
-        ASSERT(built.absent() == std::vector<std::string>{TestVFS::path("missing.h")});
-    };
+    auto deps = built.deps();
+    ASSERT(deps.size() == 2U);
+    ASSERT(deps[0].path == TestVFS::path("test.h"));
+    ASSERT(deps[0].hash != 0);
+    ASSERT(deps[1].path == TestVFS::path("missing.h"));
+    ASSERT(deps[1].hash == 0U);
+    ASSERT(deps[1].absent);
+    ASSERT(built.absent() == std::vector<std::string>{TestVFS::path("missing.h")});
+};
 
 };  // ZEST_SUITE(Directive)
 

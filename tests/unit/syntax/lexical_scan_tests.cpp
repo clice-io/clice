@@ -14,20 +14,21 @@ llvm::StringRef text(llvm::StringRef content, LocalSourceRange range) {
     return content.substr(range.begin, range.length());
 }
 
-ZEST_SUITE(LexicalScanComments){
+ZEST_SUITE(LexicalScanComments) {
 
-    ZEST_CASE(CommentKinds){llvm::StringRef content = R"(// line comment
+ZEST_CASE(CommentKinds) {
+    llvm::StringRef content = R"(// line comment
 int x = 1; /* block
 comment */ int y = 2;
 )";
-auto info = lexical_scan(content);
+    auto info = lexical_scan(content);
 
-ASSERT(info.comments.size() == 2U);
-ASSERT(info.comments[0].kind == Comment::Kind::Line);
-ASSERT(text(content, info.comments[0].range) == "// line comment");
-ASSERT(info.comments[1].kind == Comment::Kind::Block);
-ASSERT(text(content, info.comments[1].range).starts_with("/* block"));
-ASSERT(text(content, info.comments[1].range).ends_with("comment */"));
+    ASSERT(info.comments.size() == 2U);
+    ASSERT(info.comments[0].kind == Comment::Kind::Line);
+    ASSERT(text(content, info.comments[0].range) == "// line comment");
+    ASSERT(info.comments[1].kind == Comment::Kind::Block);
+    ASSERT(text(content, info.comments[1].range).starts_with("/* block"));
+    ASSERT(text(content, info.comments[1].range).ends_with("comment */"));
 
 }  // namespace
 
@@ -46,19 +47,20 @@ ZEST_CASE(DirectiveComments) {
     ASSERT(info.comments[1].kind == Comment::Kind::Block);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(LexicalScanComments)
 
-ZEST_SUITE(LexicalScanModules){
+ZEST_SUITE(LexicalScanModules) {
 
-    ZEST_CASE(GlobalFragment){llvm::StringRef content = "module;\n#include <vector>\n";
-auto info = lexical_scan(content);
+ZEST_CASE(GlobalFragment) {
+    llvm::StringRef content = "module;\n#include <vector>\n";
+    auto info = lexical_scan(content);
 
-ASSERT(info.modules.size() == 1U);
-auto& decl = info.modules[0];
-ASSERT(decl.kind == ModuleDeclaration::Kind::GlobalFragment);
-ASSERT(text(content, decl.keyword) == "module");
-ASSERT(!decl.export_keyword.valid());
-ASSERT(decl.name_parts.size() == 0U);
+    ASSERT(info.modules.size() == 1U);
+    auto& decl = info.modules[0];
+    ASSERT(decl.kind == ModuleDeclaration::Kind::GlobalFragment);
+    ASSERT(text(content, decl.keyword) == "module");
+    ASSERT(!decl.export_keyword.valid());
+    ASSERT(decl.name_parts.size() == 0U);
 }
 
 ZEST_CASE(ExportDeclaration) {
@@ -175,27 +177,28 @@ ZEST_CASE(NegativeControls) {
     // An exported private fragment is not a thing.
     ASSERT(lexical_scan("export module :private;\n").modules.size() == 0U);
 }
-}
-;  // ZEST_SUITE(LexicalScanModules)
 
-ZEST_SUITE(LexicalScanBlockDirectives){
+};  // ZEST_SUITE(LexicalScanModules)
 
-    ZEST_CASE(ConditionalChain){llvm::StringRef content = R"(#if A // first
+ZEST_SUITE(LexicalScanBlockDirectives) {
+
+ZEST_CASE(ConditionalChain) {
+    llvm::StringRef content = R"(#if A // first
 int a;
 #elifdef B
 #else
 #endif
 #define X 1
 )";
-auto info = lexical_scan(content);
+    auto info = lexical_scan(content);
 
-ASSERT(info.block_directives.size() == 4U);
-ASSERT(info.block_directives[0].kind == BlockDirective::Kind::If);
-ASSERT(text(content, info.block_directives[0].range) == "#if A // first");
-ASSERT(info.block_directives[1].kind == BlockDirective::Kind::Else);
-ASSERT(text(content, info.block_directives[1].range) == "#elifdef B");
-ASSERT(info.block_directives[2].kind == BlockDirective::Kind::Else);
-ASSERT(info.block_directives[3].kind == BlockDirective::Kind::EndIf);
+    ASSERT(info.block_directives.size() == 4U);
+    ASSERT(info.block_directives[0].kind == BlockDirective::Kind::If);
+    ASSERT(text(content, info.block_directives[0].range) == "#if A // first");
+    ASSERT(info.block_directives[1].kind == BlockDirective::Kind::Else);
+    ASSERT(text(content, info.block_directives[1].range) == "#elifdef B");
+    ASSERT(info.block_directives[2].kind == BlockDirective::Kind::Else);
+    ASSERT(info.block_directives[3].kind == BlockDirective::Kind::EndIf);
 }
 
 ZEST_CASE(ContinuedLine) {
@@ -230,12 +233,13 @@ int x; /* b */ #pragma endregion
     ASSERT(text(content, info.block_directives[3].range) == "#pragma region");
     ASSERT(info.block_directives[4].kind == BlockDirective::Kind::EndRegion);
 }
-}
-;  // ZEST_SUITE(LexicalScanBlockDirectives)
 
-ZEST_SUITE(LexicalScanIncludes){
+};  // ZEST_SUITE(LexicalScanBlockDirectives)
 
-    ZEST_CASE(IncludeForms){llvm::StringRef content = R"(#include <vector> // trailing
+ZEST_SUITE(LexicalScanIncludes) {
+
+ZEST_CASE(IncludeForms) {
+    llvm::StringRef content = R"(#include <vector> // trailing
 #include_next "next.h"
   #  import "imported.h"
 #define include
@@ -244,37 +248,38 @@ ZEST_SUITE(LexicalScanIncludes){
 #include "skipped.h"
 #endif
 )";
-auto info = lexical_scan(content);
+    auto info = lexical_scan(content);
 
-ASSERT(info.include_directives.size() == 4U);
-ASSERT(text(content, info.include_directives[0]) == "#include <vector> // trailing");
-ASSERT(text(content, info.include_directives[1]) == R"(#include_next "next.h")");
-ASSERT(text(content, info.include_directives[2]) == R"(#  import "imported.h")");
-ASSERT(text(content, info.include_directives[3]) == R"(#include "skipped.h")");
+    ASSERT(info.include_directives.size() == 4U);
+    ASSERT(text(content, info.include_directives[0]) == "#include <vector> // trailing");
+    ASSERT(text(content, info.include_directives[1]) == R"(#include_next "next.h")");
+    ASSERT(text(content, info.include_directives[2]) == R"(#  import "imported.h")");
+    ASSERT(text(content, info.include_directives[3]) == R"(#include "skipped.h")");
 }
-}
-;  // ZEST_SUITE(LexicalScanIncludes)
 
-ZEST_SUITE(LexicalScanRawStrings){
+};  // ZEST_SUITE(LexicalScanIncludes)
 
-    ZEST_CASE(RawStringTokens){llvm::StringRef content = R"cpp(auto a = R"(one
+ZEST_SUITE(LexicalScanRawStrings) {
+
+ZEST_CASE(RawStringTokens) {
+    llvm::StringRef content = R"cpp(auto a = R"(one
 two)";
 auto b = u8R"x(")" inside)x"_suffix;
 auto c = "R(not raw)";
 auto R = 1;
 #define RAW R"(in a directive)"
 )cpp";
-clang::LangOptions lang_opts;
-lang_opts.CPlusPlus = lang_opts.CPlusPlus11 = lang_opts.RawStringLiterals = true;
-auto info = lexical_scan(content, &lang_opts);
+    clang::LangOptions lang_opts;
+    lang_opts.CPlusPlus = lang_opts.CPlusPlus11 = lang_opts.RawStringLiterals = true;
+    auto info = lexical_scan(content, &lang_opts);
 
-ASSERT(info.raw_strings.size() == 2U);
-ASSERT(text(content, info.raw_strings[0]) == R"x(R"(one
+    ASSERT(info.raw_strings.size() == 2U);
+    ASSERT(text(content, info.raw_strings[0]) == R"x(R"(one
 two)")x");
-ASSERT(text(content, info.raw_strings[1]) == R"y(u8R"x(")" inside)x"_suffix)y");
+    ASSERT(text(content, info.raw_strings[1]) == R"y(u8R"x(")" inside)x"_suffix)y");
 }
-}
-;  // ZEST_SUITE(LexicalScanRawStrings)
+
+};  // ZEST_SUITE(LexicalScanRawStrings)
 
 }  // namespace
 }  // namespace clice::testing

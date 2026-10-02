@@ -40,21 +40,22 @@ struct InputFinder : clang::RecursiveASTVisitor<InputFinder> {
 };
 
 ZEST_SUITE(TemplateResolver, Tester) {
-    void run(llvm::StringRef code) {
-        add_main("main.cpp", code);
-        ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+void run(llvm::StringRef code) {
+    add_main("main.cpp", code);
+    ASSERT(compile());
 
-        auto input = unit->resolver().resolve(finder.input);
-        auto target = finder.expect;
-        ASSERT(!(input.isNull() || target.isNull()));
-        EXPECT(input.getCanonicalType() == target.getCanonicalType());
-    }
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-    ZEST_CASE(TypeParameterType) {
-        run(R"code(
+    auto input = unit->resolver().resolve(finder.input);
+    auto target = finder.expect;
+    ASSERT(!(input.isNull() || target.isNull()));
+    EXPECT(input.getCanonicalType() == target.getCanonicalType());
+}
+
+ZEST_CASE(TypeParameterType) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = T;
@@ -66,10 +67,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(SingleLevel) {
-        run(R"code(
+ZEST_CASE(SingleLevel) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -84,10 +85,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(SingleLevelNotDependent) {
-        run(R"code(
+ZEST_CASE(SingleLevelNotDependent) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = int;
@@ -99,10 +100,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(MultiLevel) {
-        run(R"code(
+ZEST_CASE(MultiLevel) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -127,10 +128,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(MultiLevelNotDependent) {
-        run(R"code(
+ZEST_CASE(MultiLevelNotDependent) {
+    run(R"code(
         template <typename T1>
         struct A {
             using type = int;
@@ -152,10 +153,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ArgumentDependent) {
-        run(R"code(
+ZEST_CASE(ArgumentDependent) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -175,10 +176,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AliasArgument) {
-        run(R"code(
+ZEST_CASE(AliasArgument) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -199,10 +200,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AliasDependent) {
-        run(R"code(
+ZEST_CASE(AliasDependent) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -223,10 +224,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AliasTemplate) {
-        run(R"code(
+ZEST_CASE(AliasTemplate) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -247,10 +248,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, Y>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(BaseDependent) {
-        run(R"code(
+ZEST_CASE(BaseDependent) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -268,10 +269,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(MultiNested) {
-        run(R"code(
+ZEST_CASE(MultiNested) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -287,10 +288,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(OuterDependentMemberClass) {
-        run(R"code(
+ZEST_CASE(OuterDependentMemberClass) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -311,10 +312,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, Y, Z>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(InnerDependentMemberClass) {
-        run(R"code(
+ZEST_CASE(InnerDependentMemberClass) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -329,10 +330,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<T, T>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(InnerPartialMember) {
-        run(R"code(
+ZEST_CASE(InnerPartialMember) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -350,10 +351,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<T, T>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PartialSpecialization) {
-        run(R"code(
+ZEST_CASE(PartialSpecialization) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -374,10 +375,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PartialDefaultArgument) {
-        run(R"code(
+ZEST_CASE(PartialDefaultArgument) {
+    run(R"code(
         template <typename T, typename U = T>
         struct X {};
 
@@ -392,10 +393,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = T;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DefaultArgument) {
-        run(R"code(
+ZEST_CASE(DefaultArgument) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -415,10 +416,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TemplateTemplateReplace) {
-        run(R"code(
+ZEST_CASE(TemplateTemplateReplace) {
+    run(R"code(
         template <typename T>
         struct box {};
 
@@ -439,10 +440,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = box<int>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(SfinaeRebindPresent) {
-        run(R"code(
+ZEST_CASE(SfinaeRebindPresent) {
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -470,10 +471,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = alloc<float>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(SfinaeRebindAbsent) {
-        run(R"code(
+ZEST_CASE(SfinaeRebindAbsent) {
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -507,10 +508,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = plain<int>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NttpDefaultArgument) {
-        run(R"code(
+ZEST_CASE(NttpDefaultArgument) {
+    run(R"code(
         template <typename T, int N = 0>
         struct S {
             using type = T;
@@ -522,10 +523,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NttpArraySize) {
-        run(R"code(
+ZEST_CASE(NttpArraySize) {
+    run(R"code(
         template <typename T, unsigned long N>
         struct S {
             using type = T[N];
@@ -537,10 +538,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X[3];
         };
     )code");
-    }
+}
 
-    ZEST_CASE(MultiElementPack) {
-        run(R"code(
+ZEST_CASE(MultiElementPack) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -555,10 +556,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<int, X, Y>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PackExpansion) {
-        run(R"code(
+ZEST_CASE(PackExpansion) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -573,10 +574,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<Ts...>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(BasePackExpansion) {
-        run(R"code(
+ZEST_CASE(BasePackExpansion) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -594,14 +595,14 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<Ts...>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(RecursiveBaseClass) {
-        // Regression test: callback_traits<F> inherits callback_traits<decltype(&F::operator())>,
-        // creating infinite recursion through lookupInBases. CTD cycle detection must bail out.
-        // We set input = expect because the resolver cannot fully resolve this pattern;
-        // the test verifies it doesn't crash or hang.
-        run(R"code(
+ZEST_CASE(RecursiveBaseClass) {
+    // Regression test: callback_traits<F> inherits callback_traits<decltype(&F::operator())>,
+    // creating infinite recursion through lookupInBases. CTD cycle detection must bail out.
+    // We set input = expect because the resolver cannot fully resolve this pattern;
+    // the test verifies it doesn't crash or hang.
+    run(R"code(
         template <typename F>
         struct callback_traits : callback_traits<decltype(&F::operator())> {};
 
@@ -616,10 +617,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = typename callback_traits<F>::result_type;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PointerType) {
-        run(R"code(
+ZEST_CASE(PointerType) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = T*;
@@ -631,10 +632,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X*;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ReferenceType) {
-        run(R"code(
+ZEST_CASE(ReferenceType) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = T&;
@@ -646,10 +647,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X&;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConstQualified) {
-        run(R"code(
+ZEST_CASE(ConstQualified) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = const T;
@@ -661,14 +662,14 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = const X;
         };
     )code");
-    }
+}
 
-    // TODO: Outer<int> is non-dependent, TransformNestedNameSpecifierLoc
-    // doesn't trigger our heuristic lookup for non-dependent qualifiers.
-    // ZEST_CASE(NestedClassTemplate) { ... }
+// TODO: Outer<int> is non-dependent, TransformNestedNameSpecifierLoc
+// doesn't trigger our heuristic lookup for non-dependent qualifiers.
+// ZEST_CASE(NestedClassTemplate) { ... }
 
-    ZEST_CASE(MultipleInheritance) {
-        run(R"code(
+ZEST_CASE(MultipleInheritance) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -691,10 +692,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(SecondBaseInheritance) {
-        run(R"code(
+ZEST_CASE(SecondBaseInheritance) {
+    run(R"code(
         template <typename T>
         struct Base1 {
             using type1 = int;
@@ -714,11 +715,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TypedefChain) {
-        // Deep typedef chain that SubstituteOnly must expand
-        run(R"code(
+ZEST_CASE(TypedefChain) {
+    // Deep typedef chain that SubstituteOnly must expand
+    run(R"code(
         template <typename T>
         struct A {
             using step1 = T;
@@ -733,11 +734,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DependentBaseTypedef) {
-        // Base class type depends on template parameter through alias
-        run(R"code(
+ZEST_CASE(DependentBaseTypedef) {
+    // Base class type depends on template parameter through alias
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -758,11 +759,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(CRTPPattern) {
-        // Common CRTP pattern
-        run(R"code(
+ZEST_CASE(CRTPPattern) {
+    // Common CRTP pattern
+    run(R"code(
         template <typename Derived>
         struct Base {
             using derived_type = Derived;
@@ -779,15 +780,15 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    // TODO: NTTP partial specialization matching not yet supported.
-    // checkTemplateArguments only fills default TemplateTypeParmDecl args.
-    // ZEST_CASE(NonTypeTemplateParam) { ... }
+// TODO: NTTP partial specialization matching not yet supported.
+// checkTemplateArguments only fills default TemplateTypeParmDecl args.
+// ZEST_CASE(NonTypeTemplateParam) { ... }
 
-    ZEST_CASE(IdentityAlias) {
-        // Alias template that forwards type unchanged
-        run(R"code(
+ZEST_CASE(IdentityAlias) {
+    // Alias template that forwards type unchanged
+    run(R"code(
         template <typename T>
         using identity = T;
 
@@ -802,11 +803,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConditionalType) {
-        // Partial specialization as conditional
-        run(R"code(
+ZEST_CASE(ConditionalType) {
+    // Partial specialization as conditional
+    run(R"code(
         template <bool B, typename T, typename F>
         struct conditional {
             using type = T;
@@ -823,18 +824,18 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    // TODO: Same as NonTypeTemplateParam — partial specialization on `false`
-    // requires NTTP matching which is not yet supported.
-    // ZEST_CASE(ConditionalTypeFalse) { ... }
+// TODO: Same as NonTypeTemplateParam — partial specialization on `false`
+// requires NTTP matching which is not yet supported.
+// ZEST_CASE(ConditionalTypeFalse) { ... }
 
-    // TODO: Template template parameter deduction not yet supported.
-    // ZEST_CASE(TemplateTemplateParam) { ... }
+// TODO: Template template parameter deduction not yet supported.
+// ZEST_CASE(TemplateTemplateParam) { ... }
 
-    ZEST_CASE(DependentReturnType) {
-        // Resolve through a struct that wraps a function return type pattern
-        run(R"code(
+ZEST_CASE(DependentReturnType) {
+    // Resolve through a struct that wraps a function return type pattern
+    run(R"code(
         template <typename T>
         struct remove_reference {
             using type = T;
@@ -856,10 +857,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(RvalueRefRemoval) {
-        run(R"code(
+ZEST_CASE(RvalueRefRemoval) {
+    run(R"code(
         template <typename T>
         struct remove_reference {
             using type = T;
@@ -881,10 +882,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AddPointer) {
-        run(R"code(
+ZEST_CASE(AddPointer) {
+    run(R"code(
         template <typename T>
         struct add_pointer {
             using type = T*;
@@ -901,14 +902,14 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X*;
         };
     )code");
-    }
+}
 
-    // TODO: enable_if<true, X> requires NTTP partial specialization matching.
-    // ZEST_CASE(EnableIfLike) { ... }
+// TODO: enable_if<true, X> requires NTTP partial specialization matching.
+// ZEST_CASE(EnableIfLike) { ... }
 
-    ZEST_CASE(NestedLookup) {
-        // Two levels of dependent lookup: A<T>::B<T>::type
-        run(R"code(
+ZEST_CASE(NestedLookup) {
+    // Two levels of dependent lookup: A<T>::B<T>::type
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -926,11 +927,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, Y>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(IndirectBaseClass) {
-        // Member found through two levels of inheritance
-        run(R"code(
+ZEST_CASE(IndirectBaseClass) {
+    // Member found through two levels of inheritance
+    run(R"code(
         template <typename T>
         struct GrandBase {
             using type = T;
@@ -948,11 +949,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(SelfReferentialAlias) {
-        // Type alias that refers back to the same class (like iterator::self)
-        run(R"code(
+ZEST_CASE(SelfReferentialAlias) {
+    // Type alias that refers back to the same class (like iterator::self)
+    run(R"code(
         template <typename T>
         struct Wrapper {
             using self = Wrapper<T>;
@@ -965,10 +966,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(VoidSpecialization) {
-        run(R"code(
+ZEST_CASE(VoidSpecialization) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = T;
@@ -985,10 +986,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DependentSizedArray) {
-        run(R"code(
+ZEST_CASE(DependentSizedArray) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = T;
@@ -1001,11 +1002,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X*;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(MultiplePacks) {
-        // Two separate pack parameters
-        run(R"code(
+ZEST_CASE(MultiplePacks) {
+    // Two separate pack parameters
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1020,10 +1021,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, Ys...>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConstPointerMember) {
-        run(R"code(
+ZEST_CASE(ConstPointerMember) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = const T*;
@@ -1035,10 +1036,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = const X*;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PointerConstMember) {
-        run(R"code(
+ZEST_CASE(PointerConstMember) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = T* const;
@@ -1050,10 +1051,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X* const;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConstRefTypedef) {
-        run(R"code(
+ZEST_CASE(ConstRefTypedef) {
+    run(R"code(
         template <typename T>
         struct A {
             using c = const T;
@@ -1066,10 +1067,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = const X&;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PointerChainRef) {
-        run(R"code(
+ZEST_CASE(PointerChainRef) {
+    run(R"code(
         template <typename T>
         struct A {
             using p = T*;
@@ -1083,10 +1084,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X**&;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TypedefChainFourTemplates) {
-        run(R"code(
+ZEST_CASE(TypedefChainFourTemplates) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1116,10 +1117,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NonDependentBase) {
-        run(R"code(
+ZEST_CASE(NonDependentBase) {
+    run(R"code(
         struct Base {
             using type = int;
         };
@@ -1133,10 +1134,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ThreeLevelInheritance) {
-        run(R"code(
+ZEST_CASE(ThreeLevelInheritance) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1160,10 +1161,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(InjectedClassName) {
-        run(R"code(
+ZEST_CASE(InjectedClassName) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = T;
@@ -1176,10 +1177,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NestedMemberDepthMix) {
-        run(R"code(
+ZEST_CASE(NestedMemberDepthMix) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1199,10 +1200,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X*, Y>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DefaultArgEarlierParam) {
-        run(R"code(
+ZEST_CASE(DefaultArgEarlierParam) {
+    run(R"code(
         template <typename T, typename U = T*>
         struct A {
             using type = U;
@@ -1214,10 +1215,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X*;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AliasTemplateChain) {
-        run(R"code(
+ZEST_CASE(AliasTemplateChain) {
+    run(R"code(
         template <typename T>
         using first = T;
 
@@ -1235,10 +1236,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ClassTemplateAliasTarget) {
-        run(R"code(
+ZEST_CASE(ClassTemplateAliasTarget) {
+    run(R"code(
         template <typename T>
         struct Impl {
             using type = T;
@@ -1253,10 +1254,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PackLeadingFixed) {
-        run(R"code(
+ZEST_CASE(PackLeadingFixed) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1271,10 +1272,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<Z, W, X, Y>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(EmptyPackDeduced) {
-        run(R"code(
+ZEST_CASE(EmptyPackDeduced) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1289,10 +1290,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PackThroughTwoLayers) {
-        run(R"code(
+ZEST_CASE(PackThroughTwoLayers) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1312,10 +1313,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<Ts...>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PackDefaultInterplay) {
-        run(R"code(
+ZEST_CASE(PackDefaultInterplay) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1330,10 +1331,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, int>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(MixedPackElements) {
-        run(R"code(
+ZEST_CASE(MixedPackElements) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1348,10 +1349,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<int, X, float>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NttpPassthrough) {
-        run(R"code(
+ZEST_CASE(NttpPassthrough) {
+    run(R"code(
         template <typename T, int N>
         struct box {};
 
@@ -1366,10 +1367,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = box<X, 5>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NttpBoolValue) {
-        run(R"code(
+ZEST_CASE(NttpBoolValue) {
+    run(R"code(
         template <typename T, bool B>
         struct box {};
 
@@ -1384,10 +1385,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = box<X, true>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NttpEnumValue) {
-        run(R"code(
+ZEST_CASE(NttpEnumValue) {
+    run(R"code(
         enum Color { Red, Green, Blue };
 
         template <typename T, Color C>
@@ -1404,10 +1405,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = box<X, Green>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(MultiDimArray) {
-        run(R"code(
+ZEST_CASE(MultiDimArray) {
+    run(R"code(
         template <typename T, unsigned long N>
         struct S {
             using type = T[N][3];
@@ -1419,10 +1420,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X[4][3];
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ArrayOfPointer) {
-        run(R"code(
+ZEST_CASE(ArrayOfPointer) {
+    run(R"code(
         template <typename T, unsigned long N>
         struct S {
             using type = T*[N];
@@ -1434,10 +1435,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X*[2];
         };
     )code");
-    }
+}
 
-    ZEST_CASE(RebindTrailingArgs) {
-        run(R"code(
+ZEST_CASE(RebindTrailingArgs) {
+    run(R"code(
         template <typename A, typename B, typename C>
         struct triple {};
 
@@ -1458,10 +1459,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = triple<float, X, Y>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TemplatePackExtract) {
-        run(R"code(
+ZEST_CASE(TemplatePackExtract) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1479,10 +1480,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, Y>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TemplateSwapArgs) {
-        run(R"code(
+ZEST_CASE(TemplateSwapArgs) {
+    run(R"code(
         template <typename A, typename B>
         struct pair {};
 
@@ -1500,10 +1501,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = pair<Y, X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PointerCvOrdering) {
-        run(R"code(
+ZEST_CASE(PointerCvOrdering) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1528,10 +1529,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, X, X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PointerDoubleOrdering) {
-        run(R"code(
+ZEST_CASE(PointerDoubleOrdering) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1556,10 +1557,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, X, X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(RefPartialOrdering) {
-        run(R"code(
+ZEST_CASE(RefPartialOrdering) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1584,10 +1585,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PartialSecondArg) {
-        run(R"code(
+ZEST_CASE(PartialSecondArg) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1607,10 +1608,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, Y>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TemplateIdPartial) {
-        run(R"code(
+ZEST_CASE(TemplateIdPartial) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1633,10 +1634,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DetectorMemberPresent) {
-        run(R"code(
+ZEST_CASE(DetectorMemberPresent) {
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -1664,10 +1665,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DetectorMemberAbsent) {
-        run(R"code(
+ZEST_CASE(DetectorMemberAbsent) {
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -1695,10 +1696,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<no_elem<X>>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DetectorViaBase) {
-        run(R"code(
+ZEST_CASE(DetectorViaBase) {
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -1729,10 +1730,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NestedRebindDetector) {
-        run(R"code(
+ZEST_CASE(NestedRebindDetector) {
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -1765,10 +1766,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = alloc<float>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PartialMemberViaBase) {
-        run(R"code(
+ZEST_CASE(PartialMemberViaBase) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1791,10 +1792,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(CrtpPartialSpec) {
-        run(R"code(
+ZEST_CASE(CrtpPartialSpec) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1817,10 +1818,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(InheritanceThroughPartial) {
-        run(R"code(
+ZEST_CASE(InheritanceThroughPartial) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1846,10 +1847,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(RecursivePointerPeel) {
-        run(R"code(
+ZEST_CASE(RecursivePointerPeel) {
+    run(R"code(
         template <typename T>
         struct strip {
             using type = T;
@@ -1866,10 +1867,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(StructuredPackDeduce) {
-        run(R"code(
+ZEST_CASE(StructuredPackDeduce) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1890,10 +1891,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, Y>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PackZipDeduce) {
-        run(R"code(
+ZEST_CASE(PackZipDeduce) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -1914,10 +1915,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, Y, int, float>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(UnresolvedMemberLookup) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(UnresolvedMemberLookup) {
+    add_main("main.cpp", R"code(
         template <typename T>
         struct S {
             int foo(int);
@@ -1928,26 +1929,26 @@ ZEST_SUITE(TemplateResolver, Tester) {
             }
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::UnresolvedMemberExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::UnresolvedMemberExpr* expr = nullptr;
 
-            bool VisitUnresolvedMemberExpr(clang::UnresolvedMemberExpr* e) {
-                expr = e;
-                return true;
-            }
-        } finder;
+        bool VisitUnresolvedMemberExpr(clang::UnresolvedMemberExpr* e) {
+            expr = e;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        auto members = unit->resolver().lookup(finder.expr);
-        EXPECT(std::ranges::distance(members) == 2);
-    }
+    auto members = unit->resolver().lookup(finder.expr);
+    EXPECT(std::ranges::distance(members) == 2);
+}
 
-    ZEST_CASE(NamespaceOverloadLookup) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(NamespaceOverloadLookup) {
+    add_main("main.cpp", R"code(
         namespace ns {
             template <typename T>
             int f(T);
@@ -1960,26 +1961,26 @@ ZEST_SUITE(TemplateResolver, Tester) {
             ns::f<T>(t);
         }
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::UnresolvedLookupExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::UnresolvedLookupExpr* expr = nullptr;
 
-            bool VisitUnresolvedLookupExpr(clang::UnresolvedLookupExpr* e) {
-                expr = e;
-                return true;
-            }
-        } finder;
+        bool VisitUnresolvedLookupExpr(clang::UnresolvedLookupExpr* e) {
+            expr = e;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        auto members = unit->resolver().lookup(finder.expr);
-        EXPECT(std::ranges::distance(members) == 2);
-    }
+    auto members = unit->resolver().lookup(finder.expr);
+    EXPECT(std::ranges::distance(members) == 2);
+}
 
-    ZEST_CASE(RecursiveDetectorProbe) {
-        run(R"code(
+ZEST_CASE(RecursiveDetectorProbe) {
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -2002,10 +2003,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(CallArityFilter) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(CallArityFilter) {
+    add_main("main.cpp", R"code(
         template <typename T>
         struct S {
             int foo(int);
@@ -2017,33 +2018,33 @@ ZEST_SUITE(TemplateResolver, Tester) {
             }
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::CallExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* expr = nullptr;
 
-            bool VisitCallExpr(clang::CallExpr* e) {
-                if(llvm::isa<clang::UnresolvedMemberExpr>(e->getCallee()->IgnoreParenImpCasts())) {
-                    expr = e;
-                }
-                return true;
+        bool VisitCallExpr(clang::CallExpr* e) {
+            if(llvm::isa<clang::UnresolvedMemberExpr>(e->getCallee()->IgnoreParenImpCasts())) {
+                expr = e;
             }
-        } finder;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        /// One argument: `foo(int, int)` is filtered out, both single-parameter
-        /// overloads survive.
-        auto candidates = unit->resolver().lookup(finder.expr);
-        EXPECT(candidates.size() == 2u);
-    }
+    /// One argument: `foo(int, int)` is filtered out, both single-parameter
+    /// overloads survive.
+    auto candidates = unit->resolver().lookup(finder.expr);
+    EXPECT(candidates.size() == 2u);
+}
 
-    ZEST_CASE(PackElementCache) {
-        /// Each element of `box<Ts>::type...` resolves the same dependent-name
-        /// node under a different binding; a node-keyed cache hit would repeat
-        /// the first element for every later one.
-        run(R"code(
+ZEST_CASE(PackElementCache) {
+    /// Each element of `box<Ts>::type...` resolves the same dependent-name
+    /// node under a different binding; a node-keyed cache hit would repeat
+    /// the first element for every later one.
+    run(R"code(
         template <typename T>
         struct box {
             using type = T;
@@ -2063,10 +2064,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, int>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(InheritedDefaultArgument) {
-        run(R"code(
+ZEST_CASE(InheritedDefaultArgument) {
+    run(R"code(
         template <typename T, typename U = T>
         struct A;
 
@@ -2081,12 +2082,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(VoidReference) {
-        /// `A<void, X>::type` would be `void&` — ill-formed; the resolver must
-        /// degrade rather than fabricate the reference.
-        add_main("main.cpp", R"code(
+ZEST_CASE(VoidReference) {
+    /// `A<void, X>::type` would be `void&` — ill-formed; the resolver must
+    /// degrade rather than fabricate the reference.
+    add_main("main.cpp", R"code(
         template <typename T, typename X>
         struct A {
             using type = T&;
@@ -2098,20 +2099,20 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        if(input->isReferenceType()) {
-            EXPECT(!input->getPointeeType()->isVoidType());
-        }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    if(input->isReferenceType()) {
+        EXPECT(!input->getPointeeType()->isVoidType());
     }
+}
 
-    ZEST_CASE(ValuePackSplice) {
-        run(R"code(
+ZEST_CASE(ValuePackSplice) {
+    run(R"code(
         template <int... Ns>
         struct values {};
 
@@ -2126,10 +2127,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = values<1, X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(FunctionParamPack) {
-        run(R"code(
+ZEST_CASE(FunctionParamPack) {
+    run(R"code(
         template <typename... Ts>
         struct A {
             using type = void(Ts...);
@@ -2141,10 +2142,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void(X, int);
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DependentArrayBound) {
-        run(R"code(
+ZEST_CASE(DependentArrayBound) {
+    run(R"code(
         template <typename T>
         struct trait {
             using type = void;
@@ -2161,12 +2162,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(RepeatedPackElement) {
-        /// `pair<Ts, Ts>...` requires both occurrences to agree in each element;
-        /// the mismatching first pair must fall back to the primary.
-        run(R"code(
+ZEST_CASE(RepeatedPackElement) {
+    /// `pair<Ts, Ts>...` requires both occurrences to agree in each element;
+    /// the mismatching first pair must fall back to the primary.
+    run(R"code(
         template <typename A, typename B>
         struct pair {};
 
@@ -2189,10 +2190,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TemplatePackExpansion) {
-        run(R"code(
+ZEST_CASE(TemplatePackExpansion) {
+    run(R"code(
         template <typename T>
         struct box {};
 
@@ -2210,10 +2211,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<TX<int>, box<int>>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ReferenceCollapse) {
-        run(R"code(
+ZEST_CASE(ReferenceCollapse) {
+    run(R"code(
         template <typename T>
         struct R {
             using type = T&;
@@ -2225,12 +2226,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X&;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PointerToReference) {
-        /// `P<X&>::type` would be `X& *` — ill-formed. The resolver must leave
-        /// the name unresolved rather than fabricate a malformed pointer node.
-        add_main("main.cpp", R"code(
+ZEST_CASE(PointerToReference) {
+    /// `P<X&>::type` would be `X& *` — ill-formed. The resolver must leave
+    /// the name unresolved rather than fabricate a malformed pointer node.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct P {
             using type = T*;
@@ -2242,22 +2243,22 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-        /// Degrading returns the written `T*`; fabricating `X& *` would not.
-        if(input->isPointerType()) {
-            EXPECT(!input->getPointeeType()->isReferenceType());
-        }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+    /// Degrading returns the written `T*`; fabricating `X& *` would not.
+    if(input->isPointerType()) {
+        EXPECT(!input->getPointeeType()->isReferenceType());
     }
+}
 
-    ZEST_CASE(UnboundArrayPattern) {
-        run(R"code(
+ZEST_CASE(UnboundArrayPattern) {
+    run(R"code(
         template <typename T>
         struct trait {
             using type = void;
@@ -2274,12 +2275,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConstMethodPattern) {
-        /// The const-qualified member-function partial must not swallow a
-        /// non-const member function pointer.
-        run(R"code(
+ZEST_CASE(ConstMethodPattern) {
+    /// The const-qualified member-function partial must not swallow a
+    /// non-const member function pointer.
+    run(R"code(
         template <typename T>
         struct trait {
             using type = void;
@@ -2296,10 +2297,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(RepeatedValuePattern) {
-        run(R"code(
+ZEST_CASE(RepeatedValuePattern) {
+    run(R"code(
         template <int A, int B>
         struct P {
             using type = void;
@@ -2316,10 +2317,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TemplatePackDeduce) {
-        run(R"code(
+ZEST_CASE(TemplatePackDeduce) {
+    run(R"code(
         template <typename T>
         struct box {};
 
@@ -2334,12 +2335,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NoexceptFunctionPattern) {
-        /// The partial pins `noexcept`; a plain function type must keep the
-        /// primary rather than matching with the specification ignored.
-        run(R"code(
+ZEST_CASE(NoexceptFunctionPattern) {
+    /// The partial pins `noexcept`; a plain function type must keep the
+    /// primary rather than matching with the specification ignored.
+    run(R"code(
         template <typename T>
         struct trait {
             using type = void;
@@ -2356,10 +2357,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(UnderlyingTypeTransform) {
-        run(R"code(
+ZEST_CASE(UnderlyingTypeTransform) {
+    run(R"code(
         enum class E : short {};
 
         template <typename T>
@@ -2378,13 +2379,13 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = short;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DependentScopeInconclusive) {
-        /// `A<X>::foo` is unknowable while X is: the primary lacks `foo` but the
-        /// pointer partial declares it, so the probe must stay Unknown and keep
-        /// the detector partial.
-        run(R"code(
+ZEST_CASE(DependentScopeInconclusive) {
+    /// `A<X>::foo` is unknowable while X is: the primary lacks `foo` but the
+    /// pointer partial declares it, so the probe must stay Unknown and keep
+    /// the detector partial.
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -2412,10 +2413,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AliasDefaultArgument) {
-        run(R"code(
+ZEST_CASE(AliasDefaultArgument) {
+    run(R"code(
         template <typename T, typename U>
         struct pair {};
 
@@ -2433,10 +2434,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = pair<X, int>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(FunctionTypePattern) {
-        run(R"code(
+ZEST_CASE(FunctionTypePattern) {
+    run(R"code(
         template <typename T>
         struct trait {
             using type = void;
@@ -2453,10 +2454,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(MemberPointerPattern) {
-        run(R"code(
+ZEST_CASE(MemberPointerPattern) {
+    run(R"code(
         template <typename T>
         struct trait {
             using type = void;
@@ -2473,10 +2474,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(MemberPointerRewrite) {
-        run(R"code(
+ZEST_CASE(MemberPointerRewrite) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = T A::*;
@@ -2488,10 +2489,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X A<X>::*;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PackPatternExpansion) {
-        run(R"code(
+ZEST_CASE(PackPatternExpansion) {
+    run(R"code(
         template <typename T>
         struct box {};
 
@@ -2509,12 +2510,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<box<X>, box<int>>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(OuterParamMismatch) {
-        /// The partial's pattern `pair<O, U>` pins Outer's own parameter: for a
-        /// mismatching first element it must not match, keeping the primary.
-        run(R"code(
+ZEST_CASE(OuterParamMismatch) {
+    /// The partial's pattern `pair<O, U>` pins Outer's own parameter: for a
+    /// mismatching first element it must not match, keeping the primary.
+    run(R"code(
         template <typename A, typename B>
         struct pair {};
 
@@ -2537,10 +2538,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(OuterParamMatch) {
-        run(R"code(
+ZEST_CASE(OuterParamMatch) {
+    run(R"code(
         template <typename A, typename B>
         struct pair {};
 
@@ -2563,13 +2564,13 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AliasTemplateHead) {
-        /// A template template parameter bound to an alias template: after head
-        /// substitution the rebuilt specialization names an alias, so its aliased
-        /// type must be computed — assertion-enabled clang aborts otherwise.
-        run(R"code(
+ZEST_CASE(AliasTemplateHead) {
+    /// A template template parameter bound to an alias template: after head
+    /// substitution the rebuilt specialization names an alias, so its aliased
+    /// type must be computed — assertion-enabled clang aborts otherwise.
+    run(R"code(
         template <typename T, typename U>
         struct pair {};
 
@@ -2587,14 +2588,14 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = pair<X, int>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AliasPackExpanded) {
-        /// `listify<Us...>` carries no aliased type (its arguments hold an
-        /// unexpanded pack), so rewriting the pack away must compute the aliased
-        /// type before the specialization can be rebuilt — assertion-enabled
-        /// clang aborts otherwise.
-        run(R"code(
+ZEST_CASE(AliasPackExpanded) {
+    /// `listify<Us...>` carries no aliased type (its arguments hold an
+    /// unexpanded pack), so rewriting the pack away must compute the aliased
+    /// type before the specialization can be rebuilt — assertion-enabled
+    /// clang aborts otherwise.
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -2612,13 +2613,13 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, int>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(RedeclSplitDefinition) {
-        /// `A<X>` is parsed while only the forward declaration is visible, so the
-        /// DTST's TemplateName points at the redecl whose parameter list differs
-        /// from the defining declaration that owns `type`.
-        run(R"code(
+ZEST_CASE(RedeclSplitDefinition) {
+    /// `A<X>` is parsed while only the forward declaration is visible, so the
+    /// DTST's TemplateName points at the redecl whose parameter list differs
+    /// from the defining declaration that owns `type`.
+    run(R"code(
         template <typename T>
         struct A;
 
@@ -2633,10 +2634,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using type = T*;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(QualifiedCallArity) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(QualifiedCallArity) {
+    add_main("main.cpp", R"code(
         template <typename T>
         struct base {
             static int foo(int);
@@ -2651,33 +2652,32 @@ ZEST_SUITE(TemplateResolver, Tester) {
             }
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::CallExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* expr = nullptr;
 
-            bool VisitCallExpr(clang::CallExpr* e) {
-                if(llvm::isa<clang::DependentScopeDeclRefExpr>(
-                       e->getCallee()->IgnoreParenImpCasts())) {
-                    expr = e;
-                }
-                return true;
+        bool VisitCallExpr(clang::CallExpr* e) {
+            if(llvm::isa<clang::DependentScopeDeclRefExpr>(e->getCallee()->IgnoreParenImpCasts())) {
+                expr = e;
             }
-        } finder;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        /// One argument: `foo(int, int)` is filtered out, both single-parameter
-        /// overloads survive.
-        auto candidates = unit->resolver().lookup(finder.expr);
-        EXPECT(candidates.size() == 2u);
-    }
+    /// One argument: `foo(int, int)` is filtered out, both single-parameter
+    /// overloads survive.
+    auto candidates = unit->resolver().lookup(finder.expr);
+    EXPECT(candidates.size() == 2u);
+}
 
-    ZEST_CASE(PackArgumentCall) {
-        /// `foo(us...)` may expand to any arity; the filter must keep every
-        /// overload.
-        add_main("main.cpp", R"code(
+ZEST_CASE(PackArgumentCall) {
+    /// `foo(us...)` may expand to any arity; the filter must keep every
+    /// overload.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct S {
             int foo(int);
@@ -2689,29 +2689,29 @@ ZEST_SUITE(TemplateResolver, Tester) {
             }
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::CallExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* expr = nullptr;
 
-            bool VisitCallExpr(clang::CallExpr* e) {
-                if(llvm::isa<clang::UnresolvedMemberExpr>(e->getCallee()->IgnoreParenImpCasts())) {
-                    expr = e;
-                }
-                return true;
+        bool VisitCallExpr(clang::CallExpr* e) {
+            if(llvm::isa<clang::UnresolvedMemberExpr>(e->getCallee()->IgnoreParenImpCasts())) {
+                expr = e;
             }
-        } finder;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        auto candidates = unit->resolver().lookup(finder.expr);
-        EXPECT(candidates.size() == 2u);
-    }
+    auto candidates = unit->resolver().lookup(finder.expr);
+    EXPECT(candidates.size() == 2u);
+}
 
-    ZEST_CASE(AtomicReference) {
-        /// `_Atomic(int&)` does not exist; the resolver must degrade.
-        add_main("main.cpp", R"code(
+ZEST_CASE(AtomicReference) {
+    /// `_Atomic(int&)` does not exist; the resolver must degrade.
+    add_main("main.cpp", R"code(
         template <typename T, typename U>
         struct A {
             using type = _Atomic(T);
@@ -2723,21 +2723,21 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        if(auto AT = input->getAs<clang::AtomicType>()) {
-            EXPECT(!AT->getValueType()->isReferenceType());
-        }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    if(auto AT = input->getAs<clang::AtomicType>()) {
+        EXPECT(!AT->getValueType()->isReferenceType());
     }
+}
 
-    ZEST_CASE(ConstrainedPartial) {
-        /// A constraint that folds to false removes the partial.
-        run(R"code(
+ZEST_CASE(ConstrainedPartial) {
+    /// A constraint that folds to false removes the partial.
+    run(R"code(
         template <typename T>
         struct P {
             using type = void;
@@ -2755,11 +2755,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(BoolArrayBound) {
-        /// `bool N` cannot represent the bound 2, so the primary applies.
-        run(R"code(
+ZEST_CASE(BoolArrayBound) {
+    /// `bool N` cannot represent the bound 2, so the primary applies.
+    run(R"code(
         template <typename T>
         struct trait {
             using type = void;
@@ -2776,12 +2776,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PackPrefixArity) {
-        /// `TT` requires two fixed parameters before its pack; the unary
-        /// template cannot supply them, so the primary applies.
-        run(R"code(
+ZEST_CASE(PackPrefixArity) {
+    /// `TT` requires two fixed parameters before its pack; the unary
+    /// template cannot supply them, so the primary applies.
+    run(R"code(
         template <typename T>
         struct unary {};
 
@@ -2804,12 +2804,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TemplateMemberProbe) {
-        /// `typename T::foo` cannot name an unspecialized class template; the
-        /// probe must fail and keep the primary.
-        run(R"code(
+ZEST_CASE(TemplateMemberProbe) {
+    /// `typename T::foo` cannot name an unspecialized class template; the
+    /// probe must fail and keep the primary.
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -2835,12 +2835,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ArrowWithoutPointer) {
-        /// `p->value` on a class with no `operator->` is ill-formed; the lookup
-        /// must produce no candidates instead of pretending it was a dot access.
-        add_main("main.cpp", R"code(
+ZEST_CASE(ArrowWithoutPointer) {
+    /// `p->value` on a class with no `operator->` is ill-formed; the lookup
+    /// must produce no candidates instead of pretending it was a dot access.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct P {
             int value;
@@ -2850,31 +2850,31 @@ ZEST_SUITE(TemplateResolver, Tester) {
             }
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::CXXDependentScopeMemberExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CXXDependentScopeMemberExpr* expr = nullptr;
 
-            bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
-                if(e->isArrow()) {
-                    expr = e;
-                }
-                return true;
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
+            if(e->isArrow()) {
+                expr = e;
             }
-        } finder;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        auto candidates = unit->resolver().lookup(finder.expr);
-        EXPECT(candidates.empty());
-    }
+    auto candidates = unit->resolver().lookup(finder.expr);
+    EXPECT(candidates.empty());
+}
 
-    ZEST_CASE(ArrowThroughSmartPointer) {
-        /// `operator->` returns `T*` in the class's own parameter; the lookup's
-        /// deduction frame must substitute the specialization's argument for
-        /// the pointee's members to resolve.
-        add_main("main.cpp", R"code(
+ZEST_CASE(ArrowThroughSmartPointer) {
+    /// `operator->` returns `T*` in the class's own parameter; the lookup's
+    /// deduction frame must substitute the specialization's argument for
+    /// the pointee's members to resolve.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct Node {
             int val;
@@ -2890,31 +2890,31 @@ ZEST_SUITE(TemplateResolver, Tester) {
             p->val;
         }
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::CXXDependentScopeMemberExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CXXDependentScopeMemberExpr* expr = nullptr;
 
-            bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
-                if(e->isArrow()) {
-                    expr = e;
-                }
-                return true;
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
+            if(e->isArrow()) {
+                expr = e;
             }
-        } finder;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        auto candidates = unit->resolver().lookup(finder.expr);
-        ASSERT(!candidates.empty());
-        EXPECT(llvm::isa<clang::FieldDecl>(*candidates.begin()));
-    }
+    auto candidates = unit->resolver().lookup(finder.expr);
+    ASSERT(!candidates.empty());
+    EXPECT(llvm::isa<clang::FieldDecl>(*candidates.begin()));
+}
 
-    ZEST_CASE(RecordOfMemberAlias) {
-        /// The alias resolves with the written arguments substituted, so the
-        /// record is the class the alias stands for, not the bare parameter.
-        add_main("main.cpp", R"code(
+ZEST_CASE(RecordOfMemberAlias) {
+    /// The alias resolves with the written arguments substituted, so the
+    /// record is the class the alias stands for, not the bare parameter.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct Vec {
             using value_type = T;
@@ -2925,22 +2925,22 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = typename Vec<Vec<X>>::value_type;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto* record = llvm::dyn_cast_or_null<clang::CXXRecordDecl>(
-            unit->resolver().resolve_tag(finder.input));
-        ASSERT(record != nullptr);
-        EXPECT(record->getName() == "Vec");
-        EXPECT(record->getDescribedClassTemplate() != nullptr);
-    }
+    auto* record =
+        llvm::dyn_cast_or_null<clang::CXXRecordDecl>(unit->resolver().resolve_tag(finder.input));
+    ASSERT(record != nullptr);
+    EXPECT(record->getName() == "Vec");
+    EXPECT(record->getDescribedClassTemplate() != nullptr);
+}
 
-    ZEST_CASE(RecordOfPartialPattern) {
-        /// A dependent specialization matching a partial specialization yields
-        /// that partial's pattern, as real instantiation would.
-        add_main("main.cpp", R"code(
+ZEST_CASE(RecordOfPartialPattern) {
+    /// A dependent specialization matching a partial specialization yields
+    /// that partial's pattern, as real instantiation would.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct Traits {};
 
@@ -2952,36 +2952,36 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = Traits<X*>;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto* record = unit->resolver().resolve_tag(finder.input);
-        ASSERT(record != nullptr);
-        EXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record));
-    }
+    auto* record = unit->resolver().resolve_tag(finder.input);
+    ASSERT(record != nullptr);
+    EXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record));
+}
 
-    ZEST_CASE(RecordOfParameter) {
-        /// A bare template parameter names no class.
-        add_main("main.cpp", R"code(
+ZEST_CASE(RecordOfParameter) {
+    /// A bare template parameter names no class.
+    add_main("main.cpp", R"code(
         template <typename X>
         struct test {
             using input = X;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        EXPECT(unit->resolver().resolve_tag(finder.input) == nullptr);
-    }
+    EXPECT(unit->resolver().resolve_tag(finder.input) == nullptr);
+}
 
-    ZEST_CASE(MixedPackCandidate) {
-        /// A type pack cannot cover `mixed`'s non-type slot, so the primary
-        /// applies even though one type argument would satisfy the defaults.
-        run(R"code(
+ZEST_CASE(MixedPackCandidate) {
+    /// A type pack cannot cover `mixed`'s non-type slot, so the primary
+    /// applies even though one type argument would satisfy the defaults.
+    run(R"code(
         template <typename T, int N = 0>
         struct mixed {};
 
@@ -3001,10 +3001,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AtomicRewrite) {
-        run(R"code(
+ZEST_CASE(AtomicRewrite) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = _Atomic(T);
@@ -3016,12 +3016,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = _Atomic(X);
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DependentBaseProbe) {
-        /// `D<T>` inherits from the dependent `T`: `foo` may appear after
-        /// instantiation, so the probe stays Unknown and keeps the detector.
-        run(R"code(
+ZEST_CASE(DependentBaseProbe) {
+    /// `D<T>` inherits from the dependent `T`: `foo` may appear after
+    /// instantiation, so the probe stays Unknown and keeps the detector.
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -3044,12 +3044,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NegativeArrayBound) {
-        /// `U[-1]` is ill-formed; the resolver must degrade rather than
-        /// fabricate an array from the wrapped-around extent.
-        add_main("main.cpp", R"code(
+ZEST_CASE(NegativeArrayBound) {
+    /// `U[-1]` is ill-formed; the resolver must degrade rather than
+    /// fabricate an array from the wrapped-around extent.
+    add_main("main.cpp", R"code(
         template <int N, typename U>
         struct A {
             using type = U[N];
@@ -3061,18 +3061,18 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(!input->isConstantArrayType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(!input->isConstantArrayType());
+}
 
-    ZEST_CASE(DecayedParameter) {
-        run(R"code(
+ZEST_CASE(DecayedParameter) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = void(T[]);
@@ -3084,12 +3084,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void(X*);
         };
     )code");
-    }
+}
 
-    ZEST_CASE(RedeclAliasForward) {
-        /// The dependent name is formed through an alias declared while only the
-        /// forward declaration of `A` was visible.
-        run(R"code(
+ZEST_CASE(RedeclAliasForward) {
+    /// The dependent name is formed through an alias declared while only the
+    /// forward declaration of `A` was visible.
+    run(R"code(
         template <typename T>
         struct A;
 
@@ -3107,13 +3107,13 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using type = T*;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(CompoundValueDegrade) {
-        /// TODO(nttp-expr): compound NTTP expressions are not substituted; this
-        /// pins that they degrade cleanly (assertion-enabled clang would abort
-        /// on a fabricated node) rather than crash.
-        add_main("main.cpp", R"code(
+ZEST_CASE(CompoundValueDegrade) {
+    /// TODO(nttp-expr): compound NTTP expressions are not substituted; this
+    /// pins that they degrade cleanly (assertion-enabled clang would abort
+    /// on a fabricated node) rather than crash.
+    add_main("main.cpp", R"code(
         template <int N>
         struct value {};
 
@@ -3128,20 +3128,20 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+}
 
-    ZEST_CASE(TypedValueMismatch) {
-        /// Value deduction requires the parameter and argument types to agree:
-        /// the bool partial never matches an int argument.
-        run(R"code(
+ZEST_CASE(TypedValueMismatch) {
+    /// Value deduction requires the parameter and argument types to agree:
+    /// the bool partial never matches an int argument.
+    run(R"code(
         template <auto V>
         struct A {
             using type = void;
@@ -3158,12 +3158,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PrivateMemberProbe) {
-        /// Access participates in SFINAE: a private `secret` fails the probe
-        /// and keeps the primary.
-        run(R"code(
+ZEST_CASE(PrivateMemberProbe) {
+    /// Access participates in SFINAE: a private `secret` fails the probe
+    /// and keeps the primary.
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -3188,11 +3188,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(UnboundedArgument) {
-        /// The bounded pattern `U[N]` must not absorb the unbounded `X[]`.
-        run(R"code(
+ZEST_CASE(UnboundedArgument) {
+    /// The bounded pattern `U[N]` must not absorb the unbounded `X[]`.
+    run(R"code(
         template <int N, typename B>
         struct P {
             using type = void;
@@ -3209,12 +3209,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(EmptyPackConflict) {
-        /// `Ts` deduces `{X}` from the first argument; the empty `tuple<>` in
-        /// the second is a cardinality conflict, so the primary applies.
-        run(R"code(
+ZEST_CASE(EmptyPackConflict) {
+    /// `Ts` deduces `{X}` from the first argument; the empty `tuple<>` in
+    /// the second is a cardinality conflict, so the primary applies.
+    run(R"code(
         template <typename... Ts>
         struct list {};
 
@@ -3237,12 +3237,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AmbiguousPartials) {
-        /// `trait<X*, Y*>` matches both partials and neither dominates: real
-        /// instantiation is ambiguous, so the member must stay unresolved.
-        add_main("main.cpp", R"code(
+ZEST_CASE(AmbiguousPartials) {
+    /// `trait<X*, Y*>` matches both partials and neither dominates: real
+    /// instantiation is ambiguous, so the member must stay unresolved.
+    add_main("main.cpp", R"code(
         template <typename A, typename B>
         struct trait {
             using type = void;
@@ -3264,19 +3264,19 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-        EXPECT(!(input->isVoidType() || input->isBuiltinType()));
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+    EXPECT(!(input->isVoidType() || input->isBuiltinType()));
+}
 
-    ZEST_CASE(DependentNameArgument) {
-        run(R"code(
+ZEST_CASE(DependentNameArgument) {
+    run(R"code(
         template <template <typename> class TT>
         struct apply {};
 
@@ -3291,10 +3291,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = apply<X::template tmpl>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TemplateExpansionSplice) {
-        run(R"code(
+ZEST_CASE(TemplateExpansionSplice) {
+    run(R"code(
         template <typename T>
         struct box {};
 
@@ -3312,13 +3312,13 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = tlist<TX, box>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NonTrailingSuffix) {
-        /// `void(Ts..., int)` has a fixed suffix: the expansion's length follows
-        /// from the arity, so `void(X, int)` matches with `Ts = {X}` while
-        /// `void(X)` (missing the suffix) falls back to the primary.
-        run(R"code(
+ZEST_CASE(NonTrailingSuffix) {
+    /// `void(Ts..., int)` has a fixed suffix: the expansion's length follows
+    /// from the arity, so `void(X, int)` matches with `Ts = {X}` while
+    /// `void(X)` (missing the suffix) falls back to the primary.
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -3338,12 +3338,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ArgumentPackMismatch) {
-        /// The argument-side expansion `void(Us*...)` only produces pointer
-        /// parameters; the fixed `void(int)` partial can never match it.
-        run(R"code(
+ZEST_CASE(ArgumentPackMismatch) {
+    /// The argument-side expansion `void(Us*...)` only produces pointer
+    /// parameters; the fixed `void(int)` partial can never match it.
+    run(R"code(
         template <typename A, typename B>
         struct trait {
             using type = void;
@@ -3360,10 +3360,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AttributedRewrite) {
-        run(R"code(
+ZEST_CASE(AttributedRewrite) {
+    run(R"code(
         template <typename T>
         struct A {
             using type = T __attribute__((address_space(1)))*;
@@ -3375,10 +3375,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X __attribute__((address_space(1)))*;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AutoArrayBound) {
-        run(R"code(
+ZEST_CASE(AutoArrayBound) {
+    run(R"code(
         template <typename T>
         struct trait {
             using type = void;
@@ -3395,11 +3395,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConstReferenceDrop) {
-        /// cv-qualifiers applied to a substituted reference are ignored.
-        run(R"code(
+ZEST_CASE(ConstReferenceDrop) {
+    /// cv-qualifiers applied to a substituted reference are ignored.
+    run(R"code(
         template <typename T>
         struct A {
             using type = const T;
@@ -3411,12 +3411,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X&;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ValueMemberProbe) {
-        /// `typename T::value` requires a type; a static data member named
-        /// `value` must fail the probe and keep the primary.
-        run(R"code(
+ZEST_CASE(ValueMemberProbe) {
+    /// `typename T::value` requires a type; a static data member named
+    /// `value` must fail the probe and keep the primary.
+    run(R"code(
         template <typename... Ts>
         using void_t = void;
 
@@ -3441,12 +3441,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NoexceptSubstitute) {
-        /// The leading X offsets P's parameter index so the unsubstituted `B`
-        /// cannot accidentally compare canonically equal.
-        run(R"code(
+ZEST_CASE(NoexceptSubstitute) {
+    /// The leading X offsets P's parameter index so the unsubstituted `B`
+    /// cannot accidentally compare canonically equal.
+    run(R"code(
         template <bool B>
         struct A {
             using type = void() noexcept(B);
@@ -3458,10 +3458,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void() noexcept(P);
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NoexceptDeduce) {
-        run(R"code(
+ZEST_CASE(NoexceptDeduce) {
+    run(R"code(
         template <bool B>
         struct flag {};
 
@@ -3481,12 +3481,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = flag<P>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TemplateArityMismatch) {
-        /// `binary` needs two arguments; a unary template template parameter
-        /// cannot accept it, so the primary applies.
-        run(R"code(
+ZEST_CASE(TemplateArityMismatch) {
+    /// `binary` needs two arguments; a unary template template parameter
+    /// cannot accept it, so the primary applies.
+    run(R"code(
         template <typename A, typename B>
         struct binary {};
 
@@ -3506,12 +3506,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(VoidFunctionParam) {
-        /// `A<void, X>::type` would be a function taking a void parameter; the
-        /// resolver must degrade rather than fabricate it.
-        add_main("main.cpp", R"code(
+ZEST_CASE(VoidFunctionParam) {
+    /// `A<void, X>::type` would be a function taking a void parameter; the
+    /// resolver must degrade rather than fabricate it.
+    add_main("main.cpp", R"code(
         template <typename T, typename U>
         struct A {
             using type = void(T);
@@ -3523,23 +3523,23 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        if(auto FPT = input->getAs<clang::FunctionProtoType>()) {
-            for(auto param: FPT->getParamTypes()) {
-                EXPECT(!param->isVoidType());
-            }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    if(auto FPT = input->getAs<clang::FunctionProtoType>()) {
+        for(auto param: FPT->getParamTypes()) {
+            EXPECT(!param->isVoidType());
         }
     }
+}
 
-    ZEST_CASE(VoidMemberPointee) {
-        /// `void C::*` is not a valid member pointer; degrade.
-        add_main("main.cpp", R"code(
+ZEST_CASE(VoidMemberPointee) {
+    /// `void C::*` is not a valid member pointer; degrade.
+    add_main("main.cpp", R"code(
         struct C {};
 
         template <typename T, typename U>
@@ -3553,20 +3553,20 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        if(auto MPT = input->getAs<clang::MemberPointerType>()) {
-            EXPECT(!MPT->getPointeeType()->isVoidType());
-        }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    if(auto MPT = input->getAs<clang::MemberPointerType>()) {
+        EXPECT(!MPT->getPointeeType()->isVoidType());
     }
+}
 
-    ZEST_CASE(ArraySizeForward) {
-        run(R"code(
+ZEST_CASE(ArraySizeForward) {
+    run(R"code(
         template <typename T, unsigned long N>
         struct S {
             using type = T[N];
@@ -3578,10 +3578,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X[M];
         };
     )code");
-    }
+}
 
-    ZEST_CASE(RepeatedValuePack) {
-        run(R"code(
+ZEST_CASE(RepeatedValuePack) {
+    run(R"code(
         template <int A, int B>
         struct pairv {};
 
@@ -3604,13 +3604,13 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(SurplusArguments) {
-        /// A variadic template template parameter bound to a one-parameter
-        /// template, applied with two arguments: rebuilding `target<X, int>`
-        /// would fabricate an invalid specialization — it must degrade.
-        add_main("main.cpp", R"code(
+ZEST_CASE(SurplusArguments) {
+    /// A variadic template template parameter bound to a one-parameter
+    /// template, applied with two arguments: rebuilding `target<X, int>`
+    /// would fabricate an invalid specialization — it must degrade.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct target {};
 
@@ -3625,21 +3625,21 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        if(auto TST = input->getAs<clang::TemplateSpecializationType>()) {
-            auto TD = TST->getTemplateName().getAsTemplateDecl();
-            EXPECT(!(TD && TD->getName() == "target" && TST->template_arguments().size() > 1));
-        }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    if(auto TST = input->getAs<clang::TemplateSpecializationType>()) {
+        auto TD = TST->getTemplateName().getAsTemplateDecl();
+        EXPECT(!(TD && TD->getName() == "target" && TST->template_arguments().size() > 1));
     }
+}
 
-    ZEST_CASE(TemplateDefaultForward) {
-        run(R"code(
+ZEST_CASE(TemplateDefaultForward) {
+    run(R"code(
         template <typename T>
         struct box {};
 
@@ -3655,12 +3655,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = box<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NonTrailingPack) {
-        /// A non-trailing pack expansion is non-deduced: the partial must not
-        /// greedily swallow the trailing `int` and mis-select itself.
-        run(R"code(
+ZEST_CASE(NonTrailingPack) {
+    /// A non-trailing pack expansion is non-deduced: the partial must not
+    /// greedily swallow the trailing `int` and mis-select itself.
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -3680,12 +3680,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(FunctionReturnArray) {
-        /// `A<int[2], X>::type` would be an array-returning function type; the
-        /// resolver must degrade rather than fabricate it.
-        add_main("main.cpp", R"code(
+ZEST_CASE(FunctionReturnArray) {
+    /// `A<int[2], X>::type` would be an array-returning function type; the
+    /// resolver must degrade rather than fabricate it.
+    add_main("main.cpp", R"code(
         template <typename T, typename U>
         struct A {
             using type = T();
@@ -3697,23 +3697,23 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        if(auto FPT = input->getAs<clang::FunctionProtoType>()) {
-            EXPECT(!FPT->getReturnType()->isArrayType());
-        }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    if(auto FPT = input->getAs<clang::FunctionProtoType>()) {
+        EXPECT(!FPT->getReturnType()->isArrayType());
     }
+}
 
-    ZEST_CASE(DefaultsInCanonical) {
-        /// A class template bound through a template template parameter: the
-        /// rebuilt specialization's canonical arguments must include the bound
-        /// template's defaults, or it never compares equal to `target<X>`.
-        run(R"code(
+ZEST_CASE(DefaultsInCanonical) {
+    /// A class template bound through a template template parameter: the
+    /// rebuilt specialization's canonical arguments must include the bound
+    /// template's defaults, or it never compares equal to `target<X>`.
+    run(R"code(
         template <typename T, typename U = int>
         struct target {};
 
@@ -3728,10 +3728,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = target<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ValuePackExpansion) {
-        run(R"code(
+ZEST_CASE(ValuePackExpansion) {
+    run(R"code(
         template <int N>
         struct value {};
 
@@ -3749,12 +3749,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<value<X>, value<2>>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AutoValueType) {
-        /// `auto` parameter identity includes the value's type: the int-literal
-        /// partial must not swallow a long argument.
-        run(R"code(
+ZEST_CASE(AutoValueType) {
+    /// `auto` parameter identity includes the value's type: the int-literal
+    /// partial must not swallow a long argument.
+    run(R"code(
         template <auto A, auto B>
         struct trait {
             using type = void;
@@ -3771,13 +3771,13 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DependentTypedValue) {
-        /// `N` is typed by the earlier parameter `T`: its argument must stay an
-        /// expression until `T` is known — normalizing it against the dependent
-        /// type would violate integral-argument invariants.
-        run(R"code(
+ZEST_CASE(DependentTypedValue) {
+    /// `N` is typed by the earlier parameter `T`: its argument must stay an
+    /// expression until `T` is known — normalizing it against the dependent
+    /// type would violate integral-argument invariants.
+    run(R"code(
         template <typename T, T N>
         struct A {
             using type = T;
@@ -3789,10 +3789,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ParamDecayAdjust) {
-        run(R"code(
+ZEST_CASE(ParamDecayAdjust) {
+    run(R"code(
         template <typename T, typename U>
         struct A {
             using type = void(T);
@@ -3804,10 +3804,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void(int*);
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DependentValueDefault) {
-        run(R"code(
+ZEST_CASE(DependentValueDefault) {
+    run(R"code(
         template <int N>
         struct value {};
 
@@ -3822,10 +3822,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = value<X>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ExplicitObjectArity) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(ExplicitObjectArity) {
+    add_main("main.cpp", R"code(
         template <typename T>
         struct S {
             int foo(this S&, int);
@@ -3836,32 +3836,32 @@ ZEST_SUITE(TemplateResolver, Tester) {
             }
         };
     )code");
-        ASSERT(compile("-std=c++23"));
+    ASSERT(compile("-std=c++23"));
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::CallExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* expr = nullptr;
 
-            bool VisitCallExpr(clang::CallExpr* e) {
-                if(llvm::isa<clang::UnresolvedMemberExpr>(e->getCallee()->IgnoreParenImpCasts())) {
-                    expr = e;
-                }
-                return true;
+        bool VisitCallExpr(clang::CallExpr* e) {
+            if(llvm::isa<clang::UnresolvedMemberExpr>(e->getCallee()->IgnoreParenImpCasts())) {
+                expr = e;
             }
-        } finder;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        /// One written argument plus the unspelled object: only the
-        /// two-parameter explicit-object overload survives.
-        auto candidates = unit->resolver().lookup(finder.expr);
-        EXPECT(candidates.size() == 1u);
-    }
+    /// One written argument plus the unspelled object: only the
+    /// two-parameter explicit-object overload survives.
+    auto candidates = unit->resolver().lookup(finder.expr);
+    EXPECT(candidates.size() == 1u);
+}
 
-    ZEST_CASE(CallArityOccurrences) {
-        /// The production occurrence path must apply the arity filter: the
-        /// two-argument overload never appears for a one-argument call.
-        add_main("main.cpp", R"code(
+ZEST_CASE(CallArityOccurrences) {
+    /// The production occurrence path must apply the arity filter: the
+    /// two-argument overload never appears for a one-argument call.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct S {
             int foo(int);
@@ -3873,24 +3873,24 @@ ZEST_SUITE(TemplateResolver, Tester) {
             }
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        auto semantics = Semantics::build(*unit);
-        auto entries = semantics.node_entries();
+    auto semantics = Semantics::build(*unit);
+    auto entries = semantics.node_entries();
 
-        bool found = false;
-        for(std::uint32_t i = 0; i < entries.size(); i += 1) {
-            if(entries[i].node.get<clang::UnresolvedMemberExpr>()) {
-                auto occurrences = resolve_occurrences(semantics, i, &unit->resolver());
-                EXPECT(occurrences.size() == 2);
-                found = true;
-            }
+    bool found = false;
+    for(std::uint32_t i = 0; i < entries.size(); i += 1) {
+        if(entries[i].node.get<clang::UnresolvedMemberExpr>()) {
+            auto occurrences = resolve_occurrences(semantics, i, &unit->resolver());
+            EXPECT(occurrences.size() == 2);
+            found = true;
         }
-        EXPECT(found);
     }
+    EXPECT(found);
+}
 
-    ZEST_CASE(ConditionalFalseType) {
-        run(R"code(
+ZEST_CASE(ConditionalFalseType) {
+    run(R"code(
         template <bool B, typename T, typename F>
         struct pick {
             using type = T;
@@ -3907,10 +3907,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(TemplateThroughLayer) {
-        run(R"code(
+ZEST_CASE(TemplateThroughLayer) {
+    run(R"code(
         template <typename... Ts>
         struct type_list {};
 
@@ -3930,10 +3930,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = type_list<X, Y>;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConcreteScopeMemberTemplate) {
-        run(R"code(
+ZEST_CASE(ConcreteScopeMemberTemplate) {
+    run(R"code(
         template <typename A>
         struct traits {
             template <typename U>
@@ -3953,10 +3953,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConcreteScopeTemplateArgument) {
-        run(R"code(
+ZEST_CASE(ConcreteScopeTemplateArgument) {
+    run(R"code(
         template <typename A>
         struct traits {
             template <typename U>
@@ -3981,10 +3981,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(StandardMap) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(StandardMap) {
+    add_main("main.cpp", R"code(
         #include <map>
 
         template <typename K, typename V>
@@ -3993,19 +3993,19 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = V;
         };
     )code");
-        ASSERT(compile_driver());
+    ASSERT(compile_driver());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        auto target = finder.expect;
-        ASSERT(!(input.isNull() || target.isNull()));
-        EXPECT(input.getCanonicalType() == target.getCanonicalType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    auto target = finder.expect;
+    ASSERT(!(input.isNull() || target.isNull()));
+    EXPECT(input.getCanonicalType() == target.getCanonicalType());
+}
 
-    ZEST_CASE(StandardString) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(StandardString) {
+    add_main("main.cpp", R"code(
         #include <string>
 
         template <typename T>
@@ -4014,19 +4014,19 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = T;
         };
     )code");
-        ASSERT(compile_driver());
+    ASSERT(compile_driver());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        auto target = finder.expect;
-        ASSERT(!(input.isNull() || target.isNull()));
-        EXPECT(input.getCanonicalType() == target.getCanonicalType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    auto target = finder.expect;
+    ASSERT(!(input.isNull() || target.isNull()));
+    EXPECT(input.getCanonicalType() == target.getCanonicalType());
+}
 
-    ZEST_CASE(Standard) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(Standard) {
+    add_main("main.cpp", R"code(
         #include <vector>
 
         template <typename T>
@@ -4035,23 +4035,23 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = T&;
         };
     )code");
-        ASSERT(compile_driver());
+    ASSERT(compile_driver());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        auto target = finder.expect;
-        ASSERT(!(input.isNull() || target.isNull()));
-        EXPECT(input.getCanonicalType() == target.getCanonicalType());
-    };
+    auto input = unit->resolver().resolve(finder.input);
+    auto target = finder.expect;
+    ASSERT(!(input.isNull() || target.isNull()));
+    EXPECT(input.getCanonicalType() == target.getCanonicalType());
+};
 
-    ZEST_CASE(DependentTemplateHead) {
-        /// A template template argument that is itself a dependent name (libc++
-        /// binds `_Alloc::template rebind` this way): the rebuilt head must be a
-        /// dependent specialization, never a TemplateSpecializationType —
-        /// assertion-enabled clang aborts on the latter.
-        add_main("main.cpp", R"code(
+ZEST_CASE(DependentTemplateHead) {
+    /// A template template argument that is itself a dependent name (libc++
+    /// binds `_Alloc::template rebind` this way): the rebuilt head must be a
+    /// dependent specialization, never a TemplateSpecializationType —
+    /// assertion-enabled clang aborts on the latter.
+    add_main("main.cpp", R"code(
         template <template <typename> class TT>
         struct apply {
             using type = TT<int>;
@@ -4063,18 +4063,18 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+}
 
-    ZEST_CASE(CompoundValueMatch) {
-        run(R"code(
+ZEST_CASE(CompoundValueMatch) {
+    run(R"code(
         template <int A, int B>
         struct trait {
             using type = void;
@@ -4091,12 +4091,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(CompoundValueUnverified) {
-        /// `X + 2` is not provably `X + 1`; neither the partial nor the
-        /// primary may be chosen.
-        add_main("main.cpp", R"code(
+ZEST_CASE(CompoundValueUnverified) {
+    /// `X + 2` is not provably `X + 1`; neither the partial nor the
+    /// primary may be chosen.
+    add_main("main.cpp", R"code(
         template <int A, int B>
         struct trait {
             using type = void;
@@ -4112,18 +4112,18 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = typename trait<X, X + 2>::type;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+}
 
-    ZEST_CASE(CompoundValueConcrete) {
-        run(R"code(
+ZEST_CASE(CompoundValueConcrete) {
+    run(R"code(
         template <int A, int B>
         struct trait {
             using type = void;
@@ -4145,10 +4145,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConstrainedTruePartial) {
-        run(R"code(
+ZEST_CASE(ConstrainedTruePartial) {
+    run(R"code(
         template <typename T>
         struct P {
             using type = void;
@@ -4166,10 +4166,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConstrainedValuePartial) {
-        run(R"code(
+ZEST_CASE(ConstrainedValuePartial) {
+    run(R"code(
         template <int N>
         struct P {
             using type = void;
@@ -4192,11 +4192,11 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = void;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConstrainedUnknownDegrades) {
-        /// A concept on a dependent argument cannot be decided without Sema.
-        add_main("main.cpp", R"code(
+ZEST_CASE(ConstrainedUnknownDegrades) {
+    /// A concept on a dependent argument cannot be decided without Sema.
+    add_main("main.cpp", R"code(
         template <typename T>
         concept small = sizeof(T) < 4;
 
@@ -4215,18 +4215,18 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = typename P<X*>::type;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+}
 
-    ZEST_CASE(ConstrainedBeatsUnconstrained) {
-        run(R"code(
+ZEST_CASE(ConstrainedBeatsUnconstrained) {
+    run(R"code(
         template <typename T>
         struct P {
             using type = void;
@@ -4249,12 +4249,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ConstraintDisjunction) {
-        /// A satisfied disjunct settles the disjunction even beside one that
-        /// cannot be decided.
-        run(R"code(
+ZEST_CASE(ConstraintDisjunction) {
+    /// A satisfied disjunct settles the disjunction even beside one that
+    /// cannot be decided.
+    run(R"code(
         template <typename T>
         concept small = sizeof(T) < 4;
 
@@ -4280,12 +4280,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(AtomicConstraintUnverified) {
-        /// Inside one atomic constraint an operand that does not fold may be a
-        /// substitution failure, so `|| true` proves nothing.
-        add_main("main.cpp", R"code(
+ZEST_CASE(AtomicConstraintUnverified) {
+    /// Inside one atomic constraint an operand that does not fold may be a
+    /// substitution failure, so `|| true` proves nothing.
+    add_main("main.cpp", R"code(
         template <typename T, typename U>
         struct P {
             using type = char;
@@ -4302,18 +4302,18 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = typename P<X*, int>::type;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+}
 
-    ZEST_CASE(PromotedDependentValue) {
-        run(R"code(
+ZEST_CASE(PromotedDependentValue) {
+    run(R"code(
         template <typename T>
         struct Config {
             static constexpr unsigned char n = 1;
@@ -4335,12 +4335,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DependentConditionalValue) {
-        /// The branches of a dependent `?:` meet in their common type: `-1`
-        /// becomes unsigned, so the value is not `-1`.
-        add_main("main.cpp", R"code(
+ZEST_CASE(DependentConditionalValue) {
+    /// The branches of a dependent `?:` meet in their common type: `-1`
+    /// becomes unsigned, so the value is not `-1`.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct Config {
             static constexpr bool flag = true;
@@ -4361,20 +4361,20 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = typename P<X>::type;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(!input->isSpecificBuiltinType(clang::BuiltinType::Int));
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(!input->isSpecificBuiltinType(clang::BuiltinType::Int));
+}
 
-    ZEST_CASE(SignedOverflowValue) {
-        /// An overflowing default is no constant; the partial it would select
-        /// must not be chosen.
-        add_main("main.cpp", R"code(
+ZEST_CASE(SignedOverflowValue) {
+    /// An overflowing default is no constant; the partial it would select
+    /// must not be chosen.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct Config {
             static constexpr int top = 2147483647;
@@ -4395,18 +4395,18 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = typename P<X>::type;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(!input->isSpecificBuiltinType(clang::BuiltinType::Int));
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(!input->isSpecificBuiltinType(clang::BuiltinType::Int));
+}
 
-    ZEST_CASE(AmbiguousBaseMember) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(AmbiguousBaseMember) {
+    add_main("main.cpp", R"code(
         template <typename T>
         struct Left {
             using type = int;
@@ -4425,18 +4425,18 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = typename Combined<X>::type;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+}
 
-    ZEST_CASE(DiamondBaseMember) {
-        run(R"code(
+ZEST_CASE(DiamondBaseMember) {
+    run(R"code(
         template <typename T>
         struct Root {
             using type = T;
@@ -4457,10 +4457,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(NestedClassMember) {
-        run(R"code(
+ZEST_CASE(NestedClassMember) {
+    run(R"code(
         template <typename T>
         struct Host {
             struct Nested {
@@ -4474,10 +4474,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X*;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(PlainRecordMember) {
-        run(R"code(
+ZEST_CASE(PlainRecordMember) {
+    run(R"code(
         struct Plain {
             using value = int;
         };
@@ -4493,10 +4493,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(ExplicitSpecializationMember) {
-        run(R"code(
+ZEST_CASE(ExplicitSpecializationMember) {
+    run(R"code(
         template <typename T>
         struct Box {
             using inner = void;
@@ -4518,10 +4518,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = char;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DecltypeCallScope) {
-        run(R"code(
+ZEST_CASE(DecltypeCallScope) {
+    run(R"code(
         template <typename T>
         struct Holder {
             using type = T;
@@ -4541,10 +4541,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = X;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(MemberChainLookup) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(MemberChainLookup) {
+    add_main("main.cpp", R"code(
         template <typename T>
         struct Leaf {
             int leaf;
@@ -4563,29 +4563,29 @@ ZEST_SUITE(TemplateResolver, Tester) {
             return box.inner.leaf;
         }
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::CXXDependentScopeMemberExpr* outer = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CXXDependentScopeMemberExpr* outer = nullptr;
 
-            bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
-                if(expr->getMember().getAsString() == "leaf") {
-                    outer = expr;
-                }
-                return true;
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
+            if(expr->getMember().getAsString() == "leaf") {
+                outer = expr;
             }
-        } finder;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.outer != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.outer != nullptr);
 
-        auto members = unit->resolver().lookup(finder.outer);
-        ASSERT(std::ranges::distance(members) == 1);
-        EXPECT(llvm::isa<clang::FieldDecl>(members.front()));
-    }
+    auto members = unit->resolver().lookup(finder.outer);
+    ASSERT(std::ranges::distance(members) == 1);
+    EXPECT(llvm::isa<clang::FieldDecl>(members.front()));
+}
 
-    ZEST_CASE(PackParameterMember) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(PackParameterMember) {
+    add_main("main.cpp", R"code(
         template <typename T>
         struct Box {
             T value;
@@ -4599,27 +4599,27 @@ ZEST_SUITE(TemplateResolver, Tester) {
             use(boxes.value...);
         }
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::CXXDependentScopeMemberExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CXXDependentScopeMemberExpr* expr = nullptr;
 
-            bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
-                expr = e;
-                return true;
-            }
-        } finder;
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
+            expr = e;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        auto members = unit->resolver().lookup(finder.expr);
-        ASSERT(std::ranges::distance(members) == 1);
-        EXPECT(llvm::isa<clang::FieldDecl>(members.front()));
-    }
+    auto members = unit->resolver().lookup(finder.expr);
+    ASSERT(std::ranges::distance(members) == 1);
+    EXPECT(llvm::isa<clang::FieldDecl>(members.front()));
+}
 
-    ZEST_CASE(ReferenceParameterMember) {
-        add_main("main.cpp", R"code(
+ZEST_CASE(ReferenceParameterMember) {
+    add_main("main.cpp", R"code(
         template <typename T>
         struct Gauge {
             T level;
@@ -4630,27 +4630,27 @@ ZEST_SUITE(TemplateResolver, Tester) {
             return gauge.level;
         }
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::CXXDependentScopeMemberExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CXXDependentScopeMemberExpr* expr = nullptr;
 
-            bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
-                expr = e;
-                return true;
-            }
-        } finder;
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
+            expr = e;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        auto members = unit->resolver().lookup(finder.expr);
-        ASSERT(std::ranges::distance(members) == 1);
-        EXPECT(llvm::isa<clang::FieldDecl>(members.front()));
-    }
+    auto members = unit->resolver().lookup(finder.expr);
+    ASSERT(std::ranges::distance(members) == 1);
+    EXPECT(llvm::isa<clang::FieldDecl>(members.front()));
+}
 
-    ZEST_CASE(MemberValueDefault) {
-        run(R"code(
+ZEST_CASE(MemberValueDefault) {
+    run(R"code(
         template <typename T>
         struct Config {
             static const int stages = 2;
@@ -4672,10 +4672,10 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DecltypeExplicitTemplateCall) {
-        run(R"code(
+ZEST_CASE(DecltypeExplicitTemplateCall) {
+    run(R"code(
         template <typename U>
         struct Result {
             using type = char;
@@ -4695,12 +4695,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = int;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DecltypeDeducedTemplateCall) {
-        /// `U` is deduced from the argument, which is not modeled; the call
-        /// stays untyped rather than reading `Result<U>` as the primary.
-        add_main("main.cpp", R"code(
+ZEST_CASE(DecltypeDeducedTemplateCall) {
+    /// `U` is deduced from the argument, which is not modeled; the call
+    /// stays untyped rather than reading `Result<U>` as the primary.
+    add_main("main.cpp", R"code(
         template <typename U>
         struct Result {
             using type = char;
@@ -4719,19 +4719,19 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = typename decltype(::make(static_cast<X*>(nullptr)))::type;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+}
 
-    ZEST_CASE(DependentTypedMemberValue) {
-        /// `invalid` converts to `unsigned char` once `I` is known: 255, not -1.
-        run(R"code(
+ZEST_CASE(DependentTypedMemberValue) {
+    /// `invalid` converts to `unsigned char` once `I` is known: 255, not -1.
+    run(R"code(
         template <typename Tag, typename I = unsigned char>
         struct Id {
             static constexpr I invalid = -1;
@@ -4758,12 +4758,12 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using expect = long;
         };
     )code");
-    }
+}
 
-    ZEST_CASE(DecltypeCallNeedsADL) {
-        /// Argument-dependent lookup finds `N::make` at instantiation; the one
-        /// ordinary candidate is not the callee.
-        add_main("main.cpp", R"code(
+ZEST_CASE(DecltypeCallNeedsADL) {
+    /// Argument-dependent lookup finds `N::make` at instantiation; the one
+    /// ordinary candidate is not the callee.
+    add_main("main.cpp", R"code(
         struct Wrong {
             using type = int;
         };
@@ -4787,20 +4787,20 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = typename decltype(make(N::Arg<X>{}))::type;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+}
 
-    ZEST_CASE(MutableValueDefault) {
-        /// A non-const static member is no constant expression; the default
-        /// stays unknown instead of reading its initializer.
-        add_main("main.cpp", R"code(
+ZEST_CASE(MutableValueDefault) {
+    /// A non-const static member is no constant expression; the default
+    /// stays unknown instead of reading its initializer.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct Config {
             static inline int stages = 2;
@@ -4821,19 +4821,19 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using input = typename Gemm<X>::type;
         };
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        InputFinder finder(*unit);
-        finder.TraverseAST(unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-        auto input = unit->resolver().resolve(finder.input);
-        ASSERT(!input.isNull());
-        EXPECT(input->isDependentType());
-    }
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT(!input.isNull());
+    EXPECT(input->isDependentType());
+}
 
-    ZEST_CASE(ResolvedCallee) {
-        /// Only value-dependent: clang resolved the callee itself.
-        add_main("main.cpp", R"code(
+ZEST_CASE(ResolvedCallee) {
+    /// Only value-dependent: clang resolved the callee itself.
+    add_main("main.cpp", R"code(
         void take(int first, int second);
 
         template <int N>
@@ -4841,29 +4841,29 @@ ZEST_SUITE(TemplateResolver, Tester) {
             take(N, 1);
         }
     )code");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        struct Finder : clang::RecursiveASTVisitor<Finder> {
-            const clang::CallExpr* expr = nullptr;
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* expr = nullptr;
 
-            bool VisitCallExpr(clang::CallExpr* e) {
-                expr = e;
-                return true;
-            }
-        } finder;
+        bool VisitCallExpr(clang::CallExpr* e) {
+            expr = e;
+            return true;
+        }
+    } finder;
 
-        finder.TraverseAST(unit->context());
-        ASSERT(finder.expr != nullptr);
+    finder.TraverseAST(unit->context());
+    ASSERT(finder.expr != nullptr);
 
-        auto candidates = unit->resolver().lookup(finder.expr);
-        ASSERT(candidates.size() == 1u);
-        EXPECT(candidates.front()->getName() == "take");
-    }
+    auto candidates = unit->resolver().lookup(finder.expr);
+    ASSERT(candidates.size() == 1u);
+    EXPECT(candidates.front()->getName() == "take");
+}
 
-    ZEST_CASE(BrokenCodeSweep) {
-        /// Error-recovery ASTs are the resolver's everyday hostile input in an
-        /// LSP; resolving anything in a broken TU must degrade, never crash.
-        add_main("main.cpp", R"code(
+ZEST_CASE(BrokenCodeSweep) {
+    /// Error-recovery ASTs are the resolver's everyday hostile input in an
+    /// LSP; resolving anything in a broken TU must degrade, never crash.
+    add_main("main.cpp", R"code(
         template <typename T>
         struct A {
             using type = typename T::missing;
@@ -4890,85 +4890,85 @@ ZEST_SUITE(TemplateResolver, Tester) {
             using inherited = typename A<not_a_type>::type;
         };
     )code");
-        prepare();
-        ASSERT(try_compile());
+    prepare();
+    ASSERT(try_compile());
 
-        struct Sweeper : clang::RecursiveASTVisitor<Sweeper> {
-            types::TemplateResolver& resolver;
-            unsigned visited = 0;
+    struct Sweeper : clang::RecursiveASTVisitor<Sweeper> {
+        types::TemplateResolver& resolver;
+        unsigned visited = 0;
 
-            Sweeper(types::TemplateResolver& resolver) : resolver(resolver) {}
+        Sweeper(types::TemplateResolver& resolver) : resolver(resolver) {}
 
-            bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
-                auto type = decl->getUnderlyingType();
-                if(!type.isNull() && type->isDependentType()) {
-                    resolver.resolve(type);
-                    visited += 1;
-                }
-                return true;
-            }
-
-            bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
-                resolver.lookup(expr);
+        bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
+            auto type = decl->getUnderlyingType();
+            if(!type.isNull() && type->isDependentType()) {
+                resolver.resolve(type);
                 visited += 1;
-                return true;
             }
+            return true;
+        }
 
-            bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* expr) {
-                resolver.lookup(expr);
-                visited += 1;
-                return true;
-            }
-        } sweeper(unit->resolver());
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
+            resolver.lookup(expr);
+            visited += 1;
+            return true;
+        }
 
-        sweeper.TraverseAST(unit->context());
-        EXPECT(sweeper.visited > 0);
-    }
+        bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* expr) {
+            resolver.lookup(expr);
+            visited += 1;
+            return true;
+        }
+    } sweeper(unit->resolver());
 
-    ZEST_CASE(StandardSweep) {
-        /// Crash-safety sweep: feed every dependent typedef and dependent
-        /// expression in a libstdc++-heavy TU through the resolver. Results are
-        /// irrelevant — under the assertion-enabled ASan Debug build, surviving
-        /// the sweep is the assertion.
-        add_main("main.cpp", R"code(
+    sweeper.TraverseAST(unit->context());
+    EXPECT(sweeper.visited > 0);
+}
+
+ZEST_CASE(StandardSweep) {
+    /// Crash-safety sweep: feed every dependent typedef and dependent
+    /// expression in a libstdc++-heavy TU through the resolver. Results are
+    /// irrelevant — under the assertion-enabled ASan Debug build, surviving
+    /// the sweep is the assertion.
+    add_main("main.cpp", R"code(
         #include <functional>
         #include <map>
         #include <memory>
         #include <vector>
     )code");
-        ASSERT(compile_driver());
+    ASSERT(compile_driver());
 
-        struct Sweeper : clang::RecursiveASTVisitor<Sweeper> {
-            types::TemplateResolver& resolver;
-            unsigned visited = 0;
+    struct Sweeper : clang::RecursiveASTVisitor<Sweeper> {
+        types::TemplateResolver& resolver;
+        unsigned visited = 0;
 
-            Sweeper(types::TemplateResolver& resolver) : resolver(resolver) {}
+        Sweeper(types::TemplateResolver& resolver) : resolver(resolver) {}
 
-            bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
-                auto type = decl->getUnderlyingType();
-                if(!type.isNull() && type->isDependentType()) {
-                    resolver.resolve(type);
-                    visited += 1;
-                }
-                return true;
-            }
-
-            bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
-                resolver.lookup(expr);
+        bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
+            auto type = decl->getUnderlyingType();
+            if(!type.isNull() && type->isDependentType()) {
+                resolver.resolve(type);
                 visited += 1;
-                return true;
             }
+            return true;
+        }
 
-            bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* expr) {
-                resolver.lookup(expr);
-                visited += 1;
-                return true;
-            }
-        } sweeper(unit->resolver());
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
+            resolver.lookup(expr);
+            visited += 1;
+            return true;
+        }
 
-        sweeper.TraverseAST(unit->context());
-        EXPECT(sweeper.visited > 0);
-    }
+        bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* expr) {
+            resolver.lookup(expr);
+            visited += 1;
+            return true;
+        }
+    } sweeper(unit->resolver());
+
+    sweeper.TraverseAST(unit->context());
+    EXPECT(sweeper.visited > 0);
+}
 
 };  // ZEST_SUITE(TemplateResolver)
 

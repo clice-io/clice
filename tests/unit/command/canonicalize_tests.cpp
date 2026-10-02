@@ -12,11 +12,11 @@ std::string canon(std::vector<std::string> args, ArgsProfile profile = ArgsProfi
     return canonicalize(args, profile);
 }
 
-ZEST_SUITE(Canonicalize){
+ZEST_SUITE(Canonicalize) {
 
-    ZEST_CASE(StableForSameArgs){
-        std::vector<std::string> args = {"clang++", "-std=c++20", "-DFOO=1", "-I/usr/include"};
-ASSERT(canon(args) == canon(args));
+ZEST_CASE(StableForSameArgs) {
+    std::vector<std::string> args = {"clang++", "-std=c++20", "-DFOO=1", "-I/usr/include"};
+    ASSERT(canon(args) == canon(args));
 
 }  // namespace
 
@@ -107,7 +107,7 @@ ZEST_CASE(FullKeepsCodegen) {
            canon({"clang++", "-O2", "-DFOO"}, ArgsProfile::Full));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(Canonicalize)
 
 }  // namespace
 

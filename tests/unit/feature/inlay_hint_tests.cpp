@@ -21,62 +21,63 @@ namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 ZEST_SUITE(inlay_hint, Tester) {
-    std::vector<protocol::InlayHint> hints;
-    llvm::DenseMap<std::uint32_t, protocol::InlayHint> hints_map;
 
-    void run(llvm::StringRef code,
-             const feature::InlayHintsOptions& options = {},
-             std::source_location location = std::source_location::current()) {
-        add_main("main.cpp", code);
-        ASSERT(compile_with_pch("-std=c++23"));
+std::vector<protocol::InlayHint> hints;
+llvm::DenseMap<std::uint32_t, protocol::InlayHint> hints_map;
 
-        LocalSourceRange range = LocalSourceRange(0, unit->main_content().size());
-        hints = feature::inlay_hints(*unit, range, options, feature::PositionEncoding::UTF8);
+void run(llvm::StringRef code,
+         const feature::InlayHintsOptions& options = {},
+         std::source_location location = std::source_location::current()) {
+    add_main("main.cpp", code);
+    ASSERT(compile_with_pch("-std=c++23"));
 
-        hints_map.clear();
-        auto content = unit->main_content();
-        auto line_starts = unit->line_starts();
-        lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
-        for(auto& hint: hints) {
-            hints_map[*map.to_offset(hint.position)] = hint;
-        }
+    LocalSourceRange range = LocalSourceRange(0, unit->main_content().size());
+    hints = feature::inlay_hints(*unit, range, options, feature::PositionEncoding::UTF8);
 
-        if(!unit->diagnostics().empty()) {
-            for(auto& diagnostic: unit->diagnostics()) {
-                std::println("{}", diagnostic.message);
-            }
-        }
-
-        ASSERT(unit->diagnostics().empty());
+    hints_map.clear();
+    auto content = unit->main_content();
+    auto line_starts = unit->line_starts();
+    lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+    for(auto& hint: hints) {
+        hints_map[*map.to_offset(hint.position)] = hint;
     }
 
-    void EXPECT_SIZE(std::uint32_t size,
-                     std::source_location location = std::source_location::current()) {
-        ASSERT(hints.size() == size);
+    if(!unit->diagnostics().empty()) {
+        for(auto& diagnostic: unit->diagnostics()) {
+            std::println("{}", diagnostic.message);
+        }
     }
 
-    void EXPECT_HINT(llvm::StringRef pos,
-                     llvm::StringRef name,
-                     std::source_location location = std::source_location::current()) {
-        auto offset = point(pos);
-        auto it = hints_map.find(offset);
-        ASSERT(it != hints_map.end());
+    ASSERT(unit->diagnostics().empty());
+}
 
-        std::string label;
-        if(auto* plain = std::get_if<std::string>(&it->second.label)) {
-            label = *plain;
-        } else {
-            for(const auto& part:
-                std::get<std::vector<protocol::InlayHintLabelPart>>(it->second.label)) {
-                label += part.value;
-            }
+void EXPECT_SIZE(std::uint32_t size,
+                 std::source_location location = std::source_location::current()) {
+    ASSERT(hints.size() == size);
+}
+
+void EXPECT_HINT(llvm::StringRef pos,
+                 llvm::StringRef name,
+                 std::source_location location = std::source_location::current()) {
+    auto offset = point(pos);
+    auto it = hints_map.find(offset);
+    ASSERT(it != hints_map.end());
+
+    std::string label;
+    if(auto* plain = std::get_if<std::string>(&it->second.label)) {
+        label = *plain;
+    } else {
+        for(const auto& part:
+            std::get<std::vector<protocol::InlayHintLabelPart>>(it->second.label)) {
+            label += part.value;
         }
-        ASSERT(label == name);
-    };
+    }
+    ASSERT(label == name);
+};
 
-    ZEST_CASE(BlockEnd) {
-        // Functions
-        run(R"c(
+ZEST_CASE(BlockEnd) {
+    // Functions
+    run(R"c(
             int foo() {
                 return 41;
             }§(0)
@@ -98,14 +99,14 @@ ZEST_SUITE(inlay_hint, Tester) {
                 return true;
             }§(2)
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(3);
-        EXPECT_HINT("0", "// foo");
-        EXPECT_HINT("1", "// bar");
-        EXPECT_HINT("2", "// operator==");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(3);
+    EXPECT_HINT("0", "// foo");
+    EXPECT_HINT("1", "// bar");
+    EXPECT_HINT("2", "// operator==");
 
-        // Methods
-        run(R"c(
+    // Methods
+    run(R"c(
             struct Test {
                 // No hint because there's no function body
                 Test() = default;
@@ -146,18 +147,18 @@ ZEST_SUITE(inlay_hint, Tester) {
             void Test::method4() {
             }§(6)
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(7);
-        EXPECT_HINT("0", "// ~Test");
-        EXPECT_HINT("1", "// method1");
-        EXPECT_HINT("2", "// method3");
-        EXPECT_HINT("3", "// operator+");
-        EXPECT_HINT("4", "// operator bool");
-        EXPECT_HINT("5", "// Test::method2");
-        EXPECT_HINT("6", "// Test::method4");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(7);
+    EXPECT_HINT("0", "// ~Test");
+    EXPECT_HINT("1", "// method1");
+    EXPECT_HINT("2", "// method3");
+    EXPECT_HINT("3", "// operator+");
+    EXPECT_HINT("4", "// operator bool");
+    EXPECT_HINT("5", "// Test::method2");
+    EXPECT_HINT("6", "// Test::method4");
 
-        // Namespaces
-        run(R"c(
+    // Namespaces
+    run(R"c(
             namespace {
                 void foo();
             }§(0)
@@ -166,13 +167,13 @@ ZEST_SUITE(inlay_hint, Tester) {
                 void bar();
             }§(1)
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(2);
-        EXPECT_HINT("0", "// namespace");
-        EXPECT_HINT("1", "// namespace ns");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", "// namespace");
+    EXPECT_HINT("1", "// namespace ns");
 
-        // Types
-        run(R"c(
+    // Types
+    run(R"c(
             struct S {
             };§(0)
 
@@ -188,16 +189,16 @@ ZEST_SUITE(inlay_hint, Tester) {
             enum class E2 {
             };§(4)
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(5);
-        EXPECT_HINT("0", "// struct S");
-        EXPECT_HINT("1", "// class C");
-        EXPECT_HINT("2", "// union U");
-        EXPECT_HINT("3", "// enum E1");
-        EXPECT_HINT("4", "// enum class E2");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(5);
+    EXPECT_HINT("0", "// struct S");
+    EXPECT_HINT("1", "// class C");
+    EXPECT_HINT("2", "// union U");
+    EXPECT_HINT("3", "// enum E1");
+    EXPECT_HINT("4", "// enum class E2");
 
-        // If statements
-        run(R"c(
+    // If statements
+    run(R"c(
             void foo(bool cond) {
                 if (cond)
                     ;
@@ -226,31 +227,31 @@ ZEST_SUITE(inlay_hint, Tester) {
                 }§(6)
             }
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(8);
-        EXPECT_HINT("0", "// if cond");
-        EXPECT_HINT("1", "// if cond");
-        EXPECT_HINT("2", "// if");
-        EXPECT_HINT("3", "// if !cond");
-        EXPECT_HINT("4", "// if cond");
-        EXPECT_HINT("5", "// if X");
-        EXPECT_HINT("6", "// if i > 10");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(8);
+    EXPECT_HINT("0", "// if cond");
+    EXPECT_HINT("1", "// if cond");
+    EXPECT_HINT("2", "// if");
+    EXPECT_HINT("3", "// if !cond");
+    EXPECT_HINT("4", "// if cond");
+    EXPECT_HINT("5", "// if X");
+    EXPECT_HINT("6", "// if i > 10");
 
-        // `if consteval` has no condition and hints as plain "// if".
-        run(R"c(
+    // `if consteval` has no condition and hints as plain "// if".
+    run(R"c(
             void foo() {
                 if consteval {
                     int x = 1;
                 }§(0)
             }§(1)
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(2);
-        EXPECT_HINT("0", "// if");
-        EXPECT_HINT("1", "// foo");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", "// if");
+    EXPECT_HINT("1", "// foo");
 
-        // Loops
-        run(R"c(
+    // Loops
+    run(R"c(
             void foo() {
                 while (true)
                     ;
@@ -272,27 +273,27 @@ ZEST_SUITE(inlay_hint, Tester) {
                 }§(3)
             }
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(5);
-        EXPECT_HINT("0", "// while true");
-        EXPECT_HINT("1", "// for true");
-        EXPECT_HINT("2", "// for I");
-        EXPECT_HINT("3", "// for V");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(5);
+    EXPECT_HINT("0", "// while true");
+    EXPECT_HINT("1", "// for true");
+    EXPECT_HINT("2", "// for I");
+    EXPECT_HINT("3", "// for V");
 
-        // Switch
-        run(R"c(
+    // Switch
+    run(R"c(
             void foo(int I) {
                 switch (I) {
                     case 0: break;
                 }§(0)
             }
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(2);
-        EXPECT_HINT("0", "// switch I");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", "// switch I");
 
-        // Print literals
-        run(R"c(
+    // Print literals
+    run(R"c(
             #pragma clang diagnostic ignored "-Wliteral-conversion"
             void foo() {
                 while ("foo") {
@@ -311,16 +312,16 @@ ZEST_SUITE(inlay_hint, Tester) {
                 }§(4)
             }
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(6);
-        EXPECT_HINT("0", "// while \"foo\"");
-        EXPECT_HINT("1", "// while \"foo but...\"");
-        EXPECT_HINT("2", "// while true");
-        EXPECT_HINT("3", "// while 1");
-        EXPECT_HINT("4", "// while 1.5");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(6);
+    EXPECT_HINT("0", "// while \"foo\"");
+    EXPECT_HINT("1", "// while \"foo but...\"");
+    EXPECT_HINT("2", "// while true");
+    EXPECT_HINT("3", "// while 1");
+    EXPECT_HINT("4", "// while 1.5");
 
-        // Print refs
-        run(R"c(
+    // Print refs
+    run(R"c(
             namespace ns {
                 int Var;
                 int func();
@@ -343,15 +344,15 @@ ZEST_SUITE(inlay_hint, Tester) {
                 }§(3)
             }
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(7);
-        EXPECT_HINT("0", "// while Var");
-        EXPECT_HINT("1", "// while func");
-        EXPECT_HINT("2", "// while Field");
-        EXPECT_HINT("3", "// while method");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(7);
+    EXPECT_HINT("0", "// while Var");
+    EXPECT_HINT("1", "// while func");
+    EXPECT_HINT("2", "// while Field");
+    EXPECT_HINT("3", "// while method");
 
-        // Print conversions
-        run(R"c(
+    // Print conversions
+    run(R"c(
             struct S {
                 S(int);
                 S(int, int);
@@ -368,14 +369,14 @@ ZEST_SUITE(inlay_hint, Tester) {
                 }§(2)
             }
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(5);
-        EXPECT_HINT("0", "// while float");
-        EXPECT_HINT("1", "// while S");
-        EXPECT_HINT("2", "// while S");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(5);
+    EXPECT_HINT("0", "// while float");
+    EXPECT_HINT("1", "// while S");
+    EXPECT_HINT("2", "// while S");
 
-        // Print operators
-        run(R"c(
+    // Print operators
+    run(R"c(
             using Integer = int;
             void foo(Integer I) {
                 while(++I){
@@ -400,18 +401,18 @@ ZEST_SUITE(inlay_hint, Tester) {
                 }§(6)
             }
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(8);
-        EXPECT_HINT("0", "// while ++I");
-        EXPECT_HINT("1", "// while I++");
-        EXPECT_HINT("2", "// while");
-        EXPECT_HINT("3", "// while I < 0");
-        EXPECT_HINT("4", "// while ... < I");
-        EXPECT_HINT("5", "// while I < ...");
-        EXPECT_HINT("6", "// while");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(8);
+    EXPECT_HINT("0", "// while ++I");
+    EXPECT_HINT("1", "// while I++");
+    EXPECT_HINT("2", "// while");
+    EXPECT_HINT("3", "// while I < 0");
+    EXPECT_HINT("4", "// while ... < I");
+    EXPECT_HINT("5", "// while I < ...");
+    EXPECT_HINT("6", "// while");
 
-        // Trailing semicolon
-        run(R"c(
+    // Trailing semicolon
+    run(R"c(
             // The hint is placed after the trailing ';'
             struct S1 {
             }  ;§(0)
@@ -438,14 +439,14 @@ ZEST_SUITE(inlay_hint, Tester) {
 
             s2;
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(3);
-        EXPECT_HINT("0", "// struct S1");
-        EXPECT_HINT("1", "// struct S2");
-        EXPECT_HINT("2", "// struct");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(3);
+    EXPECT_HINT("0", "// struct S1");
+    EXPECT_HINT("1", "// struct S2");
+    EXPECT_HINT("2", "// struct");
 
-        // Trailing text
-        run(R"c(
+    // Trailing text
+    run(R"c(
             struct S1 {
             }      ;§(0)
 
@@ -462,13 +463,13 @@ ZEST_SUITE(inlay_hint, Tester) {
             namespace ns {
             } // namespace ns
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(2);
-        EXPECT_HINT("0", "// struct S1");
-        EXPECT_HINT("1", "// struct S3");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", "// struct S1");
+    EXPECT_HINT("1", "// struct S3");
 
-        // Macro
-        run(R"c(
+    // Macro
+    run(R"c(
             #define DECL_STRUCT(NAME) struct NAME {
             #define RBRACE }
 
@@ -479,12 +480,12 @@ ZEST_SUITE(inlay_hint, Tester) {
             DECL_STRUCT(S2)
             RBRACE;
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(1);
-        EXPECT_HINT("0", "// struct S1");
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(1);
+    EXPECT_HINT("0", "// struct S1");
 
-        // Pointer to member function
-        run(R"c(
+    // Pointer to member function
+    run(R"c(
             class A {};
             using Predicate = bool(A::*)();
             void foo(A* a, Predicate p) {
@@ -492,29 +493,29 @@ ZEST_SUITE(inlay_hint, Tester) {
                 }§(0)
             }
         )c",
-            {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-        EXPECT_SIZE(2);
-        EXPECT_HINT("0", "// if");
-    };
+        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", "// if");
+};
 
-    ZEST_CASE(DefaultArguments) {
-        // Smoke test
-        run(R"c(
+ZEST_CASE(DefaultArguments) {
+    // Smoke test
+    run(R"c(
             int foo(int A = 4) { return A; }
             int bar(int A, int B = 1, bool C = foo(§(0))) { return A; }
             int A = bar(§(1)2§(2));
 
             void baz(int = 5) { if (false) baz(§(3)); };
         )c",
-            {.default_arguments = true});
-        EXPECT_SIZE(4);
-        EXPECT_HINT("0", "A: 4");
-        EXPECT_HINT("1", "A:");
-        EXPECT_HINT("2", ", B: 1, C: foo()");
-        EXPECT_HINT("3", "5");
+        {.default_arguments = true});
+    EXPECT_SIZE(4);
+    EXPECT_HINT("0", "A: 4");
+    EXPECT_HINT("1", "A:");
+    EXPECT_HINT("2", ", B: 1, C: foo()");
+    EXPECT_HINT("3", "5");
 
-        // Packs and constructor calls
-        run(R"c(
+    // Packs and constructor calls
+    run(R"c(
             struct Baz {
                 Baz(float a = 3 //
                             + 2);
@@ -534,52 +535,52 @@ ZEST_SUITE(inlay_hint, Tester) {
                 auto foo4 = Foo{4§(4)};
             }
         )c",
-            {.default_arguments = true});
-        EXPECT_SIZE(6);
-        EXPECT_HINT("0", "a: ...");
-        EXPECT_HINT("1", ", baz: Baz{}");
-        EXPECT_HINT("2", ", baz: Baz{}");
-        EXPECT_HINT("3", ", baz: Baz{}");
-        EXPECT_HINT("4", ", baz: Baz{}");
+        {.default_arguments = true});
+    EXPECT_SIZE(6);
+    EXPECT_HINT("0", "a: ...");
+    EXPECT_HINT("1", ", baz: Baz{}");
+    EXPECT_HINT("2", ", baz: Baz{}");
+    EXPECT_HINT("3", ", baz: Baz{}");
+    EXPECT_HINT("4", ", baz: Baz{}");
 
-        // type_name_limit = 0 means unlimited: a default longer than the
-        // usual limit still prints in full.
-        run(R"c(
+    // type_name_limit = 0 means unlimited: a default longer than the
+    // usual limit still prints in full.
+    run(R"c(
             void configure(int first, const char* name = "this default is longer than the limit");
             void use() { configure(1§(0)); }
         )c",
-            {.default_arguments = true, .type_name_limit = 0});
-        EXPECT_SIZE(2);
-        EXPECT_HINT("0", R"(, name: "this default is longer than the limit")");
+        {.default_arguments = true, .type_name_limit = 0});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", R"(, name: "this default is longer than the limit")");
 
-        // Default-argument hints survive with parameter hints disabled; the
-        // parameter name drops out with them.
-        run(R"c(
+    // Default-argument hints survive with parameter hints disabled; the
+    // parameter name drops out with them.
+    run(R"c(
             void log(int level, bool flush = true);
             void use() { log(2§(0)); }
         )c",
-            {.parameters = false, .default_arguments = true});
-        EXPECT_SIZE(1);
-        EXPECT_HINT("0", ", true");
-    };
+        {.parameters = false, .default_arguments = true});
+    EXPECT_SIZE(1);
+    EXPECT_HINT("0", ", true");
+};
 
-    ZEST_CASE(EnabledOff) {
-        run(R"c(
+ZEST_CASE(EnabledOff) {
+    run(R"c(
             void draw(int width, int height);
             void use() {
                 auto value = 1;
                 draw(value, 2);
             }
         )c",
-            {.enabled = false});
-        EXPECT_SIZE(0);
-    };
+        {.enabled = false});
+    EXPECT_SIZE(0);
+};
 
-    ZEST_CASE(FreestandingBuiltins) {
-        // The tester compiles with -ffreestanding, which strips library-builtin
-        // IDs: std::forward suppression must hold through the name fallback.
-        // The snap corpus compiles hosted and only reaches the builtin-ID path.
-        run(R"c(
+ZEST_CASE(FreestandingBuiltins) {
+    // The tester compiles with -ffreestanding, which strips library-builtin
+    // IDs: std::forward suppression must hold through the name fallback.
+    // The snap corpus compiles hosted and only reaches the builtin-ID path.
+    run(R"c(
             namespace std { template <typename T> T&& forward(T&); }
             void use() {
                 int i = 0;
@@ -588,8 +589,8 @@ ZEST_SUITE(inlay_hint, Tester) {
                 int&& s = std::forward(i);
             }
         )c");
-        EXPECT_SIZE(0);
-    };
+    EXPECT_SIZE(0);
+};
 
 };  // ZEST_SUITE(inlay_hint)
 

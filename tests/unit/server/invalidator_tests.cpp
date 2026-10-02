@@ -56,20 +56,21 @@ struct ASTHarness {
         ast(project, resolver, graph, pcm, pch, pool, store) {}
 };
 
-ZEST_SUITE(Invalidator){
+ZEST_SUITE(Invalidator) {
 
-    ZEST_CASE(EmptyBatchNoEffects){FileTable files;
-Project project{files};
-SessionStore store;
-CommandResolver commands(project);
-ContextsBlob blob;
-EditorContext resolver(project, commands, blob);
-PCMHarness ph(project, resolver);
-Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+ZEST_CASE(EmptyBatchNoEffects) {
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
 
-auto dirty = invalidator.apply({});
+    auto dirty = invalidator.apply({});
 
-ASSERT(dirty.empty());
+    ASSERT(dirty.empty());
 
 }  // namespace
 
@@ -1151,35 +1152,36 @@ ZEST_CASE(BatchDiskEventsDeduplicate) {
     ASSERT(dirty.reindex_deps_only.empty());
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(Invalidator)
 
-ZEST_SUITE(DropOrphanedChoices){
+ZEST_SUITE(DropOrphanedChoices) {
 
-    ZEST_CASE(SurvivingEdgeKeepsChoice){TempDir tmp;
-tmp.touch("host.cpp", R"(#include "h.h")");
-tmp.touch("h.h");
-FileTable files;
-Project project{files};
-SessionStore store;
-write_cdb(tmp,
-          project.cdb,
-          build_cdb_json({
-              {tmp.root, tmp.path("host.cpp"), {}}
-}));
-CommandResolver commands(project);
-ContextsBlob blob;
-EditorContext resolver(project, commands, blob);
-auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
-auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
-project.dep_graph.set_includes(host, 0, {{header}});
-project.dep_graph.build_reverse_map();
+ZEST_CASE(SurvivingEdgeKeepsChoice) {
+    TempDir tmp;
+    tmp.touch("host.cpp", R"(#include "h.h")");
+    tmp.touch("h.h");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"), {}}
+    }));
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
 
-auto session = store.open(header);
-resolver.selections[header] = Selection{host, std::nullopt, ""};
+    auto session = store.open(header);
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
 
-ASTHarness harness(project, resolver, store);
-ASSERT(!ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
-ASSERT(resolver.selections.contains(header));
+    ASTHarness harness(project, resolver, store);
+    ASSERT(!ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
+    ASSERT(resolver.selections.contains(header));
 }
 
 ZEST_CASE(RemovedEdgeDropsChoice) {
@@ -1248,8 +1250,8 @@ ZEST_CASE(VanishedOccurrenceDropsChoice) {
     ASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
     ASSERT(!resolver.selections.contains(header));
 }
-}
-;  // ZEST_SUITE(DropOrphanedChoices)
+
+};  // ZEST_SUITE(DropOrphanedChoices)
 
 }  // namespace
 }  // namespace clice::testing

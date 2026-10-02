@@ -41,25 +41,26 @@ bool vouched(FileTable& pool, llvm::StringRef path) {
     return status && pool.cached_hash(pool.intern(Spelling::absolute(path)), status->stamp);
 }
 
-ZEST_SUITE(DepsSnapshot){
+ZEST_SUITE(DepsSnapshot) {
 
-    ZEST_CASE(FreshWhenUntouched){TempDir tmp;
-tmp.touch("dep.h", "int f();\n");
-auto dep = tmp.path("dep.h");
-age_file(dep);
+ZEST_CASE(FreshWhenUntouched) {
+    TempDir tmp;
+    tmp.touch("dep.h", "int f();\n");
+    auto dep = tmp.path("dep.h");
+    age_file(dep);
 
-FileTable pool;
-auto snap = capture_deps_snapshot(pool,
-                                  {
-                                      DepFile{dep, consumed_hash(dep)}
-},
-                                  generous_build_at());
-ASSERT(snap.size() == 1u);
-ASSERT(!deps_changed(pool, snap));
+    FileTable pool;
+    auto snap = capture_deps_snapshot(pool,
+                                      {
+                                          DepFile{dep, consumed_hash(dep)}
+    },
+                                      generous_build_at());
+    ASSERT(snap.size() == 1u);
+    ASSERT(!deps_changed(pool, snap));
 
-// The check's read left the file's pair behind: the next check is a
-// stat.
-ASSERT(vouched(pool, dep));
+    // The check's read left the file's pair behind: the next check is a
+    // stat.
+    ASSERT(vouched(pool, dep));
 
 }  // namespace
 
@@ -283,7 +284,7 @@ ZEST_CASE(RemovedAfterBuild) {
     ASSERT(deps_changed(pool, snap));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(DepsSnapshot)
 
 }  // namespace
 }  // namespace clice::testing

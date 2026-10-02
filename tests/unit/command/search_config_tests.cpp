@@ -7,16 +7,16 @@ namespace clice::testing {
 
 namespace {
 
-ZEST_SUITE(ExtractSearchConfig){
+ZEST_SUITE(ExtractSearchConfig) {
 
-    /// Normalize a raw argv through the database and extract from the
-    /// structured command (the only extraction path).
-    SearchConfig extract(llvm::ArrayRef<const char*> args,
-                         llvm::StringRef directory){FileTable file_table;
-CompilationDatabase db{file_table};
-db.add_command(directory, "main.cpp", args);
-auto& entry = db.candidate_entries(path::join(directory, "main.cpp")).front();
-return extract_search_config(db.config(entry.config).args, directory);
+/// Normalize a raw argv through the database and extract from the
+/// structured command (the only extraction path).
+SearchConfig extract(llvm::ArrayRef<const char*> args, llvm::StringRef directory) {
+    FileTable file_table;
+    CompilationDatabase db{file_table};
+    db.add_command(directory, "main.cpp", args);
+    auto& entry = db.candidate_entries(path::join(directory, "main.cpp")).front();
+    return extract_search_config(db.config(entry.config).args, directory);
 
 }  // namespace
 
@@ -276,7 +276,7 @@ ZEST_CASE(LastSysrootWins) {
     EXPECT(config.dirs[0].path == spelled(tmp, "three/inc"));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(ExtractSearchConfig)
 
 }  // namespace
 

@@ -37,33 +37,33 @@ struct HostedHeader {
     }
 };
 
-ZEST_SUITE(EditorContext){
+ZEST_SUITE(EditorContext) {
 
-    ZEST_CASE(EditorCachesContext){
-        // Both resolutions synthesize the context in memory; only an editor
-        // resolution keeps it, and reuses it after.
-        HostedHeader fx;
-ContextsBlob blob;
-EditorContext editor{fx.project, fx.commands, blob};
-std::string directory;
-std::vector<std::string> arguments;
+ZEST_CASE(EditorCachesContext) {
+    // Both resolutions synthesize the context in memory; only an editor
+    // resolution keeps it, and reuses it after.
+    HostedHeader fx;
+    ContextsBlob blob;
+    EditorContext editor{fx.project, fx.commands, blob};
+    std::string directory;
+    std::vector<std::string> arguments;
 
-auto background = fx.commands.resolve_command(fx.header, directory, arguments);
-ASSERT(background.source == CommandSource::IncludeGraph);
-ASSERT(background.host == fx.host);
-ASSERT(background.synthesized != nullptr);
-ASSERT(llvm::is_contained(arguments, background.synthesized->prefix));
-ASSERT(editor.header_contexts.empty());
+    auto background = fx.commands.resolve_command(fx.header, directory, arguments);
+    ASSERT(background.source == CommandSource::IncludeGraph);
+    ASSERT(background.host == fx.host);
+    ASSERT(background.synthesized != nullptr);
+    ASSERT(llvm::is_contained(arguments, background.synthesized->prefix));
+    ASSERT(editor.header_contexts.empty());
 
-auto resolution = editor.resolve_command(fx.header, directory, arguments);
-ASSERT(resolution.source == CommandSource::IncludeGraph);
-auto* context = editor.header_context(fx.header);
-ASSERT(context != nullptr);
-ASSERT(resolution.synthesized == context->synthesized);
-ASSERT(!blob.dirty);
+    auto resolution = editor.resolve_command(fx.header, directory, arguments);
+    ASSERT(resolution.source == CommandSource::IncludeGraph);
+    auto* context = editor.header_context(fx.header);
+    ASSERT(context != nullptr);
+    ASSERT(resolution.synthesized == context->synthesized);
+    ASSERT(!blob.dirty);
 
-auto reused = editor.resolve_command(fx.header, directory, arguments);
-ASSERT(reused.synthesized == context->synthesized);
+    auto reused = editor.resolve_command(fx.header, directory, arguments);
+    ASSERT(reused.synthesized == context->synthesized);
 
 }  // namespace
 
@@ -267,7 +267,7 @@ ZEST_CASE(ValidateDropsStaleChoice) {
     ASSERT(!resolver.selections.contains(main_file));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(EditorContext)
 
 }  // namespace
 }  // namespace clice::testing

@@ -6,16 +6,14 @@ namespace clice::testing {
 
 namespace {
 
-ZEST_SUITE(ToUri){
+ZEST_SUITE(ToUri) {
 
 #ifdef _WIN32
-    ZEST_CASE(WindowsDrivePath){// A drive letter must not be mistaken for a URI scheme, and it is
-                                // emitted lowercase — the form LSP clients key documents by. The
-                                // rewrite only applies on Windows; these inputs are ordinary (odd)
-                                // filenames elsewhere.
-                                ASSERT(feature::to_uri("F:/C++/cmake/clice/main.cpp") ==
-                                       "file:///f:/C++/cmake/clice/main.cpp");
-
+ZEST_CASE(WindowsDrivePath) {  // A drive letter must not be mistaken for a URI scheme, and it is
+    // emitted lowercase — the form LSP clients key documents by. The
+    // rewrite only applies on Windows; these inputs are ordinary (odd)
+    // filenames elsewhere.
+    ASSERT(feature::to_uri("F:/C++/cmake/clice/main.cpp") == "file:///f:/C++/cmake/clice/main.cpp");
 }
 
 ZEST_CASE(WindowsBackslashPath) {
@@ -68,7 +66,7 @@ ZEST_CASE(UncPath) {
     ASSERT(feature::to_uri("//server/share/main.cpp") == "file://server/share/main.cpp");
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(ToUri)
 
 }  // namespace
 

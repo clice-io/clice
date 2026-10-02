@@ -22,47 +22,47 @@ std::optional<Bitmap> read_of(const std::vector<std::byte>& image) {
     return read_bitmap(image.data(), image.size());
 }
 
-ZEST_SUITE(BitmapImage){
+ZEST_SUITE(BitmapImage) {
 
-    ZEST_CASE(ViewMatchesRead){// Array containers alone (no run cookie, offsets stored), one run
-                               // container (too few containers to store offsets), and bitset, run
-                               // and array containers together (offsets stored).
-                               Bitmap arrays;
-for(std::uint32_t i = 0; i < 300; i += 1) {
-    arrays.add(i * 7);
-}
-Bitmap runs;
-runs.addRange(10, 5000);
-Bitmap mixed;
-for(std::uint32_t i = 0; i < 65536; i += 2) {
-    mixed.add(i);
-}
-mixed.addRange(65536 + 100, 65536 + 60000);
-mixed.add(3 << 16);
-mixed.add(5 << 16);
+ZEST_CASE(ViewMatchesRead) {  // Array containers alone (no run cookie, offsets stored), one run
+    // container (too few containers to store offsets), and bitset, run
+    // and array containers together (offsets stored).
+    Bitmap arrays;
+    for(std::uint32_t i = 0; i < 300; i += 1) {
+        arrays.add(i * 7);
+    }
+    Bitmap runs;
+    runs.addRange(10, 5000);
+    Bitmap mixed;
+    for(std::uint32_t i = 0; i < 65536; i += 2) {
+        mixed.add(i);
+    }
+    mixed.addRange(65536 + 100, 65536 + 60000);
+    mixed.add(3 << 16);
+    mixed.add(5 << 16);
 
-for(const auto* bitmap: {&arrays, &runs, &mixed}) {
-    auto image = write_bitmap(*bitmap);
-    auto view = view_of(image);
-    auto read = read_of(image);
-    ASSERT(view);
-    ASSERT(read);
-    EXPECT(*view == *read);
-    EXPECT(view->cardinality() == bitmap->cardinality());
-    EXPECT(view->contains(bitmap->minimum()));
-    EXPECT((*view & arrays) == (*bitmap & arrays));
+    for(const auto* bitmap: {&arrays, &runs, &mixed}) {
+        auto image = write_bitmap(*bitmap);
+        auto view = view_of(image);
+        auto read = read_of(image);
+        ASSERT(view);
+        ASSERT(read);
+        EXPECT(*view == *read);
+        EXPECT(view->cardinality() == bitmap->cardinality());
+        EXPECT(view->contains(bitmap->minimum()));
+        EXPECT((*view & arrays) == (*bitmap & arrays));
 
-    // A view moves with its arena; the moved-from shell frees nothing.
-    Bitmap moved = std::move(*view);
-    std::vector<Bitmap> held;
-    held.push_back(std::move(moved));
-    held.reserve(64);
-    EXPECT(held.front() == *bitmap);
-}
+        // A view moves with its arena; the moved-from shell frees nothing.
+        Bitmap moved = std::move(*view);
+        std::vector<Bitmap> held;
+        held.push_back(std::move(moved));
+        held.reserve(64);
+        EXPECT(held.front() == *bitmap);
+    }
 
-auto empty = write_bitmap(Bitmap{});
-ASSERT(view_of(empty));
-EXPECT(view_of(empty)->isEmpty());
+    auto empty = write_bitmap(Bitmap{});
+    ASSERT(view_of(empty));
+    EXPECT(view_of(empty)->isEmpty());
 
 }  // namespace
 
@@ -99,7 +99,7 @@ ZEST_CASE(ViewRejectsMalformed) {
     EXPECT(!view_of(unsorted).has_value());
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(BitmapImage)
 
 }  // namespace
 }  // namespace clice::testing

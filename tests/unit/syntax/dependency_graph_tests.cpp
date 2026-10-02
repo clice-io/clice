@@ -10,14 +10,15 @@
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(DependencyGraph){
+ZEST_SUITE(DependencyGraph) {
 
-    // ============================================================================
-    // Module mapping tests
-    // ============================================================================
+// ============================================================================
+// Module mapping tests
+// ============================================================================
 
-    ZEST_CASE(LookupModuleEmpty){clice::DependencyGraph graph;
-EXPECT(graph.lookup_module("foo.bar").empty());
+ZEST_CASE(LookupModuleEmpty) {
+    clice::DependencyGraph graph;
+    EXPECT(graph.lookup_module("foo.bar").empty());
 
 }  // namespace
 
@@ -333,23 +334,24 @@ ZEST_CASE(ImportReachedThroughForced) {
     EXPECT(!graph.reaches_import(Fid{2}));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(DependencyGraph)
 
 // ============================================================================
 // scan_dependency_graph() integration tests
 // ============================================================================
 
-ZEST_SUITE(ScanDependencyGraph){
+ZEST_SUITE(ScanDependencyGraph) {
 
-    ZEST_CASE(EmptyCDB){FileTable file_table;
-CompilationDatabase cdb{file_table};
-DependencyGraph graph;
+ZEST_CASE(EmptyCDB) {
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
 
-scan_all(cdb, graph);
+    scan_all(cdb, graph);
 
-EXPECT(graph.file_count() == 0u);
-EXPECT(graph.module_count() == 0u);
-EXPECT(graph.edge_count() == 0u);
+    EXPECT(graph.file_count() == 0u);
+    EXPECT(graph.module_count() == 0u);
+    EXPECT(graph.edge_count() == 0u);
 }
 
 ZEST_CASE(GuardedModuleRuleDefine) {
@@ -971,8 +973,8 @@ int main() {}
 //   another appears once in the deduped union (the union carries plain
 //   fids — conditionality is per-config, asserted via get_includes)
 // - set_includes overwrite: calling twice with same (path_id, config_id)
-}
-;  // ZEST_SUITE(ScanDependencyGraph)
+
+};  // ZEST_SUITE(ScanDependencyGraph)
 
 }  // namespace
 }  // namespace clice::testing

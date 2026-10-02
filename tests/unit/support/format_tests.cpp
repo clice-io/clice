@@ -16,10 +16,11 @@ struct ExampleStruct {
     int right;
 };
 
-ZEST_SUITE(FormatSupport){
+ZEST_SUITE(FormatSupport) {
 
-    ZEST_CASE(FormatLLVMStringRef){llvm::StringRef value = "hello";
-EXPECT(std::format("{}", value) == "hello");
+ZEST_CASE(FormatLLVMStringRef) {
+    llvm::StringRef value = "hello";
+    EXPECT(std::format("{}", value) == "hello");
 
 }  // namespace
 
@@ -42,7 +43,7 @@ ZEST_CASE(DumpMap) {
     EXPECT(text.find("4") != std::string::npos);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(FormatSupport)
 
 }  // namespace
 }  // namespace clice::testing

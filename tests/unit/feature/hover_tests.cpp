@@ -198,139 +198,140 @@ std::string dump(const HoverInfo& info) {
 }
 
 ZEST_SUITE(hover, Tester) {
-    std::optional<protocol::Hover> result;
-    std::optional<HoverInfo> info;
-    llvm::StringRef current_code;
 
-    void run(llvm::StringRef code) {
-        add_main("main.cpp", code);
-        ASSERT(compile());
+std::optional<protocol::Hover> result;
+std::optional<HoverInfo> info;
+llvm::StringRef current_code;
 
-        auto points = nameless_points();
-        ASSERT(points.size() == 1U);
-        auto offset = points[0];
-        result = feature::hover(*unit, offset, {}, feature::PositionEncoding::UTF8);
+void run(llvm::StringRef code) {
+    add_main("main.cpp", code);
+    ASSERT(compile());
+
+    auto points = nameless_points();
+    ASSERT(points.size() == 1U);
+    auto offset = points[0];
+    result = feature::hover(*unit, offset, {}, feature::PositionEncoding::UTF8);
+}
+
+void compile_only(llvm::StringRef code) {
+    add_main("main.cpp", code);
+    ASSERT(compile());
+}
+
+/// Compile the code and compute hover info on the (single) annotated point.
+/// The point is either a nameless `§` marker or a named `§(p)` marker, and the
+/// expected highlighted token may be wrapped in a `§(sym)⟦...⟧` range.
+void run_info(llvm::StringRef code,
+              const feature::HoverOptions& options = {},
+              llvm::StringRef standard = "-std=c++20") {
+    info.reset();
+    current_code = code;
+
+    add_main("main.cpp", code);
+    ASSERT(compile(standard));
+
+    auto points = nameless_points();
+    std::uint32_t offset = points.size() == 1 ? points[0] : point("p");
+    info = feature::hover_info(*unit, offset, options);
+}
+
+void expect_hover(const HoverInfo& expected) {
+    if(!info) {
+        std::println("no hover result for:\n{}", current_code.str());
+    }
+    ASSERT(info);
+
+    bool same =
+        info->namespace_scope == expected.namespace_scope &&
+        info->local_scope == expected.local_scope && info->name == expected.name &&
+        info->kind == expected.kind && info->documentation == expected.documentation &&
+        info->definition == expected.definition &&
+        info->access_specifier == expected.access_specifier && info->type == expected.type &&
+        info->return_type == expected.return_type && info->parameters == expected.parameters &&
+        info->template_parameters == expected.template_parameters &&
+        info->value == expected.value && info->size == expected.size &&
+        info->offset == expected.offset && info->padding == expected.padding &&
+        info->align == expected.align && info->callee_arg_info == expected.callee_arg_info &&
+        info->call_pass_type == expected.call_pass_type;
+    if(!same) {
+        std::println("hover mismatch for:\n{}", current_code.str());
     }
 
-    void compile_only(llvm::StringRef code) {
-        add_main("main.cpp", code);
-        ASSERT(compile());
+    EXPECT(dump(info->namespace_scope) == dump(expected.namespace_scope));
+    EXPECT(info->local_scope == expected.local_scope);
+    EXPECT(info->name == expected.name);
+    EXPECT(info->kind.value() == expected.kind.value());
+    EXPECT(info->documentation == expected.documentation);
+    EXPECT(info->definition == expected.definition);
+    EXPECT(info->access_specifier == expected.access_specifier);
+    EXPECT(dump(info->type) == dump(expected.type));
+    EXPECT(dump(info->return_type) == dump(expected.return_type));
+    EXPECT(dump(info->parameters) == dump(expected.parameters));
+    EXPECT(dump(info->template_parameters) == dump(expected.template_parameters));
+    EXPECT(dump(info->value) == dump(expected.value));
+    EXPECT(dump(info->size) == dump(expected.size));
+    EXPECT(dump(info->offset) == dump(expected.offset));
+    EXPECT(dump(info->padding) == dump(expected.padding));
+    EXPECT(dump(info->align) == dump(expected.align));
+    EXPECT(dump(info->callee_arg_info) == dump(expected.callee_arg_info));
+    EXPECT(dump(info->call_pass_type) == dump(expected.call_pass_type));
+}
+
+void check_sym_range() {
+    if(!info || !current_code.contains("§(sym)⟦")) {
+        return;
     }
 
-    /// Compile the code and compute hover info on the (single) annotated point.
-    /// The point is either a nameless `§` marker or a named `§(p)` marker, and the
-    /// expected highlighted token may be wrapped in a `§(sym)⟦...⟧` range.
-    void run_info(llvm::StringRef code,
-                  const feature::HoverOptions& options = {},
-                  llvm::StringRef standard = "-std=c++20") {
-        info.reset();
-        current_code = code;
-
-        add_main("main.cpp", code);
-        ASSERT(compile(standard));
-
-        auto points = nameless_points();
-        std::uint32_t offset = points.size() == 1 ? points[0] : point("p");
-        info = feature::hover_info(*unit, offset, options);
+    auto expected = range("sym");
+    ASSERT(info->symbol_range);
+    if(*info->symbol_range != expected) {
+        std::println("symbol range mismatch for:\n{}", current_code.str());
     }
+    EXPECT(info->symbol_range->begin == expected.begin);
+    EXPECT(info->symbol_range->end == expected.end);
+}
 
-    void expect_hover(const HoverInfo& expected) {
-        if(!info) {
-            std::println("no hover result for:\n{}", current_code.str());
-        }
-        ASSERT(info);
+struct HoverCase {
+    llvm::StringRef code;
+    std::function<void(HoverInfo&)> expected;
+};
 
-        bool same =
-            info->namespace_scope == expected.namespace_scope &&
-            info->local_scope == expected.local_scope && info->name == expected.name &&
-            info->kind == expected.kind && info->documentation == expected.documentation &&
-            info->definition == expected.definition &&
-            info->access_specifier == expected.access_specifier && info->type == expected.type &&
-            info->return_type == expected.return_type && info->parameters == expected.parameters &&
-            info->template_parameters == expected.template_parameters &&
-            info->value == expected.value && info->size == expected.size &&
-            info->offset == expected.offset && info->padding == expected.padding &&
-            info->align == expected.align && info->callee_arg_info == expected.callee_arg_info &&
-            info->call_pass_type == expected.call_pass_type;
-        if(!same) {
-            std::println("hover mismatch for:\n{}", current_code.str());
-        }
-
-        EXPECT(dump(info->namespace_scope) == dump(expected.namespace_scope));
-        EXPECT(info->local_scope == expected.local_scope);
-        EXPECT(info->name == expected.name);
-        EXPECT(info->kind.value() == expected.kind.value());
-        EXPECT(info->documentation == expected.documentation);
-        EXPECT(info->definition == expected.definition);
-        EXPECT(info->access_specifier == expected.access_specifier);
-        EXPECT(dump(info->type) == dump(expected.type));
-        EXPECT(dump(info->return_type) == dump(expected.return_type));
-        EXPECT(dump(info->parameters) == dump(expected.parameters));
-        EXPECT(dump(info->template_parameters) == dump(expected.template_parameters));
-        EXPECT(dump(info->value) == dump(expected.value));
-        EXPECT(dump(info->size) == dump(expected.size));
-        EXPECT(dump(info->offset) == dump(expected.offset));
-        EXPECT(dump(info->padding) == dump(expected.padding));
-        EXPECT(dump(info->align) == dump(expected.align));
-        EXPECT(dump(info->callee_arg_info) == dump(expected.callee_arg_info));
-        EXPECT(dump(info->call_pass_type) == dump(expected.call_pass_type));
+void check_cases(llvm::ArrayRef<HoverCase> cases, llvm::StringRef standard = "-std=c++20") {
+    for(const auto& c: cases) {
+        run_info(c.code, {}, standard);
+        HoverInfo expected;
+        c.expected(expected);
+        expect_hover(expected);
+        check_sym_range();
     }
+}
 
-    void check_sym_range() {
-        if(!info || !current_code.contains("§(sym)⟦")) {
-            return;
-        }
-
-        auto expected = range("sym");
-        ASSERT(info->symbol_range);
-        if(*info->symbol_range != expected) {
-            std::println("symbol range mismatch for:\n{}", current_code.str());
-        }
-        EXPECT(info->symbol_range->begin == expected.begin);
-        EXPECT(info->symbol_range->end == expected.end);
-    }
-
-    struct HoverCase {
-        llvm::StringRef code;
-        std::function<void(HoverInfo&)> expected;
-    };
-
-    void check_cases(llvm::ArrayRef<HoverCase> cases, llvm::StringRef standard = "-std=c++20") {
-        for(const auto& c: cases) {
-            run_info(c.code, {}, standard);
-            HoverInfo expected;
-            c.expected(expected);
-            expect_hover(expected);
-            check_sym_range();
-        }
-    }
-
-    ZEST_CASE(namespace_decl) {
-        run(R"cpp(
+ZEST_CASE(namespace_decl) {
+    run(R"cpp(
 namespace §A {
 }
 )cpp");
 
-        ASSERT(result);
-        auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
-        ASSERT(content != nullptr);
-        ASSERT(content->value.find("namespace") != std::string::npos);
-    }
+    ASSERT(result);
+    auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
+    ASSERT(content != nullptr);
+    ASSERT(content->value.find("namespace") != std::string::npos);
+}
 
-    ZEST_CASE(function_reference) {
-        run(R"cpp(
+ZEST_CASE(function_reference) {
+    run(R"cpp(
 int foo() { return 0; }
 int x = §foo();
 )cpp");
 
-        ASSERT(result);
-        auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
-        ASSERT(content != nullptr);
-        ASSERT(content->value.find("foo") != std::string::npos);
-    }
+    ASSERT(result);
+    auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
+    ASSERT(content != nullptr);
+    ASSERT(content->value.find("foo") != std::string::npos);
+}
 
-    ZEST_CASE(record_scope) {
-        compile_only(R"cpp(
+ZEST_CASE(record_scope) {
+    compile_only(R"cpp(
 typedef struct A {
     struct B {
         struct C {};
@@ -376,10 +377,10 @@ namespace out {
     }
 }
 )cpp");
-    }
+}
 
-    ZEST_CASE(enum_style) {
-        compile_only(R"cpp(
+ZEST_CASE(enum_style) {
+    compile_only(R"cpp(
 enum Free {
     A = 1,
     B = 2,
@@ -392,10 +393,10 @@ enum class Scope: long {
     C = 100,
 };
 )cpp");
-    }
+}
 
-    ZEST_CASE(function_style) {
-        compile_only(R"cpp(
+ZEST_CASE(function_style) {
+    compile_only(R"cpp(
 typedef long long ll;
 
 ll f(int x, int y, ll z = 1) { return 0; }
@@ -417,18 +418,18 @@ struct A {
     constexpr static A m(int left, double right) { return A(); }
 };
 )cpp");
-    }
+}
 
-    ZEST_CASE(variable_style) {
-        compile_only(R"cpp(
+ZEST_CASE(variable_style) {
+    compile_only(R"cpp(
 void f() {
     constexpr static auto x1 = 1;
 }
 )cpp");
-    }
+}
 
-    ZEST_CASE(auto_and_decltype) {
-        compile_only(R"cpp(
+ZEST_CASE(auto_and_decltype) {
+    compile_only(R"cpp(
 §(a1)aut§(a2)o§(a3) i = -1;
 
 §(d1)dec§(d2)ltype§(d3)(i) j = 2;
@@ -443,10 +444,10 @@ de§(fn_decltype)cltype(au§(fn_decltype_auto)to) f2() {}
 
 int f3(au§(fn_para_auto)to x) {}
 )cpp");
-    }
+}
 
-    ZEST_CASE(expr) {
-        compile_only(R"cpp(
+ZEST_CASE(expr) {
+    compile_only(R"cpp(
 int xxxx = 1;
 int yyyy = xx§(e1)xx;
 
@@ -460,78 +461,78 @@ struct A {
     }
 };
 )cpp");
-    }
+}
 
-    ZEST_CASE(structured_no_crash) {
-        HoverCase cases[] = {
-            // Field type initializer.
-            {R"cpp(
+ZEST_CASE(structured_no_crash) {
+    HoverCase cases[] = {
+        // Field type initializer.
+        {R"cpp(
           struct X { int x = 2; };
           X §(sym)⟦§x⟧;
           )cpp",
-             [](HoverInfo& hi) {
-                 hi.name = "x";
-                 hi.kind = SymbolKind::Variable;
-                 hi.namespace_scope = "";
-                 hi.definition = "X x";
-                 hi.type = "X";
-             }},
-            // Don't crash on null types.
-            {R"cpp(auto [§(sym)⟦§x⟧] = 1; /*error-ok*/)cpp",
-             [](HoverInfo& hi) {
-                 hi.name = "x";
-                 hi.kind = SymbolKind::Variable;
-                 hi.namespace_scope = "";
-                 hi.definition = "";
-                 hi.type = "NULL TYPE";
-                 // Bindings are in theory public members of an anonymous struct.
-                 hi.access_specifier = "public";
-             }},
-            // Don't crash on invalid decl with invalid init expr.
-            {R"cpp(
+         [](HoverInfo& hi) {
+             hi.name = "x";
+             hi.kind = SymbolKind::Variable;
+             hi.namespace_scope = "";
+             hi.definition = "X x";
+             hi.type = "X";
+         }},
+        // Don't crash on null types.
+        {R"cpp(auto [§(sym)⟦§x⟧] = 1; /*error-ok*/)cpp",
+         [](HoverInfo& hi) {
+             hi.name = "x";
+             hi.kind = SymbolKind::Variable;
+             hi.namespace_scope = "";
+             hi.definition = "";
+             hi.type = "NULL TYPE";
+             // Bindings are in theory public members of an anonymous struct.
+             hi.access_specifier = "public";
+         }},
+        // Don't crash on invalid decl with invalid init expr.
+        {R"cpp(
           Unknown §(sym)⟦§abc⟧ = invalid;
           // error-ok
           )cpp",
-             [](HoverInfo& hi) {
-                 hi.name = "abc";
-                 hi.kind = SymbolKind::Variable;
-                 hi.namespace_scope = "";
-                 hi.definition = "int abc";
-                 hi.type = "int";
-                 hi.access_specifier = "public";
-             }},
-            // Don't crash on invalid decl
-            {R"cpp(
+         [](HoverInfo& hi) {
+             hi.name = "abc";
+             hi.kind = SymbolKind::Variable;
+             hi.namespace_scope = "";
+             hi.definition = "int abc";
+             hi.type = "int";
+             hi.access_specifier = "public";
+         }},
+        // Don't crash on invalid decl
+        {R"cpp(
         // error-ok
         struct Foo {
           Bar §(sym)⟦x§x⟧;
         };)cpp",
-             [](HoverInfo& hi) {
-                 hi.name = "xx";
-                 hi.kind = SymbolKind::Field;
-                 hi.namespace_scope = "";
-                 hi.definition = "int xx";
-                 hi.local_scope = "Foo::";
-                 hi.type = "int";
-                 hi.access_specifier = "public";
-             }},
-            {R"cpp(
+         [](HoverInfo& hi) {
+             hi.name = "xx";
+             hi.kind = SymbolKind::Field;
+             hi.namespace_scope = "";
+             hi.definition = "int xx";
+             hi.local_scope = "Foo::";
+             hi.type = "int";
+             hi.access_specifier = "public";
+         }},
+        {R"cpp(
         // error-ok
         struct Foo {
           Bar xx;
           int §(sym)⟦y§y⟧;
         };)cpp",
-             [](HoverInfo& hi) {
-                 hi.name = "yy";
-                 hi.kind = SymbolKind::Field;
-                 hi.namespace_scope = "";
-                 hi.definition = "int yy";
-                 hi.local_scope = "Foo::";
-                 hi.type = "int";
-                 hi.access_specifier = "public";
-             }},
-            // No crash on InitListExpr.
-            {R"cpp(
+         [](HoverInfo& hi) {
+             hi.name = "yy";
+             hi.kind = SymbolKind::Field;
+             hi.namespace_scope = "";
+             hi.definition = "int yy";
+             hi.local_scope = "Foo::";
+             hi.type = "int";
+             hi.access_specifier = "public";
+         }},
+        // No crash on InitListExpr.
+        {R"cpp(
           struct Foo {
             int a[10];
           };
@@ -539,48 +540,48 @@ struct A {
             §(sym)⟦§{⟧1} // FIXME: why the hover range is 1 character?
           };
          )cpp",
-             [](HoverInfo& hi) {
-                 hi.name = "expression";
-                 hi.kind = SymbolKind::Invalid;
-                 hi.type = "int[10]";
-                 hi.value = "{1}";
-             }},
-        };
-        check_cases(cases);
-    }
+         [](HoverInfo& hi) {
+             hi.name = "expression";
+             hi.kind = SymbolKind::Invalid;
+             hi.type = "int[10]";
+             hi.value = "{1}";
+         }},
+    };
+    check_cases(cases);
+}
 
-    ZEST_CASE(all_no_crash) {
-        HoverCase cases[] = {
-            {R"cpp(// Should not crash when evaluating the initializer.
+ZEST_CASE(all_no_crash) {
+    HoverCase cases[] = {
+        {R"cpp(// Should not crash when evaluating the initializer.
             struct Test {};
             void test() { Test && §(sym)⟦te§st⟧ = {}; }
           )cpp",
-             [](HoverInfo& hi) {
-                 hi.name = "test";
-                 hi.kind = SymbolKind::Variable;
-                 hi.namespace_scope = "";
-                 hi.local_scope = "test::";
-                 hi.type = "Test &&";
-                 hi.definition = "Test &&test = {}";
-             }},
-            {R"cpp(// Shouldn't crash when evaluating the initializer.
+         [](HoverInfo& hi) {
+             hi.name = "test";
+             hi.kind = SymbolKind::Variable;
+             hi.namespace_scope = "";
+             hi.local_scope = "test::";
+             hi.type = "Test &&";
+             hi.definition = "Test &&test = {}";
+         }},
+        {R"cpp(// Shouldn't crash when evaluating the initializer.
             struct Bar {}; // error-ok
             struct Foo { void foo(Bar x = y); }
             void Foo::foo(Bar §(sym)⟦§x⟧) {})cpp",
-             [](HoverInfo& hi) {
-                 hi.name = "x";
-                 hi.kind = SymbolKind::Parameter;
-                 hi.namespace_scope = "";
-                 hi.local_scope = "Foo::foo::";
-                 hi.type = "Bar";
-                 hi.definition = "Bar x = <recovery - expr>()";
-             }},
-        };
-        check_cases(cases);
-    }
+         [](HoverInfo& hi) {
+             hi.name = "x";
+             hi.kind = SymbolKind::Parameter;
+             hi.namespace_scope = "";
+             hi.local_scope = "Foo::foo::";
+             hi.type = "Bar";
+             hi.definition = "Bar x = <recovery - expr>()";
+         }},
+    };
+    check_cases(cases);
+}
 
-    ZEST_CASE(spaceship_doc_no_crash) {
-        run_info(R"cpp(
+ZEST_CASE(spaceship_doc_no_crash) {
+    run_info(R"cpp(
   namespace std {
   struct strong_ordering {
     int n;
@@ -600,65 +601,65 @@ struct A {
   static_assert(S<void>() =§= S<void>());
     )cpp");
 
-        ASSERT(info);
-        EXPECT(info->documentation == "");
-    }
+    ASSERT(info);
+    EXPECT(info->documentation == "");
+}
 
-    ZEST_CASE(invalid_default_args) {
-        // Function parameter default values are not evaluated on invalid decls.
-        run_info(R"cpp(
+ZEST_CASE(invalid_default_args) {
+    // Function parameter default values are not evaluated on invalid decls.
+    run_info(R"cpp(
         // error-ok testing behavior on invalid decl
         class Foo {};
         void foo(Foo p§aram = nullptr);
         )cpp");
-        ASSERT(info);
-        EXPECT(!info->value.has_value());
+    ASSERT(info);
+    EXPECT(!info->value.has_value());
 
-        run_info(R"cpp(
+    run_info(R"cpp(
         class Foo {};
         void foo(Foo *p§aram = nullptr);
         )cpp");
-        ASSERT(info);
-        EXPECT(dump(info->value) == "nullptr");
-    }
+    ASSERT(info);
+    EXPECT(dump(info->value) == "nullptr");
+}
 
-    ZEST_CASE(disable_show_aka) {
-        feature::HoverOptions options;
-        options.show_aka = false;
+ZEST_CASE(disable_show_aka) {
+    feature::HoverOptions options;
+    options.show_aka = false;
 
-        run_info(R"cpp(
+    run_info(R"cpp(
     using m_int = int;
     m_int §(sym)⟦§a⟧;
   )cpp",
-                 options,
-                 "-std=c++17");
+             options,
+             "-std=c++17");
 
-        ASSERT(info);
-        EXPECT(dump(info->type) == dump(std::optional(PrintedType("m_int"))));
-        check_sym_range();
-    }
+    ASSERT(info);
+    EXPECT(dump(info->type) == dump(std::optional(PrintedType("m_int"))));
+    check_sym_range();
+}
 
-    ZEST_CASE(big_ints_no_crash) {
-        // APInt64 wrap around.
-        run_info(R"cpp(
+ZEST_CASE(big_ints_no_crash) {
+    // APInt64 wrap around.
+    run_info(R"cpp(
     constexpr unsigned long value = -1; // wrap around
     void foo() { va§lue; }
   )cpp");
-        ASSERT(info);
+    ASSERT(info);
 
-        // __int128_t value printing.
-        run_info(R"cpp(
+    // __int128_t value printing.
+    run_info(R"cpp(
     constexpr __int128_t value = -4;
     void foo() { va§lue; }
   )cpp");
-        ASSERT(info);
-        EXPECT(dump(info->value) == "-4 (0xfffffffc)");
-    }
+    ASSERT(info);
+    EXPECT(dump(info->value) == "-4 (0xfffffffc)");
+}
 
-    ZEST_CASE(global_casts_no_crash) {
-        /// Use `unsigned long long` so the cast does not truncate the pointer on
-        /// LLP64 targets (Windows), where `unsigned long` is only 32 bits.
-        run_info(R"cpp(
+ZEST_CASE(global_casts_no_crash) {
+    /// Use `unsigned long long` so the cast does not truncate the pointer on
+    /// LLP64 targets (Windows), where `unsigned long` is only 32 bits.
+    run_info(R"cpp(
     using uintptr_t = unsigned long long;
     enum Test : uintptr_t {};
     unsigned global_var;
@@ -666,240 +667,239 @@ struct A {
       Test v§al = static_cast<Test>(reinterpret_cast<uintptr_t>(&global_var));
     }
   )cpp");
-        ASSERT(info);
-        EXPECT(dump(info->value) == "&global_var");
+    ASSERT(info);
+    EXPECT(dump(info->value) == "&global_var");
 
-        run_info(R"cpp(
+    run_info(R"cpp(
     using uintptr_t = unsigned long long;
     unsigned global_var;
     void foo() {
       uintptr_t a§ddress = reinterpret_cast<uintptr_t>(&global_var);
     }
   )cpp");
-        ASSERT(info);
-        EXPECT(dump(info->value) == "&global_var");
-    }
+    ASSERT(info);
+    EXPECT(dump(info->value) == "&global_var");
+}
 
-    ZEST_CASE(setter_heuristic_no_crash) {
-        run_info(R"cpp(
+ZEST_CASE(setter_heuristic_no_crash) {
+    run_info(R"cpp(
     /* error-ok */
     template<typename T> T foo(T);
 
     // Setter variable heuristic might fail if the callexpr is broken.
     struct X { int Y; void §(sym)⟦§setY⟧(float) { Y = foo(undefined); } };)cpp");
-        ASSERT(info);
+    ASSERT(info);
+}
+
+ZEST_CASE(parse_documentation) {
+    struct {
+        llvm::StringRef documentation;
+        llvm::StringRef markdown;
+        llvm::StringRef plain_text;
+    } cases[] = {
+        // Leading/trailing whitespace strips; plain newlines join, and so
+        // does markdown's own hard-break spelling (trailing spaces).
+        {" \n foo\nbar",                   "foo bar",                 "foo bar"                       },
+        {"foo\nbar \n  ",                  "foo bar",                 "foo bar"                       },
+        {"foo  \nbar",                     "foo bar",                 "foo bar"                       },
+        {"foo    \nbar",                   "foo bar",                 "foo bar"                       },
+        {"foo\nbar",                       "foo bar",                 "foo bar"                       },
+        // Blank lines, indentation, sentence ends and list stars break.
+        {"foo\n\n\nbar",                   "foo  \nbar",              "foo\nbar"                      },
+        {"foo\n\n\n\tbar",                 "foo  \nbar",              "foo\nbar"                      },
+        {"foo\n\n\n bar",                  "foo  \nbar",              "foo\nbar"                      },
+        {"foo.\nbar",                      "foo.  \nbar",             "foo.\nbar"                     },
+        {"foo. \nbar",                     "foo.  \nbar",             "foo.\nbar"                     },
+        {"foo\n*bar",                      "foo  \n\\*bar",           "foo\n*bar"                     },
+        // Inline code spans survive; stray backticks escape in markdown and
+        // multiline spans collapse onto one line.
+        {"Tests primality of `p`.",        "Tests primality of `p`.", "Tests primality of `p`."       },
+        {"'`' should not occur in `Code`",
+         "'\\`' should not occur in `Code`",                          "'`' should not occur in `Code`"},
+        {"`not\nparsed`",                  "\\`not parsed\\`",        "`not parsed`"                  },
+    };
+
+    for(const auto& c: cases) {
+        markup::Document output;
+        feature::parse_documentation(c.documentation, output);
+        EXPECT(output.as_markdown() == c.markdown);
+        EXPECT(output.as_plain_text() == c.plain_text);
     }
+}
 
-    ZEST_CASE(parse_documentation) {
-        struct {
-            llvm::StringRef documentation;
-            llvm::StringRef markdown;
-            llvm::StringRef plain_text;
-        } cases[] = {
-            // Leading/trailing whitespace strips; plain newlines join, and so
-            // does markdown's own hard-break spelling (trailing spaces).
-            {" \n foo\nbar",                   "foo bar",                 "foo bar"                       },
-            {"foo\nbar \n  ",                  "foo bar",                 "foo bar"                       },
-            {"foo  \nbar",                     "foo bar",                 "foo bar"                       },
-            {"foo    \nbar",                   "foo bar",                 "foo bar"                       },
-            {"foo\nbar",                       "foo bar",                 "foo bar"                       },
-            // Blank lines, indentation, sentence ends and list stars break.
-            {"foo\n\n\nbar",                   "foo  \nbar",              "foo\nbar"                      },
-            {"foo\n\n\n\tbar",                 "foo  \nbar",              "foo\nbar"                      },
-            {"foo\n\n\n bar",                  "foo  \nbar",              "foo\nbar"                      },
-            {"foo.\nbar",                      "foo.  \nbar",             "foo.\nbar"                     },
-            {"foo. \nbar",                     "foo.  \nbar",             "foo.\nbar"                     },
-            {"foo\n*bar",                      "foo  \n\\*bar",           "foo\n*bar"                     },
-            // Inline code spans survive; stray backticks escape in markdown and
-            // multiline spans collapse onto one line.
-            {"Tests primality of `p`.",        "Tests primality of `p`.", "Tests primality of `p`."       },
-            {"'`' should not occur in `Code`",
-             "'\\`' should not occur in `Code`",                          "'`' should not occur in `Code`"},
-            {"`not\nparsed`",                  "\\`not parsed\\`",        "`not parsed`"                  },
-        };
-
-        for(const auto& c: cases) {
-            markup::Document output;
-            feature::parse_documentation(c.documentation, output);
-            EXPECT(output.as_markdown() == c.markdown);
-            EXPECT(output.as_plain_text() == c.plain_text);
-        }
-    }
-
-    ZEST_CASE(plaintext_content) {
-        add_main("main.cpp", R"cpp(
+ZEST_CASE(plaintext_content) {
+    add_main("main.cpp", R"cpp(
 int §foo = 1;
 )cpp");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        feature::HoverOptions options;
-        options.parse_comment_as_markdown = false;
-        result =
-            feature::hover(*unit, nameless_points()[0], options, feature::PositionEncoding::UTF8);
+    feature::HoverOptions options;
+    options.parse_comment_as_markdown = false;
+    result = feature::hover(*unit, nameless_points()[0], options, feature::PositionEncoding::UTF8);
 
-        ASSERT(result);
-        auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
-        ASSERT(content != nullptr);
-        ASSERT(content->kind == protocol::MarkupKind::PlainText);
-        ASSERT(content->value.find("variable foo") != std::string::npos);
-    }
+    ASSERT(result);
+    auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
+    ASSERT(content != nullptr);
+    ASSERT(content->kind == protocol::MarkupKind::PlainText);
+    ASSERT(content->value.find("variable foo") != std::string::npos);
+}
 
-    ZEST_CASE(protocol_range) {
-        run(R"cpp(
+ZEST_CASE(protocol_range) {
+    run(R"cpp(
 int §foo = 1;
 )cpp");
 
-        ASSERT(result);
-        ASSERT(result->range);
+    ASSERT(result);
+    ASSERT(result->range);
 
-        // The highlighted token is `foo` on line 1, columns [4, 7).
-        ASSERT(result->range->start.line == 1U);
-        ASSERT(result->range->start.character == 4U);
-        ASSERT(result->range->end.line == 1U);
-        ASSERT(result->range->end.character == 7U);
-    }
+    // The highlighted token is `foo` on line 1, columns [4, 7).
+    ASSERT(result->range->start.line == 1U);
+    ASSERT(result->range->start.character == 4U);
+    ASSERT(result->range->end.line == 1U);
+    ASSERT(result->range->end.character == 7U);
+}
 
-    ZEST_CASE(include_header) {
-        add_file("test.h", "#pragma once\n");
-        add_main("main.cpp", R"cpp(
+ZEST_CASE(include_header) {
+    add_file("test.h", "#pragma once\n");
+    add_main("main.cpp", R"cpp(
 #include §(arg)⟦"test.h"§⟧
 §(outside)
 int x = 0;
 )cpp");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        auto arg = range("arg", "main.cpp");
-        info = feature::hover_info(*unit, arg.begin + 1);
-        ASSERT(info);
-        EXPECT(info->kind == SymbolKind::Header);
-        EXPECT(info->name == "test.h");
+    auto arg = range("arg", "main.cpp");
+    info = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT(info);
+    EXPECT(info->kind == SymbolKind::Header);
+    EXPECT(info->name == "test.h");
 
-        EXPECT(info->definition == TestVFS::path("test.h"));
-        ASSERT(info->symbol_range);
-        EXPECT(info->symbol_range->begin == arg.begin);
-        EXPECT(info->symbol_range->end == arg.end);
+    EXPECT(info->definition == TestVFS::path("test.h"));
+    ASSERT(info->symbol_range);
+    EXPECT(info->symbol_range->begin == arg.begin);
+    EXPECT(info->symbol_range->end == arg.end);
 
-        result = feature::hover(*unit, arg.begin + 1, {}, feature::PositionEncoding::UTF8);
-        ASSERT(result);
-        auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
-        ASSERT(content != nullptr);
-        EXPECT(content->value.contains("test.h"));
-        EXPECT(content->value.contains(TestVFS::path("test.h")));
-        ASSERT(result->range);
-        EXPECT(result->range->start.line == 1U);
-        EXPECT(result->range->start.character == 9U);
-        EXPECT(result->range->end.line == 1U);
-        EXPECT(result->range->end.character == 17U);
+    result = feature::hover(*unit, arg.begin + 1, {}, feature::PositionEncoding::UTF8);
+    ASSERT(result);
+    auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
+    ASSERT(content != nullptr);
+    EXPECT(content->value.contains("test.h"));
+    EXPECT(content->value.contains(TestVFS::path("test.h")));
+    ASSERT(result->range);
+    EXPECT(result->range->start.line == 1U);
+    EXPECT(result->range->start.character == 9U);
+    EXPECT(result->range->end.line == 1U);
+    EXPECT(result->range->end.character == 17U);
 
-        EXPECT(!feature::hover_info(*unit, point("outside")).has_value());
-    }
+    EXPECT(!feature::hover_info(*unit, point("outside")).has_value());
+}
 
-    ZEST_CASE(has_include_header) {
-        add_file("test.h", "#pragma once\n");
-        add_main("main.cpp", R"cpp(
+ZEST_CASE(has_include_header) {
+    add_file("test.h", "#pragma once\n");
+    add_main("main.cpp", R"cpp(
 #if __has_include(§(arg)⟦"test.h"§⟧)
 #endif
 )cpp");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        auto arg = range("arg", "main.cpp");
-        auto hover = feature::hover_info(*unit, arg.begin + 1);
-        ASSERT(hover);
-        EXPECT(hover->kind == SymbolKind::Header);
-        EXPECT(hover->name == "test.h");
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT(hover);
+    EXPECT(hover->kind == SymbolKind::Header);
+    EXPECT(hover->name == "test.h");
 
-        EXPECT(hover->definition == TestVFS::path("test.h"));
-        EXPECT(hover->symbol_range == arg);
-    }
+    EXPECT(hover->definition == TestVFS::path("test.h"));
+    EXPECT(hover->symbol_range == arg);
+}
 
-    ZEST_CASE(embed_file) {
-        add_file("data.bin", "0123456789");
-        add_main("main.cpp", R"cpp(
+ZEST_CASE(embed_file) {
+    add_file("data.bin", "0123456789");
+    add_main("main.cpp", R"cpp(
 const unsigned char data[] = {
 #embed §(arg)⟦"data.bin"§⟧
 };
 )cpp");
-        ASSERT(compile("-std=c++23"));
+    ASSERT(compile("-std=c++23"));
 
-        auto arg = range("arg", "main.cpp");
-        auto hover = feature::hover_info(*unit, arg.begin + 1);
-        ASSERT(hover);
-        EXPECT(hover->kind == SymbolKind::Header);
-        EXPECT(hover->name == "data.bin");
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT(hover);
+    EXPECT(hover->kind == SymbolKind::Header);
+    EXPECT(hover->name == "data.bin");
 
-        EXPECT(hover->definition == TestVFS::path("data.bin"));
-        EXPECT(hover->symbol_range == arg);
-    }
+    EXPECT(hover->definition == TestVFS::path("data.bin"));
+    EXPECT(hover->symbol_range == arg);
+}
 
-    ZEST_CASE(has_embed_file) {
-        add_file("data.bin", "0123456789");
-        add_main("main.cpp", R"cpp(
+ZEST_CASE(has_embed_file) {
+    add_file("data.bin", "0123456789");
+    add_main("main.cpp", R"cpp(
 #if __has_embed(§(arg)⟦"data.bin"§⟧)
 #endif
 )cpp");
-        ASSERT(compile("-std=c++23"));
+    ASSERT(compile("-std=c++23"));
 
-        auto arg = range("arg", "main.cpp");
-        auto hover = feature::hover_info(*unit, arg.begin + 1);
-        ASSERT(hover);
-        EXPECT(hover->kind == SymbolKind::Header);
-        EXPECT(hover->name == "data.bin");
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT(hover);
+    EXPECT(hover->kind == SymbolKind::Header);
+    EXPECT(hover->name == "data.bin");
 
-        EXPECT(hover->definition == TestVFS::path("data.bin"));
-        EXPECT(hover->symbol_range == arg);
-    }
+    EXPECT(hover->definition == TestVFS::path("data.bin"));
+    EXPECT(hover->symbol_range == arg);
+}
 
-    ZEST_CASE(macro_include_header) {
-        add_file("test.h", "#pragma once\n");
-        add_main("main.cpp", R"cpp(
+ZEST_CASE(macro_include_header) {
+    add_file("test.h", "#pragma once\n");
+    add_main("main.cpp", R"cpp(
 #define HEADER "test.h"
 #include §(arg)⟦HEADER§⟧
 )cpp");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        auto arg = range("arg", "main.cpp");
-        auto hover = feature::hover_info(*unit, arg.begin + 1);
-        ASSERT(hover);
-        EXPECT(hover->kind == SymbolKind::Header);
-        EXPECT(hover->name == "HEADER");
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT(hover);
+    EXPECT(hover->kind == SymbolKind::Header);
+    EXPECT(hover->name == "HEADER");
 
-        EXPECT(hover->definition == TestVFS::path("test.h"));
-        EXPECT(hover->symbol_range == arg);
-    }
+    EXPECT(hover->definition == TestVFS::path("test.h"));
+    EXPECT(hover->symbol_range == arg);
+}
 
-    ZEST_CASE(missing_include_header) {
-        add_main("main.cpp", R"cpp(
+ZEST_CASE(missing_include_header) {
+    add_main("main.cpp", R"cpp(
 /* error-ok */
 #include §(arg)⟦"missing.h"§⟧
 )cpp");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        auto arg = range("arg", "main.cpp");
-        EXPECT(!feature::hover_info(*unit, arg.begin + 1).has_value());
-    }
+    auto arg = range("arg", "main.cpp");
+    EXPECT(!feature::hover_info(*unit, arg.begin + 1).has_value());
+}
 
-    ZEST_CASE(scoped_attribute) {
-        run_info(R"cpp(
+ZEST_CASE(scoped_attribute) {
+    run_info(R"cpp(
 [[gnu::no§inline]] void foo();
 )cpp");
 
-        ASSERT(info);
-        ASSERT(info->name == "noinline");
-        ASSERT(info->local_scope == "gnu");
-        ASSERT(info->kind == SymbolKind::Invalid);
-    }
+    ASSERT(info);
+    ASSERT(info->name == "noinline");
+    ASSERT(info->local_scope == "gnu");
+    ASSERT(info->kind == SymbolKind::Invalid);
+}
 
-    ZEST_CASE(whitespace_no_hover) {
-        add_main("main.cpp", R"cpp(
+ZEST_CASE(whitespace_no_hover) {
+    add_main("main.cpp", R"cpp(
 int x = 1;
 §(p)
 int y = 2;
 )cpp");
-        ASSERT(compile());
+    ASSERT(compile());
 
-        // No spelled token touches the empty line, so there is no hover.
-        ASSERT(!feature::hover_info(*unit, point("p")).has_value());
-    }
+    // No spelled token touches the empty line, so there is no hover.
+    ASSERT(!feature::hover_info(*unit, point("p")).has_value());
+}
 
 };  // ZEST_SUITE(hover)
 

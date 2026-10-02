@@ -849,7 +849,6 @@ static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
 static kota::task<> accept_connections(MasterServer& server,
                                        kota::tcp::acceptor acceptor,
                                        std::list<Connection>& connections) {
-    auto& loop = kota::event_loop::current();
     kota::task_group<> group;
     bool lsp_registered = false;
 

@@ -16,19 +16,20 @@ using std::chrono::seconds;
 constexpr std::uint8_t compile = 0;
 constexpr std::uint8_t hover = 1;
 
-ZEST_SUITE(QuarantineMachine){
+ZEST_SUITE(QuarantineMachine) {
 
-    ZEST_CASE(CrashBarsItsKind){Quarantine q;
-auto t0 = Clock::now();
-EXPECT(!q.barred(compile, t0));
+ZEST_CASE(CrashBarsItsKind) {
+    Quarantine q;
+    auto t0 = Clock::now();
+    EXPECT(!q.barred(compile, t0));
 
-q.on_crash(compile, "d1", "killed by signal 11", t0);
-EXPECT(q.barred(compile, t0));
-EXPECT(q.crashed(compile));
-EXPECT(!q.barred(hover, t0));
+    q.on_crash(compile, "d1", "killed by signal 11", t0);
+    EXPECT(q.barred(compile, t0));
+    EXPECT(q.crashed(compile));
+    EXPECT(!q.barred(hover, t0));
 
-// A document that sits still is never retried.
-EXPECT(q.barred(compile, t0 + seconds(3600)));
+    // A document that sits still is never retried.
+    EXPECT(q.barred(compile, t0 + seconds(3600)));
 
 }  // namespace
 
@@ -214,7 +215,7 @@ ZEST_CASE(BudgetRearmsAfterCooldown) {
     EXPECT(!budget.blocked("key"));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(QuarantineMachine)
 
 }  // namespace
 

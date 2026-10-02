@@ -29,129 +29,129 @@ bool escaped_none(llvm::StringRef text) {
     return !text.contains('\\');
 }
 
-ZEST_SUITE(Markup){
+ZEST_SUITE(Markup) {
 
-    ZEST_CASE(Escaping){// Check all ASCII punctuation.
-                        std::string punctuation = R"txt(!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~)txt";
-std::string escaped_punc = R"txt(!"#$%&'()\*+,-./:;<=>?@[\\]^\_\`{|}~)txt";
-ASSERT(escape(punctuation) == escaped_punc);
+ZEST_CASE(Escaping) {  // Check all ASCII punctuation.
+    std::string punctuation = R"txt(!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~)txt";
+    std::string escaped_punc = R"txt(!"#$%&'()\*+,-./:;<=>?@[\\]^\_\`{|}~)txt";
+    ASSERT(escape(punctuation) == escaped_punc);
 
-// Inline code
-ASSERT(escape("`foo`") == R"(\`foo\`)");
-ASSERT(escape("`foo") == R"(\`foo)");
-ASSERT(escape("foo`") == R"(foo\`)");
-ASSERT(escape("``foo``") == R"(\`\`foo\`\`)");
-// Code blocks
-ASSERT(escape("```") == R"(\`\`\`)");  // This could also be inline code!
-ASSERT(escape("~~~") == R"(\~~~)");
+    // Inline code
+    ASSERT(escape("`foo`") == R"(\`foo\`)");
+    ASSERT(escape("`foo") == R"(\`foo)");
+    ASSERT(escape("foo`") == R"(foo\`)");
+    ASSERT(escape("``foo``") == R"(\`\`foo\`\`)");
+    // Code blocks
+    ASSERT(escape("```") == R"(\`\`\`)");  // This could also be inline code!
+    ASSERT(escape("~~~") == R"(\~~~)");
 
-// Rulers and headings
-ASSERT(escaped(escape("## Heading"), '#'));
-ASSERT(escaped_none(escape("Foo # bar")));
-ASSERT(escape("---") == R"(\---)");
-ASSERT(escape("-") == R"(\-)");
-ASSERT(escape("===") == R"(\===)");
-ASSERT(escape("=") == R"(\=)");
-ASSERT(escape("***") == R"(\*\*\*)");  // \** could start emphasis!
+    // Rulers and headings
+    ASSERT(escaped(escape("## Heading"), '#'));
+    ASSERT(escaped_none(escape("Foo # bar")));
+    ASSERT(escape("---") == R"(\---)");
+    ASSERT(escape("-") == R"(\-)");
+    ASSERT(escape("===") == R"(\===)");
+    ASSERT(escape("=") == R"(\=)");
+    ASSERT(escape("***") == R"(\*\*\*)");  // \** could start emphasis!
 
-// HTML tags.
-ASSERT(escaped(escape("<pre"), '<'));
-ASSERT(escaped_none(escape("< pre")));
-ASSERT(escaped(escape("if a<b then"), '<'));
-ASSERT(escaped_none(escape("if a<b then c.")));
-ASSERT(escaped(escape("if a<b then c='foo'."), '<'));
-ASSERT(escaped(escape("std::vector<T>"), '<'));
-ASSERT(escaped(escape("std::vector<std::string>"), '<'));
-ASSERT(escaped_none(escape("std::map<int, int>")));
-// Autolinks
-ASSERT(escaped_none(escape("Email <foo@bar.com>")));
-ASSERT(escaped_none(escape("Website <http://foo.bar>")));
+    // HTML tags.
+    ASSERT(escaped(escape("<pre"), '<'));
+    ASSERT(escaped_none(escape("< pre")));
+    ASSERT(escaped(escape("if a<b then"), '<'));
+    ASSERT(escaped_none(escape("if a<b then c.")));
+    ASSERT(escaped(escape("if a<b then c='foo'."), '<'));
+    ASSERT(escaped(escape("std::vector<T>"), '<'));
+    ASSERT(escaped(escape("std::vector<std::string>"), '<'));
+    ASSERT(escaped_none(escape("std::map<int, int>")));
+    // Autolinks
+    ASSERT(escaped_none(escape("Email <foo@bar.com>")));
+    ASSERT(escaped_none(escape("Website <http://foo.bar>")));
 
-// Bullet lists.
-ASSERT(escaped(escape("- foo"), '-'));
-ASSERT(escaped(escape("* foo"), '*'));
-ASSERT(escaped(escape("+ foo"), '+'));
-ASSERT(escaped(escape("+"), '+'));
-ASSERT(escaped_none(escape("a + foo")));
-ASSERT(escaped_none(escape("a+ foo")));
-ASSERT(escaped(escape("1. foo"), '.'));
-ASSERT(escaped_none(escape("a. foo")));
+    // Bullet lists.
+    ASSERT(escaped(escape("- foo"), '-'));
+    ASSERT(escaped(escape("* foo"), '*'));
+    ASSERT(escaped(escape("+ foo"), '+'));
+    ASSERT(escaped(escape("+"), '+'));
+    ASSERT(escaped_none(escape("a + foo")));
+    ASSERT(escaped_none(escape("a+ foo")));
+    ASSERT(escaped(escape("1. foo"), '.'));
+    ASSERT(escaped_none(escape("a. foo")));
 
-// Emphasis.
-ASSERT(escape("*foo*") == R"(\*foo\*)");
-ASSERT(escape("**foo**") == R"(\*\*foo\*\*)");
-ASSERT(escaped(escape("*foo"), '*'));
-ASSERT(escaped_none(escape("foo *")));
-ASSERT(escaped_none(escape("foo * bar")));
-ASSERT(escaped_none(escape("foo_bar")));
-ASSERT(escaped(escape("foo _bar"), '_'));
-ASSERT(escaped(escape("foo_ bar"), '_'));
-ASSERT(escaped_none(escape("foo _ bar")));
+    // Emphasis.
+    ASSERT(escape("*foo*") == R"(\*foo\*)");
+    ASSERT(escape("**foo**") == R"(\*\*foo\*\*)");
+    ASSERT(escaped(escape("*foo"), '*'));
+    ASSERT(escaped_none(escape("foo *")));
+    ASSERT(escaped_none(escape("foo * bar")));
+    ASSERT(escaped_none(escape("foo_bar")));
+    ASSERT(escaped(escape("foo _bar"), '_'));
+    ASSERT(escaped(escape("foo_ bar"), '_'));
+    ASSERT(escaped_none(escape("foo _ bar")));
 
-// HTML entities.
-ASSERT(escaped(escape("fish &chips;"), '&'));
-ASSERT(escaped_none(escape("fish & chips;")));
-ASSERT(escaped_none(escape("fish &chips")));
-ASSERT(escaped(escape("foo &#42; bar"), '&'));
-ASSERT(escaped(escape("foo &#xaf; bar"), '&'));
-ASSERT(escaped_none(escape("foo &?; bar")));
+    // HTML entities.
+    ASSERT(escaped(escape("fish &chips;"), '&'));
+    ASSERT(escaped_none(escape("fish & chips;")));
+    ASSERT(escaped_none(escape("fish &chips")));
+    ASSERT(escaped(escape("foo &#42; bar"), '&'));
+    ASSERT(escaped(escape("foo &#xaf; bar"), '&'));
+    ASSERT(escaped_none(escape("foo &?; bar")));
 
-// Links.
-ASSERT(escaped(escape("[foo](bar)"), ']'));
-ASSERT(escaped(escape("[foo]: bar"), ']'));
-// No need to escape these, as the target never exists.
-ASSERT(escaped_none(escape("[foo][]")));
-ASSERT(escaped_none(escape("[foo][bar]")));
-ASSERT(escaped_none(escape("[foo]")));
+    // Links.
+    ASSERT(escaped(escape("[foo](bar)"), ']'));
+    ASSERT(escaped(escape("[foo]: bar"), ']'));
+    // No need to escape these, as the target never exists.
+    ASSERT(escaped_none(escape("[foo][]")));
+    ASSERT(escaped_none(escape("[foo][bar]")));
+    ASSERT(escaped_none(escape("[foo]")));
 
-// In code blocks we don't need to escape ASCII punctuation.
-Paragraph p;
-p.append_code("* foo !+ bar * baz");
-ASSERT(p.as_markdown() == "`* foo !+ bar * baz`");
+    // In code blocks we don't need to escape ASCII punctuation.
+    Paragraph p;
+    p.append_code("* foo !+ bar * baz");
+    ASSERT(p.as_markdown() == "`* foo !+ bar * baz`");
 
-// But we have to escape the backticks.
-p = Paragraph();
-p.append_code("foo`bar`baz", /*preserve=*/true);
-ASSERT(p.as_markdown() == "`foo``bar``baz`");
-// In plain-text, we fall back to different quotes.
-ASSERT(p.as_plain_text() == "'foo`bar`baz'");
+    // But we have to escape the backticks.
+    p = Paragraph();
+    p.append_code("foo`bar`baz", /*preserve=*/true);
+    ASSERT(p.as_markdown() == "`foo``bar``baz`");
+    // In plain-text, we fall back to different quotes.
+    ASSERT(p.as_plain_text() == "'foo`bar`baz'");
 
-// Inline code blocks starting or ending with backticks should add spaces.
-p = Paragraph();
-p.append_code("`foo");
-ASSERT(p.as_markdown() == "` ``foo `");
-p = Paragraph();
-p.append_code("foo`");
-ASSERT(p.as_markdown() == "` foo`` `");
-p = Paragraph();
-p.append_code("`foo`");
-ASSERT(p.as_markdown() == "` ``foo`` `");
+    // Inline code blocks starting or ending with backticks should add spaces.
+    p = Paragraph();
+    p.append_code("`foo");
+    ASSERT(p.as_markdown() == "` ``foo `");
+    p = Paragraph();
+    p.append_code("foo`");
+    ASSERT(p.as_markdown() == "` foo`` `");
+    p = Paragraph();
+    p.append_code("`foo`");
+    ASSERT(p.as_markdown() == "` ``foo`` `");
 
-// Code blocks might need more than 3 backticks.
-Document d;
-d.add_code_block("foobarbaz `\nqux");
-ASSERT(d.as_markdown() ==
-       "```cpp\n"
-       "foobarbaz `\nqux\n"
-       "```");
-d = Document();
-d.add_code_block("foobarbaz ``\nqux");
-ASSERT(d.as_markdown() ==
-       "```cpp\n"
-       "foobarbaz ``\nqux\n"
-       "```");
-d = Document();
-d.add_code_block("foobarbaz ```\nqux");
-ASSERT(d.as_markdown() ==
-       "````cpp\n"
-       "foobarbaz ```\nqux\n"
-       "````");
-d = Document();
-d.add_code_block("foobarbaz ` `` ``` ```` `\nqux");
-ASSERT(d.as_markdown() ==
-       "`````cpp\n"
-       "foobarbaz ` `` ``` ```` `\nqux\n"
-       "`````");
+    // Code blocks might need more than 3 backticks.
+    Document d;
+    d.add_code_block("foobarbaz `\nqux");
+    ASSERT(d.as_markdown() ==
+           "```cpp\n"
+           "foobarbaz `\nqux\n"
+           "```");
+    d = Document();
+    d.add_code_block("foobarbaz ``\nqux");
+    ASSERT(d.as_markdown() ==
+           "```cpp\n"
+           "foobarbaz ``\nqux\n"
+           "```");
+    d = Document();
+    d.add_code_block("foobarbaz ```\nqux");
+    ASSERT(d.as_markdown() ==
+           "````cpp\n"
+           "foobarbaz ```\nqux\n"
+           "````");
+    d = Document();
+    d.add_code_block("foobarbaz ` `` ``` ```` `\nqux");
+    ASSERT(d.as_markdown() ==
+           "`````cpp\n"
+           "foobarbaz ` `` ``` ```` `\nqux\n"
+           "`````");
 
 }  // namespace
 
@@ -399,7 +399,7 @@ ZEST_CASE(BulletListRender) {
     ASSERT(l.as_plain_text() == expected_plain_text);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(Markup)
 
 }  // namespace
 }  // namespace clice::testing

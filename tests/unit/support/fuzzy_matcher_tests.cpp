@@ -142,14 +142,15 @@ constexpr llvm::StringRef corpus[] = {
     "convertModelPosition",
 };
 
-ZEST_SUITE(FuzzyMatcher){
+ZEST_SUITE(FuzzyMatcher) {
 
-    ZEST_CASE(Segmentation){EXPECT(segmented("std::basic_string") == "+--  +---- +-----");
-EXPECT(segmented("XMLHttpRequest") == "+--+---+------");
-EXPECT(segmented("t3h PeNgU1N oF d00m!!!!!!!!") == "+-- +-+-+-+ ++ +---        ");
-EXPECT(segmented("ab\xF0\x9F\x99\x82"
-                 "cd") == "+-------");
-EXPECT(segmented("HTMLElement") == "+---+------");
+ZEST_CASE(Segmentation) {
+    EXPECT(segmented("std::basic_string") == "+--  +---- +-----");
+    EXPECT(segmented("XMLHttpRequest") == "+--+---+------");
+    EXPECT(segmented("t3h PeNgU1N oF d00m!!!!!!!!") == "+-- +-+-+-+ ++ +---        ");
+    EXPECT(segmented("ab\xF0\x9F\x99\x82"
+                     "cd") == "+-------");
+    EXPECT(segmented("HTMLElement") == "+---+------");
 
 }  // namespace
 
@@ -441,7 +442,7 @@ ZEST_CASE(TokensCoverMatches) {
     EXPECT(typo_accepted > std::size_t(100));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(FuzzyMatcher)
 
 }  // namespace
 }  // namespace clice::testing

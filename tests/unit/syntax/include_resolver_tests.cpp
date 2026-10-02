@@ -10,21 +10,22 @@ namespace {
 // scan() — is_angled and is_include_next fields
 // ============================================================================
 
-ZEST_SUITE(IncludeResolver){
+ZEST_SUITE(IncludeResolver) {
 
-    ZEST_CASE(ScanAngledVsQuoted){auto result = scan_quick(R"(
+ZEST_CASE(ScanAngledVsQuoted) {
+    auto result = scan_quick(R"(
 #include <vector>
 #include "local.h"
 )");
 
-ASSERT(result.includes.size() == 2u);
-EXPECT(result.includes[0].path == "vector");
-EXPECT(result.includes[0].is_angled);
-EXPECT(!result.includes[0].is_include_next);
+    ASSERT(result.includes.size() == 2u);
+    EXPECT(result.includes[0].path == "vector");
+    EXPECT(result.includes[0].is_angled);
+    EXPECT(!result.includes[0].is_include_next);
 
-EXPECT(result.includes[1].path == "local.h");
-EXPECT(!result.includes[1].is_angled);
-EXPECT(!result.includes[1].is_include_next);
+    EXPECT(result.includes[1].path == "local.h");
+    EXPECT(!result.includes[1].is_angled);
+    EXPECT(!result.includes[1].is_include_next);
 
 }  // namespace
 
@@ -436,7 +437,7 @@ ZEST_CASE(NormalizationMatchesVolume) {
 // - Relative paths with .. components ("../sibling/header.h")
 // - ResolvedSearchConfig overload (the production hot path)
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(IncludeResolver)
 
 }  // namespace
 }  // namespace clice::testing

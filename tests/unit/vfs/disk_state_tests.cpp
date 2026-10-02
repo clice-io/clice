@@ -64,13 +64,14 @@ struct Fixture {
     }
 };
 
-ZEST_SUITE(DiskState){
+ZEST_SUITE(DiskState) {
 
-    ZEST_CASE(WorkspaceAlwaysLooks){Fixture f;
-auto fid = f.file("src/a.h", "int a;\n");
-auto hash = f.hash_of(fid);
-f.rewrite("src/a.h", "int b;\n");
-ASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+ZEST_CASE(WorkspaceAlwaysLooks) {
+    Fixture f;
+    auto fid = f.file("src/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    f.rewrite("src/a.h", "int b;\n");
+    ASSERT(f.disk.check(fid, hash) == Verdict::Stale);
 
 }  // namespace
 
@@ -414,7 +415,7 @@ ZEST_CASE(ShadowReportsStaleTrust) {
     logging::reset_anomaly_for_testing();
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(DiskState)
 
 }  // namespace
 

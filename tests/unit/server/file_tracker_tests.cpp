@@ -32,41 +32,42 @@ llvm::SmallVector<FileEvent> tick(FileTracker& tracker, FileTable& files, bool f
     return tracker.tick_cdb(force);
 }
 
-ZEST_SUITE(FileTracker){
+ZEST_SUITE(FileTracker) {
 
-    ZEST_CASE(CDBTickDebounces){TempDir tmp;
-tmp.touch("main.cpp", R"(int main() {})");
-tmp.touch("lib.cpp", R"(int lib() { return 1; })");
+ZEST_CASE(CDBTickDebounces) {
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("lib.cpp", R"(int lib() { return 1; })");
 
-FileTable files;
+    FileTable files;
 
-Project project{files};
-SessionStore store;
-write_cdb(tmp,
-          project.cdb,
-          build_cdb_json({
-              {tmp.root, tmp.path("main.cpp"), {}}
-}));
-FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    Project project{files};
+    SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
-// Rewrite with one more entry: the first tick only records the pending
-// content, the second sees it stable and reloads.
-tmp.touch("compile_commands.json",
-          build_cdb_json({
-              {tmp.root, tmp.path("main.cpp"), {}},
-              {tmp.root, tmp.path("lib.cpp"),  {}}
-}));
-ASSERT(tick(tracker, files).empty());
+    // Rewrite with one more entry: the first tick only records the pending
+    // content, the second sees it stable and reloads.
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}},
+                  {tmp.root, tmp.path("lib.cpp"),  {}}
+    }));
+    ASSERT(tick(tracker, files).empty());
 
-auto events = tick(tracker, files);
-ASSERT(events.size() == 1u);
-ASSERT(events[0].kind == FileEvent::Kind::CDBChanged);
-auto lib_id = project.file_table.intern(Spelling::absolute(tmp.path("lib.cpp")));
-ASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{lib_id});
-ASSERT(events[0].cdb.removed.empty());
+    auto events = tick(tracker, files);
+    ASSERT(events.size() == 1u);
+    ASSERT(events[0].kind == FileEvent::Kind::CDBChanged);
+    auto lib_id = project.file_table.intern(Spelling::absolute(tmp.path("lib.cpp")));
+    ASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{lib_id});
+    ASSERT(events[0].cdb.removed.empty());
 
-// Settled: further ticks are quiet.
-ASSERT(tick(tracker, files).empty());
+    // Settled: further ticks are quiet.
+    ASSERT(tick(tracker, files).empty());
 
 }  // namespace
 
@@ -911,7 +912,7 @@ ZEST_CASE(LinkedWorktreeWatched) {
     ASSERT(files.disk.take_changes() == llvm::SmallVector<Fid>{header});
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(FileTracker)
 
 }  // namespace
 }  // namespace clice::testing

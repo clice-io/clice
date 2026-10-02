@@ -62,22 +62,22 @@ struct Pipe {
     }
 };
 
-ZEST_SUITE(StderrSink){
+ZEST_SUITE(StderrSink) {
 
-    ZEST_CASE(FullPipeDropsLines){Pipe pipe;
-logging::StderrSink sink(pipe.fds[1], 4096);
-EXPECT((::fcntl(pipe.fds[1], F_GETFL) & O_NONBLOCK) != 0);
+ZEST_CASE(FullPipeDropsLines) {
+    Pipe pipe;
+    logging::StderrSink sink(pipe.fds[1], 4096);
+    EXPECT((::fcntl(pipe.fds[1], F_GETFL) & O_NONBLOCK) != 0);
 
-// Nobody reads: the pipe (64KB) and the buffer budget fill, and every
-// further line must evict an oldest one instead of blocking. A
-// blocking regression hangs right here — a clean, attributable
-// failure.
-auto line = std::string(100, 'x');
-for(int i = 0; i < 5000 && sink.dropped() == 0; ++i) {
-    sink.log(info_msg(line));
-}
-EXPECT(sink.dropped() > 0);
-
+    // Nobody reads: the pipe (64KB) and the buffer budget fill, and every
+    // further line must evict an oldest one instead of blocking. A
+    // blocking regression hangs right here — a clean, attributable
+    // failure.
+    auto line = std::string(100, 'x');
+    for(int i = 0; i < 5000 && sink.dropped() == 0; ++i) {
+        sink.log(info_msg(line));
+    }
+    EXPECT(sink.dropped() > 0);
 }
 
 ZEST_CASE(BackpressureBuffersLines) {

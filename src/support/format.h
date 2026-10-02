@@ -9,7 +9,6 @@
 #include "kota/meta/enum.h"
 #include "kota/meta/struct.h"
 #include "kota/support/ranges.h"
-#include "kota/support/type_traits.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"

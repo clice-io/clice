@@ -16,90 +16,91 @@ namespace {
 // This tests the same pipeline as MasterServer.run_build_drain().
 // ============================================================================
 
-ZEST_SUITE(ModuleWorker){
+ZEST_SUITE(ModuleWorker) {
 
-    ZEST_CASE(BuildPCMThenCompileWithImport){TempDir tmp;
-// Module interface: produces PCM.
-tmp.touch("mod_iface.cppm",
-          "export module Hello;\n"
-          R"(export const char* hello() { return "world"; })"
-          "\n");
-auto iface = tmp.path("mod_iface.cppm");
+ZEST_CASE(BuildPCMThenCompileWithImport) {
+    TempDir tmp;
+    // Module interface: produces PCM.
+    tmp.touch("mod_iface.cppm",
+              "export module Hello;\n"
+              R"(export const char* hello() { return "world"; })"
+              "\n");
+    auto iface = tmp.path("mod_iface.cppm");
 
-// Consumer: imports the module.
-tmp.touch("consumer.cpp",
-          "import Hello;\n"
-          "int main() { return hello()[0]; }\n");
-auto consumer = tmp.path("consumer.cpp");
+    // Consumer: imports the module.
+    tmp.touch("consumer.cpp",
+              "import Hello;\n"
+              "int main() { return hello()[0]; }\n");
+    auto consumer = tmp.path("consumer.cpp");
 
-WorkerHandle sl;
-ASSERT(sl.spawn());
+    WorkerHandle sl;
+    ASSERT(sl.spawn());
 
-std::string pcm_path;
-bool phase1_done = false;
+    std::string pcm_path;
+    bool phase1_done = false;
 
-sl.run([&]() -> kota::task<> {
-    worker::BuildPCMParams params;
-    params.file = iface;
-    params.directory = "/tmp";
-    params.arguments = {"clang++",
-                        "-resource-dir",
-                        std::string(resource_dir()),
-                        "-std=c++20",
-                        "--precompile",
-                        iface};
-    params.module_name = "Hello";
-    params.output_path = tmp.path("Hello.pcm");
+    sl.run([&]() -> kota::task<> {
+        worker::BuildPCMParams params;
+        params.file = iface;
+        params.directory = "/tmp";
+        params.arguments = {"clang++",
+                            "-resource-dir",
+                            std::string(resource_dir()),
+                            "-std=c++20",
+                            "--precompile",
+                            iface};
+        params.module_name = "Hello";
+        params.output_path = tmp.path("Hello.pcm");
 
-    auto result = co_await sl.peer->send_request(params);
-    CO_ASSERT(result);
-    CO_ASSERT(result.value().success);
-    pcm_path = result.value().output_path;
-    EXPECT(!pcm_path.empty());
+        auto result = co_await sl.peer->send_request(params);
+        CO_ASSERT(result);
+        CO_ASSERT(result.value().success);
+        pcm_path = result.value().output_path;
+        EXPECT(!pcm_path.empty());
 
-    phase1_done = true;
-    sl.peer->close_output();
-});
+        phase1_done = true;
+        sl.peer->close_output();
+    });
 
-ASSERT(phase1_done);
-ASSERT(!pcm_path.empty());
+    ASSERT(phase1_done);
+    ASSERT(!pcm_path.empty());
 
-WorkerHandle sf;
-ASSERT(sf.spawn(true));
+    WorkerHandle sf;
+    ASSERT(sf.spawn(true));
 
-bool phase2_done = false;
+    bool phase2_done = false;
 
-sf.run([&]() -> kota::task<> {
-    worker::CompileParams params;
-    params.path = consumer;
-    params.version = 1;
-    params.text =
-        "import Hello;\n"
-        "int main() { return hello()[0]; }\n";
-    params.directory = "/tmp";
-    params.arguments = {"clang++",
-                        "-resource-dir",
-                        std::string(resource_dir()),
-                        "-std=c++20",
-                        "-fsyntax-only",
-                        consumer};
-    // Pass the PCM — same as MasterServer fills CompileParams.pcms.
-    params.pcms = {
-        {"Hello", pcm_path}
-    };
+    sf.run([&]() -> kota::task<> {
+        worker::CompileParams params;
+        params.path = consumer;
+        params.version = 1;
+        params.text =
+            "import Hello;\n"
+            "int main() { return hello()[0]; }\n";
+        params.directory = "/tmp";
+        params.arguments = {"clang++",
+                            "-resource-dir",
+                            std::string(resource_dir()),
+                            "-std=c++20",
+                            "-fsyntax-only",
+                            consumer};
+        // Pass the PCM — same as MasterServer fills CompileParams.pcms.
+        params.pcms = {
+            {"Hello", pcm_path}
+        };
 
-    auto result = co_await sf.peer->send_request(params);
-    CO_ASSERT(result);
-    EXPECT(result.value().version == 1);
+        auto result = co_await sf.peer->send_request(params);
+        CO_ASSERT(result);
+        EXPECT(result.value().version == 1);
 
-    phase2_done = true;
-    sf.peer->close_output();
-});
+        phase2_done = true;
+        sf.peer->close_output();
+    });
 
-ASSERT(phase2_done);
+    ASSERT(phase2_done);
 
-// Cleanup PCM temp file.
-std::remove(pcm_path.c_str());
+    // Cleanup PCM temp file.
+    std::remove(pcm_path.c_str());
 
 }  // namespace
 
@@ -296,7 +297,7 @@ ZEST_CASE(ModuleImplementationUnitWithWorker) {
     std::remove(pcm_path.c_str());
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(ModuleWorker)
 
 }  // namespace
 }  // namespace clice::testing

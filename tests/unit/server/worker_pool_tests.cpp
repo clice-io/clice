@@ -549,13 +549,14 @@ struct WorkerPoolFixture {
 
 namespace {
 
-ZEST_SUITE(WorkerPoolStateful){
+ZEST_SUITE(WorkerPoolStateful) {
 
-    ZEST_CASE(PickLeastLoaded){WorkerPoolFixture f;
-f.add_stateful(true, 5);
-f.add_stateful(true, 2);
-f.add_stateful(true, 8);
-EXPECT(f.pick_least_loaded() == 1u);
+ZEST_CASE(PickLeastLoaded) {
+    WorkerPoolFixture f;
+    f.add_stateful(true, 5);
+    f.add_stateful(true, 2);
+    f.add_stateful(true, 8);
+    EXPECT(f.pick_least_loaded() == 1u);
 
 }  // namespace
 
@@ -675,15 +676,16 @@ ZEST_CASE(RebalanceAfterClose) {
     EXPECT(f.stateful_owned(0) == 1u);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(WorkerPoolStateful)
 
-ZEST_SUITE(WorkerPoolScheduling){
+ZEST_SUITE(WorkerPoolScheduling) {
 
-    ZEST_CASE(PickIdleBasic){WorkerPoolFixture f;
-f.add_stateless(true, true);
-f.add_stateless(true, false);
-f.add_stateless(true, false);
-EXPECT(f.pick_idle() == 1u);
+ZEST_CASE(PickIdleBasic) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true);
+    f.add_stateless(true, false);
+    f.add_stateless(true, false);
+    EXPECT(f.pick_idle() == 1u);
 }
 
 ZEST_CASE(PickIdleSkipsDead) {
@@ -1114,23 +1116,24 @@ ZEST_CASE(DeficitCountsQueuedHigh) {
     f.cancel_low(1);
     EXPECT(f.reclaim_deficit() == 0u);
 }
-}
-;  // ZEST_SUITE(WorkerPoolScheduling)
 
-ZEST_SUITE(WorkerPoolCrash){
+};  // ZEST_SUITE(WorkerPoolScheduling)
 
-    ZEST_CASE(StatelessCleanup){WorkerPoolFixture f;
-f.add_stateless(true, true);
-f.add_stateless(true, false);
-f.set_low_limit(2);
+ZEST_SUITE(WorkerPoolCrash) {
 
-EXPECT(f.alive_count() == 2u);
-EXPECT(f.busy_count() == 1u);
+ZEST_CASE(StatelessCleanup) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true);
+    f.add_stateless(true, false);
+    f.set_low_limit(2);
 
-f.simulate_crash(0, false);
+    EXPECT(f.alive_count() == 2u);
+    EXPECT(f.busy_count() == 1u);
 
-EXPECT(f.alive_count() == 1u);
-EXPECT(f.busy_count() == 0u);
+    f.simulate_crash(0, false);
+
+    EXPECT(f.alive_count() == 1u);
+    EXPECT(f.busy_count() == 0u);
 }
 
 ZEST_CASE(StatefulLostDocuments) {
@@ -1709,26 +1712,27 @@ ZEST_CASE(MaxLowLimitShrinks) {
     EXPECT(f.max_low_limit() == 2u);
     EXPECT(f.effective_low_limit() == 1u);
 }
-}
-;  // ZEST_SUITE(WorkerPoolCrash)
 
-ZEST_SUITE(WorkerPoolMemory){
+};  // ZEST_SUITE(WorkerPoolCrash)
 
-    ZEST_CASE(PreemptKillsLowWorkers){WorkerPoolFixture f;
-f.add_stateless(true, true, true);   // busy low
-f.add_stateless(true, true, false);  // busy high — must survive
-f.set_low_limit(2);
+ZEST_SUITE(WorkerPoolMemory) {
 
-f.preempt(2);
+ZEST_CASE(PreemptKillsLowWorkers) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);   // busy low
+    f.add_stateless(true, true, false);  // busy high — must survive
+    f.set_low_limit(2);
 
-EXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
-EXPECT(f.preempted(0));
-EXPECT(f.state(1) == WorkerPoolFixture::SlotState::Alive);
-EXPECT(f.is_busy(1));
-EXPECT(f.low_busy() == 0u);
-// Preemption is not a crash: no report, no crash accounting.
-EXPECT(f.crash_reports.empty());
-EXPECT(f.crash_streak(0) == 0u);
+    f.preempt(2);
+
+    EXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
+    EXPECT(f.preempted(0));
+    EXPECT(f.state(1) == WorkerPoolFixture::SlotState::Alive);
+    EXPECT(f.is_busy(1));
+    EXPECT(f.low_busy() == 0u);
+    // Preemption is not a crash: no report, no crash accounting.
+    EXPECT(f.crash_reports.empty());
+    EXPECT(f.crash_streak(0) == 0u);
 }
 
 ZEST_CASE(PreemptCreditsHealthyRun) {
@@ -1817,19 +1821,20 @@ ZEST_CASE(CooldownSkipsDecrement) {
     EXPECT(f.low_limit() == 2u);
     EXPECT(f.get_backoff_cooldown() < 3u);
 }
-}
-;  // ZEST_SUITE(WorkerPoolMemory)
 
-ZEST_SUITE(WorkerPoolIntegration){
+};  // ZEST_SUITE(WorkerPoolMemory)
 
-    ZEST_CASE(StartAndStop){WorkerPoolFixture f;
-bool done = false;
-f.run([&]() -> kota::task<> {
-    CO_ASSERT(f.start(2, 1));
-    co_await f.stop();
-    done = true;
-});
-EXPECT(done);
+ZEST_SUITE(WorkerPoolIntegration) {
+
+ZEST_CASE(StartAndStop) {
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT(f.start(2, 1));
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT(done);
 }
 
 ZEST_CASE(StopIsPrompt) {
@@ -2271,8 +2276,8 @@ ZEST_CASE(ScaleUpKeepsLimit) {
     });
     EXPECT(done);
 }
-}
-;  // ZEST_SUITE(WorkerPoolIntegration)
+
+};  // ZEST_SUITE(WorkerPoolIntegration)
 
 }  // namespace
 

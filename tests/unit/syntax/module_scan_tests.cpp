@@ -56,13 +56,14 @@ struct ModuleScanFixture {
 // scan_quick() — module declaration extraction (lexer-based)
 // =============================================================================
 
-ZEST_SUITE(ModuleScan){
+ZEST_SUITE(ModuleScan) {
 
-    // Primary module interface: export module M;
-    ZEST_CASE(PrimaryModuleInterface){auto result = scan_quick("export module mylib;");
-EXPECT(result.module_name == "mylib");
-EXPECT(result.is_interface_unit);
-EXPECT(!result.need_preprocess);
+// Primary module interface: export module M;
+ZEST_CASE(PrimaryModuleInterface) {
+    auto result = scan_quick("export module mylib;");
+    EXPECT(result.module_name == "mylib");
+    EXPECT(result.is_interface_unit);
+    EXPECT(!result.need_preprocess);
 
 }  // namespace
 
@@ -204,21 +205,22 @@ int f() { return 42; }
     EXPECT(result.is_interface_unit);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(ModuleScan)
 
 // =============================================================================
 // scan_module_decl() — lightweight preprocessor fallback
 // =============================================================================
 
-ZEST_SUITE(ModuleDeclFallback){
+ZEST_SUITE(ModuleDeclFallback) {
 
-    ZEST_CASE(Basic){ModuleScanFixture f(R"(
+ZEST_CASE(Basic) {
+    ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
 )");
-auto result = f.decl();
-EXPECT(result.module_name == "mylib");
-EXPECT(result.is_interface_unit);
+    auto result = f.decl();
+    EXPECT(result.module_name == "mylib");
+    EXPECT(result.is_interface_unit);
 }
 
 ZEST_CASE(ConditionalWithDefine) {
@@ -323,25 +325,26 @@ int main() { return 0; }
     EXPECT(!result.is_interface_unit);
     EXPECT(result.modules.empty());
 }
-}
-;  // ZEST_SUITE(ModuleDeclFallback)
+
+};  // ZEST_SUITE(ModuleDeclFallback)
 
 // =============================================================================
 // scan_precise() — module import semantics
 // =============================================================================
 
-ZEST_SUITE(ModuleImportScan){
+ZEST_SUITE(ModuleImportScan) {
 
-    ZEST_CASE(NamedImport){ModuleScanFixture f(R"(
+ZEST_CASE(NamedImport) {
+    ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
 import other;
 )");
-auto result = f.precise();
-EXPECT(result.module_name == "mylib");
-EXPECT(result.is_interface_unit);
-ASSERT(result.modules.size() == 1u);
-EXPECT(result.modules[0] == "other");
+    auto result = f.precise();
+    EXPECT(result.module_name == "mylib");
+    EXPECT(result.is_interface_unit);
+    ASSERT(result.modules.size() == 1u);
+    EXPECT(result.modules[0] == "other");
 }
 
 ZEST_CASE(MultipleImports) {
@@ -667,8 +670,8 @@ import MY_IMPORT;
     ASSERT(result.modules.size() == 1u);
     EXPECT(result.modules[0] == "dep");
 }
-}
-;  // ZEST_SUITE(ModuleImportScan)
+
+};  // ZEST_SUITE(ModuleImportScan)
 
 }  // namespace
 }  // namespace clice::testing

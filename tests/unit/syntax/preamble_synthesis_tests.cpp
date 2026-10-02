@@ -62,22 +62,23 @@ std::optional<std::string> prefix_of(llvm::ArrayRef<ChainEntry> chain,
     return context->prefix.empty() ? "" : flatten(*context, context->prefix);
 }
 
-ZEST_SUITE(PreambleSynthesis){
+ZEST_SUITE(PreambleSynthesis) {
 
-    ZEST_CASE(BasicChain){llvm::StringMap<std::string> mapping = {
-                              {"vector", "/sys/vector"},
-                              {"utils.h", "/proj/utils.h"},
-                          };
+ZEST_CASE(BasicChain) {
+    llvm::StringMap<std::string> mapping = {
+        {"vector",  "/sys/vector"  },
+        {"utils.h", "/proj/utils.h"},
+    };
 
-ChainEntry entry{"/proj/main.cpp", R"(#include <vector>
+    ChainEntry entry{"/proj/main.cpp", R"(#include <vector>
 #define DEBUG 1
 #include "utils.h"
 int main() {}
 )"};
 
-auto result = prefix_of({entry}, "/proj/utils.h", map_resolver(mapping));
-ASSERT(result);
-EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    auto result = prefix_of({entry}, "/proj/utils.h", map_resolver(mapping));
+    ASSERT(result);
+    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #include <vector>
 #define DEBUG 1
 )");
@@ -518,7 +519,7 @@ int t;
 )");
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(PreambleSynthesis)
 
 }  // namespace
 }  // namespace clice::testing

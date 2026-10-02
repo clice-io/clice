@@ -74,24 +74,25 @@ std::string
     return *committed;
 }
 
-ZEST_SUITE(CacheStore){
+ZEST_SUITE(CacheStore) {
 
-    ZEST_CASE(StoreAndLookup){TempDir tmp;
-auto store = open_store(tmp);
-register_lru(store);
+ZEST_CASE(StoreAndLookup) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_lru(store);
 
-ASSERT(!store.lookup("pch", "k1").has_value());
+    ASSERT(!store.lookup("pch", "k1").has_value());
 
-auto path = put(store, "pch", "k1", "blob content");
+    auto path = put(store, "pch", "k1", "blob content");
 
-auto hit = store.lookup("pch", "k1");
-ASSERT(hit);
-ASSERT(*hit == path);
-ASSERT(read_file(*hit).value_or("") == "blob content");
+    auto hit = store.lookup("pch", "k1");
+    ASSERT(hit);
+    ASSERT(*hit == path);
+    ASSERT(read_file(*hit).value_or("") == "blob content");
 
-// The blob landed inside the versioned namespace directory.
-ASSERT(llvm::StringRef(path).contains("v1"));
-ASSERT(llvm::StringRef(path).ends_with("k1.pch"));
+    // The blob landed inside the versioned namespace directory.
+    ASSERT(llvm::StringRef(path).contains("v1"));
+    ASSERT(llvm::StringRef(path).ends_with("k1.pch"));
 
 }  // namespace
 
@@ -742,7 +743,7 @@ ZEST_CASE(ReadOnlyNeverWrites) {
     ASSERT(read_file(tmp.path("root/cache/v1/manifest.json")).value_or("") == *manifest_before);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(CacheStore)
 
 }  // namespace
 

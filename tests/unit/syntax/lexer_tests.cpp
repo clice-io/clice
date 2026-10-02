@@ -20,38 +20,39 @@ std::vector<Token> lex_all(Lexer& lexer) {
     return tokens;
 }
 
-ZEST_SUITE(SourceText){
+ZEST_SUITE(SourceText) {
 
-    ZEST_CASE(IgnoreComments){llvm::StringRef content = "int x = 1; // comment";
+ZEST_CASE(IgnoreComments) {
+    llvm::StringRef content = "int x = 1; // comment";
 
-std::vector<TokenKind> kinds = {
-    clang::tok::raw_identifier,
-    clang::tok::raw_identifier,
-    clang::tok::equal,
-    clang::tok::numeric_constant,
-    clang::tok::semi,
-};
+    std::vector<TokenKind> kinds = {
+        clang::tok::raw_identifier,
+        clang::tok::raw_identifier,
+        clang::tok::equal,
+        clang::tok::numeric_constant,
+        clang::tok::semi,
+    };
 
-{
-    Lexer lexer(content);
-    auto tokens = lex_all(lexer);
-    ASSERT(tokens.size() == kinds.size());
-    for(std::size_t i = 0; i < kinds.size(); i += 1) {
-        ASSERT(tokens[i].kind == kinds[i]);
+    {
+        Lexer lexer(content);
+        auto tokens = lex_all(lexer);
+        ASSERT(tokens.size() == kinds.size());
+        for(std::size_t i = 0; i < kinds.size(); i += 1) {
+            ASSERT(tokens[i].kind == kinds[i]);
+        }
     }
-}
 
-kinds.push_back(clang::tok::comment);
+    kinds.push_back(clang::tok::comment);
 
-{
-    Lexer lexer(content, {.keep_comments = true});
-    auto tokens = lex_all(lexer);
-    ASSERT(tokens.size() == kinds.size());
-    for(std::size_t i = 0; i < kinds.size(); i += 1) {
-        ASSERT(tokens[i].kind == kinds[i]);
+    {
+        Lexer lexer(content, {.keep_comments = true});
+        auto tokens = lex_all(lexer);
+        ASSERT(tokens.size() == kinds.size());
+        for(std::size_t i = 0; i < kinds.size(); i += 1) {
+            ASSERT(tokens[i].kind == kinds[i]);
+        }
+        ASSERT(tokens.back().text(content) == "// comment");
     }
-    ASSERT(tokens.back().text(content) == "// comment");
-}
 
 }  // namespace
 
@@ -109,21 +110,22 @@ int x = 1;
     ASSERT(tokens[8].is_pp_keyword);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(SourceText)
 
-ZEST_SUITE(HeaderNameLexing){
+ZEST_SUITE(HeaderNameLexing) {
 
-    /// The text of the first header-name token in `content`, or empty.
-    llvm::StringRef first_header_name(llvm::StringRef content){Lexer lexer(content);
-while(true) {
-    Token token = lexer.advance();
-    if(token.is_eof()) {
-        return "";
+/// The text of the first header-name token in `content`, or empty.
+llvm::StringRef first_header_name(llvm::StringRef content) {
+    Lexer lexer(content);
+    while(true) {
+        Token token = lexer.advance();
+        if(token.is_eof()) {
+            return "";
+        }
+        if(token.is_header_name()) {
+            return token.text(content);
+        }
     }
-    if(token.is_header_name()) {
-        return token.text(content);
-    }
-}
 }
 
 ZEST_CASE(HasIncludeArgument) {
@@ -196,27 +198,28 @@ ZEST_CASE(EmptyInclude) {
     ASSERT(first_header_name(content) == "");
     ASSERT(tokens[2].kind == clang::tok::eod);
 }
-}
-;  // ZEST_SUITE(HeaderNameLexing)
 
-ZEST_SUITE(FromLine){
+};  // ZEST_SUITE(HeaderNameLexing)
 
-    ZEST_CASE(MidFileLine){llvm::StringRef content = "int a;\n#include <foo>\nint b;\n";
-auto offset = static_cast<std::uint32_t>(content.find("include"));
+ZEST_SUITE(FromLine) {
 
-auto lexer = Lexer::from_line(content, offset);
-auto hash = lexer.advance();
-ASSERT(hash.kind == clang::tok::hash);
-ASSERT(hash.is_at_start_of_line);
-ASSERT(hash.range.begin == static_cast<std::uint32_t>(content.find('#')));
+ZEST_CASE(MidFileLine) {
+    llvm::StringRef content = "int a;\n#include <foo>\nint b;\n";
+    auto offset = static_cast<std::uint32_t>(content.find("include"));
 
-auto keyword = lexer.advance();
-ASSERT(keyword.is_pp_keyword);
-ASSERT(keyword.text(content) == "include");
+    auto lexer = Lexer::from_line(content, offset);
+    auto hash = lexer.advance();
+    ASSERT(hash.kind == clang::tok::hash);
+    ASSERT(hash.is_at_start_of_line);
+    ASSERT(hash.range.begin == static_cast<std::uint32_t>(content.find('#')));
 
-auto name = lexer.advance();
-ASSERT(name.is_header_name());
-ASSERT(name.text(content) == "<foo>");
+    auto keyword = lexer.advance();
+    ASSERT(keyword.is_pp_keyword);
+    ASSERT(keyword.text(content) == "include");
+
+    auto name = lexer.advance();
+    ASSERT(name.is_header_name());
+    ASSERT(name.text(content) == "<foo>");
 }
 
 ZEST_CASE(FirstLine) {
@@ -249,15 +252,16 @@ ZEST_CASE(ContinuesToEnd) {
     ASSERT(tokens.size() == 6U);
     ASSERT(tokens.back().text(content) == ";");
 }
-}
-;  // ZEST_SUITE(FromLine)
 
-ZEST_SUITE(IncompleteInput){
+};  // ZEST_SUITE(FromLine)
 
-    ZEST_CASE(UnterminatedHeaderName){llvm::StringRef content = "#include <iost";
-Lexer lexer(content);
-auto tokens = lex_all(lexer);
-ASSERT(tokens.size() >= 2U);
+ZEST_SUITE(IncompleteInput) {
+
+ZEST_CASE(UnterminatedHeaderName) {
+    llvm::StringRef content = "#include <iost";
+    Lexer lexer(content);
+    auto tokens = lex_all(lexer);
+    ASSERT(tokens.size() >= 2U);
 }
 
 ZEST_CASE(UnterminatedString) {
@@ -276,8 +280,8 @@ ZEST_CASE(UnterminatedComment) {
     ASSERT(tokens.size() == 3U);
     ASSERT(tokens.back().kind == clang::tok::semi);
 }
-}
-;  // ZEST_SUITE(IncompleteInput)
+
+};  // ZEST_SUITE(IncompleteInput)
 
 }  // namespace
 }  // namespace clice::testing

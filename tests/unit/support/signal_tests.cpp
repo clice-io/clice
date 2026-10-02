@@ -6,14 +6,15 @@
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(Signal){
+ZEST_SUITE(Signal) {
 
-    ZEST_CASE(EmitCallsHandlers){Signal<int> signal;
-int sum = 0;
-auto c1 = signal.connect([&](int v) { sum += v; });
-auto c2 = signal.connect([&](int v) { sum += v * 10; });
-signal.emit(3);
-ASSERT(sum == 33);
+ZEST_CASE(EmitCallsHandlers) {
+    Signal<int> signal;
+    int sum = 0;
+    auto c1 = signal.connect([&](int v) { sum += v; });
+    auto c2 = signal.connect([&](int v) { sum += v * 10; });
+    signal.emit(3);
+    ASSERT(sum == 33);
 
 }  // namespace
 
@@ -77,7 +78,7 @@ ZEST_CASE(EmitWithoutSubscribers) {
     signal.emit(42);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(Signal)
 
 }  // namespace
 }  // namespace clice::testing

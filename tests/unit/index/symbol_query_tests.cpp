@@ -44,29 +44,30 @@ llvm::SmallVector<index::ScopeEntry> chain(std::initializer_list<llvm::StringRef
     return entries;
 }
 
-ZEST_SUITE(SymbolQuery){
+ZEST_SUITE(SymbolQuery) {
 
-    ZEST_CASE(Modes){auto fuzzy = parsed("foo");
-EXPECT(fuzzy.mode == Mode::Fuzzy);
-EXPECT(fuzzy.pattern == "foo");
-EXPECT(fuzzy.scope.empty());
-EXPECT(fuzzy.by_pattern());
+ZEST_CASE(Modes) {
+    auto fuzzy = parsed("foo");
+    EXPECT(fuzzy.mode == Mode::Fuzzy);
+    EXPECT(fuzzy.pattern == "foo");
+    EXPECT(fuzzy.scope.empty());
+    EXPECT(fuzzy.by_pattern());
 
-auto exact = parsed(R"("foo")");
-EXPECT(exact.mode == Mode::Exact);
-EXPECT(exact.pattern == "foo");
+    auto exact = parsed(R"("foo")");
+    EXPECT(exact.mode == Mode::Exact);
+    EXPECT(exact.pattern == "foo");
 
-auto glob = parsed("get*Name");
-EXPECT(glob.mode == Mode::Glob);
-EXPECT(glob.pattern == "get*Name");
+    auto glob = parsed("get*Name");
+    EXPECT(glob.mode == Mode::Glob);
+    EXPECT(glob.pattern == "get*Name");
 
-auto everything = parsed("");
-EXPECT(everything.mode == Mode::Fuzzy);
-EXPECT(everything.pattern.empty());
+    auto everything = parsed("");
+    EXPECT(everything.mode == Mode::Fuzzy);
+    EXPECT(everything.pattern.empty());
 
-EXPECT(parsed("   ").mode == Mode::Fuzzy);
-EXPECT(parsed("*").mode == Mode::Members);
-EXPECT(parsed("**").mode == Mode::Subtree);
+    EXPECT(parsed("   ").mode == Mode::Fuzzy);
+    EXPECT(parsed("*").mode == Mode::Members);
+    EXPECT(parsed("**").mode == Mode::Subtree);
 
 }  // namespace
 
@@ -261,7 +262,7 @@ ZEST_CASE(Scope) {
     EXPECT(index::in_scope(parsed("INNER::paint"), chain({"inner"})));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(SymbolQuery)
 
 }  // namespace
 }  // namespace clice::testing

@@ -87,18 +87,19 @@ struct Stack {
     }
 };
 
-ZEST_SUITE(ASTFamilyGuards){
+ZEST_SUITE(ASTFamilyGuards) {
 
-    ZEST_CASE(SupersedeTouchesEntry){Stack stack;
-auto session = stack.open("/proj/a.cpp", "int x;\n");
-auto pid = session->path_id;
-stack.ast.projections.entries[pid].current = true;
-auto epoch = stack.ast.projections.epoch(pid);
+ZEST_CASE(SupersedeTouchesEntry) {
+    Stack stack;
+    auto session = stack.open("/proj/a.cpp", "int x;\n");
+    auto pid = session->path_id;
+    stack.ast.projections.entries[pid].current = true;
+    auto epoch = stack.ast.projections.epoch(pid);
 
-stack.ast.supersede(pid);
+    stack.ast.supersede(pid);
 
-ASSERT(!stack.ast.projections.current(pid));
-ASSERT(stack.ast.projections.epoch(pid) == epoch + 1);
+    ASSERT(!stack.ast.projections.current(pid));
+    ASSERT(stack.ast.projections.epoch(pid) == epoch + 1);
 
 }  // namespace
 
@@ -754,33 +755,33 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     EXPECT(stack.pcm.import_scans == 0u);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(ASTFamilyGuards)
 
-ZEST_SUITE(DispatcherGuards){
+ZEST_SUITE(DispatcherGuards) {
 
-    ZEST_CASE(CrashedCompileBarsBuilds){
-        // A barred compile bars the stateless builds of the same content too —
-        // completion parses what the compile crashed on — and they answer
-        // empty: the crash note says why, an error would only be a popup.
-        Stack stack;
-auto session = stack.open("/proj/poison.cpp", "int x;\n");
-session->quarantine->on_crash(evidence_kind(EvidenceKind::Compile),
-                              "d1",
-                              "cause",
-                              Quarantine::Clock::now());
+ZEST_CASE(CrashedCompileBarsBuilds) {
+    // A barred compile bars the stateless builds of the same content too —
+    // completion parses what the compile crashed on — and they answer
+    // empty: the crash note says why, an error would only be a popup.
+    Stack stack;
+    auto session = stack.open("/proj/poison.cpp", "int x;\n");
+    session->quarantine->on_crash(evidence_kind(EvidenceKind::Compile),
+                                  "d1",
+                                  "cause",
+                                  Quarantine::Clock::now());
 
-bool done = false;
-auto body = [&]() -> kota::task<> {
-    // With no worker at all, only the bar can answer without an error.
-    auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
-    CO_ASSERT(result);
-    EXPECT(result.value().data == "null");
-    done = true;
-};
-auto task = body();
-stack.loop.schedule(task);
-stack.loop.run();
-EXPECT(done);
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        // With no worker at all, only the bar can answer without an error.
+        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
+        CO_ASSERT(result);
+        EXPECT(result.value().data == "null");
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT(done);
 }
 
 ZEST_CASE(CrashedFormatBarsFormat) {
@@ -1432,8 +1433,8 @@ ZEST_CASE(AnswerClearsQueryRecord) {
     stack.loop.run();
     EXPECT(done);
 }
-}
-;  // ZEST_SUITE(DispatcherGuards)
+
+};  // ZEST_SUITE(DispatcherGuards)
 
 }  // namespace
 

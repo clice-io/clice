@@ -8,26 +8,22 @@
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(ClangTidy){
+ZEST_SUITE(ClangTidy) {
 
-    ZEST_CASE(ModulesLinked){llvm::StringSet<> expected = {
-                                 "abseil-module",      "altera-module",
-                                 "android-module",     "boost-module",
-                                 "bugprone-module",    "cert-module",
-                                 "concurrency-module", "cppcoreguidelines-module",
-                                 "darwin-module",      "fuchsia-module",
-                                 "google-module",      "linux-module",
-                                 "llvm-module",        "llvmlibc-module",
-                                 "misc-module",        "modernize-module",
-                                 "objc-module",        "openmp-module",
-                                 "performance-module", "portability-module",
-                                 "readability-module", "zircon-module",
-                             };
+ZEST_CASE(ModulesLinked) {
+    llvm::StringSet<> expected = {
+        "abseil-module",      "altera-module",   "android-module",     "boost-module",
+        "bugprone-module",    "cert-module",     "concurrency-module", "cppcoreguidelines-module",
+        "darwin-module",      "fuchsia-module",  "google-module",      "linux-module",
+        "llvm-module",        "llvmlibc-module", "misc-module",        "modernize-module",
+        "objc-module",        "openmp-module",   "performance-module", "portability-module",
+        "readability-module", "zircon-module",
+    };
 
-for(auto& entry: clang::tidy::ClangTidyModuleRegistry::entries()) {
-    expected.erase(entry.getName());
-}
-ASSERT(expected.empty());
+    for(auto& entry: clang::tidy::ClangTidyModuleRegistry::entries()) {
+        expected.erase(entry.getName());
+    }
+    ASSERT(expected.empty());
 
 }  // namespace
 
@@ -176,6 +172,6 @@ ZEST_CASE(ExtraArgsCommandSplit) {
     ASSERT(pairs.append == kept);
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(ClangTidy)
 }  // namespace
 }  // namespace clice::testing

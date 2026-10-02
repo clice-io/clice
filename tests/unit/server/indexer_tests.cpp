@@ -338,1056 +338,1056 @@ std::string blob_key(llvm::StringRef path) {
 }
 
 ZEST_SUITE(IndexerMerge) {
-    IndexerFixture fx;
-    kota::event_loop& loop = fx.loop;
-    Project& project = fx.project;
-    IndexPump& pump = fx.pump;
-    IndexStore& index_store = fx.index_store;
 
-    bool merge(const void* data, std::size_t size) {
-        return fx.merge(data, size);
-    }
+IndexerFixture fx;
+kota::event_loop& loop = fx.loop;
+Project& project = fx.project;
+IndexPump& pump = fx.pump;
+IndexStore& index_store = fx.index_store;
 
-    kota::task<> async_save() {
-        return fx.async_save();
-    }
+bool merge(const void* data, std::size_t size) {
+    return fx.merge(data, size);
+}
 
-    bool load(bool read_only = false) {
-        return fx.load(read_only);
-    }
+kota::task<> async_save() {
+    return fx.async_save();
+}
 
-    void drop_index(Fid id) {
-        fx.drop_index(id);
-    }
+bool load(bool read_only = false) {
+    return fx.load(read_only);
+}
 
-    ZEST_CASE(MergeRejectsGarbage) {
-        // A worker shipping corrupted bytes (torn write, stale format) must not
-        // crash the master or leave partial state behind.
-        ASSERT(project.project_index.shards.empty());
-        ASSERT(project.project_index.symbol_count() == 0u);
+void drop_index(Fid id) {
+    fx.drop_index(id);
+}
 
-        std::string garbage = "definitely not a flatbuffer, but long enough to try";
-        ASSERT(!merge(garbage.data(), garbage.size()));
+ZEST_CASE(MergeRejectsGarbage) {
+    // A worker shipping corrupted bytes (torn write, stale format) must not
+    // crash the master or leave partial state behind.
+    ASSERT(project.project_index.shards.empty());
+    ASSERT(project.project_index.symbol_count() == 0u);
 
-        ASSERT(project.project_index.shards.empty());
-        ASSERT(project.project_index.symbol_count() == 0u);
-    }
+    std::string garbage = "definitely not a flatbuffer, but long enough to try";
+    ASSERT(!merge(garbage.data(), garbage.size()));
 
-    ZEST_CASE(MergeIgnoresDiskDrift) {
-        TempDir tmp;
-        tmp.touch("main.cpp", "int value() { return 1; }\n");
-        auto src = tmp.path("main.cpp");
+    ASSERT(project.project_index.shards.empty());
+    ASSERT(project.project_index.symbol_count() == 0u);
+}
 
-        auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+ZEST_CASE(MergeIgnoresDiskDrift) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
 
-        merge(indexed.data.data(), indexed.data.size());
-        auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
-        auto it = project.project_index.shards.find(path_id);
-        ASSERT(it != project.project_index.shards.end());
-        ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int value() { return 1; }\n"));
+    auto indexed = index_file(tmp, src);
+    ASSERT(!indexed.data.empty());
 
-        // The disk moved on since the rows were indexed. The blob is
-        // self-contained — its rows pair with the generation it embeds, never
-        // with the disk — so the re-merge is a pure variant hit and freshness
-        // gating owns the drift.
-        tmp.touch("main.cpp", "int renamed() { return 2; }\n");
-        merge(indexed.data.data(), indexed.data.size());
-        ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int value() { return 1; }\n"));
-        ASSERT(it->second.variants().size() == std::size_t(1));
-        ASSERT(project.project_index.contributions.lookup(path_id).contains(path_id));
+    merge(indexed.data.data(), indexed.data.size());
+    auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
+    auto it = project.project_index.shards.find(path_id);
+    ASSERT(it != project.project_index.shards.end());
+    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int value() { return 1; }\n"));
 
-        // Rows built from the settled content open a new generation.
-        auto fresh = index_file(tmp, src);
-        ASSERT(!fresh.data.empty());
-        merge(fresh.data.data(), fresh.data.size());
-        ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int renamed() { return 2; }\n"));
-    }
+    // The disk moved on since the rows were indexed. The blob is
+    // self-contained — its rows pair with the generation it embeds, never
+    // with the disk — so the re-merge is a pure variant hit and freshness
+    // gating owns the drift.
+    tmp.touch("main.cpp", "int renamed() { return 2; }\n");
+    merge(indexed.data.data(), indexed.data.size());
+    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int value() { return 1; }\n"));
+    ASSERT(it->second.variants().size() == std::size_t(1));
+    ASSERT(project.project_index.contributions.lookup(path_id).contains(path_id));
 
-    ZEST_CASE(SaveCommitsDirtyShard) {
-        TempDir tmp;
-        tmp.touch("main.cpp", "int flip_value() { return 1; }\n");
-        auto src = tmp.path("main.cpp");
-        open_store(tmp, project);
+    // Rows built from the settled content open a new generation.
+    auto fresh = index_file(tmp, src);
+    ASSERT(!fresh.data.empty());
+    merge(fresh.data.data(), fresh.data.size());
+    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int renamed() { return 2; }\n"));
+}
 
-        auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        merge(indexed.data.data(), indexed.data.size());
+ZEST_CASE(SaveCommitsDirtyShard) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int flip_value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    open_store(tmp, project);
 
-        auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
-        ASSERT(index_store.pending_shard_writes() == 1u);
+    auto indexed = index_file(tmp, src);
+    ASSERT(!indexed.data.empty());
+    merge(indexed.data.data(), indexed.data.size());
 
-        // Named body: a temporary lambda's captures die with the statement
-        // while the coroutine frame still references them.
-        auto save_body = [&]() -> kota::task<> {
-            co_await async_save();
-        };
-        auto task = save_body();
-        loop.schedule(task);
-        loop.run();
+    auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
+    ASSERT(index_store.pending_shard_writes() == 1u);
 
-        // Committed: the dirty state is drained and the shard still answers
-        // identically.
-        auto it = project.project_index.shards.find(path_id);
-        ASSERT(it != project.project_index.shards.end());
-        ASSERT(index_store.pending_shard_writes() == 0u);
-        ASSERT(index_store.last_save_shards() == 1u);
-        ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int flip_value() { return 1; }\n"));
-        ASSERT(project.project_index.contributions.lookup(path_id).contains(path_id));
-    }
+    // Named body: a temporary lambda's captures die with the statement
+    // while the coroutine frame still references them.
+    auto save_body = [&]() -> kota::task<> {
+        co_await async_save();
+    };
+    auto task = save_body();
+    loop.schedule(task);
+    loop.run();
 
-    ZEST_CASE(SaveMigratesShardViews) {
-        TempDir tmp;
-        tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
-        auto src = tmp.path("main.cpp");
+    // Committed: the dirty state is drained and the shard still answers
+    // identically.
+    auto it = project.project_index.shards.find(path_id);
+    ASSERT(it != project.project_index.shards.end());
+    ASSERT(index_store.pending_shard_writes() == 0u);
+    ASSERT(index_store.last_save_shards() == 1u);
+    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int flip_value() { return 1; }\n"));
+    ASSERT(project.project_index.contributions.lookup(path_id).contains(path_id));
+}
 
-        // The LMDB backend wrapped in a spy: save() must advance the read
-        // snapshot exactly once, rebind the resident shard onto it, and
-        // retire the old snapshot exactly once.
-        struct SnapshotSpy final : index::BlobDatabase {
-            std::unique_ptr<index::BlobDatabase> real;
-            int advances = 0;
-            int retires = 0;
+ZEST_CASE(SaveMigratesShardViews) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
 
-            index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
-                return real->read(kind, key);
-            }
+    // The LMDB backend wrapped in a spy: save() must advance the read
+    // snapshot exactly once, rebind the resident shard onto it, and
+    // retire the old snapshot exactly once.
+    struct SnapshotSpy final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
+        int advances = 0;
+        int retires = 0;
 
-            bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
-                return real->contains(kind, key);
-            }
+        index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->read(kind, key);
+        }
 
-            llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                                 llvm::ArrayRef<index::BlobKey> removes) override {
-                return real->write(puts, removes);
-            }
+        bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
 
-            void for_each_key(index::IndexBlobKind kind,
-                              llvm::function_ref<void(llvm::StringRef)> fn) override {
-                real->for_each_key(kind, fn);
-            }
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey> removes) override {
+            return real->write(puts, removes);
+        }
 
-            std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-                advances += 1;
-                return real->advance_read_snapshot();
-            }
+        void for_each_key(index::IndexBlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
 
-            void retire_old_snapshot() override {
-                retires += 1;
-                real->retire_old_snapshot();
-            }
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            advances += 1;
+            return real->advance_read_snapshot();
+        }
 
-            std::expected<bool, std::string> grow() override {
-                return real->grow();
-            }
-        };
+        void retire_old_snapshot() override {
+            retires += 1;
+            real->retire_old_snapshot();
+        }
 
-        auto store = CacheStore::open(tmp.path("cache"), 1);
-        ASSERT(store);
-        project.store.emplace(std::move(*store));
-        auto spy = std::make_unique<SnapshotSpy>();
-        spy->real = index::open_lmdb_database(*project.store, "");
-        ASSERT(spy->real != nullptr);
-        auto* probe = spy.get();
-        project.index_db = std::move(spy);
+        std::expected<bool, std::string> grow() override {
+            return real->grow();
+        }
+    };
 
-        auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        merge(indexed.data.data(), indexed.data.size());
-        auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
-        auto before = project.project_index.shards.find(path_id);
-        ASSERT(before != project.project_index.shards.end());
-        auto variants_before = before->second.variants();
-        const char* bytes_before = before->second.bytes().data();
+    auto store = CacheStore::open(tmp.path("cache"), 1);
+    ASSERT(store);
+    project.store.emplace(std::move(*store));
+    auto spy = std::make_unique<SnapshotSpy>();
+    spy->real = index::open_lmdb_database(*project.store, "");
+    ASSERT(spy->real != nullptr);
+    auto* probe = spy.get();
+    project.index_db = std::move(spy);
 
-        auto save_body = [&]() -> kota::task<> {
-            co_await async_save();
-        };
-        auto task = save_body();
-        loop.schedule(task);
-        loop.run();
+    auto indexed = index_file(tmp, src);
+    ASSERT(!indexed.data.empty());
+    merge(indexed.data.data(), indexed.data.size());
+    auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
+    auto before = project.project_index.shards.find(path_id);
+    ASSERT(before != project.project_index.shards.end());
+    auto variants_before = before->second.variants();
+    const char* bytes_before = before->second.bytes().data();
 
-        // Rebound: the shard now serves the database's snapshot view — the
-        // same bytes at a different address — with the verification state and
-        // variant set carried over.
-        ASSERT(probe->advances == 1);
-        ASSERT(probe->retires == 1);
-        auto it = project.project_index.shards.find(path_id);
-        ASSERT(it != project.project_index.shards.end());
-        ASSERT(it->second.loaded());
-        ASSERT(it->second.bytes().data() != bytes_before);
-        ASSERT(it->second.content_hash() ==
-               llvm::xxh3_64bits("int migrate_value() { return 1; }\n"));
-        ASSERT(it->second.variants() == variants_before);
-    }
+    auto save_body = [&]() -> kota::task<> {
+        co_await async_save();
+    };
+    auto task = save_body();
+    loop.schedule(task);
+    loop.run();
 
-    ZEST_CASE(GrowFailureShedsCleanShards) {
-        TempDir tmp;
-        tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
-        tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
-        open_store(tmp, project);
+    // Rebound: the shard now serves the database's snapshot view — the
+    // same bytes at a different address — with the verification state and
+    // variant set carried over.
+    ASSERT(probe->advances == 1);
+    ASSERT(probe->retires == 1);
+    auto it = project.project_index.shards.find(path_id);
+    ASSERT(it != project.project_index.shards.end());
+    ASSERT(it->second.loaded());
+    ASSERT(it->second.bytes().data() != bytes_before);
+    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int migrate_value() { return 1; }\n"));
+    ASSERT(it->second.variants() == variants_before);
+}
 
-        // grow() failing is backend-independent shed territory: every clean
-        // (non-dirty, possibly borrowed) shard must go with its owner requeued
-        // — the manifests still read fresh, so nothing else would rebuild the
-        // dropped rows — while dirty ones are owned by construction and stay.
-        // The spy also fails dirty.cpp's put so it is re-dirtied by the time
-        // the migration runs.
-        struct FailingGrow final : index::BlobDatabase {
-            std::unique_ptr<index::BlobDatabase> real;
-            std::string fail_key;
+ZEST_CASE(GrowFailureShedsCleanShards) {
+    TempDir tmp;
+    tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
+    tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
+    open_store(tmp, project);
 
-            index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
-                return real->read(kind, key);
-            }
+    // grow() failing is backend-independent shed territory: every clean
+    // (non-dirty, possibly borrowed) shard must go with its owner requeued
+    // — the manifests still read fresh, so nothing else would rebuild the
+    // dropped rows — while dirty ones are owned by construction and stay.
+    // The spy also fails dirty.cpp's put so it is re-dirtied by the time
+    // the migration runs.
+    struct FailingGrow final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
+        std::string fail_key;
 
-            bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
-                return real->contains(kind, key);
-            }
+        index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->read(kind, key);
+        }
 
-            llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                                 llvm::ArrayRef<index::BlobKey> removes) override {
-                auto failed = real->write(puts, removes);
-                for(std::size_t i = 0; i < puts.size(); i += 1) {
-                    if(puts[i].key == fail_key && !llvm::is_contained(failed, i)) {
-                        failed.push_back(i);
-                    }
+        bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey> removes) override {
+            auto failed = real->write(puts, removes);
+            for(std::size_t i = 0; i < puts.size(); i += 1) {
+                if(puts[i].key == fail_key && !llvm::is_contained(failed, i)) {
+                    failed.push_back(i);
                 }
-                return failed;
             }
+            return failed;
+        }
 
-            void for_each_key(index::IndexBlobKind kind,
-                              llvm::function_ref<void(llvm::StringRef)> fn) override {
-                real->for_each_key(kind, fn);
-            }
+        void for_each_key(index::IndexBlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
 
-            std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-                return real->advance_read_snapshot();
-            }
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return real->advance_read_snapshot();
+        }
 
-            void retire_old_snapshot() override {
-                real->retire_old_snapshot();
-            }
+        void retire_old_snapshot() override {
+            real->retire_old_snapshot();
+        }
 
-            std::expected<bool, std::string> grow() override {
-                return std::unexpected(std::string("address space exhausted"));
-            }
-        };
+        std::expected<bool, std::string> grow() override {
+            return std::unexpected(std::string("address space exhausted"));
+        }
+    };
 
-        auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
-        auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
-        ASSERT(!indexed_clean.data.empty());
-        ASSERT(!indexed_dirty.data.empty());
+    auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
+    auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
+    ASSERT(!indexed_clean.data.empty());
+    ASSERT(!indexed_dirty.data.empty());
 
-        auto spy = std::make_unique<FailingGrow>();
-        spy->real = std::move(project.index_db);
-        // Through the pool: the indexer keys blobs by the pool-canonical path,
-        // which need not equal the raw temp path byte-for-byte (Windows 8.3
-        // names).
-        spy->fail_key = blob_key(project.file_table.resolve(
-            project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path))));
-        project.index_db = std::move(spy);
+    auto spy = std::make_unique<FailingGrow>();
+    spy->real = std::move(project.index_db);
+    // Through the pool: the indexer keys blobs by the pool-canonical path,
+    // which need not equal the raw temp path byte-for-byte (Windows 8.3
+    // names).
+    spy->fail_key = blob_key(project.file_table.resolve(
+        project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path))));
+    project.index_db = std::move(spy);
 
-        merge(indexed_clean.data.data(), indexed_clean.data.size());
-        merge(indexed_dirty.data.data(), indexed_dirty.data.size());
-        auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
-        auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
+    merge(indexed_clean.data.data(), indexed_clean.data.size());
+    merge(indexed_dirty.data.data(), indexed_dirty.data.size());
+    auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
+    auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
 
-        auto save_body = [&]() -> kota::task<> {
-            co_await async_save();
-        };
-        auto task = save_body();
-        loop.schedule(task);
-        loop.run();
+    auto save_body = [&]() -> kota::task<> {
+        co_await async_save();
+    };
+    auto task = save_body();
+    loop.schedule(task);
+    loop.run();
 
-        ASSERT(!project.project_index.shards.contains(clean_id));
-        ASSERT(project.project_index.shards.contains(dirty_id));
-        ASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
-    }
+    ASSERT(!project.project_index.shards.contains(clean_id));
+    ASSERT(project.project_index.shards.contains(dirty_id));
+    ASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
+}
 
-    ZEST_CASE(MidSaveMergeKept) {
-        TempDir tmp;
-        tmp.touch("main.cpp", "int first_value() { return 1; }\n");
-        auto src = tmp.path("main.cpp");
-        open_store(tmp, project);
+ZEST_CASE(MidSaveMergeKept) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int first_value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    open_store(tmp, project);
 
-        auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        merge(indexed.data.data(), indexed.data.size());
-        auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
+    auto indexed = index_file(tmp, src);
+    ASSERT(!indexed.data.empty());
+    merge(indexed.data.data(), indexed.data.size());
+    auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
 
-        // Prepared before save() starts so the interleaved merge is purely an
-        // in-memory event.
-        tmp.touch("main.cpp", "int second_value() { return 2; }\n");
-        auto fresh = index_file(tmp, src);
-        ASSERT(!fresh.data.empty());
+    // Prepared before save() starts so the interleaved merge is purely an
+    // in-memory event.
+    tmp.touch("main.cpp", "int second_value() { return 2; }\n");
+    auto fresh = index_file(tmp, src);
+    ASSERT(!fresh.data.empty());
 
-        // The merge task runs when save() suspends at its write await: it
-        // lands after the dirty snapshot was taken and cleared, exactly the
-        // window re-dirtying exists for.
-        auto save_body = [&]() -> kota::task<> {
-            co_await async_save();
-        };
-        std::size_t mid_save_pending = 0;
-        auto merge_body = [&]() -> kota::task<> {
-            mid_save_pending = index_store.pending_shard_writes();
-            merge(fresh.data.data(), fresh.data.size());
-            co_return;
-        };
-        auto save_task = save_body();
-        auto merge_task = merge_body();
-        loop.schedule(save_task);
-        loop.schedule(merge_task);
-        loop.run();
-
-        // Sampled while save() awaited its commit: the settle gauge must keep
-        // covering the in-flight batch, or a stats poll in that window reads
-        // "settled" with last_save_shards still holding its reset.
-        ASSERT(mid_save_pending >= 1);
-
-        // The save committed the pre-merge snapshot: the shard keeps the new
-        // content and stays dirty so the next save commits it.
-        auto it = project.project_index.shards.find(path_id);
-        ASSERT(it != project.project_index.shards.end());
-        ASSERT(index_store.pending_shard_writes() == 1u);
-        ASSERT(it->second.content_hash() ==
-               llvm::xxh3_64bits("int second_value() { return 2; }\n"));
-
-        auto again_body = [&]() -> kota::task<> {
-            co_await async_save();
-        };
-        auto task = again_body();
-        loop.schedule(task);
-        loop.run();
-
-        it = project.project_index.shards.find(path_id);
-        ASSERT(index_store.pending_shard_writes() == 0u);
-        ASSERT(it->second.content_hash() ==
-               llvm::xxh3_64bits("int second_value() { return 2; }\n"));
-    }
-
-    ZEST_CASE(MergeHitWritesNothing) {
-        TempDir tmp;
-        tmp.touch("main.cpp", "int steady() { return 1; }\n");
-        auto src = tmp.path("main.cpp");
-        open_store(tmp, project);
-
-        auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        merge(indexed.data.data(), indexed.data.size());
-        auto save_body = [&]() -> kota::task<> {
-            co_await async_save();
-        };
-        auto task = save_body();
-        loop.schedule(task);
-        loop.run();
-        ASSERT(index_store.pending_shard_writes() == 0u);
-
-        // A re-merge whose rows the shard already stores is the steady state of
-        // every background round: it must record contributions and touch no
-        // blob at all.
-        merge(indexed.data.data(), indexed.data.size());
-        ASSERT(index_store.pending_shard_writes() == 0u);
-    }
-
-    ZEST_CASE(SharedHeaderVariants) {
-        TempDir tmp;
-        tmp.touch("shared.h",
-                  "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
-                  "inline int shared_fn() { return 1; }\n");
-        tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
-        tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
-
-        auto a = index_file(tmp, tmp.path("a.cpp"));
-        auto b = index_file(tmp, tmp.path("b.cpp"), {"-DMODE"});
-        ASSERT(!a.data.empty());
-        ASSERT(!b.data.empty());
-
-        // Two TUs preprocess the header differently: both variants coexist in
-        // one blob, each TU's contribution live.
-        merge(a.data.data(), a.data.size());
-        merge(b.data.data(), b.data.size());
-        auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
-        auto& shard = project.project_index.shards[header_id];
-        ASSERT(shard.variants().size() == std::size_t(2));
-        ASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(2));
-
-        // A third TU sharing a's preprocessing hits the stored variant: the
-        // set does not grow, and neither existing contribution is disturbed.
-        tmp.touch("c.cpp", "#include \"shared.h\"\nint c() { return shared_fn(); }\n");
-        auto c = index_file(tmp, tmp.path("c.cpp"));
-        ASSERT(!c.data.empty());
-        merge(c.data.data(), c.data.size());
-        ASSERT(shard.variants().size() == std::size_t(2));
-        ASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
-
-        // Re-indexing a TU whose header rows are unchanged must not disturb
-        // the other TUs' variants either.
-        tmp.touch("a.cpp", "#include \"shared.h\"\nint a2() { return shared_fn(); }\n");
-        auto fresh = index_file(tmp, tmp.path("a.cpp"));
-        ASSERT(!fresh.data.empty());
+    // The merge task runs when save() suspends at its write await: it
+    // lands after the dirty snapshot was taken and cleared, exactly the
+    // window re-dirtying exists for.
+    auto save_body = [&]() -> kota::task<> {
+        co_await async_save();
+    };
+    std::size_t mid_save_pending = 0;
+    auto merge_body = [&]() -> kota::task<> {
+        mid_save_pending = index_store.pending_shard_writes();
         merge(fresh.data.data(), fresh.data.size());
-        ASSERT(shard.variants().size() == std::size_t(2));
-        ASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
-    }
+        co_return;
+    };
+    auto save_task = save_body();
+    auto merge_task = merge_body();
+    loop.schedule(save_task);
+    loop.schedule(merge_task);
+    loop.run();
 
-    ZEST_CASE(HeaderRegenerationReplaces) {
-        TempDir tmp;
-        tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-        tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
-        auto src = tmp.path("main.cpp");
+    // Sampled while save() awaited its commit: the settle gauge must keep
+    // covering the in-flight batch, or a stats poll in that window reads
+    // "settled" with last_save_shards still holding its reset.
+    ASSERT(mid_save_pending >= 1);
 
-        auto v1 = index_file(tmp, src);
-        ASSERT(!v1.data.empty());
-        merge(v1.data.data(), v1.data.size());
-        auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
-        auto tu_id = project.file_table.intern(Spelling::absolute(v1.tu_path));
-        auto old_hash = project.project_index.contributions.lookup(header_id).lookup(tu_id);
-        ASSERT(old_hash != 0);
+    // The save committed the pre-merge snapshot: the shard keeps the new
+    // content and stays dirty so the next save commits it.
+    auto it = project.project_index.shards.find(path_id);
+    ASSERT(it != project.project_index.shards.end());
+    ASSERT(index_store.pending_shard_writes() == 1u);
+    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int second_value() { return 2; }\n"));
 
-        // The header changes, a reindex captures it — and the header changes
-        // AGAIN before the result merges. The worker's bytes are their own
-        // generation: they land verbatim regardless of the disk moving on, and
-        // freshness gating owns the remaining drift.
-        tmp.touch("dep.h", "#pragma once\ninline int dep() { return 2; }\n");
-        auto v2 = index_file(tmp, src);
-        ASSERT(!v2.data.empty());
-        tmp.touch("dep.h", "#pragma once\ninline int dep() { return 3; }\n");
+    auto again_body = [&]() -> kota::task<> {
+        co_await async_save();
+    };
+    auto task = again_body();
+    loop.schedule(task);
+    loop.run();
 
-        merge(v2.data.data(), v2.data.size());
-        auto new_hash = project.project_index.contributions.lookup(header_id).lookup(tu_id);
-        ASSERT(new_hash != 0);
-        ASSERT(new_hash != old_hash);
-        ASSERT(project.project_index.shards[header_id].has_variant(new_hash));
-        // A new content generation never shares row storage with the old one.
-        ASSERT(!project.project_index.shards[header_id].has_variant(old_hash));
-        ASSERT(project.project_index.shards[header_id].content_hash() ==
-               llvm::xxh3_64bits("#pragma once\ninline int dep() { return 2; }\n"));
-    }
+    it = project.project_index.shards.find(path_id);
+    ASSERT(index_store.pending_shard_writes() == 0u);
+    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int second_value() { return 2; }\n"));
+}
 
-    ZEST_CASE(SaveCompactsAndRetires) {
-        TempDir tmp;
-        tmp.touch("shared.h",
-                  "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
-                  "inline int shared_fn() { return 1; }\n");
-        tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
-        tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
-        open_store(tmp, project);
+ZEST_CASE(MergeHitWritesNothing) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int steady() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    open_store(tmp, project);
 
-        auto a = index_file(tmp, tmp.path("a.cpp"));
-        auto b = index_file(tmp, tmp.path("b.cpp"), {"-DMODE"});
-        ASSERT(!a.data.empty());
-        ASSERT(!b.data.empty());
-        merge(a.data.data(), a.data.size());
-        merge(b.data.data(), b.data.size());
-        auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
-        ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(2));
+    auto indexed = index_file(tmp, src);
+    ASSERT(!indexed.data.empty());
+    merge(indexed.data.data(), indexed.data.size());
+    auto save_body = [&]() -> kota::task<> {
+        co_await async_save();
+    };
+    auto task = save_body();
+    loop.schedule(task);
+    loop.run();
+    ASSERT(index_store.pending_shard_writes() == 0u);
 
-        auto save = [&] {
-            auto body = [&]() -> kota::task<> {
-                co_await async_save();
-            };
-            auto task = body();
-            loop.schedule(task);
-            loop.run();
-        };
-        save();
+    // A re-merge whose rows the shard already stores is the steady state of
+    // every background round: it must record contributions and touch no
+    // blob at all.
+    merge(indexed.data.data(), indexed.data.size());
+    ASSERT(index_store.pending_shard_writes() == 0u);
+}
 
-        // b stops including the header: its variant dies, and the next save
-        // erases the dead rows for real.
-        tmp.touch("b.cpp", "int b() { return 2; }\n");
-        auto b2 = index_file(tmp, tmp.path("b.cpp"));
-        ASSERT(!b2.data.empty());
-        merge(b2.data.data(), b2.data.size());
-        ASSERT(project.project_index.shards[header_id].has_dead_variants());
-        save();
-        ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
+ZEST_CASE(SharedHeaderVariants) {
+    TempDir tmp;
+    tmp.touch("shared.h",
+              "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
+              "inline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
 
-        // a drops it too: no contribution is left, so the shard retires from
-        // memory and from storage — with no owner left to re-enqueue.
-        tmp.touch("a.cpp", "int a() { return 3; }\n");
-        auto a2 = index_file(tmp, tmp.path("a.cpp"));
-        ASSERT(!a2.data.empty());
-        merge(a2.data.data(), a2.data.size());
-        save();
-        ASSERT(!project.project_index.shards.contains(header_id));
-        ASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
-                    .has_value());
-        bool on_disk = false;
-        auto key = blob_key(project.file_table.resolve(header_id));
-        project.index_db->for_each_key(index::IndexBlobKind::Shard,
-                                       [&](llvm::StringRef k) { on_disk |= k == key; });
-        ASSERT(!on_disk);
-    }
+    auto a = index_file(tmp, tmp.path("a.cpp"));
+    auto b = index_file(tmp, tmp.path("b.cpp"), {"-DMODE"});
+    ASSERT(!a.data.empty());
+    ASSERT(!b.data.empty());
 
-    ZEST_CASE(SaveRetiresPinnedShard) {
-        TempDir tmp;
-        tmp.touch("pinned.h",
-                  "#pragma once\n#ifdef MODE\nint pin_mode();\n#endif\n"
-                  "inline int pin_fn() { return 1; }\n");
-        tmp.touch("pa.cpp", "#include \"pinned.h\"\nint pa() { return pin_fn(); }\n");
-        tmp.touch("pb.cpp", "#include \"pinned.h\"\nint pb() { return pin_fn(); }\n");
-        open_store(tmp, project);
+    // Two TUs preprocess the header differently: both variants coexist in
+    // one blob, each TU's contribution live.
+    merge(a.data.data(), a.data.size());
+    merge(b.data.data(), b.data.size());
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
+    auto& shard = project.project_index.shards[header_id];
+    ASSERT(shard.variants().size() == std::size_t(2));
+    ASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(2));
 
-        auto a = index_file(tmp, tmp.path("pa.cpp"));
-        auto b = index_file(tmp, tmp.path("pb.cpp"), {"-DMODE"});
-        ASSERT(!a.data.empty());
-        ASSERT(!b.data.empty());
-        merge(a.data.data(), a.data.size());
-        merge(b.data.data(), b.data.size());
-        auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("pinned.h")));
-        ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(2));
+    // A third TU sharing a's preprocessing hits the stored variant: the
+    // set does not grow, and neither existing contribution is disturbed.
+    tmp.touch("c.cpp", "#include \"shared.h\"\nint c() { return shared_fn(); }\n");
+    auto c = index_file(tmp, tmp.path("c.cpp"));
+    ASSERT(!c.data.empty());
+    merge(c.data.data(), c.data.size());
+    ASSERT(shard.variants().size() == std::size_t(2));
+    ASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
 
-        // The header moves to a new content generation and only pa catches up:
-        // the blob starts over with pa's variant, while pb's manifest still
-        // pins a hash the blob no longer stores.
-        tmp.touch("pinned.h",
-                  "#pragma once\n#ifdef MODE\nint pin_mode();\n#endif\n"
-                  "inline int pin_fn() { return 2; }\n");
-        auto a2 = index_file(tmp, tmp.path("pa.cpp"));
-        ASSERT(!a2.data.empty());
-        merge(a2.data.data(), a2.data.size());
-        ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
+    // Re-indexing a TU whose header rows are unchanged must not disturb
+    // the other TUs' variants either.
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a2() { return shared_fn(); }\n");
+    auto fresh = index_file(tmp, tmp.path("a.cpp"));
+    ASSERT(!fresh.data.empty());
+    merge(fresh.data.data(), fresh.data.size());
+    ASSERT(shard.variants().size() == std::size_t(2));
+    ASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
+}
 
-        // The rebuild re-enqueued pb; its pass then runs and fails, consuming
-        // the slot — the state the retirement below must repair on its own.
-        pump.clear_pending(project.file_table.intern(Spelling::absolute(b.tu_path)));
+ZEST_CASE(HeaderRegenerationReplaces) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
 
-        // pa's index drops before pb reindexes: every stored variant is dead,
-        // but pb's pinned hash keeps the live set nonempty. The save must
-        // retire the shard rather than compact to an empty variant set.
-        drop_index(project.file_table.intern(Spelling::absolute(a2.tu_path)));
+    auto v1 = index_file(tmp, src);
+    ASSERT(!v1.data.empty());
+    merge(v1.data.data(), v1.data.size());
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
+    auto tu_id = project.file_table.intern(Spelling::absolute(v1.tu_path));
+    auto old_hash = project.project_index.contributions.lookup(header_id).lookup(tu_id);
+    ASSERT(old_hash != 0);
+
+    // The header changes, a reindex captures it — and the header changes
+    // AGAIN before the result merges. The worker's bytes are their own
+    // generation: they land verbatim regardless of the disk moving on, and
+    // freshness gating owns the remaining drift.
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 2; }\n");
+    auto v2 = index_file(tmp, src);
+    ASSERT(!v2.data.empty());
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 3; }\n");
+
+    merge(v2.data.data(), v2.data.size());
+    auto new_hash = project.project_index.contributions.lookup(header_id).lookup(tu_id);
+    ASSERT(new_hash != 0);
+    ASSERT(new_hash != old_hash);
+    ASSERT(project.project_index.shards[header_id].has_variant(new_hash));
+    // A new content generation never shares row storage with the old one.
+    ASSERT(!project.project_index.shards[header_id].has_variant(old_hash));
+    ASSERT(project.project_index.shards[header_id].content_hash() ==
+           llvm::xxh3_64bits("#pragma once\ninline int dep() { return 2; }\n"));
+}
+
+ZEST_CASE(SaveCompactsAndRetires) {
+    TempDir tmp;
+    tmp.touch("shared.h",
+              "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
+              "inline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
+    open_store(tmp, project);
+
+    auto a = index_file(tmp, tmp.path("a.cpp"));
+    auto b = index_file(tmp, tmp.path("b.cpp"), {"-DMODE"});
+    ASSERT(!a.data.empty());
+    ASSERT(!b.data.empty());
+    merge(a.data.data(), a.data.size());
+    merge(b.data.data(), b.data.size());
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
+    ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(2));
+
+    auto save = [&] {
         auto body = [&]() -> kota::task<> {
             co_await async_save();
         };
         auto task = body();
         loop.schedule(task);
         loop.run();
+    };
+    save();
 
-        ASSERT(!project.project_index.shards.contains(header_id));
-        bool on_disk = false;
-        auto key = blob_key(project.file_table.resolve(header_id));
-        project.index_db->for_each_key(index::IndexBlobKind::Shard,
-                                       [&](llvm::StringRef k) { on_disk |= k == key; });
-        ASSERT(!on_disk);
+    // b stops including the header: its variant dies, and the next save
+    // erases the dead rows for real.
+    tmp.touch("b.cpp", "int b() { return 2; }\n");
+    auto b2 = index_file(tmp, tmp.path("b.cpp"));
+    ASSERT(!b2.data.empty());
+    merge(b2.data.data(), b2.data.size());
+    ASSERT(project.project_index.shards[header_id].has_dead_variants());
+    save();
+    ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
 
-        // pb's manifest survives, still pinning rows the retirement made
-        // unservable; nothing else in this process would rebuild them (a
-        // reverted header even reads fresh by hash), so the retirement must
-        // re-enqueue pb itself.
-        ASSERT(pump.pending_reason(project.file_table.intern(Spelling::absolute(b.tu_path))) ==
-               ReindexReason::ContentChanged);
+    // a drops it too: no contribution is left, so the shard retires from
+    // memory and from storage — with no owner left to re-enqueue.
+    tmp.touch("a.cpp", "int a() { return 3; }\n");
+    auto a2 = index_file(tmp, tmp.path("a.cpp"));
+    ASSERT(!a2.data.empty());
+    merge(a2.data.data(), a2.data.size());
+    save();
+    ASSERT(!project.project_index.shards.contains(header_id));
+    ASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
+                .has_value());
+    bool on_disk = false;
+    auto key = blob_key(project.file_table.resolve(header_id));
+    project.index_db->for_each_key(index::IndexBlobKind::Shard,
+                                   [&](llvm::StringRef k) { on_disk |= k == key; });
+    ASSERT(!on_disk);
+}
+
+ZEST_CASE(SaveRetiresPinnedShard) {
+    TempDir tmp;
+    tmp.touch("pinned.h",
+              "#pragma once\n#ifdef MODE\nint pin_mode();\n#endif\n"
+              "inline int pin_fn() { return 1; }\n");
+    tmp.touch("pa.cpp", "#include \"pinned.h\"\nint pa() { return pin_fn(); }\n");
+    tmp.touch("pb.cpp", "#include \"pinned.h\"\nint pb() { return pin_fn(); }\n");
+    open_store(tmp, project);
+
+    auto a = index_file(tmp, tmp.path("pa.cpp"));
+    auto b = index_file(tmp, tmp.path("pb.cpp"), {"-DMODE"});
+    ASSERT(!a.data.empty());
+    ASSERT(!b.data.empty());
+    merge(a.data.data(), a.data.size());
+    merge(b.data.data(), b.data.size());
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("pinned.h")));
+    ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(2));
+
+    // The header moves to a new content generation and only pa catches up:
+    // the blob starts over with pa's variant, while pb's manifest still
+    // pins a hash the blob no longer stores.
+    tmp.touch("pinned.h",
+              "#pragma once\n#ifdef MODE\nint pin_mode();\n#endif\n"
+              "inline int pin_fn() { return 2; }\n");
+    auto a2 = index_file(tmp, tmp.path("pa.cpp"));
+    ASSERT(!a2.data.empty());
+    merge(a2.data.data(), a2.data.size());
+    ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
+
+    // The rebuild re-enqueued pb; its pass then runs and fails, consuming
+    // the slot — the state the retirement below must repair on its own.
+    pump.clear_pending(project.file_table.intern(Spelling::absolute(b.tu_path)));
+
+    // pa's index drops before pb reindexes: every stored variant is dead,
+    // but pb's pinned hash keeps the live set nonempty. The save must
+    // retire the shard rather than compact to an empty variant set.
+    drop_index(project.file_table.intern(Spelling::absolute(a2.tu_path)));
+    auto body = [&]() -> kota::task<> {
+        co_await async_save();
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+
+    ASSERT(!project.project_index.shards.contains(header_id));
+    bool on_disk = false;
+    auto key = blob_key(project.file_table.resolve(header_id));
+    project.index_db->for_each_key(index::IndexBlobKind::Shard,
+                                   [&](llvm::StringRef k) { on_disk |= k == key; });
+    ASSERT(!on_disk);
+
+    // pb's manifest survives, still pinning rows the retirement made
+    // unservable; nothing else in this process would rebuild them (a
+    // reverted header even reads fresh by hash), so the retirement must
+    // re-enqueue pb itself.
+    ASSERT(pump.pending_reason(project.file_table.intern(Spelling::absolute(b.tu_path))) ==
+           ReindexReason::ContentChanged);
+}
+
+ZEST_CASE(RebuildRequeuesPinnedOwner) {
+    TempDir tmp;
+    tmp.touch("gen.h",
+              "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
+              "inline int gen_fn() { return 1; }\n");
+    tmp.touch("ga.cpp", "#include \"gen.h\"\nint ga() { return gen_fn(); }\n");
+    tmp.touch("gb.cpp", "#include \"gen.h\"\nint gb() { return gen_fn(); }\n");
+
+    auto a = index_file(tmp, tmp.path("ga.cpp"));
+    auto b = index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"});
+    ASSERT(!a.data.empty());
+    ASSERT(!b.data.empty());
+    merge(a.data.data(), a.data.size());
+    merge(b.data.data(), b.data.size());
+    auto b_tu = project.file_table.intern(Spelling::absolute(b.tu_path));
+    ASSERT(!pump.pending_reason(b_tu).has_value());
+
+    // The header moves to a new content generation and only ga catches up:
+    // the rebuilt blob discards gb's variant. With no pending slot left for
+    // gb, no in-process event would rebuild its rows — the rebuild itself
+    // must re-enqueue it, and as ContentChanged: a reverted header reads
+    // fresh by hash, which a deps-only slot would skip past.
+    tmp.touch("gen.h",
+              "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
+              "inline int gen_fn() { return 2; }\n");
+    auto a2 = index_file(tmp, tmp.path("ga.cpp"));
+    ASSERT(!a2.data.empty());
+    merge(a2.data.data(), a2.data.size());
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
+    ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
+
+    ASSERT(pump.pending_reason(b_tu) == ReindexReason::ContentChanged);
+    // ga's own fresh pin is stored: the rebuild must not re-enqueue it.
+    ASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
+                .has_value());
+}
+
+ZEST_CASE(RejectsCorruptSection) {
+    TempDir tmp;
+    tmp.touch("cor.h", "#pragma once\ninline int cor() { return 1; }\n");
+    tmp.touch("cor_main.cpp", "#include \"cor.h\"\nint use_cor() { return cor(); }\n");
+
+    auto indexed = index_file(tmp, tmp.path("cor_main.cpp"));
+    ASSERT(!indexed.data.empty());
+
+    // Corrupt the main file's blob bytes in place: the outer wire still
+    // verifies (sections are opaque bytes to it), only the blob's byte
+    // identity check against the recorded section hash fails.
+    std::string corrupt = indexed.data;
+    auto tampered = index::TUIndex::from_bytes(corrupt);
+    ASSERT(tampered.loaded());
+    auto main_section = tampered.section_of(tampered.path_count() - 1);
+    ASSERT(main_section);
+    auto blob = tampered.section_blob(*main_section);
+    auto pos = llvm::StringRef(corrupt).find(blob);
+    ASSERT(pos != llvm::StringRef::npos);
+    for(std::size_t i = 0; i < blob.size(); i += 1) {
+        corrupt[pos + i] = 'X';
     }
 
-    ZEST_CASE(RebuildRequeuesPinnedOwner) {
-        TempDir tmp;
-        tmp.touch("gen.h",
-                  "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
-                  "inline int gen_fn() { return 1; }\n");
-        tmp.touch("ga.cpp", "#include \"gen.h\"\nint ga() { return gen_fn(); }\n");
-        tmp.touch("gb.cpp", "#include \"gen.h\"\nint gb() { return gen_fn(); }\n");
+    // The header section verifies fine and is staged before the main
+    // section's identity check fails; the reject must discard the whole
+    // result — a manifest whose recorded versions all match the disk would
+    // otherwise be judged fresh forever with the main file's rows missing.
+    merge(corrupt.data(), corrupt.size());
+    auto tu_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("cor.h")));
+    ASSERT(!project.project_index.manifests.contains(tu_id));
+    ASSERT(!project.project_index.shards.contains(header_id));
+    // No global trace either: symbol identities from an untrusted result
+    // would stay canonical for their hashes forever (later merges only
+    // fill empty names), and stray FileVersions would persist with the
+    // next save.
+    ASSERT(project.project_index.symbol_count() == 0u);
+    ASSERT(project.file_table.versions.empty());
 
-        auto a = index_file(tmp, tmp.path("ga.cpp"));
-        auto b = index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"});
-        ASSERT(!a.data.empty());
-        ASSERT(!b.data.empty());
-        merge(a.data.data(), a.data.size());
-        merge(b.data.data(), b.data.size());
-        auto b_tu = project.file_table.intern(Spelling::absolute(b.tu_path));
-        ASSERT(!pump.pending_reason(b_tu).has_value());
+    // The intact result still lands afterwards.
+    merge(indexed.data.data(), indexed.data.size());
+    ASSERT(project.project_index.manifests.contains(tu_id));
+    ASSERT(project.project_index.shards.contains(header_id));
+}
 
-        // The header moves to a new content generation and only ga catches up:
-        // the rebuilt blob discards gb's variant. With no pending slot left for
-        // gb, no in-process event would rebuild its rows — the rebuild itself
-        // must re-enqueue it, and as ContentChanged: a reverted header reads
-        // fresh by hash, which a deps-only slot would skip past.
-        tmp.touch("gen.h",
-                  "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
-                  "inline int gen_fn() { return 2; }\n");
-        auto a2 = index_file(tmp, tmp.path("ga.cpp"));
-        ASSERT(!a2.data.empty());
-        merge(a2.data.data(), a2.data.size());
-        auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
-        ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
+ZEST_CASE(HashlessRemergeHits) {
+    TempDir tmp;
+    tmp.touch("pcm.cpp", "int hashless_fn() { return 7; }\n");
+    auto src = tmp.path("pcm.cpp");
+    auto indexed = index_file(tmp, src);
+    ASSERT(!indexed.data.empty());
 
-        ASSERT(pump.pending_reason(b_tu) == ReindexReason::ContentChanged);
-        // ga's own fresh pin is stored: the rebuild must not re-enqueue it.
-        ASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
-                    .has_value());
-    }
+    // A file behind a PCM ships no consumed-content hash; the variant
+    // identity is the blob's own byte hash, so membership needs no
+    // content vouching at all.
+    auto wire = strip_path_hashes(indexed.data);
+    ASSERT(!wire.empty());
 
-    ZEST_CASE(RejectsCorruptSection) {
-        TempDir tmp;
-        tmp.touch("cor.h", "#pragma once\ninline int cor() { return 1; }\n");
-        tmp.touch("cor_main.cpp", "#include \"cor.h\"\nint use_cor() { return cor(); }\n");
+    merge(wire.data(), wire.size());
+    auto path_id = project.file_table.intern(Spelling::absolute(src));
+    ASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
 
-        auto indexed = index_file(tmp, tmp.path("cor_main.cpp"));
-        ASSERT(!indexed.data.empty());
+    // Re-merging the same rows must register as a hit, not append the
+    // stored variant to the blob a second time.
+    merge(wire.data(), wire.size());
+    ASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
+}
 
-        // Corrupt the main file's blob bytes in place: the outer wire still
-        // verifies (sections are opaque bytes to it), only the blob's byte
-        // identity check against the recorded section hash fails.
-        std::string corrupt = indexed.data;
-        auto tampered = index::TUIndex::from_bytes(corrupt);
-        ASSERT(tampered.loaded());
-        auto main_section = tampered.section_of(tampered.path_count() - 1);
-        ASSERT(main_section);
-        auto blob = tampered.section_blob(*main_section);
-        auto pos = llvm::StringRef(corrupt).find(blob);
-        ASSERT(pos != llvm::StringRef::npos);
-        for(std::size_t i = 0; i < blob.size(); i += 1) {
-            corrupt[pos + i] = 'X';
+ZEST_CASE(FailedWriteNotCounted) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int uncommitted() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    // A storage whose commits never land (disk full, permissions): the
+    // gauge must report what was durably committed, not what the save
+    // attempted.
+    struct FailingStorage final : index::BlobDatabase {
+        index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
+            return {};
         }
 
-        // The header section verifies fine and is staged before the main
-        // section's identity check fails; the reject must discard the whole
-        // result — a manifest whose recorded versions all match the disk would
-        // otherwise be judged fresh forever with the main file's rows missing.
-        merge(corrupt.data(), corrupt.size());
-        auto tu_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
-        auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("cor.h")));
-        ASSERT(!project.project_index.manifests.contains(tu_id));
-        ASSERT(!project.project_index.shards.contains(header_id));
-        // No global trace either: symbol identities from an untrusted result
-        // would stay canonical for their hashes forever (later merges only
-        // fill empty names), and stray FileVersions would persist with the
-        // next save.
-        ASSERT(project.project_index.symbol_count() == 0u);
-        ASSERT(project.file_table.versions.empty());
+        bool contains(index::IndexBlobKind, llvm::StringRef) override {
+            return false;
+        }
 
-        // The intact result still lands afterwards.
-        merge(indexed.data.data(), indexed.data.size());
-        ASSERT(project.project_index.manifests.contains(tu_id));
-        ASSERT(project.project_index.shards.contains(header_id));
-    }
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey>) override {
+            llvm::SmallVector<std::size_t> failed;
+            for(std::size_t i = 0; i < puts.size(); i += 1) {
+                failed.push_back(i);
+            }
+            return failed;
+        }
 
-    ZEST_CASE(HashlessRemergeHits) {
-        TempDir tmp;
-        tmp.touch("pcm.cpp", "int hashless_fn() { return 7; }\n");
-        auto src = tmp.path("pcm.cpp");
-        auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        void for_each_key(index::IndexBlobKind,
+                          llvm::function_ref<void(llvm::StringRef)>) override {}
 
-        // A file behind a PCM ships no consumed-content hash; the variant
-        // identity is the blob's own byte hash, so membership needs no
-        // content vouching at all.
-        auto wire = strip_path_hashes(indexed.data);
-        ASSERT(!wire.empty());
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 0;
+        }
 
-        merge(wire.data(), wire.size());
-        auto path_id = project.file_table.intern(Spelling::absolute(src));
-        ASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
+        void retire_old_snapshot() override {}
 
-        // Re-merging the same rows must register as a hit, not append the
-        // stored variant to the blob a second time.
-        merge(wire.data(), wire.size());
-        ASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
-    }
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+    };
 
-    ZEST_CASE(FailedWriteNotCounted) {
-        TempDir tmp;
-        tmp.touch("main.cpp", "int uncommitted() { return 1; }\n");
-        auto src = tmp.path("main.cpp");
+    project.index_db = std::make_unique<FailingStorage>();
 
-        // A storage whose commits never land (disk full, permissions): the
-        // gauge must report what was durably committed, not what the save
-        // attempted.
-        struct FailingStorage final : index::BlobDatabase {
-            index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
+    auto indexed = index_file(tmp, src);
+    ASSERT(!indexed.data.empty());
+    merge(indexed.data.data(), indexed.data.size());
+    ASSERT(index_store.pending_shard_writes() == 1u);
+
+    auto save = [&] {
+        auto body = [&]() -> kota::task<> {
+            co_await async_save();
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    };
+    save();
+    ASSERT(index_store.last_save_shards() == 0u);
+    // The failed batch is re-dirtied rather than discarded, so a later
+    // save has it to retry and the cache converges once the storage
+    // recovers.
+    ASSERT(index_store.pending_shard_writes() == 1u);
+
+    open_store(tmp, project);
+    save();
+    ASSERT(index_store.last_save_shards() == 1u);
+    ASSERT(index_store.pending_shard_writes() == 0u);
+}
+
+ZEST_CASE(WriteCorruptionRebuildsDatabase) {
+    TempDir tmp;
+    tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
+    tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
+    open_store(tmp, project);
+
+    // Corruption surfacing at write time (a damaged page only the write's
+    // tree descent reaches): the save must condemn the environment and
+    // continue on a fresh one instead of re-writing into it every save.
+    // Batch shards own their bytes and stay to re-persist; the clean
+    // resident view is shed and its owner re-enqueued.
+    struct CorruptOnWrite final : index::BlobDatabase {
+        bool* condemned;
+        bool fail = false;
+        bool poisoned = false;
+
+        index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
+            return {};
+        }
+
+        bool contains(index::IndexBlobKind, llvm::StringRef) override {
+            return false;
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey>) override {
+            if(!fail) {
                 return {};
             }
-
-            bool contains(index::IndexBlobKind, llvm::StringRef) override {
-                return false;
+            poisoned = true;
+            llvm::SmallVector<std::size_t> failed;
+            for(std::size_t i = 0; i < puts.size(); i += 1) {
+                failed.push_back(i);
             }
+            return failed;
+        }
 
-            llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                                 llvm::ArrayRef<index::BlobKey>) override {
-                llvm::SmallVector<std::size_t> failed;
-                for(std::size_t i = 0; i < puts.size(); i += 1) {
-                    failed.push_back(i);
-                }
-                return failed;
-            }
+        void for_each_key(index::IndexBlobKind,
+                          llvm::function_ref<void(llvm::StringRef)>) override {}
 
-            void for_each_key(index::IndexBlobKind,
-                              llvm::function_ref<void(llvm::StringRef)>) override {}
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 0;
+        }
 
-            std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-                return 0;
-            }
+        void retire_old_snapshot() override {}
 
-            void retire_old_snapshot() override {}
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
 
-            std::expected<bool, std::string> grow() override {
-                return false;
-            }
+        bool corrupted() const override {
+            return poisoned;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    bool condemned = false;
+    auto spy = std::make_unique<CorruptOnWrite>();
+    spy->condemned = &condemned;
+    auto* probe = spy.get();
+    project.index_db = std::move(spy);
+
+    auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
+    auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
+    ASSERT(!indexed_clean.data.empty());
+    ASSERT(!indexed_dirty.data.empty());
+
+    auto save = [&] {
+        auto body = [&]() -> kota::task<> {
+            co_await async_save();
         };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    };
 
-        project.index_db = std::make_unique<FailingStorage>();
+    merge(indexed_clean.data.data(), indexed_clean.data.size());
+    save();
+    merge(indexed_dirty.data.data(), indexed_dirty.data.size());
+    probe->fail = true;
+    save();
 
-        auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        merge(indexed.data.data(), indexed.data.size());
-        ASSERT(index_store.pending_shard_writes() == 1u);
+    ASSERT(condemned);
+    ASSERT(project.index_db != nullptr);
+    auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
+    auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
+    ASSERT(!project.project_index.shards.contains(clean_id));
+    ASSERT(project.project_index.shards.contains(dirty_id));
+    ASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
+    ASSERT(index_store.last_save_shards() == 0u);
 
-        auto save = [&] {
-            auto body = [&]() -> kota::task<> {
-                co_await async_save();
-            };
-            auto task = body();
-            loop.schedule(task);
-            loop.run();
+    // The next save re-persists everything servable into the fresh database.
+    save();
+    ASSERT(index_store.last_save_shards() == 1u);
+    ASSERT(!index_store.has_unsaved_state());
+}
+
+ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
+    open_store(tmp, project);
+
+    // Corruption surfacing first at migration time (a damaged page only the
+    // re-read from the advanced snapshot reaches, after the write-time
+    // check passed): same recovery as write-time corruption — the resident
+    // view is shed with its owner re-enqueued, the environment condemned
+    // and replaced by a fresh one.
+    struct CorruptOnRead final : index::BlobDatabase {
+        bool* condemned;
+        bool poisoned = false;
+
+        index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
+            poisoned = true;
+            return {};
+        }
+
+        bool contains(index::IndexBlobKind, llvm::StringRef) override {
+            return false;
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob>,
+                                             llvm::ArrayRef<index::BlobKey>) override {
+            return {};
+        }
+
+        void for_each_key(index::IndexBlobKind,
+                          llvm::function_ref<void(llvm::StringRef)>) override {}
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 2;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return poisoned;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    bool condemned = false;
+    auto spy = std::make_unique<CorruptOnRead>();
+    spy->condemned = &condemned;
+    project.index_db = std::move(spy);
+
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ASSERT(!indexed.data.empty());
+    merge(indexed.data.data(), indexed.data.size());
+
+    auto save = [&] {
+        auto body = [&]() -> kota::task<> {
+            co_await async_save();
         };
-        save();
-        ASSERT(index_store.last_save_shards() == 0u);
-        // The failed batch is re-dirtied rather than discarded, so a later
-        // save has it to retry and the cache converges once the storage
-        // recovers.
-        ASSERT(index_store.pending_shard_writes() == 1u);
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    };
+    save();
 
-        open_store(tmp, project);
-        save();
-        ASSERT(index_store.last_save_shards() == 1u);
-        ASSERT(index_store.pending_shard_writes() == 0u);
-    }
+    auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
+    ASSERT(condemned);
+    ASSERT(project.index_db != nullptr);
+    ASSERT(!project.project_index.shards.contains(path_id));
+    ASSERT(pump.pending_reason(path_id) == ReindexReason::ContentChanged);
+    ASSERT(index_store.last_save_shards() == 0u);
 
-    ZEST_CASE(WriteCorruptionRebuildsDatabase) {
-        TempDir tmp;
-        tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
-        tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
-        open_store(tmp, project);
-
-        // Corruption surfacing at write time (a damaged page only the write's
-        // tree descent reaches): the save must condemn the environment and
-        // continue on a fresh one instead of re-writing into it every save.
-        // Batch shards own their bytes and stay to re-persist; the clean
-        // resident view is shed and its owner re-enqueued.
-        struct CorruptOnWrite final : index::BlobDatabase {
-            bool* condemned;
-            bool fail = false;
-            bool poisoned = false;
-
-            index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
-                return {};
-            }
-
-            bool contains(index::IndexBlobKind, llvm::StringRef) override {
-                return false;
-            }
-
-            llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                                 llvm::ArrayRef<index::BlobKey>) override {
-                if(!fail) {
-                    return {};
-                }
-                poisoned = true;
-                llvm::SmallVector<std::size_t> failed;
-                for(std::size_t i = 0; i < puts.size(); i += 1) {
-                    failed.push_back(i);
-                }
-                return failed;
-            }
-
-            void for_each_key(index::IndexBlobKind,
-                              llvm::function_ref<void(llvm::StringRef)>) override {}
-
-            std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-                return 0;
-            }
-
-            void retire_old_snapshot() override {}
-
-            std::expected<bool, std::string> grow() override {
-                return false;
-            }
-
-            bool corrupted() const override {
-                return poisoned;
-            }
-
-            void condemn() override {
-                *condemned = true;
-            }
-        };
-
-        bool condemned = false;
-        auto spy = std::make_unique<CorruptOnWrite>();
-        spy->condemned = &condemned;
-        auto* probe = spy.get();
-        project.index_db = std::move(spy);
-
-        auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
-        auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
-        ASSERT(!indexed_clean.data.empty());
-        ASSERT(!indexed_dirty.data.empty());
-
-        auto save = [&] {
-            auto body = [&]() -> kota::task<> {
-                co_await async_save();
-            };
-            auto task = body();
-            loop.schedule(task);
-            loop.run();
-        };
-
-        merge(indexed_clean.data.data(), indexed_clean.data.size());
-        save();
-        merge(indexed_dirty.data.data(), indexed_dirty.data.size());
-        probe->fail = true;
-        save();
-
-        ASSERT(condemned);
-        ASSERT(project.index_db != nullptr);
-        auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
-        auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
-        ASSERT(!project.project_index.shards.contains(clean_id));
-        ASSERT(project.project_index.shards.contains(dirty_id));
-        ASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
-        ASSERT(index_store.last_save_shards() == 0u);
-
-        // The next save re-persists everything servable into the fresh database.
-        save();
-        ASSERT(index_store.last_save_shards() == 1u);
-        ASSERT(!index_store.has_unsaved_state());
-    }
-
-    ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
-        TempDir tmp;
-        tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
-        open_store(tmp, project);
-
-        // Corruption surfacing first at migration time (a damaged page only the
-        // re-read from the advanced snapshot reaches, after the write-time
-        // check passed): same recovery as write-time corruption — the resident
-        // view is shed with its owner re-enqueued, the environment condemned
-        // and replaced by a fresh one.
-        struct CorruptOnRead final : index::BlobDatabase {
-            bool* condemned;
-            bool poisoned = false;
-
-            index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
-                poisoned = true;
-                return {};
-            }
-
-            bool contains(index::IndexBlobKind, llvm::StringRef) override {
-                return false;
-            }
-
-            llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob>,
-                                                 llvm::ArrayRef<index::BlobKey>) override {
-                return {};
-            }
-
-            void for_each_key(index::IndexBlobKind,
-                              llvm::function_ref<void(llvm::StringRef)>) override {}
-
-            std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-                return 2;
-            }
-
-            void retire_old_snapshot() override {}
-
-            std::expected<bool, std::string> grow() override {
-                return false;
-            }
-
-            bool corrupted() const override {
-                return poisoned;
-            }
-
-            void condemn() override {
-                *condemned = true;
-            }
-        };
-
-        bool condemned = false;
-        auto spy = std::make_unique<CorruptOnRead>();
-        spy->condemned = &condemned;
-        project.index_db = std::move(spy);
-
-        auto indexed = index_file(tmp, tmp.path("main.cpp"));
-        ASSERT(!indexed.data.empty());
-        merge(indexed.data.data(), indexed.data.size());
-
-        auto save = [&] {
-            auto body = [&]() -> kota::task<> {
-                co_await async_save();
-            };
-            auto task = body();
-            loop.schedule(task);
-            loop.run();
-        };
-        save();
-
-        auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
-        ASSERT(condemned);
-        ASSERT(project.index_db != nullptr);
-        ASSERT(!project.project_index.shards.contains(path_id));
-        ASSERT(pump.pending_reason(path_id) == ReindexReason::ContentChanged);
-        ASSERT(index_store.last_save_shards() == 0u);
-
-        // The re-dirtied manifests, global and CDB snapshot re-persist into
-        // the fresh database.
-        save();
-        ASSERT(!index_store.has_unsaved_state());
-    }
+    // The re-dirtied manifests, global and CDB snapshot re-persist into
+    // the fresh database.
+    save();
+    ASSERT(!index_store.has_unsaved_state());
+}
 
 };  // ZEST_SUITE(IndexerMerge)
 
 ZEST_SUITE(IndexerStaleness) {
-    /// A merged TU with one header dependency, ready for staleness probing.
-    struct Indexed {
-        TempDir tmp;
-        IndexerFixture f;
-        std::string src;
-        std::string header;
 
-        bool setup() {
-            tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-            tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
-            src = tmp.path("main.cpp");
-            header = tmp.path("dep.h");
-            // Age the files out of the mtime guard window so their stats can
-            // vouch for them, the way real project files predate an index run.
-            if(!set_file_mtime(src, file_mtime_ns(src) - 10'000'000'000) ||
-               !set_file_mtime(header, file_mtime_ns(header) - 10'000'000'000)) {
-                return false;
-            }
-            auto indexed = index_file(tmp, src);
-            if(indexed.data.empty()) {
-                return false;
-            }
-            f.merge(indexed.data.data(), indexed.data.size());
-            return true;
+/// A merged TU with one header dependency, ready for staleness probing.
+struct Indexed {
+    TempDir tmp;
+    IndexerFixture f;
+    std::string src;
+    std::string header;
+
+    bool setup() {
+        tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+        tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+        src = tmp.path("main.cpp");
+        header = tmp.path("dep.h");
+        // Age the files out of the mtime guard window so their stats can
+        // vouch for them, the way real project files predate an index run.
+        if(!set_file_mtime(src, file_mtime_ns(src) - 10'000'000'000) ||
+           !set_file_mtime(header, file_mtime_ns(header) - 10'000'000'000)) {
+            return false;
         }
-    };
-
-    ZEST_CASE(CreatedHeaderStales) {
-        // Where a failed include looked is an input of the TU: a header
-        // appearing there makes its rows stale.
-        TempDir tmp;
-        tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
-        auto src = tmp.path("main.cpp");
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        IndexerFixture f;
+        if(indexed.data.empty()) {
+            return false;
+        }
         f.merge(indexed.data.data(), indexed.data.size());
-        auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
-        auto gen = f.project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
-        ASSERT(f.project.project_index.probed.lookup(gen).contains(tu));
-        ASSERT(f.project.file_table.seen_missing(gen));
-        ASSERT(!f.need_update(src));
-
-        tmp.touch("gen.h", "int make();\n");
-        f.clear_verdicts();
-        ASSERT(f.need_update(src));
+        return true;
     }
+};
+
+ZEST_CASE(CreatedHeaderStales) {
+    // Where a failed include looked is an input of the TU: a header
+    // appearing there makes its rows stale.
+    TempDir tmp;
+    tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
+    auto src = tmp.path("main.cpp");
+    auto indexed = index_file(tmp, src);
+    ASSERT(!indexed.data.empty());
+    IndexerFixture f;
+    f.merge(indexed.data.data(), indexed.data.size());
+    auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
+    auto gen = f.project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
+    ASSERT(f.project.project_index.probed.lookup(gen).contains(tu));
+    ASSERT(f.project.file_table.seen_missing(gen));
+    ASSERT(!f.need_update(src));
+
+    tmp.touch("gen.h", "int make();\n");
+    f.clear_verdicts();
+    ASSERT(f.need_update(src));
+}
 
 #ifndef _WIN32
-    ZEST_CASE(AbsentSpellingsOnePlace) {
-        // A failed include looked in a directory under two spellings (one a
-        // symlink): one place, recorded once, and a reindex drops it cleanly.
-        TempDir tmp;
-        tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
-        tmp.mkdir("real");
-        ASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
-        auto src = tmp.path("main.cpp");
-        auto indexed = index_file(tmp, src, {"-I" + tmp.path("real"), "-I" + tmp.path("link")});
-        ASSERT(!indexed.data.empty());
-        IndexerFixture f;
-        f.merge(indexed.data.data(), indexed.data.size());
-        f.merge(indexed.data.data(), indexed.data.size());
-        auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
-        auto& manifest = f.project.project_index.manifests.find(tu)->second;
-        auto place = f.project.file_table.intern(Spelling::absolute(tmp.path("real/gen.h")));
-        ASSERT(llvm::count_if(manifest.absent, [&](VersionID fv) {
-                   return f.project.file_table.version(fv).fid == place;
-               }) == 1);
-    }
+ZEST_CASE(AbsentSpellingsOnePlace) {
+    // A failed include looked in a directory under two spellings (one a
+    // symlink): one place, recorded once, and a reindex drops it cleanly.
+    TempDir tmp;
+    tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
+    tmp.mkdir("real");
+    ASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
+    auto src = tmp.path("main.cpp");
+    auto indexed = index_file(tmp, src, {"-I" + tmp.path("real"), "-I" + tmp.path("link")});
+    ASSERT(!indexed.data.empty());
+    IndexerFixture f;
+    f.merge(indexed.data.data(), indexed.data.size());
+    f.merge(indexed.data.data(), indexed.data.size());
+    auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
+    auto& manifest = f.project.project_index.manifests.find(tu)->second;
+    auto place = f.project.file_table.intern(Spelling::absolute(tmp.path("real/gen.h")));
+    ASSERT(llvm::count_if(manifest.absent, [&](VersionID fv) {
+               return f.project.file_table.version(fv).fid == place;
+           }) == 1);
+}
 #endif
 
-    ZEST_CASE(TouchStaysFresh) {
-        Indexed x;
-        ASSERT(x.setup());
-        ASSERT(!x.f.need_update(x.src));
+ZEST_CASE(TouchStaysFresh) {
+    Indexed x;
+    ASSERT(x.setup());
+    ASSERT(!x.f.need_update(x.src));
 
-        // Same bytes, new mtime: the stat fast path misses, the hash proves a
-        // mere touch, and nothing persisted needs rewriting.
-        ASSERT(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
-        x.f.reset_global_dirty();
-        x.f.clear_verdicts();
-        ASSERT(!x.f.need_update(x.src));
-        ASSERT(!x.f.global_dirty());
-    }
+    // Same bytes, new mtime: the stat fast path misses, the hash proves a
+    // mere touch, and nothing persisted needs rewriting.
+    ASSERT(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
+    x.f.reset_global_dirty();
+    x.f.clear_verdicts();
+    ASSERT(!x.f.need_update(x.src));
+    ASSERT(!x.f.global_dirty());
+}
 
-    ZEST_CASE(PreservedMtimeEditStale) {
-        Indexed x;
-        ASSERT(x.setup());
-        auto recorded = file_mtime_ns(x.header);
+ZEST_CASE(PreservedMtimeEditStale) {
+    Indexed x;
+    ASSERT(x.setup());
+    auto recorded = file_mtime_ns(x.header);
 
-        // Different content restored to the recorded mtime (rsync -t, git
-        // restore-mtime): equality of the stat is not enough — the size moved,
-        // and the hash check must catch the edit.
-        x.tmp.touch("dep.h", "#pragma once\ninline int dep() { return 12345; }\n");
-        ASSERT(set_file_mtime(x.header, recorded));
-        x.f.clear_verdicts();
-        ASSERT(x.f.need_update(x.src));
-    }
+    // Different content restored to the recorded mtime (rsync -t, git
+    // restore-mtime): equality of the stat is not enough — the size moved,
+    // and the hash check must catch the edit.
+    x.tmp.touch("dep.h", "#pragma once\ninline int dep() { return 12345; }\n");
+    ASSERT(set_file_mtime(x.header, recorded));
+    x.f.clear_verdicts();
+    ASSERT(x.f.need_update(x.src));
+}
 
-    ZEST_CASE(AllDepsChecked) {
-        TempDir tmp;
-        tmp.touch("first.h", "#pragma once\ninline int first() { return 1; }\n");
-        tmp.touch("second.h", "#pragma once\ninline int second() { return 2; }\n");
-        tmp.touch("main.cpp",
-                  "#include \"first.h\"\n#include \"second.h\"\n"
-                  "int use() { return first() + second(); }\n");
-        IndexerFixture f;
-        auto indexed = index_file(tmp, tmp.path("main.cpp"));
-        ASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
-        ASSERT(!f.need_update(tmp.path("main.cpp")));
+ZEST_CASE(AllDepsChecked) {
+    TempDir tmp;
+    tmp.touch("first.h", "#pragma once\ninline int first() { return 1; }\n");
+    tmp.touch("second.h", "#pragma once\ninline int second() { return 2; }\n");
+    tmp.touch("main.cpp",
+              "#include \"first.h\"\n#include \"second.h\"\n"
+              "int use() { return first() + second(); }\n");
+    IndexerFixture f;
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ASSERT(!indexed.data.empty());
+    f.merge(indexed.data.data(), indexed.data.size());
+    ASSERT(!f.need_update(tmp.path("main.cpp")));
 
-        // Only the second dependency changes; a partial iteration would call
-        // the TU fresh.
-        auto recorded = file_mtime_ns(tmp.path("second.h"));
-        tmp.touch("second.h", "#pragma once\ninline int second() { return 22222; }\n");
-        ASSERT(set_file_mtime(tmp.path("second.h"), recorded));
-        f.clear_verdicts();
-        ASSERT(f.need_update(tmp.path("main.cpp")));
-    }
+    // Only the second dependency changes; a partial iteration would call
+    // the TU fresh.
+    auto recorded = file_mtime_ns(tmp.path("second.h"));
+    tmp.touch("second.h", "#pragma once\ninline int second() { return 22222; }\n");
+    ASSERT(set_file_mtime(tmp.path("second.h"), recorded));
+    f.clear_verdicts();
+    ASSERT(f.need_update(tmp.path("main.cpp")));
+}
 
 };  // ZEST_SUITE(IndexerStaleness)
 
-ZEST_SUITE(IndexerLoad){
+ZEST_SUITE(IndexerLoad) {
 
-    ZEST_CASE(LoadRestoresIndex){TempDir tmp;
-tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
-auto src = tmp.path("main.cpp");
+ZEST_CASE(LoadRestoresIndex) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
 
-{
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, src);
+        ASSERT(!indexed.data.empty());
+        f.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+    }
+
     IndexerFixture f;
     open_store(tmp, f.project);
-    auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
-    f.merge(indexed.data.data(), indexed.data.size());
-    f.save();
-}
+    f.load();
 
-IndexerFixture f;
-open_store(tmp, f.project);
-f.load();
-
-auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
-ASSERT(f.project.project_index.shards.contains(tu_id));
-ASSERT(f.project.project_index.shards.contains(header_id));
-ASSERT(f.project.project_index.contributions.lookup(header_id).contains(tu_id));
-// The persisted versions make the untouched TU judge fresh without any
-// reindex.
-ASSERT(!f.need_update(src));
+    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
+    auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
+    ASSERT(f.project.project_index.shards.contains(tu_id));
+    ASSERT(f.project.project_index.shards.contains(header_id));
+    ASSERT(f.project.project_index.contributions.lookup(header_id).contains(tu_id));
+    // The persisted versions make the untouched TU judge fresh without any
+    // reindex.
+    ASSERT(!f.need_update(src));
 
 }  // namespace
 
@@ -3054,22 +3054,23 @@ ZEST_CASE(NoContextsNoRewrite) {
     ASSERT(!bool(f.project.index_db->read(index::IndexBlobKind::Contexts, "contexts")));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(IndexerLoad)
 
-ZEST_SUITE(IndexerRequeue){
+ZEST_SUITE(IndexerRequeue) {
 
-    ZEST_CASE(PreemptionKeepsBudget){IndexerFixture f;
-auto id = f.project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
-f.pump.enqueue(id, ReindexReason::ContentChanged);
+ZEST_CASE(PreemptionKeepsBudget) {
+    IndexerFixture f;
+    auto id = f.project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    f.pump.enqueue(id, ReindexReason::ContentChanged);
 
-// A preemption under memory pressure requeues without spending the
-// crash budget, no matter how often it repeats.
-for(unsigned i = 0; i < 2 * IndexerFixture::budget; ++i) {
-    ASSERT(int(f.fail(id, PendingLedger::Failure::Preempted)) ==
-           int(IndexerFixture::Verdict::Requeued));
-}
-ASSERT(f.attempts(id) == 0u);
-ASSERT(f.pump.pending_reason(id));
+    // A preemption under memory pressure requeues without spending the
+    // crash budget, no matter how often it repeats.
+    for(unsigned i = 0; i < 2 * IndexerFixture::budget; ++i) {
+        ASSERT(int(f.fail(id, PendingLedger::Failure::Preempted)) ==
+               int(IndexerFixture::Verdict::Requeued));
+    }
+    ASSERT(f.attempts(id) == 0u);
+    ASSERT(f.pump.pending_reason(id));
 }
 
 ZEST_CASE(OwnCrashGivesUp) {
@@ -3306,28 +3307,29 @@ ZEST_CASE(PauseResumesRound) {
     ASSERT(f.pump.failed().size() == 2u);
     ASSERT(f.pump.is_idle());
 }
-}
-;  // ZEST_SUITE(IndexerRequeue)
+
+};  // ZEST_SUITE(IndexerRequeue)
 
 /// The store's neutral change reports and the pump's claim of them — the
 /// contracts the Indexer split introduced: every row-changing source
 /// reports debt and row changes, the save carries the pump's debt
 /// snapshot both ways.
-ZEST_SUITE(IndexReports){
+ZEST_SUITE(IndexReports) {
 
-    ZEST_CASE(MergeReportsRowsChanged){IndexerFixture f;
-TempDir tmp;
-tmp.touch("main.cpp", "int value() { return 1; }\n");
-auto indexed = index_file(tmp, tmp.path("main.cpp"));
-ASSERT(!indexed.data.empty());
+ZEST_CASE(MergeReportsRowsChanged) {
+    IndexerFixture f;
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ASSERT(!indexed.data.empty());
 
-llvm::SmallVector<Fid> notified;
-auto conn = f.pump.on_rows_changed.connect(
-    [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
-ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    llvm::SmallVector<Fid> notified;
+    auto conn = f.pump.on_rows_changed.connect(
+        [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
+    ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
 
-ASSERT(llvm::is_contained(notified,
-                          f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
+    ASSERT(llvm::is_contained(notified,
+                              f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
 }
 
 ZEST_CASE(DropReportsServedRows) {
@@ -3516,78 +3518,78 @@ ZEST_CASE(BoostRearmsIdleTimer) {
     ASSERT(f.pump.is_idle());
     ASSERT(f.pump.failed().size() == 1u);
 }
+
+};  // ZEST_SUITE(IndexReports)
+
+ZEST_SUITE(TURunLint) {
+
+ZEST_CASE(ModuleLintScanParity) {
+    // A module unit's own PCM round scans under its base command: only
+    // the lint round's extras-applied scan can discover an import the
+    // extra args gate, and edge it so the PCM exists when the worker's
+    // parse (which sees the extras) consumes it. Only n.cppm runs, so
+    // the import's PCM cannot arrive any other way.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv() { return 1; }\n");
+    tmp.touch("n.cppm",
+              "export module n;\n"
+              "#ifdef USE_M\n"
+              "import m;\n"
+              "export double half(int a, int b) { return a / b; }\n"
+              "#endif\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"), {}},
+                  {tmp.root, tmp.path("n.cppm"), {}},
+    }));
+    scan_all(f.project.cdb, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ASSERT(store);
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+
+    f.pcm.register_runner();
+
+    TURunFamily::Plan plan;
+    plan.tidy = true;
+    plan.tidy_params.checks = "-*,bugprone-integer-division";
+    plan.tidy_params.extra_args = {"-DUSE_M"};
+
+    auto n_id = f.project.file_table.intern(Spelling::absolute(tmp.path("n.cppm")));
+    TURunFamily::Outcome outcome;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        CO_ASSERT(f.pool.start(opts));
+
+        outcome = co_await f.turun.run(n_id, std::move(plan), {});
+
+        co_await f.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    EXPECT(done);
+
+    EXPECT(outcome.verdict == TURunFamily::Verdict::Completed);
+    // The finding inside the gated region proves the parse saw the
+    // extras and consumed the edge-built PCM.
+    ASSERT(!outcome.tidy_diagnostics.empty());
+    EXPECT(outcome.tidy_diagnostics[0].check == "bugprone-integer-division");
 }
-;  // ZEST_SUITE(IndexReports)
 
-ZEST_SUITE(TURunLint){
-
-    ZEST_CASE(ModuleLintScanParity){
-        // A module unit's own PCM round scans under its base command: only
-        // the lint round's extras-applied scan can discover an import the
-        // extra args gate, and edge it so the PCM exists when the worker's
-        // parse (which sees the extras) consumes it. Only n.cppm runs, so
-        // the import's PCM cannot arrive any other way.
-        TempDir tmp;
-tmp.touch("m.cppm", "export module m;\nexport int mv() { return 1; }\n");
-tmp.touch("n.cppm",
-          "export module n;\n"
-          "#ifdef USE_M\n"
-          "import m;\n"
-          "export double half(int a, int b) { return a / b; }\n"
-          "#endif\n");
-
-IndexerFixture f;
-write_cdb(tmp,
-          f.project.cdb,
-          build_cdb_json({
-              {tmp.root, tmp.path("m.cppm"), {}},
-              {tmp.root, tmp.path("n.cppm"), {}},
-}));
-scan_all(f.project.cdb, f.project.dep_graph);
-f.project.dep_graph.build_reverse_map();
-
-auto store = CacheStore::open(tmp.path("root"), 1);
-ASSERT(store);
-store->register_namespace(
-    {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
-f.project.store.emplace(std::move(*store));
-
-f.pcm.register_runner();
-
-TURunFamily::Plan plan;
-plan.tidy = true;
-plan.tidy_params.checks = "-*,bugprone-integer-division";
-plan.tidy_params.extra_args = {"-DUSE_M"};
-
-auto n_id = f.project.file_table.intern(Spelling::absolute(tmp.path("n.cppm")));
-TURunFamily::Outcome outcome;
-bool done = false;
-auto body = [&]() -> kota::task<> {
-    WorkerPoolOptions opts;
-    opts.self_path = clice_binary();
-    opts.stateless_count = 1;
-    opts.stateful_count = 0;
-    CO_ASSERT(f.pool.start(opts));
-
-    outcome = co_await f.turun.run(n_id, std::move(plan), {});
-
-    co_await f.graph.shutdown();
-    co_await f.pool.stop();
-    done = true;
-};
-auto task = body();
-f.loop.schedule(task);
-f.loop.run();
-EXPECT(done);
-
-EXPECT(outcome.verdict == TURunFamily::Verdict::Completed);
-// The finding inside the gated region proves the parse saw the
-// extras and consumed the edge-built PCM.
-ASSERT(!outcome.tidy_diagnostics.empty());
-EXPECT(outcome.tidy_diagnostics[0].check == "bugprone-integer-division");
-}
-}
-;  // ZEST_SUITE(TURunLint)
+};  // ZEST_SUITE(TURunLint)
 
 }  // namespace
 }  // namespace clice::testing

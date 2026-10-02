@@ -135,22 +135,23 @@ std::vector<std::string> names(const Corpus& corpus,
 
 using Names = std::vector<std::string>;
 
-ZEST_SUITE(SearchIndex){
+ZEST_SUITE(SearchIndex) {
 
-    ZEST_CASE(Loads){auto corpus = sample();
-corpus.snapshot.generation = 7;
-auto built = corpus.build();
-EXPECT(built.loaded());
-EXPECT(built.generation() == std::uint64_t(7));
-EXPECT(built.size() == corpus.snapshot.entries.size());
-EXPECT(built.contains(1));
-EXPECT(!built.contains(999));
-SearchIndex empty;
-EXPECT(!empty.load(llvm::MemoryBuffer::getMemBufferCopy("junk")));
-EXPECT(!empty.loaded());
-EXPECT(empty.search(*SymbolQuery::parse("foo"), 10, {}).hits.empty());
-EXPECT(built.search(*SymbolQuery::parse("foo"), 100, {}).exhausted);
-EXPECT(!built.search(*SymbolQuery::parse("foo"), 2, {}).exhausted);
+ZEST_CASE(Loads) {
+    auto corpus = sample();
+    corpus.snapshot.generation = 7;
+    auto built = corpus.build();
+    EXPECT(built.loaded());
+    EXPECT(built.generation() == std::uint64_t(7));
+    EXPECT(built.size() == corpus.snapshot.entries.size());
+    EXPECT(built.contains(1));
+    EXPECT(!built.contains(999));
+    SearchIndex empty;
+    EXPECT(!empty.load(llvm::MemoryBuffer::getMemBufferCopy("junk")));
+    EXPECT(!empty.loaded());
+    EXPECT(empty.search(*SymbolQuery::parse("foo"), 10, {}).hits.empty());
+    EXPECT(built.search(*SymbolQuery::parse("foo"), 100, {}).exhausted);
+    EXPECT(!built.search(*SymbolQuery::parse("foo"), 2, {}).exhausted);
 
 }  // namespace
 
@@ -383,7 +384,7 @@ ZEST_CASE(PortablePathsFiltered) {
     EXPECT(found("side path:/opt/") == Names{"outside"});
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(SearchIndex)
 
 }  // namespace
 }  // namespace clice::testing

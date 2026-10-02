@@ -7,11 +7,12 @@
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(FollowsAccessOperator){
+ZEST_SUITE(FollowsAccessOperator) {
 
-    ZEST_CASE(MemberAccess){EXPECT(follows_access_operator("w.", 2));
-EXPECT(follows_access_operator("p->", 3));
-EXPECT(follows_access_operator("std::", 5));
+ZEST_CASE(MemberAccess) {
+    EXPECT(follows_access_operator("w.", 2));
+    EXPECT(follows_access_operator("p->", 3));
+    EXPECT(follows_access_operator("std::", 5));
 
 }  // namespace
 
@@ -45,13 +46,14 @@ ZEST_CASE(CursorBeforeOperator) {
     EXPECT(!follows_access_operator("w.x", 1));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(FollowsAccessOperator)
 
-ZEST_SUITE(DetectCompletionContext){
+ZEST_SUITE(DetectCompletionContext) {
 
-    ZEST_CASE(IncludeAngled){auto ctx = detect_completion_context("#include <vec", 13);
-EXPECT(ctx.kind == CompletionContext::IncludeAngled);
-EXPECT(ctx.prefix == "vec");
+ZEST_CASE(IncludeAngled) {
+    auto ctx = detect_completion_context("#include <vec", 13);
+    EXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    EXPECT(ctx.prefix == "vec");
 }
 
 ZEST_CASE(IncludeQuoted) {
@@ -205,22 +207,23 @@ ZEST_CASE(ImportReplaceSpan) {
 ZEST_CASE(ImportMemberAccess) {
     EXPECT(detect_completion_context("import->x", 8).kind == CompletionContext::None);
 }
-}
-;  // ZEST_SUITE(DetectCompletionContext)
 
-ZEST_SUITE(CompleteModuleImport){
+};  // ZEST_SUITE(DetectCompletionContext)
 
-    ZEST_CASE(PrefixMatch){clice::DependencyGraph modules;
-modules.add_module("std", Fid{1});
-modules.add_module("std.io", Fid{2});
-modules.add_module("std.net", Fid{3});
-modules.add_module("my_lib", Fid{4});
+ZEST_SUITE(CompleteModuleImport) {
 
-auto results = complete_module_import(modules, "std");
-EXPECT(results.size() == 3u);
-for(auto& name: results) {
-    EXPECT(name.starts_with("std"));
-}
+ZEST_CASE(PrefixMatch) {
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("std.io", Fid{2});
+    modules.add_module("std.net", Fid{3});
+    modules.add_module("my_lib", Fid{4});
+
+    auto results = complete_module_import(modules, "std");
+    EXPECT(results.size() == 3u);
+    for(auto& name: results) {
+        EXPECT(name.starts_with("std"));
+    }
 }
 
 ZEST_CASE(EmptyPrefix) {
@@ -283,8 +286,8 @@ ZEST_CASE(PrefixIsFullName) {
     auto results = complete_module_import(modules, "std");
     EXPECT(results.size() == 2u);
 }
-}
-;  // ZEST_SUITE(CompleteModuleImport)
+
+};  // ZEST_SUITE(CompleteModuleImport)
 
 }  // namespace
 }  // namespace clice::testing

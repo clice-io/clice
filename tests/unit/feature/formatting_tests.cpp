@@ -8,11 +8,11 @@ namespace clice::testing {
 
 namespace {
 
-ZEST_SUITE(Formatting){
+ZEST_SUITE(Formatting) {
 
-    ZEST_CASE(Simple){
-        auto edits = feature::document_format("main.cpp", "int main() { return 0; }", std::nullopt);
-ASSERT(edits.size() != 0U);
+ZEST_CASE(Simple) {
+    auto edits = feature::document_format("main.cpp", "int main() { return 0; }", std::nullopt);
+    ASSERT(edits.size() != 0U);
 
 }  // namespace
 
@@ -61,7 +61,7 @@ ZEST_CASE(EditsNeedStyleFile) {
     EXPECT(result == "int f();\nint g() {}\n");
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(Formatting)
 
 }  // namespace
 

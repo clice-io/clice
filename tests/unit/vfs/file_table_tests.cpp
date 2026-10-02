@@ -34,29 +34,29 @@ vfs::Stamp stamp_of(llvm::StringRef path) {
     return status ? status->stamp : vfs::Stamp{};
 }
 
-ZEST_SUITE(FileTable){
+ZEST_SUITE(FileTable) {
 
-    ZEST_CASE(HardlinksReadApart){
-        // Two spellings hardlinked to one file are two files: a read through
-        // one never vouches for the other.
-        TempDir tmp;
-tmp.touch("a.h", "int shared();\n");
-auto a = tmp.path("a.h");
-auto b = tmp.path("b.h");
-ASSERT(!bool(llvm::sys::fs::create_hard_link(a, b)));
-age(a);
+ZEST_CASE(HardlinksReadApart) {
+    // Two spellings hardlinked to one file are two files: a read through
+    // one never vouches for the other.
+    TempDir tmp;
+    tmp.touch("a.h", "int shared();\n");
+    auto a = tmp.path("a.h");
+    auto b = tmp.path("b.h");
+    ASSERT(!bool(llvm::sys::fs::create_hard_link(a, b)));
+    age(a);
 
-FileTable pool;
-auto a_id = pool.intern(Spelling::absolute(a));
-auto b_id = pool.intern(Spelling::absolute(b));
-ASSERT(a_id != b_id);
-ASSERT(pool.read(a_id));
+    FileTable pool;
+    auto a_id = pool.intern(Spelling::absolute(a));
+    auto b_id = pool.intern(Spelling::absolute(b));
+    ASSERT(a_id != b_id);
+    ASSERT(pool.read(a_id));
 
-auto stamp = stamp_of(b);
-ASSERT(pool.cached_hash(a_id, stamp));
-ASSERT(!pool.cached_hash(b_id, stamp).has_value());
-ASSERT(pool.read(b_id));
-ASSERT(pool.cached_hash(b_id, stamp));
+    auto stamp = stamp_of(b);
+    ASSERT(pool.cached_hash(a_id, stamp));
+    ASSERT(!pool.cached_hash(b_id, stamp).has_value());
+    ASSERT(pool.read(b_id));
+    ASSERT(pool.cached_hash(b_id, stamp));
 
 }  // namespace
 
@@ -469,7 +469,7 @@ ZEST_CASE(PosixBytesPreserved) {
 }
 #endif
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(FileTable)
 
 }  // namespace
 

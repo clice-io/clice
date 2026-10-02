@@ -43,28 +43,29 @@ std::string large_value(char fill) {
     return std::string(8192, fill);
 }
 
-ZEST_SUITE(IndexDatabase){
+ZEST_SUITE(IndexDatabase) {
 
-    ZEST_CASE(WriteReadRoundTrip){TempDir tmp;
-auto store = open_store(tmp, "lmdb");
-auto db = index::open_database(store, "");
-ASSERT(db != nullptr);
+ZEST_CASE(WriteReadRoundTrip) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto db = index::open_database(store, "");
+    ASSERT(db != nullptr);
 
-auto rejected = db->write({blob(index::IndexBlobKind::Shard, "a", large_value('a')),
-                           blob(index::IndexBlobKind::Global, "global", "gg")},
-                          {});
-ASSERT(rejected.empty());
-// Reads serve the resident snapshot; committed writes become
-// visible only after an advance.
-ASSERT(db->advance_read_snapshot());
-db->retire_old_snapshot();
+    auto rejected = db->write({blob(index::IndexBlobKind::Shard, "a", large_value('a')),
+                               blob(index::IndexBlobKind::Global, "global", "gg")},
+                              {});
+    ASSERT(rejected.empty());
+    // Reads serve the resident snapshot; committed writes become
+    // visible only after an advance.
+    ASSERT(db->advance_read_snapshot());
+    db->retire_old_snapshot();
 
-auto shard = db->read(index::IndexBlobKind::Shard, "a");
-ASSERT(bool(shard));
-ASSERT(shard.buffer->getBuffer() == large_value('a'));
-ASSERT(db->contains(index::IndexBlobKind::Global, "global"));
-ASSERT(!db->contains(index::IndexBlobKind::Shard, "missing"));
-ASSERT(!bool(db->read(index::IndexBlobKind::Shard, "missing")));
+    auto shard = db->read(index::IndexBlobKind::Shard, "a");
+    ASSERT(bool(shard));
+    ASSERT(shard.buffer->getBuffer() == large_value('a'));
+    ASSERT(db->contains(index::IndexBlobKind::Global, "global"));
+    ASSERT(!db->contains(index::IndexBlobKind::Shard, "missing"));
+    ASSERT(!bool(db->read(index::IndexBlobKind::Shard, "missing")));
 
 }  // namespace
 
@@ -413,7 +414,7 @@ ZEST_CASE(OutstandingSnapshotsStack) {
     ASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(IndexDatabase)
 
 }  // namespace
 }  // namespace clice::testing

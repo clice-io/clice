@@ -9,14 +9,15 @@ namespace {
 // Every offset and range asserted below is computed by hand from the byte
 // layout of the stripped source; annotation sigils (`§`, `⟦`, `⟧`) and any
 // `§(name)` markers contribute no bytes to `content`.
-ZEST_SUITE(annotation){
+ZEST_SUITE(annotation) {
 
-    ZEST_CASE(single_named_point){auto src = AnnotatedSource::from("int §(a)x;");
-EXPECT(src.content == "int x;");
-EXPECT(src.offsets.count("a") == 1u);
-EXPECT(src.offsets.lookup("a") == 4u);
-EXPECT(src.ranges.empty());
-EXPECT(src.nameless_offsets.empty());
+ZEST_CASE(single_named_point) {
+    auto src = AnnotatedSource::from("int §(a)x;");
+    EXPECT(src.content == "int x;");
+    EXPECT(src.offsets.count("a") == 1u);
+    EXPECT(src.offsets.lookup("a") == 4u);
+    EXPECT(src.ranges.empty());
+    EXPECT(src.nameless_offsets.empty());
 
 }  // namespace
 
@@ -158,7 +159,7 @@ ZEST_CASE(no_annotations) {
     EXPECT(src.nameless_offsets.empty());
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(annotation)
 
 // Region offsets are byte offsets into the raw input; a region spans from just
 // past the begin marker line's newline to the start of the end marker line.

@@ -38,38 +38,39 @@ bool link_directory(const std::string& target, const std::string& link) {
 #endif
 }
 
-ZEST_SUITE(FileSystem){
+ZEST_SUITE(FileSystem) {
 
-    ZEST_CASE(OpenedFilesKeepIdentity){
-        // Clang merges files by ID: a status by path and the status of the same
-        // file opened, as text or as bytes, must agree on it.
-        TempDir tmp;
-tmp.touch("a.h",
-          "\xEF\xBB\xBF"
-          "int x;\n");
-auto path = tmp.path("a.h");
+ZEST_CASE(OpenedFilesKeepIdentity) {
+    // Clang merges files by ID: a status by path and the status of the same
+    // file opened, as text or as bytes, must agree on it.
+    TempDir tmp;
+    tmp.touch("a.h",
+              "\xEF\xBB\xBF"
+              "int x;\n");
+    auto path = tmp.path("a.h");
 
-auto status = vfs::status(path);
-ASSERT(status);
-ASSERT(status->stamp.size == 10u);
+    auto status = vfs::status(path);
+    ASSERT(status);
+    ASSERT(status->stamp.size == 10u);
 
-vfs::View view;
-auto stated = view.status(path);
-auto text = view.openFileForRead(path);
-auto bytes = view.openFileForReadBinary(path);
-ASSERT((stated && text && bytes));
-auto text_status = (*text)->status();
-auto bytes_status = (*bytes)->status();
-ASSERT((text_status && bytes_status));
+    vfs::View view;
+    auto stated = view.status(path);
+    auto text = view.openFileForRead(path);
+    auto bytes = view.openFileForReadBinary(path);
+    ASSERT((stated && text && bytes));
+    auto text_status = (*text)->status();
+    auto bytes_status = (*bytes)->status();
+    ASSERT((text_status && bytes_status));
 
-auto id = status->to_llvm(path).getUniqueID();
-ASSERT(stated->getUniqueID() == id);
-ASSERT(text_status->getUniqueID() == id);
-ASSERT(bytes_status->getUniqueID() == id);
-ASSERT(stated->getSize() == 7u);
-ASSERT(text_status->getSize() == 7u);
-ASSERT(bytes_status->getSize() == 10u);
-ASSERT(text_status->getLastModificationTime() == status->to_llvm(path).getLastModificationTime());
+    auto id = status->to_llvm(path).getUniqueID();
+    ASSERT(stated->getUniqueID() == id);
+    ASSERT(text_status->getUniqueID() == id);
+    ASSERT(bytes_status->getUniqueID() == id);
+    ASSERT(stated->getSize() == 7u);
+    ASSERT(text_status->getSize() == 7u);
+    ASSERT(bytes_status->getSize() == 10u);
+    ASSERT(text_status->getLastModificationTime() ==
+           status->to_llvm(path).getLastModificationTime());
 
 }  // namespace
 
@@ -327,7 +328,7 @@ ZEST_CASE(AtomicWriteReplaces) {
     ASSERT(static_cast<bool>(vfs::write_atomic(tmp.path("none/state.json"), "x")));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(FileSystem)
 
 }  // namespace
 

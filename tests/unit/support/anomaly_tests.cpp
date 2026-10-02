@@ -32,16 +32,17 @@ struct AnomalyCapture {
     }
 };
 
-ZEST_SUITE(Anomaly){
+ZEST_SUITE(Anomaly) {
 
-    ZEST_CASE(MarkerAndNotify){AnomalyCapture capture;
+ZEST_CASE(MarkerAndNotify) {
+    AnomalyCapture capture;
 
-LOG_ANOMALY(PCHBuildFail, "stale build for {}", "main.cpp");
+    LOG_ANOMALY(PCHBuildFail, "stale build for {}", "main.cpp");
 
-ASSERT(capture.notified.size() == 1u);
-auto& [level, message] = capture.notified.front();
-EXPECT(level == NotifyLevel::Error);
-EXPECT(message == "[anomaly:PCHBuildFail] stale build for main.cpp");
+    ASSERT(capture.notified.size() == 1u);
+    auto& [level, message] = capture.notified.front();
+    EXPECT(level == NotifyLevel::Error);
+    EXPECT(message == "[anomaly:PCHBuildFail] stale build for main.cpp");
 
 }  // namespace
 
@@ -175,7 +176,7 @@ ZEST_CASE(MarkerNamesStable) {
     }
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(Anomaly)
 
 }  // namespace
 }  // namespace clice::testing

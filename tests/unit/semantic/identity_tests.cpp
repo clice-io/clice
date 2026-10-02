@@ -82,9 +82,10 @@ std::uint64_t macro_entity(Tester& tester, llvm::StringRef file, llvm::StringRef
     LOG_FATAL("no macro {} defined in {}", name, file);
 }
 
-ZEST_SUITE(identity, Tester){
+ZEST_SUITE(identity, Tester) {
 
-    std::uint64_t entity(llvm::StringRef marker){return entity_at(*this, "main.cpp", marker);
+std::uint64_t entity(llvm::StringRef marker) {
+    return entity_at(*this, "main.cpp", marker);
 
 }  // namespace
 
@@ -1008,7 +1009,7 @@ ZEST_CASE(ModuleEntity) {
     EXPECT(unit->module_entity("foo") != unit->module_entity("foo:part"));
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(identity)
 
 }  // namespace
 

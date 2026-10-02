@@ -12,14 +12,15 @@ namespace clice::testing {
 
 namespace {
 
-ZEST_SUITE(StatefulWorker){
+ZEST_SUITE(StatefulWorker) {
 
-    ZEST_CASE(SpawnAndExit){WorkerHandle w;
-ASSERT(w.spawn(true));
+ZEST_CASE(SpawnAndExit) {
+    WorkerHandle w;
+    ASSERT(w.spawn(true));
 
-w.peer->close_output();
-w.loop.schedule(w.peer->run());
-w.loop.run();
+    w.peer->close_output();
+    w.loop.schedule(w.peer->run());
+    w.loop.run();
 
 }  // namespace
 
@@ -650,7 +651,7 @@ ZEST_CASE(BusyDocumentsStay) {
     ASSERT(evicted == std::vector<std::string>{documents[1].first});
 }
 
-};  // namespace clice::testing
+};  // ZEST_SUITE(StatefulWorker)
 
 }  // namespace
 
