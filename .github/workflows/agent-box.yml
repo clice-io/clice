@@ -54,13 +54,16 @@ jobs:
       - name: Native LLVM libraries
         shell: bash
         run: |
-          pixi run cmake-config RelWithDebInfo ON > ~/llvm-native.log 2>&1
+          # clice#755 drops the build tasks' CI switch; until every checkout a box builds
+          # has lost it, configure the way the checked-out pixi.toml asks.
+          ci=$(grep -q 'arg = "ci"' pixi.toml && echo ' ON' || true)
+          pixi run cmake-config RelWithDebInfo$ci > ~/llvm-native.log 2>&1
           mkdir -p ~/.box
-          cat > ~/.box/notes <<'NOTES'
+          cat > ~/.box/notes <<NOTES
           LLVM's libraries are turning from LTO bitcode into native objects in the background (3-9 min;
           links then take seconds). Wait before building:
             box run <id> 'while [ ! -e ~/llvm-native.done ]; do [ -e ~/llvm-native.failed ] && exit 1; sleep 10; done'
-          Build as CI does, so its compiler cache hits: pixi run build RelWithDebInfo ON
+          Build as CI does, so its compiler cache hits: pixi run build RelWithDebInfo$ci
           NOTES
           cat > ~/llvm-native.sh <<'SCRIPT'
           set -euo pipefail
