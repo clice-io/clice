@@ -109,7 +109,7 @@ struct SwitchConfigurationResult {
     bool success = false;
 };
 
-/// clice/internal/poll — TEST-ONLY, not a stable API. Synchronously runs
+/// clice/internal/poll — TEST-ONLY, not a stable API. Runs
 /// one file-tracker tick (stat → diff → events → dispatch → effects) and
 /// responds only once the effects are applied, so integration tests can
 /// disable the polling loops and get "change disk → poll → assert"

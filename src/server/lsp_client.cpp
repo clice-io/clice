@@ -925,51 +925,50 @@ void LSPClient::register_extensions() {
 
     // ── Test hook ───────────────────────────────────────────────────
 
-    // Runs one file-tracker tick synchronously (see ext::PollParams).
+    // Runs one file-tracker tick (see ext::PollParams).
     // Test-only and not a stable API.
-    peer.on_request("clice/internal/poll",
-                    [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
-                        auto& srv = this->server;
-                        if(params.loop != "cdb" && params.loop != "workspace") {
-                            co_return kota::outcome_error(
-                                kota::ipc::Error{protocol::ErrorCode::InvalidParams,
-                                                 R"(loop must be "cdb" or "workspace")"});
-                        }
-                        if(params.loop == "workspace") {
-                            srv.files.disk.look_all();
-                        } else {
-                            srv.files.disk.look_flags();
-                        }
-                        // Every project ticks; the reply counts the events of all.
-                        std::uint32_t count = 0;
-                        bool loaded = false;
-                        for(std::size_t i = 0; i < srv.projects.size(); i += 1) {
-                            auto project = srv.projects[i];
-                            if(!project->tracker) {
-                                continue;
-                            }
-                            loaded = true;
-                            llvm::SmallVector<FileEvent> events;
-                            if(params.loop == "cdb") {
-                                events = project->tracker->tick_cdb(params.force.value_or(true));
-                            } else {
-                                events = co_await project->tracker->tick_sources();
-                            }
-                            count += static_cast<std::uint32_t>(events.size());
-                            if(!events.empty()) {
-                                project->dispatch(events);
-                            }
-                        }
-                        if(!loaded) {
-                            co_return kota::outcome_error(
-                                kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
-                                                 "No workspace is loaded"});
-                        }
-                        if(params.loop == "workspace") {
-                            count += static_cast<std::uint32_t>(srv.drain_disk_changes());
-                        }
-                        co_return to_raw(ext::PollResult{count});
-                    });
+    peer.on_request(
+        "clice/internal/poll",
+        [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
+            auto& srv = this->server;
+            if(params.loop != "cdb" && params.loop != "workspace") {
+                co_return kota::outcome_error(
+                    kota::ipc::Error{protocol::ErrorCode::InvalidParams,
+                                     R"(loop must be "cdb" or "workspace")"});
+            }
+            if(llvm::none_of(srv.projects,
+                             [](auto& project) { return project->tracker != nullptr; })) {
+                co_return kota::outcome_error(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                                                               "No workspace is loaded"});
+            }
+            // Every project ticks; the reply counts the events of all.
+            std::uint32_t count = 0;
+            if(params.loop == "workspace") {
+                srv.files.disk.look_all();
+                // Before the sources walk suspends: the drain the
+                // looks scheduled would take the changes uncounted.
+                count += static_cast<std::uint32_t>(srv.drain_disk_changes());
+            } else {
+                srv.files.disk.look_flags();
+            }
+            for(std::size_t i = 0; i < srv.projects.size(); i += 1) {
+                auto project = srv.projects[i];
+                if(!project->tracker) {
+                    continue;
+                }
+                llvm::SmallVector<FileEvent> events;
+                if(params.loop == "cdb") {
+                    events = project->tracker->tick_cdb(params.force.value_or(true));
+                } else {
+                    events = co_await project->tracker->tick_sources();
+                }
+                count += static_cast<std::uint32_t>(events.size());
+                if(!events.empty()) {
+                    project->dispatch(events);
+                }
+            }
+            co_return to_raw(ext::PollResult{count});
+        });
 
     peer.on_request(
         "clice/internal/logFlood",
