@@ -426,25 +426,31 @@ private:
             if(type->isDependentType()) {
                 return std::nullopt;
             }
-            auto spelled = type_name(unit.context(), type, from, {}, decl->getDeclContext());
-            if(!spelled || parameter_names(*spelled).empty()) {
-                return spelled;
-            }
-            // Spelled from the global scope, every name a parameter would
-            // capture is a global one, anchored there.
-            spelled = type_name(unit.context(), type, unit.tu(), {}, decl->getDeclContext());
-            if(spelled) {
-                for(auto offset: llvm::reverse(parameter_names(*spelled))) {
-                    spelled->insert(offset, "::");
-                }
-            }
-            return spelled;
+            return spelling_under_heads(type);
         }
         if(llvm::isa<clang::CXXRecordDecl>(scope)) {
             spelled = "typename " + spelled;
         }
         auto qualifiers = type.getLocalQualifiers();
         return qualifiers.empty() ? spelled : qualifiers.getAsString() + " " + spelled;
+    }
+
+    /// The spelling at `from` of a non-dependent type written before the
+    /// name, beneath the definition's template heads.
+    std::optional<std::string> spelling_under_heads(clang::QualType type) {
+        auto spelled = type_name(unit.context(), type, from, {}, decl->getDeclContext());
+        if(!spelled || parameter_names(*spelled).empty()) {
+            return spelled;
+        }
+        // Spelled from the global scope, every name a parameter would
+        // capture is a global one, anchored there.
+        spelled = type_name(unit.context(), type, unit.tu(), {}, decl->getDeclContext());
+        if(spelled) {
+            for(auto offset: llvm::reverse(parameter_names(*spelled))) {
+                spelled->insert(offset, "::");
+            }
+        }
+        return spelled;
     }
 
     /// Where `spelling` leaves a template parameter's name unqualified, of
@@ -537,7 +543,7 @@ private:
         if(type->isDependentType()) {
             return;
         }
-        if(auto spelled = type_name(unit.context(), type, from, {}, decl->getDeclContext())) {
+        if(auto spelled = spelling_under_heads(type)) {
             patches.push_back({*begin, *star, *spelled + "::"});
         }
     }

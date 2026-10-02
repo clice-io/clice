@@ -342,6 +342,16 @@ struct S {
     EXPECT_APPENDED("template <class T, class Ω>\n::Ω S<T, Ω>::omega() {\n}\n", "omega");
 
     run(R"(
+struct C {};
+template <class C>
+struct M {
+    int (::C::*§(f)f())();
+};
+)");
+    apply("f", "Define 'M<C>::f' out of line");
+    EXPECT_APPENDED("template <class C>\nint (::C::*M<C>::f())() {\n}\n", "f");
+
+    run(R"(
 template <class>
 concept C = true;
 template <class C, ::C U>
