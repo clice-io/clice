@@ -4,7 +4,8 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 # package (LLVMExports.cmake); here it is kept by hand, per platform.
 cc_library(
     name = "llvm",
-    srcs = glob(["lib/*.a"]),
+    # zlib and zstd come from the registry, as libdwarf needs them too.
+    srcs = glob(["lib/*.a"], exclude = ["lib/libz.a", "lib/libzstd.a"]),
     hdrs = glob(["include/**"]),
     defines = ["CLANG_BUILD_STATIC=1"],
     includes = ["include"],
@@ -14,6 +15,7 @@ cc_library(
         "//conditions:default": ["-lpthread", "-ldl"],
     }),
     visibility = ["//visibility:public"],
+    deps = ["@zlib", "@zstd"],
 )
 
 # The resource directory clice looks for next to its executable.

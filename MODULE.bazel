@@ -8,7 +8,9 @@ bazel_dep(name = "bazel_skylib", version = "1.9.2")
 # From the Bazel Central Registry, at the versions cmake/package.cmake and
 # kotatsu pin.
 bazel_dep(name = "tomlplusplus", version = "3.4.0")
-bazel_dep(name = "cpptrace", version = "1.0.4.bcr.1")
+bazel_dep(name = "libdwarf", version = "2.2.0.bcr.1")
+bazel_dep(name = "zlib", version = "1.3.1.bcr.5")
+bazel_dep(name = "zstd", version = "1.5.7")
 bazel_dep(name = "mimalloc", version = "3.5.3.bcr.1")
 
 # Sources whose configuration or version the registry does not offer, each
@@ -29,6 +31,14 @@ http_archive(
     sha256 = "b9c2df49707c57a48fc0923d52b8c73beb72d675f9d44b2211e4569be40a7421",
     strip_prefix = "flatbuffers-25.2.10",
     urls = ["https://github.com/google/flatbuffers/archive/refs/tags/v25.2.10.tar.gz"],
+)
+
+http_archive(
+    name = "cpptrace",
+    build_file = "//third_party:cpptrace.BUILD",
+    sha256 = "5c9f5b301e903714a4d01f1057b9543fa540f7bfcc5e3f8bd1748e652e24f9ea",
+    strip_prefix = "cpptrace-1.0.4",
+    urls = ["https://github.com/jeremy-rifkin/cpptrace/archive/refs/tags/v1.0.4.tar.gz"],
 )
 
 http_archive(
