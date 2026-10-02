@@ -1033,29 +1033,35 @@ void ProjectIndex::each_fanout_file(SymbolHash hash,
                                     const FileTable& files,
                                     llvm::function_ref<void(Fid)> visit) const {
     llvm::SmallDenseSet<Fid, 8> seen{anchor};
+    llvm::SmallDenseSet<Fid, 8> asked;
+    llvm::SmallVector<Fid> pending{anchor};
     visit(anchor);
-    each_contributor(anchor, [&](Fid tu) {
-        auto* manifest = tu_manifest(tu);
-        if(!manifest) {
-            return;
-        }
-        auto it = std::ranges::lower_bound(manifest->local_fanout, hash, {}, &LocalFanout::symbol);
-        if(it == manifest->local_fanout.end() || it->symbol != hash) {
-            return;
-        }
-        for(auto index: it->files) {
-            auto version = manifest->contributions[index].first;
-            std::optional<Fid> file;
-            if(!db) {
-                file = files.version(version).fid;
-            } else if(auto name = base->version_path(version.raw)) {
-                file = files.find(local(*name));
+    while(!pending.empty()) {
+        each_contributor(pending.pop_back_val(), [&](Fid tu) {
+            auto* manifest = asked.insert(tu).second ? tu_manifest(tu) : nullptr;
+            if(!manifest) {
+                return;
             }
-            if(file && seen.insert(*file).second) {
-                visit(*file);
+            auto it =
+                std::ranges::lower_bound(manifest->local_fanout, hash, {}, &LocalFanout::symbol);
+            if(it == manifest->local_fanout.end() || it->symbol != hash) {
+                return;
             }
-        }
-    });
+            for(auto index: it->files) {
+                auto version = manifest->contributions[index].first;
+                std::optional<Fid> file;
+                if(!db) {
+                    file = files.version(version).fid;
+                } else if(auto name = base->version_path(version.raw)) {
+                    file = files.find(local(*name));
+                }
+                if(file && seen.insert(*file).second) {
+                    visit(*file);
+                    pending.push_back(*file);
+                }
+            }
+        });
+    }
 }
 
 const TUManifest* ProjectIndex::tu_manifest(Fid tu) const {
@@ -1135,6 +1141,7 @@ ProjectIndex::GlobalColumns ProjectIndex::global_columns() const {
         .args = base->args.size(),
         .bitmaps = base->bitmaps.size(),
         .fixed = base->count() * (8 + 8 + 1 + 2 + 4 + 4),
+        .contributors = base->contributors.size() + base->contributed_files.size() * (4 + 4),
     };
 }
 

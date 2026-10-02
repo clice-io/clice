@@ -216,6 +216,32 @@ TEST_CASE(InternalAcrossFiles) {
     EXPECT_TRUE(located.front().site.path.ends_with("header.h"));
 }
 
+TEST_CASE(InternalAcrossUnits) {
+    llvm::StringRef header = "static int helper() { return 1; }\n";
+    add_file("header.h", header);
+    add_main("a.cpp", R"(
+        #include "header.h"
+        int a() { return §(use)helper(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+    auto a_id = main_id;
+    auto a_use = point("use");
+
+    clear();
+    add_file("header.h", header);
+    add_main("b.cpp", R"(
+        #include "header.h"
+        int b() { return helper(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    auto cursor = query.symbol_at(a_id, a_use);
+    ASSERT_TRUE(cursor.has_value());
+    EXPECT_EQ(query.references(*cursor, true).size(), 3U);
+}
+
 TEST_CASE(OverloadSetCursor) {
     add_main("main.cpp", R"(
         void §(int)take(int);

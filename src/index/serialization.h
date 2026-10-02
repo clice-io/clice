@@ -138,8 +138,12 @@ namespace clice::index {
 /// names; v19: entity hashes follow clang 23.1.2, xclang's; v20: preamble
 /// envelopes carry the preamble's diagnostics; v21: aliases at namespace
 /// scope are global symbols, and the rows cover weak call edges, implicit
-/// calls and the names the traversal used to skip).
-constexpr inline std::uint32_t index_format_version = 21;
+/// calls and the names the traversal used to skip; v22: specializations
+/// relate to their templates, manifests list the files their internal
+/// symbols span, the global blob carries the reverse include graph,
+/// module linkage is external, and C tags and C-linkage functions follow
+/// C's identity rules).
+constexpr inline std::uint32_t index_format_version = 22;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

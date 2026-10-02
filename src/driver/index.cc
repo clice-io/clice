@@ -345,14 +345,6 @@ ShardColumns shard_columns_of(llvm::StringRef bytes) {
 /// The byte split of the global blob's symbol table; everything else in
 /// the blob (file versions, the path table, framing) is the remainder of
 /// its serialized size.
-struct GlobalColumns {
-    std::uint64_t names = 0;
-    std::uint64_t args = 0;
-    std::uint64_t bitmaps = 0;
-    /// Hash, parent, kind, flags and file per symbol.
-    std::uint64_t fixed = 0;
-};
-
 struct IndexStats {
     std::vector<ShardStat> shards;
     ShardColumns columns;
@@ -361,7 +353,9 @@ struct IndexStats {
     std::uint64_t relations = 0;
     std::uint64_t global_bytes = 0;
     std::uint64_t search_bytes = 0;
-    GlobalColumns global;
+    std::uint64_t manifest_bytes = 0;
+    std::uint64_t local_fanout = 0;
+    index::ProjectIndex::GlobalColumns global;
     Histogram references_per_symbol;
     Histogram name_lengths;
     Histogram variants_per_shard;
@@ -401,17 +395,20 @@ IndexStats collect_stats(Project& project) {
     }
     std::ranges::sort(stats.shards, std::ranges::greater{}, &ShardStat::bytes);
 
-    auto columns = project_index.global_columns();
-    stats.global.names = columns.names;
-    stats.global.args = columns.args;
-    stats.global.bitmaps = columns.bitmaps;
-    stats.global.fixed = columns.fixed;
+    stats.global = project_index.global_columns();
     project_index.for_each_symbol(
         [&](index::SymbolHash, const index::SymbolIdentity& symbol, std::uint32_t references) {
             stats.references_per_symbol.add(references);
             stats.name_lengths.add(symbol.name.size());
             return true;
         });
+    for(auto& [tu, manifest]: project_index.manifests) {
+        stats.local_fanout += manifest.local_fanout.size();
+        if(auto blob = project.index_db->read(index::IndexBlobKind::Manifest,
+                                              project_index.key_of(project.file_table, tu))) {
+            stats.manifest_bytes += blob.buffer->getBufferSize();
+        }
+    }
     if(auto blob = project.index_db->read(index::IndexBlobKind::Global, "global")) {
         stats.global_bytes = blob.buffer->getBufferSize();
     }
@@ -438,7 +435,10 @@ void print_stats(const Project& project,
     if(!configuration.empty()) {
         std::println("Configuration: {}", configuration);
     }
-    std::println("Translation units: {}", project_index.manifests.size());
+    std::println("Translation units: {} (manifests {}), {} internal symbols spanning files",
+                 project_index.manifests.size(),
+                 format_size(stats.manifest_bytes),
+                 stats.local_fanout);
     std::println("File shards: {} ({}), {} occurrences, {} relations",
                  stats.shards.size(),
                  format_size(stats.shard_bytes),
@@ -472,13 +472,15 @@ void print_stats(const Project& project,
     column("variant tables", stats.columns.variants, payload);
 
     auto& global = stats.global;
-    auto symbol_bytes = global.names + global.args + global.bitmaps + global.fixed;
+    auto symbol_bytes =
+        global.names + global.args + global.bitmaps + global.fixed + global.contributors;
     std::println();
     std::println("Global blob ({}):", format_size(stats.global_bytes));
     column("symbol names", global.names, stats.global_bytes);
     column("specialization args", global.args, stats.global_bytes);
     column("reference bitmaps", global.bitmaps, stats.global_bytes);
     column("symbol fixed columns", global.fixed, stats.global_bytes);
+    column("reverse include graph", global.contributors, stats.global_bytes);
     column("file versions + paths",
            stats.global_bytes > symbol_bytes ? stats.global_bytes - symbol_bytes : 0,
            stats.global_bytes);

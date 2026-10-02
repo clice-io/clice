@@ -212,8 +212,10 @@ struct ProjectIndex {
 
     /// The files holding rows of an internal-linkage symbol, starting from
     /// `anchor`, a file that holds some: the anchor, and every file the
-    /// local fanout of a TU contributing to the anchor lists for the
-    /// symbol (TUManifest::local_fanout). Each file once.
+    /// local fanout (TUManifest::local_fanout) of a TU contributing to a
+    /// file reached so far lists for the symbol. A `static` in a header is
+    /// thus reached in every unit including the header, whichever of its
+    /// files the walk starts from. Each file once.
     void each_fanout_file(SymbolHash hash,
                           Fid anchor,
                           const FileTable& files,
@@ -263,9 +265,11 @@ struct ProjectIndex {
         std::size_t args = 0;
         std::size_t bitmaps = 0;
         std::size_t fixed = 0;
+        std::size_t contributors = 0;
     };
 
-    /// The base blob's symbol columns in bytes, for `clice index --stats`.
+    /// The base blob's symbol and reverse include graph columns in bytes,
+    /// for `clice index --stats`.
     GlobalColumns global_columns() const;
 
 private:
