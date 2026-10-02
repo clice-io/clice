@@ -449,7 +449,7 @@ TEST_CASE(InvalidNewNames) {
         EXPECT_EQ(renamed->conflicts.size(), 1U);
         EXPECT_TRUE(renamed->edits.empty());
     }
-    for(auto name: {"_Reserved", "two__parts"}) {
+    for(auto name: {"_Reserved", "two__parts", "_lower"}) {
         auto renamed = rename_at("cursor", name);
         ASSERT_TRUE(renamed.has_value());
         EXPECT_FALSE(renamed->blocked());
@@ -504,6 +504,48 @@ TEST_CASE(SameScopeCollisions) {
     EXPECT_FALSE(local->blocked());
     ASSERT_EQ(local->warnings.size(), 1U);
     EXPECT_TRUE(local->warnings.front().contains("local of the same function"));
+}
+
+TEST_CASE(ParametersAndLabels) {
+    add_main(file("a.cpp"), R"(
+        int sum(int §(param)first, int second) { return first + second; }
+        void spin() {
+        §(label)again:
+        done:
+            goto again;
+        }
+    )");
+    merge();
+
+    auto param = rename_at("param", "second");
+    ASSERT_TRUE(param.has_value());
+    ASSERT_EQ(param->conflicts.size(), 1U);
+    EXPECT_TRUE(param->conflicts.front().contains("parameter of the same function"));
+
+    auto label = rename_at("label", "done");
+    ASSERT_TRUE(label.has_value());
+    ASSERT_EQ(label->conflicts.size(), 1U);
+    EXPECT_TRUE(label->conflicts.front().contains("label of the same function"));
+}
+
+TEST_CASE(LocalCapturesUse) {
+    add_main(file("a.cpp"), R"(
+        int §(cursor)total;
+        int consume(int x);
+        int use() { int sum = 0; return consume(total) + sum; }
+        int elsewhere() { int amount = 1; return amount; }
+    )");
+    merge();
+
+    auto captured = rename_at("cursor", "sum");
+    ASSERT_TRUE(captured.has_value());
+    EXPECT_FALSE(captured->blocked());
+    ASSERT_EQ(captured->warnings.size(), 1U);
+    EXPECT_TRUE(captured->warnings.front().contains("captures"));
+
+    auto apart = rename_at("cursor", "amount");
+    ASSERT_TRUE(apart.has_value());
+    EXPECT_TRUE(clean(*apart));
 }
 
 TEST_CASE(MemberHidesInherited) {
@@ -628,6 +670,23 @@ TEST_CASE(DependentCallHeuristic) {
     ASSERT_EQ(renamed->edits.size(), 2U);
     EXPECT_FALSE(renamed->edits[0].heuristic);
     EXPECT_TRUE(renamed->edits[1].heuristic);
+}
+
+TEST_CASE(DependentCallOverloads) {
+    add_main(file("a.cpp"), R"(
+        int §(cursor)§compute(int x) { return x; }
+        double compute(double x) { return x; }
+
+        template <typename T>
+        T apply(T value) { return compute(value); }
+    )");
+    merge();
+
+    auto renamed = rename_at("cursor", "evaluate");
+    ASSERT_TRUE(renamed.has_value());
+    EXPECT_EQ(edits(*renamed), marks());
+    ASSERT_EQ(renamed->unconfirmed.size(), 1U);
+    EXPECT_TRUE(renamed->unconfirmed.front().reason.contains("also refers to"));
 }
 
 TEST_CASE(ChangedFileBlocks) {

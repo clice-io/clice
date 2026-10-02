@@ -4,6 +4,7 @@
 #include <format>
 #include <map>
 #include <ranges>
+#include <set>
 #include <tuple>
 
 #include "index/symbol_query.h"
@@ -78,6 +79,28 @@ struct Lines {
 
 bool class_like(SymbolKind kind) {
     return kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Union;
+}
+
+/// Whether an identifier names the symbol, so that a rename may change it.
+bool renamable(SymbolKind kind) {
+    switch(kind) {
+        case SymbolKind::Namespace:
+        case SymbolKind::Class:
+        case SymbolKind::Struct:
+        case SymbolKind::Union:
+        case SymbolKind::Enum:
+        case SymbolKind::Type:
+        case SymbolKind::Field:
+        case SymbolKind::EnumMember:
+        case SymbolKind::Function:
+        case SymbolKind::Method:
+        case SymbolKind::Variable:
+        case SymbolKind::Parameter:
+        case SymbolKind::Label:
+        case SymbolKind::Concept:
+        case SymbolKind::Operator: return true;
+        default: return false;
+    }
 }
 
 bool function_like(SymbolKind kind) {
@@ -194,28 +217,11 @@ std::optional<SweptText> sweep_text(std::string text,
 std::expected<RenameTarget, std::string> rename_target(const IndexQuery& query,
                                                        const IndexQuery::Located& named) {
     auto& symbol = named.symbol;
-    switch(symbol.kind) {
-        case SymbolKind::Namespace:
-        case SymbolKind::Class:
-        case SymbolKind::Struct:
-        case SymbolKind::Union:
-        case SymbolKind::Enum:
-        case SymbolKind::Type:
-        case SymbolKind::Field:
-        case SymbolKind::EnumMember:
-        case SymbolKind::Function:
-        case SymbolKind::Method:
-        case SymbolKind::Variable:
-        case SymbolKind::Parameter:
-        case SymbolKind::Label:
-        case SymbolKind::Concept:
-        case SymbolKind::Operator: break;
-        case SymbolKind::Macro: {
-            return std::unexpected("renaming a macro is not supported yet");
-        }
-        default: {
-            return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
-        }
+    if(symbol.kind == SymbolKind::Macro) {
+        return std::unexpected("renaming a macro is not supported yet");
+    }
+    if(!renamable(symbol.kind)) {
+        return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
     }
     if(has_flag(symbol.flags, SymbolFlags::Unnamed)) {
         return std::unexpected(std::format("{} has no name to rename", symbol.name));
@@ -341,12 +347,6 @@ RenamePlan plan_rename(const IndexQuery& query,
         plan.conflicts.push_back(std::move(*invalid));
         return plan;
     }
-    if(new_name.contains("__") ||
-       (new_name.starts_with("_") && new_name.size() > 1 && clang::isUppercase(new_name[1]))) {
-        plan.warnings.push_back(
-            std::format("`{}` is reserved for the implementation", std::string_view(new_name)));
-    }
-
     llvm::DenseSet<SymbolHash> group;
     for(auto& member: target.group) {
         group.insert(member.symbol.hash);
@@ -384,10 +384,45 @@ RenamePlan plan_rename(const IndexQuery& query,
         return *slot;
     };
 
+    // Another renamable symbol of the old name the token names too: a
+    // variant of a shared header compiled under other definitions, or an
+    // overload a dependent call leaves open. Changing the token changes
+    // its use as well.
+    auto shared_with = [&](Fid file, std::uint32_t offset) -> std::optional<std::string> {
+        auto cursor = query.symbol_at(file, offset);
+        if(!cursor) {
+            return std::nullopt;
+        }
+        for(auto symbol: cursor->symbols) {
+            if(renames(symbol, file)) {
+                continue;
+            }
+            if(auto info = query.symbol_info(symbol, file);
+               info && info->name == old_name && renamable(info->kind)) {
+                return query.qualified_name(symbol);
+            }
+        }
+        return std::nullopt;
+    };
+
     llvm::StringSet<> stale;
     std::map<std::pair<Fid, std::uint32_t>, RenameEdit> edits;
+    std::set<std::pair<Fid, std::uint32_t>> held;
     auto add_edit = [&](Fid file, const Site& near, std::uint32_t offset, bool heuristic) {
         auto& text = text_of(file);
+        if(auto other = shared_with(file, offset)) {
+            if(held.insert({file, offset}).second) {
+                plan.unconfirmed.push_back({
+                    .site = text.lines->site(file, near.path, offset, old_name.size()),
+                    .reason = std::format("the name here also refers to `{}`, under another "
+                                          "build configuration or as another candidate of a "
+                                          "dependent call",
+                                          *other),
+                    .line = text.lines->line_of(offset),
+                });
+            }
+            return;
+        }
         auto [it, inserted] = edits.try_emplace(
             {file, offset},
             RenameEdit{.site = text.lines->site(file, near.path, offset, old_name.size()),
@@ -500,6 +535,10 @@ RenamePlan plan_rename(const IndexQuery& query,
         }
     }
 
+    for(auto& key: llvm::make_first_range(edits)) {
+        edited.insert(key.first);
+    }
+
     // What the new name would collide with: a macro anywhere, a
     // declaration in the same scope, a member of a class above or below.
     llvm::SmallVector<IndexQuery::Located> named;
@@ -564,6 +603,14 @@ RenamePlan plan_rename(const IndexQuery& query,
         }
     }
     bool local = parent && function_like(parent->kind);
+    // Both languages reserve `__x` and `_X` everywhere, and `_x` at file
+    // and global namespace scope.
+    if(new_name.contains("__") ||
+       (new_name.starts_with("_") &&
+        (home == 0 || (new_name.size() > 1 && clang::isUppercase(new_name[1]))))) {
+        plan.warnings.push_back(
+            std::format("`{}` is reserved for the implementation", std::string_view(new_name)));
+    }
     if(parent && class_like(parent->kind) && parent->name == new_name) {
         plan.conflicts.push_back(
             std::format("`{}` names the class the member belongs to", std::string_view(new_name)));
@@ -590,10 +637,18 @@ RenamePlan plan_rename(const IndexQuery& query,
                                 "when their parameters are the same",
                                 std::string_view(new_name),
                                 where(other.site)));
+            } else if(local && symbol.kind == root.kind &&
+                      (root.kind == SymbolKind::Parameter || root.kind == SymbolKind::Label)) {
+                plan.conflicts.push_back(
+                    std::format("`{}` already names a {} of the same function ({})",
+                                std::string_view(new_name),
+                                root.kind == SymbolKind::Label ? "label" : "parameter",
+                                where(other.site)));
             } else if(local) {
                 plan.warnings.push_back(
-                    std::format("`{}` already names a local of the same function ({}): where "
-                                "their scopes overlap, one hides the other",
+                    std::format("`{}` already names a local of the same function ({}): declared "
+                                "in the same block, the two fail to build; in nested blocks, "
+                                "the inner hides the outer",
                                 std::string_view(new_name),
                                 where(other.site)));
             } else if(symbol.kind == SymbolKind::Namespace && root.kind == SymbolKind::Namespace) {
@@ -617,6 +672,28 @@ RenamePlan plan_rename(const IndexQuery& query,
                             std::string_view(new_name),
                             where(other.site)));
             continue;
+        }
+        // A local of a function holding an edited use may capture it.
+        if(edited.contains(other.site.file)) {
+            auto owner = query.symbol_info(other_home, other.site.file);
+            auto function = owner && function_like(owner->kind)
+                                ? query.resolve(other_home, other.site.file)
+                                : std::nullopt;
+            if(function) {
+                auto& body = function->extent;
+                if(llvm::any_of(llvm::make_first_range(edits), [&](const auto& key) {
+                       return key.first == body.file && body.range.begin <= key.second &&
+                              key.second < body.range.end;
+                   })) {
+                    plan.warnings.push_back(
+                        std::format("`{}` is declared in {} ({}): where it is in scope, it "
+                                    "captures the renamed name used there",
+                                    std::string_view(new_name),
+                                    query.qualified_name(other_home),
+                                    where(other.site)));
+                }
+                continue;
+            }
         }
         if(hierarchy.contains(other_home)) {
             plan.conflicts.push_back(

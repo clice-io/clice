@@ -262,15 +262,14 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
                                     index::SymbolQuery locator,
                                     llvm::StringRef direction);
 
-/// Rename the symbol the locator names to `new_name` within `scope`:
-/// what would change, what the index cannot vouch for, and what keeps the
-/// change from being safe. Nothing is written.
 /// Whether some unit of the build the index is to hold has no record in
 /// it yet (see index::RenameScope::units_pending).
 bool units_pending(Project& project);
 
-/// A rename planned against the workspace on disk (see
-/// index::RenameScope).
+/// Rename the symbol the locator names to `new_name`, planned against the
+/// workspace on disk (see index::RenameScope): what would change, what the
+/// index cannot vouch for, and what keeps the change from being safe.
+/// Nothing is written.
 Outcome<PlannedRename> rename(Context& ctx, index::SymbolQuery locator, llvm::StringRef new_name);
 
 /// `direction` one of supertypes, subtypes, both.

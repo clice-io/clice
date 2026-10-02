@@ -16,16 +16,16 @@ A rename changes every declaration, definition and reference the index ties to t
 - the explicit and partial specializations of a template, and the deduction guides of a class template;
 - the overrides a virtual function is linked with, in base and derived classes.
 
-Operators, conversion functions, user-defined literals, macros, symbols declared in system headers and symbols whose every declaration a macro spells cannot be renamed. The new name must be an identifier that is a keyword in neither C nor C++; a name reserved for the implementation (`__x`, `_X`) is a warning.
+Operators, conversion functions, user-defined literals, macros, symbols declared in system headers and symbols whose every declaration a macro spells cannot be renamed. The new name must be an identifier that is a keyword in neither C nor C++; a name reserved for the implementation (`__x`, `_X`, and `_x` at global scope) is a warning.
 
 ## Answers
 
 The answer is one JSON object, `{"result": ..., "stale": [...]}`, like a query's:
 
 - `files` lists the tokens replaced in each file, with a 1-based line and byte column. `heuristic` marks one reached through a name the index resolved by heuristics — a call in a template whose callee depends on a template parameter — worth a look.
-- `unconfirmed` lists the places spelling the old name that the rename leaves alone because the index cannot say what they name: the body of a `#define`, a macro whose expansion spells the name, an inactive `#if` branch, a file no unit of the build compiles. Read them before building.
-- `warnings` are made anyway: the new name overloads a function of the same scope, or hides a local of the same function.
-- `conflicts` stop the rename: the new name is declared in the same scope already, is a macro, names a member of a base or derived class, names the class the renamed member belongs to or a member of the renamed class; the rename would edit a file outside the workspace; two namespaces would merge.
+- `unconfirmed` lists the places spelling the old name that the rename leaves alone because the index cannot say what they name: the body of a `#define`, a macro whose expansion spells the name, an inactive `#if` branch, a file no unit of the build compiles, a token that also names another symbol of the old name — under another build configuration, or as another overload a call in a template may pick. Read them before building.
+- `warnings` are made anyway: the new name overloads a function of the same scope, hides or collides with a local of the same function, or is declared in a function using the renamed name, where it would capture that use.
+- `conflicts` stop the rename: the new name is declared in the same scope already, is a macro, names a parameter or label of the same function, a member of a base or derived class, the class the renamed member belongs to or a member of the renamed class; the rename would edit a file outside the workspace; two namespaces would merge.
 - `stale` lists the files the rename edits, or that spell the old or the new name, whose indexed rows are not current — changed since they were indexed, or never indexed while some unit of the build still is not. They stop the rename as well; `--fresh` reindexes them first.
 
 The exit code is 0 when the rename was written, or planned under `--dry-run`, and 1 when a conflict or a stale file stopped it or the symbol cannot be renamed — with `{"error": "..."}` saying why in the last case.
@@ -44,6 +44,6 @@ The editor's rename selects the name under the cursor, or says why the symbol th
 
 ## Known Limitations
 
-- The checks are static: a change of meaning the index cannot see — argument-dependent lookup finding another function, a template instantiated with the new name in scope — goes unnoticed. Build after renaming.
+- The checks are static: a change of meaning the index cannot see — argument-dependent lookup finding another function, a member of the new name capturing a use inside its class, an overload that cannot coexist with the renamed function — goes unnoticed. Build after renaming.
 - Macros cannot be renamed yet.
 - An editor's rename edits through the index of the project serving the file; another project open in the same editor keeps its uses of the symbol.

@@ -215,7 +215,8 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
     }
 
     auto& result = planned->result;
-    bool blocked = planned->plan.blocked();
+    // A unit --fresh failed to index answers from rows that may be old.
+    bool blocked = planned->plan.blocked() || !failed.empty();
     if(!blocked && !opts.dry_run && !planned->plan.edits.empty()) {
         if(auto applied = apply(files, planned->plan, *opts.to); !applied) {
             result.conflicts.push_back(applied.error());
