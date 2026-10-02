@@ -175,7 +175,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                    FileEdit{.uri = uri, .version = session->version, .edits = std::move(edits)}));
     };
     auto defined_elsewhere = [&](std::uint64_t entity) {
-        return query.first_site(entity, RelationKind::Definition).has_value();
+        return query.first_site(entity, path_id, RelationKind::Definition).has_value();
     };
 
     auto resolve_define = [&](feature::CodeAction& action, const feature::DefineRequest& request) {
@@ -223,7 +223,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                    })) {
                     return true;
                 }
-                auto definition = query.definition_text(hash);
+                auto definition = query.definition_text(hash, host);
                 if(!definition) {
                     return true;
                 }
@@ -284,7 +284,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                 continue;
             }
             for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-                for(const auto& site: query.sites(located.symbol.hash, kind)) {
+                for(const auto& site: query.sites(located.symbol.hash, located.site.file, kind)) {
                     if(site.file.valid() && site.file != path_id && is_header_path(site.path) &&
                        seen.insert(project.file_table.resolve(site.file)).second) {
                         headers.push_back(project.file_table.resolve(site.file));

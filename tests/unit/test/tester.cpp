@@ -26,7 +26,9 @@ namespace clice::testing {
 
 namespace {
 
+/// The language follows the standard: `-std=c17` compiles C.
 std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef triple) {
+    bool cxx = standard.contains("++");
     return {
         "clang",
         "-cc1",
@@ -38,7 +40,7 @@ std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef
         "-fms-extensions",
         "-fsyntax-only",
         "-x",
-        "c++",
+        cxx ? "c++" : "c",
     };
 }
 

@@ -138,6 +138,11 @@ private:
 /// indexes) comes out identical.
 void dedup_sites(std::vector<Site>& sites);
 
+/// Whether a row's site spells the name a cursor stands on: a row spans
+/// the whole written name, an occurrence only the tokens the name owns
+/// (`operator` of `operator Foo*`, whose `Foo` is the class's).
+bool covers(const Site& row, const Site& cursor);
+
 /// Read-only queries over every index source: disk shards, open sessions'
 /// file indexes, PCH overlays and the buffers' own preamble rows. Holds no
 /// index data of its own — ProjectIndex owns the disk-derived index, the
@@ -180,6 +185,14 @@ void dedup_sites(std::vector<Site>& sites);
 ///   Symbol identity lookups (symbol_info: hash → name/kind) are not
 ///   gated: a hash identifies one symbol, so even a stale shard answers
 ///   them correctly.
+///
+/// The project table lists the files holding an external symbol's rows,
+/// and only an external one's: every question about a symbol's rows also
+/// takes an `anchor`, a file holding one of them — the cursor's file, the
+/// file a relation row was read from, a located symbol's site. A
+/// file-local symbol's rows are the anchor's own; a TU-local symbol's are
+/// also in the files the TUs contributing to the anchor list for it
+/// (ProjectIndex::each_fanout_file). External symbols ignore the anchor.
 class IndexQuery {
 public:
     /// A null gate never withholds; null live sources are the disk-only
@@ -207,13 +220,18 @@ public:
     /// LiveSources::preamble_blob); null without live sources.
     std::shared_ptr<TUIndex> preamble_blob(Fid file) const;
 
-    /// The symbol whose occurrence covers `offset` in the file's serving
+    /// The symbols whose occurrences cover `offset` in the file's serving
     /// source (clauses 1 and 4), and the site of that occurrence. A session
     /// served by its own rows also resolves through the preamble region
     /// of its PCH overlay — compiled into the PCH, invisible to the
     /// per-edit index, spelled in the same buffer coordinates.
+    ///
+    /// One name can spell several symbols: an overload set a template's
+    /// call leaves open, `using Base::Base` naming each inherited
+    /// constructor, the variants of a shared header naming different
+    /// entities. The questions about a cursor answer for all of them.
     struct Cursor {
-        SymbolHash symbol = 0;
+        llvm::SmallVector<SymbolHash, 1> symbols;
         Site site;
     };
 
@@ -225,8 +243,8 @@ public:
 
     /// A symbol's name and kind, from whichever table knows the hash: open
     /// sessions, the project index, PCH overlays, then the per-file shards
-    /// (TU-local names live only there).
-    std::optional<SymbolRef> symbol_info(SymbolHash hash) const;
+    /// (names below external scope live only there), the anchor's first.
+    std::optional<SymbolRef> symbol_info(SymbolHash hash, Fid anchor = {}) const;
 
     /// The containers of a symbol, outermost first: the parent chain up
     /// to the translation unit or to a parent no table knows, inline
@@ -246,17 +264,13 @@ public:
     /// Every site carrying a relation of `kind` for the symbol, across all
     /// serving sources, deduplicated — a row present in both a disk shard
     /// and an overlay comes out identical.
-    std::vector<Site> sites(SymbolHash hash, RelationKind kind) const;
+    std::vector<Site> sites(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
     /// The first site carrying the relation, live sources first: an open
     /// buffer's rows, its preamble region, PCH overlays (the definition as
     /// seen under the live context — present even when no disk TU was
     /// indexed), then disk shards.
-    std::optional<Site> first_site(SymbolHash hash, RelationKind kind) const;
-
-    /// The symbol's canonical site: its definition, or a declaration when
-    /// nothing defines it (pure virtuals, externs, decl-only APIs).
-    std::optional<Site> canonical_site(SymbolHash hash) const;
+    std::optional<Site> first_site(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
     /// Go-to-definition from a cursor: the definition sites, or — standing
     /// on the definition itself, or when nothing defines the symbol — the
@@ -278,12 +292,12 @@ public:
 
     /// One canonical site per distinct relation target — the two-hop query
     /// behind go-to-type-definition.
-    std::vector<Site> target_sites(SymbolHash hash, RelationKind kind) const;
+    std::vector<Site> target_sites(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
     /// Sites implementing the symbol: derived types for a class-like
     /// symbol, overrides otherwise — through every override that only
     /// declares to the ones below it.
-    std::vector<Site> implementation(SymbolHash hash) const;
+    std::vector<Site> implementation(SymbolHash hash, Fid anchor) const;
 
     /// A symbol's definition as text: the extent's site, the text it
     /// spans and the comment block above it, sliced from the first source
@@ -298,23 +312,25 @@ public:
         std::string comment;
     };
 
-    std::optional<Definition> definition_text(SymbolHash hash) const;
+    std::optional<Definition> definition_text(SymbolHash hash, Fid anchor) const;
 
     /// The source line a site lies on, for previews; empty when the text
     /// is unavailable (see definition_text on the disk re-read).
     std::string context_line(const Site& site) const;
 
-    /// A symbol together with its canonical site.
+    /// A symbol together with its canonical site, and the whole
+    /// declaration there.
     struct Located {
         SymbolRef symbol;
         Site site;
+        Site extent;
     };
 
-    std::optional<Located> resolve(SymbolHash hash) const;
+    std::optional<Located> resolve(SymbolHash hash, Fid anchor) const;
 
-    /// The symbol under a cursor with its canonical site — or, for a
-    /// symbol of the cursor file's own, its definition or declaration there.
-    std::optional<Located> resolve_at(const Cursor& cursor) const;
+    /// The symbols under a cursor, each with its canonical site; one no
+    /// source places is left out.
+    std::vector<Located> resolve_at(const Cursor& cursor) const;
 
     /// One neighbour of a symbol in a graph: the symbol at its canonical
     /// site and the sites of the relation rows that connect them.
@@ -336,7 +352,7 @@ public:
         std::vector<Edge> callees;
     };
 
-    CallGraph call_graph(SymbolHash root, CallGraphOptions options) const;
+    CallGraph call_graph(SymbolHash root, Fid anchor, CallGraphOptions options) const;
 
     /// The types `root` derives from and the ones deriving from it, each
     /// at its canonical site; only the sides asked for are walked.
@@ -350,7 +366,7 @@ public:
         std::vector<Located> subtypes;
     };
 
-    TypeHierarchy type_hierarchy(SymbolHash root, TypeHierarchyOptions options) const;
+    TypeHierarchy type_hierarchy(SymbolHash root, Fid anchor, TypeHierarchyOptions options) const;
 
     /// The symbols a name query (index/symbol_query.h) matches, best
     /// first, at most `limit`: the search index's hits, the symbols merged
@@ -367,8 +383,9 @@ public:
     /// matches stand as candidates otherwise.
     std::vector<Located> locate(const SymbolQuery& query) const;
 
-    /// Every project symbol with a definition site in the file's serving
-    /// source, anchored at the definition's name token.
+    /// Every project symbol and internal-linkage symbol with a definition
+    /// site in the file's serving source, anchored at the definition's
+    /// name token.
     std::vector<Located> definitions_in(Fid file) const;
 
     /// The include edges of a document, the input of the document-link
@@ -411,22 +428,49 @@ private:
 
     /// Relations of `kind` grouped by their target symbol, each with the
     /// sites spelling it, the targets resolved to their canonical sites.
-    std::vector<Edge> edges(SymbolHash hash, RelationKind kind) const;
+    std::vector<Edge> edges(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// A relation target, anchored at the file the row was read from: a
+    /// file naming a symbol below external scope holds one of its rows.
+    struct Target {
+        SymbolHash symbol;
+        Fid anchor;
+    };
 
     /// The distinct target symbols of the symbol's relations of `kind`
     /// (bases, derived types, overrides), in first-seen order.
-    llvm::SmallVector<SymbolHash> targets(SymbolHash hash, RelationKind kind) const;
+    llvm::SmallVector<Target> targets(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
     /// One canonical site per distinct relation target.
-    std::vector<Located> located_targets(SymbolHash hash, RelationKind kind) const;
+    std::vector<Located> located_targets(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
     /// Whether some unit reported a definition of the symbol: an open
     /// session's table knows only its own unit, the project table all.
-    bool reported_defined(SymbolHash hash) const;
+    bool reported_defined(SymbolHash hash, Fid anchor) const;
+
+    /// A declaring row's site and the whole declaration it names (the
+    /// definition's body included); the site itself when the row carries
+    /// no extent.
+    struct Placed {
+        Site site;
+        Site extent;
+    };
+
+    /// first_site with the declaration's extent.
+    std::optional<Placed> first_placed(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// The symbol's canonical site: its definition, or a declaration when
+    /// nothing defines it (pure virtuals, externs, decl-only APIs).
+    std::optional<Placed> canonical_placed(SymbolHash hash, Fid anchor) const;
+
+    /// The disk files holding the symbol's rows, by its scope (see the
+    /// class comment on anchors).
+    void each_disk_file(SymbolHash hash, Fid anchor, llvm::function_ref<void(Fid)> visit) const;
 
     /// The one federation walk every relation query is a fold over. The
     /// visitor returns false to stop.
     void for_each_relation(SymbolHash hash,
+                           Fid anchor,
                            RelationKind kind,
                            Order order,
                            SourceMask mask,

@@ -54,6 +54,10 @@ struct LocalSourceRange {
         return offset >= begin && offset <= end;
     }
 
+    constexpr bool contains(const LocalSourceRange& other) const {
+        return begin <= other.begin && other.end <= end;
+    }
+
     constexpr bool intersects(const LocalSourceRange& other) const {
         return begin <= other.end && end >= other.begin;
     }

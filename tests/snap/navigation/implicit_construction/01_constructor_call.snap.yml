@@ -14,9 +14,9 @@ brace:
     - { file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "16:12-16:13" }
     - { file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "17:12-17:13" }
   callHierarchy:
-    - { name: "Widget", kind: Method, file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "12:4-12:10" }
+    - { name: "Widget", kind: Method, file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "12:4-12:24", selection: "12:4-12:10" }
   incomingCalls:
-    - { name: "build", kind: Function, file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "15:5-15:10", fromRanges: ["16:11-16:22", "17:11-17:22"] }
+    - { name: "build", kind: Function, file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "15:0-18:1", selection: "15:5-15:10", fromRanges: ["16:12-16:13", "17:12-17:13"] }
 
 paren:
   definition:
@@ -30,6 +30,6 @@ paren:
     - { file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "16:12-16:13" }
     - { file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "17:12-17:13" }
   callHierarchy:
-    - { name: "Widget", kind: Method, file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "12:4-12:10" }
+    - { name: "Widget", kind: Method, file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "12:4-12:24", selection: "12:4-12:10" }
   incomingCalls:
-    - { name: "build", kind: Function, file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "15:5-15:10", fromRanges: ["16:11-16:22", "17:11-17:22"] }
+    - { name: "build", kind: Function, file: "${WS}/implicit_construction/01_constructor_call.cpp", range: "15:0-18:1", selection: "15:5-15:10", fromRanges: ["16:12-16:13", "17:12-17:13"] }

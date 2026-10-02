@@ -4,6 +4,7 @@
 #include "vfs/path.h"
 
 #include "kota/ipc/lsp/text.h"
+#include "clang/Lex/Preprocessor.h"
 
 namespace clice {
 
@@ -194,15 +195,62 @@ auto CompilationUnitRef::include_location(clang::FileID fid) -> clang::SourceLoc
 }
 
 bool CompilationUnitRef::synthesized(clang::FileID fid) {
-    if(self->synthesized.empty()) {
+    if(!borrows_context()) {
         return false;
     }
     auto entry = self->SM().getFileEntryRefForID(fid);
     return entry && self->synthesized.contains(file_path(*entry));
 }
 
+bool CompilationUnitRef::borrows_context() {
+    return !self->synthesized.empty();
+}
+
+auto CompilationUnitRef::source_path(clang::FileID fid) -> llvm::StringRef {
+    if(!synthesized(fid)) {
+        return file_path(fid);
+    }
+    // The fragment's own marker precedes the cut file's text, whose
+    // #line directives would rename what follows them.
+    auto& SM = self->SM();
+    auto text = SM.getBufferData(fid);
+    auto marker = text.find("#line ");
+    if(marker == llvm::StringRef::npos) {
+        return file_path(fid);
+    }
+    auto after = text.find('\n', marker) + 1;
+    return SM.getPresumedLoc(SM.getComposedLoc(fid, after)).getFilename();
+}
+
+bool CompilationUnitRef::host_source(clang::FileID fid) {
+    if(!borrows_context()) {
+        return is_main_file(fid);
+    }
+    if(!synthesized(fid)) {
+        return false;
+    }
+    // The host's first fragment is the one the compile -includes, from
+    // the predefines buffer.
+    if(!self->host) {
+        self->host.emplace();
+        auto& SM = self->SM();
+        auto predefines = self->instance->getPreprocessor().getPredefinesFileID();
+        for(auto path: self->synthesized.keys()) {
+            auto entry = SM.getFileManager().getOptionalFileRef(path);
+            if(!entry) {
+                continue;
+            }
+            auto root = SM.translateFile(*entry);
+            if(root.isValid() && SM.getFileID(SM.getIncludeLoc(root)) == predefines) {
+                *self->host = source_path(root);
+            }
+        }
+    }
+    return source_path(fid) == *self->host;
+}
+
 bool CompilationUnitRef::from_context(clang::FileID fid) {
-    if(self->synthesized.empty()) {
+    if(!borrows_context()) {
         return false;
     }
     auto [it, inserted] = self->context_files.try_emplace(fid);

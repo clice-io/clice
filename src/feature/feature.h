@@ -584,7 +584,9 @@ struct IndexDeclRow {
 };
 
 /// The rows of one document the projections consume, extracted from its
-/// serving shard: every occurrence, and the Decl/Def relations as decl
+/// serving shard: every occurrence, the reference rows of names nested in
+/// another's written name (the class in `~Foo`, which owns no occurrence
+/// there) as occurrences of their own, and the Decl/Def relations as decl
 /// rows.
 struct IndexRows {
     std::vector<index::Occurrence> occurrences;
@@ -611,8 +613,8 @@ auto index_lang_options(llvm::StringRef path, bool c_rows, llvm::StringRef stand
 
 /// Lexical layer (keywords, literals, comments, directives) from a raw lex
 /// of `content`, semantic kinds from `occurrences` resolved through
-/// `resolve`, Declaration/Definition modifiers from `decls`. Both row
-/// arrays must be sorted by range, as shard readers hand them out.
+/// `resolve`, Declaration/Definition modifiers from `decls`, both in any
+/// order.
 auto index_semantic_tokens(llvm::StringRef content,
                            const clang::LangOptions& lang_opts,
                            llvm::ArrayRef<index::Occurrence> occurrences,

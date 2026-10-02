@@ -86,8 +86,7 @@ ZEST_SUITE(identity, Tester) {
 
 std::uint64_t entity(llvm::StringRef marker) {
     return entity_at(*this, "main.cpp", marker);
-
-}  // namespace
+}
 
 ZEST_CASE(RequiresClauseEquivalence) {
     add_main("main.cpp", R"cpp(
@@ -921,6 +920,101 @@ using §(alias)Result = int;
     for(auto marker: {"state", "alias", "field"}) {
         EXPECT(entity_at(*this, "a.cpp", marker) != entity_at(other, "b.cpp", marker));
     }
+}
+
+ZEST_CASE(CTagsPerFile) {
+    llvm::StringRef header = R"c(
+struct §(shared)shared { int x; };
+struct §(opaque)opaque;
+)c";
+    add_file("forward.h", "struct opaque;\n");
+    add_file("common.h", header);
+    add_main("a.c", R"c(
+#include "forward.h"
+#include "common.h"
+struct §(state)state { int x; };
+)c");
+    ASSERT(compile("-std=c17"));
+
+    Tester other;
+    other.add_file("common.h", header);
+    other.add_main("b.c", R"c(
+#include "common.h"
+struct §(state)state { int x; };
+)c");
+    ASSERT(other.compile("-std=c17"));
+
+    EXPECT(entity_at(*this, "a.c", "state") != entity_at(other, "b.c", "state"));
+    EXPECT(entity_at(*this, "common.h", "shared") == entity_at(other, "common.h", "shared"));
+    EXPECT(entity_at(*this, "common.h", "opaque") == entity_at(other, "common.h", "opaque"));
+}
+
+ZEST_CASE(CTagsInContext) {
+    add_file("part.h", "struct ctx;\nstruct §(part)part { int x; };\n");
+    add_main("host.c", R"c(
+struct §(ctx)ctx { int x; };
+#include "part.h"
+)c");
+    ASSERT(compile("-std=c17"));
+
+    /// The header compiled as its host sees it: the host's text before the
+    /// include arrives as a fragment the compile -includes, named after
+    /// the host by its opening #line marker — not by a #line the host's
+    /// own text carries.
+    std::string marker = "#line 1 \"";
+    for(char c: unit->file_path(unit->main_file())) {
+        if(c == '\\') {
+            marker += '\\';
+        }
+        marker += c;
+    }
+    marker += "\"\n";
+
+    Tester context;
+    context.add_main("part.h", "struct §(ctx)ctx;\nstruct §(part)part { int x; };\n");
+    context.prepare("-std=c17");
+    auto prefix = TestVFS::path(".clice-prefix.h");
+    context.params.add_synthesized({
+        {prefix, marker + "struct ctx { int x; };\n#line 9 \"elsewhere.c\"\n"}
+    });
+    context.owned_args.insert(context.owned_args.end() - 1, {"-include", prefix});
+    context.params.arguments.clear();
+    for(auto& arg: context.owned_args) {
+        context.params.arguments.push_back(arg.c_str());
+    }
+    ASSERT(context.try_compile());
+
+    EXPECT(entity_at(context, "part.h", "ctx") == entity_at(*this, "host.c", "ctx"));
+    EXPECT(entity_at(context, "part.h", "part") == entity_at(*this, "part.h", "part"));
+}
+
+ZEST_CASE(CLinkageIgnoresTypes) {
+    add_main("a.c", R"c(
+typedef int wchar_t;
+int §(f)f();
+void §(g)g(wchar_t c);
+)c");
+    ASSERT(compile("-std=c17"));
+
+    Tester other;
+    other.add_main("b.cpp", R"cpp(
+extern "C" int §(f)f(void);
+extern "C" void §(g)g(wchar_t c);
+)cpp");
+    ASSERT(other.compile());
+
+    EXPECT(entity_at(*this, "a.c", "f") == entity_at(other, "b.cpp", "f"));
+    EXPECT(entity_at(*this, "a.c", "g") == entity_at(other, "b.cpp", "g"));
+}
+
+ZEST_CASE(OverloadableCFunctions) {
+    add_main("a.c", R"c(
+__attribute__((overloadable)) void §(i)f(int);
+__attribute__((overloadable)) void §(d)f(double);
+)c");
+    ASSERT(compile("-std=c17"));
+
+    EXPECT(entity_at(*this, "a.c", "i") != entity_at(*this, "a.c", "d"));
 }
 
 ZEST_CASE(HeaderAcrossUnits) {

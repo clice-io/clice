@@ -314,11 +314,11 @@ private:
     /// superseded — unless that project is not asked.
     bool answers_for(const index::IndexQuery& from, Fid file, llvm::ArrayRef<Source> asked) const;
 
-    /// `ask`'s sites from every source of `symbol` (sources), each asked
-    /// under its own id, in the files each may answer for (answers_for),
-    /// deduplicated.
+    /// `ask`'s sites from every source of each of `symbols` (sources),
+    /// each asked under its own id, in the files each may answer for
+    /// (answers_for), deduplicated.
     std::vector<index::Site> gather(
-        index::SymbolHash symbol,
+        llvm::ArrayRef<index::SymbolHash> symbols,
         Fid anchor,
         llvm::function_ref<std::vector<index::Site>(const index::IndexQuery&, index::SymbolHash)>
             ask);

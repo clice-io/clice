@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <string>
@@ -27,6 +28,17 @@ IndexRows extract_index_rows(const index::Shard& shard) {
         rows.occurrences.push_back(occurrence);
         return true;
     });
+    auto written = rows.occurrences;
+    std::ranges::sort(written, {}, [](const index::Occurrence& o) { return o.range.begin; });
+    auto nested = [&](LocalSourceRange range) {
+        auto it =
+            std::ranges::upper_bound(written, range.begin, {}, [](const index::Occurrence& o) {
+                return o.range.begin;
+            });
+        return it != written.begin() && std::prev(it)->range.contains(range) &&
+               std::prev(it)->range != range;
+    };
+    std::vector<index::Occurrence> names;
     shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
         RelationKind kind(relation.kind);
         if(kind.isDeclOrDef()) {
@@ -35,9 +47,12 @@ IndexRows extract_index_rows(const index::Shard& shard) {
                                   .extent = copy.definition_range(),
                                   .symbol = hash,
                                   .definition = kind.is_one_of(RelationKind::Definition)});
+        } else if(kind.isReference() && nested(relation.range)) {
+            names.push_back({.range = relation.range, .target = hash});
         }
         return true;
     });
+    llvm::append_range(rows.occurrences, names);
     return rows;
 }
 

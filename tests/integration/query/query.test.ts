@@ -5,6 +5,7 @@
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import { basename } from "node:path";
 import { waitUntil, type CliceClient } from "@clice/tools/client";
 import { canonicalUri, Workspace } from "@clice/tools/workspace";
 import { URI } from "vscode-uri";
@@ -303,6 +304,58 @@ test("answers for a file only its own symbols name", ({ session }) => {
     expect(onLine.status).toBe(0);
     expect(onLine.result?.symbols.map((s) => s.name)).toEqual(["helper"]);
     expect(onLine.stale).toEqual([]);
+});
+
+test("references reach internal and local symbols", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("util.h", "#pragma once\nstatic int helper(int x) { return x; }\n");
+    ws.write("a.cpp", '#include "util.h"\nint a() { return helper(1); }\n');
+    ws.write(
+        "b.cpp",
+        '#include "util.h"\nint b() { int local = 2; return helper(local) + local; }\n',
+    );
+    ws.writeCDB(["a.cpp", "b.cpp"]);
+    ws.pinCacheDir();
+    expect(runIndex(ws).status).toBe(0);
+
+    const sites = (place: string) => {
+        const refs = query<{ references: { file: string; line: number }[] }>(
+            ws,
+            "references",
+            "--name",
+            place,
+            "--include-declaration",
+        );
+        expect(refs.status, refs.error).toBe(0);
+        return refs.result!.references.map((r) => `${basename(r.file)}:${r.line}`).sort();
+    };
+    const helper = ["a.cpp:2", "b.cpp:2", "util.h:2"];
+    expect(sites("util.h:2:12")).toEqual(helper);
+    expect(sites("a.cpp:2:18")).toEqual(helper);
+    expect(sites("b.cpp:2:15")).toEqual(["b.cpp:2", "b.cpp:2", "b.cpp:2"]);
+
+    const outline = (file: string) =>
+        query<{ symbols: { name: string; symbolId: string }[] }>(
+            ws,
+            "documentSymbols",
+            "--path",
+            file,
+        ).result!.symbols;
+    const [listed] = outline("util.h");
+    expect(listed?.name).toBe("helper");
+    expect(outline("b.cpp").map((s) => s.name)).toEqual(["b"]);
+
+    // An internal symbol's id names it together with the file it was found in.
+    const byId = query<{ name: string }>(
+        ws,
+        "definition",
+        "--symbol",
+        listed!.symbolId,
+        "--path",
+        "util.h",
+    );
+    expect(byId.status, byId.error).toBe(0);
+    expect(byId.result?.name).toBe("helper");
 });
 
 test("context of a name opening its line", ({ session }) => {

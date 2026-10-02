@@ -4,26 +4,26 @@ input_file: implicit_targets/06_rewritten_operator.cpp
 ---
 gt:
   definition:
-    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "25:9-25:17" }
+    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "25:9-25:20" }
   declaration:
-    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "25:9-25:17" }
+    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "25:9-25:20" }
   references:
-    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "25:9-25:17" }
+    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "25:9-25:20" }
     - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "30:16-30:17" }
   callHierarchy:
-    - { name: "operator<=>", kind: Operator, file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "25:9-25:17" }
+    - { name: "operator<=>", kind: Operator, file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "25:4-25:52", selection: "25:9-25:20" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "28:5-28:8", fromRanges: ["30:14-30:19"] }
+    - { name: "use", kind: Function, file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "28:0-31:1", selection: "28:5-28:8", fromRanges: ["30:16-30:17"] }
 
 neq:
   definition:
-    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "24:9-24:17" }
+    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "24:9-24:19" }
   declaration:
-    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "24:9-24:17" }
+    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "24:9-24:19" }
   references:
-    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "24:9-24:17" }
+    - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "24:9-24:19" }
     - { file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "29:16-29:18" }
   callHierarchy:
-    - { name: "operator==", kind: Operator, file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "24:9-24:17" }
+    - { name: "operator==", kind: Operator, file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "24:4-24:41", selection: "24:9-24:19" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "28:5-28:8", fromRanges: ["29:14-29:20"] }
+    - { name: "use", kind: Function, file: "${WS}/implicit_targets/06_rewritten_operator.cpp", range: "28:0-31:1", selection: "28:5-28:8", fromRanges: ["29:16-29:18"] }

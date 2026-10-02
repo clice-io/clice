@@ -110,10 +110,12 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
         }
         return decl->isInAnonymousNamespace() ? SymbolScope::TULocal : SymbolScope::External;
     }
+    // Module linkage reaches the module's other units, as external
+    // linkage reaches every unit.
     auto linkage = decl->getFormalLinkage();
     if(linkage == clang::Linkage::None)
         return SymbolScope::FileLocal;
-    if(linkage == clang::Linkage::Internal || linkage == clang::Linkage::Module)
+    if(linkage == clang::Linkage::Internal)
         return SymbolScope::TULocal;
     return SymbolScope::External;
 }
@@ -146,6 +148,104 @@ bool is_specialization(const clang::NamedDecl* decl) {
         return function->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization;
     }
     return false;
+}
+
+/// Occurrences claim disjoint ranges: a name inside another symbol's
+/// written name — the class in `~Foo` — is that name's, and the symbol it
+/// names keeps only its relation row there.
+void drop_nested(std::vector<Occurrence>& occurrences) {
+    std::ranges::sort(occurrences, [](const Occurrence& lhs, const Occurrence& rhs) {
+        return std::tuple(lhs.range.begin, rhs.range.end) <
+               std::tuple(rhs.range.begin, lhs.range.end);
+    });
+    std::optional<LocalSourceRange> outer;
+    std::erase_if(occurrences, [&](const Occurrence& occurrence) {
+        auto range = occurrence.range;
+        if(outer && range != *outer && range.end <= outer->end) {
+            return true;
+        }
+        if(!outer || range.end > outer->end) {
+            outer = range;
+        }
+        return false;
+    });
+}
+
+/// The name a call is written through, where call hierarchy points at it:
+/// `f` of `ns::f(x)`, `operator==` of `a.operator==(b)`, the operator token
+/// of `a == b`, the pointer of `(*fp)(x)` or `(obj.*pmf)(x)`.
+clang::SourceRange callee_name(const clang::CallExpr* call, const clang::SourceManager& SM) {
+    // `12_km` names its operator with a suffix no token of its own spells.
+    if(auto* UDL = llvm::dyn_cast<clang::UserDefinedLiteral>(call)) {
+        return UDL->getBeginLoc();
+    }
+
+    const clang::Expr* callee = call->getCallee()->IgnoreParenImpCasts();
+    if(auto* UO = llvm::dyn_cast<clang::UnaryOperator>(callee);
+       UO && UO->getOpcode() == clang::UO_Deref) {
+        callee = UO->getSubExpr()->IgnoreParenImpCasts();
+    } else if(auto* BO = llvm::dyn_cast<clang::BinaryOperator>(callee); BO && BO->isPtrMemOp()) {
+        callee = BO->getRHS()->IgnoreParenImpCasts();
+    }
+
+    if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(callee)) {
+        return written_name(DRE->getNameInfo(), SM);
+    }
+    if(auto* ME = llvm::dyn_cast<clang::MemberExpr>(callee)) {
+        return written_name(ME->getMemberNameInfo(), SM);
+    }
+    if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
+        return written_name(OE->getNameInfo(), SM);
+    }
+    if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {
+        return written_name(DSDRE->getNameInfo(), SM);
+    }
+    if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
+        return written_name(DSME->getMemberNameInfo(), SM);
+    }
+    return callee->getExprLoc();
+}
+
+/// The template an explicit or partial specialization specializes: a
+/// class, variable or function template's pattern, or the member of a
+/// class template a member specialization replaces. Null for every other
+/// declaration, implicit and explicit instantiations included.
+const clang::NamedDecl* specialized_template(const clang::NamedDecl* decl) {
+    if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
+        if(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(CTSD) ||
+           CTSD->getSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return CTSD->getSpecializedTemplate()->getTemplatedDecl();
+        }
+        return nullptr;
+    }
+    if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(decl)) {
+        if(llvm::isa<clang::VarTemplatePartialSpecializationDecl>(VTSD) ||
+           VTSD->getSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return VTSD->getSpecializedTemplate()->getTemplatedDecl();
+        }
+        return nullptr;
+    }
+    if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        if(FD->getTemplateSpecializationKind() != clang::TSK_ExplicitSpecialization) {
+            return nullptr;
+        }
+        if(auto* primary = FD->getPrimaryTemplate()) {
+            return primary->getTemplatedDecl();
+        }
+        return FD->getInstantiatedFromMemberFunction();
+    }
+    if(auto* CRD = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+        if(CRD->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return CRD->getInstantiatedFromMemberClass();
+        }
+        return nullptr;
+    }
+    if(auto* VD = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        if(VD->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return VD->getInstantiatedFromStaticDataMember();
+        }
+    }
+    return nullptr;
 }
 
 /// clangd's rule for what unqualified completion may offer from an index:
@@ -257,10 +357,8 @@ public:
         return symbol;
     }
 
-    void add_occurrence(const clang::NamedDecl* decl,
-                        RelationKind kind,
-                        clang::SourceLocation location) {
-        auto [fid, range] = unit.decompose_range(location);
+    void add_occurrence(const clang::NamedDecl* decl, clang::SourceRange name) {
+        auto [fid, range] = unit.decompose_range(name);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -317,12 +415,12 @@ public:
     }
 
     /// A Definition/Declaration/Reference row mirroring an occurrence: it
-    /// lands at the same range, and decl/def rows also carry the
-    /// declaration's full extent for definition-text consumers.
+    /// spans the whole written name the occurrence lies in, and decl/def
+    /// rows also carry the declaration's full extent.
     void add_self_relation(const clang::NamedDecl* decl,
                            RelationKind kind,
-                           clang::SourceLocation location) {
-        auto [fid, range] = unit.decompose_range(location);
+                           clang::SourceRange name) {
+        auto [fid, range] = unit.decompose_range(name);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -532,16 +630,12 @@ public:
             }
         };
 
+        auto& context = unit.context();
         if(auto* CE = node.get<clang::CallExpr>()) {
-            // Some calls span no written extent: the ones Sema synthesizes
-            // for `__builtin_invoke` start nowhere or end before they
-            // begin, a bare MS `__noop` ends nowhere. They land at their
-            // expression location — the builtin's name — or nowhere when
-            // even that is unwritten.
-            auto range = CE->getSourceRange();
-            auto& SM = unit.context().getSourceManager();
-            if(range.isInvalid() ||
-               SM.isBeforeInTranslationUnit(range.getEnd(), range.getBegin())) {
+            // A call no name is written for — the conversion `int i = c`
+            // makes — lands at the expression it converts.
+            auto range = callee_name(CE, context.getSourceManager());
+            if(range.isInvalid()) {
                 range = CE->getExprLoc();
                 if(range.isInvalid()) {
                     return;
@@ -575,7 +669,7 @@ public:
             if(auto inherited = ctor->getInheritedConstructor()) {
                 ctor = inherited.getConstructor();
             }
-            call(ctor, CCE->getSourceRange());
+            call(ctor, CCE->getParenOrBraceRange().getBegin());
             return;
         }
 
@@ -584,20 +678,22 @@ public:
         if(auto* RBO = node.get<clang::CXXRewrittenBinaryOperator>()) {
             if(auto* inner = llvm::dyn_cast_if_present<clang::CXXOperatorCallExpr>(
                    RBO->getDecomposedForm().InnerBinOp)) {
-                call(inner->getDirectCallee(), RBO->getSourceRange());
+                call(inner->getDirectCallee(), RBO->getOperatorLoc());
             }
             return;
         }
 
         if(auto* NE = node.get<clang::CXXNewExpr>()) {
-            call(NE->getOperatorNew(), NE->getSourceRange());
+            call(NE->getOperatorNew(),
+                 keyword_after_scope(context, NE->getBeginLoc(), NE->isGlobalNew()));
             return;
         }
 
         if(auto* DE = node.get<clang::CXXDeleteExpr>()) {
-            call(DE->getOperatorDelete(), DE->getSourceRange());
+            auto keyword = keyword_after_scope(context, DE->getBeginLoc(), DE->isGlobalDelete());
+            call(DE->getOperatorDelete(), keyword);
             if(auto type = DE->getDestroyedType(); !type.isNull()) {
-                call(types::destructor_of(type), DE->getSourceRange());
+                call(types::destructor_of(type), keyword);
             }
             return;
         }
@@ -605,6 +701,16 @@ public:
         auto* D = node.get<clang::Decl>();
         if(!D) {
             return;
+        }
+
+        // Recorded where the specialization is written, as base edges
+        // are: the template's own rows never change with the units that
+        // specialize it.
+        if(auto* ND = llvm::dyn_cast<clang::NamedDecl>(D)) {
+            if(auto* primary = specialized_template(ND)) {
+                add_pair_relation(ND, RelationKind::Primary, primary, ND->getLocation());
+                add_pair_relation(primary, RelationKind::Specialization, ND, ND->getLocation());
+            }
         }
 
         // The type of a value declaration, for go-to-type-definition.
@@ -758,6 +864,20 @@ public:
                 // expansion assigns one, and projecting a TU's expansion
                 // back into the shared definition is deliberately banned.
                 auto location = unit.file_location(occurrence.location);
+                auto spelled = location == unit.spelling_location(occurrence.location);
+
+                // A name of several tokens spans them all where they are
+                // written in one file; a macro that spells part of it
+                // leaves the first token alone.
+                clang::SourceRange name(location);
+                if(occurrence.name_end.isValid()) {
+                    auto end = unit.file_location(occurrence.name_end);
+                    if(spelled && end == unit.spelling_location(occurrence.name_end) &&
+                       unit.file_id(end) == unit.file_id(location) &&
+                       unit.file_offset(location) <= unit.file_offset(end)) {
+                        name.setEnd(end);
+                    }
+                }
 
                 // An occurrence claims "this range spells the name", so it
                 // exists only where that holds. Names conjured by a macro
@@ -765,15 +885,17 @@ public:
                 // reference lists and jump targets keep the invocation row —
                 // but the invocation token itself stays the macro's, not
                 // theirs.
-                if(location == unit.spelling_location(occurrence.location)) {
-                    add_occurrence(occurrence.decl, occurrence.kind, location);
+                if(spelled) {
+                    add_occurrence(occurrence.decl,
+                                   occurrence.owns_whole_name() ? name
+                                                                : clang::SourceRange(location));
                 }
 
-                // Every occurrence is mirrored as a self-relation with the
-                // identical range, so find-references on the occurring decl
-                // finds this row and cursor-site detection can match the
-                // two ranges exactly.
-                add_self_relation(occurrence.decl, occurrence.kind, location);
+                // Every occurrence is mirrored as a self-relation spanning
+                // the whole name, so find-references on the occurring decl
+                // finds this row and cursor-site detection finds the
+                // occurrence inside it.
+                add_self_relation(occurrence.decl, occurrence.kind, name);
             }
 
             project_relations(semantics, i);
@@ -859,6 +981,10 @@ public:
             }
         }
 
+        for(auto& rows: llvm::make_second_range(by_path)) {
+            drop_nested(rows.occurrences);
+        }
+
         // The canonical file is decided across every file's rows: a
         // definition wins over a declaration, and between equals the
         // lowest path id, so the choice is a pure function of the rows.
@@ -882,6 +1008,14 @@ public:
                         adopt(symbol, path_id, true);
                     } else if(relation.kind == RelationKind::Declaration) {
                         adopt(symbol, path_id, false);
+                    } else if(RelationKind(relation.kind).isBetweenSymbol()) {
+                        // A query anchors a relation's target at the file
+                        // holding the row; an internal one reaches its own
+                        // rows from there only through this file.
+                        if(auto it = symbols.find(relation.target_symbol);
+                           it != symbols.end() && it->second.scope == SymbolScope::TULocal) {
+                            it->second.reference_files.add(path_id);
+                        }
                     }
                 }
             }
@@ -1227,6 +1361,45 @@ std::optional<SymbolIdentity> TUIndex::find_symbol(SymbolHash hash) const {
         return std::nullopt;
     }
     return identity_of(found->get<1>());
+}
+
+std::optional<std::vector<LocalFanout>>
+    TUIndex::local_fanout(llvm::ArrayRef<std::uint32_t> contribution_paths) const {
+    llvm::DenseMap<std::uint32_t, std::uint32_t> contribution_of;
+    for(auto [index, path_id]: llvm::enumerate(contribution_paths)) {
+        contribution_of.try_emplace(path_id, static_cast<std::uint32_t>(index));
+    }
+    std::vector<LocalFanout> result;
+    bool valid = true;
+    iterate_symbols([&](SymbolHash hash, const SymbolIdentity& identity, llvm::StringRef bitmap) {
+        if(identity.scope != SymbolScope::TULocal || bitmap.empty()) {
+            return true;
+        }
+        auto files = read_bitmap(bitmap.data(), bitmap.size());
+        if(!files) {
+            valid = false;
+            return false;
+        }
+        if(files->cardinality() < 2) {
+            return true;
+        }
+        LocalFanout fanout{.symbol = hash};
+        for(auto path_id: *files) {
+            auto it = contribution_of.find(path_id);
+            if(it == contribution_of.end()) {
+                valid = false;
+                return false;
+            }
+            fanout.files.push_back(it->second);
+        }
+        result.push_back(std::move(fanout));
+        return true;
+    });
+    if(!valid) {
+        return std::nullopt;
+    }
+    std::ranges::sort(result, {}, &LocalFanout::symbol);
+    return result;
 }
 
 bool TUIndex::matches_prefix(llvm::StringRef text) const {

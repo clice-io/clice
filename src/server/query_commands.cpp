@@ -375,7 +375,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto definition = ctx.query.definition_text(resolved->symbol.hash);
+    auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file);
     if(!definition) {
         return std::unexpected("definition not found");
     }
@@ -436,7 +436,7 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
         .kind = kind_name(resolved->symbol.kind),
         .symbol_id = symbol_id(resolved->symbol.hash),
     };
-    if(auto definition = ctx.query.definition_text(resolved->symbol.hash)) {
+    if(auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file)) {
         auto lines = lines_of(definition->extent);
         result.definition = LocationEntry{
             .file = std::string(definition->extent.path),
@@ -460,7 +460,7 @@ Outcome<ReferencesResult> references(Context& ctx,
         .kind = kind_name(resolved->symbol.kind),
         .symbol_id = symbol_id(resolved->symbol.hash),
     };
-    index::IndexQuery::Cursor cursor{.symbol = resolved->symbol.hash, .site = resolved->site};
+    index::IndexQuery::Cursor cursor{.symbols = {resolved->symbol.hash}, .site = resolved->site};
     for(auto& site: ctx.query.references(cursor, include_declaration)) {
         result.references.push_back({
             .file = std::string(site.path),
@@ -486,6 +486,7 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
     }
     auto graph = ctx.query.call_graph(
         resolved->symbol.hash,
+        resolved->site.file,
         {.callers = direction != "callees", .callees = direction != "callers"});
     return CallGraphResult{
         .root = graph_entry<GraphEntry>(*resolved),
@@ -508,6 +509,7 @@ Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
     }
     auto hierarchy = ctx.query.type_hierarchy(
         resolved->symbol.hash,
+        resolved->site.file,
         {.supertypes = direction != "subtypes", .subtypes = direction != "supertypes"});
     return TypeHierarchyResult{
         .root = graph_entry<GraphEntry>(*resolved),

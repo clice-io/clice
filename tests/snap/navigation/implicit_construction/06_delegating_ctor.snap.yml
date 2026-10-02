@@ -11,7 +11,7 @@ delegate:
     - { file: "${WS}/implicit_construction/06_delegating_ctor.cpp", range: "12:7-12:13" }
     - { file: "${WS}/implicit_construction/06_delegating_ctor.cpp", range: "14:15-14:21" }
   typeHierarchy:
-    - { name: "Widget", kind: Struct, file: "${WS}/implicit_construction/06_delegating_ctor.cpp", range: "12:7-12:13" }
+    - { name: "Widget", kind: Struct, file: "${WS}/implicit_construction/06_delegating_ctor.cpp", range: "12:0-15:1", selection: "12:7-12:13" }
 
 delegate_paren:
   definition:
@@ -24,6 +24,6 @@ delegate_paren:
     - { file: "${WS}/implicit_construction/06_delegating_ctor.cpp", range: "13:4-13:10" }
     - { file: "${WS}/implicit_construction/06_delegating_ctor.cpp", range: "14:21-14:22" }
   callHierarchy:
-    - { name: "Widget", kind: Method, file: "${WS}/implicit_construction/06_delegating_ctor.cpp", range: "13:4-13:10" }
+    - { name: "Widget", kind: Method, file: "${WS}/implicit_construction/06_delegating_ctor.cpp", range: "13:4-13:24", selection: "13:4-13:10" }
   incomingCalls:
-    - { name: "Widget", kind: Method, file: "${WS}/implicit_construction/06_delegating_ctor.cpp", range: "14:4-14:10", fromRanges: ["14:15-14:27"] }
+    - { name: "Widget", kind: Method, file: "${WS}/implicit_construction/06_delegating_ctor.cpp", range: "14:4-14:30", selection: "14:4-14:10", fromRanges: ["14:21-14:22"] }

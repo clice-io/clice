@@ -21,4 +21,4 @@ type:
     - { file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "16:7-16:13" }
     - { file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "18:12-18:18" }
   typeHierarchy:
-    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "16:7-16:13" }
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "16:0-16:16", selection: "16:7-16:13" }

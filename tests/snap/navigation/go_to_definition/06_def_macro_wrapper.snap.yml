@@ -12,9 +12,9 @@ decl:
     - { file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "13:13-13:19" }
     - { file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "18:11-18:17" }
   callHierarchy:
-    - { name: "notify", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "13:13-13:19" }
+    - { name: "notify", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "13:0-15:1", selection: "13:13-13:19" }
   incomingCalls:
-    - { name: "trigger", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "17:4-17:11", fromRanges: ["18:11-18:24"] }
+    - { name: "trigger", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "17:0-19:1", selection: "17:4-17:11", fromRanges: ["18:11-18:17"] }
 
 def:
   definition:
@@ -26,9 +26,9 @@ def:
     - { file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "13:13-13:19" }
     - { file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "18:11-18:17" }
   callHierarchy:
-    - { name: "notify", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "13:13-13:19" }
+    - { name: "notify", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "13:0-15:1", selection: "13:13-13:19" }
   incomingCalls:
-    - { name: "trigger", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "17:4-17:11", fromRanges: ["18:11-18:24"] }
+    - { name: "trigger", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "17:0-19:1", selection: "17:4-17:11", fromRanges: ["18:11-18:17"] }
 
 use:
   definition:
@@ -41,6 +41,6 @@ use:
     - { file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "13:13-13:19" }
     - { file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "18:11-18:17" }
   callHierarchy:
-    - { name: "notify", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "13:13-13:19" }
+    - { name: "notify", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "13:0-15:1", selection: "13:13-13:19" }
   incomingCalls:
-    - { name: "trigger", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "17:4-17:11", fromRanges: ["18:11-18:24"] }
+    - { name: "trigger", kind: Function, file: "${WS}/go_to_definition/06_def_macro_wrapper.cpp", range: "17:0-19:1", selection: "17:4-17:11", fromRanges: ["18:11-18:17"] }

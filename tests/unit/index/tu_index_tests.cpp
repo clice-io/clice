@@ -159,6 +159,23 @@ void EXPECT_SELECT(llvm::StringRef pos,
     ASSERT(dump(occurrences.front().range) == dump(expected));
 };
 
+/// Whether the main file holds a symbol-pair row of `kind` from the
+/// symbol at marker `source` to the one at marker `target`.
+bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef target) {
+    auto sources = select(source);
+    auto targets = select(target);
+    if(sources.empty() || targets.empty()) {
+        return false;
+    }
+    auto it = tu_index.main_file_index.relations.find(sources.front().target);
+    if(it == tu_index.main_file_index.relations.end()) {
+        return false;
+    }
+    return llvm::any_of(it->second, [&](const index::Relation& relation) {
+        return relation.kind == kind && relation.target_symbol == targets.front().target;
+    });
+}
+
 void GO_TO_DEFINITION(llvm::StringRef pos,
                       llvm::StringRef definition,
                       std::source_location location = std::source_location::current()) {
@@ -422,30 +439,73 @@ ZEST_CASE(BaseAndDerived) {
             };
         )");
 
-    auto& index = tu_index.main_file_index;
-    auto base_occs = select("base");
-    auto derived_occs = select("derived");
-    ASSERT(!base_occs.empty());
-    ASSERT(!derived_occs.empty());
-    auto base_hash = base_occs.front().target;
-    auto derived_hash = derived_occs.front().target;
+    ASSERT(has_pair("derived", RelationKind::Base, "base"));
+    ASSERT(has_pair("base", RelationKind::Derived, "derived"));
+}
 
-    auto has_pair =
-        [&](index::SymbolHash source, RelationKind::Kind kind, index::SymbolHash target) {
-            auto it = index.relations.find(source);
-            if(it == index.relations.end()) {
-                return false;
-            }
-            for(auto& r: it->second) {
-                if(r.kind == kind && r.target_symbol == target) {
-                    return true;
-                }
-            }
-            return false;
-        };
+ZEST_CASE(SpecializationRelations) {
+    build_index(R"(
+            template <class T>
+            struct §(box)Box {
+                void §(get)get();
+                static int §(count)count;
+            };
+            template <>
+            struct §(box_char)Box<char> {};
+            template <class T>
+            struct §(box_ptr)Box<T*> {};
+            template <>
+            void Box<int>::§(get_int)get() {}
+            template <>
+            int Box<long>::§(count_long)count = 0;
 
-    ASSERT(has_pair(derived_hash, RelationKind::Base, base_hash));
-    ASSERT(has_pair(base_hash, RelationKind::Derived, derived_hash));
+            template <class T>
+            void §(fn)fn(T) {}
+            template <class T>
+            void §(fn_ptr)fn(T*) {}
+            template <>
+            void §(fn_int)fn<int>(int*) {}
+
+            template <class T>
+            constexpr int §(width)width = 0;
+            template <>
+            constexpr int §(width_char)width<char> = 1;
+            template <class T>
+            constexpr int §(width_ptr)width<T*> = 2;
+
+            template <class T>
+            struct Outer {
+                struct §(inner)Inner;
+            };
+            template <>
+            struct Outer<int>::§(inner_int)Inner {};
+
+            template struct Box<short>;
+            Box<double> used;
+        )");
+
+    for(auto [primary, specialization]: {
+            std::pair{"box",    "box_char"  },
+            std::pair{"box",    "box_ptr"   },
+            std::pair{"get",    "get_int"   },
+            std::pair{"count",  "count_long"},
+            std::pair{"fn_ptr", "fn_int"    },
+            std::pair{"width",  "width_char"},
+            std::pair{"width",  "width_ptr" },
+            std::pair{"inner",  "inner_int" },
+    }) {
+        ASSERT(has_pair(primary, RelationKind::Specialization, specialization));
+        ASSERT(has_pair(specialization, RelationKind::Primary, primary));
+    }
+    // The overload the specialization does not specialize stays unrelated.
+    ASSERT(select("fn").size() == 1U);
+    ASSERT(!has_pair("fn", RelationKind::Specialization, "fn_int"));
+
+    // Instantiations, explicit or implicit, specialize nothing.
+    auto& rows = tu_index.main_file_index.relations[select("box").front().target];
+    ASSERT(llvm::count_if(rows, [](const index::Relation& relation) {
+               return relation.kind == RelationKind::Specialization;
+           }) == 2);
 }
 
 ZEST_CASE(CallerAndCallee) {
@@ -609,7 +669,7 @@ ZEST_CASE(RewrittenOperatorRef) {
 
             struct S {
                 int v;
-                auto §(def)⟦operator⟧<=>(const S&) const = default;
+                auto §(def)⟦operator<=>⟧(const S&) const = default;
             };
 
             bool lt(S a, S b) { return a §(use)< b; }
@@ -667,31 +727,9 @@ ZEST_CASE(TypeDefinitionRelations) {
             enum §(e)⟦§(e)E⟧ { §(ec)⟦§(ec)A⟧ };
         )");
 
-    auto& index = tu_index.main_file_index;
-
-    auto has_type_definition = [&](llvm::StringRef source, llvm::StringRef target) {
-        auto source_occs = select(source);
-        auto target_occs = select(target);
-        if(source_occs.empty() || target_occs.empty()) {
-            return false;
-        }
-        auto source_hash = source_occs.front().target;
-        auto target_hash = target_occs.front().target;
-        auto it = index.relations.find(source_hash);
-        if(it == index.relations.end()) {
-            return false;
-        }
-        for(auto& r: it->second) {
-            if(r.kind == RelationKind::TypeDefinition && r.target_symbol == target_hash) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    ASSERT(has_type_definition("field", "s"));
-    ASSERT(has_type_definition("alias", "s"));
-    ASSERT(has_type_definition("ec", "e"));
+    ASSERT(has_pair("field", RelationKind::TypeDefinition, "s"));
+    ASSERT(has_pair("alias", RelationKind::TypeDefinition, "s"));
+    ASSERT(has_pair("ec", RelationKind::TypeDefinition, "e"));
 }
 
 ZEST_CASE(ConstructorDestructorRelations) {
@@ -1148,6 +1186,22 @@ ZEST_CASE(ScopeTULocal) {
         }
     }
     ASSERT(found == expected);
+}
+
+ZEST_CASE(ScopeModuleLinkage) {
+    build_index(R"(
+            export module m;
+            int module_var = 0;
+            export int exported_var = 0;
+            static int static_var = 0;
+        )");
+
+    auto scope = [&](llvm::StringRef name) {
+        return static_cast<int>(symbol_named(name).second.scope);
+    };
+    ASSERT(scope("module_var") == static_cast<int>(index::SymbolScope::External));
+    ASSERT(scope("exported_var") == static_cast<int>(index::SymbolScope::External));
+    ASSERT(scope("static_var") == static_cast<int>(index::SymbolScope::TULocal));
 }
 
 ZEST_CASE(BareNameAndParentChain) {

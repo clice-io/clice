@@ -13,6 +13,6 @@ base:
     - { file: "${WS}/type_hierarchy/05_types_template_args.cpp", range: "12:7-12:11" }
     - { file: "${WS}/type_hierarchy/05_types_template_args.cpp", range: "15:17-15:21" }
   typeHierarchy:
-    - { name: "Base", kind: Struct, file: "${WS}/type_hierarchy/05_types_template_args.cpp", range: "12:7-12:11" }
+    - { name: "Base", kind: Struct, file: "${WS}/type_hierarchy/05_types_template_args.cpp", range: "12:0-12:14", selection: "12:7-12:11" }
   subtypes:
-    - { name: "Derived", kind: Struct, file: "${WS}/type_hierarchy/05_types_template_args.cpp", range: "15:7-15:14" }
+    - { name: "Derived", kind: Struct, file: "${WS}/type_hierarchy/05_types_template_args.cpp", range: "15:0-15:24", selection: "15:7-15:14" }

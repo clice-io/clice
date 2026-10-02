@@ -35,7 +35,7 @@ input_file: co_await_operator.cpp
 - { loc: "35:7", kind: Struct, text: "Awaitable", relations: [Definition] }
 - { loc: "36:4", kind: Namespace, text: "std", relations: [Reference] }
 - { loc: "36:9", kind: Struct, text: "suspend_never", relations: [Reference] }
-- { loc: "36:23", kind: Operator, text: "operator", relations: [Declaration] }
+- { loc: "36:23", kind: Operator, text: "operator co_await", relations: [Declaration] }
 - { loc: "39:0", kind: Struct, text: "Task", relations: [Reference] }
 - { loc: "39:5", kind: Function, text: "coro", relations: [Definition] }
 - { loc: "39:10", kind: Struct, text: "Awaitable", relations: [Reference] }

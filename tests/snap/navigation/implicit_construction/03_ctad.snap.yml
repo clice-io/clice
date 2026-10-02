@@ -13,6 +13,6 @@ ctad_paren:
     - { file: "${WS}/implicit_construction/03_ctad.cpp", range: "13:4-13:7" }
     - { file: "${WS}/implicit_construction/03_ctad.cpp", range: "21:9-21:10" }
   callHierarchy:
-    - { name: "Box", kind: Method, file: "${WS}/implicit_construction/03_ctad.cpp", range: "13:4-13:7" }
+    - { name: "Box", kind: Method, file: "${WS}/implicit_construction/03_ctad.cpp", range: "13:4-13:34", selection: "13:4-13:7" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/implicit_construction/03_ctad.cpp", range: "20:5-20:8", fromRanges: ["21:8-21:12"] }
+    - { name: "use", kind: Function, file: "${WS}/implicit_construction/03_ctad.cpp", range: "20:0-22:1", selection: "20:5-20:8", fromRanges: ["21:9-21:10"] }

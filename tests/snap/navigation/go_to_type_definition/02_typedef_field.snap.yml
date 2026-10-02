@@ -22,7 +22,7 @@ class_type:
     - { file: "${WS}/go_to_type_definition/02_typedef_field.cpp", range: "10:6-10:11" }
     - { file: "${WS}/go_to_type_definition/02_typedef_field.cpp", range: "14:4-14:9" }
   typeHierarchy:
-    - { name: "Store", kind: Class, file: "${WS}/go_to_type_definition/02_typedef_field.cpp", range: "10:6-10:11" }
+    - { name: "Store", kind: Class, file: "${WS}/go_to_type_definition/02_typedef_field.cpp", range: "10:0-10:14", selection: "10:6-10:11" }
 
 field:
   definition:
@@ -44,4 +44,4 @@ type:
     - { file: "${WS}/go_to_type_definition/02_typedef_field.cpp", range: "8:7-8:13" }
     - { file: "${WS}/go_to_type_definition/02_typedef_field.cpp", range: "13:4-13:10" }
   typeHierarchy:
-    - { name: "Logger", kind: Struct, file: "${WS}/go_to_type_definition/02_typedef_field.cpp", range: "8:7-8:13" }
+    - { name: "Logger", kind: Struct, file: "${WS}/go_to_type_definition/02_typedef_field.cpp", range: "8:0-8:16", selection: "8:7-8:13" }

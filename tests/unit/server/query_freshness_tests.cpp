@@ -87,7 +87,7 @@ index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
 /// Files contributing reference rows for a symbol, by basename.
 std::vector<std::string> reference_files(index::SymbolHash hash) {
     std::vector<std::string> files;
-    for(auto& site: disk_query.sites(hash, RelationKind::Reference)) {
+    for(auto& site: disk_query.sites(hash, Fid{}, RelationKind::Reference)) {
         files.push_back(llvm::sys::path::filename(site.path).str());
     }
     return files;
@@ -130,7 +130,7 @@ ZEST_CASE(GateSplitsRows) {
     // Baseline: the main TU contributes its reference row, and the
     // definition resolves into the header shard.
     ASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
-    ASSERT(index_query.first_site(hash, RelationKind::Definition));
+    ASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
 
     // Awaiting a reindex for a dependency change only: the disk still
     // holds the text the rows indexed, so they keep serving.
@@ -147,7 +147,7 @@ ZEST_CASE(GateSplitsRows) {
     // are unaffected.
     project.file_table.observe(main_id, DiskObservation{.hash = 1});
     ASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
-    ASSERT(index_query.first_site(hash, RelationKind::Definition));
+    ASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
 
     // Cursor-style resolution against the stale rows is unresolvable: the
     // line numbers describe text that no longer exists.
@@ -155,7 +155,7 @@ ZEST_CASE(GateSplitsRows) {
 
     // A changed definition file drops out of definition lookups.
     project.file_table.observe(header_id, DiskObservation{.hash = 1});
-    ASSERT(!index_query.first_site(hash, RelationKind::Definition).has_value());
+    ASSERT(!index_query.first_site(hash, Fid{}, RelationKind::Definition).has_value());
 
     // With background indexing disabled nothing would ever catch up:
     // last-known rows keep serving instead of leaving a permanent hole.

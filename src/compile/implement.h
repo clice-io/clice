@@ -79,6 +79,10 @@ struct CompilationUnitRef::Self {
     /// Memo of CompilationUnitRef::from_context.
     llvm::DenseMap<clang::FileID, bool> context_files;
 
+    /// Memo of the host path CompilationUnitRef::host_source compares
+    /// against.
+    std::optional<std::string> host;
+
     /// The frontend action used to build the unit.
     std::unique_ptr<clang::FrontendAction> action;
 

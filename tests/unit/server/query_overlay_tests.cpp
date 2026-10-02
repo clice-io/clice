@@ -176,7 +176,8 @@ index::IndexQuery::Cursor
 
 /// The sites carrying `kind` for the symbol under a marker.
 std::vector<index::Site> relations(llvm::StringRef name, RelationKind kind) {
-    return index_query.sites(cursor_of(name).symbol, kind);
+    auto cursor = cursor_of(name);
+    return index_query.sites(cursor.symbols.front(), cursor.site.file, kind);
 }
 
 /// The 0-based line a site starts on.
@@ -242,13 +243,13 @@ int main() { return 0; }
     install_empty_index();
 
     auto cursor = cursor_of("macro");
-    auto info = index_query.symbol_info(cursor.symbol);
+    auto info = index_query.symbol_info(cursor.symbols.front());
     ASSERT(info);
     EXPECT(info->name == "FOO");
 
     // The definition text comes from the same preamble rows, sliced from
     // the buffer: the hover card for a `#define` above the PCH bound.
-    auto definition = index_query.definition_text(cursor.symbol);
+    auto definition = index_query.definition_text(cursor.symbols.front(), cursor.site.file);
     ASSERT(definition);
     EXPECT(llvm::StringRef(definition->text).contains("FOO"));
 }
@@ -273,7 +274,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     ASSERT(info);
     EXPECT(info->name == "bar");
 
-    auto def = index_query.first_site(bar_hash, RelationKind::Definition);
+    auto def = index_query.first_site(bar_hash, Fid{}, RelationKind::Definition);
     ASSERT(def);
     EXPECT(def->path.ends_with("foo.h"));
 }
@@ -313,7 +314,7 @@ int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
     // overlay; each caller must report it exactly once.
     merge_disk_index();
 
-    auto callers = index_query.call_graph(hash_of("callee"), {.callees = false}).callers;
+    auto callers = index_query.call_graph(hash_of("callee"), Fid{}, {.callees = false}).callers;
     ASSERT(callers.size() == 2);
     for(auto& edge: callers) {
         EXPECT(edge.sites.size() == 1);
@@ -335,14 +336,14 @@ Derived instance;
     open_with_overlay();
 
     auto derived = hash_of("Derived");
-    auto supertypes = index_query.type_hierarchy(derived, {.subtypes = false}).supertypes;
+    auto supertypes = index_query.type_hierarchy(derived, Fid{}, {.subtypes = false}).supertypes;
     ASSERT(supertypes.size() == 1);
     EXPECT(supertypes[0].symbol.name == "Base");
 
     // Once derived.h is open, its session owns the type relations spelled
     // there; the overlay's disk-snapshot rows must stop contributing.
     session_store.open(project.file_table.intern(Spelling::absolute(header_path("derived.h"))));
-    supertypes = index_query.type_hierarchy(derived, {.subtypes = false}).supertypes;
+    supertypes = index_query.type_hierarchy(derived, Fid{}, {.subtypes = false}).supertypes;
     EXPECT(supertypes.size() == 0);
 }
 
@@ -356,14 +357,14 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 )");
     open_with_overlay();
 
-    ASSERT(index_query.first_site(hash_of("foo"), RelationKind::Definition));
+    ASSERT(index_query.first_site(hash_of("foo"), Fid{}, RelationKind::Definition));
 
     // The disk was seen holding other text for the header: its overlay
     // rows describe text that no longer exists (freshness contract,
     // clause 2), exactly like a shard contribution.
     project.file_table.observe(project.file_table.intern(Spelling::absolute(header_path("foo.h"))),
                                DiskObservation{.hash = 1});
-    EXPECT(!index_query.first_site(hash_of("foo"), RelationKind::Definition).has_value());
+    EXPECT(!index_query.first_site(hash_of("foo"), Fid{}, RelationKind::Definition).has_value());
 }
 
 ZEST_CASE(MacroDefinitionText) {
@@ -381,7 +382,7 @@ int main() { return 0; }
 
     // Macro Definition relations carry the full #define extent, so the
     // disk text path works for macros.
-    auto text = disk_query.definition_text(hash_of("FOO"));
+    auto text = disk_query.definition_text(hash_of("FOO"), Fid{});
     ASSERT(text);
     EXPECT(llvm::StringRef(text->text).contains("FOO"));
 }
@@ -402,9 +403,9 @@ int main() { return 0; }
     merge_disk_index();
 
     auto foo = hash_of("FOO");
-    EXPECT(!disk_query.definition_text(foo).has_value());
+    EXPECT(!disk_query.definition_text(foo, Fid{}).has_value());
 
-    auto references = disk_query.sites(foo, RelationKind::Reference);
+    auto references = disk_query.sites(foo, Fid{}, RelationKind::Reference);
     ASSERT(!references.empty());
     for(auto& reference: references) {
         EXPECT(disk_query.context_line(reference).empty());
@@ -449,17 +450,17 @@ ZEST_CASE(AsciiPreviewFromDisk) {
     row.name = "value";
     row.reference_files.add(path_id.raw);
 
-    auto definition = disk_query.definition_text(sym);
+    auto definition = disk_query.definition_text(sym, Fid{});
     ASSERT(definition);
     EXPECT(definition->text == "int value = 1;");
 
-    auto references = disk_query.sites(sym, RelationKind::Reference);
+    auto references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
     ASSERT(!references.empty());
     EXPECT(disk_query.context_line(references.front()) == "int other = value;");
 
     dir.touch("preview.cpp", "int moved = 0;\n");
-    EXPECT(!disk_query.definition_text(sym).has_value());
-    references = disk_query.sites(sym, RelationKind::Reference);
+    EXPECT(!disk_query.definition_text(sym, Fid{}).has_value());
+    references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
     ASSERT(!references.empty());
     EXPECT(disk_query.context_line(references.front()).empty());
 }
@@ -505,7 +506,7 @@ int main() { return 0; }
     projections.entries[session->path_id].current = false;
     session->text += "int more;\n";
     session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
-    EXPECT(index_query.first_site(hash_of("FOO"), RelationKind::Definition));
+    EXPECT(index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
 }
 
 ZEST_CASE(PreambleDriftSkipped) {
@@ -520,7 +521,7 @@ int main() { return 0; }
     // stored preamble text, its rows must not be served.
     session->text = "// drift\n" + session->text;
     session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
-    EXPECT(!index_query.first_site(hash_of("FOO"), RelationKind::Definition).has_value());
+    EXPECT(!index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition).has_value());
 }
 
 ZEST_CASE(OverlayOutranksDisk) {
@@ -551,7 +552,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     project.project_index.touch(foo).reference_files.add(header_id.raw);
 
-    auto def = index_query.first_site(foo, RelationKind::Definition);
+    auto def = index_query.first_site(foo, Fid{}, RelationKind::Definition);
     ASSERT(def);
     EXPECT(line_of(*def) == 1u);
 }

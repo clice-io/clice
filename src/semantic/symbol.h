@@ -195,6 +195,12 @@ struct RelationKind {
         Destructor,
         Caller,
         Callee,
+        /// Keyed by a template (or a member of a class template), the
+        /// target an explicit or partial specialization of it.
+        Specialization,
+        /// Keyed by an explicit or partial specialization, the target the
+        /// template it specializes.
+        Primary,
     };
 
     constexpr RelationKind() = default;
@@ -229,7 +235,9 @@ struct RelationKind {
                          Base,
                          Derived,
                          Constructor,
-                         Destructor);
+                         Destructor,
+                         Specialization,
+                         Primary);
     }
 
 private:

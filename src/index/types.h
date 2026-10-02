@@ -23,11 +23,14 @@ using SymbolHash = std::uint64_t;
 /// Visibility scope of a symbol, determining which level of the multi-level
 /// symbol table stores it.
 enum class SymbolScope : std::uint8_t {
-    /// Can be referenced from any TU (external linkage).  Stored in ProjectIndex.
+    /// Can be referenced from any TU (external or module linkage). Stored
+    /// in ProjectIndex, whose reference bitmaps list the files holding its
+    /// rows.
     External = 0,
     /// Can be referenced across files within one TU but not across TUs
-    /// (internal linkage: static, anonymous namespace).  Stored in the main
-    /// file's Shard blob.
+    /// (internal linkage: static, anonymous namespace). Stored in the
+    /// shards holding its rows; the TUs that reference it from several
+    /// files list those files (TUManifest::local_fanout).
     TULocal = 1,
     /// Cannot be referenced from any other file (local variables, parameters,
     /// labels).  Stored in the defining file's Shard blob.
@@ -195,7 +198,9 @@ struct Symbol {
     /// symbol is only referenced.
     std::uint32_t file = no_file;
 
-    /// All files that referenced this symbol.
+    /// All files that referenced this symbol; for an internal-linkage one
+    /// also the files whose rows target it (a structured binding's
+    /// TypeDefinition row naming a type the file never spells).
     Bitmap reference_files;
 
     /// The identity a reader hands out for this row; the strings borrow it.

@@ -34,6 +34,10 @@ ZEST_CASE(ManifestRoundTrip) {
         {VersionID{300}, 0xdeadbeefdeadbeefull},
         {VersionID{302}, 42                   },
     };
+    manifest.local_fanout = {
+        {.symbol = 5, .files = {0, 1}},
+        {.symbol = 9, .files = {1, 0}},
+    };
 
     llvm::SmallString<256> buf;
     llvm::raw_svector_ostream os(buf);
@@ -59,7 +63,43 @@ struct ManifestBlobMirror {
     std::vector<std::uint8_t> nodes;
     std::vector<std::uint8_t> contributions;
     std::vector<std::uint32_t> absent;
+    std::vector<std::uint64_t> local_symbols;
+    std::vector<std::uint32_t> local_file_ends;
+    std::vector<std::uint32_t> local_files;
 };
+
+ZEST_CASE(ManifestFanoutRejected) {
+    ManifestBlobMirror valid;
+    valid.format_version = index::index_format_version;
+    valid.contribution_count = 1;
+    valid.contributions = {1, 0, 0, 0, 0, 0, 0, 0, 0};
+    valid.local_symbols = {5, 7};
+    valid.local_file_ends = {1, 2};
+    valid.local_files = {0, 0};
+
+    auto decodes = [&](const ManifestBlobMirror& mirror) {
+        auto blob = kota::codec::fbs::to_bytes(mirror);
+        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
+    };
+    ASSERT(decodes(valid));
+
+    // A fanout file must name one of the manifest's contributions.
+    auto mirror = valid;
+    mirror.local_files = {0, 1};
+    ASSERT(!decodes(mirror));
+
+    mirror = valid;
+    mirror.local_symbols = {7, 5};
+    ASSERT(!decodes(mirror));
+
+    mirror = valid;
+    mirror.local_file_ends = {1};
+    ASSERT(!decodes(mirror));
+
+    mirror = valid;
+    mirror.local_file_ends = {1, 1};
+    ASSERT(!decodes(mirror));
+}
 
 ZEST_CASE(ManifestCountMismatchRejected) {
     // A node count claiming more nodes than the payload holds must not

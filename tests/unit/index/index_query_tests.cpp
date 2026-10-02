@@ -107,10 +107,15 @@ void merge_into_workspace() {
                                   .line = node.line,
                                   .skipped = node.skipped});
     }
+    llvm::SmallVector<std::uint32_t> contribution_paths;
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         manifest.contributions.emplace_back(fv_of[view.section_path(section)],
                                             view.section_hash(section));
+        contribution_paths.push_back(view.section_path(section));
     }
+    auto local_fanout = view.local_fanout(contribution_paths);
+    ASSERT(local_fanout);
+    manifest.local_fanout = std::move(*local_fanout);
 
     for(auto path_id:
         project_index.apply_manifest(project.file_table, main_id, std::move(manifest))) {
@@ -140,7 +145,7 @@ ZEST_CASE(DefinitionAcrossFiles) {
     });
     ASSERT(symbol != 0);
 
-    auto site = query.first_site(symbol, RelationKind::Definition);
+    auto site = query.first_site(symbol, Fid{}, RelationKind::Definition);
     ASSERT(site);
     ASSERT(site->path.ends_with("header.h"));
 }
@@ -163,8 +168,119 @@ ZEST_CASE(ReferencesAcrossFiles) {
     });
     ASSERT(symbol != 0);
 
-    auto references = query.sites(symbol, RelationKind::Reference);
+    auto references = query.sites(symbol, Fid{}, RelationKind::Reference);
     ASSERT(!references.empty());
+}
+
+ZEST_CASE(LocalReferencesClosed) {
+    add_main("main.cpp", R"(
+        int compute(int §(param)p) {
+            int §(local)q = p;
+            return §(use)q + p;
+        }
+    )");
+    ASSERT(compile());
+    merge_into_workspace();
+
+    for(auto [marker, expected]: {
+            std::pair{"use",   2U},
+            std::pair{"param", 3U}
+    }) {
+        auto cursor = query.symbol_at(main_id, point(marker));
+        ASSERT(cursor);
+        EXPECT(query.references(*cursor, true).size() == expected);
+    }
+}
+
+ZEST_CASE(InternalAcrossFiles) {
+    add_file("header.h", R"(
+        static int §(def)helper() { return 1; }
+        inline int via_header() { return §(header_use)helper(); }
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int call() { return §(main_use)helper(); }
+    )");
+    ASSERT(compile());
+    merge_into_workspace();
+
+    auto from_main = query.symbol_at(main_id, point("main_use"));
+    auto from_header = query.symbol_at(header_id, point("def", "header.h"));
+    ASSERT(from_main);
+    ASSERT(from_header);
+    ASSERT(from_main->symbols == from_header->symbols);
+    EXPECT(query.references(*from_main, true).size() == 3U);
+    EXPECT(query.references(*from_header, true).size() == 3U);
+    auto located = query.resolve_at(*from_main);
+    ASSERT(located.size() == 1U);
+    EXPECT(located.front().site.path.ends_with("header.h"));
+}
+
+ZEST_CASE(InternalTypeTarget) {
+    add_file("header.h", R"(
+        namespace {
+        struct Point { int x; };
+        struct Pair { Point first; int second; };
+        Pair make() { return {}; }
+        }
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int read() { auto [§(var)point, count] = make(); return point.x + count; }
+    )");
+    ASSERT(compile());
+    merge_into_workspace();
+
+    auto cursor = query.symbol_at(main_id, point("var"));
+    ASSERT(cursor);
+    auto sites = query.target_sites(cursor->symbols.front(), main_id, RelationKind::TypeDefinition);
+    ASSERT(sites.size() == 1U);
+    EXPECT(sites.front().path.ends_with("header.h"));
+}
+
+ZEST_CASE(InternalAcrossUnits) {
+    llvm::StringRef header = "static int helper() { return 1; }\n";
+    add_file("header.h", header);
+    add_main("a.cpp", R"(
+        #include "header.h"
+        int a() { return §(use)helper(); }
+    )");
+    ASSERT(compile());
+    merge_into_workspace();
+    auto a_id = main_id;
+    auto a_use = point("use");
+
+    clear();
+    add_file("header.h", header);
+    add_main("b.cpp", R"(
+        #include "header.h"
+        int b() { return helper(); }
+    )");
+    ASSERT(compile());
+    merge_into_workspace();
+
+    auto cursor = query.symbol_at(a_id, a_use);
+    ASSERT(cursor);
+    EXPECT(query.references(*cursor, true).size() == 3U);
+}
+
+ZEST_CASE(OverloadSetCursor) {
+    add_main("main.cpp", R"(
+        void §(int)take(int);
+        void §(double)take(double);
+        template <class T> void call(T t) { §(use)take(t); }
+    )");
+    ASSERT(compile());
+    merge_into_workspace();
+
+    auto cursor = query.symbol_at(main_id, point("use"));
+    ASSERT(cursor);
+    ASSERT(cursor->symbols.size() == 2U);
+    auto sites = query.definition(*cursor);
+    ASSERT(sites.size() == 2U);
+    EXPECT(sites[0].range.begin == point("int"));
+    EXPECT(sites[1].range.begin == point("double"));
+    EXPECT(query.resolve_at(*cursor).size() == 2U);
 }
 
 ZEST_CASE(SearchSymbols) {
@@ -390,13 +506,13 @@ ZEST_CASE(StaleContributionSuppressed) {
         symbol = o.target;
         return false;
     });
-    ASSERT(!query.sites(symbol, RelationKind::Reference).empty());
+    ASSERT(!query.sites(symbol, Fid{}, RelationKind::Reference).empty());
 
     // Rows of text the disk no longer holds point nowhere: the file's
     // contribution disappears from cross-file results until its rows
     // describe the disk again.
     project.file_table.observe(main_id, DiskObservation{.hash = 1});
-    ASSERT(query.sites(symbol, RelationKind::Reference).empty());
+    ASSERT(query.sites(symbol, Fid{}, RelationKind::Reference).empty());
 }
 
 ZEST_CASE(ClassNameOverConstructor) {

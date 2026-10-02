@@ -116,7 +116,7 @@ type:
     - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "21:4-21:10" }
     - { file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "22:10-22:16" }
   typeHierarchy:
-    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:7-8:13" }
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/07_typedef_pointer_reference.cpp", range: "8:0-10:1", selection: "8:7-8:13" }
 
 use_array:
   definition:

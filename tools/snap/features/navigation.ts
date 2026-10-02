@@ -68,9 +68,9 @@ function locationLines(locations: proto.Location[], root: string): string[] {
 
 type HierarchyItem = proto.CallHierarchyItem | proto.TypeHierarchyItem;
 
-/// `selection` and `detail` render only when they carry information beyond
-/// `range` — today clice always sets selectionRange == range and no detail,
-/// so their appearance in a snapshot IS the regression signal.
+/// `selection` renders only where it differs from `range` (the item spans
+/// the whole declaration, the selection its name), `detail` only when set —
+/// clice sets none, so its appearance in a snapshot IS the regression signal.
 function itemFields(item: HierarchyItem, root: string): { file: string; body: string } {
     const file = normalizeFileUri(item.uri, root);
     let body =

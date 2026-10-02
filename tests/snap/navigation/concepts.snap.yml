@@ -21,9 +21,9 @@ constrained_call:
     - { file: "${WS}/concepts.cpp", range: "8:2-8:7" }
     - { file: "${WS}/concepts.cpp", range: "19:11-19:16" }
   callHierarchy:
-    - { name: "twice", kind: Function, file: "${WS}/concepts.cpp", range: "8:2-8:7" }
+    - { name: "twice", kind: Function, file: "${WS}/concepts.cpp", range: "8:0-10:1", selection: "8:2-8:7" }
   incomingCalls:
-    - { name: "use_concepts", kind: Function, file: "${WS}/concepts.cpp", range: "18:4-18:16", fromRanges: ["19:11-19:19"] }
+    - { name: "use_concepts", kind: Function, file: "${WS}/concepts.cpp", range: "18:0-20:1", selection: "18:4-18:16", fromRanges: ["19:11-19:16"] }
 
 requires_use:
   definition:

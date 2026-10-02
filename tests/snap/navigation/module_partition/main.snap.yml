@@ -21,9 +21,9 @@ primary_fn:
     - { file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
     - { file: "${WS}/module_partition/main.cpp", range: "5:11-5:15" }
   callHierarchy:
-    - { name: "area", kind: Function, file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
+    - { name: "area", kind: Function, file: "${WS}/module_partition/geo.cppm", range: "4:7-6:1", selection: "4:11-4:15" }
   incomingCalls:
-    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:4-4:9", fromRanges: ["5:11-5:21"] }
+    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:0-6:1", selection: "4:4-4:9", fromRanges: ["5:11-5:15"] }
 
 --- geo_shapes.cppm
 partition_fn:
@@ -35,9 +35,9 @@ partition_fn:
     - { file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
     - { file: "${WS}/module_partition/main.cpp", range: "5:24-5:31" }
   callHierarchy:
-    - { name: "corners", kind: Function, file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
+    - { name: "corners", kind: Function, file: "${WS}/module_partition/geo_shapes.cppm", range: "2:7-4:1", selection: "2:11-2:18" }
   incomingCalls:
-    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:4-4:9", fromRanges: ["5:24-5:33"] }
+    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:0-6:1", selection: "4:4-4:9", fromRanges: ["5:24-5:31"] }
 
 partition_name:
   definition:
@@ -58,9 +58,9 @@ use_partition:
     - { file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
     - { file: "${WS}/module_partition/main.cpp", range: "5:24-5:31" }
   callHierarchy:
-    - { name: "corners", kind: Function, file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
+    - { name: "corners", kind: Function, file: "${WS}/module_partition/geo_shapes.cppm", range: "2:7-4:1", selection: "2:11-2:18" }
   incomingCalls:
-    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:4-4:9", fromRanges: ["5:24-5:33"] }
+    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:0-6:1", selection: "4:4-4:9", fromRanges: ["5:24-5:31"] }
 
 use_primary:
   definition:
@@ -71,6 +71,6 @@ use_primary:
     - { file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
     - { file: "${WS}/module_partition/main.cpp", range: "5:11-5:15" }
   callHierarchy:
-    - { name: "area", kind: Function, file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
+    - { name: "area", kind: Function, file: "${WS}/module_partition/geo.cppm", range: "4:7-6:1", selection: "4:11-4:15" }
   incomingCalls:
-    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:4-4:9", fromRanges: ["5:11-5:21"] }
+    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:0-6:1", selection: "4:4-4:9", fromRanges: ["5:11-5:15"] }

@@ -243,13 +243,14 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
     if(!cursor) {
         return std::nullopt;
     }
-    auto info = query.symbol_info(cursor->symbol);
+    auto symbol = cursor->symbols.front();
+    auto info = query.symbol_info(symbol, cursor->site.file);
     if(!info) {
         return std::nullopt;
     }
     std::string definition;
     std::string comment;
-    if(auto text = query.definition_text(cursor->symbol)) {
+    if(auto text = query.definition_text(symbol, cursor->site.file)) {
         definition = std::move(text->text);
         comment = std::move(text->comment);
     }
@@ -403,21 +404,21 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
         // the application including its header) outranks the declarations
         // this project alone can offer; standing on a definition, or with
         // none anywhere, the declarations answer too.
-        auto defined = gather(cursor->symbol,
+        auto defined = gather(cursor->symbols,
                               path_id,
                               [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                  return from.sites(named, RelationKind::Definition);
+                                  return from.sites(named, path_id, RelationKind::Definition);
                               });
         if(!defined.empty() && llvm::none_of(defined, [&](const index::Site& site) {
-               return site.path == cursor->site.path && site.range == cursor->site.range;
+               return index::covers(site, cursor->site);
            })) {
             return to_lsp::locations(defined);
         }
         return to_lsp::locations(
-            gather(cursor->symbol,
+            gather(cursor->symbols,
                    path_id,
                    [&](const index::IndexQuery& from, index::SymbolHash named) {
-                       return from.definition({named, cursor->site});
+                       return from.definition({.symbols = {named}, .site = cursor->site});
                    }));
     };
     if(auto result = index_definition(); !result.empty()) {
@@ -846,12 +847,12 @@ Features::RawResult Features::references(std::shared_ptr<Session> session,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::locations(
-        gather(cursor->symbol,
-               path_id,
-               [&](const index::IndexQuery& from, index::SymbolHash named) {
-                   return from.references({named, cursor->site}, include_declaration);
-               })));
+    co_return to_raw(to_lsp::locations(gather(
+        cursor->symbols,
+        path_id,
+        [&](const index::IndexQuery& from, index::SymbolHash named) {
+            return from.references({.symbols = {named}, .site = cursor->site}, include_declaration);
+        })));
 }
 
 llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol, Fid anchor) {
@@ -866,12 +867,12 @@ llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol,
     auto declared = [&](const index::IndexQuery& from, index::SymbolHash hash) {
         std::vector<index::Site> sites;
         for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-            llvm::append_range(sites, from.sites(hash, kind));
+            llvm::append_range(sites, from.sites(hash, anchor, kind));
         }
         return sites;
     };
     auto own = declared(query, symbol);
-    auto info = query.symbol_info(symbol);
+    auto info = query.symbol_info(symbol, anchor);
     llvm::SmallVector<Fid> files{anchor};
     for(auto& site: own) {
         files.push_back(site.file);
@@ -885,14 +886,22 @@ llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol,
         }
         // The same name at the same place: a file compiled under other
         // flags can hold another declaration there.
-        for(auto& site: own) {
+        auto same_name = [&](const index::Site& site) -> std::optional<index::SymbolHash> {
             auto cursor = peer->symbol_at(site.file, site.range.begin);
-            if(!cursor || cursor->site.range != site.range) {
-                continue;
+            if(!info || !cursor || !index::covers(site, cursor->site)) {
+                return std::nullopt;
             }
-            auto named = peer->symbol_info(cursor->symbol);
-            if(info && named && named->name == info->name && named->kind == info->kind) {
-                relevant.push_back({peer, cursor->symbol});
+            for(auto candidate: cursor->symbols) {
+                auto named = peer->symbol_info(candidate, site.file);
+                if(named && named->name == info->name && named->kind == info->kind) {
+                    return candidate;
+                }
+            }
+            return std::nullopt;
+        };
+        for(auto& site: own) {
+            if(auto named = same_name(site)) {
+                relevant.push_back({peer, *named});
                 break;
             }
         }
@@ -917,15 +926,17 @@ bool Features::answers_for(const index::IndexQuery& from,
 }
 
 std::vector<index::Site> Features::gather(
-    index::SymbolHash symbol,
+    llvm::ArrayRef<index::SymbolHash> symbols,
     Fid anchor,
     llvm::function_ref<std::vector<index::Site>(const index::IndexQuery&, index::SymbolHash)> ask) {
     std::vector<index::Site> sites;
-    auto asked = sources(symbol, anchor);
-    for(auto& [from, named]: asked) {
-        for(auto& site: ask(*from, named)) {
-            if(answers_for(*from, site.file, asked)) {
-                sites.push_back(std::move(site));
+    for(auto symbol: symbols) {
+        auto asked = sources(symbol, anchor);
+        for(auto& [from, named]: asked) {
+            for(auto& site: ask(*from, named)) {
+                if(answers_for(*from, site.file, asked)) {
+                    sites.push_back(std::move(site));
+                }
             }
         }
     }
@@ -992,12 +1003,12 @@ Features::RawResult Features::declaration(std::shared_ptr<Session> session,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(
-        to_lsp::locations(gather(cursor->symbol,
-                                 path_id,
-                                 [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                     return from.declaration({named, cursor->site});
-                                 })));
+    co_return to_raw(to_lsp::locations(
+        gather(cursor->symbols,
+               path_id,
+               [&](const index::IndexQuery& from, index::SymbolHash named) {
+                   return from.declaration({.symbols = {named}, .site = cursor->site});
+               })));
 }
 
 Features::RawResult Features::type_definition(std::shared_ptr<Session> session,
@@ -1012,12 +1023,12 @@ Features::RawResult Features::type_definition(std::shared_ptr<Session> session,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(
-        to_lsp::locations(gather(cursor->symbol,
-                                 path_id,
-                                 [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                     return from.target_sites(named, RelationKind::TypeDefinition);
-                                 })));
+    co_return to_raw(to_lsp::locations(
+        gather(cursor->symbols,
+               path_id,
+               [&](const index::IndexQuery& from, index::SymbolHash named) {
+                   return from.target_sites(named, path_id, RelationKind::TypeDefinition);
+               })));
 }
 
 Features::RawResult Features::implementation(std::shared_ptr<Session> session,
@@ -1033,10 +1044,10 @@ Features::RawResult Features::implementation(std::shared_ptr<Session> session,
         co_return serde_raw{"[]"};
     }
     co_return to_raw(
-        to_lsp::locations(gather(cursor->symbol,
+        to_lsp::locations(gather(cursor->symbols,
                                  path_id,
                                  [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                     return from.implementation(named);
+                                     return from.implementation(named, path_id);
                                  })));
 }
 
@@ -1055,16 +1066,17 @@ Features::RawResult Features::call_hierarchy_prepare(std::shared_ptr<Session> se
     // symbol's canonical site, expanding from a use renders the same root
     // as expanding from the declaration. A symbol no source places (an
     // implicitly declared `operator delete`) has no item.
-    auto located = query.resolve_at(*cursor);
-    if(!located)
+    std::vector<protocol::CallHierarchyItem> items;
+    for(auto& located: query.resolve_at(*cursor)) {
+        auto kind = located.symbol.kind;
+        if(kind == SymbolKind::Function || kind == SymbolKind::Method ||
+           kind == SymbolKind::Operator) {
+            items.push_back(
+                to_lsp::call_hierarchy_item(located.symbol, located.site, located.extent));
+        }
+    }
+    if(items.empty())
         co_return serde_raw{"null"};
-    auto kind = located->symbol.kind;
-    if(!(kind == SymbolKind::Function || kind == SymbolKind::Method ||
-         kind == SymbolKind::Operator))
-        co_return serde_raw{"null"};
-
-    std::vector<protocol::CallHierarchyItem> items{
-        to_lsp::call_hierarchy_item(located->symbol, located->site)};
     co_return to_raw(items);
 }
 
@@ -1072,55 +1084,60 @@ Features::RawResult Features::call_hierarchy_prepare(std::shared_ptr<Session> se
 /// the symbol at the item's recorded range in the file's serving source.
 static std::optional<index::SymbolHash>
     item_symbol(const index::IndexQuery& query,
+                Fid path_id,
                 std::optional<index::IndexQuery::Cursor> at_range,
                 const std::optional<protocol::LSPAny>& data) {
-    if(auto hash = to_lsp::hierarchy_symbol(data); hash && query.symbol_info(*hash)) {
+    if(auto hash = to_lsp::hierarchy_symbol(data); hash && query.symbol_info(*hash, path_id)) {
         return hash;
     }
     if(at_range) {
-        return at_range->symbol;
+        return at_range->symbols.front();
     }
     return std::nullopt;
 }
 
 Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
                                                       const protocol::CallHierarchyItem& item) {
-    auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
+    auto symbol =
+        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("call hierarchy"));
 
     std::vector<index::IndexQuery::Edge> callers;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
-        merge_edges(callers, from->call_graph(named, {.callees = false}).callers, [&](Fid file) {
-            return answers_for(*from, file, asked);
-        });
+        merge_edges(callers,
+                    from->call_graph(named, path_id, {.callees = false}).callers,
+                    [&](Fid file) { return answers_for(*from, file, asked); });
     }
     std::vector<protocol::CallHierarchyIncomingCall> results;
     for(auto& edge: callers) {
-        results.push_back({to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site),
-                           to_lsp::ranges(edge.sites)});
+        results.push_back(
+            {to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site, edge.symbol.extent),
+             to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
 }
 
 Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
                                                       const protocol::CallHierarchyItem& item) {
-    auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
+    auto symbol =
+        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("call hierarchy"));
 
     std::vector<index::IndexQuery::Edge> callees;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
-        merge_edges(callees, from->call_graph(named, {.callers = false}).callees, [&](Fid file) {
-            return answers_for(*from, file, asked);
-        });
+        merge_edges(callees,
+                    from->call_graph(named, path_id, {.callers = false}).callees,
+                    [&](Fid file) { return answers_for(*from, file, asked); });
     }
     std::vector<protocol::CallHierarchyOutgoingCall> results;
     for(auto& edge: callees) {
-        results.push_back({to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site),
-                           to_lsp::ranges(edge.sites)});
+        results.push_back(
+            {to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site, edge.symbol.extent),
+             to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
 }
@@ -1137,16 +1154,17 @@ Features::RawResult Features::type_hierarchy_prepare(std::shared_ptr<Session> se
     if(!cursor)
         co_return serde_raw{"null"};
     // Anchored at the canonical site, like the call hierarchy item.
-    auto located = query.resolve_at(*cursor);
-    if(!located)
+    std::vector<protocol::TypeHierarchyItem> items;
+    for(auto& located: query.resolve_at(*cursor)) {
+        auto kind = located.symbol.kind;
+        if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
+           kind == SymbolKind::Union) {
+            items.push_back(
+                to_lsp::type_hierarchy_item(located.symbol, located.site, located.extent));
+        }
+    }
+    if(items.empty())
         co_return serde_raw{"null"};
-    auto kind = located->symbol.kind;
-    if(!(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
-         kind == SymbolKind::Union))
-        co_return serde_raw{"null"};
-
-    std::vector<protocol::TypeHierarchyItem> items{
-        to_lsp::type_hierarchy_item(located->symbol, located->site)};
     co_return to_raw(items);
 }
 
@@ -1154,21 +1172,23 @@ static std::vector<protocol::TypeHierarchyItem>
     type_items(llvm::ArrayRef<index::IndexQuery::Located> types) {
     std::vector<protocol::TypeHierarchyItem> results;
     for(auto& located: types) {
-        results.push_back(to_lsp::type_hierarchy_item(located.symbol, located.site));
+        results.push_back(
+            to_lsp::type_hierarchy_item(located.symbol, located.site, located.extent));
     }
     return results;
 }
 
 Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
                                                         const protocol::TypeHierarchyItem& item) {
-    auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
+    auto symbol =
+        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("type hierarchy"));
     std::vector<index::IndexQuery::Located> supertypes;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
         merge_located(supertypes,
-                      from->type_hierarchy(named, {.subtypes = false}).supertypes,
+                      from->type_hierarchy(named, path_id, {.subtypes = false}).supertypes,
                       [&](Fid file) { return answers_for(*from, file, asked); });
     }
     co_return to_raw(type_items(supertypes));
@@ -1176,14 +1196,15 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
 
 Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
                                                       const protocol::TypeHierarchyItem& item) {
-    auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
+    auto symbol =
+        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
         co_return kota::outcome_error(item_not_resolved("type hierarchy"));
     std::vector<index::IndexQuery::Located> subtypes;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
         merge_located(subtypes,
-                      from->type_hierarchy(named, {.supertypes = false}).subtypes,
+                      from->type_hierarchy(named, path_id, {.supertypes = false}).subtypes,
                       [&](Fid file) { return answers_for(*from, file, asked); });
     }
     co_return to_raw(type_items(subtypes));

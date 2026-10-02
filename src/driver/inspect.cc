@@ -293,8 +293,9 @@ std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& param
 }
 
 /// Occurrence dump of the TU index for the compiled file — the
-/// inspect-path pin of the index layer. No LSP request carries this
-/// shape, so tu_index fixtures are `verify: inspect`.
+/// inspect-path pin of the index layer — each with the kinds of its
+/// symbol's rows spanning it. No LSP request carries this shape, so
+/// tu_index fixtures are `verify: inspect`.
 struct RawOccurrence {
     LocalSourceRange range;
     SymbolKind kind;
@@ -321,7 +322,7 @@ std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
         raw.kind = symbol ? symbol->kind : SymbolKind(SymbolKind::Invalid);
         if(auto found = relations.find(occurrence.target); found != relations.end()) {
             for(const auto& relation: found->second) {
-                if(relation.range == occurrence.range) {
+                if(relation.range.contains(occurrence.range)) {
                     raw.relations.emplace_back(kota::meta::enum_name(relation.kind, "Invalid"));
                 }
             }

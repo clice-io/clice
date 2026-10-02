@@ -12,9 +12,9 @@ macro_decl:
     - { file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
     - { file: "${WS}/macro_sites.cpp", range: "15:11-15:17" }
   callHierarchy:
-    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
+    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:0-12:1", selection: "10:13-10:19" }
   incomingCalls:
-    - { name: "trigger", kind: Function, file: "${WS}/macro_sites.cpp", range: "14:4-14:11", fromRanges: ["15:11-15:24"] }
+    - { name: "trigger", kind: Function, file: "${WS}/macro_sites.cpp", range: "14:0-16:1", selection: "14:4-14:11", fromRanges: ["15:11-15:17"] }
 
 macro_def:
   definition:
@@ -26,9 +26,9 @@ macro_def:
     - { file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
     - { file: "${WS}/macro_sites.cpp", range: "15:11-15:17" }
   callHierarchy:
-    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
+    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:0-12:1", selection: "10:13-10:19" }
   incomingCalls:
-    - { name: "trigger", kind: Function, file: "${WS}/macro_sites.cpp", range: "14:4-14:11", fromRanges: ["15:11-15:24"] }
+    - { name: "trigger", kind: Function, file: "${WS}/macro_sites.cpp", range: "14:0-16:1", selection: "14:4-14:11", fromRanges: ["15:11-15:17"] }
 
 macro_def_site:
   definition:
@@ -61,6 +61,6 @@ plain_use:
     - { file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
     - { file: "${WS}/macro_sites.cpp", range: "15:11-15:17" }
   callHierarchy:
-    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
+    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:0-12:1", selection: "10:13-10:19" }
   incomingCalls:
-    - { name: "trigger", kind: Function, file: "${WS}/macro_sites.cpp", range: "14:4-14:11", fromRanges: ["15:11-15:24"] }
+    - { name: "trigger", kind: Function, file: "${WS}/macro_sites.cpp", range: "14:0-16:1", selection: "14:4-14:11", fromRanges: ["15:11-15:17"] }
