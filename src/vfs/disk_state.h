@@ -10,6 +10,7 @@
 #include "vfs/file_system.h"
 #include "vfs/ids.h"
 
+#include "kota/async/async.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -153,13 +154,16 @@ public:
         Unreadable,
     };
 
-    /// Invoked when a check opens a turn: the owner ends it (end_turn) once
-    /// its event loop has run what was pending then. Unset (tests), every
-    /// check is a turn of its own.
+    /// Invoked when a check opens a turn, for the owner to end it
+    /// (end_turn). Unset, every check is a turn of its own.
     std::function<void()> on_turn;
 
     /// Forget the turn's looks: the next check looks again.
     void end_turn();
+
+    /// End every turn right before `loop` next waits for IO, until the
+    /// task is cancelled: the event loop's owner runs it.
+    kota::task<> end_turns(kota::event_loop& loop);
 
     /// Whether the disk still holds the bytes hashing to `hash`. Hash 0 is
     /// the consumed-hash sentinel for "the worker had no bytes to hash":

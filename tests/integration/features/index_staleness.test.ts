@@ -105,4 +105,5 @@ test("source deleted while down withdrawn", async ({ session }) => {
         initializationOptions: { project: { idle_timeout_ms: 600_000 } },
     });
     expect(await client.workspaceSymbols("only_in_b")).toEqual([]);
+    expect(await client.workspaceSymbols("main")).toHaveLength(1);
 });

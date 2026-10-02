@@ -237,8 +237,10 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     std::error_code ec;
     for(llvm::sys::fs::directory_iterator it(workspace_root, ec), end; it != end && !ec;
         it.increment(ec)) {
-        // A symlinked build directory is a build directory too.
-        if(llvm::sys::fs::is_directory(it->path())) {
+        // A symlinked build directory is a build directory too, even
+        // before its target exists.
+        if(it->type() == llvm::sys::fs::file_type::symlink_file ||
+           llvm::sys::fs::is_directory(it->path())) {
             subdirectories.push_back(Spelling::absolute(it->path()));
         }
     }

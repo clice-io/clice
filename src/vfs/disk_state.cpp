@@ -8,6 +8,7 @@
 #include "vfs/path.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopeExit.h"
 
 namespace clice::vfs {
 
@@ -84,6 +85,19 @@ void DiskState::end_turn() {
     turn_looks.clear();
     turn_statuses = {};
     turn_open = false;
+}
+
+kota::task<> DiskState::end_turns(kota::event_loop& loop) {
+    auto before_io = kota::prepare::create(loop);
+    on_turn = [&before_io] {
+        before_io.start();
+    };
+    auto unwired = llvm::make_scope_exit([this] { on_turn = {}; });
+    while(true) {
+        co_await before_io.wait();
+        before_io.stop();
+        end_turn();
+    }
 }
 
 DiskState::Verdict DiskState::check(Fid fid, std::uint64_t hash) {
@@ -254,6 +268,9 @@ void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool settled) {
     }
     auto previous = std::exchange(file.seen, hash);
     bool moved = !first && previous != hash;
+    if(!hash) {
+        file.pair.reset();
+    }
     if(auto it = turn_looks.find(fid); it != turn_looks.end()) {
         it->second = hash ? Look{.found = Look::Found::Read, .hash = *hash}
                           : Look{.found = Look::Found::Missing};

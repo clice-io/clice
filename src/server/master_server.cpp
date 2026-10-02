@@ -51,12 +51,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
             server.drain_disk_changes();
         }(*this));
     };
-    files.disk.on_turn = [this] {
-        bg_tasks.spawn([](vfs::DiskState& disk) -> kota::task<> {
-            co_await kota::yield();
-            disk.end_turn();
-        }(files.disk));
-    };
+    polling.spawn(files.disk.end_turns(loop));
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) plus a wake-up

@@ -3,6 +3,7 @@
 #include <ranges>
 #include <utility>
 
+#include "support/filesystem.h"
 #include "support/logging.h"
 #include "vfs/path.h"
 
@@ -98,6 +99,9 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
             tracked.pending.reset();
             return;
         }
+        if(current == tracked.failed) {
+            return;
+        }
         if(tracked.pending != current) {
             // Generators rewrite the file in place; only act once the
             // content has held for two consecutive ticks (half-write guard).
@@ -132,9 +136,11 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
     if(!diff) {
         // Unreadable or unparsable right now (e.g. still locked by the
         // generator). Leave `applied` alone: the content stays different,
-        // so the reload is retried on a later tick instead of being lost.
+        // so the reload is retried once it moves instead of being lost.
+        tracked.failed = std::move(current);
         return;
     }
+    tracked.failed.reset();
     // The baseline is the reload's own reads: a rewrite landing meanwhile
     // is seen next tick.
     tracked.applied = loaded(tracked.id);
@@ -182,9 +188,13 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     if(!root_flag) {
         root_flag = disk.watch(root.str());
     }
-    if(listed.empty() || root_flag->stamp != listed_at) {
-        listed_at = root_flag->stamp;
+    if(!listed_at || root_flag->stamp != listed_at) {
         listed = database_places(root);
+        // An entry made within the clock tick of the root's last change
+        // leaves its stamp as it was: only a settled stamp vouches for the
+        // listing (see fs::settled).
+        auto& stamp = root_flag->stamp;
+        listed_at = stamp && fs::settled(stamp->mtime_ns) ? stamp : std::nullopt;
     }
 
     // In the order a startup discovery would register them, the nearest

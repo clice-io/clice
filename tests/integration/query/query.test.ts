@@ -472,6 +472,27 @@ test("asks the running server to index", async ({ session }) => {
     expect(fs.existsSync(ws.path(".clice/server.json"))).toBe(false);
 });
 
+test("asked index finds later database", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("a.h", HEADER);
+    ws.write("main.cpp", MAIN);
+    ws.pinCacheDir();
+    const client = await session.spawn(ws).initialize(ws);
+    await waitUntil(() => fs.existsSync(ws.path(".clice/server.json")), {
+        timeout: 30_000,
+        interval: 100,
+        description: "the server's control endpoint",
+    });
+
+    const empty = runIndex(ws);
+    expect(empty.stderr).toContain("has no translation units");
+
+    ws.writeCDB(["main.cpp"]);
+    const delegated = runIndex(ws);
+    expect(delegated.status, `stderr: ${delegated.stderr}`).toBe(0);
+    expect(await waitSymbol(client, "compute"), "server never indexed").toBe(true);
+});
+
 test("refuses a writer it cannot ask", async ({ session }) => {
     const ws = writeProject(session);
     const client = await session.spawn(ws).initialize(ws);

@@ -74,6 +74,8 @@ private:
         /// Half-write guard: what the previous tick saw while it differed
         /// from `applied`; a tick seeing it again reloads.
         std::optional<Hashes> pending;
+        /// What a reload failed on, not retried until it moves.
+        std::optional<Hashes> failed;
         /// The source's inputs, in CompilationDatabase::inputs order. The
         /// database is watched by the path the source names: a symlinked
         /// one may be pointed elsewhere since its load.
@@ -118,7 +120,8 @@ private:
 
     /// The root directory, whose stamp moves when an entry appears or goes.
     std::shared_ptr<const vfs::Flag> root_flag;
-    /// The root's stamp at the listing `listed` came from.
+    /// The root's stamp at the listing `listed` came from; nullopt while no
+    /// listing can be trusted to hold.
     std::optional<vfs::Stamp> listed_at;
     /// The places database_places names under the root.
     llvm::SmallVector<Spelling> listed;

@@ -142,11 +142,12 @@ TEST_CASE(CDBTickWatchesSubdirectory) {
     ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{main_id});
 }
 
-TEST_CASE(CDBTickSeesNewSubdirectory) {
+TEST_CASE(CDBTickNewSubdirectory) {
     /// A build directory created after startup is listed once the root
     /// directory moves.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
+    ASSERT_TRUE(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
     FileTable files;
     Project project{files};
     SessionStore store;
@@ -159,6 +160,53 @@ TEST_CASE(CDBTickSeesNewSubdirectory) {
     }));
     ASSERT_TRUE(tick(tracker, files).empty());
     ASSERT_EQ(tick(tracker, files).size(), 1u);
+}
+
+#ifndef _WIN32
+TEST_CASE(CDBTickDanglingSymlink) {
+    /// A build directory symlinked to a target created later is watched
+    /// from the start.
+    TempDir tmp;
+    TempDir elsewhere;
+    tmp.touch("main.cpp", R"(int main() {})");
+    ASSERT_EQ(::symlink(elsewhere.path("target").c_str(), tmp.path("build").c_str()), 0);
+    ASSERT_TRUE(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    ASSERT_TRUE(tick(tracker, files).empty());
+
+    elsewhere.touch("target/compile_commands.json",
+                    build_cdb_json({
+                        {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    ASSERT_TRUE(tick(tracker, files).empty());
+    ASSERT_EQ(tick(tracker, files).size(), 1u);
+}
+#endif
+
+TEST_CASE(CDBTickAboveOpenFile) {
+    /// A database generated above an open file still without a command is
+    /// found where the tick watches for it.
+    TempDir tmp;
+    tmp.touch("a/b/main.cpp", R"(int main() {})");
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("a/b/main.cpp")));
+    store.open(main_id);
+    ASSERT_TRUE(tick(tracker, files).empty());
+
+    tmp.touch("a/b/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("a/b/main.cpp"), {}}
+    }));
+    ASSERT_TRUE(tick(tracker, files).empty());
+    auto events = tick(tracker, files);
+    ASSERT_EQ(events.size(), 1u);
+    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{main_id});
 }
 
 TEST_CASE(CDBTickDeleteRecreate) {

@@ -10,6 +10,7 @@
 #include "vfs/file_table.h"
 #include "vfs/path.h"
 
+#include "kota/async/async.h"
 #include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
@@ -136,6 +137,7 @@ TEST_CASE(OneLookPerTurn) {
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash + 1) == Verdict::Stale);
     f.rewrite("src/a.h", "int b;\n");
     ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
     ASSERT_EQ(f.disk.checks.looked, 1u);
@@ -145,6 +147,39 @@ TEST_CASE(OneLookPerTurn) {
     ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Stale);
     ASSERT_EQ(f.disk.checks.looked, 2u);
     ASSERT_EQ(turns, 2);
+}
+
+TEST_CASE(TurnEndsBeforeIO) {
+    Fixture f;
+    auto fid = f.file("src/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    std::vector<Verdict> verdicts;
+    kota::event_loop loop;
+    auto body = [&]() -> kota::task<> {
+        kota::task_group<> turns(loop);
+        turns.spawn(f.disk.end_turns(loop));
+        verdicts.push_back(f.disk.check(fid, hash));
+        f.rewrite("src/a.h", "int b;\n");
+        verdicts.push_back(f.disk.check(fid, hash));
+        co_await kota::sleep(1, loop);
+        verdicts.push_back(f.disk.check(fid, hash));
+        turns.cancel();
+        co_await turns.join();
+    };
+    loop.schedule(body());
+    loop.run();
+    ASSERT_TRUE(verdicts == std::vector{Verdict::Fresh, Verdict::Fresh, Verdict::Stale});
+}
+
+TEST_CASE(MissingDropsPair) {
+    Fixture f;
+    auto fid = f.file("src/a.h", "int a;\n");
+    f.hash_of(fid);
+    auto stamp = vfs::status(f.tmp.path("src/a.h"))->stamp;
+    ASSERT_TRUE(f.disk.cached_hash(fid, stamp).has_value());
+    fs::remove_all(f.tmp.path("src/a.h"));
+    f.disk.look(llvm::ArrayRef<Fid>{fid});
+    ASSERT_FALSE(f.disk.cached_hash(fid, stamp).has_value());
 }
 
 TEST_CASE(OtherLookReplacesTurn) {
@@ -160,7 +195,7 @@ TEST_CASE(OtherLookReplacesTurn) {
     ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Stale);
 }
 
-TEST_CASE(UnownedTurnIsOneCheck) {
+TEST_CASE(UnownedCheckLooksAlone) {
     Fixture f;
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
