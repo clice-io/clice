@@ -645,6 +645,17 @@ test("churn from git history", ({ session }) => {
     expect(unweighted.find((entry) => entry.path === "core/fast.h")?.churn).toBeNull();
 });
 
+test("stale index fails", ({ session }) => {
+    const ws = indexed(session);
+    ws.write(
+        "util/fmt.cpp",
+        lines('#include "util/fmt.h"', "int format_str(const Str&) { return 0; }"),
+    );
+    const run = runClice("analyze", "modules", "--workspace", ws.root, "--scope", SCOPE);
+    expect(run.status).toBe(1);
+    expect((JSON.parse(run.stdout) as { error: string }).error).toMatch(/util\/fmt\.cpp/);
+});
+
 test("unknown module fails", ({ session }) => {
     const ws = indexed(session);
     const run = runClice(

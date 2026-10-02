@@ -1660,6 +1660,13 @@ Overview Report::overview(std::uint32_t limit) const {
             implements[redeclaration.file].push_back(header);
         }
     }
+    // A macro ties its header to its users like any entity.
+    std::vector<llvm::SmallVector<std::uint32_t>> macros(facts.files.size());
+    for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
+        if(facts.entities[entity].kind == SymbolKind::Macro) {
+            macros[facts.entities[entity].owner].push_back(entity);
+        }
+    }
     std::vector<bool> visited(facts.files.size(), false);
     for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
         if(facts.files[file].source || facts.files[file].fragment || visited[file]) {
@@ -1688,13 +1695,14 @@ Overview Report::overview(std::uint32_t limit) const {
         llvm::SmallDenseMap<std::uint32_t, llvm::DenseSet<std::uint32_t>, 8> exchanged;
         llvm::SmallDenseSet<std::uint32_t, 4> user_modules;
         for(auto member: unit) {
-            for(auto& use: facts.uses[member]) {
+            for(auto& use: llvm::concat<const Use>(facts.uses[member], facts.macro_uses[member])) {
                 auto owner = facts.entities[use.entity].owner;
                 if(!llvm::is_contained(unit, owner)) {
                     exchanged[partition.module_of[owner]].insert(use.entity);
                 }
             }
-            for(auto entity: reverse.owned[member]) {
+            for(auto entity:
+                llvm::concat<const std::uint32_t>(reverse.owned[member], macros[member])) {
                 for(auto user: reverse.users[entity]) {
                     if(!llvm::is_contained(unit, user)) {
                         exchanged[partition.module_of[user]].insert(entity);

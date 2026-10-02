@@ -202,12 +202,24 @@ int run_modules(const ModulesOptions& opts) {
     files.spell_root(spelling);
     Project project{files};
     CommandResolver commands{project};
-    if(!load_index(project,
-                   commands,
-                   root,
-                   opts.configuration.value_or(""),
-                   /*with_build=*/false)) {
+    auto loaded = load_index(project,
+                             commands,
+                             root,
+                             opts.configuration.value_or(""),
+                             /*with_build=*/false);
+    if(!loaded) {
         return fail("no usable index; run `clice index` first");
+    }
+    // A unit withheld as stale or corrupt takes its uses and edges with it.
+    if(!loaded->dropped.empty()) {
+        std::vector<std::string> paths;
+        for(auto unit: loaded->dropped) {
+            paths.emplace_back(llvm::StringRef(files.resolve(unit)));
+        }
+        std::ranges::sort(paths);
+        return fail(std::format("the index lacks {} units; run `clice index` first: {}",
+                                paths.size(),
+                                llvm::join(paths, ", ")));
     }
 
     auto facts = analysis::collect(project, [&](llvm::StringRef path) {
