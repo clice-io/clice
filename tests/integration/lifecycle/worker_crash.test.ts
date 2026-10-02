@@ -341,30 +341,32 @@ test("victims are not blamed", { timeout: 240_000 }, async ({ session }) => {
         initializationOptions: { project: { stateful_worker_count: 1 } },
     });
     const compile = `compile ${workspace.displayPath("poison.cpp")}`;
+    const healthyCompiles = () =>
+        workspace
+            .log("SF-0.log")
+            .split(`Compile request: path=${workspace.displayPath("healthy.cpp")}`).length - 1;
 
     const [healthyUri] = await client.openAndWait("healthy.cpp");
     const [uri] = client.open("poison.cpp");
     for (let round = 1; round <= 3; round++) {
-        // The healthy document's compile and query race the crash; when the
-        // worker dies under them, they are resent, not blamed.
+        // The poison crashes the worker while the healthy document's compile
+        // runs on it: that compile is resent, not blamed.
+        const started = healthyCompiles();
         client.change(healthyUri, round, `${slow}// round ${round}\n`);
-        const [healthy] = await Promise.all([
-            client.hoverAt(healthyUri, 0, 5),
-            client.hoverAt(uri, 0, 5),
-        ]);
-        expect(healthy, `healthy hover in round ${round}`).not.toBeNull();
+        const healthy = client.hoverAt(healthyUri, 0, 5);
+        await waitUntil(() => healthyCompiles() > started, {
+            timeout: 20_000,
+            interval: 10,
+            description: `the healthy compile of round ${round} to start`,
+        });
+        expect(await client.hoverAt(uri, 0, 5)).toBeNull();
+        expect(await healthy, `healthy hover in round ${round}`).not.toBeNull();
         await settleCrashes(workspace, compile, round);
+        expect(healthyCompiles()).toBeGreaterThanOrEqual(started + 2);
         client.save(uri);
     }
     expect(everNoted(client, healthyUri)).toBe(false);
     expect(notes(client, uri).length).toBe(1);
-
-    // Every round's healthy compile was taken along and sent again.
-    const healthyCompiles =
-        workspace
-            .log("SF-0.log")
-            .split(`Compile request: path=${workspace.displayPath("healthy.cpp")}`).length - 1;
-    expect(healthyCompiles).toBeGreaterThanOrEqual(1 + 2 * 3);
 });
 
 test("reopen keeps the bar", async ({ session }) => {
