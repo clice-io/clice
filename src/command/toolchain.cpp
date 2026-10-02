@@ -1117,7 +1117,7 @@ Toolchain::ProbeAdmission Toolchain::admit_probe(ConfigID id, InputKind input) {
             return admission;
         }
         // Cooldown over: the failure may have been transient — retry the
-        // real query (cf. CrashBudget's bounded-burn revival).
+        // real query (cf. BlameBudget's bounded-burn revival).
         failed.erase(failed_it);
     }
 

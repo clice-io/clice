@@ -178,9 +178,10 @@ void IndexPump::schedule(bool immediate) {
     }
 }
 
-auto IndexPump::note_dispatch_failure(const PendingLedger::Claim& claim, bool crashed)
+auto IndexPump::note_dispatch_failure(const PendingLedger::Claim& claim,
+                                      PendingLedger::Failure failure)
     -> PendingLedger::FailureVerdict {
-    auto outcome = ledger.on_dispatch_failure(claim, crashed);
+    auto outcome = ledger.on_dispatch_failure(claim, failure);
     if(outcome.needs_slot) {
         index_queue.push_back(claim.id);
     }
@@ -321,14 +322,19 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
                 break;
             }
             case TURunFamily::Verdict::Crashed:
+            case TURunFamily::Verdict::Lost:
             case TURunFamily::Verdict::Preempted: {
                 // Preempted under memory pressure or lost to a worker
-                // crash: the work itself is fine — requeue the file
-                // with its original reason so the next round redoes it
-                // instead of silently dropping coverage. Only crashes
-                // spend the bounded budget.
-                bool crashed = outcome.verdict == TURunFamily::Verdict::Crashed;
-                switch(note_dispatch_failure(claim, crashed)) {
+                // death: the work itself is fine — requeue the file with
+                // its original reason so the next round redoes it instead
+                // of silently dropping coverage; only lost runs spend the
+                // bounded budget. A run that crashed its worker waits for
+                // the file to change: the same bytes would crash again.
+                using enum PendingLedger::Failure;
+                auto failure = outcome.verdict == TURunFamily::Verdict::Crashed ? Crashed
+                               : outcome.verdict == TURunFamily::Verdict::Lost  ? Lost
+                                                                                : Preempted;
+                switch(note_dispatch_failure(claim, failure)) {
                     case PendingLedger::FailureVerdict::Dropped: {
                         LOG_INFO("[{}/{}] Index dropped for removed file {}",
                                  index,
@@ -351,19 +357,18 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
                         // into this file stay stale until its content
                         // changes.
                         LOG_WARN(
-                            "[{}/{}] Index giving up on {} after {} crash requeues; "
-                            "its cross-file data stays stale until it is edited: {}",
+                            "[{}/{}] Index giving up on {} ({}); its cross-file data stays "
+                            "stale until it changes",
                             index,
                             total,
                             file_path,
-                            max_requeue_attempts,
                             outcome.error);
                         failed_ids.insert(server_path_id);
                         break;
                     }
                     case PendingLedger::FailureVerdict::Requeued: {
-                        if(crashed) {
-                            LOG_WARN("[{}/{}] Worker crashed while indexing {}; requeued: {}",
+                        if(failure == Lost) {
+                            LOG_WARN("[{}/{}] Worker died while indexing {}; requeued: {}",
                                      index,
                                      total,
                                      file_path,

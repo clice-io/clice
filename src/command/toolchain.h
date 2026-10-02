@@ -48,7 +48,7 @@ public:
     };
 
     /// `failed_retry` bounds the negative cache: a failed key is retried
-    /// once the cooldown passes (cf. CrashBudget), so a transient driver
+    /// once the cooldown passes (cf. BlameBudget), so a transient driver
     /// failure — an upgrade replacing the binary mid-stat, a full tmpfs —
     /// cannot poison the key for the rest of the session.
     explicit Toolchain(CompilationDatabase& db,

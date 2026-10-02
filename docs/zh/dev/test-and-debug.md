@@ -2,7 +2,7 @@
 
 ## 运行测试
 
-clice 有四种测试：单元测试、集成测试、冒烟测试和快照测试。
+clice 有四种在每次改动时运行的测试：单元测试、集成测试、冒烟测试和快照测试。兼容性测试需要真实的构建系统和编译器，单独运行。
 
 全部测试依赖（集成测试套件和工具所需的 node/npm，以及 scripts/ 所需的 python）均由 pixi 管理，无需另行安装。
 
@@ -101,6 +101,16 @@ pixi 环境之外的前置条件：
 - `nvim`（stable）可在 `PATH` 中找到，供 `nvim-e2e` 使用。
 - 系统提供的 `cmake`/`ninja`/`clang`，供 `editor-prepare` 配置基于 CMake 的模块 fixture（集成测试也基于这一假设）。
 - 显示环境（或 `xvfb-run`），以及 Electron 通常依赖的系统库，供 `vscode-e2e` 使用。
+
+## 兼容性测试
+
+真实的构建系统与真实的编译器：`tests/compat/scenarios.ts` 中的每个场景用一种构建系统和一套工具链构建 `tests/compat/project/` 下的小项目，再让 clice 处理该构建写出的编译数据库。每个翻译单元都必须无错误地解析，正如它在真实编译器下能编译通过；clice 必须与该编译器在命令参数所决定的宏上保持一致，比较由一个生成的头文件在 clice 自己的解析中完成；每个文件的命令都必须经编译器解析成功，并按场景列出的要求保留或去掉相应参数。仓库不提交任何编译数据库：套件检查的是工具当下写出的结果。
+
+```bash
+pixi run compat-test          # default RelWithDebInfo
+```
+
+每个场景都按 CI 运行器镜像中的样子指定某一平台的编译器：Linux 上是发行版带版本号的 GCC 与 Clang，以及 bear、ccache、meson、ninja、xmake、bazel、zig、Emscripten、MinGW、RISC-V 和 Arm 交叉编译器，还有 pixi `cuda` 环境中的 nvcc（`pixi install -e cuda`）；Windows 上是 Visual Studio、LLVM 和 MinGW；macOS 上是 Apple clang 以及 Homebrew 的 GCC 和 LLVM。缺少工具的场景在本地跳过，在 CI 中则判为失败。clice 尚不支持的场景在 `unsupported` 中写明原因：它的检查被跳过，构建照常运行。CI 每次构建都会运行它，并每周针对最新的发布版本运行一次。
 
 ## 调试
 

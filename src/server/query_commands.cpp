@@ -2,6 +2,7 @@
 
 #include <format>
 
+#include "command/toolchain.h"
 #include "index/serialization.h"
 #include "vfs/path.h"
 
@@ -193,9 +194,13 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path
     }
     auto& files = ctx.project.file_table;
     CompileCommandResult result{.file = files.display(file)};
-    auto source = ctx.contexts.resolve_command(file, result.directory, result.arguments).source;
+    auto resolution = ctx.contexts.resolve_command(file, result.directory, result.arguments);
     result.directory = files.display(CanonicalPath(Spelling::absolute(result.directory)));
-    switch(source) {
+    auto& ref = resolution.ref;
+    if(auto resolved = ctx.project.cdb.toolchain().resolve(ref.config, ref.input); !resolved) {
+        result.toolchain_error = std::move(resolved.error());
+    }
+    switch(resolution.source) {
         case CommandSource::CDBExact: result.source = "database"; break;
         case CommandSource::IncludeGraph: result.source = "host"; break;
         case CommandSource::Default: result.source = "rule"; break;

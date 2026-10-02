@@ -326,11 +326,11 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
         plan.tidy_params = tidy::resolve_tidy_params(stack.project.file_table.spelling(path_id));
     }
 
-    // One budget-free retry: a worker crash or preemption says nothing
-    // about the TU, and a one-shot sweep has no later round to requeue
-    // into.
+    // One retry: a lost run or a preemption says nothing about the TU, and
+    // a one-shot sweep has no later round to requeue into. A run that
+    // crashed its worker would crash the retry too.
     auto outcome = co_await stack.sched.turun.run(path_id, plan);
-    if(outcome.verdict == TURunFamily::Verdict::Crashed ||
+    if(outcome.verdict == TURunFamily::Verdict::Lost ||
        outcome.verdict == TURunFamily::Verdict::Preempted) {
         outcome = co_await stack.sched.turun.run(path_id, std::move(plan));
     }
@@ -367,7 +367,12 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
                      outcome.error.empty() ? "no compile command found" : outcome.error);
             break;
         }
-        case TURunFamily::Verdict::Crashed:
+        case TURunFamily::Verdict::Crashed: {
+            sweep.failed += 1;
+            LOG_WARN("Lint gave up on {}: {}", file, outcome.error);
+            break;
+        }
+        case TURunFamily::Verdict::Lost:
         case TURunFamily::Verdict::Preempted: {
             sweep.failed += 1;
             LOG_WARN("Lint gave up on {} after a retry: {}", file, outcome.error);

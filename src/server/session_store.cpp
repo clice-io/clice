@@ -20,12 +20,13 @@ std::shared_ptr<Session> SessionStore::find(Fid path_id) const {
 }
 
 std::shared_ptr<Session> SessionStore::open(Fid path_id) {
+    auto session = std::make_shared<Session>();
+    session->path_id = path_id;
     auto it = sessions.find(path_id);
     if(it != sessions.end()) {
         it->second->generation++;
+        park(*it->second);
     }
-    auto session = std::make_shared<Session>();
-    session->path_id = path_id;
     sessions[path_id] = session;
     return session;
 }
@@ -34,8 +35,14 @@ void SessionStore::close(Fid path_id) {
     auto it = sessions.find(path_id);
     if(it != sessions.end()) {
         it->second->generation++;
+        park(*it->second);
         sessions.erase(it);
     }
+}
+
+void SessionStore::park(Session& session) {
+    session.closed = true;
+    parked[session.path_id] = {session.quarantine, session.hash};
 }
 
 void SessionStore::for_each(llvm::function_ref<bool(Fid, const Session&)> visitor) const {
@@ -53,7 +60,13 @@ void SessionStore::apply_open(Session& session, std::string text, int version) {
     session.hash = llvm::xxh3_64bits(session.text);
     session.line_starts = lsp::build_line_starts(session.text);
     session.generation++;
-    session.quarantine.reset();
+    if(auto it = parked.find(session.path_id); it != parked.end()) {
+        session.quarantine = std::move(it->second.quarantine);
+        if(it->second.hash != session.hash) {
+            session.quarantine->on_change(Quarantine::Clock::now());
+        }
+        parked.erase(it);
+    }
 }
 
 void SessionStore::apply_change(Session& session,
@@ -109,9 +122,11 @@ void SessionStore::apply_change(Session& session,
             change);
     }
 
-    // A real content change re-arms a quarantined document with one probe
-    // attempt; no-op edits grant none (see Quarantine::on_edit).
-    session.quarantine.on_edit(applied);
+    // A real content change lets crashed kinds retry; a no-op edit leaves
+    // the crashing bytes in place.
+    if(applied) {
+        session.quarantine->on_change(Quarantine::Clock::now());
+    }
 
     session.hash = llvm::xxh3_64bits(session.text);
     session.generation++;

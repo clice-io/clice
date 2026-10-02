@@ -14,16 +14,6 @@ import { expect, test } from "../fixtures.ts";
 
 const KILL_DELAY = 300;
 
-function copySaveRecompile(workspace: Workspace): void {
-    const src = path.join(DATA_DIR, "modules", "save_recompile");
-    for (const name of fs.readdirSync(src)) {
-        const from = path.join(src, name);
-        if (fs.statSync(from).isFile()) {
-            fs.copyFileSync(from, workspace.path(name));
-        }
-    }
-}
-
 /// Corrupt a blob in place, preserving file size and mtime; returns the
 /// corrupted bytes. "garbage" replaces the whole file (caught by reader
 /// validation), "middle" flips a span reached only during deserialization
@@ -173,7 +163,7 @@ test("pcm offline edit invalidates", async ({ session }) => {
     // the cached PCM on restart: the PCM key embeds no content, so only its
     // deps snapshot can see the change.
     const workspace = session.tmpdir();
-    copySaveRecompile(workspace);
+    workspace.copyFiles(path.join(DATA_DIR, "modules", "save_recompile"));
     workspace.pinCacheDir();
     workspace.generateCDB();
 
@@ -206,7 +196,7 @@ test("pcm offline break drops it", async ({ session }) => {
     // restart: its importer reports the import instead of compiling
     // against the PCM of the module's previous interface.
     const workspace = session.tmpdir();
-    copySaveRecompile(workspace);
+    workspace.copyFiles(path.join(DATA_DIR, "modules", "save_recompile"));
     workspace.pinCacheDir();
     workspace.generateCDB();
 
@@ -499,12 +489,6 @@ test.for(["garbage", "middle"])(
             delete process.env["CLICE_ANOMALY_NO_TRAP"];
         }
         const [uri2] = await c2.openAndWait("main.cpp");
-        if (c2.errors(uri2).length === 0) {
-            // The crash shape ends its round with a versionless empty publish
-            // after retracting the pair; the next request rebuilds it.
-            c2.diagnostics.delete(uri2);
-            await c2.waitForRecompile(uri2);
-        }
         // The specific body error, not just any error: a quarantine notice or
         // a still-standing corruption fatal must not count as recovery.
         expect(

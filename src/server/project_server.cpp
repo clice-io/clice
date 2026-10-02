@@ -293,6 +293,9 @@ void ProjectServer::close_session(Fid path_id) {
     // flow before the initialize response. CDBExact keeps
     // format_diagnostics from decorating the empty set with guidance.
     if(auto session = sessions.find(path_id)) {
+        // The crash records stay with the file for a reopen; the
+        // retraction must not carry their notes.
+        sessions.park(*session);
         ast.publish_output(session,
                            CompileOutput{
                                .version = std::nullopt,
@@ -310,8 +313,9 @@ void ProjectServer::close_session(Fid path_id) {
     ast.drop(path_id);
     // The session's compile stood in for the file's background index
     // (IndexPump::compiled_by_session); the disk's turn again, unless it
-    // was deleted meanwhile.
-    if(!project.file_table.seen_missing(path_id) &&
+    // was deleted meanwhile or its index run failed for good, which waits
+    // for a change.
+    if(!project.file_table.seen_missing(path_id) && !sched.pump.failed().contains(path_id) &&
        sched.pump.enqueue(path_id, ReindexReason::DepsOnly)) {
         sched.pump.schedule(false);
     }
@@ -336,6 +340,11 @@ bool ProjectServer::knows(Fid path_id) {
 void ProjectServer::open_session(Fid path_id, std::string text, int version) {
     auto session = create_session(path_id);
     sessions.apply_open(*session, std::move(text), version);
+    // A reopened document still barred by a crash says so at once: its
+    // requests answer empty, and no compile will run to publish the note.
+    if(!session->quarantine->empty()) {
+        ast.republish(session);
+    }
     // What the disk holds under the buffer: a later save or outside
     // write is then a change from it, even for a file nothing else knew.
     project.file_table.current(path_id);
@@ -407,12 +416,16 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         if(auto session = sessions.find(path_id)) {
             ast.invalidate(path_id);
             session->trial_done = false;
+            session->quarantine->on_change(Quarantine::Clock::now());
         }
         commands.forget_self_contained(path_id);
     }
 
+    // A live round sends a compile of its own, which puts the AST back on
+    // a worker — invalidating it would only make it land stale and compile
+    // twice.
     for(auto path_id: dirty.mark_lost) {
-        if(sessions.find(path_id)) {
+        if(sessions.find(path_id) && !ast.compiling(path_id)) {
             ast.invalidate(path_id);
         }
     }

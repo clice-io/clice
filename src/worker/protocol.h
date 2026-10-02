@@ -1,6 +1,7 @@
 #pragma once
 
 #include <compare>
+#include <concepts>
 #include <cstdint>
 #include <format>
 #include <string>
@@ -17,35 +18,46 @@
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/protocol.h"
+#include "kota/meta/enum.h"
 
 namespace clice::worker {
 
 namespace protocol = kota::ipc::protocol;
 
 /// Error codes attached to master-side dispatch failures. They mark expected
-/// operational conditions — memory-pressure preemption and crash/restart
-/// windows — as opposed to real IPC breakage: callers must not classify them
-/// as anomalies (see support/anomaly.h). The crash itself is already reported
-/// as a WorkerCrash anomaly by the pool.
+/// operational conditions — memory-pressure preemption, worker deaths and
+/// restart windows — as opposed to real IPC breakage: callers must not
+/// classify them as anomalies (see support/anomaly.h). The death itself is
+/// already reported as a WorkerCrash anomaly by the pool.
+///
+/// A death fails every request in flight on the worker; the pool tells them
+/// apart by the request the dying worker named (see crash_tag), so only the
+/// request that crashed it is blamed.
 namespace dispatch_errc {
 
 /// The request was deliberately cancelled (memory-pressure preemption).
 constexpr inline protocol::integer cancelled =
     static_cast<protocol::integer>(protocol::ErrorCode::RequestCancelled);
 
-/// No live worker could take the request (crash/restart window or pool stop).
+/// No live worker could take the request; it was never dispatched.
 constexpr inline protocol::integer worker_unavailable = -33000;
 
-/// The worker process died while serving the request. The pool does not
-/// retry: it marks the slot dead and surfaces this code so the caller can
-/// decide — stateless build tasks are idempotent and safe to resend, while
-/// e.g. the indexer prefers to requeue the file instead.
+/// This request killed its worker: the dying worker named it, or it ran
+/// past the pool's deadline. The message says how the worker died.
 constexpr inline protocol::integer worker_crashed = -33001;
 
-/// The assigned worker is mid-restart after a crash: the request was never
-/// dispatched. Distinct from worker_crashed so crash accounting (document
-/// quarantine) does not blame a document for a window it merely hit.
-constexpr inline protocol::integer worker_restarting = -33002;
+/// The worker died of another request's crash: this one is blameless and
+/// safe to resend.
+constexpr inline protocol::integer worker_lost = -33003;
+
+/// The worker died naming no request — killed from outside (the OOM killer,
+/// a signal), or crashed where no request was running. Resend once; a
+/// request whose resend dies the same way is blamed.
+constexpr inline protocol::integer worker_died = -33004;
+
+/// A stateful worker no longer holds the document the query is about (its
+/// LRU evicted it): recompile and ask again.
+constexpr inline protocol::integer document_unloaded = -33005;
 
 }  // namespace dispatch_errc
 
@@ -55,7 +67,32 @@ inline bool is_operational_error(const protocol::Error& error) {
     return error.code == dispatch_errc::cancelled ||
            error.code == dispatch_errc::worker_unavailable ||
            error.code == dispatch_errc::worker_crashed ||
-           error.code == dispatch_errc::worker_restarting;
+           error.code == dispatch_errc::worker_lost || error.code == dispatch_errc::worker_died ||
+           error.code == dispatch_errc::document_unloaded;
+}
+
+/// The stderr line a dying worker writes to name the request it was
+/// running: this prefix, then the request's crash_tag.
+constexpr inline std::string_view crashed_in_marker = "clice worker crashed in: ";
+
+/// How a dying worker names a request, and how the master recognizes its
+/// own request in that line: the method, a query's kind, and the file.
+/// Requests a stateful worker runs side by side differ in one of them
+/// unless they are the same work on the same document.
+template <typename Params>
+std::string crash_tag(const Params& params) {
+    std::string tag(protocol::RequestTraits<Params>::method);
+    if constexpr(requires { params.kind; }) {
+        tag += ':';
+        tag += kota::meta::enum_name(params.kind, "Unknown");
+    }
+    tag += ' ';
+    if constexpr(requires { params.path; }) {
+        tag += params.path;
+    } else {
+        tag += params.file;
+    }
+    return tag;
 }
 
 /// Identity of the worker incarnation a crashed request died with, carried
@@ -66,7 +103,7 @@ inline protocol::Value death_identity(std::size_t index, unsigned generation, bo
     return std::format("{}:{}:{}", stateful ? "sf" : "sl", index, generation);
 }
 
-/// The death identity attached to a worker_crashed error; empty when the
+/// The death identity attached to a worker death's error; empty when the
 /// error carries none (locally synthesized failures).
 inline std::string_view death_of(const protocol::Error& error) {
     if(error.data.has_value()) {
@@ -399,6 +436,14 @@ struct CancelCompileParams {
 /// worker at a time, and pipe ordering pins any follow-up build behind
 /// the cancel.
 struct CancelBuildParams {};
+
+/// Whether a request builds — a compile, a PCH or PCM, an indexing run:
+/// work whose time grows with the translation unit, where a query's never
+/// should.
+template <typename Params>
+constexpr inline bool is_build =
+    std::same_as<Params, CompileParams> || std::same_as<Params, BuildPCHParams> ||
+    std::same_as<Params, BuildPCMParams> || std::same_as<Params, TURunParams>;
 
 }  // namespace clice::worker
 

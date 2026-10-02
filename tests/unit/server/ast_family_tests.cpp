@@ -160,21 +160,38 @@ TEST_CASE(SwitchIdentityResets) {
     ASSERT_TRUE(after->output.has_value());
 }
 
-TEST_CASE(GateAnnouncesQuarantine) {
-    // A quarantine reached without a compile-failure landing (completion
-    // or PCH build tipped the streak) has published nothing; the entry
-    // gate must announce it exactly once instead of going silently dead.
+TEST_CASE(CrashPublishesNote) {
+    // A recorded compile crash publishes its note at once — the bar that
+    // follows publishes nothing more — and takes the old diagnostics down:
+    // no AST stands behind them anymore.
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
-    session->quarantine.on_crash();
-    session->quarantine.on_crash();
+    stack.ast.projections.set_output(
+        session->path_id,
+        CompileOutput{.version = 1,
+                      .source = CommandSource::CDBExact,
+                      .diagnostics = kota::codec::RawValue{R"([{"message":"old"}])"}});
 
     int emits = 0;
     auto conn = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { emits += 1; });
+    stack.ast.record_crash(
+        session,
+        evidence_kind(EvidenceKind::Compile),
+        kota::ipc::Error{worker::dispatch_errc::worker_crashed, "killed by signal 11 (SIGSEGV)"});
+    EXPECT_EQ(emits, 1);
+    auto projection = stack.ast.projections.projection(session->path_id);
+    ASSERT_TRUE(projection && projection->output.has_value());
+    EXPECT_TRUE(projection->output->diagnostics.empty());
+
+    std::vector<protocol::Diagnostic> notes;
+    append_crash_notes(*session, notes);
+    ASSERT_EQ(notes.size(), 1u);
+    auto& message = std::get<std::string>(notes[0].message);
+    EXPECT_TRUE(message.contains("while compiling this file (killed by signal 11 (SIGSEGV))"));
+    EXPECT_TRUE(message.contains("save it"));
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
-        CO_ASSERT_FALSE(co_await stack.ast.ensure_compiled(session));
         CO_ASSERT_FALSE(co_await stack.ast.ensure_compiled(session));
         done = true;
     };
@@ -182,12 +199,7 @@ TEST_CASE(GateAnnouncesQuarantine) {
     stack.loop.schedule(task);
     stack.loop.run();
     EXPECT_TRUE(done);
-
     EXPECT_EQ(emits, 1);
-    EXPECT_FALSE(session->quarantine.needs_announcement());
-    auto projection = stack.ast.projections.projection(session->path_id);
-    ASSERT_TRUE(projection && projection->output.has_value());
-    EXPECT_TRUE(projection->output->diagnostics.data.contains("quarantined"));
 }
 
 TEST_CASE(ShutdownUnblocksWaiters) {
@@ -749,22 +761,23 @@ TEST_CASE(ForcedIncludeSkipsScan) {
 
 TEST_SUITE(DispatcherGuards) {
 
-TEST_CASE(QuarantineBlocksBuilds) {
-    // A quarantined document gets no stateless builds either: completion
-    // requests compile the same content the quarantine watches.
+TEST_CASE(CrashedCompileBarsBuilds) {
+    // A barred compile bars the stateless builds of the same content too —
+    // completion parses what the compile crashed on — and they answer
+    // empty: the crash note says why, an error would only be a popup.
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
-    session->quarantine.on_crash();
-    session->quarantine.on_crash();
+    session->quarantine->on_crash(evidence_kind(EvidenceKind::Compile),
+                                  "d1",
+                                  "cause",
+                                  Quarantine::Clock::now());
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
+        // With no worker at all, only the bar can answer without an error.
         auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
-        CO_ASSERT_FALSE(result.has_value());
-        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
-        // The gate's message, not the empty pool's: without the gate this
-        // test would still see worker_unavailable and prove nothing.
-        EXPECT_TRUE(result.error().message.contains("quarantined"));
+        CO_ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(result.value().data, "null");
         done = true;
     };
     auto task = body();
@@ -773,20 +786,19 @@ TEST_CASE(QuarantineBlocksBuilds) {
     EXPECT_TRUE(done);
 }
 
-TEST_CASE(QuarantineBlocksFormat) {
-    // Formatting is still this document's content on a worker: quarantine
-    // refuses it like any other stateless build.
+TEST_CASE(CrashedFormatBarsFormat) {
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
-    session->quarantine.on_crash();
-    session->quarantine.on_crash();
+    session->quarantine->on_crash(evidence_kind(EvidenceKind::Format),
+                                  "d1",
+                                  "cause",
+                                  Quarantine::Clock::now());
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
         auto result = co_await stack.dispatcher.format(Ticket::take(session), std::nullopt);
-        CO_ASSERT_FALSE(result.has_value());
-        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
-        EXPECT_TRUE(result.error().message.contains("quarantined"));
+        CO_ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(result.value().data, "null");
         done = true;
     };
     auto task = body();
@@ -832,10 +844,10 @@ TEST_CASE(EpochGuardsPCHWrite) {
     EXPECT_EQ(*projection->pch_key, std::string("key"));
 }
 
-TEST_CASE(PCHCrashCountsStreak) {
-    // A PCH build that kills its stateless worker must count toward the
-    // document's quarantine streak: the preamble is the document's content
-    // too, and without this a poison preamble never quarantines.
+TEST_CASE(PCHCrashBarsDocument) {
+    // A PCH build that kills its stateless worker bars the document: the
+    // preamble is its content too. The worker names the build, so the
+    // death is blamed at once and the build is not resent.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -865,9 +877,11 @@ TEST_CASE(PCHCrashCountsStreak) {
                                                   directory,
                                                   arguments);
         EXPECT_FALSE(built);
-        // Two strikes from one request: the retry's death is separate
-        // evidence — blame is counted per worker killed, not per request.
-        EXPECT_EQ(session->quarantine.crashes(), 2u);
+        EXPECT_TRUE(ASTFamily::compile_barred(*session));
+        auto notes = session->quarantine->notes();
+        CO_ASSERT_EQ(notes.size(), 1u);
+        EXPECT_EQ(notes[0].kind, evidence_kind(EvidenceKind::PCH));
+        EXPECT_EQ(notes[0].strikes, 1u);
 
         co_await stack.pool.stop();
         done = true;
@@ -880,10 +894,10 @@ TEST_CASE(PCHCrashCountsStreak) {
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(PCHCrashBlocksBuild) {
-    // A PCH crash inside a completion build's dependency prep can tip the
-    // document into quarantine after the entry gate: the build must stop
-    // instead of dispatching the same content to one more worker.
+TEST_CASE(PCHCrashStopsBuild) {
+    // A PCH crash inside a completion build's dependency prep bars the
+    // document after the entry gate: the build stops instead of
+    // dispatching the same content to one more worker.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -893,7 +907,6 @@ TEST_CASE(PCHCrashBlocksBuild) {
     Stack stack;
     stack.register_pch_store(tmp);
     auto session = stack.open(src, "#pragma clang __debug crash\n");
-    session->quarantine.on_crash();
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
@@ -904,10 +917,11 @@ TEST_CASE(PCHCrashBlocksBuild) {
         CO_ASSERT_TRUE(stack.pool.start(opts));
 
         auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
-        CO_ASSERT_FALSE(result.has_value());
-        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
-        // One inherited strike plus both deaths of the doomed PCH build.
-        EXPECT_EQ(session->quarantine.crashes(), 3u);
+        CO_ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(result.value().data, "null");
+        auto notes = session->quarantine->notes();
+        CO_ASSERT_EQ(notes.size(), 1u);
+        EXPECT_EQ(notes[0].strikes, 1u);
 
         co_await stack.pool.stop();
         done = true;
@@ -1066,11 +1080,10 @@ TEST_CASE(StaleReplyLandsContentModified) {
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(HarmlessKindKeepsProbe) {
-    // A quarantine held by one query kind refuses only that kind: a hover
-    // on a semantic-tokens-quarantined document is ordinary work — it is
-    // answered, and the edit-granted probe stays armed for the tokens
-    // retry instead of being spent on it.
+TEST_CASE(HarmlessKindKeepsBar) {
+    // A crash of one query kind bars only that kind: a hover on a document
+    // whose semantic tokens crashed is ordinary work — it is answered, and
+    // the tokens record stays as it was.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -1079,13 +1092,8 @@ TEST_CASE(HarmlessKindKeepsProbe) {
 
     Stack stack;
     auto session = stack.open(src, "int x;\n");
-    constexpr auto tokens_kind = static_cast<std::uint8_t>(EvidenceKind::Count) +
-                                 static_cast<std::uint8_t>(worker::QueryKind::SemanticTokens);
-    session->quarantine.on_kind_crash(tokens_kind, "w-1");
-    session->quarantine.on_kind_crash(tokens_kind, "w-2");
-    ASSERT_TRUE(session->quarantine.active());
-    session->quarantine.on_edit(true);
-    ASSERT_TRUE(session->quarantine.recovery_kind(tokens_kind));
+    constexpr auto tokens_kind = evidence_kind(worker::QueryKind::SemanticTokens);
+    session->quarantine->on_crash(tokens_kind, "w-1", "cause", Quarantine::Clock::now());
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
@@ -1099,8 +1107,7 @@ TEST_CASE(HarmlessKindKeepsProbe) {
                                                       Ticket::take(session),
                                                       protocol::Position{0, 4});
         EXPECT_TRUE(result.has_value());
-        EXPECT_TRUE(session->quarantine.active());
-        EXPECT_TRUE(session->quarantine.recovery_kind(tokens_kind));
+        EXPECT_TRUE(session->quarantine->barred(tokens_kind, Quarantine::Clock::now()));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1115,12 +1122,12 @@ TEST_CASE(HarmlessKindKeepsProbe) {
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(PoisonPreambleBudget) {
-    // One document's quarantine cannot contain a poison preamble: the PCH
-    // is shared, so every session with the same preamble would re-trigger
-    // the build and burn workers of its own. After `threshold` crashed
-    // builds the key itself is refused — before any dispatch, which is why
-    // the third session records no crash at all.
+TEST_CASE(PoisonPreambleShared) {
+    // One document's quarantine cannot contain a poison preamble alone: the
+    // PCH is shared, so every session with the same preamble would
+    // re-trigger the build and burn a worker of its own. After one crashed
+    // build the key is refused before any dispatch, and every other session
+    // books the same death instead of a fresh one.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -1143,6 +1150,11 @@ TEST_CASE(PoisonPreambleBudget) {
     std::string directory = tmp.path(".");
     auto arguments = make_args(src);
 
+    int deaths = 0;
+    stack.pool.on_crash = [&](const WorkerCrashInfo&) {
+        deaths += 1;
+    };
+
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
@@ -1159,17 +1171,18 @@ TEST_CASE(PoisonPreambleBudget) {
                                                 directory,
                                                 arguments);
         };
-        // One request, two dead workers, two strikes: the key blocks after
-        // a single poison build instead of burning workers for a second
-        // session's attempt.
+        auto pch = evidence_kind(EvidenceKind::PCH);
         CO_ASSERT_FALSE(co_await build(first));
-        EXPECT_EQ(first->quarantine.crashes(), 2u);
+        CO_ASSERT_TRUE(first->quarantine->crashed(pch));
+        EXPECT_EQ(deaths, 1);
 
-        // Refused without touching a worker.
+        // Refused without touching a worker, each session barred by the
+        // same death.
         CO_ASSERT_FALSE(co_await build(second));
-        EXPECT_EQ(second->quarantine.crashes(), 0u);
+        EXPECT_TRUE(second->quarantine->crashed(pch));
         CO_ASSERT_FALSE(co_await build(third));
-        EXPECT_EQ(third->quarantine.crashes(), 0u);
+        EXPECT_TRUE(third->quarantine->crashed(pch));
+        EXPECT_EQ(deaths, 1);
 
         co_await stack.pool.stop();
         done = true;
@@ -1184,9 +1197,9 @@ TEST_CASE(PoisonPreambleBudget) {
 
 TEST_CASE(EpochGuardsPCHWash) {
     // A successful build whose license epoch moved mid-flight must not
-    // wash the session's PCH evidence: the strikes belong to content the
-    // request no longer describes, and laundering them would let a poison
-    // preamble dodge quarantine behind an old round's landing.
+    // clear the session's PCH record: the crash belongs to content the
+    // request no longer describes, and clearing it would let a poison
+    // preamble dodge its bar behind an old round's landing.
     TempDir tmp;
     tmp.touch("a.cpp", "");
     auto src = tmp.path("a.cpp");
@@ -1194,9 +1207,9 @@ TEST_CASE(EpochGuardsPCHWash) {
     Stack stack;
     stack.register_pch_store(tmp);
     auto session = stack.open(src, "#define X 1\nint x;\n");
-    // One prior strike on the PCH ledger.
-    session->quarantine.on_kind_crash(evidence_kind(EvidenceKind::PCH), "w-1");
-    ASSERT_EQ(session->quarantine.crashes(), 1u);
+    // One prior crash on the PCH record.
+    auto pch = evidence_kind(EvidenceKind::PCH);
+    session->quarantine->on_crash(pch, "w-1", "cause", Quarantine::Clock::now());
 
     std::string directory = tmp.path(".");
     auto arguments = make_args(src);
@@ -1229,15 +1242,15 @@ TEST_CASE(EpochGuardsPCHWash) {
         co_await kota::when_all(launch(), invalidate());
 
         // The build landed (the shared artifact is cached) and the stale
-        // request compiles against it, but it adopted nothing and washed
+        // request compiles against it, but it adopted nothing and cleared
         // nothing.
         EXPECT_TRUE(built);
         auto projection = stack.ast.projections.projection(session->path_id);
         EXPECT_TRUE(!projection || !projection->pch_key.has_value());
-        EXPECT_EQ(session->quarantine.crashes(), 1u);
+        EXPECT_TRUE(session->quarantine->crashed(pch));
 
-        // A current request adopts the cached pair and only then washes
-        // this session's ledger.
+        // A current request adopts the cached pair and only then clears
+        // this session's record.
         built = co_await ASTFamilyFixture::ensure_pch(stack.ast,
                                                       session,
                                                       session->generation,
@@ -1247,7 +1260,7 @@ TEST_CASE(EpochGuardsPCHWash) {
         EXPECT_TRUE(built);
         projection = stack.ast.projections.projection(session->path_id);
         EXPECT_TRUE(projection && projection->pch_key.has_value());
-        EXPECT_EQ(session->quarantine.crashes(), 0u);
+        EXPECT_FALSE(session->quarantine->crashed(pch));
 
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();
@@ -1329,6 +1342,90 @@ TEST_CASE(StaleDepsNoAdopt) {
         auto projection = stack.ast.projections.projection(first->path_id);
         EXPECT_TRUE(projection && projection->pch_key == builder_key);
 
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(EvictedDocumentRecompiles) {
+    // The worker evicts a document behind the master's back (no eviction
+    // notice is wired here): the query hears document_unloaded, compiles it
+    // there again and answers, never null.
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    tmp.touch("b.cpp", "");
+
+    Stack stack;
+    auto a = stack.open(tmp.path("a.cpp"), "int alpha = 1;\n");
+    auto b = stack.open(tmp.path("b.cpp"), "int beta = 2;\n");
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        opts.max_documents = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(a));
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(b));
+        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                      Ticket::take(a),
+                                                      protocol::Position{0, 5});
+        CO_ASSERT_TRUE(result.has_value());
+        EXPECT_NE(result.value().data, "null");
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(AnswerClearsQueryRecord) {
+    // Only an answer of the kind clears its record, and no compile runs to
+    // drop the note: the answer republishes.
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+
+    Stack stack;
+    auto a = stack.open(tmp.path("a.cpp"), "int alpha = 1;\n");
+    auto hover = evidence_kind(worker::QueryKind::Hover);
+    a->quarantine->on_crash(hover, "d1", "cause", Quarantine::Clock::now());
+    a->quarantine->on_save();
+    int published = 0;
+    auto connection =
+        stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { published += 1; });
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(a));
+        auto before = published;
+        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                      Ticket::take(a),
+                                                      protocol::Position{0, 5});
+        CO_ASSERT_TRUE(result.has_value());
+        EXPECT_NE(result.value().data, "null");
+        EXPECT_FALSE(a->quarantine->crashed(hover));
+        EXPECT_EQ(published, before + 1);
+
+        co_await stack.ast.stop();
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();
         done = true;

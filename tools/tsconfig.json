@@ -21,6 +21,7 @@
   "include": [
     "bench/**/*.ts",
     "client/**/*.ts",
+    "compat/**/*.ts",
     "docs/**/*.ts",
     "snap/**/*.ts",
     "protocol/**/*.ts",

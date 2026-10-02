@@ -249,18 +249,12 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
              pcm_key,
              module_name);
 
-    // Same shared-artifact budget as the PCH, but keyed with the
+    // Same shared-artifact refusal as the PCH, but keyed with the
     // module's current content: unlike pch_key (which embeds the
-    // preamble text), pcm_key is content-free, and a blocked budget
-    // must unlock the moment the poison is edited.
-    auto content = vfs::read(file_path);
-    auto budget_key = std::format("{}-{:016x}",
-                                  pcm_key,
-                                  content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0);
-    if(build_crashes.blocked(budget_key)) {
-        LOG_WARN("PCM build for module {} refused: key {} keeps crashing workers",
-                 module_name,
-                 budget_key);
+    // preamble text), pcm_key is content-free, and the refusal must lift
+    // the moment the poison is edited.
+    if(crashed(path_id)) {
+        LOG_WARN("PCM build for module {} refused: it crashed a worker", module_name);
         co_return RoundOutcome::Failed;
     }
 
@@ -279,13 +273,16 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // CancelBuild while this frame keeps awaiting the real reply
     // (contract 2 — the slot frees only when the worker is truly idle).
     auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
-    auto result = co_await send_stateless_retrying(
+    // Sampled before the build reads it: a save landing mid-build is not
+    // what crashed.
+    auto content = content_hash(path_id);
+    auto result = co_await deliver(
         pool,
-        bp,
-        priority,
-        [&](const kota::ipc::protocol::Error&) { build_crashes.on_crash(budget_key); },
-        {},
-        ctx.token());
+        false,
+        [&] { return pool.send_stateless(bp, priority, ctx.token()); },
+        [&](const kota::ipc::Error& error) {
+            build_crashes.insert_or_assign(path_id, Crash{content, error});
+        });
 
     // A scheduler preemption (foreground reclaim, memory pressure) or an
     // advisory cancel is no verdict on the unit: report the round stale so
@@ -316,7 +313,6 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Failed;
     }
 
-    build_crashes.on_land(budget_key);
     auto pcm_path = std::move(committed.value().value());
     auto snapshot =
         capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
@@ -338,6 +334,23 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         on_indexing_needed();
 
     co_return RoundOutcome::Success;
+}
+
+std::uint64_t PCMFamily::content_hash(Fid module) {
+    auto content = vfs::read(project.file_table.resolve(module));
+    return content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0;
+}
+
+const kota::ipc::Error* PCMFamily::crashed(Fid module) {
+    auto it = build_crashes.find(module);
+    if(it == build_crashes.end()) {
+        return nullptr;
+    }
+    if(content_hash(module) != it->second.content) {
+        build_crashes.erase(it);
+        return nullptr;
+    }
+    return &it->second.error;
 }
 
 bool PCMFamily::revalidate_blobs() {

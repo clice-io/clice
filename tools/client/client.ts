@@ -128,6 +128,9 @@ export interface StartOptions {
     args?: string[] | undefined;
     /// Working directory of the server process; the caller's by default.
     cwd?: string | undefined;
+    /// Extra environment for the server process, which its workers inherit:
+    /// the CLICE_TEST_* hooks.
+    env?: Record<string, string> | undefined;
 }
 
 export interface InitializeOptions {
@@ -191,6 +194,8 @@ export class CliceClient {
     private socket: net.Socket | null = null;
 
     diagnostics = new Map<string, proto.Diagnostic[]>();
+    /// Every publishDiagnostics received, in order.
+    publishedDiagnostics: proto.PublishDiagnosticsParams[] = [];
     logMessages: proto.LogMessageParams[] = [];
     progressTokens: string[] = [];
     progressEvents: { token: string; value: unknown }[] = [];
@@ -242,6 +247,7 @@ export class CliceClient {
         });
 
         this.onNotification(proto.PublishDiagnosticsNotification.type, (params) => {
+            this.publishedDiagnostics.push(params);
             const rawUri = params.uri;
             const normalized = this.normalizeUri(rawUri);
             const diags = [...params.diagnostics];
@@ -298,7 +304,7 @@ export class CliceClient {
         const child = spawn(executable, options.args ?? ["serve"], {
             stdio: ["pipe", "pipe", "pipe"],
             cwd: options.cwd,
-            env: serverEnv(),
+            env: { ...serverEnv(), ...options.env },
         });
         const client = new CliceClient(child, { reader: child.stdout, writer: child.stdin });
         client.stderrDrainedFromStart = options.drainStderr !== false;
@@ -315,13 +321,17 @@ export class CliceClient {
     static async startSocket(
         executable: string,
         port: number,
-        options: { host?: string | undefined; args?: string[] | undefined } = {},
+        options: {
+            host?: string | undefined;
+            args?: string[] | undefined;
+            env?: Record<string, string> | undefined;
+        } = {},
     ): Promise<CliceClient> {
         const host = options.host ?? "127.0.0.1";
         const child = spawn(
             executable,
             options.args ?? ["serve", "--mode", "socket", "--port", String(port)],
-            { stdio: ["pipe", "pipe", "pipe"], env: serverEnv() },
+            { stdio: ["pipe", "pipe", "pipe"], env: { ...serverEnv(), ...options.env } },
         );
         let socket: net.Socket | null = null;
         for (let i = 0; i < 150; i++) {
@@ -540,6 +550,37 @@ export class CliceClient {
             }
             throw new Error(failures.join("\n"));
         }
+    }
+
+    /// The PIDs of the server's worker processes whose command line names
+    /// `kind` ("SF-" stateful, "SL-" stateless; every worker when empty).
+    /// Linux only: read from /proc.
+    workerPids(kind = ""): number[] {
+        const pids: number[] = [];
+        for (const entry of fs.readdirSync("/proc")) {
+            if (!/^\d+$/.test(entry)) {
+                continue;
+            }
+            let stat: string;
+            let cmdline: Buffer;
+            try {
+                stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
+                cmdline = fs.readFileSync(`/proc/${entry}/cmdline`);
+            } catch {
+                continue;
+            }
+            // /proc/<pid>/stat: pid (comm) state ppid ...
+            const ppid = Number(
+                stat
+                    .slice(stat.lastIndexOf(")") + 1)
+                    .trim()
+                    .split(/\s+/)[1],
+            );
+            if (ppid === this.child.pid && cmdline.includes(kind)) {
+                pids.push(Number(entry));
+            }
+        }
+        return pids;
     }
 
     /// Force-kill the server process, simulating a crash.

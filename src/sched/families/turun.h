@@ -65,8 +65,12 @@ public:
         /// TU, returned an empty or unverifiable result, the merge was
         /// rejected, or the TU has no real command and no surviving rows.
         Failed,
-        /// The worker died mid-parse; requeue-worthy on the crash budget.
+        /// The run killed its worker: the worker named it, or it ran past
+        /// the pool's deadline. The same bytes would again.
         Crashed,
+        /// The worker died under it for some other reason; requeue-worthy
+        /// on the budget.
+        Lost,
         /// Preempted (deliberate cancellation, or an outage the pool will
         /// revive from): budget-free requeue.
         Preempted,
