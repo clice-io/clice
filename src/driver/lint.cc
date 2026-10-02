@@ -103,7 +103,7 @@ int run_lint(Spelling root,
 
 void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path) {
     auto cmd = make_command();
-    cmd.matchAll([&exit_code, self_path](LintOptions opts) {
+    cmd.match_all([&exit_code, self_path](LintOptions opts) {
            if(opts.help) {
                auto help = make_command();
                print_usage(help);

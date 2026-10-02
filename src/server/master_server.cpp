@@ -38,7 +38,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
                            std::string self_path,
                            std::string requested_configuration) :
     loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)),
-    bg_tasks(loop), polling(loop), self_path(std::move(self_path)) {
+    self_path(std::move(self_path)) {
     // Documents opened before initialize land in this project: sessions
     // are plain state, and initialize re-routes them once folders exist.
     projects.push_back(make_project(CanonicalPath()));
@@ -850,7 +850,7 @@ static kota::task<> accept_connections(MasterServer& server,
                                        kota::tcp::acceptor acceptor,
                                        std::list<Connection>& connections) {
     auto& loop = kota::event_loop::current();
-    kota::task_group<> group(loop);
+    kota::task_group<> group;
     bool lsp_registered = false;
 
     group.spawn([](MasterServer& server,

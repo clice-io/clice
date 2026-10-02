@@ -236,8 +236,7 @@ void LSPClient::register_lifecycle() {
 
         // Every workspace folder is a project; a client without folder
         // support names its one root through rootUri.
-        auto& init = params.lsp__initialize_params;
-        auto& folders = params.workspace_folders_initialize_params.workspace_folders;
+        auto& folders = params.workspace_folders;
         std::vector<Spelling> roots;
         if(folders.has_value() && folders->has_value() && !(*folders)->empty()) {
             for(auto& folder: **folders) {
@@ -245,15 +244,15 @@ void LSPClient::register_lifecycle() {
                     roots.push_back(std::move(*root));
                 }
             }
-        } else if(init.root_uri.has_value()) {
-            if(auto root = uri_to_path(*init.root_uri)) {
+        } else if(params.root_uri.has_value()) {
+            if(auto root = uri_to_path(*params.root_uri)) {
                 roots.push_back(std::move(*root));
             }
         }
         srv.change_folders({}, std::move(roots));
 
-        if(init.capabilities.workspace.has_value()) {
-            auto& ws_caps = *init.capabilities.workspace;
+        if(params.capabilities.workspace.has_value()) {
+            auto& ws_caps = *params.capabilities.workspace;
             semantic_tokens_refresh =
                 ws_caps.semantic_tokens.has_value() && ws_caps.semantic_tokens->refresh_support;
             inlay_hint_refresh =
@@ -264,24 +263,24 @@ void LSPClient::register_lifecycle() {
                 ws_caps.workspace_edit.has_value() && ws_caps.workspace_edit->document_changes;
         }
 
-        if(init.capabilities.text_document.has_value() &&
-           init.capabilities.text_document->folding_range.has_value()) {
-            line_folding_only = init.capabilities.text_document->folding_range->line_folding_only;
+        if(params.capabilities.text_document.has_value() &&
+           params.capabilities.text_document->folding_range.has_value()) {
+            line_folding_only = params.capabilities.text_document->folding_range->line_folding_only;
         }
 
-        if(init.capabilities.text_document.has_value() &&
-           init.capabilities.text_document->completion.has_value() &&
-           init.capabilities.text_document->completion->completion_item.has_value()) {
-            auto& item = *init.capabilities.text_document->completion->completion_item;
+        if(params.capabilities.text_document.has_value() &&
+           params.capabilities.text_document->completion.has_value() &&
+           params.capabilities.text_document->completion->completion_item.has_value()) {
+            auto& item = *params.capabilities.text_document->completion->completion_item;
             completion_client = {
                 .snippets = item.snippet_support,
                 .insert_replace = item.insert_replace_support,
             };
         }
 
-        if(init.initialization_options.has_value()) {
+        if(params.initialization_options.has_value() && !params.initialization_options->is_null()) {
             auto json =
-                kota::codec::json::to_string<kota::ipc::lsp_config>(*init.initialization_options);
+                kota::codec::json::to_string<kota::ipc::lsp_config>(*params.initialization_options);
             if(json)
                 srv.init_options_json = std::move(*json);
         }
@@ -621,11 +620,11 @@ void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session, project] =
-            resolve_uri(params.text_document_position_params.text_document.uri);
+            resolve_uri(params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(unserved(path));
         co_return co_await project->features.hover(session,
-                                                   params.text_document_position_params.position,
+                                                   params.position,
                                                    ctx.cancellation);
     });
 
@@ -703,8 +702,8 @@ void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx,
                            const protocol::DefinitionParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
+        auto& uri = params.text_document.uri;
+        auto& pos = params.position;
         auto [path, path_id, session, project] = resolve_uri(uri);
         co_return co_await project->features.definition(session, path_id, pos, ctx.cancellation);
     });
@@ -715,8 +714,8 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
+            auto& uri = params.text_document.uri;
+            auto& pos = params.position;
             auto [path, path_id, session, project] = resolve_uri(uri);
             co_return co_await project->features.references(session,
                                                             path_id,
@@ -727,8 +726,8 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
+            auto& uri = params.text_document.uri;
+            auto& pos = params.position;
             auto [path, path_id, session, project] = resolve_uri(uri);
             co_return co_await project->features.type_definition(session, path_id, pos);
         });
@@ -736,8 +735,8 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ImplementationParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
+            auto& uri = params.text_document.uri;
+            auto& pos = params.position;
             auto [path, path_id, session, project] = resolve_uri(uri);
             co_return co_await project->features.implementation(session, path_id, pos);
         });
@@ -745,8 +744,8 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DeclarationParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
+            auto& uri = params.text_document.uri;
+            auto& pos = params.position;
             auto [path, path_id, session, project] = resolve_uri(uri);
             co_return co_await project->features.declaration(session, path_id, pos);
         });
@@ -755,7 +754,7 @@ void LSPClient::register_language_features() {
         [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] =
-                resolve_uri(params.text_document_position_params.text_document.uri);
+                resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(unserved(path));
             llvm::StringRef trigger;
@@ -764,7 +763,7 @@ void LSPClient::register_language_features() {
             }
             co_return co_await project->features.completion(
                 session,
-                params.text_document_position_params.position,
+                params.position,
                 completion_client,
                 trigger,
                 ctx.cancellation);
@@ -774,12 +773,12 @@ void LSPClient::register_language_features() {
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] =
-                resolve_uri(params.text_document_position_params.text_document.uri);
+                resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(unserved(path));
             co_return co_await project->features.signature_help(
                 session,
-                params.text_document_position_params.position,
+                params.position,
                 ctx.cancellation);
         });
 
@@ -806,8 +805,8 @@ void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyPrepareParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
+        auto& uri = params.text_document.uri;
+        auto& pos = params.position;
         auto [path, path_id, session, project] = resolve_uri(uri);
         co_return co_await project->features.call_hierarchy_prepare(session, path_id, pos);
     });
@@ -829,8 +828,8 @@ void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
+        auto& uri = params.text_document.uri;
+        auto& pos = params.position;
         auto [path, path_id, session, project] = resolve_uri(uri);
         co_return co_await project->features.type_hierarchy_prepare(session, path_id, pos);
     });

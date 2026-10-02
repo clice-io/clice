@@ -1186,7 +1186,7 @@ TEST_CASE(randomized_stress) {
     execute([&]() -> kota::task<> {
         std::mt19937 rng(20260826u);
         std::vector<std::unique_ptr<Probe>> probes;
-        kota::task_group<> inflight(*loop);
+        kota::task_group<> inflight;
 
         const NodeId roots[] = {a(1), a(6), a(8)};
         const NodeId all[] = {a(1), a(2), a(3), b(4), b(5), a(6), a(7), a(8)};

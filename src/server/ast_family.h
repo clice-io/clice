@@ -58,8 +58,7 @@ public:
               PCMFamily& pcm,
               PCHFamily& pch,
               WorkerPool& pool,
-              SessionStore& sessions,
-              kota::event_loop& loop);
+              SessionStore& sessions);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic runner register their own under Family::AST.

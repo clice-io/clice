@@ -694,7 +694,11 @@ public:
                 continue;
             }
 
-            auto length = lsp::encoded_length(chunk.substr(chunk_offset, piece_size), encoding);
+            auto piece = chunk.substr(chunk_offset, piece_size - 1);
+            if(piece.ends_with('\r')) {
+                piece.remove_suffix(1);
+            }
+            auto length = lsp::encoded_length(piece, encoding);
             emit(line, character, length, token.kind, token.modifiers);
 
             line += 1;

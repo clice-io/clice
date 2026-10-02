@@ -868,7 +868,7 @@ std::uint64_t container_entity(CompilationUnitRef unit, const clang::FunctionDec
 CodeAction define_action(std::string title, IndexRequest request) {
     return CodeAction{
         .title = std::move(title),
-        .kind = protocol::CodeActionKind::refactor_rewrite,
+        .kind = protocol::CodeActionKind::RefactorRewrite,
         .index = std::move(request),
     };
 }

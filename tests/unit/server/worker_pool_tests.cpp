@@ -789,7 +789,7 @@ TEST_CASE(ConcurrencyLimit) {
     bool done = false;
 
     f.run([&]() -> kota::task<> {
-        kota::task_group<> group(f.loop);
+        kota::task_group<> group;
         auto work = [&]() -> kota::task<> {
             auto idx = co_await f.acquire_slot(worker::Priority::Low);
             ++concurrent;
@@ -819,7 +819,7 @@ TEST_CASE(PriorityOrdering) {
     bool done = false;
 
     f.run([&]() -> kota::task<> {
-        kota::task_group<> group(f.loop);
+        kota::task_group<> group;
 
         auto initial = co_await f.acquire_slot(worker::Priority::Low);
 
@@ -891,7 +891,7 @@ TEST_CASE(FreshAcquireRespectsQueue) {
     f.run([&]() -> kota::task<> {
         auto queued = f.enqueue_waiter(worker::Priority::High);
 
-        kota::task_group<> group(f.loop);
+        kota::task_group<> group;
         auto fresh = [&]() -> kota::task<> {
             auto idx = co_await f.acquire_slot(worker::Priority::High);
             acquired = true;
@@ -2177,7 +2177,7 @@ TEST_CASE(PreemptCancelsRequest) {
         params.arguments = make_args(src);
 
         worker::protocol::integer code = 0;
-        kota::task_group<> group(f.loop);
+        kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
             auto result = co_await f.pool.send_stateless(params, worker::Priority::Low);
             if(!result.has_value())
@@ -2228,7 +2228,7 @@ TEST_CASE(CancelledCrashRetiresSlot) {
         params.arguments = make_args(src);
 
         worker::protocol::integer code = 0;
-        kota::task_group<> group(f.loop);
+        kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
             auto result = co_await f.pool.send_stateless(params, worker::Priority::Low);
             if(!result.has_value())

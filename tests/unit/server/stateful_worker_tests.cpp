@@ -88,7 +88,7 @@ TEST_CASE(CancelledCompileFreesStrand) {
         opts.token = source.token();
 
         bool first_failed = false;
-        kota::task_group<> group(w.loop);
+        kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
             auto result = co_await w.peer->send_request(cp, opts);
             first_failed = !result.has_value();
@@ -159,7 +159,7 @@ TEST_CASE(CancelNotificationInterruptsCompile) {
         // reply, and an interrupted parse reports no deps and no index —
         // the reply's content, not the clock, is the assertion.
         std::optional<worker::CompileResult> reply;
-        kota::task_group<> group(w.loop);
+        kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
             kota::ipc::request_options opts;
             opts.timeout = std::chrono::milliseconds(30'000);
@@ -216,7 +216,7 @@ TEST_CASE(CancelledQueryFreesStrand) {
         kota::ipc::request_options opts;
         opts.token = source.token();
 
-        kota::task_group<> group(w.loop);
+        kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
             [[maybe_unused]] auto result = co_await w.peer->send_request(qp, opts);
         };

@@ -79,9 +79,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_sources() {
     auto walked =
         co_await kota::queue([walk = project.build.source_walk()] { return walk_sources(walk); });
     llvm::SmallVector<FileEvent> events;
-    if(walked.has_value()) {
-        push_delta({.added = project.build.refresh_default_sources(*walked)}, events);
-    }
+    push_delta({.added = project.build.refresh_default_sources(walked)}, events);
     co_return events;
 }
 

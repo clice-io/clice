@@ -27,7 +27,7 @@ NodeId nid(std::uint32_t path_id) {
 struct GraphShim {
     TaskGraph graph;
 
-    GraphShim(kota::event_loop& loop, DispatchFn dispatch, ResolveFn resolve) : graph(loop) {
+    GraphShim(DispatchFn dispatch, ResolveFn resolve) {
         graph.register_family(test_family,
                               [dispatch = std::move(dispatch), resolve = std::move(resolve)](
                                   RoundContext& ctx,
@@ -191,7 +191,7 @@ ResolveFn default_resolver() {
 
 void make_graph(DispatchFn dispatch, ResolveFn resolve) {
     loop.emplace();
-    cg.emplace(*loop, std::move(dispatch), std::move(resolve));
+    cg.emplace(std::move(dispatch), std::move(resolve));
 }
 
 void make_graph() {

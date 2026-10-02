@@ -17,7 +17,7 @@ auto make_command() {
 
 void add_doc(kota::deco::cli::SubCommander& root, int& exit_code) {
     auto cmd = make_command();
-    cmd.matchAll([&exit_code](DocOptions opts) {
+    cmd.match_all([&exit_code](DocOptions opts) {
            if(opts.help) {
                auto help = make_command();
                print_usage(help);

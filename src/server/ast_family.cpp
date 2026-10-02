@@ -227,10 +227,9 @@ ASTFamily::ASTFamily(Project& project,
                      PCMFamily& pcm,
                      PCHFamily& pch,
                      WorkerPool& pool,
-                     SessionStore& sessions,
-                     kota::event_loop& loop) :
+                     SessionStore& sessions) :
     project(project), contexts(contexts), graph(graph), pcm(pcm), pch(pch), pool(pool),
-    sessions(sessions), kicks(loop) {}
+    sessions(sessions) {}
 
 void ASTFamily::register_runner() {
     graph.register_family(Family::AST, [this](RoundContext& ctx, NodeId id) {

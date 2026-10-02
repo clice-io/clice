@@ -59,7 +59,7 @@ TEST_CASE(HandlerCancelChainsThrough) {
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
 
-        kota::task_group<> group(w.loop);
+        kota::task_group<> group;
         auto wrapper = [&]() -> kota::task<> {
             [[maybe_unused]] auto r = co_await kota::with_token(handler(), source.token());
         };
@@ -126,7 +126,7 @@ TEST_CASE(CancelBuildStopsBuild) {
             EXPECT_FALSE(result.value().success);
         };
 
-        kota::task_group<> group(w.loop);
+        kota::task_group<> group;
         group.spawn(build());
 
         co_await kota::sleep(50, w.loop);

@@ -234,11 +234,11 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         }
         return outcome;
     });
-    if(!committed.has_value() || !committed.value().pch_path.has_value()) {
+    if(!committed.pch_path.has_value()) {
         LOG_WARN("Failed to commit PCH for {}", bp.file);
         co_return RoundOutcome::Failed;
     }
-    if(!committed.value().index_path.has_value()) {
+    if(!committed.index_path.has_value()) {
         LOG_WARN("Failed to commit pch.idx envelope for {}", bp.file);
         // The previous pair is stale (that is why it was rebuilt): drop
         // it rather than let it revalidate against its old deps.
@@ -247,7 +247,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         }
         co_return RoundOutcome::Failed;
     }
-    if(!committed.value().state) {
+    if(!committed.state) {
         LOG_WARN("Freshly committed pch.idx envelope for {} is unreadable", bp.file);
         // The commit job retracted the new pair; the previous one is stale
         // for the same reason as above.
@@ -262,14 +262,14 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         project.store->invalidate("pch", st.superseded);
     }
     st.superseded = std::exchange(st.blob, std::move(blob));
-    st.path = *committed.value().pch_path;
+    st.path = *committed.pch_path;
     st.bound = request.preamble_bound;
     st.deps =
         capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
-    st.index_path = *committed.value().index_path;
+    st.index_path = *committed.index_path;
     // Replace the previous blob's mapping (same key, rebuilt content);
     // in-flight holders of the old shared_ptr stay valid.
-    st.state = committed.value().state;
+    st.state = committed.state;
     touch_loaded_state(pch_key);
     enforce_loaded_budget();
 

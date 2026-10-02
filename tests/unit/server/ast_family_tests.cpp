@@ -51,11 +51,11 @@ struct Stack {
     ContextsBlob blob;
     EditorContext contexts{project, commands, blob};
     WorkerPool pool{loop};
-    TaskGraph graph{loop};
+    TaskGraph graph;
     PCMFamily pcm{graph, project, commands, pool};
     PCHFamily pch{graph, project, pool};
     SessionStore sessions;
-    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions, loop};
+    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions};
     Dispatcher dispatcher{project, contexts, ast, pool};
 
     Stack() {
@@ -231,7 +231,7 @@ TEST_CASE(ShutdownUnblocksWaiters) {
         opts.stateful_count = 1;
         CO_ASSERT_TRUE(stack.pool.start(opts));
 
-        kota::task_group<> group(stack.loop);
+        kota::task_group<> group;
         auto waiter = [&]() -> kota::task<> {
             waiter_ok = co_await stack.ast.ensure_compiled(session);
             waiter_done = true;
@@ -304,7 +304,7 @@ TEST_CASE(EditInterruptsStaleCompile) {
         opts.stateful_count = 1;
         CO_ASSERT_TRUE(stack.pool.start(opts));
 
-        kota::task_group<> group(stack.loop);
+        kota::task_group<> group;
         auto waiter = [&]() -> kota::task<> {
             waiter_ok = co_await stack.ast.ensure_compiled(session);
             waiter_done = true;
@@ -383,7 +383,7 @@ TEST_CASE(SupersededCompileCancelled) {
         opts.stateful_count = 1;
         CO_ASSERT_TRUE(stack.pool.start(opts));
 
-        kota::task_group<> group(stack.loop);
+        kota::task_group<> group;
         auto first = [&]() -> kota::task<> {
             [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
             first_done = true;
@@ -964,7 +964,7 @@ TEST_CASE(ClientCancelSparesCompile) {
         CO_ASSERT_TRUE(stack.pool.start(opts));
 
         kota::cancellation_source source;
-        kota::task_group<> group(stack.loop);
+        kota::task_group<> group;
         auto cancelled_waiter = [&]() -> kota::task<> {
             auto hover = [&]() -> Dispatcher::RawResult {
                 co_return co_await stack.dispatcher.query(worker::QueryKind::Hover,
@@ -1052,7 +1052,7 @@ TEST_CASE(StaleReplyLandsContentModified) {
         CO_ASSERT_TRUE(warm.has_value());
 
         auto ticket = Ticket::take(session);
-        kota::task_group<> group(stack.loop);
+        kota::task_group<> group;
         auto tokens = [&]() -> kota::task<> {
             auto result =
                 co_await stack.dispatcher.query(worker::QueryKind::SemanticTokens, ticket);

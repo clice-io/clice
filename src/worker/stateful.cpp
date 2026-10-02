@@ -229,7 +229,7 @@ class StatefulWorker {
                  compute_ms,
                  timer.ms_f());
         shrink_if_over_limit();
-        co_return result.value();
+        co_return result;
     }
 
     /// Returns "null" if the AST is not usable.
@@ -411,7 +411,7 @@ void StatefulWorker::register_handlers() {
 
             shrink_if_over_limit();
 
-            co_return compile_result.value();
+            co_return compile_result;
         });
 
     // === DocumentLink ===

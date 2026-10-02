@@ -179,7 +179,7 @@ std::string dump(const Object& object) {
         });
         result += "}";
         return result;
-    } else if constexpr(kota::Formattable<T>) {
+    } else if constexpr(std::formattable<T, char>) {
         return std::format("{}", object);
     } else {
         return "<unformattable>";

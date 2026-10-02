@@ -1048,7 +1048,7 @@ auto make_command() {
 
 void add_inspect(kota::deco::cli::SubCommander& root, int& exit_code) {
     auto cmd = make_command();
-    cmd.matchAll([&exit_code](InspectOptions opts) {
+    cmd.match_all([&exit_code](InspectOptions opts) {
            if(opts.help) {
                auto help = make_command();
                print_usage(help);

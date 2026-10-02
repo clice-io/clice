@@ -35,7 +35,7 @@ Project project{files};
 SessionStore store;
 WorkerPool pool{loop};
 CommandResolver resolver{project};
-TaskGraph graph{loop};
+TaskGraph graph;
 PCMFamily pcm{graph, project, resolver, pool};
 ASTProjectionTable projections;
 IndexStore index_store{loop, project, resolver};

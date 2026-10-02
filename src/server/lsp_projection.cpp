@@ -87,7 +87,7 @@ std::optional<index::SymbolHash> hierarchy_symbol(const std::optional<protocol::
     if(!data) {
         return std::nullopt;
     }
-    auto* str = std::get_if<std::string>(&static_cast<const protocol::LSPVariant&>(*data));
+    auto str = data->get_string();
     if(!str) {
         return std::nullopt;
     }

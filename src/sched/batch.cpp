@@ -134,7 +134,7 @@ struct BatchLifetime {
     kota::cancellation_source stop;
     kota::task_group<> aux;
 
-    explicit BatchLifetime(BatchStack& stack) : stack(stack), aux(stack.loop) {
+    explicit BatchLifetime(BatchStack& stack) : stack(stack) {
         aux.spawn(watch_signal(SIGINT, stop, stop_requested));
         aux.spawn(watch_signal(SIGTERM, stop, stop_requested));
         aux.spawn(checkpoint_task(stack));
@@ -390,7 +390,7 @@ kota::task<> run_lint_sweep(BatchStack& stack,
                             const BatchLintOptions& options,
                             llvm::ArrayRef<Fid> tus,
                             LintSweep& sweep) {
-    kota::task_group<> workers(stack.loop);
+    kota::task_group<> workers;
 
     // The dispatch loop runs as a child of `workers`, like the pump's
     // round feeder: a cancel cascades through the join and every in-flight
@@ -673,7 +673,7 @@ kota::task<> run_format_sweep(kota::event_loop& loop,
                               llvm::ArrayRef<std::vector<std::string>> chunks,
                               std::vector<ToolRun>& runs) {
     std::size_t next = 0;
-    kota::task_group<> workers(loop);
+    kota::task_group<> workers;
     for(std::uint32_t i = 0; i < jobs && i < chunks.size(); i += 1) {
         workers.spawn(format_chunks(loop, executable, check, chunks, next, runs));
     }

@@ -366,7 +366,7 @@ kota::task<> WorkerPool::stop() {
 
     // A wedged worker that ignores SIGTERM would otherwise block the join
     // below forever; escalate after a grace period.
-    kota::task_group<> watchdog{loop};
+    kota::task_group<> watchdog;
     watchdog.spawn(kill_stragglers());
 
     co_await worker_tasks.join();
@@ -667,7 +667,7 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
 
 kota::ipc::Error WorkerPool::death_error(const WorkerDeath& death,
                                          llvm::StringRef tag,
-                                         kota::ipc::protocol::Value identity) {
+                                         kota::codec::dyn::Value identity) {
     namespace errc = worker::dispatch_errc;
     auto code = death.culprit.empty()  ? errc::worker_died
                 : death.culprit == tag ? errc::worker_crashed

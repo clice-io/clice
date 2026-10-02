@@ -156,7 +156,7 @@ TEST_CASE(TurnEndsBeforeIO) {
     std::vector<Verdict> verdicts;
     kota::event_loop loop;
     auto body = [&]() -> kota::task<> {
-        kota::task_group<> turns(loop);
+        kota::task_group<> turns;
         turns.spawn(f.disk.end_turns(loop));
         verdicts.push_back(f.disk.check(fid, hash));
         f.rewrite("src/a.h", "int b;\n");

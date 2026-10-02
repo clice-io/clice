@@ -31,7 +31,7 @@ index::Shard shard_of(llvm::StringRef content) {
 /// behind them.
 struct PCMHarness {
     kota::event_loop loop;
-    TaskGraph graph{loop};
+    TaskGraph graph;
     WorkerPool pool{loop};
     PCMFamily pcm;
     IndexStore index;
@@ -45,7 +45,7 @@ struct PCMHarness {
 /// which goes through the AST family; this bundles its inert stack.
 struct ASTHarness {
     kota::event_loop loop;
-    TaskGraph graph{loop};
+    TaskGraph graph;
     WorkerPool pool{loop};
     PCMFamily pcm;
     PCHFamily pch;
@@ -53,7 +53,7 @@ struct ASTHarness {
 
     ASTHarness(Project& project, EditorContext& resolver, SessionStore& store) :
         pcm(graph, project, resolver.commands, pool), pch(graph, project, pool),
-        ast(project, resolver, graph, pcm, pch, pool, store, loop) {}
+        ast(project, resolver, graph, pcm, pch, pool, store) {}
 };
 
 TEST_SUITE(Invalidator) {

@@ -46,8 +46,6 @@ bool RoundContext::foreground() const {
     return graph.nodes.find(self)->second.foreground;
 }
 
-TaskGraph::TaskGraph(kota::event_loop& loop) : tasks(loop) {}
-
 void TaskGraph::register_family(Family family, RoundRunner run) {
     assert(!families.contains(std::to_underlying(family)) && "family registered twice");
     families[std::to_underlying(family)] = std::move(run);
