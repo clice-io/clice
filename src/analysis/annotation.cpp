@@ -1,0 +1,92 @@
+#include "analysis/annotation.h"
+
+#include <format>
+#include <map>
+
+#include "support/process.h"
+
+#include "kota/async/async.h"
+#include "kota/codec/json/json.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/MemoryBuffer.h"
+
+namespace clice::analysis {
+
+const Annotation* Annotations::find(llvm::StringRef name) const {
+    for(auto& annotation: list) {
+        if(annotation.name == name) {
+            return &annotation;
+        }
+    }
+    return nullptr;
+}
+
+double Annotations::value(llvm::StringRef name, llvm::StringRef path, double fallback) const {
+    auto* annotation = find(name);
+    if(!annotation) {
+        return fallback;
+    }
+    auto it = annotation->values.find(path);
+    return it == annotation->values.end() ? fallback : it->second;
+}
+
+std::expected<Annotation, std::string> read_annotation(llvm::StringRef path) {
+    auto buffer = llvm::MemoryBuffer::getFile(path);
+    if(!buffer) {
+        return std::unexpected(
+            std::format("cannot read {}: {}", std::string_view(path), buffer.getError().message()));
+    }
+
+    struct File {
+        std::string name;
+        std::string unit;
+        std::map<std::string, double> values;
+    };
+
+    File file;
+    if(auto result = kota::codec::json::from_string((*buffer)->getBuffer(), file); !result) {
+        return std::unexpected(std::format("{} is not an annotation file: {}",
+                                           std::string_view(path),
+                                           result.error().message));
+    }
+    if(file.name.empty()) {
+        return std::unexpected(std::format("{} names no annotation", std::string_view(path)));
+    }
+    Annotation annotation{.name = std::move(file.name), .unit = std::move(file.unit)};
+    for(auto& [key, value]: file.values) {
+        annotation.values[key] = value;
+    }
+    return annotation;
+}
+
+std::expected<Annotation, std::string> git_churn(llvm::StringRef workspace, llvm::StringRef since) {
+    std::expected<std::string, std::string> log;
+    kota::event_loop loop;
+    auto task = [&]() -> kota::task<> {
+        // --relative names the files from the workspace and keeps only
+        // those under it, whatever the repository root is.
+        log = co_await execute({"git",
+                                "log",
+                                std::format("--since={}", std::string_view(since)),
+                                "--format=",
+                                "--name-only",
+                                "--relative"},
+                               /*capture_stdout=*/true,
+                               workspace.str());
+    };
+    loop.schedule(task());
+    loop.run();
+    if(!log) {
+        return std::unexpected(log.error());
+    }
+
+    Annotation annotation{.name = churn_annotation.str(), .unit = "commits"};
+    llvm::SmallVector<llvm::StringRef> lines;
+    llvm::SplitString(*log, lines, "\n");
+    for(auto line: lines) {
+        annotation.values[line.trim()] += 1;
+    }
+    return annotation;
+}
+
+}  // namespace clice::analysis

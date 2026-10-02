@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { waitUntil, type CliceClient } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
-const SUBCOMMANDS = ["serve", "query", "worker", "index", "doc", "lint", "format"];
+const SUBCOMMANDS = ["serve", "query", "worker", "index", "doc", "lint", "format", "analyze"];
 const STUBS = ["doc"];
 
 function runClice(...args: string[]) {
