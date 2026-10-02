@@ -11,6 +11,7 @@
 #include "server/features.h"
 #include "server/lsp_client.h"
 #include "support/anomaly.h"
+#include "support/environment.h"
 #include "support/logging.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
