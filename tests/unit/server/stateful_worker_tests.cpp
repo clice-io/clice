@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <format>
 #include <string>
 #include <vector>
@@ -607,50 +606,48 @@ TEST_CASE(DocumentLimitEvicts) {
 }
 
 TEST_CASE(BusyDocumentsStay) {
-    // Documents in flight are never evicted: the master would hear of the
-    // eviction before the compile's own reply and compile it again.
+    // A document in flight is never evicted: the master would hear of the
+    // eviction while the compile is still to land and compile it again.
+    // The large document's compile is still running when the small one's
+    // lands over the cap; only the small one, idle by the time the large
+    // one lands, may go.
     TempDir tmp;
-    std::vector<std::string> paths;
-    for(int i = 0; i < 2; i++) {
-        auto name = "busy_" + std::to_string(i) + ".cpp";
-        tmp.touch(name, "#include <vector>\nstd::vector<int> v;\n");
-        paths.push_back(tmp.path(name));
+    std::string large = "#include <vector>\n";
+    for(int i = 0; i < 5000; i += 1) {
+        large += std::format("std::vector<int> v_{};\n", i);
     }
+    tmp.touch("large.cpp", large);
+    tmp.touch("small.cpp", "int x;\n");
+    std::vector<std::pair<std::string, std::string>> documents = {
+        {tmp.path("large.cpp"), large     },
+        {tmp.path("small.cpp"), "int x;\n"},
+    };
 
     WorkerHandle w;
     ASSERT_TRUE(w.spawn(true, /*max_documents=*/1));
 
-    std::vector<std::string> events;
+    std::vector<std::string> evicted;
     w.peer->on_notification(
-        [&](const worker::EvictedParams& params) { events.push_back("evicted " + params.path); });
+        [&](const worker::EvictedParams& params) { evicted.push_back(params.path); });
 
     bool test_done = false;
     w.run([&]() -> kota::task<> {
         auto compile = [&](std::size_t i) -> kota::task<> {
             worker::CompileParams cp;
-            cp.path = paths[i];
+            cp.path = documents[i].first;
             cp.version = 1;
-            cp.text = "#include <vector>\nstd::vector<int> v;\n";
+            cp.text = documents[i].second;
             cp.directory = "/tmp";
-            cp.arguments = make_args(paths[i]);
+            cp.arguments = make_args(cp.path);
             auto result = co_await w.peer->send_request(cp);
             EXPECT_TRUE(result.has_value());
-            events.push_back("replied " + paths[i]);
         };
         co_await kota::when_all(compile(0), compile(1));
         test_done = true;
     });
 
     ASSERT_TRUE(test_done);
-    // Every eviction follows its document's reply, and the cap is honored
-    // once both settled.
-    for(auto& path: paths) {
-        auto evicted = std::ranges::find(events, "evicted " + path);
-        if(evicted != events.end()) {
-            EXPECT_TRUE(std::ranges::find(events.begin(), evicted, "replied " + path) != evicted);
-        }
-    }
-    EXPECT_EQ(std::ranges::count_if(events, [](auto& e) { return e.starts_with("evicted"); }), 1);
+    ASSERT_EQ(evicted, std::vector<std::string>{documents[1].first});
 }
 
 };  // TEST_SUITE(StatefulWorker)

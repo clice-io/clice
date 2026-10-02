@@ -319,13 +319,17 @@ export class CliceClient {
     static async startSocket(
         executable: string,
         port: number,
-        options: { host?: string | undefined; args?: string[] | undefined } = {},
+        options: {
+            host?: string | undefined;
+            args?: string[] | undefined;
+            env?: Record<string, string> | undefined;
+        } = {},
     ): Promise<CliceClient> {
         const host = options.host ?? "127.0.0.1";
         const child = spawn(
             executable,
             options.args ?? ["serve", "--mode", "socket", "--port", String(port)],
-            { stdio: ["pipe", "pipe", "pipe"], env: serverEnv() },
+            { stdio: ["pipe", "pipe", "pipe"], env: { ...serverEnv(), ...options.env } },
         );
         let socket: net.Socket | null = null;
         for (let i = 0; i < 150; i++) {

@@ -1414,7 +1414,14 @@ TEST_CASE(DeadlineKillsAndNames) {
     f.add_stateless(true, true);
     auto run = f.dispatch(0, false, "clice/worker/tuRun /c.cpp", std::chrono::seconds(20), true);
 
+    // A query queued behind a build in time is no hang of its own.
+    f.add_stateful(true);
+    auto compiling =
+        f.dispatch(2, true, "clice/worker/compile /d.cpp", std::chrono::seconds(5), true);
+    auto queued = f.dispatch(2, true, "clice/worker/query:Hover /d.cpp", std::chrono::seconds(5));
+
     f.tick_deadlines();
+    EXPECT_EQ(f.state(2, true), WorkerPoolFixture::SlotState::Alive);
     EXPECT_EQ(f.state(0, true), WorkerPoolFixture::SlotState::Alive);
     EXPECT_EQ(f.state(1, true), WorkerPoolFixture::SlotState::Dying);
     EXPECT_EQ(f.death(1, true)->culprit, "clice/worker/query:Hover /b.cpp");

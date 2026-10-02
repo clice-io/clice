@@ -684,10 +684,11 @@ kota::task<bool> WorkerPool::await_capacity(bool stateful) {
         if(serving) {
             co_return true;
         }
-        auto returning =
-            revives_slots() || std::ranges::any_of(workers, [](const WorkerProcess& w) {
-                return w.state == SlotState::Dying || w.state == SlotState::Respawning;
-            });
+        auto revives = revives_slots();
+        auto returning = std::ranges::any_of(workers, [&](const WorkerProcess& w) {
+            return w.state == SlotState::Dying || w.state == SlotState::Respawning ||
+                   (revives && w.state == SlotState::Dead);
+        });
         if(!returning) {
             co_return false;
         }
@@ -985,14 +986,19 @@ void WorkerPool::tick_deadlines() {
             if(w.state != SlotState::Alive) {
                 continue;
             }
+            auto building = std::ranges::any_of(w.dispatches, &Dispatch::build);
+            auto deadline = [&](const Dispatch* dispatch) {
+                return dispatch->build ? options.build_deadline : options.query_deadline;
+            };
             auto overdue = std::ranges::find_if(w.dispatches, [&](const Dispatch* dispatch) {
-                return now - dispatch->started > dispatch->deadline;
+                return (dispatch->build || !building) &&
+                       now - dispatch->started > deadline(dispatch);
             });
             if(overdue == w.dispatches.end()) {
                 continue;
             }
             auto seconds =
-                std::chrono::duration_cast<std::chrono::seconds>((*overdue)->deadline).count();
+                std::chrono::duration_cast<std::chrono::seconds>(deadline(*overdue)).count();
             LOG_WARN("Worker {} ran {} for over {}s; killing it", w.name, (*overdue)->tag, seconds);
             w.death->culprit = (*overdue)->tag;
             w.death->cause = std::format("killed after running for over {} seconds", seconds);

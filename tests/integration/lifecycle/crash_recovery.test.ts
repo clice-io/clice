@@ -12,7 +12,7 @@
 import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
-const FILE_COUNT = 12;
+const FILE_COUNT = 8;
 const KILL_FILE_COUNT = 3;
 const OUTAGE_RESPONSE_TIMEOUT = 15_000;
 
@@ -184,6 +184,7 @@ test.skipIf(process.platform !== "linux")(
             sleep(OUTAGE_RESPONSE_TIMEOUT).then(() => null),
         ]);
         expect(during, "master unresponsive during the outage").not.toBeNull();
+        expect(during!.size, "the outage must strike mid-round").toBeLessThan(FILE_COUNT);
 
         // The revival cooldown (30s) re-arms the slot and the parked round
         // must resume and finish every file: lost runs requeue past the

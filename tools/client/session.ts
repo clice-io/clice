@@ -245,6 +245,7 @@ export function createSessionFactory(): SessionHandle {
             options.socketPort !== undefined
                 ? await CliceClient.startSocket(cliceExecutable(), options.socketPort, {
                       args: options.args,
+                      env: options.env,
                   })
                 : CliceClient.start(cliceExecutable(), {
                       drainStderr: options.drainStderr,

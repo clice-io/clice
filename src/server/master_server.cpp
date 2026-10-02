@@ -209,7 +209,10 @@ void MasterServer::wire() {
         // crash) goes through the event pipeline like any invalidation.
         // A live round's compile puts the document back on its owner —
         // the worker evicted it before that compile arrived, or it would
-        // have kept it — so the eviction changes nothing.
+        // have kept it — so the eviction changes nothing. One that crossed
+        // the compile's reply on the wire leaves the master trusting a
+        // document the worker no longer holds: the next query hears
+        // document_unloaded and compiles it again (see Dispatcher::ask).
         auto& project = owner_of(*id);
         if(project.ast.compiling(*id)) {
             LOG_INFO("Ignoring eviction of {}: a compile of it is under way", path);

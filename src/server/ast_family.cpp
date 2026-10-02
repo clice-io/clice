@@ -250,8 +250,17 @@ void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
                                   error.message,
                                   Quarantine::Clock::now());
     // A silent first crash leaves the published state alone (see
-    // Quarantine invariant 4), and a closed document publishes nothing.
-    if(!session->quarantine->shows(kind) || session->closed) {
+    // Quarantine invariant 4).
+    if(!session->quarantine->shows(kind)) {
+        return;
+    }
+    // A closed session publishes nothing; a reopen sharing its records
+    // shows the note.
+    if(session->closed) {
+        if(auto open = sessions.find(session->path_id);
+           open && open->quarantine == session->quarantine) {
+            republish(open);
+        }
         return;
     }
     // A barred compile leaves no AST behind the old diagnostics: they go,

@@ -388,13 +388,13 @@ private:
         bool stateful;
         unsigned generation;
         std::string tag;
-        std::chrono::milliseconds deadline;
+        /// See worker::is_build.
+        bool build;
         std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 
         Dispatch(WorkerPool& pool, std::size_t index, bool stateful, std::string tag, bool build) :
             pool(pool), index(index), stateful(stateful),
-            generation(pool.slot(index, stateful).generation), tag(std::move(tag)),
-            deadline(build ? pool.options.build_deadline : pool.options.query_deadline) {
+            generation(pool.slot(index, stateful).generation), tag(std::move(tag)), build(build) {
             pool.slot(index, stateful).dispatches.push_back(this);
         }
 
@@ -568,7 +568,9 @@ private:
     void tick_cancel_grace();
 
     /// Kill workers running a request past its deadline and name that
-    /// request in the death record; driven by the monitor tick.
+    /// request in the death record; driven by the monitor tick. A query is
+    /// not timed while a build runs on the same worker: the time is the
+    /// sender's, and the query may be queued behind the build.
     void tick_deadlines();
 
     /// Cooperatively cancel up to `count` in-flight low-priority requests:

@@ -143,7 +143,8 @@ private:
     /// quarantine record, a stale one never leaves as a value — unless it
     /// is a `snapshot` reply, which describes the buffer the request
     /// carried and which the client reconciles with the edits made
-    /// meanwhile. A dispatch the workers could not serve answers empty.
+    /// meanwhile. A fresh dispatch the workers could not serve answers
+    /// empty.
     template <typename Outcome>
     Outcome land(const Ticket& ticket,
                  std::uint8_t kind,

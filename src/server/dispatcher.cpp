@@ -117,6 +117,12 @@ Outcome Dispatcher::land(const Ticket& ticket,
         if(result.error().code == worker::dispatch_errc::cancelled) {
             return result;
         }
+    }
+    // Answered or not, a stale request tells the client to re-pull.
+    if(!ticket.fresh() && !snapshot) {
+        return Outcome{kota::outcome_error(content_modified())};
+    }
+    if(!result.has_value()) {
         LOG_INFO("{} for {} answers empty: {}",
                  label,
                  project.file_table.resolve(session.path_id),
@@ -128,13 +134,7 @@ Outcome Dispatcher::land(const Ticket& ticket,
     // crashes were counted per attempt regardless of staleness, a success
     // settles only when fresh. Clearing a record republishes: no compile
     // runs to drop its note.
-    if(!ticket.fresh()) {
-        if(snapshot) {
-            return result;
-        }
-        return Outcome{kota::outcome_error(content_modified())};
-    }
-    if(session.quarantine->crashed(kind)) {
+    if(ticket.fresh() && session.quarantine->crashed(kind)) {
         session.quarantine->on_land(kind);
         ast.republish(ticket.session);
     }
@@ -330,6 +330,11 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
                                               wp.arguments,
                                               resolution,
                                               inputs)) {
+        // A module refused for crashing a worker is no error to show: the
+        // note the compile put on the file says why.
+        if(session.quarantine->crashed(evidence_kind(EvidenceKind::PCM))) {
+            co_return serde_raw{"null"};
+        }
         LOG_WARN("{}: dependency preparation failed for {}", label, path);
         co_return kota::outcome_error(kota::ipc::Error{"Dependency preparation failed"});
     }
