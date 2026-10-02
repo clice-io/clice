@@ -25,13 +25,66 @@ export function readDatabase(root: string): DatabaseEntry[] {
     return JSON.parse(fs.readFileSync(only, "utf8")) as DatabaseEntry[];
 }
 
-/// An entry's argv: `arguments` as written, or `command` split as the
-/// POSIX shell the build system wrote it for would (shell-quote, the
-/// npm ecosystem's standard shell lexer). Variables stay literal, as the
-/// compiler received them.
+/// A Windows command line split the way CommandLineToArgvW and the C
+/// runtime split it: whitespace outside quotes separates, 2n backslashes
+/// before a quote are n backslashes and the quote toggles quoting, 2n+1
+/// are n backslashes and a literal quote, other backslashes are literal.
+/// No maintained npm package implements these rules.
+function splitWindows(command: string): string[] {
+    const args: string[] = [];
+    let current = "";
+    let started = false;
+    let quoted = false;
+    for (let i = 0; i < command.length; i += 1) {
+        const c = command[i] ?? "";
+        if (c === "\\") {
+            let count = 0;
+            while (command[i + count] === "\\") {
+                count += 1;
+            }
+            if (command[i + count] === '"') {
+                current += "\\".repeat(Math.floor(count / 2));
+                if (count % 2 === 1) {
+                    current += '"';
+                    i += count;
+                } else {
+                    i += count - 1;
+                }
+            } else {
+                current += "\\".repeat(count);
+                i += count - 1;
+            }
+            started = true;
+        } else if (c === '"') {
+            quoted = !quoted;
+            started = true;
+        } else if (!quoted && (c === " " || c === "\t")) {
+            if (started) {
+                args.push(current);
+                current = "";
+                started = false;
+            }
+        } else {
+            current += c;
+            started = true;
+        }
+    }
+    if (started) {
+        args.push(current);
+    }
+    return args;
+}
+
+/// An entry's argv: `arguments` as written, or `command` split by the
+/// rules of the platform it was written for — on POSIX by shell-quote,
+/// the npm ecosystem's standard shell lexer, with variables kept literal
+/// as the compiler received them.
 export function entryArguments(entry: DatabaseEntry): string[] {
     if (entry.arguments !== undefined) {
         return entry.arguments;
+    }
+    if (process.platform === "win32") {
+        return splitWindows(entry.command ?? "");
     }
     return parse(entry.command ?? "", (name) => `$${name}`).map((token) => {
         if (typeof token === "string") {
@@ -46,4 +99,10 @@ export function entryArguments(entry: DatabaseEntry): string[] {
 
 export function entrySource(entry: DatabaseEntry): string {
     return path.resolve(entry.directory, entry.file);
+}
+
+/// Whether two absolute paths name the same file as the platform compares
+/// them: Windows build tools spell drive letters either case.
+export function samePath(a: string, b: string): boolean {
+    return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }

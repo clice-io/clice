@@ -29,14 +29,82 @@ function cmake(generator: string, cc: string, cxx: string, ...extra: string[]): 
     ];
 }
 
-export const SCENARIOS: Scenario[] = [
-    {
-        name: "cmake ninja gcc",
-        platforms: ["linux"],
-        requires: ["cmake", "ninja", GCC, GXX],
-        build: cmake("Ninja", GCC, GXX),
+/// A CMake + Ninja build with the given compilers, both files checked.
+function cmakeNinja(
+    name: string,
+    platforms: NodeJS.Platform[],
+    cc: string,
+    cxx: string,
+    options: { msvc?: boolean; extra?: string[]; unsupported?: string } = {},
+): Scenario {
+    return {
+        name,
+        platforms,
+        ...(options.unsupported === undefined ? {} : { unsupported: options.unsupported }),
+        msvc: options.msvc === true,
+        requires: ["cmake", "ninja", cc, cxx],
+        build: cmake("Ninja", cc, cxx, ...(options.extra ?? [])),
         files: BOTH,
-    },
+    };
+}
+
+const LLVM_WINDOWS = "C:/Program Files/LLVM/bin";
+const MINGW = "C:/mingw64/bin";
+
+export const SCENARIOS: Scenario[] = [
+    cmakeNinja("cmake ninja gcc", ["linux"], GCC, GXX),
+    // Versioned driver names, side by side as distributions install them.
+    cmakeNinja("cmake ninja gcc-12", ["linux"], "/usr/bin/gcc-12", "/usr/bin/g++-12"),
+    cmakeNinja("cmake ninja gcc-14", ["linux"], "/usr/bin/gcc-14", "/usr/bin/g++-14"),
+    cmakeNinja("cmake ninja clang-16", ["linux"], "/usr/bin/clang-16", "/usr/bin/clang++-16"),
+    cmakeNinja("cmake ninja clang-17", ["linux"], "/usr/bin/clang-17", "/usr/bin/clang++-17"),
+    cmakeNinja(
+        "cmake ninja riscv64 cross",
+        ["linux"],
+        "/usr/bin/riscv64-linux-gnu-gcc",
+        "/usr/bin/riscv64-linux-gnu-g++",
+        { extra: ["-DCMAKE_SYSTEM_NAME=Linux", "-DCMAKE_SYSTEM_PROCESSOR=riscv64"] },
+    ),
+    cmakeNinja("cmake ninja apple clang", ["darwin"], "/usr/bin/clang", "/usr/bin/clang++", {
+        unsupported: "Apple clang defaults C++ to C++14; clice fills in its own C++17 (#354)",
+    }),
+    cmakeNinja(
+        "cmake ninja homebrew gcc",
+        ["darwin"],
+        "/opt/homebrew/bin/gcc-14",
+        "/opt/homebrew/bin/g++-14",
+    ),
+    cmakeNinja(
+        "cmake ninja homebrew gcc-15",
+        ["darwin"],
+        "/opt/homebrew/bin/gcc-15",
+        "/opt/homebrew/bin/g++-15",
+        { unsupported: "GCC 15 defaults C to gnu23; clice keeps gnu17" },
+    ),
+    cmakeNinja(
+        "cmake ninja homebrew llvm",
+        ["darwin"],
+        "/opt/homebrew/opt/llvm@18/bin/clang",
+        "/opt/homebrew/opt/llvm@18/bin/clang++",
+    ),
+    cmakeNinja("cmake ninja msvc", ["win32"], "cl", "cl", { msvc: true }),
+    cmakeNinja(
+        "cmake ninja clang-cl",
+        ["win32"],
+        `${LLVM_WINDOWS}/clang-cl.exe`,
+        `${LLVM_WINDOWS}/clang-cl.exe`,
+        { msvc: true },
+    ),
+    cmakeNinja(
+        "cmake ninja llvm clang",
+        ["win32"],
+        `${LLVM_WINDOWS}/clang.exe`,
+        `${LLVM_WINDOWS}/clang++.exe`,
+    ),
+    cmakeNinja("cmake ninja mingw gcc", ["win32"], `${MINGW}/gcc.exe`, `${MINGW}/g++.exe`, {
+        unsupported:
+            "MinGW's GCC 15 defines _REENTRANT and defaults C to gnu23; clice does neither",
+    }),
     {
         name: "cmake make clang",
         platforms: ["linux"],
@@ -144,6 +212,47 @@ export const SCENARIOS: Scenario[] = [
         build: [
             ["bazel", "run", "@hedron_compile_commands//:refresh_all"],
             ["bazel", "shutdown"],
+        ],
+        files: BOTH,
+    },
+    {
+        name: "cmake ninja zig",
+        platforms: ["linux"],
+        unsupported:
+            "zig targets the host CPU by default, clice the generic one; " +
+            "asking zig for its command fails (#98)",
+        requires: ["cmake", "ninja", "zig"],
+        build: cmake("Ninja", "zig;cc", "zig;c++"),
+        files: BOTH,
+    },
+    {
+        name: "emcmake emscripten",
+        platforms: ["linux"],
+        unsupported:
+            "clice takes em++ for a host compiler: wrong target, data model and " +
+            "default standard, no sysroot headers (#569)",
+        requires: ["emcmake", "emcc", "em++", "cmake", "ninja"],
+        build: [
+            ["emcmake", "cmake", "-S", ".", "-B", "build", "-G", "Ninja"],
+            ["cmake", "--build", "build"],
+        ],
+        files: BOTH,
+    },
+    {
+        name: "make bear arm-none-eabi",
+        platforms: ["linux"],
+        unsupported: "clice finds no header search paths for the bare-metal GCC",
+        requires: ["bear", "make", "/usr/bin/arm-none-eabi-gcc", "/usr/bin/arm-none-eabi-g++"],
+        build: [
+            [
+                "bear",
+                "--",
+                "make",
+                "CC=/usr/bin/arm-none-eabi-gcc",
+                "CXX=/usr/bin/arm-none-eabi-g++",
+                "CFLAGS=-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 --specs=nano.specs",
+                "CXXFLAGS=-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 --specs=nano.specs -fno-exceptions",
+            ],
         ],
         files: BOTH,
     },

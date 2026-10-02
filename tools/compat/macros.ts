@@ -8,8 +8,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { entryArguments, entrySource, type DatabaseEntry } from "./database.ts";
-import { systemEnv } from "./scenario.ts";
+import { entryArguments, entrySource, samePath, type DatabaseEntry } from "./database.ts";
 
 /// Macros whose values follow from the compiler, its target and the
 /// command's flags: language mode, target, data model, and the semantic
@@ -23,6 +22,7 @@ const GNU_MACROS = [
     "__i386__",
     "__aarch64__",
     "__arm__",
+    "__riscv",
     "__linux__",
     "_WIN32",
     "_WIN64",
@@ -48,10 +48,33 @@ const GNU_MACROS = [
     "__AVX2__",
 ];
 
+/// The same for cl and clang-cl, which spell target and runtime library
+/// in their own macros. The language standard is `_MSVC_LANG`, the macro
+/// code written for cl reads: cl keeps `__cplusplus` at 199711L without
+/// /Zc:__cplusplus and leaves `__STDC_VERSION__` undefined without
+/// /std:c11, while clice, like clang-cl, reports the standard it parses.
+const MSVC_MACROS = [
+    "_MSVC_LANG",
+    "_MSC_VER",
+    "_WIN32",
+    "_WIN64",
+    "_M_X64",
+    "_M_ARM64",
+    "_CPPRTTI",
+    "_CPPUNWIND",
+    "_MT",
+    "_DLL",
+    "_DEBUG",
+    "_CHAR_UNSIGNED",
+    "__AVX2__",
+];
+
 /// Arguments that name the build's outputs or its own dependency files —
-/// rerunning the entry must neither overwrite them nor compile.
+/// rerunning the entry must neither overwrite them nor compile. MSVC
+/// options carry their values joined.
 const DROPPED = new Set(["-c", "-MD", "-MMD", "-MP"]);
 const DROPPED_WITH_VALUE = new Set(["-o", "-MF", "-MT", "-MQ"]);
+const MSVC_DROPPED = /^[/-](c|FS|showIncludes|Fo.*|Fd.*)$/;
 
 /// The macro values the entry's compiler has under the entry's flags:
 /// the entry rerun on a probe file of the same extension, preprocessing
@@ -59,29 +82,39 @@ const DROPPED_WITH_VALUE = new Set(["-o", "-MF", "-MT", "-MQ"]);
 export function compilerMacros(
     entry: DatabaseEntry,
     scratch: string,
+    env: NodeJS.ProcessEnv,
 ): Map<string, string | undefined> {
     const source = entrySource(entry);
-    const probe = path.join(scratch, `probe${path.extname(source)}`);
-    fs.writeFileSync(probe, GNU_MACROS.map((name) => `"${name}"=${name}\n`).join(""));
-
     const [driver, ...rest] = entryArguments(entry);
     if (driver === undefined) {
         throw new Error(`${source}: empty compile command`);
     }
+    const msvc = /^(cl|clang-cl)(\.exe)?$/i.test(path.basename(driver));
+    const macros = msvc ? MSVC_MACROS : GNU_MACROS;
+    const probe = path.join(scratch, `probe${path.extname(source)}`);
+    fs.writeFileSync(probe, macros.map((name) => `"${name}"=${name}\n`).join(""));
+
     const args: string[] = [];
     for (let i = 0; i < rest.length; i += 1) {
         const arg = rest[i] ?? "";
-        if (DROPPED_WITH_VALUE.has(arg)) {
+        if (!msvc && DROPPED_WITH_VALUE.has(arg)) {
             i += 1;
-        } else if (!DROPPED.has(arg) && path.resolve(entry.directory, arg) !== source) {
+        } else if (
+            !(msvc ? MSVC_DROPPED.test(arg) : DROPPED.has(arg)) &&
+            !samePath(path.resolve(entry.directory, arg), source)
+        ) {
             args.push(arg);
         }
     }
-    args.push("-E", "-P", probe);
+    // The probe takes the source's place; options stay before a `--` that
+    // ends them (CMake writes one before the source for clang-cl).
+    const end = args.indexOf("--");
+    args.splice(end === -1 ? args.length : end, 0, ...(msvc ? ["/EP"] : ["-E", "-P"]));
+    args.push(probe);
 
     const run = spawnSync(driver, args, {
         cwd: entry.directory,
-        env: systemEnv(),
+        env,
         encoding: "utf8",
         maxBuffer: 16 * 1024 * 1024,
     });
@@ -98,7 +131,7 @@ export function compilerMacros(
             values.set(match[1], match[2] === match[1] ? undefined : match[2]);
         }
     }
-    for (const name of GNU_MACROS) {
+    for (const name of macros) {
         if (!values.has(name)) {
             throw new Error(`${source}: the probe output lacks ${name}:\n${run.stdout}`);
         }

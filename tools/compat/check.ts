@@ -9,17 +9,17 @@ import * as path from "node:path";
 import { Workspace } from "../client/workspace.ts";
 import { REPO_ROOT } from "../compile_commands.ts";
 import { compileCommand, lint } from "./clice.ts";
-import { entryArguments, entrySource, readDatabase } from "./database.ts";
+import { entryArguments, entrySource, readDatabase, samePath } from "./database.ts";
 import { compilerMacros, writeExpectations } from "./macros.ts";
-import { missingTools, systemEnv, type FileExpectation, type Scenario } from "./scenario.ts";
+import { buildEnv, missingTools, type FileExpectation, type Scenario } from "./scenario.ts";
 
 const PROJECT_DIR = path.join(REPO_ROOT, "tests", "compat", "project");
 
-function build(scenario: Scenario, root: string): void {
+function build(scenario: Scenario, root: string, env: NodeJS.ProcessEnv): void {
     for (const [tool, ...args] of scenario.build) {
         const run = spawnSync(tool, args, {
             cwd: root,
-            env: systemEnv(),
+            env,
             encoding: "utf8",
             maxBuffer: 64 * 1024 * 1024,
         });
@@ -65,38 +65,67 @@ function commandProblems(
     return problems.map((problem) => `${file}: ${problem}\n    ${command.arguments.join(" ")}`);
 }
 
-/// Throws with everything clice got wrong about the scenario's build.
-export function checkScenario(clice: string, scenario: Scenario): void {
+/// Run `body` on a fresh copy of the project, built in the scenario's
+/// environment.
+function withProject(
+    scenario: Scenario,
+    body: (ws: Workspace, env: NodeJS.ProcessEnv) => void,
+): void {
     const missing = missingTools(scenario);
-    if (missing.length > 0) {
+    const env = buildEnv(scenario);
+    if (missing.length > 0 || env === null) {
         throw new Error(`missing tools: ${missing.join(", ")}`);
     }
     const ws = Workspace.tmp();
     try {
         fs.cpSync(PROJECT_DIR, ws.root, { recursive: true });
-        build(scenario, ws.root);
-        const entries = readDatabase(ws.root);
-        const scratch = ws.path(".compat");
-        fs.mkdirSync(scratch);
-        for (const file of Object.keys(scenario.files)) {
-            const source = ws.path(file);
-            const entry = entries.find((e) => entrySource(e) === source);
-            if (entry === undefined) {
-                throw new Error(`the database has no entry for ${file}`);
-            }
-            const recorded = entryArguments(entry);
-            for (const sequence of scenario.files[file]?.recorded ?? []) {
-                if (!containsSequence(recorded, sequence)) {
-                    throw new Error(
-                        `${file}: the database entry lacks ${sequence.join(" ")}: ${recorded.join(" ")}`,
-                    );
-                }
-            }
-            writeExpectations(source, compilerMacros(entry, scratch));
+        build(scenario, ws.root, env);
+        body(ws, env);
+    } finally {
+        ws.remove();
+    }
+}
+
+/// Hold the build to what the checks need from it: an entry per checked
+/// file carrying what `recorded` names, and the compiler's macro values
+/// written beside each source.
+function prepareChecks(scenario: Scenario, ws: Workspace, env: NodeJS.ProcessEnv): void {
+    const entries = readDatabase(ws.root);
+    const scratch = ws.path(".compat");
+    fs.mkdirSync(scratch);
+    for (const [file, expectation] of Object.entries(scenario.files)) {
+        const source = ws.path(file);
+        const entry = entries.find((e) => samePath(entrySource(e), source));
+        if (entry === undefined) {
+            throw new Error(`the database has no entry for ${file}`);
         }
+        const recorded = entryArguments(entry);
+        for (const sequence of expectation.recorded ?? []) {
+            if (!containsSequence(recorded, sequence)) {
+                throw new Error(
+                    `${file}: the database entry lacks ${sequence.join(" ")}: ${recorded.join(" ")}`,
+                );
+            }
+        }
+        writeExpectations(source, compilerMacros(entry, scratch, env));
+    }
+}
+
+/// Throws when the scenario's toolchain cannot build the project and
+/// produce what clice would be checked against.
+export function checkBuild(scenario: Scenario): void {
+    withProject(scenario, (ws, env) => {
+        prepareChecks(scenario, ws, env);
+    });
+}
+
+/// Throws with everything clice got wrong about the scenario's build.
+export function checkScenario(clice: string, scenario: Scenario): void {
+    withProject(scenario, (ws, env) => {
+        prepareChecks(scenario, ws, env);
 
         const run = lint(clice, ws.root);
-        if (run.status !== 0 || !run.report.endsWith(": 0 findings.\n")) {
+        if (run.status !== 0 || !run.report.trimEnd().endsWith(": 0 findings.")) {
             const log = run.log.split("\n").slice(-30).join("\n");
             throw new Error(`clice lint exited ${run.status}:\n${run.report}\n${log}`);
         }
@@ -107,7 +136,5 @@ export function checkScenario(clice: string, scenario: Scenario): void {
         if (problems.length > 0) {
             throw new Error(problems.join("\n"));
         }
-    } finally {
-        ws.remove();
-    }
+    });
 }

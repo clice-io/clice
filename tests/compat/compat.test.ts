@@ -4,22 +4,33 @@
 /// the macros its flags imply, and resolve each file's command as the
 /// scenario expects.
 
-import { checkScenario } from "@clice/tools/compat/check";
+import { checkBuild, checkScenario } from "@clice/tools/compat/check";
 import { missingTools } from "@clice/tools/compat/scenario";
 import { cliceExecutable } from "@clice/tools/session";
 import { expect, test } from "vitest";
 import { SCENARIOS } from "./scenarios.ts";
 
 for (const scenario of SCENARIOS) {
+    const platforms = scenario.platforms.join(", ");
     // CI installs every tool, so a missing one there is a broken setup
     // that must fail rather than quietly shrink the matrix.
     const skip =
         !scenario.platforms.includes(process.platform) ||
         (missingTools(scenario).length > 0 && process.env["CI"] === undefined);
-    test.skipIf(skip)(`${scenario.name} (${scenario.platforms.join(", ")})`, () => {
-        // checkScenario throws with everything clice got wrong.
-        expect(() => {
-            checkScenario(cliceExecutable(), scenario);
-        }).not.toThrow();
-    });
+    test.skipIf(skip || scenario.unsupported !== undefined)(
+        `${scenario.name} (${platforms})`,
+        () => {
+            // checkScenario throws with everything clice got wrong.
+            expect(() => {
+                checkScenario(cliceExecutable(), scenario);
+            }).not.toThrow();
+        },
+    );
+    if (scenario.unsupported !== undefined) {
+        test.skipIf(skip)(`${scenario.name} (${platforms}) builds`, () => {
+            expect(() => {
+                checkBuild(scenario);
+            }).not.toThrow();
+        });
+    }
 }

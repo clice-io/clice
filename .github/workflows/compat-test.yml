@@ -14,9 +14,23 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   compat:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            asset: x86_64-unknown-linux-gnu.tar.gz
+          - os: windows-2025
+            asset: x86_64-w64-mingw32.zip
+          - os: macos-15
+            asset: aarch64-apple-darwin.tar.gz
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Pick the newest release
         id: release
@@ -37,18 +51,30 @@ jobs:
         with:
           environments: node
 
-      # The runner image already has gcc, clang, cmake, make and bazelisk.
+      # The Windows and macOS scenarios use what the runner images ship
+      # (Visual Studio, LLVM, MinGW; Xcode, Homebrew GCC and LLVM), and
+      # the Linux image already has gcc, clang, cmake, make and bazelisk.
       - name: Install build systems and cross compilers
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bear ccache meson ninja-build xmake g++-mingw-w64-x86-64
+            bear ccache meson ninja-build xmake emscripten \
+            g++-mingw-w64-x86-64 g++-riscv64-linux-gnu \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+
+      - name: Install zig
+        if: runner.os == 'Linux'
+        run: |
+          curl -fsSL https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz \
+            | tar -xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-x86_64-linux-0.14.1" >> "$GITHUB_PATH"
 
       - name: Download binaries
         if: steps.release.outputs.tag == ''
         uses: actions/download-artifact@v8
         with:
-          name: native-build-ubuntu-24.04-RelWithDebInfo
+          name: native-build-${{ matrix.os }}-RelWithDebInfo
           path: build/RelWithDebInfo/
 
       - name: Download the release
@@ -58,8 +84,8 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern 'clice-*.x86_64-unknown-linux-gnu.tar.gz' --dir "$RUNNER_TEMP/release"
-          tar -xzf "$RUNNER_TEMP"/release/clice-*.tar.gz -C "$RUNNER_TEMP/release"
+            --pattern "clice-*.${{ matrix.asset }}" --dir "$RUNNER_TEMP/release"
+          (cd "$RUNNER_TEMP/release" && cmake -E tar xf clice-*)
           mkdir -p build/RelWithDebInfo
           cp -r "$RUNNER_TEMP/release/clice/bin" "$RUNNER_TEMP/release/clice/lib" build/RelWithDebInfo/
 
