@@ -30,7 +30,7 @@ Every file in the scope belongs to a module, by default its directory. A module 
 | `macros`                             | macros used outside the file defining them, by module: imports carry no macros, so each reaches its users through a textual header                                                                                                                                                              |
 | `impact`                             | per header, the units an edit to it rebuilds today and under the partition, and whether it is an internal partition                                                                                                                                                                             |
 
-Lists in the overview are capped by `--limit` (20 by default).
+The overview's hotspots, move candidates and split candidates are capped by `--limit` (20 by default); modules, edges and cycles are always complete.
 
 A move candidate is a header whose users all sit in one other module and that, together with the sources implementing it and the other headers those implement, names nothing of its own module and is named by nothing else there, short of the whole module; those files are listed to move along. A split candidate is a header whose entities fall into groups no consuming module shares, each listed as `name:line`, the first ten by line, with a `count` of all.
 

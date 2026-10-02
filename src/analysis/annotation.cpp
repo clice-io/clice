@@ -68,7 +68,8 @@ std::expected<Annotation, std::string> git_churn(llvm::StringRef workspace, llvm
                                 std::format("--since={}", std::string_view(since)),
                                 "--format=",
                                 "--name-only",
-                                "--relative"},
+                                "--relative",
+                                "-z"},
                                /*capture_stdout=*/true,
                                workspace.str());
     };
@@ -79,10 +80,12 @@ std::expected<Annotation, std::string> git_churn(llvm::StringRef workspace, llvm
     }
 
     Annotation annotation{.name = churn_annotation.str(), .unit = "commits"};
-    llvm::SmallVector<llvm::StringRef> lines;
-    llvm::SplitString(*log, lines, "\n");
-    for(auto line: lines) {
-        annotation.values[line.trim()] += 1;
+    // -z prints each path verbatim, where a newline-separated list would
+    // quote the unusual ones.
+    llvm::SmallVector<llvm::StringRef> paths;
+    llvm::StringRef(*log).split(paths, '\0', -1, false);
+    for(auto path: paths) {
+        annotation.values[path] += 1;
     }
     return annotation;
 }

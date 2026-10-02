@@ -60,6 +60,9 @@ bool links_files(SymbolKind kind) {
 struct Site {
     std::uint32_t file = 0;
     std::uint32_t line = 0;
+
+    /// Where the declared name starts.
+    std::uint32_t offset = 0;
     bool definition = false;
 
     /// The declaration's extent, empty when the index holds none.
@@ -214,14 +217,17 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // The text of a scoped file's line, from the disk: the rows hold
     // positions, not the source.
     llvm::DenseMap<std::uint32_t, std::string> contents;
-    auto line_text = [&](std::uint32_t file, std::uint32_t line) -> llvm::StringRef {
+    auto text_of = [&](std::uint32_t file) -> llvm::StringRef {
         auto [it, inserted] = contents.try_emplace(file);
         if(inserted) {
             if(auto buffer = vfs::read(table.resolve(fids[file]))) {
                 it->second = (*buffer)->getBuffer().str();
             }
         }
-        llvm::StringRef text = it->second;
+        return it->second;
+    };
+    auto line_text = [&](std::uint32_t file, std::uint32_t line) {
+        auto text = text_of(file);
         for(std::uint32_t current = 1; current < line && !text.empty(); current += 1) {
             text = text.split('\n').second;
         }
@@ -338,6 +344,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 sites[hash].push_back({
                     .file = id,
                     .line = line_of(shard, relation.range.begin),
+                    .offset = relation.range.begin,
                     .definition = relation.kind == RelationKind::Definition,
                     .extent = relation.definition_range(),
                 });
@@ -508,7 +515,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             .linkage = linkage,
             .top = id,
             .line = line,
-            .self_uses = raw[owner].lookup(hash).count,
+            .self_uses = raw[owner].lookup(hash).count +
+                         (declared_in != owner ? raw[declared_in].lookup(hash).count : 0),
         });
         parents.push_back(identity->parent);
         operators.push_back(index::name_form(identity->flags) == index::NameForm::Operator);
@@ -519,8 +527,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(!facts.files[owner].source) {
                 ConfiguringMacro configuring{.entity = id};
                 index.each_reference_file(hash, [&](Fid file) {
-                    if(id_of(file) != none || index.manifests.contains(file) ||
-                       configuring.readers.size() == 5) {
+                    if(id_of(file) != none || index.manifests.contains(file)) {
                         return;
                     }
                     auto path = display(file);
@@ -602,7 +609,10 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                    if(site.file != file) {
                        return false;
                    }
-                   auto text = line_text(file, site.line);
+                   // From the name to the body: the arguments and the bases.
+                   auto text = text_of(file).substr(site.offset).take_until([](char c) {
+                       return c == '{' || c == ';';
+                   });
                    return llvm::any_of(owned[file], [&](std::uint32_t entity) {
                        // The specialization and its members are no arguments.
                        if(facts.entities[entity].hash == specialization ||
@@ -767,8 +777,22 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     continue;
                 }
                 auto line = line_of(*shard, offset);
-                auto& first = line_text(id, line).ltrim().starts_with("#") ? tested : expanded;
-                first = std::min(first, line);
+                auto text = line_text(id, line).ltrim();
+                if(text.consume_front("#")) {
+                    auto directive = text.ltrim().take_while(llvm::isAlpha);
+                    // Naming it there needs no definition.
+                    if(directive == "define" || directive == "undef") {
+                        continue;
+                    }
+                    if(directive.starts_with("if") || directive.starts_with("elif")) {
+                        tested = std::min(tested, line);
+                        continue;
+                    }
+                }
+                expanded = std::min(expanded, line);
+            }
+            if(tested == none && expanded == none) {
+                return;
             }
             facts.context_macros.push_back({
                 .name = name.str(),
@@ -1134,11 +1158,26 @@ struct Graph {
         facts(facts), partition(partition), reverse(facts), dependents(facts.files.size()),
         internal(facts.files.size(), false) {
         auto count = partition.modules.size();
-        // A file including the provider as well may need the definition.
+        // A file reaching the provider through its includes as well may
+        // need the definition.
+        auto reaches = [&](std::uint32_t file, std::uint32_t target) {
+            llvm::DenseSet<std::uint32_t> visited{file};
+            llvm::SmallVector<std::uint32_t> pending{file};
+            while(!pending.empty()) {
+                for(auto included: facts.files[pending.pop_back_val()].includes) {
+                    if(included == target) {
+                        return true;
+                    }
+                    if(visited.insert(included).second) {
+                        pending.push_back(included);
+                    }
+                }
+            }
+            return false;
+        };
         for(auto& redeclaration: facts.redeclarations) {
             if(!redeclaration.definition &&
-               !llvm::is_contained(facts.files[redeclaration.file].includes,
-                                   facts.entities[redeclaration.entity].owner)) {
+               !reaches(redeclaration.file, facts.entities[redeclaration.entity].owner)) {
                 forward_declared.insert({redeclaration.file, redeclaration.entity});
             }
         }
@@ -1789,12 +1828,17 @@ std::expected<EdgeDetail, std::string> Report::edge(llvm::StringRef from,
     }
     // The line of the first use a file's uses (or a fragment it pastes in)
     // hold of the entity.
-    auto line_in = [&](std::uint32_t user, std::uint32_t entity) {
-        for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
-            if(file != user && !(facts.files[file].fragment &&
-                                 llvm::is_contained(charged_files(facts, file), user))) {
-                continue;
+    // The fragments each file pastes in, whose uses are charged to it.
+    std::vector<llvm::SmallVector<std::uint32_t, 1>> pasted(facts.files.size());
+    for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+        if(facts.files[file].fragment) {
+            for(auto charged: charged_files(facts, file)) {
+                pasted[charged].push_back(file);
             }
+        }
+    }
+    auto line_in = [&](std::uint32_t user, std::uint32_t entity) {
+        for(auto file: llvm::concat<const std::uint32_t>(llvm::ArrayRef(user), pasted[user])) {
             auto& uses = facts.uses[file];
             auto use = std::ranges::lower_bound(uses, entity, {}, &Use::entity);
             if(use != uses.end() && use->entity == entity) {

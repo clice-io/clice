@@ -113,7 +113,7 @@ struct ModulesOptions {
     <std::string> churn_since;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Longest list the overview prints (default 20)",
+           help = "Most hotspots, move and split candidates the overview lists (default 20)",
            required = false)
     <int> limit;
 
