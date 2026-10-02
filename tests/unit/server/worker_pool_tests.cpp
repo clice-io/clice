@@ -177,14 +177,17 @@ struct WorkerPoolFixture {
     std::unique_ptr<WorkerPool::Dispatch> dispatch(std::size_t idx,
                                                    bool stateful,
                                                    std::string tag,
-                                                   std::chrono::milliseconds age = {}) {
-        auto dispatch = std::make_unique<WorkerPool::Dispatch>(pool, idx, stateful, std::move(tag));
+                                                   std::chrono::milliseconds age = {},
+                                                   bool build = false) {
+        auto dispatch =
+            std::make_unique<WorkerPool::Dispatch>(pool, idx, stateful, std::move(tag), build);
         dispatch->started -= age;
         return dispatch;
     }
 
-    void set_deadline(std::chrono::milliseconds deadline) {
-        pool.options.request_deadline = deadline;
+    void set_deadlines(std::chrono::milliseconds build, std::chrono::milliseconds query) {
+        pool.options.build_deadline = build;
+        pool.options.query_deadline = query;
     }
 
     void tick_deadlines() {
@@ -1316,14 +1319,15 @@ TEST_CASE(DeadlineKillsAndNames) {
     WorkerPoolFixture f;
     f.add_stateful(true);
     f.add_stateful(true);
-    f.set_deadline(std::chrono::milliseconds(1000));
-    auto fresh = f.dispatch(0, true, "clice/worker/query:Hover /a.cpp");
-    auto hung = f.dispatch(1, true, "clice/worker/compile /b.cpp", std::chrono::seconds(2));
+    f.set_deadlines(std::chrono::seconds(10), std::chrono::seconds(1));
+    // A build outlives the query deadline; a query does not.
+    auto build = f.dispatch(0, true, "clice/worker/compile /a.cpp", std::chrono::seconds(2), true);
+    auto hung = f.dispatch(1, true, "clice/worker/query:Hover /b.cpp", std::chrono::seconds(2));
 
     f.tick_deadlines();
     EXPECT_EQ(f.state(0, true), WorkerPoolFixture::SlotState::Alive);
     EXPECT_EQ(f.state(1, true), WorkerPoolFixture::SlotState::Dying);
-    EXPECT_EQ(f.death(1, true)->culprit, "clice/worker/compile /b.cpp");
+    EXPECT_EQ(f.death(1, true)->culprit, "clice/worker/query:Hover /b.cpp");
     EXPECT_TRUE(f.death(1, true)->cause.contains("1 seconds"));
 }
 

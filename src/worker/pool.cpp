@@ -969,13 +969,13 @@ void WorkerPool::tick_deadlines() {
                 continue;
             }
             auto overdue = std::ranges::find_if(w.dispatches, [&](const Dispatch* dispatch) {
-                return now - dispatch->started > options.request_deadline;
+                return now - dispatch->started > dispatch->deadline;
             });
             if(overdue == w.dispatches.end()) {
                 continue;
             }
             auto seconds =
-                std::chrono::duration_cast<std::chrono::seconds>(options.request_deadline).count();
+                std::chrono::duration_cast<std::chrono::seconds>((*overdue)->deadline).count();
             LOG_WARN("Worker {} ran {} for over {}s; killing it", w.name, (*overdue)->tag, seconds);
             w.death->culprit = (*overdue)->tag;
             w.death->cause = std::format("killed after running for over {} seconds", seconds);

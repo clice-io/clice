@@ -126,9 +126,12 @@ struct WorkerPoolOptions {
     /// burnt pool stays dark. 0 disables revival.
     std::chrono::milliseconds revive_after{30'000};
 
-    /// A request running longer than this is taken for a hung worker: the
-    /// worker is killed and the request blamed, like a crash.
-    std::chrono::milliseconds request_deadline{std::chrono::minutes(10)};
+    /// A request running past its deadline is taken for a hung worker: the
+    /// worker is killed and the request blamed, like a crash. A build may
+    /// take long on a big translation unit (see worker::is_build); a query
+    /// never should.
+    std::chrono::milliseconds build_deadline{std::chrono::minutes(10)};
+    std::chrono::milliseconds query_deadline{std::chrono::minutes(2)};
 
     /// Documents a stateful worker holds before evicting; unset leaves the
     /// worker's default.
@@ -385,11 +388,13 @@ private:
         bool stateful;
         unsigned generation;
         std::string tag;
+        std::chrono::milliseconds deadline;
         std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 
-        Dispatch(WorkerPool& pool, std::size_t index, bool stateful, std::string tag) :
+        Dispatch(WorkerPool& pool, std::size_t index, bool stateful, std::string tag, bool build) :
             pool(pool), index(index), stateful(stateful),
-            generation(pool.slot(index, stateful).generation), tag(std::move(tag)) {
+            generation(pool.slot(index, stateful).generation), tag(std::move(tag)),
+            deadline(build ? pool.options.build_deadline : pool.options.query_deadline) {
             pool.slot(index, stateful).dispatches.push_back(this);
         }
 
@@ -562,8 +567,8 @@ private:
     /// cancel_grace; driven by the monitor tick.
     void tick_cancel_grace();
 
-    /// Kill workers running a request past options.request_deadline and
-    /// name that request in the death record; driven by the monitor tick.
+    /// Kill workers running a request past its deadline and name that
+    /// request in the death record; driven by the monitor tick.
     void tick_deadlines();
 
     /// Cooperatively cancel up to `count` in-flight low-priority requests:
@@ -771,7 +776,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     auto peer = assigned.peer;
     auto gen = assigned.generation;
     auto death = assigned.death;
-    Dispatch dispatch(*this, idx, true, worker::crash_tag(params));
+    Dispatch dispatch(*this, idx, true, worker::crash_tag(params), worker::is_build<Params>);
     auto result = co_await peer->send_request(params, opts);
     if(result.has_value() || !worker::is_transport_error(result.error()))
         co_return std::move(result);
@@ -883,7 +888,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                    preempt_src));
     }
 
-    Dispatch dispatch(*this, idx, false, worker::crash_tag(params));
+    Dispatch dispatch(*this, idx, false, worker::crash_tag(params), worker::is_build<Params>);
     auto result = co_await peer->send_request(params);
     // The worker link broke mid-request: declare the slot dead now so a
     // caller-side retry cannot land on the same corpse before the monitor

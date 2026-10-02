@@ -1,6 +1,7 @@
 #pragma once
 
 #include <compare>
+#include <concepts>
 #include <cstdint>
 #include <format>
 #include <string>
@@ -435,6 +436,14 @@ struct CancelCompileParams {
 /// worker at a time, and pipe ordering pins any follow-up build behind
 /// the cancel.
 struct CancelBuildParams {};
+
+/// Whether a request builds — a compile, a PCH or PCM, an indexing run:
+/// work whose time grows with the translation unit, where a query's never
+/// should.
+template <typename Params>
+constexpr inline bool is_build =
+    std::same_as<Params, CompileParams> || std::same_as<Params, BuildPCHParams> ||
+    std::same_as<Params, BuildPCMParams> || std::same_as<Params, TURunParams>;
 
 }  // namespace clice::worker
 
