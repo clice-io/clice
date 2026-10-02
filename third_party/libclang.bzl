@@ -36,6 +36,7 @@ def _libclang_impl(rctx):
     rctx.download_and_extract(
         url = "https://github.com/clice-io/xclang/releases/download/%s/libclang-%s-%s.tar.xz" % (version, version, triple),
         sha256 = _SHA256[version][triple],
+        stripPrefix = "libclang",
     )
     rctx.file("BUILD.bazel", rctx.read(rctx.attr.build_file))
 
