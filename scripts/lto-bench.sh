@@ -271,6 +271,24 @@ win)
     times win-end
     ;;
 
+confirm)
+    # The main variants again, on a newer spike: no cache, cold, warm, the
+    # two edits, and the second edit without the cache for its hash.
+    wipe
+    link n1 clice
+    wipe
+    link c1 clice "${lto[@]}" "${writable[@]}"
+    link w1 clice "${lto[@]}" "${writable[@]}"
+    link w2 clice "${lto[@]}" "${writable[@]}"
+    link uc1 unit_tests "${lto[@]}" "${writable[@]}"
+    edit_plain 1
+    link e1w1 clice "${lto[@]}" "${writable[@]}"
+    edit_llvm
+    link e2w1 clice "${lto[@]}" "${writable[@]}"
+    link e2n1 clice
+    revert
+    ;;
+
 winrepro)
     # Which parts of clice.exe differ between links of the same inputs.
     stamp=(--linkopt=-Wl,--no-insert-timestamp)

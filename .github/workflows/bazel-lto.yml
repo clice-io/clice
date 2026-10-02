@@ -14,10 +14,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - os: ubuntu-24.04
+            lto_cache: /var/tmp/xclang-thinlto
+            mode: confirm
+          - os: macos-15
+            lto_cache: /var/tmp/xclang-thinlto
+            mode: confirm
           - os: windows-2025
             lto_cache: C:/xclang-thinlto
             startup: --output_user_root=C:/b
-            mode: winrepro
+            mode: confirm
     runs-on: ${{ matrix.os }}
     timeout-minutes: 330
     defaults:
