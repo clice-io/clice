@@ -170,7 +170,8 @@ public:
 
     /// The path of the file `fid` stands for: its own, or for a synthesized
     /// fragment the file it was cut from, which the fragment's opening
-    /// #line marker names.
+    /// #line marker names (the snapshot of the header, which carries none,
+    /// its own).
     auto source_path(clang::FileID fid) -> llvm::StringRef;
 
     /// Whether the file is the compile's own source: the main file, or

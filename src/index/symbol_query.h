@@ -79,6 +79,8 @@ struct SymbolQuery {
 
     std::vector<SymbolKind> kinds;
 
+    /// Path filters; with a handle, the file whose rows anchor it — an
+    /// internal-linkage symbol has no project-wide row.
     std::vector<std::string> paths;
 
     /// Set instead of a pattern: the symbol with this id.

@@ -159,9 +159,9 @@ void print_json(const T& value) {
     std::println("{}", render_json(value));
 }
 
-/// The symbol locator the flags spell, as a name query: `--symbol` an id,
-/// `--name` a name query narrowed to `--path`, or `--path` and `--line` a
-/// place. The path must be a file; one the index has no rows for is noted
+/// The symbol locator the flags spell, as a name query: `--symbol` an id
+/// (anchored at `--path`), `--name` a name query narrowed to `--path`, or
+/// `--path` and `--line` a place. The path must be a file; one the index has no rows for is noted
 /// as unindexed by the command.
 std::expected<index::SymbolQuery, std::string> locator_of(const QueryOptions& opts,
                                                           llvm::StringRef absolute) {
@@ -175,6 +175,9 @@ std::expected<index::SymbolQuery, std::string> locator_of(const QueryOptions& op
         auto parsed = index::SymbolQuery::parse(*opts.symbol);
         if(!parsed || !parsed->handle) {
             return std::unexpected(std::format("invalid symbol id: {}", *opts.symbol));
+        }
+        if(opts.path) {
+            parsed->paths.emplace_back(absolute);
         }
         return std::move(*parsed);
     }

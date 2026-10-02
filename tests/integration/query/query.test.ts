@@ -335,14 +335,27 @@ test("references reach internal and local symbols", ({ session }) => {
     expect(sites("b.cpp:2:15")).toEqual(["b.cpp:2", "b.cpp:2", "b.cpp:2"]);
 
     const outline = (file: string) =>
-        query<{ symbols: { name: string }[] }>(
+        query<{ symbols: { name: string; symbolId: string }[] }>(
             ws,
             "documentSymbols",
             "--path",
             file,
-        ).result!.symbols.map((s) => s.name);
-    expect(outline("util.h")).toEqual(["helper"]);
-    expect(outline("b.cpp")).toEqual(["b"]);
+        ).result!.symbols;
+    const [listed] = outline("util.h");
+    expect(listed?.name).toBe("helper");
+    expect(outline("b.cpp").map((s) => s.name)).toEqual(["b"]);
+
+    // An internal symbol's id names it together with the file it was found in.
+    const byId = query<{ name: string }>(
+        ws,
+        "definition",
+        "--symbol",
+        listed!.symbolId,
+        "--path",
+        "util.h",
+    );
+    expect(byId.status, byId.error).toBe(0);
+    expect(byId.result?.name).toBe("helper");
 });
 
 test("context of a name opening its line", ({ session }) => {

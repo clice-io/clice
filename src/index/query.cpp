@@ -959,7 +959,14 @@ std::vector<IndexQuery::Located> IndexQuery::search(const SymbolQuery& query,
 
 std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) const {
     if(query.handle) {
-        if(auto located = resolve(*query.handle, Fid{})) {
+        Fid anchor;
+        for(auto& path: query.paths) {
+            if(auto file = files.find(Spelling::absolute(path))) {
+                anchor = *file;
+                break;
+            }
+        }
+        if(auto located = resolve(*query.handle, anchor)) {
             return {std::move(*located)};
         }
         return {};

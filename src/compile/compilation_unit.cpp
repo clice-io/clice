@@ -210,8 +210,16 @@ auto CompilationUnitRef::source_path(clang::FileID fid) -> llvm::StringRef {
     if(!synthesized(fid)) {
         return file_path(fid);
     }
+    // The fragment's own marker precedes the cut file's text, whose
+    // #line directives would rename what follows them.
     auto& SM = self->SM();
-    return SM.getPresumedLoc(SM.getLocForEndOfFile(fid)).getFilename();
+    auto text = SM.getBufferData(fid);
+    auto marker = text.find("#line ");
+    if(marker == llvm::StringRef::npos) {
+        return file_path(fid);
+    }
+    auto after = text.find('\n', marker) + 1;
+    return SM.getPresumedLoc(SM.getComposedLoc(fid, after)).getFilename();
 }
 
 bool CompilationUnitRef::host_source(clang::FileID fid) {
