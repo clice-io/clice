@@ -61,6 +61,11 @@ step m-nocache
 rm -rf "$CACHE"
 step m-deleted "${flags[@]}"
 step m-disk "${flags[@]}" "${disk[@]}"
+if [ "$os" = windows ]; then
+    step m-stamp-1 "${flags[@]}" --linkopt=-Wl,--no-insert-timestamp
+    step m-stamp-2 "${flags[@]}" --linkopt=-Wl,--no-insert-timestamp
+    step m-stamp-n --linkopt=-Wl,--no-insert-timestamp
+fi
 if [ "$os" = macos ]; then
     step m-repro-1 "${flags[@]}" --features=macos_reproducible
     step m-repro-2 "${flags[@]}" --features=macos_reproducible

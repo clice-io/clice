@@ -25,6 +25,13 @@ mkdir -p "$OUT"
 read -r -a bazel <<< "bazel ${STARTUP:-}"
 py=$(command -v python3 || command -v python)
 common=(--define=llvm=bitcode)
+if [ "$os" = windows ]; then
+    # Git Bash would turn //lto_probe:main into a path.
+    export MSYS2_ARG_CONV_EXCL='*'
+    # bazel/workspace_status.sh hung for four hours on a Windows runner
+    # (run 37027122711); the version falls back to 0.1.0 without it.
+    common+=(--workspace_status_command=)
+fi
 probe_src=src/driver/query.cc
 
 cache_flag() {
@@ -238,6 +245,30 @@ full)
     link e2w2 clice "${lto[@]}" "${writable[@]}"
     revert
     times full-end
+    ;;
+
+win)
+    # Windows' links take minutes more than the others': full's variants
+    # that answer something, once.
+    wipe
+    link n1 clice
+    wipe
+    link c1 clice "${lto[@]}"
+    link w1 clice "${lto[@]}"
+    link w2 clice "${lto[@]}"
+    stamp=(--linkopt=-Wl,--no-insert-timestamp)
+    link t-w1 clice "${lto[@]}" "${stamp[@]}"
+    link t-w2 clice "${lto[@]}" "${stamp[@]}"
+    link t-n1 clice "${stamp[@]}"
+    link uc1 unit_tests "${lto[@]}"
+    link uw1 unit_tests "${lto[@]}"
+    edit_plain 1
+    link e1w1 clice "${lto[@]}"
+    edit_llvm
+    link e2w1 clice "${lto[@]}" "${stamp[@]}"
+    link e2n1 clice "${stamp[@]}"
+    revert
+    times win-end
     ;;
 
 ci)

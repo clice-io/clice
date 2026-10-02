@@ -14,9 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
-            lto_cache: /var/tmp/xclang-thinlto
-            mode: stamp
+          - os: windows-2025
+            lto_cache: C:/xclang-thinlto
+            startup: --output_user_root=C:/b
+            mode: win
     runs-on: ${{ matrix.os }}
     timeout-minutes: 330
     defaults:
@@ -68,7 +69,7 @@ jobs:
         run: scripts/lto-bench.sh build
 
       - name: Save Bazel caches
-        if: env.MODE == 'full' || env.MODE == 'stamp'
+        if: env.MODE != 'ci'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -83,11 +84,27 @@ jobs:
         run: scripts/lto-bench.sh "$MODE"
 
       - name: Save the ThinLTO cache
-        if: env.MODE == 'full'
+        if: env.MODE == 'full' || env.MODE == 'win'
         uses: actions/cache/save@v6
         with:
           path: ${{ matrix.lto_cache }}
           key: lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-thinlto-${{ github.run_id }}
+
+      # win: the cache it saved, back through actions/cache on this machine.
+      - name: Drop the ThinLTO cache
+        if: env.MODE == 'win'
+        run: rm -rf "$LTO_CACHE"
+
+      - name: Restore the ThinLTO cache it saved
+        if: env.MODE == 'win'
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ matrix.lto_cache }}
+          key: lto-bench-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-thinlto-${{ github.run_id }}
+
+      - name: Measure after the restore
+        if: env.MODE == 'win'
+        run: scripts/lto-bench.sh ci
 
       - name: Results
         if: always()
@@ -103,16 +120,11 @@ jobs:
   # The xclang module's thinlto_cache feature (scripts/lto-module.sh): its own
   # toolchain and libclang, no pixi.
   module:
-    # Done in run 37041436235.
-    if: false
+    # Linux and macOS done in run 37041436235.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
-            lto_cache: /var/tmp/xclang-thinlto
-          - os: macos-15
-            lto_cache: /var/tmp/xclang-thinlto
           - os: windows-2025
             lto_cache: C:/xclang-thinlto
             startup: --output_user_root=C:/b
