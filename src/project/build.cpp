@@ -314,7 +314,7 @@ std::vector<Fid> Build::members() {
     }
     if(!claimed_sources) {
         claimed_sources.emplace();
-        enumerate_default_sources(*claimed_sources);
+        claim_sources(walk_sources(source_walk()), *claimed_sources);
     }
     for(auto file: *claimed_sources) {
         if(seen.insert(file).second) {
@@ -324,9 +324,9 @@ std::vector<Fid> Build::members() {
     return result;
 }
 
-llvm::SmallVector<Fid> Build::refresh_default_sources() {
+llvm::SmallVector<Fid> Build::refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked) {
     std::vector<Fid> current;
-    enumerate_default_sources(current);
+    claim_sources(walked, current);
     llvm::SmallVector<Fid> appeared;
     if(claimed_sources) {
         llvm::DenseSet<Fid> known(claimed_sources->begin(), claimed_sources->end());
@@ -372,27 +372,32 @@ bool Build::unit(Fid file) {
     return default_command(path).has_value() && default_source(path);
 }
 
-void Build::enumerate_default_sources(std::vector<Fid>& out) {
-    llvm::SmallVector<const CompiledRule*> claimants;
+llvm::SmallVector<const CompiledRule*> Build::claimants() const {
+    llvm::SmallVector<const CompiledRule*> result;
     for(auto& rule: config.compiled_rules) {
         if(rule_active(rule, active) && rule.has_default_command() && !rule.unmatchable) {
-            claimants.push_back(&rule);
+            result.push_back(&rule);
         }
     }
-    if(claimants.empty()) {
-        return;
+    return result;
+}
+
+Build::SourceWalk Build::source_walk() const {
+    SourceWalk walk;
+    auto rules = claimants();
+    if(rules.empty()) {
+        return walk;
     }
 
     // Where the claimed files can be: each pattern's literal directory, the
     // whole workspace for a rule without patterns. A root inside another
     // is walked as part of it.
-    llvm::SmallVector<CanonicalRef> roots;
     auto add_root = [&](CanonicalRef root) {
-        if(!root.empty() && !llvm::is_contained(roots, root)) {
-            roots.push_back(root);
+        if(!root.empty() && !llvm::is_contained(walk.roots, root)) {
+            walk.roots.emplace_back(root);
         }
     };
-    for(auto* rule: claimants) {
+    for(auto* rule: rules) {
         if(rule->patterns.empty()) {
             add_root(config.workspace_root);
         }
@@ -400,17 +405,40 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
             add_root(pattern.root);
         }
     }
-    llvm::erase_if(roots, [&](CanonicalRef root) {
-        return llvm::any_of(roots, [&](CanonicalRef other) {
+    llvm::erase_if(walk.roots, [&](const CanonicalPath& root) {
+        return llvm::any_of(walk.roots, [&](const CanonicalPath& other) {
             return other != root && path::under(root, other);
         });
     });
+    if(!config.project.cache_dir.empty()) {
+        walk.cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
+    }
+    return walk;
+}
 
+void Build::claim_sources(llvm::ArrayRef<CanonicalPath> walked, std::vector<Fid>& out) {
+    auto rules = claimants();
     llvm::DenseSet<Fid> seen(out.begin(), out.end());
-    auto cache_dir = config.project.cache_dir.empty()
-                         ? CanonicalPath()
-                         : CanonicalPath(Spelling::absolute(config.project.cache_dir));
-    for(auto root: roots) {
+    for(auto& path: walked) {
+        auto matched = matching(path);
+        if(!llvm::any_of(rules, [&](const CompiledRule* rule) {
+               return llvm::is_contained(matched, rule);
+           })) {
+            continue;
+        }
+        if(!default_source(path)) {
+            continue;
+        }
+        auto file = files.intern(path);
+        if(seen.insert(file).second) {
+            out.push_back(file);
+        }
+    }
+}
+
+std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
+    std::vector<CanonicalPath> walked;
+    for(auto& root: walk.roots) {
         std::error_code ec;
         for(llvm::sys::fs::recursive_directory_iterator it(root, ec, /*follow_symlinks=*/false),
             end;
@@ -429,30 +457,18 @@ void Build::enumerate_default_sources(std::vector<Fid>& out) {
             auto type = it->type();
             if(type == llvm::sys::fs::file_type::directory_file) {
                 auto name = path::filename(spelled);
-                if(name == ".git" ||
-                   (name == path::filename(cache_dir) && root.entry(spelled) == cache_dir)) {
+                if(name == ".git" || (name == path::filename(walk.cache_dir) &&
+                                      CanonicalRef(root).entry(spelled) == walk.cache_dir)) {
                     it.no_push();
                 }
                 continue;
             }
-            auto entry_path = type == llvm::sys::fs::file_type::regular_file
-                                  ? root.entry(spelled)
-                                  : CanonicalPath(Spelling::absolute(spelled));
-            auto matched = matching(entry_path);
-            if(!llvm::any_of(claimants, [&](const CompiledRule* rule) {
-                   return llvm::is_contained(matched, rule);
-               })) {
-                continue;
-            }
-            if(!default_source(entry_path)) {
-                continue;
-            }
-            auto file = files.intern(entry_path);
-            if(seen.insert(file).second) {
-                out.push_back(file);
-            }
+            walked.push_back(type == llvm::sys::fs::file_type::regular_file
+                                 ? CanonicalRef(root).entry(spelled)
+                                 : CanonicalPath(Spelling::absolute(spelled)));
         }
     }
+    return walked;
 }
 
 }  // namespace clice

@@ -656,7 +656,8 @@ TEST_CASE(CDBForgedStampSeen) {
 /// build's default sources refreshed, and the disk changes those looks saw.
 llvm::SmallVector<FileEvent> workspace_tick(FileTracker& tracker, FileTable& files) {
     files.disk.look_all();
-    auto events = tracker.tick_sources();
+    auto [ticked] = kota::run(tracker.tick_sources());
+    auto events = std::move(*ticked);
     for(auto& event: take_disk_events(files)) {
         events.push_back(event);
     }

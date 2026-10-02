@@ -131,11 +131,23 @@ public:
     /// once per active configuration and again by refresh_default_sources.
     std::vector<Fid> members();
 
-    /// Enumerate the sources the default-command rules claim again and
-    /// report the ones that appeared since the last enumeration — a file
-    /// created after startup joins the build; a deleted one just leaves
-    /// the members. The file tracker calls it every workspace poll.
-    llvm::SmallVector<Fid> refresh_default_sources();
+    /// The directories the default-command rules claim sources under, none
+    /// inside another, and the cache directory a walk of them skips.
+    struct SourceWalk {
+        llvm::SmallVector<CanonicalPath> roots;
+        CanonicalPath cache_dir;
+    };
+
+    /// What a default-sources enumeration walks; no roots when no active
+    /// rule claims sources.
+    SourceWalk source_walk() const;
+
+    /// Enumerate the sources the default-command rules claim again, from a
+    /// walk of source_walk() (see walk_sources), and report the ones that
+    /// appeared since the last enumeration — a file created after startup
+    /// joins the build; a deleted one just leaves the members. The file
+    /// tracker calls it every workspace poll.
+    llvm::SmallVector<Fid> refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked);
 
     /// The scan units of `members`: every command of every member, so a
     /// header reachable through only one of a file's entries still finds
@@ -193,10 +205,12 @@ private:
     /// configuration file itself would become a unit.
     bool default_source(CanonicalRef path);
 
-    /// Files a default-command rule claims: C-family sources (never
-    /// headers) under the rules' pattern roots matching their patterns,
-    /// skipping the cache directory and version control metadata.
-    void enumerate_default_sources(std::vector<Fid>& out);
+    /// The active rules declaring a default command that can claim a file.
+    llvm::SmallVector<const CompiledRule*> claimants() const;
+
+    /// The files of a walk a default-command rule claims: C-family sources
+    /// (never headers) matching the rules' patterns.
+    void claim_sources(llvm::ArrayRef<CanonicalPath> walked, std::vector<Fid>& out);
 
     Config& config;
     CompilationDatabase& cdb;
@@ -204,5 +218,10 @@ private:
     std::string active;
     std::optional<std::vector<Fid>> claimed_sources;
 };
+
+/// Every file under the walk's roots, version control metadata and the
+/// cache directory skipped. File system work only, so it can run off the
+/// event loop: a rule without patterns has the whole workspace walked.
+std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk);
 
 }  // namespace clice

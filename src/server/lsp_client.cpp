@@ -953,7 +953,7 @@ void LSPClient::register_extensions() {
                             if(params.loop == "cdb") {
                                 events = project->tracker->tick_cdb(params.force.value_or(true));
                             } else {
-                                events = project->tracker->tick_sources();
+                                events = co_await project->tracker->tick_sources();
                             }
                             count += static_cast<std::uint32_t>(events.size());
                             if(!events.empty()) {

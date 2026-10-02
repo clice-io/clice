@@ -554,7 +554,7 @@ kota::task<> ProjectServer::sources_poll_task() {
     auto interval = std::chrono::seconds(project.config.tracker.workspace_poll_seconds.value);
     while(true) {
         co_await kota::sleep(interval);
-        auto events = tracker->tick_sources();
+        auto events = co_await tracker->tick_sources();
         if(!events.empty()) {
             dispatch(events);
         }

@@ -75,10 +75,14 @@ llvm::SmallVector<FileEvent> FileTracker::discover_around(Fid path_id) {
     return events;
 }
 
-llvm::SmallVector<FileEvent> FileTracker::tick_sources() {
+kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_sources() {
+    auto walked =
+        co_await kota::queue([walk = project.build.source_walk()] { return walk_sources(walk); });
     llvm::SmallVector<FileEvent> events;
-    push_delta({.added = project.build.refresh_default_sources()}, events);
-    return events;
+    if(walked.has_value()) {
+        push_delta({.added = project.build.refresh_default_sources(*walked)}, events);
+    }
+    co_return events;
 }
 
 }  // namespace clice

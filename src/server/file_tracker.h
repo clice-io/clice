@@ -9,6 +9,7 @@
 #include "server/invalidator.h"
 #include "server/session_store.h"
 
+#include "kota/async/async.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -43,8 +44,8 @@ public:
     /// A file created under a default-command rule joins the build: the
     /// gain reported as a CDBChanged event, as a database reload reports
     /// an added command. One deleted leaves through DiskRemoved, like any
-    /// file.
-    llvm::SmallVector<FileEvent> tick_sources();
+    /// file. The walk runs off the event loop.
+    kota::task<llvm::SmallVector<FileEvent>> tick_sources();
 
 private:
     Project& project;
