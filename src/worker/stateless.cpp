@@ -374,6 +374,7 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
 
 static worker::TURunResult handle_turun(const worker::TURunParams& params,
                                         const std::shared_ptr<std::atomic_bool>& stop) {
+    LOG_INFO("TURun request: file={}", params.file);
     ScopedTimer timer;
 
     CompilationParams cp;

@@ -42,9 +42,7 @@ void SessionStore::close(Fid path_id) {
 
 void SessionStore::park(Session& session) {
     session.closed = true;
-    if(!session.quarantine->empty()) {
-        parked[session.path_id] = {session.quarantine, session.hash};
-    }
+    parked[session.path_id] = {session.quarantine, session.hash};
 }
 
 void SessionStore::for_each(llvm::function_ref<bool(Fid, const Session&)> visitor) const {

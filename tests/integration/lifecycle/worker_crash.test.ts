@@ -5,7 +5,7 @@
 
 import * as path from "node:path";
 import type * as proto from "vscode-languageserver-protocol";
-import { sleep, waitUntil, type CliceClient } from "@clice/tools/client";
+import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
@@ -71,7 +71,7 @@ test("compile crash waits for save", async ({ session }) => {
     workspace.writeCDB(["poison.cpp"]);
     const client = session.spawn(workspace, crashing());
     await client.initialize(workspace);
-    const compile = `compile ${workspace.path("poison.cpp")}`;
+    const compile = `compile ${workspace.displayPath("poison.cpp")}`;
 
     const [uri] = client.open("poison.cpp");
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();
@@ -120,7 +120,7 @@ test("edit retries after a pause", async ({ session }) => {
         interval: 200,
         description: "the crash note to go",
     });
-    expect(workspace.workerCrashes(`compile ${workspace.path("poison.cpp")}`)).toBe(1);
+    expect(workspace.workerCrashes(`compile ${workspace.displayPath("poison.cpp")}`)).toBe(1);
 });
 
 test("editing crash is bounded", async ({ session }) => {
@@ -129,7 +129,7 @@ test("editing crash is bounded", async ({ session }) => {
     workspace.writeCDB(["poison.cpp"]);
     const client = session.spawn(workspace, crashing());
     await client.initialize(workspace);
-    const compile = `compile ${workspace.path("poison.cpp")}`;
+    const compile = `compile ${workspace.displayPath("poison.cpp")}`;
     const [uri] = await client.openAndWait("poison.cpp");
 
     // Half-typed code crashing is the common case while editing: the first
@@ -166,7 +166,7 @@ test("query crash pauses that feature", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.write("main.cpp", HEALTHY);
     workspace.writeCDB(["main.cpp"]);
-    const hover = `query:Hover ${workspace.path("main.cpp")}`;
+    const hover = `query:Hover ${workspace.displayPath("main.cpp")}`;
     const client = session.spawn(workspace, crashing({ CLICE_TEST_CRASH_REQUEST: hover }));
     await client.initialize(workspace);
 
@@ -195,7 +195,7 @@ test("completion crash pauses completion", async ({ session }) => {
     const text = `${HEALTHY}int x = ad;\n`;
     workspace.write("main.cpp", text);
     workspace.writeCDB(["main.cpp"]);
-    const completion = `completion ${workspace.path("main.cpp")}`;
+    const completion = `completion ${workspace.displayPath("main.cpp")}`;
     const client = session.spawn(workspace, crashing({ CLICE_TEST_CRASH_REQUEST: completion }));
     await client.initialize(workspace);
 
@@ -219,7 +219,7 @@ test("preamble crash is shared", async ({ session }) => {
     workspace.writeCDB(["poison.cpp", "twin.cpp", "healthy.cpp"]);
     const client = session.spawn(workspace, crashing());
     await client.initialize(workspace);
-    const build = `buildPch ${workspace.path("poison.cpp")}`;
+    const build = `buildPch ${workspace.displayPath("poison.cpp")}`;
 
     const [healthyUri] = await client.openAndWait("healthy.cpp");
     const [uri] = client.open("poison.cpp");
@@ -251,7 +251,7 @@ test("module crash notes importers", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.copyFiles(path.join(DATA_DIR, "modules", "consumer_imports_module"));
     workspace.generateCDB();
-    const build = `buildPcm ${workspace.path("math.cppm")}`;
+    const build = `buildPcm ${workspace.displayPath("math.cppm")}`;
     const client = session.spawn(workspace, crashing({ CLICE_TEST_CRASH_REQUEST: build }));
     await client.initialize(workspace);
 
@@ -262,31 +262,95 @@ test("module crash notes importers", async ({ session }) => {
 
     // The importer still compiles — its parse reports the missing module —
     // but the module is not rebuilt until the importer changes or saves.
+    await waitUntil(() => client.errors(uri).length > 0, {
+        timeout: 20_000,
+        interval: 200,
+        description: "the importer's parse to report the missing module",
+    });
     await client.hoverAt(uri, 3, 12);
     expect(workspace.workerCrashes(build)).toBe(1);
     client.save(uri);
     await client.hoverAt(uri, 3, 12);
     await settleCrashes(workspace, build, 2);
+
+    // Edited, the module is built again without a save.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("math.cppm", `${workspace.read("math.cppm")}// edited\n`);
+    await client.poll("workspace");
+    await client.hoverAt(uri, 3, 12);
+    await settleCrashes(workspace, build, 3);
+});
+
+test("preamble crash heals with a header", async ({ session }) => {
+    const workspace = session.tmpdir();
+    workspace.write("poison.h", "#pragma once\nint known();\n");
+    workspace.write("main.cpp", `#include "poison.h"\n${HEALTHY}`);
+    workspace.writeCDB(["main.cpp"]);
+    const build = `buildPch ${workspace.displayPath("main.cpp")}`;
+    const client = session.spawn(workspace, crashing({ CLICE_TEST_CRASH_REQUEST: build }));
+    await client.initialize(workspace);
+
+    const [uri] = client.open("main.cpp");
+    expect(await client.hoverAt(uri, 1, 5)).toBeNull();
+    await waitNote(client, uri, "precompiled preamble");
+    await settleCrashes(workspace, build, 1);
+    expect(await client.hoverAt(uri, 1, 5)).toBeNull();
+    expect(workspace.workerCrashes(build)).toBe(1);
+
+    // A change to a header the preamble includes is a retry, with no save
+    // of the file itself.
+    await sleep(RETRY_SPACING);
+    workspace.write("poison.h", "#pragma once\nint known();\nint more();\n");
+    await client.poll("workspace");
+    await client.hoverAt(uri, 1, 5);
+    await settleCrashes(workspace, build, 2);
+});
+
+test("crash reading a preamble rebuilds it", async ({ session }) => {
+    const workspace = session.tmpdir();
+    workspace.write("header.h", "#pragma once\nint known();\n");
+    workspace.write("main.cpp", `#include "header.h"\n${HEALTHY}`);
+    workspace.writeCDB(["main.cpp"]);
+    const compile = `compile ${workspace.displayPath("main.cpp")}`;
+    const client = session.spawn(workspace, crashing({ CLICE_TEST_CRASH_REQUEST: compile }));
+    await client.initialize(workspace);
+
+    // The first crash may be a corrupt preamble's: the pair is rebuilt and
+    // the compile rerun once, and only that crash is the file's.
+    const [uri] = client.open("main.cpp");
+    expect(await client.hoverAt(uri, 1, 5)).toBeNull();
+    const note = await waitNote(client, uri, "while compiling this file");
+    expect(note).not.toContain("times in a row");
+    await settleCrashes(workspace, compile, 2);
+    expect(workspace.log("master.log").split("Compile crashed consuming PCH pair").length - 1).toBe(
+        1,
+    );
 });
 
 test("victims are not blamed", async ({ session }) => {
     const workspace = session.tmpdir();
-    workspace.write("healthy.cpp", HEALTHY);
+    // Slow enough to be in flight when the poison kills the worker.
+    const slow =
+        `${HEALTHY}constexpr long fib(long n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }\n` +
+        "constexpr long slow = fib(28);\n";
+    workspace.write("healthy.cpp", slow);
     workspace.write("poison.cpp", poison(0));
-    workspace.writeCDB(["healthy.cpp", "poison.cpp"]);
+    workspace.writeCDB(["healthy.cpp", "poison.cpp"], {
+        extraArgs: ["-fconstexpr-steps=2147483647"],
+    });
     const client = session.spawn(workspace, crashing());
     // One stateful worker hosts both documents.
     await client.initialize(workspace, {
         initializationOptions: { project: { stateful_worker_count: 1 } },
     });
-    const compile = `compile ${workspace.path("poison.cpp")}`;
+    const compile = `compile ${workspace.displayPath("poison.cpp")}`;
 
     const [healthyUri] = await client.openAndWait("healthy.cpp");
     const [uri] = client.open("poison.cpp");
     for (let round = 1; round <= 3; round++) {
         // The healthy document's compile and query race the crash; when the
         // worker dies under them, they are resent, not blamed.
-        client.change(healthyUri, round, `${HEALTHY}// round ${round}\n`);
+        client.change(healthyUri, round, `${slow}// round ${round}\n`);
         const [healthy] = await Promise.all([
             client.hoverAt(healthyUri, 0, 5),
             client.hoverAt(uri, 0, 5),
@@ -297,6 +361,13 @@ test("victims are not blamed", async ({ session }) => {
     }
     expect(everNoted(client, healthyUri)).toBe(false);
     expect(notes(client, uri).length).toBe(1);
+
+    // Every round's healthy compile was taken along and sent again.
+    const healthyCompiles =
+        workspace
+            .log("SF-0.log")
+            .split(`Compile request: path=${workspace.displayPath("healthy.cpp")}`).length - 1;
+    expect(healthyCompiles).toBeGreaterThanOrEqual(1 + 2 * 3);
 });
 
 test("reopen keeps the bar", async ({ session }) => {
@@ -305,7 +376,7 @@ test("reopen keeps the bar", async ({ session }) => {
     workspace.writeCDB(["poison.cpp"]);
     const client = session.spawn(workspace, crashing());
     await client.initialize(workspace);
-    const compile = `compile ${workspace.path("poison.cpp")}`;
+    const compile = `compile ${workspace.displayPath("poison.cpp")}`;
 
     let [uri] = client.open("poison.cpp");
     expect(await client.hoverAt(uri, 0, 5)).toBeNull();

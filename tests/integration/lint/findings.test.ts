@@ -243,3 +243,27 @@ test.skipIf(process.platform === "win32")(
         expect(lines[0]).toContain("common.h:2:");
     },
 );
+
+test("crashing unit is not retried", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write(".clang-tidy", 'Checks: "-*,bugprone-integer-division"\n');
+    ws.write("poison.cpp", "int poison() { return 1; }\n");
+    ws.write("healthy.cpp", "double healthy(int a, int b) { return a / b; }\n");
+    ws.writeCDB(["poison.cpp", "healthy.cpp"]);
+    const tag = `tuRun ${ws.displayPath("poison.cpp")}`;
+
+    // A unit that crashed its worker would crash a retry too: the sweep
+    // gives up on it at once and still checks the rest.
+    const run = spawnSync(cliceExecutable(), ["lint", "--workspace", ws.root, "--workers", "2"], {
+        encoding: "utf8",
+        timeout: 120_000,
+        env: { ...process.env, CLICE_ANOMALY_NO_TRAP: "1", CLICE_TEST_CRASH_REQUEST: tag },
+    });
+    expect(run.stderr.split(`] clice worker crashed in: clice/worker/${tag}`).length - 1).toBe(1);
+    expect(run.stderr).toContain("Lint gave up on");
+    expect(run.stderr).not.toContain("after a retry");
+    const lines = findings(run.stdout);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("healthy.cpp:1:");
+});

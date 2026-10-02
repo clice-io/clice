@@ -1177,6 +1177,90 @@ TEST_CASE(StaleDepsNoAdopt) {
     EXPECT_TRUE(done);
 }
 
+TEST_CASE(EvictedDocumentRecompiles) {
+    // The worker evicts a document behind the master's back (no eviction
+    // notice is wired here): the query hears document_unloaded, compiles it
+    // there again and answers, never null.
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    tmp.touch("b.cpp", "");
+
+    Stack stack;
+    auto a = stack.open(tmp.path("a.cpp"), "int alpha = 1;\n");
+    auto b = stack.open(tmp.path("b.cpp"), "int beta = 2;\n");
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        opts.max_documents = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(a));
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(b));
+        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                      Ticket::take(a),
+                                                      protocol::Position{0, 5});
+        CO_ASSERT_TRUE(result.has_value());
+        EXPECT_NE(result.value().data, "null");
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(AnswerClearsQueryRecord) {
+    // Only an answer of the kind clears its record, and no compile runs to
+    // drop the note: the answer republishes.
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+
+    Stack stack;
+    auto a = stack.open(tmp.path("a.cpp"), "int alpha = 1;\n");
+    auto hover = evidence_kind(worker::QueryKind::Hover);
+    a->quarantine->on_crash(hover, "d1", "cause", Quarantine::Clock::now());
+    a->quarantine->on_save();
+    int published = 0;
+    auto connection =
+        stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { published += 1; });
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(a));
+        auto before = published;
+        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                      Ticket::take(a),
+                                                      protocol::Position{0, 5});
+        CO_ASSERT_TRUE(result.has_value());
+        EXPECT_NE(result.value().data, "null");
+        EXPECT_FALSE(a->quarantine->crashed(hover));
+        EXPECT_EQ(published, before + 1);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+}
+
 };  // TEST_SUITE(DispatcherGuards)
 
 }  // namespace

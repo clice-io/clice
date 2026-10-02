@@ -53,28 +53,26 @@ test.skipIf(process.platform !== "linux")(
 
         await client.openAndWait("main.cpp");
 
-        // The round's begin is announced once its first files are dispatched;
-        // a background compile runs niced, so waiting for its result instead
-        // would let a loaded machine starve the wait.
-        const begun = () =>
-            client.progressEvents.some(
-                (event) =>
-                    event.token === "clice/backgroundIndex" &&
-                    (event.value as { kind: string }).kind === "begin",
-            );
+        // Kill the worker an index run is in flight on, as soon as one
+        // takes it: a background compile runs niced, so waiting for its
+        // result instead would let a loaded machine starve the wait.
         const killed = await waitUntil(
             () => {
-                const workers = client.workerPids("SL-");
-                if (begun() && workers.length > 0) {
-                    process.kill(workers[0]!, "SIGKILL");
-                    return true;
+                for (let i = 0; i < 16; i++) {
+                    const name = `SL-${i}`;
+                    if (workspace.log(`${name}.log`).includes("TURun request")) {
+                        for (const pid of client.workerPids(`${name}\0`)) {
+                            process.kill(pid, "SIGKILL");
+                        }
+                        return true;
+                    }
                 }
                 return false;
             },
             {
                 timeout: 30_000,
-                interval: 100,
-                description: "indexing to start with a stateless worker available",
+                interval: 50,
+                description: "an index run to reach a stateless worker",
             },
         );
         expect(killed, "indexing never started or no stateless worker found").toBe(true);
@@ -228,7 +226,7 @@ test.skipIf(process.platform !== "linux")(
         workspace.write("healthy.cpp", "int healthy_fn() { return 2; }\n");
         workspace.write("main.cpp", "int main() { return 0; }\n");
         workspace.writeCDB(["poison.cpp", "healthy.cpp", "main.cpp"]);
-        const run = `tuRun ${workspace.path("poison.cpp")}`;
+        const run = `tuRun ${workspace.displayPath("poison.cpp")}`;
         const client = session.spawn(workspace, {
             allowAnomaly: true,
             env: { CLICE_ANOMALY_NO_TRAP: "1", CLICE_TEST_CRASH_REQUEST: run },

@@ -315,6 +315,15 @@ TEST_CASE(InFlightAcrossClose) {
     // reopened one.
     closed->quarantine->on_crash(1, "d2", "cause", Quarantine::Clock::now());
     ASSERT_TRUE(reopened->quarantine->barred(1, later));
+
+    // Even when the document had no record at the close.
+    auto clean = store.open(Fid{2});
+    store.apply_open(*clean, "int b;\n", 1);
+    store.close(Fid{2});
+    clean->quarantine->on_crash(0, "d3", "cause", Quarantine::Clock::now());
+    auto again = store.open(Fid{2});
+    store.apply_open(*again, "int b;\n", 1);
+    ASSERT_TRUE(again->quarantine->barred(0, later));
 }
 
 };  // TEST_SUITE(SessionStore)

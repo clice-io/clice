@@ -198,6 +198,35 @@ struct WorkerPoolFixture {
         return WorkerPool::death_error(death, tag, "sf:0:1");
     }
 
+    struct Delivery {
+        int sends = 0;
+        int blames = 0;
+        bool answered = false;
+    };
+
+    /// deliver() over sends that fail with `codes` in turn and answer once
+    /// the codes run out.
+    Delivery deliver_through(std::vector<worker::protocol::integer> codes) {
+        Delivery delivery;
+        run([&]() -> kota::task<> {
+            auto result = co_await deliver(
+                pool,
+                true,
+                [&]() -> RequestResult<worker::QueryParams> {
+                    auto attempt = static_cast<std::size_t>(delivery.sends);
+                    delivery.sends += 1;
+                    if(attempt < codes.size()) {
+                        co_return kota::outcome_error(
+                            worker::protocol::Error{codes[attempt], "scripted"});
+                    }
+                    co_return kota::codec::RawValue{"null"};
+                },
+                [&](const kota::ipc::Error&) { delivery.blames += 1; });
+            delivery.answered = result.has_value();
+        });
+        return delivery;
+    }
+
     void set_revive_after(std::chrono::milliseconds cooldown) {
         pool.options.revive_after = cooldown;
     }
@@ -1315,6 +1344,64 @@ TEST_CASE(DeathFreesDocuments) {
     EXPECT_EQ(f.crash_reports[0].lost_documents[0], 1u);
 }
 
+TEST_CASE(DeliverBlamesOwnCrash) {
+    WorkerPoolFixture f;
+    auto delivery = f.deliver_through({worker::dispatch_errc::worker_crashed});
+    EXPECT_EQ(delivery.sends, 1);
+    EXPECT_EQ(delivery.blames, 1);
+    EXPECT_FALSE(delivery.answered);
+}
+
+TEST_CASE(DeliverResendsVictimsOnce) {
+    using namespace worker::dispatch_errc;
+    // A death of another request's doing, or one that named no request,
+    // is resent once.
+    for(auto code: {worker_lost, worker_died}) {
+        WorkerPoolFixture f;
+        auto delivery = f.deliver_through({code});
+        EXPECT_EQ(delivery.sends, 2);
+        EXPECT_EQ(delivery.blames, 0);
+        EXPECT_TRUE(delivery.answered);
+    }
+    // Only once, and a second death blames the request only when neither
+    // named one.
+    for(auto codes: {
+            std::vector{worker_lost, worker_lost},
+            std::vector{worker_died, worker_lost},
+            std::vector{worker_lost, worker_died}
+    }) {
+        WorkerPoolFixture f;
+        auto delivery = f.deliver_through(codes);
+        EXPECT_EQ(delivery.sends, 2);
+        EXPECT_EQ(delivery.blames, 0);
+        EXPECT_FALSE(delivery.answered);
+    }
+    WorkerPoolFixture f;
+    auto delivery = f.deliver_through({worker_died, worker_died});
+    EXPECT_EQ(delivery.sends, 2);
+    EXPECT_EQ(delivery.blames, 1);
+    EXPECT_FALSE(delivery.answered);
+}
+
+TEST_CASE(DeliverWaitsForCapacity) {
+    using worker::dispatch_errc::worker_unavailable;
+    {
+        // No slot will ever serve again: the request gives up.
+        WorkerPoolFixture f;
+        auto delivery = f.deliver_through({worker_unavailable});
+        EXPECT_EQ(delivery.sends, 1);
+        EXPECT_FALSE(delivery.answered);
+    }
+    // A serving slot: capacity windows are waited out, not counted as
+    // resends.
+    WorkerPoolFixture f;
+    f.add_stateful(true);
+    auto delivery = f.deliver_through({worker_unavailable, worker_unavailable});
+    EXPECT_EQ(delivery.sends, 3);
+    EXPECT_EQ(delivery.blames, 0);
+    EXPECT_TRUE(delivery.answered);
+}
+
 TEST_CASE(DeadlineKillsAndNames) {
     WorkerPoolFixture f;
     f.add_stateful(true);
@@ -1324,11 +1411,16 @@ TEST_CASE(DeadlineKillsAndNames) {
     auto build = f.dispatch(0, true, "clice/worker/compile /a.cpp", std::chrono::seconds(2), true);
     auto hung = f.dispatch(1, true, "clice/worker/query:Hover /b.cpp", std::chrono::seconds(2));
 
+    f.add_stateless(true, true);
+    auto run = f.dispatch(0, false, "clice/worker/tuRun /c.cpp", std::chrono::seconds(20), true);
+
     f.tick_deadlines();
     EXPECT_EQ(f.state(0, true), WorkerPoolFixture::SlotState::Alive);
     EXPECT_EQ(f.state(1, true), WorkerPoolFixture::SlotState::Dying);
     EXPECT_EQ(f.death(1, true)->culprit, "clice/worker/query:Hover /b.cpp");
     EXPECT_TRUE(f.death(1, true)->cause.contains("1 seconds"));
+    EXPECT_EQ(f.state(0, false), WorkerPoolFixture::SlotState::Dying);
+    EXPECT_EQ(f.death(0, false)->culprit, "clice/worker/tuRun /c.cpp");
 }
 
 TEST_CASE(BackoffDelaySchedule) {
