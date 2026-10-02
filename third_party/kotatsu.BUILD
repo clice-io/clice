@@ -6,7 +6,7 @@ _COPTS = ["-fno-exceptions", "-fno-rtti", "-Wall", "-Wextra"]
 
 cc_library(
     name = "headers",
-    hdrs = glob(["include/**/*.h", "include/**/*.inl"]),
+    hdrs = glob(["include/**/*.h", "include/**/*.inl"], allow_empty = True),
     defines = [
         "KOTA_ENABLE_EXCEPTIONS=0",
         "KOTA_ENABLE_RTTI=0",
@@ -52,7 +52,7 @@ cc_library(
 
 cc_library(
     name = "option",
-    srcs = glob(["src/deco/option/*.cc"]),
+    srcs = glob(["src/deco/option/*.cc"], allow_empty = True),
     copts = _COPTS,
     visibility = ["//visibility:public"],
     deps = [":headers"],
@@ -60,7 +60,7 @@ cc_library(
 
 cc_library(
     name = "deco",
-    srcs = glob(["src/deco/facade/*.cc"]),
+    srcs = glob(["src/deco/facade/*.cc"], allow_empty = True),
     copts = _COPTS,
     visibility = ["//visibility:public"],
     deps = [":headers", ":option"],
@@ -68,7 +68,7 @@ cc_library(
 
 cc_library(
     name = "async",
-    srcs = glob(["src/async/**/*.cpp", "src/async/**/*.h"]),
+    srcs = glob(["src/async/**/*.cpp", "src/async/**/*.h"], allow_empty = True),
     copts = _COPTS,
     visibility = ["//visibility:public"],
     deps = [":headers", "@libuv"],
@@ -89,7 +89,7 @@ cc_library(
 
 cc_library(
     name = "ipc_lsp",
-    srcs = glob(["src/ipc/lsp/*.cpp"]),
+    srcs = glob(["src/ipc/lsp/*.cpp"], allow_empty = True),
     copts = _COPTS,
     visibility = ["//visibility:public"],
     deps = [":headers", ":ipc"],
@@ -97,7 +97,7 @@ cc_library(
 
 cc_library(
     name = "zest",
-    srcs = glob(["src/zest/*.cpp"]),
+    srcs = glob(["src/zest/*.cpp"], allow_empty = True),
     copts = _COPTS,
     visibility = ["//visibility:public"],
     deps = [":deco", ":headers", ":support", "@cpptrace"],

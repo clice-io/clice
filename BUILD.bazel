@@ -35,8 +35,8 @@ CORE_DIRS = ["support", "vfs", "syntax", "command", "compile", "semantic", "inde
 
 cc_library(
     name = "core",
-    srcs = glob(["src/%s/**/*.cpp" % d for d in CORE_DIRS]),
-    hdrs = glob(["src/%s/**/*.h" % d for d in CORE_DIRS] + ["src/%s/**/*.inc" % d for d in CORE_DIRS]),
+    srcs = glob(["src/%s/**/*.cpp" % d for d in CORE_DIRS], allow_empty = True),
+    hdrs = glob(["src/%s/**/*.h" % d for d in CORE_DIRS] + ["src/%s/**/*.inc" % d for d in CORE_DIRS], allow_empty = True),
     copts = COPTS,
     defines = DEFINES,
     includes = ["src"],
@@ -58,8 +58,8 @@ cc_library(
 
 [cc_library(
     name = layer,
-    srcs = glob(["src/%s/**/*.cpp" % layer]),
-    hdrs = glob(["src/%s/**/*.h" % layer]),
+    srcs = glob(["src/%s/**/*.cpp" % layer], allow_empty = True),
+    hdrs = glob(["src/%s/**/*.h" % layer], allow_empty = True),
     copts = COPTS,
     deps = deps,
 ) for layer, deps in [
@@ -72,7 +72,7 @@ cc_library(
 
 cc_binary(
     name = "clice",
-    srcs = ["src/clice.cc"] + glob(["src/driver/*.cc", "src/driver/*.h"]) + select({
+    srcs = ["src/clice.cc"] + glob(["src/driver/*.cc", "src/driver/*.h"], allow_empty = True) + select({
         "@platforms//os:windows": ["src/mimalloc.cc"],
         "//conditions:default": [],
     }),
@@ -98,7 +98,7 @@ cc_binary(
     ] + glob([
         "tests/unit/*/*_tests.cpp",
         "tests/unit/**/*.h",
-    ]),
+    ], allow_empty = True),
     copts = COPTS + ["-Itests/unit"],
     linkopts = select({
         "@platforms//os:windows": ["-Wl,--allow-multiple-definition"],
