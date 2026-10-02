@@ -129,6 +129,17 @@ for f in os.listdir(root):
 EOF
 }
 
+# Where a program holds the path of a sandbox's execution root.
+sandbox_paths() {
+    "$py" - "$1" << 'EOF' | tee -a "$OUT/results.txt"
+import re, sys
+data = open(sys.argv[1], "rb").read()
+hits = [m.start() for m in re.finditer(rb"/sandbox/[a-z-]+-sandbox/[0-9]+/", data)]
+example = data[max(0, hits[0] - 60):hits[0] + 80] if hits else b""
+print("sandbox paths in %s: %d %r" % (sys.argv[1], len(hits), example))
+EOF
+}
+
 env_info() {
     log "== $os $(uname -srm) cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
     log "clang: $(clang --version | head -1)"
@@ -225,6 +236,23 @@ ci)
     edit_llvm
     link ci-e2 clice "${lto[@]}" "${writable[@]}"
     times after-e2
+    sandbox_paths bazel-bin/clice$exe
+
+    # The same output with and without the cache, from links whose execution
+    # root is the same path (not a sandbox's).
+    link ci-e2-local clice "${lto[@]}" --strategy=CppLink=local
+    link ci-e2-local-n clice --strategy=CppLink=local
+    link ci-e2-local-2 clice "${lto[@]}" --strategy=CppLink=local
+
+    # macOS: ld records each object's absolute path (the sandbox's) unless
+    # -oso_prefix makes it relative (rules_cc's macos_reproducible feature).
+    if [ "$os" = macos ]; then
+        oso=(--linkopt=-Wl,-oso_prefix,.)
+        link ci-oso-1 clice "${lto[@]}" "${writable[@]}" "${oso[@]}"
+        sandbox_paths "bazel-bin/clice$exe"
+        link ci-oso-2 clice "${lto[@]}" "${writable[@]}" "${oso[@]}"
+        link ci-oso-n clice "${oso[@]}"
+    fi
     revert
     ;;
 esac

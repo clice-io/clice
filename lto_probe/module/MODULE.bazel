@@ -1,0 +1,15 @@
+"""The xclang module's thinlto_cache feature (branch exp/bazel-thinlto-cache)
+on a tool linking libclang's bitcode: scripts/lto-module.sh."""
+
+module(name = "lto_probe_module")
+
+bazel_dep(name = "rules_cc", version = "0.2.25")
+bazel_dep(name = "xclang", version = "23.1.2.4")
+git_override(
+    module_name = "xclang",
+    commit = "36b763fd4695b24f1df87feebeb13c65b2eee67a",
+    remote = "https://github.com/clice-io/xclang.git",
+)
+
+xclang = use_extension("@xclang//bazel:extensions.bzl", "xclang")
+use_repo(xclang, "libclang")

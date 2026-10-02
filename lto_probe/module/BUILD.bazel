@@ -1,0 +1,12 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+
+cc_binary(
+    name = "lex",
+    srcs = ["main.cpp"],
+    copts = ["-fno-rtti"],
+    deps = ["@libclang//:" + lib for lib in [
+        "clangBasic",
+        "clangLex",
+        "LLVMSupport",
+    ]],
+)

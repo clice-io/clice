@@ -18,16 +18,13 @@ jobs:
             lto_cache: /var/tmp/xclang-thinlto
           - os: macos-15
             lto_cache: /var/tmp/xclang-thinlto
-          - os: windows-2025
-            lto_cache: C:/xclang-thinlto
-            startup: --output_user_root=C:/b
     runs-on: ${{ matrix.os }}
     timeout-minutes: 330
     defaults:
       run:
         shell: bash
     env:
-      MODE: full
+      MODE: ci
       STARTUP: ${{ matrix.startup }}
       LTO_CACHE: ${{ matrix.lto_cache }}
       DISK_CACHE: ${{ github.workspace }}/../bazel-disk
@@ -98,3 +95,45 @@ jobs:
         with:
           name: lto-${{ runner.os }}
           path: lto-out
+
+  # The xclang module's thinlto_cache feature (scripts/lto-module.sh): its own
+  # toolchain and libclang, no pixi.
+  module:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            lto_cache: /var/tmp/xclang-thinlto
+          - os: macos-15
+            lto_cache: /var/tmp/xclang-thinlto
+          - os: windows-2025
+            lto_cache: C:/xclang-thinlto
+            startup: --output_user_root=C:/b
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      STARTUP: ${{ matrix.startup }}
+      LTO_CACHE: ${{ matrix.lto_cache }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Measure
+        run: scripts/lto-module.sh
+
+      - name: Results
+        if: always()
+        run: cat lto-out/module/results.txt
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lto-module-${{ runner.os }}
+          path: lto-out/module
