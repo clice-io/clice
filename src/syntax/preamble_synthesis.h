@@ -6,6 +6,8 @@
 #include <utility>
 #include <vector>
 
+#include "syntax/scan.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -23,12 +25,20 @@ struct ChainEntry {
     llvm::StringRef content;
 };
 
-/// Resolve an include directive to an absolute path.
-/// Arguments: raw header name (without delimiters), is_angled,
-/// is_include_next, directory of the including file.
-/// Returns the resolved absolute path, or nullopt if not found.
+/// An include directive resolved to a file: its path, and the search
+/// directory it was found in (`#include_next` there resumes after it).
+struct ResolvedInclude {
+    std::string path;
+    std::optional<unsigned> found_dir_idx;
+};
+
+/// Resolve an include directive of a file in `includer_dir`, which was
+/// itself found in search directory `includer_found_dir`; nullopt when
+/// it resolves nowhere.
 using IncludeResolver =
-    llvm::function_ref<std::optional<std::string>(llvm::StringRef, bool, bool, llvm::StringRef)>;
+    llvm::function_ref<std::optional<ResolvedInclude>(const ScanResult::IncludeInfo& include,
+                                                      llvm::StringRef includer_dir,
+                                                      std::optional<unsigned> includer_found_dir)>;
 
 /// Files a compile reads from memory instead of disk: (path, content).
 using SynthesizedFiles = std::vector<std::pair<std::string, std::string>>;
@@ -69,10 +79,10 @@ struct SynthesizedContext {
 ///
 /// For each file in the chain, scans its include directives and finds the
 /// one that resolves to the next file in the chain (the target for the
-/// last entry). Matching prefers exact resolved-path equality. If no
-/// directive resolves to the next path (e.g. resolution failed for an
-/// exotic search setup), falls back to a filename match — but only if it
-/// is unambiguous. Returns nullopt when a chain step cannot be matched.
+/// last entry). The host is the main file; every later chain file is
+/// found where its includer's directive resolved, which is where its own
+/// `#include_next` resumes. Returns nullopt when a chain step cannot be
+/// matched.
 ///
 /// `occurrence` selects among multiple includes of the target in its
 /// direct includer (the last chain entry): a file without include guards
@@ -94,12 +104,5 @@ std::optional<SynthesizedContext>
                        IncludeResolver resolve,
                        std::optional<std::uint32_t> occurrence = {},
                        std::optional<llvm::StringRef> target_content = {});
-
-/// Count how many include directives in `content` bring in `target_path`
-/// (candidates in the sense of synthesize_context's matching).
-std::uint32_t count_include_occurrences(llvm::StringRef content,
-                                        llvm::StringRef includer_path,
-                                        llvm::StringRef target_path,
-                                        IncludeResolver resolve);
 
 }  // namespace clice

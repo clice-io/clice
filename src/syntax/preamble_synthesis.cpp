@@ -38,34 +38,15 @@ static void append_quoted_path(std::string& out, llvm::StringRef path) {
     out += '"';
 }
 
-/// Collect all directives in `includes` that bring in `next_path`, in
-/// directive order. Prefers exact resolved-path matches; when resolution
-/// found nothing, falls back to filename matches — but only if all
-/// fallback candidates share one raw spelling (distinct spellings could
-/// name different files, so refuse to guess between them).
+/// The directives resolving to `next_path`, in directive order.
 static llvm::SmallVector<std::size_t>
-    collect_candidates(llvm::ArrayRef<ScanResult::IncludeInfo> includes,
-                       llvm::ArrayRef<std::optional<std::string>> resolved,
+    collect_candidates(llvm::ArrayRef<std::optional<ResolvedInclude>> resolved,
                        llvm::StringRef next_path) {
     llvm::SmallVector<std::size_t> candidates;
-    for(std::size_t j = 0; j < includes.size(); ++j) {
-        if(resolved[j].has_value() && *resolved[j] == next_path) {
+    for(std::size_t j = 0; j < resolved.size(); j += 1) {
+        if(resolved[j] && resolved[j]->path == next_path) {
             candidates.push_back(j);
         }
-    }
-    if(!candidates.empty()) {
-        return candidates;
-    }
-
-    auto next_filename = llvm::sys::path::filename(next_path);
-    for(std::size_t j = 0; j < includes.size(); ++j) {
-        if(llvm::sys::path::filename(includes[j].path) != next_filename) {
-            continue;
-        }
-        if(!candidates.empty() && includes[candidates.front()].path != includes[j].path) {
-            return {};
-        }
-        candidates.push_back(j);
     }
     return candidates;
 }
@@ -74,11 +55,12 @@ static llvm::SmallVector<std::size_t>
 /// candidate list directly; otherwise unconditional directives win over
 /// ones inside #if blocks, so an include occurrence in an untaken branch
 /// does not shadow the real one.
-static std::optional<std::size_t> find_match(llvm::ArrayRef<ScanResult::IncludeInfo> includes,
-                                             llvm::ArrayRef<std::optional<std::string>> resolved,
-                                             llvm::StringRef next_path,
-                                             std::optional<std::uint32_t> occurrence) {
-    auto candidates = collect_candidates(includes, resolved, next_path);
+static std::optional<std::size_t>
+    find_match(llvm::ArrayRef<ScanResult::IncludeInfo> includes,
+               llvm::ArrayRef<std::optional<ResolvedInclude>> resolved,
+               llvm::StringRef next_path,
+               std::optional<std::uint32_t> occurrence) {
+    auto candidates = collect_candidates(resolved, next_path);
     if(candidates.empty()) {
         return std::nullopt;
     }
@@ -121,7 +103,7 @@ static void emit_fragment(std::string& out,
                           std::uint32_t from,
                           std::uint32_t to,
                           llvm::ArrayRef<ScanResult::IncludeInfo> includes,
-                          llvm::ArrayRef<std::optional<std::string>> resolved,
+                          llvm::ArrayRef<std::optional<ResolvedInclude>> resolved,
                           llvm::StringRef target_path,
                           llvm::StringRef snapshot_path) {
     std::uint32_t pos = from;
@@ -130,7 +112,7 @@ static void emit_fragment(std::string& out,
         if(include.name_offset < from || include.offset >= to) {
             continue;
         }
-        if(resolved[j] != target_path) {
+        if(!resolved[j] || resolved[j]->path != target_path) {
             continue;
         }
         if(!snapshot_path.empty()) {
@@ -194,6 +176,7 @@ std::optional<SynthesizedContext>
     // (reopening them).
     llvm::SmallVector<std::string> before;
     llvm::SmallVector<std::string> after;
+    std::optional<unsigned> found_dir;
     for(std::size_t i = 0; i < chain.size(); i += 1) {
         auto& entry = chain[i];
         bool is_last = i + 1 == chain.size();
@@ -202,11 +185,10 @@ std::optional<SynthesizedContext>
 
         auto scan_result = scan_quick(entry.content);
 
-        llvm::SmallVector<std::optional<std::string>> resolved;
+        llvm::SmallVector<std::optional<ResolvedInclude>> resolved;
         resolved.reserve(scan_result.includes.size());
         for(auto& include: scan_result.includes) {
-            resolved.push_back(
-                resolve(include.path, include.is_angled, include.is_include_next, includer_dir));
+            resolved.push_back(resolve(include, includer_dir, found_dir));
         }
 
         // The occurrence choice applies to the direct includer only.
@@ -221,6 +203,7 @@ std::optional<SynthesizedContext>
         auto& matched = scan_result.includes[*match];
         auto cut = matched.offset;
         auto depth = matched.conditional_depth;
+        found_dir = resolved[*match]->found_dir_idx;
 
         // Before the cut: everything up to the matched directive, then
         // balancing #endifs when the cut lands inside #if blocks (most
@@ -286,24 +269,6 @@ std::optional<SynthesizedContext>
             add_file(context, llvm::sys::path::parent_path(chain[i].path), std::move(tail));
     }
     return context;
-}
-
-std::uint32_t count_include_occurrences(llvm::StringRef content,
-                                        llvm::StringRef includer_path,
-                                        llvm::StringRef target_path,
-                                        IncludeResolver resolve) {
-    auto includer_dir = llvm::sys::path::parent_path(includer_path);
-    auto scan_result = scan_quick(content);
-
-    llvm::SmallVector<std::optional<std::string>> resolved;
-    resolved.reserve(scan_result.includes.size());
-    for(auto& include: scan_result.includes) {
-        resolved.push_back(
-            resolve(include.path, include.is_angled, include.is_include_next, includer_dir));
-    }
-
-    return static_cast<std::uint32_t>(
-        collect_candidates(scan_result.includes, resolved, target_path).size());
 }
 
 void SynthesizedContext::append_suffix_include(std::string& text) const {

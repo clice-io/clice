@@ -262,16 +262,13 @@ struct Project {
     LenderIndex lenders;
 
     /// How many times the direct includer on host->target's chain includes
-    /// the target. Spelling-based (no search-path resolution): multiple
-    /// inclusions of one header always share a spelling, and synthesis
-    /// validates the real occurrence anyway.
+    /// the target; 0 when the host does not include it.
     std::uint32_t count_occurrences(Fid host_id, Fid target_id) const;
 
-    /// Rescan a file whose disk content changed, from one read: refresh
-    /// its include edges (so host lookups and context queries see includes
-    /// the change added or removed) and its module declaration. The
-    /// module-graph cascade is the invalidator's job
-    /// (PCMFamily::invalidate).
+    /// Rescan a file whose disk content changed (rescan_dependency_graph),
+    /// so host lookups and context queries see includes the change added
+    /// or removed, and its module declaration. The module-graph cascade is
+    /// the invalidator's job (PCMFamily::invalidate).
     void rescan_disk_file(Fid path_id);
 
     /// A file vanished from disk: it stops providing its module name (a

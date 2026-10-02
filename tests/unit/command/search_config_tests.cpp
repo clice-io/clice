@@ -57,8 +57,16 @@ TEST_CASE(KeepsForcedIncludes) {
     // In command order and as written: their lookup starts from the
     // working directory, which extraction does not settle.
     TempDir tmp;
-    std::vector<const char*> args =
-        {"clang++", "-include", "b.h", "-I", tmp.c_path("inc"), "-include", "a.h", "main.cpp"};
+    std::vector<const char*> args = {"clang++",
+                                     "-include",
+                                     "b.h",
+                                     "-include-pch",
+                                     "p.pch",
+                                     "-I",
+                                     tmp.c_path("inc"),
+                                     "-include",
+                                     "a.h",
+                                     "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
     ASSERT_EQ(config.forced_includes, (std::vector<std::string>{"b.h", "a.h"}));

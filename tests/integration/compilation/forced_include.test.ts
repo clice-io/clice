@@ -9,7 +9,8 @@ test("edits pay no import scan", async ({ session }) => {
     workspace.write("force.h", "#define FORCED 1\n");
     workspace.write("header.h", "inline int header() { return FORCED; }\n");
     workspace.write("main.cpp", '#include "header.h"\nint main() { return header(); }\n');
-    workspace.writeCDB(["main.cpp"], { extraArgs: ["-include", "force.h"] });
+    workspace.write("other.cpp", "int other() { return FORCED; }\n");
+    workspace.writeCDB(["main.cpp", "other.cpp"], { extraArgs: ["-include", "force.h"] });
     await client.initialize(workspace);
 
     const [main] = await client.openAndWait("main.cpp");
@@ -21,7 +22,7 @@ test("edits pay no import scan", async ({ session }) => {
     client.change(header, 1, "inline int header() { return FORCED + 1; }\n");
     await client.waitForRecompile(header);
     client.assertNoErrors(header, "the header compiles through its host");
-    expect(await client.waitForIndex(main, "header"), "the unit is indexed").toBe(true);
+    expect(await client.waitForIndex(main, "other"), "the closed unit is indexed").toBe(true);
 
     expect((await client.stats()).importScans).toBe(0);
 });

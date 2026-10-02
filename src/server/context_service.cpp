@@ -264,8 +264,7 @@ kota::task<ext::SwitchContextResult>
             }
         }
         if(params.occurrence.has_value() && *params.occurrence > 0) {
-            auto count = ws.count_occurrences(context_path_id, path_id);
-            if(count > 0 && *params.occurrence >= count) {
+            if(*params.occurrence >= ws.count_occurrences(context_path_id, path_id)) {
                 co_return result;
             }
         }

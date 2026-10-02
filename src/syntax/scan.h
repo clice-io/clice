@@ -67,6 +67,17 @@ struct ScanResult {
     /// names stay uncollected (`modules` empty, see scan_quick): the flag
     /// marks files worth a precise scan when import identity matters.
     bool has_import = false;
+
+    /// An import or a module declaration: text that can make its unit
+    /// depend on a module (an implementation unit on its interface).
+    bool has_module_syntax() const {
+        return has_import || !module_name.empty() || need_preprocess;
+    }
+
+    /// Hash of the lexer scan's directive stream, all a precise scan reads
+    /// of the file — it runs in dependency-directives mode: equal hashes,
+    /// equal precise scans of the file under one command and disk.
+    std::uint64_t directives_hash = 0;
 };
 
 /// Shared cache for dependency directives across multiple scan invocations.

@@ -570,9 +570,12 @@ std::vector<CanonicalPath> project_files(Project& project,
     llvm::DenseSet<Fid> unit(members.begin(), members.end());
     for(auto fid: project.dep_graph.all_files()) {
         auto path = files.resolve(fid);
+        // A header only a command forces in is no unit's text: a build
+        // generates it (CMake's cmake_pch.hxx).
         if(!formats(path) || !build.formattable(path) ||
            (!unit.contains(fid) &&
-            llvm::any_of(skipped_dirs, [&](auto& dir) { return path::under(path, dir); }))) {
+            (project.dep_graph.get_includers(fid).empty() ||
+             llvm::any_of(skipped_dirs, [&](auto& dir) { return path::under(path, dir); })))) {
             continue;
         }
         result.emplace_back(path);

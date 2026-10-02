@@ -265,7 +265,9 @@ TEST_CASE(ForcedHeaderRescan) {
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
         auto command = std::format("clang++ {} {}", flags, tmp.path(file));
-        return *project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+        ASSERT_TRUE(
+            project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command))
+                .has_value());
     };
     add("src/main.cpp", std::format("-Ia -include {}", tmp.path("build/force.h")));
     add("build/near.cpp", "-Ib");

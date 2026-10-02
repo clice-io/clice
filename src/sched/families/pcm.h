@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "project/command_resolver.h"
 #include "project/project.h"
@@ -11,6 +13,7 @@
 #include "worker/pool.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/xxhash.h"
@@ -39,17 +42,18 @@ public:
 
     /// Re-validate on-disk PCM blobs and build the module dependencies of
     /// a request that compiles under `arguments` with `content` as the
-    /// main file and `synthesized` served from memory (the forwarder's
+    /// main file and the resolution's synthesized context served from
+    /// memory (the forwarder's
     /// per-request builds — the scan must see the buffer's imports under
     /// the request's command). Building a dependency can itself evict
     /// another clean module's PCM under budget pressure, which reopens the
     /// window the revalidation just closed — hence the bounded retry until
     /// the set is stable.
     kota::task<bool> prepare_deps(Fid path_id,
+                                  const Resolution& resolution,
                                   llvm::ArrayRef<const char*> arguments,
                                   llvm::StringRef directory,
                                   std::optional<llvm::StringRef> content,
-                                  const SynthesizedContext* synthesized,
                                   bool foreground);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
@@ -80,8 +84,7 @@ public:
     /// new artifact.
     std::function<void()> on_indexing_needed;
 
-    /// Preprocessor passes direct_deps() ran: what the gates in front of
-    /// it are measured by.
+    /// Preprocessor passes direct_deps() ran.
     std::uint64_t import_scans = 0;
 
     /// A scan's module dependencies, split by what a consumer does with
@@ -113,31 +116,35 @@ public:
     /// and return them for serving-side treatment.
     llvm::SmallVector<NodeId> provider_appeared(llvm::StringRef name);
 
-    /// Scan a file for its direct module dependencies (lazy, on every
-    /// use — a re-resolve is inherent, so a CDB or import change is
-    /// always seen by the next round). Consumers declare the full edge
-    /// set and wait on the resolved subset. An engaged `content` scans
-    /// it in place of the file's on-disk text — even when empty (an open
-    /// buffer's imports count before they are saved, and an emptied
-    /// buffer has none).
-    kota::task<ModuleDeps> direct_deps(Fid path_id,
-                                       std::optional<llvm::StringRef> content = std::nullopt);
+    /// Scan a module unit's disk text for its direct module dependencies
+    /// under the command its own build resolves (lazy, on every use — a
+    /// re-resolve is inherent, so a CDB or import change is always seen
+    /// by the next round). Consumers declare the full edge set and wait
+    /// on the resolved subset.
+    kota::task<ModuleDeps> direct_deps(Fid path_id);
 
     /// The already-resolved-command flavor: scans under exactly the
-    /// arguments the caller will compile with. The AST path uses it so a
-    /// context choice or donated header host cannot diverge between the
-    /// scan and the parse — the path_id flavor re-picks a CDB entry,
-    /// which is only right for whole-TU runs on real commands. The
-    /// header context the arguments name is served to the scan from
-    /// `synthesized`.
+    /// arguments the caller will compile with, rendered by `resolution`.
+    /// The AST path uses it so a context choice or donated header host
+    /// cannot diverge between the scan and the parse — the path_id flavor
+    /// re-picks a CDB entry, which is only right for whole-TU runs on real
+    /// commands. The header context the arguments name is served to the
+    /// scan from memory. An engaged `content` scans it in place of the
+    /// file's on-disk text — even when empty (an open buffer's imports
+    /// count before they are saved, and an emptied buffer has none).
     ///
     /// The scan is a preprocessor run over the whole unit: it runs on the
-    /// thread pool, the event loop only resolves the names it found.
+    /// thread pool, the event loop only resolves the names it found. A
+    /// unit that can import nothing pays none — its own text has no
+    /// module syntax, and neither it nor the host whose command it
+    /// borrows reaches an import candidate. A buffer's scan is reused
+    /// while its directive stream, its arguments and the project's disk
+    /// state (context_epoch) stay the same.
     kota::task<ModuleDeps> direct_deps(Fid path_id,
+                                       const Resolution& resolution,
                                        llvm::ArrayRef<const char*> arguments,
                                        llvm::StringRef directory,
-                                       std::optional<llvm::StringRef> content,
-                                       const SynthesizedContext* synthesized = nullptr);
+                                       std::optional<llvm::StringRef> content);
 
 private:
     /// Commit the scan's full edge set as the unit's durable edges (see
@@ -152,10 +159,27 @@ private:
         return {Family::PCM, path_id.raw};
     }
 
+    /// What a precise scan says about a unit's modules.
+    struct Imports {
+        std::vector<std::string> modules;
+        std::string module_name;
+        bool is_interface_unit = false;
+    };
+
+    /// A buffer's last precise scan and what it ran against.
+    struct ScanMemo {
+        std::uint64_t directives = 0;
+        std::uint64_t arguments = 0;
+        std::uint64_t epoch = 0;
+        Imports imports;
+    };
+
     TaskGraph& graph;
     Project& project;
     CommandResolver& commands;
     WorkerPool& pool;
+
+    llvm::DenseMap<Fid, ScanMemo> scan_memos;
 
     /// Crash budget of the builds, keyed by the content-derived PCM key:
     /// a module interface that keeps killing workers is refused until its

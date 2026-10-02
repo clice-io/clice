@@ -329,7 +329,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
                                               wp.text,
                                               wp.directory,
                                               wp.arguments,
-                                              resolution.synthesized.get(),
+                                              resolution,
                                               inputs)) {
         LOG_WARN("{}: dependency preparation failed for {}", label, path);
         co_return kota::outcome_error(kota::ipc::Error{"Dependency preparation failed"});

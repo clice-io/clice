@@ -744,12 +744,19 @@ TEST_CASE(AnyLookReportsChange) {
     /// has nothing left to report.
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
+    tmp.touch("main.cpp", R"(#include "header.h")");
 
     FileTable files;
     Project project{files};
     SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    scan_all(project.cdb, project.dep_graph);
+    project.dep_graph.build_reverse_map();
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
-    project.file_table.read(header);
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     tmp.touch("header.h", R"(int x = 2222;)");
     project.rescan_disk_file(header);

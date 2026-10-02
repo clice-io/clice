@@ -295,14 +295,14 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
             result.direct_dependents.push_back(ws.file_table.display(dependent));
         }
     }
-    auto hosts = ws.dep_graph.find_readers(*file);
-    for(auto host: hosts) {
-        if(seen.insert(host).second) {
-            result.transitive_dependents.push_back(ws.file_table.display(host));
+    auto readers = ws.dep_graph.find_readers(*file);
+    for(auto reader: readers) {
+        if(seen.insert(reader).second) {
+            result.transitive_dependents.push_back(ws.file_table.display(reader));
         }
     }
-    for(auto host: hosts) {
-        auto module_name = ws.dep_graph.module_of(host);
+    for(auto reader: readers) {
+        auto module_name = ws.dep_graph.module_of(reader);
         if(!module_name.empty()) {
             result.affected_modules.push_back(module_name.str());
         }

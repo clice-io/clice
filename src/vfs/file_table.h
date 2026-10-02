@@ -244,8 +244,8 @@ struct FileTable {
     /// CDB-reload rescans hit it when only the stat moved. Keyed by the
     /// identity pair rather than a version id so the scan (which runs
     /// before the persisted id space loads) never allocates ids. Raw
-    /// results only — the module-name backfill below is configuration
-    /// output and must not enter a content-keyed slot.
+    /// results only — a module name a preprocessor run resolves is
+    /// configuration output and must not enter a content-keyed slot.
     llvm::DenseMap<std::pair<Fid, std::uint64_t>, ScanResult> scan_results;
 
     /// The scan of exactly these bytes, whose hash the caller proved to be
@@ -257,19 +257,6 @@ struct FileTable {
         }
         return it->second;
     }
-
-    /// A module declaration hidden behind preprocessor conditionals,
-    /// resolved by a real preprocessor run under one compile
-    /// configuration: keyed by (content hash, semantic hash of the
-    /// rendered command) — the same bytes legitimately resolve differently
-    /// under different flag sets, and dense config ids are CDB-local
-    /// (multiple CDBs share this table).
-    struct ModuleDecl {
-        std::string name;
-        bool is_interface_unit = false;
-    };
-
-    llvm::DenseMap<std::pair<std::uint64_t, std::uint64_t>, ModuleDecl> module_decls;
 
     /// Directory listings kept across operations.
     vfs::DirCache dirs;

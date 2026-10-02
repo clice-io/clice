@@ -426,16 +426,16 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
     vfs::Scope scope(project.file_table.dirs);
     auto resolved_config = resolve_search_config(search_config, scope);
 
-    auto resolver = [&](llvm::StringRef filename,
-                        bool is_angled,
-                        bool is_include_next,
-                        llvm::StringRef includer_dir) -> std::optional<std::string> {
-        auto result = resolve_include(filename,
-                                      is_angled,
+    auto resolver =
+        [&](const ScanResult::IncludeInfo& include,
+            llvm::StringRef includer_dir,
+            std::optional<unsigned> includer_found_dir) -> std::optional<ResolvedInclude> {
+        auto result = resolve_include(include.path,
+                                      include.is_angled,
                                       &scope.list(includer_dir),
                                       includer_dir,
-                                      is_include_next,
-                                      0,
+                                      include.is_include_next,
+                                      includer_found_dir,
                                       resolved_config,
                                       scope);
         if(!result) {
@@ -444,7 +444,8 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
         // Chain files are named by the build's spelling of each, so a
         // resolution matches the next one exactly when it is that file.
         auto found = project.file_table.intern(Spelling::absolute(result->path));
-        return project.file_table.spelling(found).str();
+        return ResolvedInclude{.path = project.file_table.spelling(found).str(),
+                               .found_dir_idx = result->found_dir_idx};
     };
 
     // Read the chain files (all but the target) from disk. The synthesized

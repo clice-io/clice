@@ -102,66 +102,59 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // the module files. The scan runs under the command resolved above —
     // a borrowed header host's flags select the same imports the parse
     // will see — and its sentinel edges are what let an unresolved
-    // name's first provider re-dirty this TU. In a project without
-    // providers the lexical candidate set (from the dependency scan)
-    // gates the cost. A failed PCM build is not terminal on either
-    // shape — the parse consumes whatever artifacts landed and the
-    // worker reports its own failure if they are not enough.
+    // name's first provider re-dirty this TU. A failed PCM build is not
+    // terminal on either shape — the parse consumes whatever artifacts
+    // landed and the worker reports its own failure if they are not
+    // enough.
     bool own_module = !project.dep_graph.module_of(path_id).empty();
-    if(own_module || project.dep_graph.has_modules() ||
-       !project.dep_graph.import_candidate_files().empty()) {
-        PCMFamily::ModuleDeps deps;
-        if(own_module) {
-            deps.resolved.push_back(path_id);
-            deps.declared.push_back({Family::PCM, path_id.raw});
+    PCMFamily::ModuleDeps deps;
+    if(own_module) {
+        deps.resolved.push_back(path_id);
+        deps.declared.push_back({Family::PCM, path_id.raw});
+    }
+    // The scan must evaluate the same conditionals the worker's parse
+    // will — the resolved command already carries the plan's extra args.
+    // A module unit's own PCM round resolves the base command without
+    // them, so extras run their own scan even there.
+    bool has_extras = !extras.prepend.empty() || !extras.append.empty();
+    if(!own_module || has_extras) {
+        std::vector<const char*> argv;
+        argv.reserve(params.arguments.size());
+        for(auto& arg: params.arguments) {
+            argv.push_back(arg.c_str());
         }
-        // The scan must evaluate the same conditionals the worker's
-        // parse will — the resolved command already carries the plan's
-        // extra args. A module unit's own PCM round resolves the base
-        // command without them, so extras run their own scan even there.
-        bool has_extras = !extras.prepend.empty() || !extras.append.empty();
-        if(!own_module || has_extras) {
-            std::vector<const char*> argv;
-            argv.reserve(params.arguments.size());
-            for(auto& arg: params.arguments) {
-                argv.push_back(arg.c_str());
-            }
-            auto scanned = co_await pcm.direct_deps(path_id,
-                                                    argv,
-                                                    params.directory,
-                                                    std::nullopt,
-                                                    resolved.synthesized.get());
-            llvm::append_range(deps.resolved, scanned.resolved);
-            llvm::append_range(deps.declared, scanned.declared);
-        }
+        auto scanned =
+            co_await pcm.direct_deps(path_id, resolved, argv, params.directory, std::nullopt);
+        llvm::append_range(deps.resolved, scanned.resolved);
+        llvm::append_range(deps.declared, scanned.declared);
+    }
 
-        // Scanner truth outlives the run: committed as durable edges even
-        // when the run or a build fails, so fixing or providing an import
-        // re-dirties this TU — the invalidator reaches closed TUs through
-        // these edges alone (the include reverse map carries no import
-        // edges).
-        graph.declare(node(path_id), deps.declared);
-        for(auto dep: deps.declared) {
-            if(PCMFamily::is_unresolved(dep)) {
-                ctx.reference(dep);
-            }
+    // Scanner truth outlives the run: committed as durable edges even
+    // when the run or a build fails, so fixing or providing an import
+    // re-dirties this TU — the invalidator reaches closed TUs through
+    // these edges alone (the include reverse map carries no import
+    // edges).
+    graph.declare(node(path_id), deps.declared);
+    for(auto dep: deps.declared) {
+        if(PCMFamily::is_unresolved(dep)) {
+            ctx.reference(dep);
         }
+    }
 
-        // On-disk PCM blobs can be LRU-evicted while their nodes stay
-        // clean; re-dirty evicted ones so depend() rebuilds instead of
-        // handing the worker a dead path. Bounded: a rebuild can itself
-        // evict under budget pressure, and past the bound the parse fails
-        // visibly on the missing file.
-        for(int attempt = 0; !deps.resolved.empty() && attempt < 3; attempt += 1) {
-            bool any_evicted = pcm.revalidate_blobs();
-            if(attempt > 0 && !any_evicted) {
-                break;
-            }
-            for(auto dep: deps.resolved) {
-                if(co_await ctx.depend({Family::PCM, dep.raw}) == DependResult::Cancelled) {
-                    landed[path_id] = {.verdict = Verdict::Preempted};
-                    co_return RoundOutcome::Stale;
-                }
+    // On-disk PCM blobs can be LRU-evicted while their nodes stay clean;
+    // re-dirty evicted ones so depend() rebuilds instead of handing the
+    // worker a dead path. Bounded: a rebuild can itself evict under budget
+    // pressure, and past the bound the parse fails visibly on the missing
+    // file.
+    for(int attempt = 0; !deps.resolved.empty() && attempt < 3; attempt += 1) {
+        bool any_evicted = pcm.revalidate_blobs();
+        if(attempt > 0 && !any_evicted) {
+            break;
+        }
+        for(auto dep: deps.resolved) {
+            if(co_await ctx.depend({Family::PCM, dep.raw}) == DependResult::Cancelled) {
+                landed[path_id] = {.verdict = Verdict::Preempted};
+                co_return RoundOutcome::Stale;
             }
         }
     }

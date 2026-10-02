@@ -572,6 +572,55 @@ TEST_CASE(IncludeImportRecorded) {
     logging::reset_anomaly_for_testing();
 }
 
+TEST_CASE(HostImportRecorded) {
+    // A header compiled through its host's synthesized prefix: the host's
+    // import syntax, a graph fact, must trigger the precise scan that
+    // records the name.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("part.inc", "int part();\n");
+    tmp.touch("main.cpp", "import m;\n#include \"part.inc\"\nint main() { return 0; }\n");
+
+    Stack stack;
+    write_cdb(tmp,
+              stack.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    scan_all(stack.project.cdb, stack.project.dep_graph);
+    stack.project.dep_graph.build_reverse_map();
+    auto session = stack.open(tmp.path("part.inc"), "int part();\n");
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    auto* context = stack.contexts.header_context(session->path_id);
+    ASSERT_TRUE(context != nullptr && context->synthesized != nullptr);
+    auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
+    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) !=
+                dirtied.end());
+
+    logging::reset_anomaly_for_testing();
+}
+
 TEST_CASE(ForcedIncludeSkipsScan) {
     // Neither the command's forced header nor a header compiled through
     // its host has import syntax: no compile pays an import scan.

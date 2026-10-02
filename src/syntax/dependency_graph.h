@@ -26,6 +26,16 @@ struct IncludeEdge {
     bool conditional = false;
 };
 
+/// How the scan reached a file: the scan group whose command resolves its
+/// includes, the search directory it was found in (`#include_next`
+/// resumes after it), and whether it is a unit of the build rather than
+/// an included file.
+struct ScanContext {
+    std::uint32_t group;
+    std::optional<unsigned> found_dir_idx;
+    bool unit = false;
+};
+
 class DependencyGraph {
 public:
     /// Key for per-(file, SearchConfig) include storage.
@@ -64,12 +74,6 @@ public:
     /// that could re-declare the file.
     llvm::StringRef module_of(Fid path_id) const;
 
-    /// Whether any file provides a module: the gate the module code
-    /// paths (import scans, PCM planning) pay only once modules exist.
-    bool has_modules() const {
-        return !module_by_path.empty();
-    }
-
     /// Set the direct include list for a (file, config) pair.
     void set_includes(Fid path_id,
                       std::uint32_t config_id,
@@ -80,6 +84,10 @@ public:
 
     /// Get the union of included fids across all configs for a file.
     llvm::SmallVector<Fid> get_all_includes(Fid path_id) const;
+
+    /// How many directives of `includer` include `target`, under the
+    /// configuration with the most: one edge per directive.
+    std::uint32_t count_includes(Fid includer, Fid target) const;
 
     /// Erase every config's include list for a file. Incremental rescans
     /// clear first, then re-add one list per configuration.
@@ -98,15 +106,24 @@ public:
     /// unit's text (`-include`). A command fact, not a directive in any
     /// file's text: it stays out of the include edges, so hosting and
     /// context synthesis, which cut a host's text at a directive, never
-    /// walk it. Set by the full scan only — a command change rebuilds.
+    /// walk it.
     void add_forced_include(Fid unit, Fid header);
 
     /// The units whose commands force `header` in.
     llvm::ArrayRef<Fid> get_forcing_units(Fid header) const;
 
-    /// BFS upward through reverse edges to find all source files (roots)
-    /// that transitively include header_path_id.
-    /// Source files are those that have no includers (i.e. they are roots in the graph).
+    /// A scan group: the command its units resolve includes under.
+    std::uint32_t add_group(const CommandRef& command);
+    const CommandRef& group(std::uint32_t id) const;
+
+    /// Record how the scan reached a file; a unit has one context per
+    /// command, any other file the first one that reached it.
+    void add_context(Fid path_id, ScanContext context);
+    llvm::ArrayRef<ScanContext> contexts(Fid path_id) const;
+
+    /// BFS upward through reverse edges to find all roots — files without
+    /// includers: source files, and forced headers — that transitively
+    /// include header_path_id.
     llvm::SmallVector<Fid, 4> find_host_sources(Fid header_path_id) const;
 
     /// The roots whose compiles read the file: find_host_sources(), with a
@@ -143,22 +160,23 @@ public:
         return module_to_path;
     }
 
-    /// Files whose lexer scan saw an import declaration (names unknown —
-    /// lexical text is not a trustworthy source of edges). A non-empty
-    /// set means module code exists somewhere: the scan gates treat the
-    /// whole project as modular from that point, because per-file
-    /// reachability approximations have irreducible blind spots.
-    void set_import_candidate(Fid path_id, bool has_import) {
-        if(has_import) {
+    /// Files whose lexer scan saw module syntax (ScanResult::
+    /// has_module_syntax). The names stay unknown: an import's are
+    /// macro-expanded. Whether there is one is lexical truth, though: no
+    /// macro can produce an import directive ([cpp.pre]), so a unit that
+    /// reaches no candidate through includes and forced includes imports
+    /// nothing.
+    void set_import_candidate(Fid path_id, bool candidate) {
+        if(candidate) {
             import_candidates.insert(path_id);
         } else {
             import_candidates.erase(path_id);
         }
     }
 
-    const llvm::DenseSet<Fid>& import_candidate_files() const {
-        return import_candidates;
-    }
+    /// Whether a compile of `path_id` reads an import candidate: the file
+    /// itself, what it includes, and its forced includes, transitively.
+    bool reaches_import(Fid path_id) const;
 
 private:
     /// Module name -> fids (multiple candidates possible, e.g. different targets).
@@ -180,8 +198,13 @@ private:
     /// Populated by build_reverse_map().
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> reverse_includes;
 
-    /// Forced header -> units whose commands force it in, sorted.
+    /// Unit -> headers its commands force in, and the inverse, sorted.
+    llvm::DenseMap<Fid, llvm::SmallVector<Fid, 1>> forced_includes;
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> forcing_units;
+
+    /// See add_group() and add_context().
+    llvm::SmallVector<CommandRef> groups;
+    llvm::DenseMap<Fid, llvm::SmallVector<ScanContext, 1>> scan_contexts;
 
     /// Whether build_reverse_map() ran, so edge updates maintain the map.
     bool reverse_built = false;
@@ -193,16 +216,6 @@ private:
     /// The roots above `path_id`, climbing from forced headers to their
     /// units when `through_forced` is set.
     llvm::SmallVector<Fid, 4> find_roots(Fid path_id, bool through_forced) const;
-};
-
-/// A (file, search-config) pair used to track per-wave work items.
-struct WaveEntry {
-    Fid path_id;
-    std::uint32_t config_id;
-    /// Search dir index where this file was found, none for source files
-    /// (wave 0) and files found outside the search dirs. Used for
-    /// #include_next.
-    std::optional<unsigned> found_dir_idx;
 };
 
 /// Detailed report from a dependency scan.
@@ -233,7 +246,6 @@ struct ScanReport {
     /// Wall-clock time per phase (milliseconds, summed across waves).
     std::int64_t phase1_ms = 0;       // Read + scan (parallel on thread pool).
     std::int64_t phase2_ms = 0;       // Include resolution (stat calls).
-    std::int64_t phase3_ms = 0;       // Graph building (single-threaded).
     std::int64_t config_ms = 0;       // Config extraction (one-time, total).
     std::int64_t prewarm_ms = 0;      // Toolchain pre-warm subset.
     std::int64_t config_loop_ms = 0;  // lookup + extract_search_config loop.
@@ -288,5 +300,13 @@ struct ScanReport {
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
                                  DependencyGraph& graph,
                                  llvm::ArrayRef<CommandRef> units);
+
+/// Bring a file whose disk content changed back in step, by the same
+/// per-file step as the full scan: under every context the scan reached
+/// it by, its include edges, module declaration and module syntax follow
+/// the new bytes, and files it reaches for the first time are scanned
+/// too. A file the scan never reached keeps no edges — no unit's compile
+/// reads it.
+void rescan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph, Fid path_id);
 
 }  // namespace clice

@@ -6,8 +6,10 @@
 #include "syntax/lexer.h"
 #include "vfs/file_system.h"
 
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/xxhash.h"
 #include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Basic/FileEntry.h"
 #include "clang/Basic/FileManager.h"
@@ -30,6 +32,8 @@ ScanResult scan_quick(llvm::StringRef content) {
     llvm::SmallVector<dds::Directive> directives;
 
     if(clang::scanSourceForDependencyDirectives(content, tokens, directives)) {
+        // A precise scan lexes text the directive scanner rejects in full.
+        result.directives_hash = llvm::xxh3_64bits(content);
         return result;
     }
 
@@ -37,8 +41,14 @@ ScanResult scan_quick(llvm::StringRef content) {
     result.includes.reserve(std::min<std::size_t>(directives.size(), 32));
 
     int conditional_depth = 0;
+    llvm::SmallString<1024> stream;
 
     for(auto& dir: directives) {
+        stream.push_back(static_cast<char>(dir.Kind));
+        for(auto& tok: dir.Tokens) {
+            stream += content.substr(tok.Offset, tok.Length);
+            stream.push_back('\0');
+        }
         switch(dir.Kind) {
             case dds::pp_if:
             case dds::pp_ifdef:
@@ -132,6 +142,7 @@ ScanResult scan_quick(llvm::StringRef content) {
         }
     }
 
+    result.directives_hash = llvm::xxh3_64bits(stream);
     return result;
 }
 

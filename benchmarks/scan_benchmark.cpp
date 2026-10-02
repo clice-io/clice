@@ -159,7 +159,6 @@ void print_report(const ScanReport& report) {
     std::println("    Dir cache pre-pop: {}ms (overlapped with Phase 1)", report.dir_cache_ms);
     std::println("    Phase 1 (read+scan, parallel): {}ms", report.phase1_ms);
     std::println("    Phase 2 (include resolve):     {}ms", report.phase2_ms);
-    std::println("    Phase 3 (graph build):         {}ms", report.phase3_ms);
 
     // Per-wave breakdown.
     if(!report.wave_stats.empty()) {

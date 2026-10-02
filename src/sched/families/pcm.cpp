@@ -13,6 +13,7 @@
 #include "worker/protocol.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -34,44 +35,81 @@ void PCMFamily::register_runner() {
     });
 }
 
-kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
-                                                         std::optional<llvm::StringRef> content) {
+kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id) {
     // The same resolution the real build uses (run() below): a module unit
     // scanned with a different command than it compiles with would edge
     // against a different dependency set.
     std::string directory;
     std::vector<std::string> arguments;
-    commands.resolve_command(path_id, directory, arguments);
+    auto resolution = commands.resolve_command(path_id, directory, arguments);
 
     std::vector<const char*> argv;
     argv.reserve(arguments.size());
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    co_return co_await direct_deps(path_id, argv, directory, content);
+    co_return co_await direct_deps(path_id, resolution, argv, directory, std::nullopt);
 }
 
 kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
+                                                         const Resolution& resolution,
                                                          llvm::ArrayRef<const char*> arguments,
                                                          llvm::StringRef directory,
-                                                         std::optional<llvm::StringRef> content,
-                                                         const SynthesizedContext* synthesized) {
-    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs;
-    if(synthesized) {
-        auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-        for(auto& [file, text]: synthesized->files) {
-            memory->addFile(file, 0, llvm::MemoryBuffer::getMemBufferCopy(text, file));
-        }
-        auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
-            llvm::makeIntrusiveRefCnt<vfs::View>());
-        overlay->pushOverlay(std::move(memory));
-        vfs = std::move(overlay);
+                                                         std::optional<llvm::StringRef> content) {
+    auto& dep_graph = project.dep_graph;
+    bool may_import = dep_graph.reaches_import(path_id) ||
+                      (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
+    std::uint64_t directives = 0;
+    if(content) {
+        auto lexical = scan_quick(*content);
+        may_import |= lexical.has_module_syntax();
+        directives = lexical.directives_hash;
     }
-    // A failed scan finds nothing, as a scan that fails to set up does.
-    import_scans += 1;
-    auto scanned = co_await kota::queue(
-        [&] { return scan_precise(arguments, directory, content, nullptr, std::move(vfs)); });
-    auto scan_result = scanned.has_value() ? std::move(scanned.value()) : ScanResult{};
+    if(!may_import) {
+        co_return ModuleDeps{};
+    }
+
+    llvm::SmallString<1024> joined(directory);
+    for(auto* arg: arguments) {
+        joined.push_back('\0');
+        joined.append(arg);
+    }
+    auto arguments_hash = llvm::xxh3_64bits(joined);
+    auto epoch = project.context_epoch;
+
+    Imports imports;
+    auto memo = content ? scan_memos.find(path_id) : scan_memos.end();
+    if(memo != scan_memos.end() && memo->second.directives == directives &&
+       memo->second.arguments == arguments_hash && memo->second.epoch == epoch) {
+        imports = memo->second.imports;
+    } else {
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs;
+        if(auto& synthesized = resolution.synthesized) {
+            auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
+            for(auto& [file, text]: synthesized->files) {
+                memory->addFile(file, 0, llvm::MemoryBuffer::getMemBufferCopy(text, file));
+            }
+            auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+                llvm::makeIntrusiveRefCnt<vfs::View>());
+            overlay->pushOverlay(std::move(memory));
+            vfs = std::move(overlay);
+        }
+        import_scans += 1;
+        // A failed scan finds nothing, as a scan that fails to set up does.
+        auto scanned = co_await kota::queue(
+            [&] { return scan_precise(arguments, directory, content, nullptr, std::move(vfs)); });
+        if(scanned.has_value()) {
+            imports = {.modules = std::move(scanned->modules),
+                       .module_name = std::move(scanned->module_name),
+                       .is_interface_unit = scanned->is_interface_unit};
+        }
+        if(content) {
+            scan_memos[path_id] = {.directives = directives,
+                                   .arguments = arguments_hash,
+                                   .epoch = epoch,
+                                   .imports = imports};
+        }
+    }
 
     // Every scanned name lands in the edge set, resolved or not: an
     // unresolved name edges to its sentinel, which is what lets the
@@ -79,7 +117,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
     // cascade later — no side bookkeeping of who failed against it.
     ModuleDeps deps;
     auto add = [&](llvm::StringRef name) {
-        auto mod_ids = project.dep_graph.lookup_module(name);
+        auto mod_ids = dep_graph.lookup_module(name);
         if(mod_ids.empty()) {
             deps.declared.push_back(unresolved_node(name));
         } else {
@@ -88,13 +126,13 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
         }
     };
 
-    for(auto& mod_name: scan_result.modules) {
+    for(auto& mod_name: imports.modules) {
         add(mod_name);
     }
 
     // Module implementation units implicitly depend on their interface unit.
-    if(!scan_result.module_name.empty() && !scan_result.is_interface_unit) {
-        add(scan_result.module_name);
+    if(!imports.module_name.empty() && !imports.is_interface_unit) {
+        add(imports.module_name);
     }
 
     co_return deps;
@@ -321,24 +359,18 @@ bool PCMFamily::revalidate_blobs() {
 }
 
 kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
+                                         const Resolution& resolution,
                                          llvm::ArrayRef<const char*> arguments,
                                          llvm::StringRef directory,
                                          std::optional<llvm::StringRef> content,
-                                         const SynthesizedContext* synthesized,
                                          bool foreground) {
-    // A project without module units pays nothing. A CDB reload that
-    // introduces modules mid-session takes effect on the next call.
-    if(!project.dep_graph.has_modules()) {
-        co_return true;
-    }
-
     // Resolved fresh on every call — a stale list must never outlive a
     // CDB change. The requester never runs a round here, but its
     // consumer edges must live in the graph: a saved module (or a
     // provider appearing for a sentinel) cascades to the open TUs
     // importing it through them. Declared even when empty, so a removed
     // import stops cascading.
-    auto deps = co_await direct_deps(path_id, arguments, directory, content, synthesized);
+    auto deps = co_await direct_deps(path_id, resolution, arguments, directory, content);
     // A module unit's PCM node carries its ARTIFACT's edge truth, owned
     // by its own rounds — a request's buffer view must not overwrite it
     // (an unsaved removed import would disconnect the cached PCM from

@@ -116,7 +116,7 @@ public:
                                               llvm::StringRef text,
                                               const std::string& directory,
                                               const std::vector<std::string>& arguments,
-                                              const SynthesizedContext* synthesized,
+                                              const Resolution& resolution,
                                               StatelessInputs& inputs);
 
     /// The edit path's whole supersede (didChange): the buffer moved, so
@@ -206,10 +206,10 @@ private:
     /// the file's own diagnostics.
     kota::task<bool> depend_modules(RoundContext& ctx,
                                     Fid path_id,
+                                    const Resolution& resolution,
                                     llvm::StringRef directory,
                                     const std::vector<std::string>& arguments,
-                                    llvm::StringRef text,
-                                    const SynthesizedContext* synthesized);
+                                    llvm::StringRef text);
 
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);

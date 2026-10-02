@@ -81,12 +81,20 @@ TEST_CASE(NewProviderDirtiesImporters) {
     // open document recompiles. Nothing is ever dropped — a consumer
     // that can no longer build keeps serving its last-known rows.
     TempDir tmp;
-    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
+    tmp.touch("m.cppm", "int mv();\n");
 
     FileTable files;
 
     Project project{files};
     SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"), {}}
+    }));
+    scan_all(project.cdb, project.dep_graph);
+    project.dep_graph.build_reverse_map();
+    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
     auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cppm")));
     auto closed = project.file_table.intern(Spelling::absolute("/proj/closed.cpp"));
     auto open = project.file_table.intern(Spelling::absolute("/proj/open.cpp"));
@@ -326,6 +334,33 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
 }
 
+TEST_CASE(ForcedHeaderReachesUnits) {
+    // A header reached only through a command's forced include: its
+    // change reaches the units forcing that header in, open or closed.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto forced = project.file_table.intern(Spelling::absolute("/proj/force.h"));
+    auto open = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
+    project.dep_graph.set_includes(forced, 0, {{header}});
+    project.dep_graph.add_forced_include(open, forced);
+    project.dep_graph.add_forced_include(closed, forced);
+    project.dep_graph.build_reverse_map();
+    store.open(open);
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
+
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed});
+}
+
 TEST_CASE(BatchSeesEarlierEdges) {
     // An includer an earlier event of the batch adds is visible to a later
     // cascade: the reverse map follows every rescan.
@@ -336,12 +371,17 @@ TEST_CASE(BatchSeesEarlierEdges) {
     FileTable files;
     Project project{files};
     SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("a.cpp"), {}},
+                  {tmp.root, tmp.path("b.cpp"), {}},
+    }));
+    scan_all(project.cdb, project.dep_graph);
+    project.dep_graph.build_reverse_map();
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     auto known = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
     auto added = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
-    project.dep_graph.set_includes(known, 0, {{header}});
-    project.dep_graph.set_includes(added, 0, {});
-    project.dep_graph.build_reverse_map();
     tmp.touch("b.cpp", R"(#include "h.h")");
 
     CommandResolver commands(project);
