@@ -1,4 +1,8 @@
 #include <chrono>
+#ifndef _WIN32
+#include <cerrno>
+#include <signal.h>
+#endif
 
 #include "test/test.h"
 #include "server/worker_test_helpers.h"
@@ -1851,6 +1855,24 @@ ZEST_CASE(StopIsPrompt) {
     });
     EXPECT(elapsed.count() < 1500);
 }
+
+#ifndef _WIN32
+ZEST_CASE(StopReapsWorkers) {
+    // stop() returns once every worker has exited and been reaped: a stop
+    // that let go of the exit observers would return with them running.
+    WorkerPoolFixture f;
+    std::vector<int> errors;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT(f.start(2, 0));
+        std::vector<int> pids = {f.worker_pid(0), f.worker_pid(1)};
+        co_await f.stop();
+        for(auto pid: pids) {
+            errors.push_back(::kill(pid, 0) == 0 ? 0 : errno);
+        }
+    });
+    EXPECT(errors == std::vector<int>{ESRCH, ESRCH});
+}
+#endif
 
 ZEST_CASE(StatelessRequest) {
     TempDir tmp;

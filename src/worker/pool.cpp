@@ -334,7 +334,7 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 
     low_limit = max_low_limit();
 
-    worker_tasks.spawn(kota::with_token(monitor_loop(), stop_scope.token()));
+    worker_tasks.spawn(monitor_loop());
 
     started = true;
     LOG_INFO("WorkerPool started: {} stateless, {} stateful workers",
@@ -895,7 +895,12 @@ std::size_t WorkerPool::pick_idle_stateless() {
 
 kota::task<> WorkerPool::monitor_loop() {
     while(true) {
-        co_await kota::sleep(std::chrono::milliseconds(3000), loop);
+        // A cancelled child would cancel every sibling in worker_tasks, so
+        // the stop ends this loop by returning.
+        co_await kota::with_token(kota::sleep(std::chrono::milliseconds(3000), loop),
+                                  stop_scope.token());
+        if(stop_scope.cancelled())
+            co_return;
 
         tick_foreground();
         tick_cancel_grace();
