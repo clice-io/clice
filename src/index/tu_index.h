@@ -8,6 +8,7 @@
 
 #include "feature/feature.h"
 #include "index/include_tree.h"
+#include "index/manifest.h"
 #include "index/shard.h"
 #include "index/types.h"
 
@@ -136,6 +137,14 @@ public:
 
     /// Look up one symbol's identity by hash.
     std::optional<SymbolIdentity> find_symbol(SymbolHash hash) const;
+
+    /// The internal-linkage symbols the TU references from more than one
+    /// file, sorted by symbol, their files as indices into
+    /// `contribution_paths` — the path ids of the manifest's contributions,
+    /// in order. Nullopt when a symbol's reference files are not all
+    /// among them, or its bitmap fails to decode.
+    std::optional<std::vector<LocalFanout>>
+        local_fanout(llvm::ArrayRef<std::uint32_t> contribution_paths) const;
 
     /// Whether `text` still begins with the exact preamble this envelope
     /// was built from — the gate for serving preamble-derived state

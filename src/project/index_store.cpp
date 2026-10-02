@@ -492,6 +492,15 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         section_contributions.emplace_back(local_id, blob_hash);
     }
 
+    // The manifest's contributions follow section_contributions' order.
+    auto local_fanout =
+        view.local_fanout(llvm::to_vector(llvm::make_first_range(section_contributions)));
+    if(!local_fanout) {
+        LOG_WARN("Reject merge for {}: an internal symbol's reference files carry no rows",
+                 main_tu_path);
+        return std::nullopt;
+    }
+
     // The last gate and the first commit. A malformed reference bitmap (or
     // an out-of-range reference id) rejects the whole result for the same
     // reason a rows section that fails decode does above: everything the
@@ -550,6 +559,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     for(auto [local_id, rows_hash]: section_contributions) {
         manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
     }
+    manifest.local_fanout = std::move(*local_fanout);
 
     // The places the parse's failed lookups looked: the file table watches
     // them from here on. One that holds a file by now makes the rows stale

@@ -159,6 +159,23 @@ void EXPECT_SELECT(llvm::StringRef pos,
     ASSERT_EQ(dump(occurrences.front().range), dump(expected));
 };
 
+/// Whether the main file holds a symbol-pair row of `kind` from the
+/// symbol at marker `source` to the one at marker `target`.
+bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef target) {
+    auto sources = select(source);
+    auto targets = select(target);
+    if(sources.empty() || targets.empty()) {
+        return false;
+    }
+    auto it = tu_index.main_file_index.relations.find(sources.front().target);
+    if(it == tu_index.main_file_index.relations.end()) {
+        return false;
+    }
+    return llvm::any_of(it->second, [&](const index::Relation& relation) {
+        return relation.kind == kind && relation.target_symbol == targets.front().target;
+    });
+}
+
 void GO_TO_DEFINITION(llvm::StringRef pos,
                       llvm::StringRef definition,
                       std::source_location location = std::source_location::current()) {
@@ -422,30 +439,55 @@ TEST_CASE(BaseAndDerived) {
             };
         )");
 
-    auto& index = tu_index.main_file_index;
-    auto base_occs = select("base");
-    auto derived_occs = select("derived");
-    ASSERT_FALSE(base_occs.empty());
-    ASSERT_FALSE(derived_occs.empty());
-    auto base_hash = base_occs.front().target;
-    auto derived_hash = derived_occs.front().target;
+    ASSERT_TRUE(has_pair("derived", RelationKind::Base, "base"));
+    ASSERT_TRUE(has_pair("base", RelationKind::Derived, "derived"));
+}
 
-    auto has_pair =
-        [&](index::SymbolHash source, RelationKind::Kind kind, index::SymbolHash target) {
-            auto it = index.relations.find(source);
-            if(it == index.relations.end()) {
-                return false;
-            }
-            for(auto& r: it->second) {
-                if(r.kind == kind && r.target_symbol == target) {
-                    return true;
-                }
-            }
-            return false;
-        };
+TEST_CASE(SpecializationRelations) {
+    build_index(R"(
+            template <class T>
+            struct §(box)Box {
+                void §(get)get();
+                static int §(count)count;
+            };
+            template <>
+            struct §(box_char)Box<char> {};
+            template <class T>
+            struct §(box_ptr)Box<T*> {};
+            template <>
+            void Box<int>::§(get_int)get() {}
+            template <>
+            int Box<long>::§(count_long)count = 0;
 
-    ASSERT_TRUE(has_pair(derived_hash, RelationKind::Base, base_hash));
-    ASSERT_TRUE(has_pair(base_hash, RelationKind::Derived, derived_hash));
+            template <class T>
+            void §(fn)fn(T) {}
+            template <class T>
+            void §(fn_ptr)fn(T*) {}
+            template <>
+            void §(fn_int)fn<int>(int*) {}
+
+            template <class T>
+            constexpr int §(width)width = 0;
+            template <>
+            constexpr int §(width_char)width<char> = 1;
+            template <class T>
+            constexpr int §(width_ptr)width<T*> = 2;
+        )");
+
+    for(auto [primary, specialization]: {
+            std::pair{"box",    "box_char"  },
+            std::pair{"box",    "box_ptr"   },
+            std::pair{"get",    "get_int"   },
+            std::pair{"count",  "count_long"},
+            std::pair{"fn_ptr", "fn_int"    },
+            std::pair{"width",  "width_char"},
+            std::pair{"width",  "width_ptr" },
+    }) {
+        ASSERT_TRUE(has_pair(primary, RelationKind::Specialization, specialization));
+        ASSERT_TRUE(has_pair(specialization, RelationKind::Primary, primary));
+    }
+    // The overload the specialization does not specialize stays unrelated.
+    ASSERT_FALSE(has_pair("fn", RelationKind::Specialization, "fn_int"));
 }
 
 TEST_CASE(CallerAndCallee) {
@@ -667,31 +709,9 @@ TEST_CASE(TypeDefinitionRelations) {
             enum §(e)⟦§(e)E⟧ { §(ec)⟦§(ec)A⟧ };
         )");
 
-    auto& index = tu_index.main_file_index;
-
-    auto has_type_definition = [&](llvm::StringRef source, llvm::StringRef target) {
-        auto source_occs = select(source);
-        auto target_occs = select(target);
-        if(source_occs.empty() || target_occs.empty()) {
-            return false;
-        }
-        auto source_hash = source_occs.front().target;
-        auto target_hash = target_occs.front().target;
-        auto it = index.relations.find(source_hash);
-        if(it == index.relations.end()) {
-            return false;
-        }
-        for(auto& r: it->second) {
-            if(r.kind == RelationKind::TypeDefinition && r.target_symbol == target_hash) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    ASSERT_TRUE(has_type_definition("field", "s"));
-    ASSERT_TRUE(has_type_definition("alias", "s"));
-    ASSERT_TRUE(has_type_definition("ec", "e"));
+    ASSERT_TRUE(has_pair("field", RelationKind::TypeDefinition, "s"));
+    ASSERT_TRUE(has_pair("alias", RelationKind::TypeDefinition, "s"));
+    ASSERT_TRUE(has_pair("ec", RelationKind::TypeDefinition, "e"));
 }
 
 TEST_CASE(ConstructorDestructorRelations) {
@@ -1149,6 +1169,22 @@ TEST_CASE(ScopeTULocal) {
         }
     }
     ASSERT_EQ(found, expected);
+}
+
+TEST_CASE(ScopeModuleLinkage) {
+    build_index(R"(
+            export module m;
+            int module_var = 0;
+            export int exported_var = 0;
+            static int static_var = 0;
+        )");
+
+    auto scope = [&](llvm::StringRef name) {
+        return static_cast<int>(symbol_named(name).second.scope);
+    };
+    ASSERT_EQ(scope("module_var"), static_cast<int>(index::SymbolScope::External));
+    ASSERT_EQ(scope("exported_var"), static_cast<int>(index::SymbolScope::External));
+    ASSERT_EQ(scope("static_var"), static_cast<int>(index::SymbolScope::TULocal));
 }
 
 TEST_CASE(BareNameAndParentChain) {

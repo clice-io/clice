@@ -110,10 +110,12 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
         }
         return decl->isInAnonymousNamespace() ? SymbolScope::TULocal : SymbolScope::External;
     }
+    // Module linkage reaches the module's other units, as external
+    // linkage reaches every unit.
     auto linkage = decl->getFormalLinkage();
     if(linkage == clang::Linkage::None)
         return SymbolScope::FileLocal;
-    if(linkage == clang::Linkage::Internal || linkage == clang::Linkage::Module)
+    if(linkage == clang::Linkage::Internal)
         return SymbolScope::TULocal;
     return SymbolScope::External;
 }
@@ -146,6 +148,48 @@ bool is_specialization(const clang::NamedDecl* decl) {
         return function->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization;
     }
     return false;
+}
+
+/// The template an explicit or partial specialization specializes: a
+/// class, variable or function template's pattern, or the member of a
+/// class template a member specialization replaces. Null for every other
+/// declaration, implicit and explicit instantiations included.
+const clang::NamedDecl* specialized_template(const clang::NamedDecl* decl) {
+    if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
+        if(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(CTSD) ||
+           CTSD->getSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return CTSD->getSpecializedTemplate()->getTemplatedDecl();
+        }
+        return nullptr;
+    }
+    if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(decl)) {
+        if(llvm::isa<clang::VarTemplatePartialSpecializationDecl>(VTSD) ||
+           VTSD->getSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return VTSD->getSpecializedTemplate()->getTemplatedDecl();
+        }
+        return nullptr;
+    }
+    if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        if(FD->getTemplateSpecializationKind() != clang::TSK_ExplicitSpecialization) {
+            return nullptr;
+        }
+        if(auto* primary = FD->getPrimaryTemplate()) {
+            return primary->getTemplatedDecl();
+        }
+        return FD->getInstantiatedFromMemberFunction();
+    }
+    if(auto* CRD = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+        if(CRD->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return CRD->getInstantiatedFromMemberClass();
+        }
+        return nullptr;
+    }
+    if(auto* VD = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        if(VD->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return VD->getInstantiatedFromStaticDataMember();
+        }
+    }
+    return nullptr;
 }
 
 /// clangd's rule for what unqualified completion may offer from an index:
@@ -605,6 +649,16 @@ public:
         auto* D = node.get<clang::Decl>();
         if(!D) {
             return;
+        }
+
+        // Recorded where the specialization is written, as base edges
+        // are: the template's own rows never change with the units that
+        // specialize it.
+        if(auto* ND = llvm::dyn_cast<clang::NamedDecl>(D)) {
+            if(auto* primary = specialized_template(ND)) {
+                add_pair_relation(ND, RelationKind::Primary, primary, ND->getLocation());
+                add_pair_relation(primary, RelationKind::Specialization, ND, ND->getLocation());
+            }
         }
 
         // The type of a value declaration, for go-to-type-definition.
@@ -1227,6 +1281,47 @@ std::optional<SymbolIdentity> TUIndex::find_symbol(SymbolHash hash) const {
         return std::nullopt;
     }
     return identity_of(found->get<1>());
+}
+
+std::optional<std::vector<LocalFanout>>
+    TUIndex::local_fanout(llvm::ArrayRef<std::uint32_t> contribution_paths) const {
+    llvm::DenseMap<std::uint32_t, std::uint32_t> contribution_of;
+    for(auto [index, path_id]: llvm::enumerate(contribution_paths)) {
+        contribution_of.try_emplace(path_id, static_cast<std::uint32_t>(index));
+    }
+    std::vector<LocalFanout> result;
+    bool valid = true;
+    iterate_symbols([&](SymbolHash hash, const SymbolIdentity& identity, llvm::StringRef bitmap) {
+        if(identity.scope != SymbolScope::TULocal || bitmap.empty()) {
+            return true;
+        }
+        auto files = read_bitmap(bitmap.data(), bitmap.size());
+        if(!files) {
+            valid = false;
+            return false;
+        }
+        if(files->cardinality() < 2) {
+            return true;
+        }
+        LocalFanout fanout{.symbol = hash};
+        for(auto path_id: *files) {
+            auto it = contribution_of.find(path_id);
+            if(it == contribution_of.end()) {
+                valid = false;
+                return false;
+            }
+            fanout.files.push_back(it->second);
+        }
+        result.push_back(std::move(fanout));
+        return true;
+    });
+    if(!valid) {
+        return std::nullopt;
+    }
+    llvm::sort(result, [](const LocalFanout& lhs, const LocalFanout& rhs) {
+        return lhs.symbol < rhs.symbol;
+    });
+    return result;
 }
 
 bool TUIndex::matches_prefix(llvm::StringRef text) const {

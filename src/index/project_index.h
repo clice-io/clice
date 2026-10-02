@@ -205,6 +205,25 @@ struct ProjectIndex {
     /// variant set.
     llvm::SmallVector<std::uint64_t> live_variants(Fid path_id) const;
 
+    /// The TUs that contributed rows to `file`: from `contributions` in a
+    /// writer, from the global blob's persisted copy in a reader, which
+    /// loads no manifest.
+    void each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
+
+    /// The files holding rows of an internal-linkage symbol, starting from
+    /// `anchor`, a file that holds some: the anchor, and every file the
+    /// local fanout of a TU contributing to the anchor lists for the
+    /// symbol (TUManifest::local_fanout). Each file once.
+    void each_fanout_file(SymbolHash hash,
+                          Fid anchor,
+                          const FileTable& files,
+                          llvm::function_ref<void(Fid)> visit) const;
+
+    /// A TU's manifest: held by a writer, fetched on first use by a reader
+    /// — whose copy names its versions by persisted ids. Null when the TU
+    /// has none current.
+    const TUManifest* tu_manifest(Fid tu) const;
+
     /// Per-file row blobs keyed by project-level path_id: symbol
     /// occurrences, relations and stored content for position mapping,
     /// served zero-copy. The writer holds every persisted shard here; a
@@ -259,6 +278,10 @@ private:
     /// Rows serialized by the last serialize_global and not yet known to
     /// have landed; reads consult them after `changed`.
     llvm::DenseMap<SymbolHash, Symbol> written;
+
+    /// A reader's manifests, fetched on first use; nullopt remembers a
+    /// TU without a current one.
+    mutable llvm::DenseMap<Fid, std::optional<TUManifest>> fetched_manifests;
 
     /// The database shard() fetches from, when opened over one.
     BlobDatabase* db = nullptr;

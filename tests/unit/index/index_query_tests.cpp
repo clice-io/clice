@@ -107,10 +107,15 @@ void merge_into_workspace() {
                                   .line = node.line,
                                   .skipped = node.skipped});
     }
+    llvm::SmallVector<std::uint32_t> contribution_paths;
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         manifest.contributions.emplace_back(fv_of[view.section_path(section)],
                                             view.section_hash(section));
+        contribution_paths.push_back(view.section_path(section));
     }
+    auto local_fanout = view.local_fanout(contribution_paths);
+    ASSERT_TRUE(local_fanout.has_value());
+    manifest.local_fanout = std::move(*local_fanout);
 
     for(auto path_id:
         project_index.apply_manifest(project.file_table, main_id, std::move(manifest))) {
@@ -140,7 +145,7 @@ TEST_CASE(DefinitionAcrossFiles) {
     });
     ASSERT_TRUE(symbol != 0);
 
-    auto site = query.first_site(symbol, RelationKind::Definition);
+    auto site = query.first_site(symbol, Fid{}, RelationKind::Definition);
     ASSERT_TRUE(site.has_value());
     ASSERT_TRUE(site->path.ends_with("header.h"));
 }
@@ -163,8 +168,71 @@ TEST_CASE(ReferencesAcrossFiles) {
     });
     ASSERT_TRUE(symbol != 0);
 
-    auto references = query.sites(symbol, RelationKind::Reference);
+    auto references = query.sites(symbol, Fid{}, RelationKind::Reference);
     ASSERT_FALSE(references.empty());
+}
+
+TEST_CASE(LocalReferencesClosed) {
+    add_main("main.cpp", R"(
+        int compute(int §(param)p) {
+            int §(local)q = p;
+            return §(use)q + p;
+        }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    for(auto [marker, expected]: {
+            std::pair{"use",   2U},
+            std::pair{"param", 3U}
+    }) {
+        auto cursor = query.symbol_at(main_id, point(marker));
+        ASSERT_TRUE(cursor.has_value());
+        EXPECT_EQ(query.references(*cursor, true).size(), expected);
+    }
+}
+
+TEST_CASE(InternalAcrossFiles) {
+    add_file("header.h", R"(
+        static int §(def)helper() { return 1; }
+        inline int via_header() { return §(header_use)helper(); }
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int call() { return §(main_use)helper(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    auto from_main = query.symbol_at(main_id, point("main_use"));
+    auto from_header = query.symbol_at(header_id, point("def", "header.h"));
+    ASSERT_TRUE(from_main.has_value());
+    ASSERT_TRUE(from_header.has_value());
+    ASSERT_EQ(from_main->symbols, from_header->symbols);
+    EXPECT_EQ(query.references(*from_main, true).size(), 3U);
+    EXPECT_EQ(query.references(*from_header, true).size(), 3U);
+    auto located = query.resolve_at(*from_main);
+    ASSERT_EQ(located.size(), 1U);
+    EXPECT_TRUE(located.front().site.path.ends_with("header.h"));
+}
+
+TEST_CASE(OverloadSetCursor) {
+    add_main("main.cpp", R"(
+        void §(int)take(int);
+        void §(double)take(double);
+        template <class T> void call(T t) { §(use)take(t); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    auto cursor = query.symbol_at(main_id, point("use"));
+    ASSERT_TRUE(cursor.has_value());
+    ASSERT_EQ(cursor->symbols.size(), 2U);
+    auto sites = query.definition(*cursor);
+    ASSERT_EQ(sites.size(), 2U);
+    EXPECT_EQ(sites[0].range.begin, point("int"));
+    EXPECT_EQ(sites[1].range.begin, point("double"));
+    EXPECT_EQ(query.resolve_at(*cursor).size(), 2U);
 }
 
 TEST_CASE(SearchSymbols) {
@@ -390,13 +458,13 @@ TEST_CASE(StaleContributionSuppressed) {
         symbol = o.target;
         return false;
     });
-    ASSERT_FALSE(query.sites(symbol, RelationKind::Reference).empty());
+    ASSERT_FALSE(query.sites(symbol, Fid{}, RelationKind::Reference).empty());
 
     // Rows of text the disk no longer holds point nowhere: the file's
     // contribution disappears from cross-file results until its rows
     // describe the disk again.
     project.file_table.observe(main_id, DiskObservation{.hash = 1});
-    ASSERT_TRUE(query.sites(symbol, RelationKind::Reference).empty());
+    ASSERT_TRUE(query.sites(symbol, Fid{}, RelationKind::Reference).empty());
 }
 
 TEST_CASE(ClassNameOverConstructor) {
