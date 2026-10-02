@@ -89,6 +89,21 @@ test("call hierarchy incoming", async ({ client }) => {
     client.close(uri);
 });
 
+/// An item a client sends back without its data resolves at its name.
+test("call hierarchy item without data", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
+    expect(await client.waitForIndex(uri), "Index not ready after 30s").toBe(true);
+
+    const items = await client.prepareCallHierarchy(uri, 18, 4);
+    expect(items?.length).toBe(1);
+    const stripped: proto.CallHierarchyItem = { ...items![0]! };
+    delete stripped.data;
+    const incoming = await client.callHierarchyIncoming(stripped);
+    expect(incoming!.map((call) => call.from.name)).toContain("compute");
+
+    client.close(uri);
+});
+
 /// Test outgoingCalls shows compute() calls add().
 test("call hierarchy outgoing", async ({ client }) => {
     const [uri] = await client.openAndWait("main.cpp");

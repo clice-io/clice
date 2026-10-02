@@ -227,8 +227,8 @@ public:
     /// per-edit index, spelled in the same buffer coordinates.
     ///
     /// One name can spell several symbols: an overload set a template's
-    /// call leaves open, `using Base::Base` naming the class and its
-    /// constructors, the variants of a shared header naming different
+    /// call leaves open, `using Base::Base` naming each inherited
+    /// constructor, the variants of a shared header naming different
     /// entities. The questions about a cursor answer for all of them.
     struct Cursor {
         llvm::SmallVector<SymbolHash, 1> symbols;

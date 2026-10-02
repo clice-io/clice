@@ -68,23 +68,37 @@ struct ManifestBlobMirror {
     std::vector<std::uint32_t> local_files;
 };
 
-TEST_CASE(ManifestFanoutRangeRejected) {
-    // A fanout file must name one of the manifest's contributions.
-    ManifestBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
-    mirror.contribution_count = 1;
-    mirror.contributions = {1, 0, 0, 0, 0, 0, 0, 0, 0};
-    mirror.local_symbols = {5};
-    mirror.local_file_ends = {2};
-    mirror.local_files = {0, 1};
+TEST_CASE(ManifestFanoutRejected) {
+    ManifestBlobMirror valid;
+    valid.format_version = index::index_format_version;
+    valid.contribution_count = 1;
+    valid.contributions = {1, 0, 0, 0, 0, 0, 0, 0, 0};
+    valid.local_symbols = {5, 7};
+    valid.local_file_ends = {1, 2};
+    valid.local_files = {0, 0};
 
-    auto blob = kota::codec::fbs::to_bytes(mirror);
-    ASSERT_TRUE(blob.has_value());
-    ASSERT_FALSE(index::deserialize_manifest(bytes_of(*blob)).has_value());
-    mirror.local_files = {0, 0};
-    blob = kota::codec::fbs::to_bytes(mirror);
-    ASSERT_TRUE(blob.has_value());
-    ASSERT_TRUE(index::deserialize_manifest(bytes_of(*blob)).has_value());
+    auto decodes = [&](const ManifestBlobMirror& mirror) {
+        auto blob = kota::codec::fbs::to_bytes(mirror);
+        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
+    };
+    ASSERT_TRUE(decodes(valid));
+
+    // A fanout file must name one of the manifest's contributions.
+    auto mirror = valid;
+    mirror.local_files = {0, 1};
+    ASSERT_FALSE(decodes(mirror));
+
+    mirror = valid;
+    mirror.local_symbols = {7, 5};
+    ASSERT_FALSE(decodes(mirror));
+
+    mirror = valid;
+    mirror.local_file_ends = {1};
+    ASSERT_FALSE(decodes(mirror));
+
+    mirror = valid;
+    mirror.local_file_ends = {1, 1};
+    ASSERT_FALSE(decodes(mirror));
 }
 
 TEST_CASE(ManifestCountMismatchRejected) {

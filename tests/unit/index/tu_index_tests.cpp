@@ -472,6 +472,16 @@ TEST_CASE(SpecializationRelations) {
             constexpr int §(width_char)width<char> = 1;
             template <class T>
             constexpr int §(width_ptr)width<T*> = 2;
+
+            template <class T>
+            struct Outer {
+                struct §(inner)Inner;
+            };
+            template <>
+            struct Outer<int>::§(inner_int)Inner {};
+
+            template struct Box<short>;
+            Box<double> used;
         )");
 
     for(auto [primary, specialization]: {
@@ -482,12 +492,22 @@ TEST_CASE(SpecializationRelations) {
             std::pair{"fn_ptr", "fn_int"    },
             std::pair{"width",  "width_char"},
             std::pair{"width",  "width_ptr" },
+            std::pair{"inner",  "inner_int" },
     }) {
         ASSERT_TRUE(has_pair(primary, RelationKind::Specialization, specialization));
         ASSERT_TRUE(has_pair(specialization, RelationKind::Primary, primary));
     }
     // The overload the specialization does not specialize stays unrelated.
+    ASSERT_EQ(select("fn").size(), 1U);
     ASSERT_FALSE(has_pair("fn", RelationKind::Specialization, "fn_int"));
+
+    // Instantiations, explicit or implicit, specialize nothing.
+    auto& rows = tu_index.main_file_index.relations[select("box").front().target];
+    ASSERT_EQ(llvm::count_if(rows,
+                             [](const index::Relation& relation) {
+                                 return relation.kind == RelationKind::Specialization;
+                             }),
+              2);
 }
 
 TEST_CASE(CallerAndCallee) {

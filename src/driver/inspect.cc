@@ -323,8 +323,7 @@ std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
         raw.kind = symbol ? symbol->kind : SymbolKind(SymbolKind::Invalid);
         if(auto found = relations.find(occurrence.target); found != relations.end()) {
             for(const auto& relation: found->second) {
-                if(relation.range.begin <= occurrence.range.begin &&
-                   occurrence.range.end <= relation.range.end) {
+                if(relation.range.contains(occurrence.range)) {
                     raw.relations.emplace_back(kota::meta::enum_name(relation.kind, "Invalid"));
                 }
             }

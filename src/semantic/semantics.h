@@ -215,10 +215,8 @@ bool should_ignore_token(const clang::syntax::Token& token);
 /// the token spelling its name — invalid for a use no token spells (an
 /// implicit constructor or destructor call, a range-for's generated
 /// `begin`, a user-defined literal's operator, whose suffix cannot be
-/// split off its token). A name written with several tokens (`~Foo`,
-/// `operator==`, `operator const T*`, `operator""_km`) also has the
-/// location of its last one; a destructor's ends at the class name, its
-/// template arguments being references of their own.
+/// split off its token). A name written with several tokens also has the
+/// location of its last one (see written_name).
 struct Reference {
     const clang::NamedDecl* decl;
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -1941,8 +1942,7 @@ clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
         case clang::DeclarationName::CXXConversionFunctionName:
         case clang::DeclarationName::CXXLiteralOperatorName: {
             if(location.isValid() &&
-               llvm::StringRef(SM.getCharacterData(SM.getSpellingLoc(location)))
-                   .starts_with("operator")) {
+               std::strncmp(SM.getCharacterData(SM.getSpellingLoc(location)), "operator", 8) == 0) {
                 return {location, name.getEndLoc()};
             }
             return location;

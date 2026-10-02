@@ -113,8 +113,7 @@ bool needs_path(const clang::NamedDecl* decl, CompilationUnitRef unit) {
         return false;
     }
     if(llvm::isa<clang::TagDecl>(decl) && !unit.context().getLangOpts().CPlusPlus &&
-       !unit.borrows_context() &&
-       unit.is_main_file(unit.file_id(unit.expansion_location(decl->getLocation())))) {
+       unit.host_source(unit.file_id(unit.expansion_location(decl->getLocation())))) {
         return true;
     }
     auto linkage = decl->getLinkageInternal();
@@ -1106,7 +1105,7 @@ void EntityTable::add_file(Hasher& hasher, clang::FileID fid) {
         return;
     }
     llvm::SmallString<256> storage;
-    hasher.add(path::portable(unit.file_path(fid), unit.workspace(), storage));
+    hasher.add(path::portable(unit.source_path(fid), unit.workspace(), storage));
 }
 
 void EntityTable::add_declaration_name(Hasher& hasher, clang::DeclarationName name) {

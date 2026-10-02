@@ -207,7 +207,7 @@ struct ProjectIndex {
 
     /// The TUs that contributed rows to `file`: from `contributions` in a
     /// writer, from the global blob's persisted copy in a reader, which
-    /// loads no manifest.
+    /// holds no manifests to derive it from.
     void each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
 
     /// The files holding rows of an internal-linkage symbol, starting from
@@ -260,16 +260,19 @@ struct ProjectIndex {
     /// from it on first use. False when there is no readable global blob.
     bool open(BlobDatabase& db, FileTable& files);
 
+    /// The byte split of the base blob's symbol table and reverse include
+    /// graph; everything else in the blob (file versions, the path table,
+    /// framing) is the remainder of its serialized size.
     struct GlobalColumns {
         std::size_t names = 0;
         std::size_t args = 0;
         std::size_t bitmaps = 0;
+        /// Hash, parent, kind, flags and file per symbol.
         std::size_t fixed = 0;
         std::size_t contributors = 0;
     };
 
-    /// The base blob's symbol and reverse include graph columns in bytes,
-    /// for `clice index --stats`.
+    /// For `clice index --stats`.
     GlobalColumns global_columns() const;
 
 private:

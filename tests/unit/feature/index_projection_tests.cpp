@@ -65,11 +65,14 @@ struct Point {
     int y;
     int sum();
     Point operator+(Point other);
+    ~Point();
 };
 
 int Point::sum() {
     return x + y + VALUE;
 }
+
+Point::~Point() {}
 
 int total(Point point, int base) {
     const char* label = "sum";

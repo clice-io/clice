@@ -4,6 +4,7 @@
 #include "vfs/path.h"
 
 #include "kota/ipc/lsp/text.h"
+#include "clang/Lex/Preprocessor.h"
 
 namespace clice {
 
@@ -203,6 +204,41 @@ bool CompilationUnitRef::synthesized(clang::FileID fid) {
 
 bool CompilationUnitRef::borrows_context() {
     return !self->synthesized.empty();
+}
+
+auto CompilationUnitRef::source_path(clang::FileID fid) -> llvm::StringRef {
+    if(!synthesized(fid)) {
+        return file_path(fid);
+    }
+    auto& SM = self->SM();
+    return SM.getPresumedLoc(SM.getLocForEndOfFile(fid)).getFilename();
+}
+
+bool CompilationUnitRef::host_source(clang::FileID fid) {
+    if(!borrows_context()) {
+        return is_main_file(fid);
+    }
+    if(!synthesized(fid)) {
+        return false;
+    }
+    // The host's first fragment is the one the compile -includes, from
+    // the predefines buffer.
+    if(!self->host) {
+        self->host.emplace();
+        auto& SM = self->SM();
+        auto predefines = self->instance->getPreprocessor().getPredefinesFileID();
+        for(auto path: self->synthesized.keys()) {
+            auto entry = SM.getFileManager().getOptionalFileRef(path);
+            if(!entry) {
+                continue;
+            }
+            auto root = SM.translateFile(*entry);
+            if(root.isValid() && SM.getFileID(SM.getIncludeLoc(root)) == predefines) {
+                *self->host = source_path(root);
+            }
+        }
+    }
+    return source_path(fid) == *self->host;
 }
 
 bool CompilationUnitRef::from_context(clang::FileID fid) {

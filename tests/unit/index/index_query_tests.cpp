@@ -216,6 +216,28 @@ TEST_CASE(InternalAcrossFiles) {
     EXPECT_TRUE(located.front().site.path.ends_with("header.h"));
 }
 
+TEST_CASE(InternalTypeTarget) {
+    add_file("header.h", R"(
+        namespace {
+        struct Point { int x; };
+        struct Pair { Point first; int second; };
+        Pair make() { return {}; }
+        }
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int read() { auto [§(var)point, count] = make(); return point.x + count; }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    auto cursor = query.symbol_at(main_id, point("var"));
+    ASSERT_TRUE(cursor.has_value());
+    auto sites = query.target_sites(cursor->symbols.front(), main_id, RelationKind::TypeDefinition);
+    ASSERT_EQ(sites.size(), 1U);
+    EXPECT_TRUE(sites.front().path.ends_with("header.h"));
+}
+
 TEST_CASE(InternalAcrossUnits) {
     llvm::StringRef header = "static int helper() { return 1; }\n";
     add_file("header.h", header);

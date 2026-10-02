@@ -418,7 +418,7 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
             gather(cursor->symbols,
                    path_id,
                    [&](const index::IndexQuery& from, index::SymbolHash named) {
-                       return from.definition({{named}, cursor->site});
+                       return from.definition({.symbols = {named}, .site = cursor->site});
                    }));
     };
     if(auto result = index_definition(); !result.empty()) {
@@ -847,12 +847,12 @@ Features::RawResult Features::references(std::shared_ptr<Session> session,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::locations(
-        gather(cursor->symbols,
-               path_id,
-               [&](const index::IndexQuery& from, index::SymbolHash named) {
-                   return from.references({{named}, cursor->site}, include_declaration);
-               })));
+    co_return to_raw(to_lsp::locations(gather(
+        cursor->symbols,
+        path_id,
+        [&](const index::IndexQuery& from, index::SymbolHash named) {
+            return from.references({.symbols = {named}, .site = cursor->site}, include_declaration);
+        })));
 }
 
 llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol, Fid anchor) {
@@ -1003,12 +1003,12 @@ Features::RawResult Features::declaration(std::shared_ptr<Session> session,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(
-        to_lsp::locations(gather(cursor->symbols,
-                                 path_id,
-                                 [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                     return from.declaration({{named}, cursor->site});
-                                 })));
+    co_return to_raw(to_lsp::locations(
+        gather(cursor->symbols,
+               path_id,
+               [&](const index::IndexQuery& from, index::SymbolHash named) {
+                   return from.declaration({.symbols = {named}, .site = cursor->site});
+               })));
 }
 
 Features::RawResult Features::type_definition(std::shared_ptr<Session> session,

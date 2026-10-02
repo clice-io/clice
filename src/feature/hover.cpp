@@ -912,10 +912,6 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
     auto spelled = semantics.spelled_tokens();
     llvm::SmallVector<const clang::NamedDecl*, 4> decls;
 
-    auto written = [&](clang::SourceLocation location) {
-        return location.isMacroID() ? unit.spelling_location(location) : location;
-    };
-
     /// Whether the token is a later token the occurrence's name owns: any
     /// token of `~Foo` or `operator==` names the function, `Foo` the
     /// destructor rather than the class.
@@ -924,8 +920,10 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
             return false;
         }
         auto [fid, offset] = unit.decompose_location(token);
-        auto [begin_fid, begin_offset] = unit.decompose_location(written(occurrence.location));
-        auto [end_fid, end_offset] = unit.decompose_location(written(occurrence.name_end));
+        auto [begin_fid, begin_offset] =
+            unit.decompose_location(unit.spelling_location(occurrence.location));
+        auto [end_fid, end_offset] =
+            unit.decompose_location(unit.spelling_location(occurrence.name_end));
         return fid == begin_fid && fid == end_fid && begin_offset < offset && offset <= end_offset;
     };
 
@@ -959,7 +957,7 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
                 }
 
                 for(auto& occurrence: resolve_occurrences(semantics, n, &unit.resolver())) {
-                    if(written(occurrence.location) == token.location()) {
+                    if(unit.spelling_location(occurrence.location) == token.location()) {
                         if(seen.insert(occurrence.decl).second) {
                             decls.push_back(occurrence.decl);
                         }

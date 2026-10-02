@@ -74,7 +74,7 @@ struct GlobalBlob {
     std::uint64_t search_generation = 0;
     std::vector<std::uint64_t> search_pending;
 
-    /// The reverse include graph, for readers that load no manifest: every
+    /// The reverse include graph, for readers holding no manifests: every
     /// file some TU contributed rows to (path ids, ascending), and those
     /// TUs' path ids as portable roaring images back to back.
     std::vector<std::uint32_t> contributed_files;
@@ -152,9 +152,16 @@ struct ProjectIndex::Base {
         return slice(args, args_ends, doc);
     }
 
+    /// The `i`th of the images stored back to back in `arena`.
+    static llvm::ArrayRef<std::uint8_t> image(llvm::ArrayRef<std::uint8_t> arena,
+                                              llvm::ArrayRef<std::uint32_t> ends,
+                                              std::uint32_t i) {
+        auto begin = i == 0 ? 0 : ends[i - 1];
+        return arena.slice(begin, ends[i] - begin);
+    }
+
     llvm::ArrayRef<std::uint8_t> image(std::uint32_t doc) const {
-        auto begin = doc == 0 ? 0 : bitmap_ends[doc - 1];
-        return bitmaps.slice(begin, bitmap_ends[doc] - begin);
+        return image(bitmaps, bitmap_ends, doc);
     }
 
     std::optional<Bitmap> bitmap(std::uint32_t doc) const {
@@ -174,8 +181,7 @@ struct ProjectIndex::Base {
         if(it == contributed_index.end()) {
             return std::nullopt;
         }
-        auto begin = it->second == 0 ? 0 : contributor_ends[it->second - 1];
-        auto bytes = contributors.slice(begin, contributor_ends[it->second] - begin);
+        auto bytes = image(contributors, contributor_ends, it->second);
         return view_bitmap(bytes.data(), bytes.size());
     }
 
@@ -841,7 +847,7 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         }
         reverse.emplace_back(path_id(file), std::move(tus));
     }
-    llvm::sort(reverse, [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    std::ranges::sort(reverse, {}, [](const auto& entry) { return entry.first; });
     for(auto& [file, tus]: reverse) {
         blob.contributed_files.push_back(file);
         auto image = write_bitmap(tus);

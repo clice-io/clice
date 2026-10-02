@@ -168,6 +168,15 @@ public:
     /// a header, compiled as its host sees it.
     bool borrows_context();
 
+    /// The path of the file `fid` stands for: its own, or for a synthesized
+    /// fragment the file it was cut from, which the fragment's opening
+    /// #line marker names.
+    auto source_path(clang::FileID fid) -> llvm::StringRef;
+
+    /// Whether the file is the compile's own source: the main file, or
+    /// under a borrowed includer context a fragment cut from the host.
+    bool host_source(clang::FileID fid);
+
     /// Whether the file belongs to a borrowed includer context: synthesized
     /// itself, or entered through a synthesized file. Such files are the
     /// host's to index, not this unit's.

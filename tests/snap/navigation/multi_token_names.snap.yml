@@ -25,12 +25,12 @@ call_paren:
   references:
     - { file: "${WS}/multi_token_names.cpp", range: "20:8-20:18" }
     - { file: "${WS}/multi_token_names.cpp", range: "28:9-28:19" }
-    - { file: "${WS}/multi_token_names.cpp", range: "45:15-45:16" }
-    - { file: "${WS}/multi_token_names.cpp", range: "45:17-45:18" }
+    - { file: "${WS}/multi_token_names.cpp", range: "46:15-46:16" }
+    - { file: "${WS}/multi_token_names.cpp", range: "46:17-46:18" }
   callHierarchy:
     - { name: "operator()", kind: Operator, file: "${WS}/multi_token_names.cpp", range: "28:0-30:1", selection: "28:9-28:19" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-46:1", selection: "40:5-40:8", fromRanges: ["45:15-45:16"] }
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["46:15-46:16"] }
 
 conv_call_type:
   definition:
@@ -58,7 +58,7 @@ conv_keyword:
   callHierarchy:
     - { name: "operator Handle *", kind: Method, file: "${WS}/multi_token_names.cpp", range: "32:0-34:1", selection: "32:5-32:21" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-46:1", selection: "40:5-40:8", fromRanges: ["43:26-43:42"] }
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["43:26-43:42"] }
 
 conv_type:
   definition:
@@ -89,7 +89,7 @@ dtor_call:
   callHierarchy:
     - { name: "~Box", kind: Method, file: "${WS}/multi_token_names.cpp", range: "14:0-15:17", selection: "15:8-15:12" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-46:1", selection: "40:5-40:8", fromRanges: ["41:9-41:13"] }
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["41:9-41:13"] }
 
 dtor_class:
   definition:
@@ -105,7 +105,7 @@ dtor_class:
   callHierarchy:
     - { name: "~Box", kind: Method, file: "${WS}/multi_token_names.cpp", range: "14:0-15:17", selection: "15:8-15:12" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-46:1", selection: "40:5-40:8", fromRanges: ["41:9-41:13"] }
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["41:9-41:13"] }
 
 dtor_tilde:
   definition:
@@ -121,7 +121,7 @@ dtor_tilde:
   callHierarchy:
     - { name: "~Box", kind: Method, file: "${WS}/multi_token_names.cpp", range: "14:0-15:17", selection: "15:8-15:12" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-46:1", selection: "40:5-40:8", fromRanges: ["41:9-41:13"] }
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["41:9-41:13"] }
 
 eq_explicit:
   definition:
@@ -133,12 +133,12 @@ eq_explicit:
     - { file: "${WS}/multi_token_names.cpp", range: "19:9-19:19" }
     - { file: "${WS}/multi_token_names.cpp", range: "24:10-24:20" }
     - { file: "${WS}/multi_token_names.cpp", range: "42:49-42:59" }
-    - { file: "${WS}/multi_token_names.cpp", range: "44:16-44:18" }
-    - { file: "${WS}/multi_token_names.cpp", range: "44:33-44:43" }
+    - { file: "${WS}/multi_token_names.cpp", range: "45:16-45:18" }
+    - { file: "${WS}/multi_token_names.cpp", range: "45:33-45:43" }
   callHierarchy:
     - { name: "operator==", kind: Operator, file: "${WS}/multi_token_names.cpp", range: "24:0-26:1", selection: "24:10-24:20" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-46:1", selection: "40:5-40:8", fromRanges: ["44:16-44:18", "44:33-44:43"] }
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["45:16-45:18", "45:33-45:43"] }
 
 eq_keyword:
   definition:
@@ -149,12 +149,12 @@ eq_keyword:
     - { file: "${WS}/multi_token_names.cpp", range: "19:9-19:19" }
     - { file: "${WS}/multi_token_names.cpp", range: "24:10-24:20" }
     - { file: "${WS}/multi_token_names.cpp", range: "42:49-42:59" }
-    - { file: "${WS}/multi_token_names.cpp", range: "44:16-44:18" }
-    - { file: "${WS}/multi_token_names.cpp", range: "44:33-44:43" }
+    - { file: "${WS}/multi_token_names.cpp", range: "45:16-45:18" }
+    - { file: "${WS}/multi_token_names.cpp", range: "45:33-45:43" }
   callHierarchy:
     - { name: "operator==", kind: Operator, file: "${WS}/multi_token_names.cpp", range: "24:0-26:1", selection: "24:10-24:20" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-46:1", selection: "40:5-40:8", fromRanges: ["44:16-44:18", "44:33-44:43"] }
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["45:16-45:18", "45:33-45:43"] }
 
 eq_pointer:
   definition:
@@ -166,12 +166,12 @@ eq_pointer:
     - { file: "${WS}/multi_token_names.cpp", range: "19:9-19:19" }
     - { file: "${WS}/multi_token_names.cpp", range: "24:10-24:20" }
     - { file: "${WS}/multi_token_names.cpp", range: "42:49-42:59" }
-    - { file: "${WS}/multi_token_names.cpp", range: "44:16-44:18" }
-    - { file: "${WS}/multi_token_names.cpp", range: "44:33-44:43" }
+    - { file: "${WS}/multi_token_names.cpp", range: "45:16-45:18" }
+    - { file: "${WS}/multi_token_names.cpp", range: "45:33-45:43" }
   callHierarchy:
     - { name: "operator==", kind: Operator, file: "${WS}/multi_token_names.cpp", range: "24:0-26:1", selection: "24:10-24:20" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-46:1", selection: "40:5-40:8", fromRanges: ["44:16-44:18", "44:33-44:43"] }
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["45:16-45:18", "45:33-45:43"] }
 
 eq_symbol:
   definition:
@@ -182,12 +182,12 @@ eq_symbol:
     - { file: "${WS}/multi_token_names.cpp", range: "19:9-19:19" }
     - { file: "${WS}/multi_token_names.cpp", range: "24:10-24:20" }
     - { file: "${WS}/multi_token_names.cpp", range: "42:49-42:59" }
-    - { file: "${WS}/multi_token_names.cpp", range: "44:16-44:18" }
-    - { file: "${WS}/multi_token_names.cpp", range: "44:33-44:43" }
+    - { file: "${WS}/multi_token_names.cpp", range: "45:16-45:18" }
+    - { file: "${WS}/multi_token_names.cpp", range: "45:33-45:43" }
   callHierarchy:
     - { name: "operator==", kind: Operator, file: "${WS}/multi_token_names.cpp", range: "24:0-26:1", selection: "24:10-24:20" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-46:1", selection: "40:5-40:8", fromRanges: ["44:16-44:18", "44:33-44:43"] }
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["45:16-45:18", "45:33-45:43"] }
 
 eq_use:
   definition:
@@ -199,12 +199,12 @@ eq_use:
     - { file: "${WS}/multi_token_names.cpp", range: "19:9-19:19" }
     - { file: "${WS}/multi_token_names.cpp", range: "24:10-24:20" }
     - { file: "${WS}/multi_token_names.cpp", range: "42:49-42:59" }
-    - { file: "${WS}/multi_token_names.cpp", range: "44:16-44:18" }
-    - { file: "${WS}/multi_token_names.cpp", range: "44:33-44:43" }
+    - { file: "${WS}/multi_token_names.cpp", range: "45:16-45:18" }
+    - { file: "${WS}/multi_token_names.cpp", range: "45:33-45:43" }
   callHierarchy:
     - { name: "operator==", kind: Operator, file: "${WS}/multi_token_names.cpp", range: "24:0-26:1", selection: "24:10-24:20" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-46:1", selection: "40:5-40:8", fromRanges: ["44:16-44:18", "44:33-44:43"] }
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["45:16-45:18", "45:33-45:43"] }
 
 literal_suffix:
   definition:
@@ -213,5 +213,8 @@ literal_suffix:
     - { file: "${WS}/multi_token_names.cpp", range: "36:19-36:32" }
   references:
     - { file: "${WS}/multi_token_names.cpp", range: "36:19-36:32" }
+    - { file: "${WS}/multi_token_names.cpp", range: "44:34-44:38" }
   callHierarchy:
     - { name: "operator \"\"_km", kind: Function, file: "${WS}/multi_token_names.cpp", range: "36:0-38:1", selection: "36:19-36:32" }
+  incomingCalls:
+    - { name: "use", kind: Function, file: "${WS}/multi_token_names.cpp", range: "40:0-47:1", selection: "40:5-40:8", fromRanges: ["44:34-44:38"] }

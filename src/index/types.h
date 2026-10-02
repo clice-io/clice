@@ -198,7 +198,9 @@ struct Symbol {
     /// symbol is only referenced.
     std::uint32_t file = no_file;
 
-    /// All files that referenced this symbol.
+    /// All files that referenced this symbol; for an internal-linkage one
+    /// also the files whose rows target it (a structured binding's
+    /// TypeDefinition row naming a type the file never spells).
     Bitmap reference_files;
 
     /// The identity a reader hands out for this row; the strings borrow it.

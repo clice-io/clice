@@ -70,9 +70,7 @@ auto site_key(const Site& site) {
 /// The whole declaration a declaring row names, when the row carries its
 /// extent in this source's text.
 std::optional<Site> extent_of(const RowSource& source, const Relation& relation) {
-    if(!RelationKind(relation.kind).isDeclOrDef()) {
-        return std::nullopt;
-    }
+    assert(RelationKind(relation.kind).isDeclOrDef());
     auto extent = std::bit_cast<LocalSourceRange>(relation.target_symbol);
     if(extent.begin >= extent.end || extent.end > source.coords.size()) {
         return std::nullopt;
@@ -92,8 +90,7 @@ void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
 }  // namespace
 
 bool covers(const Site& row, const Site& cursor) {
-    return row.path == cursor.path && row.range.begin <= cursor.range.begin &&
-           cursor.range.end <= row.range.end;
+    return row.path == cursor.path && row.range.contains(cursor.range);
 }
 
 void dedup_sites(std::vector<Site>& sites) {
@@ -610,7 +607,8 @@ llvm::SmallVector<IndexQuery::Target> IndexQuery::targets(SymbolHash hash,
                       {.preamble = false},
                       [&](const RowSource& source, const Relation& relation) {
                           if(seen.insert(relation.target_symbol).second) {
-                              result.push_back({relation.target_symbol, source.file});
+                              result.push_back(
+                                  {.symbol = relation.target_symbol, .anchor = source.file});
                           }
                           return true;
                       });
@@ -702,7 +700,7 @@ std::vector<Site> IndexQuery::implementation(SymbolHash hash, Fid anchor) const 
     std::vector<Site> result;
     llvm::DenseSet<SymbolHash> seen{hash};
     llvm::SmallVector<Target> pending{
-        {hash, anchor}
+        {.symbol = hash, .anchor = anchor}
     };
     while(!pending.empty()) {
         auto next = pending.pop_back_val();
@@ -713,7 +711,7 @@ std::vector<Site> IndexQuery::implementation(SymbolHash hash, Fid anchor) const 
             }
             result.push_back(located.site);
             if(!reported_defined(located.symbol.hash, located.site.file)) {
-                pending.push_back({located.symbol.hash, located.site.file});
+                pending.push_back({.symbol = located.symbol.hash, .anchor = located.site.file});
             }
         }
     }
@@ -747,20 +745,20 @@ std::optional<IndexQuery::Definition> IndexQuery::definition_text(SymbolHash has
                       Order::LiveFirst,
                       {},
                       [&](const RowSource& source, const Relation& relation) {
-                          auto site = extent_of(source, relation);
-                          if(!site) {
+                          auto extent = extent_of(source, relation);
+                          if(!extent) {
                               return true;
                           }
-                          auto extent = site->range;
                           std::unique_ptr<llvm::MemoryBuffer> storage;
                           auto text = source_text(source, storage);
                           if(!text) {
                               return true;
                           }
+                          auto range = extent->range;
                           found = Definition{
-                              .extent = *site,
-                              .text = std::string(text->substr(extent.begin, extent.length())),
-                              .comment = feature::preceding_comment(*text, extent.begin),
+                              .extent = *extent,
+                              .text = std::string(text->substr(range.begin, range.length())),
+                              .comment = feature::preceding_comment(*text, range.begin),
                           };
                           return false;
                       });

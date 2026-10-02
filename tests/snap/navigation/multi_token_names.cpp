@@ -42,6 +42,7 @@ bool use(Box<int>* box, const Vec& left, const Vec& right) {
     box->~§(dtor_call)Box<int>();
     bool (Vec::*equal)(const Vec&) const = &Vec::§(eq_pointer)operator==;
     Handle* handle = left.operator §(conv_call_type)Handle*();
+    unsigned long long distance = 5_km;
     return left §(eq_use)== right && left.§(eq_explicit)operator==(right) && (left.*equal)(right) &&
-           left(1) == 2 && handle == nullptr;
+           left(1) == 2 && handle == nullptr && distance > 0;
 }

@@ -415,8 +415,8 @@ public:
     }
 
     /// A Definition/Declaration/Reference row mirroring an occurrence: it
-    /// lands at the same range, and decl/def rows also carry the
-    /// declaration's full extent for definition-text consumers.
+    /// spans the whole written name the occurrence lies in, and decl/def
+    /// rows also carry the declaration's full extent.
     void add_self_relation(const clang::NamedDecl* decl,
                            RelationKind kind,
                            clang::SourceRange name) {
@@ -1008,6 +1008,14 @@ public:
                         adopt(symbol, path_id, true);
                     } else if(relation.kind == RelationKind::Declaration) {
                         adopt(symbol, path_id, false);
+                    } else if(RelationKind(relation.kind).isBetweenSymbol()) {
+                        // A query anchors a relation's target at the file
+                        // holding the row; an internal one reaches its own
+                        // rows from there only through this file.
+                        if(auto it = symbols.find(relation.target_symbol);
+                           it != symbols.end() && it->second.scope == SymbolScope::TULocal) {
+                            it->second.reference_files.add(path_id);
+                        }
                     }
                 }
             }
@@ -1390,9 +1398,7 @@ std::optional<std::vector<LocalFanout>>
     if(!valid) {
         return std::nullopt;
     }
-    llvm::sort(result, [](const LocalFanout& lhs, const LocalFanout& rhs) {
-        return lhs.symbol < rhs.symbol;
-    });
+    std::ranges::sort(result, {}, &LocalFanout::symbol);
     return result;
 }
 

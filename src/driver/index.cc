@@ -342,9 +342,6 @@ ShardColumns shard_columns_of(llvm::StringRef bytes) {
     return columns;
 }
 
-/// The byte split of the global blob's symbol table; everything else in
-/// the blob (file versions, the path table, framing) is the remainder of
-/// its serialized size.
 struct IndexStats {
     std::vector<ShardStat> shards;
     ShardColumns columns;
@@ -472,7 +469,7 @@ void print_stats(const Project& project,
     column("variant tables", stats.columns.variants, payload);
 
     auto& global = stats.global;
-    auto symbol_bytes =
+    auto column_bytes =
         global.names + global.args + global.bitmaps + global.fixed + global.contributors;
     std::println();
     std::println("Global blob ({}):", format_size(stats.global_bytes));
@@ -482,7 +479,7 @@ void print_stats(const Project& project,
     column("symbol fixed columns", global.fixed, stats.global_bytes);
     column("reverse include graph", global.contributors, stats.global_bytes);
     column("file versions + paths",
-           stats.global_bytes > symbol_bytes ? stats.global_bytes - symbol_bytes : 0,
+           stats.global_bytes > column_bytes ? stats.global_bytes - column_bytes : 0,
            stats.global_bytes);
 
     std::println();

@@ -21,10 +21,10 @@ struct IncludeEdge {
     std::string target;
 };
 
-/// An internal-linkage symbol a TU references from more than one of its
-/// files, with those files as indices into the manifest's contributions.
-/// No project-wide table lists such a symbol: this is how a query reaches
-/// its rows in files other than the one it started from.
+/// An internal-linkage symbol more than one of a TU's files names, with
+/// those files as indices into the manifest's contributions. No
+/// project-wide table lists such a symbol: this is how a query reaches its
+/// rows in files other than the one it started from.
 struct LocalFanout {
     std::uint64_t symbol = 0;
     std::vector<std::uint32_t> files;

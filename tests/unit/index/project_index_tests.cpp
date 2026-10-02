@@ -457,6 +457,73 @@ TEST_CASE(LazyShardsStayPut) {
     ASSERT_TRUE(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
 }
 
+TEST_CASE(ReaderFanoutAcrossUnits) {
+    // A `static` in a shared header: each unit's manifest names the files
+    // its own copy reaches, and a reader steps from one unit to the other
+    // through the persisted reverse include graph.
+    TempDir tmp;
+    auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
+    ASSERT_TRUE(store.has_value());
+    auto db = index::open_database(*store, "");
+    ASSERT_TRUE(db != nullptr);
+
+    constexpr index::SymbolHash helper = 99;
+    clice::FileTable pool;
+    index::ProjectIndex writer;
+    writer.global_generation = 3;
+    auto header = pool.intern(Spelling::absolute("/proj/util.h"));
+    auto header_fv = pool.intern_version(header, 0xaaaa);
+    llvm::SmallVector<Fid> units;
+    for(auto name: {"/proj/a.cpp", "/proj/b.cpp"}) {
+        auto tu = pool.intern(Spelling::absolute(name));
+        index::TUManifest manifest;
+        manifest.global_gen = 3;
+        manifest.tu_fv = pool.intern_version(tu, 0x1111);
+        manifest.nodes = {
+            {manifest.tu_fv.raw, ~0u, 1},
+            {header_fv.raw,      0,   1},
+        };
+        manifest.contributions = {
+            {manifest.tu_fv, 1},
+            {header_fv,      2},
+        };
+        manifest.local_fanout = {
+            {.symbol = helper, .files = {0, 1}}
+        };
+        writer.apply_manifest(pool, tu, std::move(manifest));
+        units.push_back(tu);
+    }
+
+    std::vector<index::BlobDatabase::Blob> puts;
+    for(auto tu: units) {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_manifest(writer.export_manifest(writer.manifests.find(tu)->second), os);
+        puts.push_back({index::IndexBlobKind::Manifest, writer.key_of(pool, tu), bytes});
+    }
+    std::string global;
+    llvm::raw_string_ostream global_os(global);
+    writer.serialize_global(global_os, pool);
+    puts.push_back({index::IndexBlobKind::Global, "global", global});
+    ASSERT_TRUE(db->write(puts, {}).empty());
+    ASSERT_TRUE(db->advance_read_snapshot().has_value());
+
+    clice::FileTable files;
+    index::ProjectIndex reader;
+    ASSERT_TRUE(reader.open(*db, files));
+    llvm::SmallVector<Fid> reached;
+    reader.each_fanout_file(helper,
+                            files.intern(Spelling::absolute("/proj/a.cpp")),
+                            files,
+                            [&](Fid file) { reached.push_back(file); });
+    ASSERT_EQ(reached.size(), 3u);
+    for(auto name: {"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}) {
+        auto file = files.find(Spelling::absolute(name));
+        ASSERT_TRUE(file.has_value());
+        ASSERT_TRUE(llvm::is_contained(reached, *file));
+    }
+}
+
 };  // TEST_SUITE(ProjectIndex)
 
 }  // namespace
