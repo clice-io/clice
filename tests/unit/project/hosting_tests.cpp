@@ -251,6 +251,36 @@ TEST_CASE(LenderIgnoresCommandless) {
     EXPECT_FALSE(command_lender(project, header).has_value());
 };
 
+TEST_CASE(ForcedHeaderRescan) {
+    /// A rescanned forced header resolves its includes under the command
+    /// forcing it in, as the full scan does — not under a nearer lender's.
+    TempDir tmp;
+    tmp.touch("a/cfg.h", "");
+    tmp.touch("b/cfg.h", "");
+    tmp.touch("build/force.h", "#include <cfg.h>\n");
+    FileTable files;
+    Project project{files};
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+    auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
+        tmp.touch(file, "");
+        auto command = std::format("clang++ {} {}", flags, tmp.path(file));
+        return *project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+    };
+    add("src/main.cpp", std::format("-Ia -include {}", tmp.path("build/force.h")));
+    add("build/near.cpp", "-Ib");
+    scan_dependency_graph(project.cdb,
+                          project.dep_graph,
+                          project.build.units(project.build.members()));
+    project.dep_graph.build_reverse_map();
+
+    auto force = project.file_table.intern(Spelling::absolute(tmp.path("build/force.h")));
+    auto cfg = project.file_table.intern(Spelling::absolute(tmp.path("a/cfg.h")));
+    ASSERT_EQ(project.dep_graph.get_all_includes(force), llvm::SmallVector<Fid>{cfg});
+    project.rescan_disk_file(force);
+    EXPECT_EQ(project.dep_graph.get_all_includes(force), llvm::SmallVector<Fid>{cfg});
+};
+
 };  // TEST_SUITE(Hosting)
 
 }  // namespace

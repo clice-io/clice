@@ -190,6 +190,8 @@ export interface StatsResult {
     /// look not yet due.
     checksLooked: number;
     checksTrusted: number;
+    /// Preprocessor passes that looked for a unit's imports.
+    importScans: number;
 }
 
 export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/stats");

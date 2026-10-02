@@ -62,17 +62,22 @@ void Project::rescan_disk_file(Fid path_id) {
             file_table.scan_of(path_id, observed->obs.hash, observed->content->getBuffer());
 
         // Search paths come from the file's effective commands, or a host's
-        // for headers without one (the header's own edits on top, as its
-        // compile applies them); the builtin fallback still resolves quote
-        // includes via the includer directory. Every command contributes
-        // its own edges, as the startup scan does.
+        // for headers without one — a unit forcing the header in hosts it
+        // too (the header's own edits on top, as its compile applies
+        // them); the builtin fallback still resolves quote includes via
+        // the includer directory. Every command contributes its own edges,
+        // as the startup scan does.
         Fid cmd_file = path_id;
         CanonicalRef cmd_path = path;
         std::optional<Lender> lender;
         if(!build.unit(path_id)) {
+            auto forcing = dep_graph.get_forcing_units(path_id);
             if(auto host = default_host(*this, path_id)) {
                 cmd_file = host->file;
                 cmd_path = file_table.resolve(host->file);
+            } else if(!forcing.empty()) {
+                cmd_file = forcing.front();
+                cmd_path = file_table.resolve(cmd_file);
             } else if(build.commands(path_id).empty()) {
                 if(lender = command_lender(*this, path_id); lender) {
                     cmd_path = file_table.resolve(lender->unit);

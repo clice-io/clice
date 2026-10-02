@@ -80,6 +80,10 @@ public:
     /// new artifact.
     std::function<void()> on_indexing_needed;
 
+    /// Preprocessor passes direct_deps() ran: what the gates in front of
+    /// it are measured by.
+    std::uint64_t import_scans = 0;
+
     /// A scan's module dependencies, split by what a consumer does with
     /// them: `resolved` names module units to wait on; `declared` is the
     /// full durable edge set — resolved units' nodes plus one sentinel

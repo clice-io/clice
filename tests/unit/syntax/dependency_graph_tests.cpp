@@ -290,6 +290,27 @@ TEST_CASE(EdgesKeepReverseMap) {
     ASSERT_TRUE(graph.get_includers(Fid{20}).empty());
 }
 
+TEST_CASE(ReadersClimbForcedIncludes) {
+    // Unit 1 includes header 10; units 1 and 2 force header 20 in, which
+    // includes 30. Hosting stops at the forced header, readers do not.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}});
+    graph.set_includes(Fid{20}, 0, {{Fid{30}}});
+    graph.add_forced_include(Fid{2}, Fid{20});
+    graph.add_forced_include(Fid{1}, Fid{20});
+    graph.build_reverse_map();
+
+    ASSERT_EQ(graph.get_forcing_units(Fid{20}), (llvm::ArrayRef<Fid>{Fid{1}, Fid{2}}));
+    ASSERT_TRUE(graph.get_includers(Fid{20}).empty());
+    ASSERT_EQ(graph.find_host_sources(Fid{30}), (llvm::SmallVector<Fid, 4>{Fid{20}}));
+    ASSERT_TRUE(graph.find_include_chain(Fid{1}, Fid{30}).empty());
+
+    auto readers = graph.find_readers(Fid{30});
+    llvm::sort(readers);
+    ASSERT_EQ(readers, (llvm::SmallVector<Fid, 4>{Fid{1}, Fid{2}}));
+    ASSERT_EQ(graph.find_readers(Fid{10}), (llvm::SmallVector<Fid, 4>{Fid{1}}));
+}
+
 };  // TEST_SUITE(DependencyGraph)
 
 // ============================================================================
@@ -649,6 +670,68 @@ int main() {}
 
     EXPECT_EQ(graph.file_count(), 1u);
     EXPECT_EQ(graph.edge_count(), 0u);
+}
+
+TEST_CASE(ForcedIncludeScanned) {
+    // A forced header is a scanned node: its includes are edges, its
+    // import syntax reaches the candidate set, and its unit reaches it
+    // through the forced relation only.
+    TempDir tmp;
+    tmp.touch("build/force.h", R"(#include "dep.h"
+import m;
+)");
+    tmp.touch("build/dep.h", "int dep;\n");
+    tmp.touch("src/main.cpp", "int main() {}\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.path("build"), tmp.path("src/main.cpp"), {"-include", "force.h"}}
+    }));
+    scan_all(cdb, graph);
+    graph.build_reverse_map();
+
+    auto main = file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto force = file_table.intern(Spelling::absolute(tmp.path("build/force.h")));
+    auto dep = file_table.intern(Spelling::absolute(tmp.path("build/dep.h")));
+    EXPECT_EQ(graph.get_forcing_units(force), llvm::ArrayRef<Fid>{main});
+    EXPECT_TRUE(graph.get_all_includes(main).empty());
+    EXPECT_EQ(graph.get_all_includes(force), llvm::SmallVector<Fid>{dep});
+    EXPECT_TRUE(graph.import_candidate_files().contains(force));
+    EXPECT_EQ(graph.find_readers(dep), (llvm::SmallVector<Fid, 4>{main}));
+}
+
+TEST_CASE(ForcedIncludeLookupOrder) {
+    // As clang does: the compile's working directory first, then the
+    // search path as for a quoted include.
+    TempDir tmp;
+    tmp.touch("build/first.h", "\n");
+    tmp.touch("inc/first.h", "\n");
+    tmp.touch("inc/second.h", "\n");
+    tmp.touch("src/main.cpp", "int main() {}\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.path("build"),
+                   tmp.path("src/main.cpp"),
+                   {"-I", tmp.path("inc"), "-include", "first.h", "-include", "second.h"}}
+    }));
+    scan_all(cdb, graph);
+
+    auto main = file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto forced = [&](llvm::StringRef path) {
+        return graph.get_forcing_units(file_table.intern(Spelling::absolute(tmp.path(path))));
+    };
+    EXPECT_EQ(forced("build/first.h"), llvm::ArrayRef<Fid>{main});
+    EXPECT_TRUE(forced("inc/first.h").empty());
+    EXPECT_EQ(forced("inc/second.h"), llvm::ArrayRef<Fid>{main});
 }
 
 TEST_CASE(MultipleModules) {

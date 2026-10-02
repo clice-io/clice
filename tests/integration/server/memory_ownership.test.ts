@@ -164,6 +164,7 @@ test("cancel storm leaves no tmp", async ({ session }) => {
             ...wireKeys<StatsResult>()([
                 "checksLooked",
                 "checksTrusted",
+                "importScans",
                 "headerContexts",
                 "synthesizedContexts",
                 "indexInmemoryShards",

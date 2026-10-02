@@ -526,8 +526,8 @@ TEST_CASE(BufferImportRecorded) {
 
 TEST_CASE(IncludeImportRecorded) {
     // Zero-provider window, import introduced by the command: the buffer
-    // is lexically importless, so the -include gate must trigger the
-    // precise scan that records the name.
+    // is lexically importless, so the forced header's import syntax, a
+    // graph fact, must trigger the precise scan that records the name.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -541,6 +541,8 @@ TEST_CASE(IncludeImportRecorded) {
               build_cdb_json({
                   {tmp.root, src, {"-include", tmp.path("deps.h")}}
     }));
+    scan_all(stack.project.cdb, stack.project.dep_graph);
+    stack.project.dep_graph.build_reverse_map();
     auto session = stack.open(src, "int main() { return 0; }\n");
 
     bool done = false;
@@ -568,6 +570,55 @@ TEST_CASE(IncludeImportRecorded) {
                 dirtied.end());
 
     logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(ForcedIncludeSkipsScan) {
+    // Neither the command's forced header nor a header compiled through
+    // its host has import syntax: no compile pays an import scan.
+    TempDir tmp;
+    tmp.touch("force.h", "#define FORCED 1\n");
+    tmp.touch("header.h", "inline int header() { return FORCED; }\n");
+    tmp.touch("main.cpp", "#include \"header.h\"\nint main() { return header(); }\n");
+    auto src = tmp.path("main.cpp");
+
+    Stack stack;
+    write_cdb(tmp,
+              stack.project.cdb,
+              build_cdb_json({
+                  {tmp.root, src, {"-include", "force.h"}}
+    }));
+    scan_all(stack.project.cdb, stack.project.dep_graph);
+    stack.project.dep_graph.build_reverse_map();
+    auto unit = stack.open(src, "#include \"header.h\"\nint main() { return header(); }\n");
+    auto header = stack.open(tmp.path("header.h"), "inline int header() { return FORCED; }\n");
+
+    bool unit_ok = false;
+    bool header_ok = false;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        unit_ok = co_await stack.ast.ensure_compiled(unit);
+        header_ok = co_await stack.ast.ensure_compiled(header);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    EXPECT_TRUE(unit_ok);
+    EXPECT_TRUE(header_ok);
+    EXPECT_TRUE(stack.contexts.header_context(header->path_id) != nullptr);
+    EXPECT_EQ(stack.pcm.import_scans, 0u);
 }
 
 };  // TEST_SUITE(ASTFamilyGuards)

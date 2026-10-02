@@ -12,6 +12,7 @@
 #include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
@@ -224,33 +225,58 @@ llvm::ArrayRef<Fid> DependencyGraph::get_includers(Fid path_id) const {
     return {};
 }
 
-llvm::SmallVector<Fid, 4> DependencyGraph::find_host_sources(Fid header_path_id) const {
+void DependencyGraph::add_forced_include(Fid unit, Fid header) {
+    auto& units = forcing_units[header];
+    auto it = llvm::lower_bound(units, unit);
+    if(it == units.end() || *it != unit) {
+        units.insert(it, unit);
+    }
+}
+
+llvm::ArrayRef<Fid> DependencyGraph::get_forcing_units(Fid header) const {
+    auto it = forcing_units.find(header);
+    if(it != forcing_units.end()) {
+        return it->second;
+    }
+    return {};
+}
+
+llvm::SmallVector<Fid, 4> DependencyGraph::find_roots(Fid path_id, bool through_forced) const {
     llvm::SmallVector<Fid, 4> result;
     llvm::DenseSet<Fid> visited;
     llvm::SmallVector<Fid, 16> queue;
 
-    queue.push_back(header_path_id);
-    visited.insert(header_path_id);
+    queue.push_back(path_id);
+    visited.insert(path_id);
 
     while(!queue.empty()) {
         auto current = queue.pop_back_val();
         auto includers = get_includers(current);
-        if(includers.empty()) {
+        auto forcing = through_forced ? get_forcing_units(current) : llvm::ArrayRef<Fid>();
+        if(includers.empty() && forcing.empty()) {
             // No includers: this is a root (source file).
             // Exclude the starting header itself.
-            if(current != header_path_id) {
+            if(current != path_id) {
                 result.push_back(current);
             }
             continue;
         }
-        for(auto includer: includers) {
-            if(visited.insert(includer).second) {
-                queue.push_back(includer);
+        for(auto parent: llvm::concat<const Fid>(includers, forcing)) {
+            if(visited.insert(parent).second) {
+                queue.push_back(parent);
             }
         }
     }
 
     return result;
+}
+
+llvm::SmallVector<Fid, 4> DependencyGraph::find_host_sources(Fid header_path_id) const {
+    return find_roots(header_path_id, false);
+}
+
+llvm::SmallVector<Fid, 4> DependencyGraph::find_readers(Fid path_id) const {
+    return find_roots(path_id, true);
 }
 
 std::vector<Fid> DependencyGraph::find_include_chain(Fid host_path_id, Fid target_path_id) const {
@@ -535,6 +561,35 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     // then reused for all waves.  Eliminates StringMap lookups in Phase 2.
     llvm::DenseMap<std::uint32_t, ResolvedSearchConfig> resolved_configs;
 
+    // A group's forced includes, resolved once for all its units the way
+    // clang resolves them: from the compile's working directory, then as
+    // a quoted include. Unresolvable ones are dropped — the compile
+    // reports them.
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<CachedInclude>> forced_cache;
+    auto forced_of = [&](std::uint32_t config_id,
+                         const ResolvedSearchConfig& search) -> llvm::ArrayRef<CachedInclude> {
+        auto [it, inserted] = forced_cache.try_emplace(config_id);
+        if(inserted) {
+            llvm::StringRef directory = cdb.config(group_refs[config_id].config).directory;
+            for(auto& name: configs[config_id].forced_includes) {
+                auto resolved = resolve_include(name,
+                                                false,
+                                                &scope.list(directory),
+                                                directory,
+                                                false,
+                                                std::nullopt,
+                                                search,
+                                                scope);
+                if(resolved) {
+                    it->second.push_back(
+                        {file_table.intern_spelled(Spelling::absolute(resolved->path)),
+                         resolved->found_dir_idx});
+                }
+            }
+        }
+        return it->second;
+    };
+
     while(!current_wave.empty()) {
         auto wave_start = std::chrono::steady_clock::now();
 
@@ -647,6 +702,25 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         next_wave.reserve(current_wave.size());  // Heuristic: next wave ≤ current wave.
         auto stats_before = scope.stats;
 
+        // A file reached for the first time joins the next wave, its scan
+        // started right away on the thread pool so it is ready when the
+        // wave begins — unless the shared table already pins its scan.
+        auto discover =
+            [&](Fid path_id, std::uint32_t config_id, std::optional<unsigned> found_dir_idx) {
+                if(!scanned_files.try_emplace(path_id, found_dir_idx).second) {
+                    return;
+                }
+                next_wave.push_back({path_id, config_id, found_dir_idx});
+                if(!try_warm(path_id, config_id)) {
+                    auto path = file_table.resolve(path_id).data();
+                    prefetch_tasks.push_back(kota::queue(
+                        [path, path_id, config_id]() {
+                            return scan_file_worker(path, path_id, config_id);
+                        },
+                        loop));
+                }
+            };
+
         for(auto& scan_result: scan_results) {
             report.total_files++;
 
@@ -735,6 +809,13 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 }
             }
 
+            if(wave_num == 0) {
+                for(auto& forced: forced_of(scan_result.config_id, resolved_config)) {
+                    graph.add_forced_include(scan_result.path_id, forced.path_id);
+                    discover(forced.path_id, scan_result.config_id, forced.found_dir_idx);
+                }
+            }
+
             if(scan_result.scan_result.is_interface_unit) {
                 graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
             }
@@ -777,10 +858,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                         }
                         report.total_edges++;
                         include_edges.push_back({cached.path_id, inc.conditional});
-                        if(scanned_files.try_emplace(cached.path_id, cached.found_dir_idx).second) {
-                            next_wave.push_back(
-                                {cached.path_id, scan_result.config_id, cached.found_dir_idx});
-                        }
+                        discover(cached.path_id, scan_result.config_id, cached.found_dir_idx);
                         continue;
                     }
                 }
@@ -825,22 +903,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 }
                 report.total_edges++;
                 include_edges.push_back({inc_path_id, inc.conditional});
-
-                if(scanned_files.try_emplace(inc_path_id, resolved->found_dir_idx).second) {
-                    next_wave.push_back(
-                        {inc_path_id, scan_result.config_id, resolved->found_dir_idx});
-                    // Prefetch: start scanning this file immediately on the
-                    // thread pool so it's ready when the next wave begins —
-                    // unless the shared table already pins its scan.
-                    if(!try_warm(inc_path_id, scan_result.config_id)) {
-                        auto inc_path = file_table.resolve(inc_path_id).data();
-                        prefetch_tasks.push_back(kota::queue(
-                            [inc_path, inc_path_id, cid = scan_result.config_id]() {
-                                return scan_file_worker(inc_path, inc_path_id, cid);
-                            },
-                            loop));
-                    }
-                }
+                discover(inc_path_id, scan_result.config_id, resolved->found_dir_idx);
             }
 
             graph.set_includes(scan_result.path_id,

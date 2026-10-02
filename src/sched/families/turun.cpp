@@ -109,10 +109,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // worker reports its own failure if they are not enough.
     bool own_module = !project.dep_graph.module_of(path_id).empty();
     if(own_module || project.dep_graph.has_modules() ||
-       !project.dep_graph.import_candidate_files().empty() ||
-       llvm::any_of(params.arguments, [](const std::string& arg) {
-           return llvm::StringRef(arg).starts_with("-include");
-       })) {
+       !project.dep_graph.import_candidate_files().empty()) {
         PCMFamily::ModuleDeps deps;
         if(own_module) {
             deps.resolved.push_back(path_id);

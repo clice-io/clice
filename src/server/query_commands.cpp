@@ -7,6 +7,7 @@
 
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
@@ -287,13 +288,14 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     if(!file) {
         return result;
     }
-    auto direct = ws.dep_graph.get_includers(*file);
     llvm::DenseSet<Fid> seen{*file};
-    for(auto includer: direct) {
-        result.direct_dependents.push_back(ws.file_table.display(includer));
-        seen.insert(includer);
+    for(auto dependent: llvm::concat<const Fid>(ws.dep_graph.get_includers(*file),
+                                                ws.dep_graph.get_forcing_units(*file))) {
+        if(seen.insert(dependent).second) {
+            result.direct_dependents.push_back(ws.file_table.display(dependent));
+        }
     }
-    auto hosts = ws.dep_graph.find_host_sources(*file);
+    auto hosts = ws.dep_graph.find_readers(*file);
     for(auto host: hosts) {
         if(seen.insert(host).second) {
             result.transitive_dependents.push_back(ws.file_table.display(host));

@@ -94,10 +94,24 @@ public:
     /// Get the direct includers of a file (files that directly include path_id).
     llvm::ArrayRef<Fid> get_includers(Fid path_id) const;
 
+    /// Record that a command of `unit` includes `header` ahead of the
+    /// unit's text (`-include`). A command fact, not a directive in any
+    /// file's text: it stays out of the include edges, so hosting and
+    /// context synthesis, which cut a host's text at a directive, never
+    /// walk it. Set by the full scan only — a command change rebuilds.
+    void add_forced_include(Fid unit, Fid header);
+
+    /// The units whose commands force `header` in.
+    llvm::ArrayRef<Fid> get_forcing_units(Fid header) const;
+
     /// BFS upward through reverse edges to find all source files (roots)
     /// that transitively include header_path_id.
     /// Source files are those that have no includers (i.e. they are roots in the graph).
     llvm::SmallVector<Fid, 4> find_host_sources(Fid header_path_id) const;
+
+    /// The roots whose compiles read the file: find_host_sources(), with a
+    /// forced header climbing on to the units that force it in.
+    llvm::SmallVector<Fid, 4> find_readers(Fid path_id) const;
 
     /// BFS forward through include edges to find the shortest include chain
     /// from host_path_id to target_path_id.
@@ -166,12 +180,19 @@ private:
     /// Populated by build_reverse_map().
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> reverse_includes;
 
+    /// Forced header -> units whose commands force it in, sorted.
+    llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> forcing_units;
+
     /// Whether build_reverse_map() ran, so edge updates maintain the map.
     bool reverse_built = false;
 
     /// Record `includer` among `target`'s includers, and drop it.
     void link(Fid includer, Fid target);
     void unlink(Fid includer, Fid target);
+
+    /// The roots above `path_id`, climbing from forced headers to their
+    /// units when `through_forced` is set.
+    llvm::SmallVector<Fid, 4> find_roots(Fid path_id, bool through_forced) const;
 };
 
 /// A (file, search-config) pair used to track per-wave work items.

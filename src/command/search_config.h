@@ -35,6 +35,11 @@ struct SearchConfig {
 
     /// Index in dirs where After (-idirafter, -iwithprefix) dirs start.
     unsigned after_start_idx = 0;
+
+    /// The files the command includes ahead of the main file (`-include`),
+    /// in order and as written: clang looks a relative one up in the
+    /// compile's working directory first, then as a quoted include.
+    std::vector<std::string> forced_includes;
 };
 
 /// Extract header search configuration from a structured command (driver

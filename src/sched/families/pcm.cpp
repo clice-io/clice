@@ -68,6 +68,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
         vfs = std::move(overlay);
     }
     // A failed scan finds nothing, as a scan that fails to set up does.
+    import_scans += 1;
     auto scanned = co_await kota::queue(
         [&] { return scan_precise(arguments, directory, content, nullptr, std::move(vfs)); });
     auto scan_result = scanned.has_value() ? std::move(scanned.value()) : ScanResult{};

@@ -433,17 +433,13 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
     // the same cost the project pays once providers exist, and per-file
     // reachability approximations of "could this TU see an import" have
     // irreducible blind spots (macro includes, unsaved include chains).
-    // The remaining gates catch what the candidate set cannot: this
-    // buffer's own unsaved import, a header context's suffix, a forced
-    // include. The scan's sentinel edges are what let the name's first
-    // provider re-dirty this document.
-    bool scan_worth = project.dep_graph.has_modules() ||
-                      !project.dep_graph.import_candidate_files().empty() ||
-                      contexts.header_context(path_id) != nullptr ||
-                      llvm::any_of(arguments, [](const std::string& arg) {
-                          llvm::StringRef flag = arg;
-                          return flag.starts_with("-include") && flag != "-include-pch";
-                      });
+    // The candidate set covers what the command adds to the text too:
+    // forced includes are graph nodes, and a header context's prefix and
+    // suffix are slices of its chain's files. Only this buffer's own
+    // unsaved import is left to check. The scan's sentinel edges are
+    // what let the name's first provider re-dirty this document.
+    bool scan_worth =
+        project.dep_graph.has_modules() || !project.dep_graph.import_candidate_files().empty();
     if(!scan_worth) {
         scan_worth = scan_quick(text).has_import;
     }
