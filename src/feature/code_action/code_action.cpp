@@ -142,8 +142,8 @@ const clang::TemplateParameterList* template_parameters(const clang::CXXRecordDe
 /// unnamed one needs a name the class qualifier can refer to: `T<index>`,
 /// made unlike every identifier the classes enclosing it spell (the
 /// parameters of their templates and member templates, the names their
-/// members use), every macro and the names given to the parameters of the
-/// templates enclosing this one.
+/// members use), every name ever defined as a macro and the names given
+/// to the parameters of the templates enclosing this one.
 std::string parameter_name(const clang::NamedDecl* param, std::size_t index) {
     if(!param->getName().empty()) {
         return param->getNameAsString();
@@ -181,7 +181,7 @@ std::string parameter_name(const clang::NamedDecl* param, std::size_t index) {
         }
     }
     auto name = std::format("T{}", index);
-    while(taken.contains(name) || context.Idents.get(name).hasMacroDefinition()) {
+    while(taken.contains(name) || context.Idents.get(name).hadMacroDefinition()) {
         name += '_';
     }
     return name;
@@ -737,34 +737,49 @@ std::optional<std::string> respell(clang::ASTContext& context,
 }
 
 /// A type constraint: its concept spelled for `from`, which may lie
-/// outside the concept's namespace, and its arguments as written. A
-/// template parameter among `hidden` hides a concept of its name; the
-/// concept is then named from the global scope.
+/// outside the concept's namespace, and its arguments as written. The
+/// concept is named from the global scope when the first name of its
+/// spelling finds something else at `from`, or is that of a template
+/// parameter among `hidden`.
 void print_constraint(llvm::raw_ostream& os,
-                      clang::ASTContext& context,
+                      CompilationUnitRef unit,
                       const clang::ConceptReference* reference,
                       const clang::DeclContext* from,
                       const llvm::StringSet<>& hidden) {
     auto* named = reference->getNamedConcept();
+    const clang::NamedDecl* root = named;
+    for(const auto* context = named->getDeclContext();
+        !context->isTranslationUnit() && !(from && context->Encloses(from));
+        context = context->getParent()) {
+        auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context);
+        if(ns && !ns->isAnonymousNamespace() && !ns->isInline()) {
+            root = ns;
+        }
+    }
     auto qualifier = qualifier_at(named->getDeclContext(), from);
-    auto root = qualifier.empty() ? named->getName() : llvm::StringRef(qualifier).split("::").first;
-    if(hidden.contains(root)) {
+    if(hidden.contains(root->getName()) ||
+       (from && lookup_unqualified(from, root->getDeclName()) != Entities{entity_of(root)})) {
         qualifier = "::" + qualifier_at(named->getDeclContext(), nullptr);
     }
     os << qualifier << named->getName();
     // A placeholder's constraint carries an empty argument list even when
     // none is written; only a written one has its angle brackets.
     auto* arguments = reference->getTemplateArgsAsWritten();
-    if(arguments && arguments->getRAngleLoc().isValid()) {
-        os << '<';
-        for(auto [index, argument]: llvm::enumerate(arguments->arguments())) {
-            if(index) {
-                os << ", ";
-            }
-            argument.getArgument().print(context.getPrintingPolicy(), os, false);
-        }
-        os << '>';
+    if(!arguments || arguments->getRAngleLoc().isInvalid()) {
+        return;
     }
+    if(auto text = spelled_text(unit, {arguments->getLAngleLoc(), arguments->getRAngleLoc()})) {
+        os << *text;
+        return;
+    }
+    os << '<';
+    for(auto [index, argument]: llvm::enumerate(arguments->arguments())) {
+        if(index) {
+            os << ", ";
+        }
+        argument.getArgument().print(unit.context().getPrintingPolicy(), os, false);
+    }
+    os << '>';
 }
 
 /// One "template <...>" head of `record`, the parameters spelled without
@@ -794,11 +809,7 @@ std::string template_head(CompilationUnitRef unit,
         if(auto* value = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(param)) {
             auto placeholder = value->getTypeSourceInfo()->getTypeLoc().getAs<clang::AutoTypeLoc>();
             if(placeholder && placeholder.isConstrained()) {
-                print_constraint(os,
-                                 unit.context(),
-                                 placeholder.getConceptReference(),
-                                 from,
-                                 parameters);
+                print_constraint(os, unit, placeholder.getConceptReference(), from, parameters);
                 os << (placeholder.getTypePtr()->isDecltypeAuto() ? " decltype(auto)" : " auto");
             } else {
                 os << type_name(unit.context(), value->getType(), from, {}, record)
@@ -809,7 +820,7 @@ std::string template_head(CompilationUnitRef unit,
             }
         } else if(type && type->hasTypeConstraint()) {
             print_constraint(os,
-                             unit.context(),
+                             unit,
                              type->getTypeConstraint()->getConceptReference(),
                              from,
                              parameters);

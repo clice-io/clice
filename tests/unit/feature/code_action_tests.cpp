@@ -195,9 +195,23 @@ template <class>
 struct M {
     void §(f)f();
 };
+#undef T0
 )");
     apply("f", "Define 'M<T0_>::f' out of line");
-    EXPECT_APPENDED("template <class T0_>\nvoid M<T0_>::f() {\n}\n", "f");
+    EXPECT_COMPILES(R"(
+#define T0 int
+template <class>
+struct M {
+    void f();
+};
+
+template <class T0_>
+void M<T0_>::f() {
+}
+
+#undef T0
+)",
+                    "f");
 }
 
 TEST_CASE(ConstrainedTemplateParameter) {
@@ -337,6 +351,48 @@ struct Box {
 )");
     apply("f", "Define 'Box<C, U>::f' out of line");
     EXPECT_APPENDED("template <class C, ::C U>\nvoid Box<C, U>::f() {\n}\n", "f");
+
+    run(R"(
+struct G {};
+template <class T, class U>
+concept C = true;
+template <class G, C<::G> T>
+struct Box {
+    void §(f)f();
+};
+)");
+    apply("f", "Define 'Box<G, T>::f' out of line");
+    EXPECT_APPENDED("template <class G, C<::G> T>\nvoid Box<G, T>::f() {\n}\n", "f");
+
+    run(R"(
+template <class>
+concept C = true;
+namespace app {
+struct C;
+template <::C T>
+struct S {
+    void §(f)f();
+};
+}
+)");
+    apply("f", "Define 'S<T>::f' out of line");
+    EXPECT_COMPILES(R"(
+template <class>
+concept C = true;
+namespace app {
+struct C;
+template <::C T>
+struct S {
+    void f();
+};
+
+template <::C T>
+void S<T>::f() {
+}
+
+}
+)",
+                    "f");
 }
 
 TEST_CASE(TemplateMemberReturnType) {
@@ -406,11 +462,11 @@ struct S {
 )";
     run(code);
     apply("fp", "Define 'S::fp' out of line");
-    EXPECT_APPENDED("auto S::fp() -> S::R (*)(int) {\n}\n", "fp");
+    EXPECT_APPENDED("S::R (*S::fp())(int) {\n}\n", "fp");
 
     run(code);
     apply("mp", "Define 'S::mp' out of line");
-    EXPECT_APPENDED("auto S::mp(int x) const noexcept -> const S::R (S::*)() {\n}\n", "mp");
+    EXPECT_APPENDED("const S::R (S::*S::mp(int x) const noexcept)() {\n}\n", "mp");
 }
 
 TEST_CASE(ReturnTypeTokenEdges) {
@@ -702,6 +758,18 @@ struct Later {};
 )");
     apply("take", "Define 'P::take' out of line");
     EXPECT_APPENDED("void P::take(Later<int> l) {\n}\n", "take");
+
+    run(R"(
+template <class F>
+struct Function;
+template <class R, class... Args>
+struct Function<R(Args...)> {};
+struct W {
+    void §(set)set(Function<void()> callback);
+};
+)");
+    apply("set", "Define 'W::set' out of line");
+    EXPECT_APPENDED("void W::set(Function<void()> callback) {\n}\n", "set");
 }
 
 TEST_CASE(DeducedTypeNames) {
@@ -736,6 +804,18 @@ const §(p)auto p = get();
     EXPECT_COMPILES(R"(
 int* _Nonnull get();
 int* _Nonnull const p = get();
+)");
+
+    run(R"(
+int* get();
+auto a = get();
+const §(b)auto b = a;
+)");
+    apply("b", "Replace 'const auto' with 'int* const'");
+    EXPECT_COMPILES(R"(
+int* get();
+auto a = get();
+int* const b = a;
 )");
 }
 

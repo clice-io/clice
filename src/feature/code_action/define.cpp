@@ -11,6 +11,7 @@
 #include "semantic/display.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "clang/AST/ASTContext.h"
@@ -163,15 +164,28 @@ bool declaration_only(const clang::syntax::Token& token) {
            token.kind() == clang::tok::kw_explicit;
 }
 
-/// Where the type the decl-specifiers spell is written beneath the
-/// pointers and references of a return type (`const R` of `const R*&`).
-clang::TypeLoc specifier_loc(clang::TypeLoc loc) {
+/// Where the type the decl-specifiers spell is written beneath a return
+/// type's declarator (`const R` of `const R* (*f())(int)`). A member
+/// pointer is part of that declarator only when it wraps the name
+/// (`R (S::*f())()`); one before the name is the type spelled
+/// (`int S::* f()`).
+clang::TypeLoc specifier_loc(clang::TypeLoc loc,
+                             llvm::function_ref<bool(clang::TypeLoc)> wraps_name) {
     while(true) {
         auto unqualified = loc.getUnqualifiedLoc();
         if(auto pointer = unqualified.getAs<clang::PointerTypeLoc>()) {
             loc = pointer.getPointeeLoc();
         } else if(auto reference = unqualified.getAs<clang::ReferenceTypeLoc>()) {
             loc = reference.getPointeeLoc();
+        } else if(auto paren = unqualified.getAs<clang::ParenTypeLoc>()) {
+            loc = paren.getInnerLoc();
+        } else if(auto function = unqualified.getAs<clang::FunctionTypeLoc>()) {
+            loc = function.getReturnLoc();
+        } else if(auto array = unqualified.getAs<clang::ArrayTypeLoc>()) {
+            loc = array.getElementLoc();
+        } else if(auto member = unqualified.getAs<clang::MemberPointerTypeLoc>();
+                  member && wraps_name(loc)) {
+            loc = member.getPointeeLoc();
         } else {
             return loc;
         }
@@ -517,15 +531,11 @@ private:
     /// long`) fold into the replaced span, the declaration-only ones
     /// dropped.
     void qualify_return_type(std::uint32_t name) {
-        auto function = decl->getFunctionTypeLoc();
-        auto returned = function.getReturnLoc();
-        auto outer_begin = offset_of(returned.getBeginLoc());
-        auto outer_end = offset_of(returned.getEndLoc());
-        if(outer_begin && outer_end && *outer_begin < name && name < *outer_end) {
-            trail_return_type(function, *outer_begin, name, *outer_end);
-            return;
-        }
-        auto loc = specifier_loc(returned);
+        auto loc =
+            specifier_loc(decl->getFunctionTypeLoc().getReturnLoc(), [&](clang::TypeLoc loc) {
+                auto end = offset_of(loc.getEndLoc());
+                return end && *end > name;
+            });
         auto begin = offset_of(loc.getBeginLoc());
         auto end = offset_of(loc.getEndLoc());
         // A constructor's return type has no location; a conversion
@@ -564,44 +574,6 @@ private:
         text += *spelling;
         return_type = {offset_of(*first), offset_of(*last) + last->length()};
         patches.push_back({return_type->first, return_type->second, std::move(text)});
-    }
-
-    /// A return type wrapping the name, a pointer to a function or an
-    /// array (`R (*f())(int)`), moves behind it: spelled before the name,
-    /// its pieces would be looked up at the definition's scope, after it
-    /// in the function's own, where the declaration wrote them.
-    void trail_return_type(clang::FunctionTypeLoc function,
-                           std::uint32_t begin,
-                           std::uint32_t name,
-                           std::uint32_t end) {
-        // The function's own declarator, `f(...) const noexcept`, ends
-        // where the rest of the return type resumes.
-        auto close = offset_of(function.getLocalRangeEnd());
-        if(!close) {
-            return;
-        }
-        auto spelling = type_name(unit.context(),
-                                  decl->getReturnType(),
-                                  decl->getDeclContext(),
-                                  {},
-                                  decl->getDeclContext());
-        if(!spelling) {
-            return;
-        }
-        auto first = std::ranges::find_if(tokens, [&](const clang::syntax::Token& token) {
-            return offset_of(token) >= begin;
-        });
-        while(first != tokens.begin() && is_cv(*std::prev(first))) {
-            --first;
-        }
-        auto last = std::prev(std::ranges::find_if(tokens, [&](const clang::syntax::Token& token) {
-            return offset_of(token) > end;
-        }));
-        return_type = {offset_of(*first), name};
-        patches.push_back({return_type->first, name, "auto "});
-        patches.push_back({*close + unit.token_length(function.getLocalRangeEnd()),
-                           offset_of(*last) + last->length(),
-                           " -> " + *spelling});
     }
 
     CompilationUnitRef unit;
@@ -756,10 +728,38 @@ std::optional<Placement> placement_of(CompilationUnitRef unit, const clang::Func
     return placement_after(unit, file_scope_anchor(written_declaration(decl)));
 }
 
+/// The definition an implicit specialization instantiates: its pattern's,
+/// once instantiated; before that, the last of the definitions of the
+/// primary template and its partial specializations, any of which the
+/// first use may choose (`std::function` defines only a partial one).
+const clang::TagDecl*
+    pattern_definition(const clang::ClassTemplateSpecializationDecl* specialization,
+                       const clang::SourceManager& sm) {
+    auto pattern = specialization->getSpecializedTemplateOrPartial();
+    if(auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl*>(pattern)) {
+        return partial->getDefinition();
+    }
+    auto* primary = llvm::cast<clang::ClassTemplateDecl*>(pattern);
+    const clang::TagDecl* last = primary->getTemplatedDecl()->getDefinition();
+    if(specialization->hasDefinition()) {
+        return last;
+    }
+    llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*> partials;
+    primary->getPartialSpecializations(partials);
+    for(const auto* partial: partials) {
+        const auto* defined = partial->getDefinition();
+        if(defined &&
+           (!last || sm.isBeforeInTranslationUnit(last->getEndLoc(), defined->getEndLoc()))) {
+            last = defined;
+        }
+    }
+    return last;
+}
+
 /// The last definition of the classes a definition of the function needs
 /// complete, its return and parameter types held by value; null when it
 /// needs none, nullopt when one has no definition in this TU. A class
-/// template's implicit specialization completes with the template's
+/// template's implicit specialization completes with its pattern's
 /// definition, instantiated yet or not. A class the compiler defines
 /// itself, such as AArch64's `va_list`, is complete everywhere.
 std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnitRef unit,
@@ -771,11 +771,10 @@ std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnitRef u
         if(!record) {
             return true;
         }
-        auto* definition = record->getDefinition();
+        const clang::TagDecl* definition = record->getDefinition();
         if(auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record);
            specialization && !specialization->isExplicitSpecialization()) {
-            definition =
-                specialization->getSpecializedTemplate()->getTemplatedDecl()->getDefinition();
+            definition = pattern_definition(specialization, sm);
         }
         if(!definition) {
             return false;

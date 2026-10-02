@@ -99,10 +99,11 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     // specifiers, or possibly spelled by a macro among them, is out of
     // reach.
     auto content = unit.main_content();
-    // Nullability attributes print after the `*` they qualify.
-    const auto* declarator = deduced->getTypePtr();
-    while(auto* attributed = llvm::dyn_cast<clang::AttributedType>(declarator)) {
-        declarator = attributed->getModifiedType().getTypePtr();
+    // The deduced type prints through the sugar of another deduction and
+    // of decltype, and a nullability attribute after the `*` it qualifies.
+    auto declarator = *deduced;
+    while(llvm::isa<clang::AutoType, clang::DecltypeType, clang::AttributedType>(declarator)) {
+        declarator = declarator->getLocallyUnqualifiedSingleStepDesugaredType();
     }
     if(llvm::isa<clang::PointerType, clang::MemberPointerType>(declarator)) {
         auto tokens = unit.spelled_tokens(unit.main_file());

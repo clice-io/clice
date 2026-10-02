@@ -152,7 +152,6 @@ IncludeInsertion include_insertion(CompilationUnitRef unit) {
     llvm::StringRef guard_macro;
     bool seen_code = false;
     bool fragment = false;
-    bool declares_module = false;
     std::uint32_t depth = 0;
     std::uint32_t directives = 0;
     Lexer lexer(content, {.lang_opts = &unit.lang_options()});
@@ -180,7 +179,6 @@ IncludeInsertion include_insertion(CompilationUnitRef unit) {
                 levels[0].prologue = anchor;
                 fragment = true;
             } else {
-                declares_module = true;
                 seen_code = true;
             }
             continue;
@@ -225,7 +223,7 @@ IncludeInsertion include_insertion(CompilationUnitRef unit) {
             }
         }
     }
-    if(declares_module && !fragment) {
+    if(!fragment && unit.is_named_module()) {
         return {.offset = 0, .opens_fragment = true};
     }
     const auto& level = levels[guard == Guard::Closed ? 1 : 0];
