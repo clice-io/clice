@@ -17,7 +17,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 option(CLICE_ENABLE_LTO "Enable ThinLTO for all targets" OFF)
 option(CLICE_OFFLINE_BUILD "Disable network downloads during configuration" OFF)
 option(CLICE_ENABLE_TEST "Build unit tests" OFF)
-option(CLICE_CI_ENVIRONMENT "Enable CI-specific configuration" OFF)
 option(CLICE_ENABLE_BENCHMARK "Build benchmarks" OFF)
 
 # Global flags that apply to all targets (including CPM dependencies).
@@ -116,10 +115,6 @@ endif()
 
 if(CLICE_ENABLE_TEST)
     target_compile_definitions(clice_options INTERFACE CLICE_ENABLE_TEST=1)
-endif()
-
-if(CLICE_CI_ENVIRONMENT)
-    target_compile_definitions(clice_options INTERFACE CLICE_CI_ENVIRONMENT=1)
 endif()
 
 # Version header, regenerated on every build so the embedded git describe

@@ -30,7 +30,7 @@ Move every pin in one change:
 Build in a fresh build directory:
 
 ```bash
-pixi run cmake-config RelWithDebInfo ON
+pixi run cmake-config RelWithDebInfo
 pixi run cmake-build RelWithDebInfo
 ```
 

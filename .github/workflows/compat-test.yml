@@ -23,12 +23,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The `cuda` environment holds nvcc for the Linux scenarios and
+          # has no packages elsewhere.
           - os: ubuntu-24.04
             asset: x86_64-unknown-linux-gnu.tar.gz
+            environments: node cuda
           - os: windows-2025
             asset: x86_64-w64-mingw32.zip
+            environments: node
           - os: macos-15
             asset: aarch64-apple-darwin.tar.gz
+            environments: node
     runs-on: ${{ matrix.os }}
     steps:
       - name: Pick the newest release
@@ -48,7 +53,7 @@ jobs:
 
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: node cuda
+          environments: ${{ matrix.environments }}
           activate-environment: node
 
       # The Windows and macOS scenarios use what the runner images ship

@@ -122,16 +122,12 @@ depends-on = [{ task = "build", args = ["{{ type }}"] }]
 #                                   CMAKE                                        #
 # ============================================================================== #
 [feature.build.tasks.cmake-config]
-args = [
-    { arg = "type", default = "RelWithDebInfo" },
-    { arg = "ci", default = "OFF" },
-]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
 cmake -B build/{{ type }} -G Ninja \
     -DCMAKE_BUILD_TYPE={{ type }} \
     -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-    -DCLICE_ENABLE_TEST=ON \
-    -DCLICE_CI_ENVIRONMENT={{ ci }}
+    -DCLICE_ENABLE_TEST=ON
 """
 
 [feature.build.tasks.cmake-build]
@@ -139,12 +135,9 @@ args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = "cmake --build build/{{ type }}"
 
 [feature.build.tasks.build]
-args = [
-    { arg = "type", default = "RelWithDebInfo" },
-    { arg = "ci", default = "OFF" },
-]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
 depends-on = [
-    { task = "cmake-config", args = ["{{ type }}", "{{ ci }}"] },
+    { task = "cmake-config", args = ["{{ type }}"] },
     { task = "cmake-build", args = ["{{ type }}"] },
 ]
 

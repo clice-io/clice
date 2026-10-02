@@ -36,6 +36,11 @@ export async function compileCommand(
         ["query", "--workspace", root, "--method", "compileCommand", "--path", file],
         { env: systemEnv() },
     );
+    if (query.status !== 0) {
+        throw new Error(
+            `compileCommand ${file}: ${query.error ?? `exit ${query.status}`}\n${query.stdout}\n${query.stderr}`,
+        );
+    }
     const answer = JSON.parse(query.stdout) as { result?: CompileCommand; error?: string };
     if (answer.result === undefined) {
         throw new Error(`compileCommand ${file}: ${answer.error ?? query.stderr}`);
