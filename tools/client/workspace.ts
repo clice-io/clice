@@ -127,6 +127,21 @@ export class Workspace {
         generateCDB(this.root);
     }
 
+    /// The text of every log file named `name` ("master.log", "SF-0.log")
+    /// the servers wrote under .clice/logs, one session directory each;
+    /// empty when none was written.
+    log(name: string): string {
+        const logsDir = this.path(".clice/logs");
+        if (!fs.existsSync(logsDir)) {
+            return "";
+        }
+        return fs
+            .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+            .filter((file) => path.basename(file) === name)
+            .map((file) => fs.readFileSync(path.join(logsDir, file), "utf8"))
+            .join("");
+    }
+
     /// Write a clice.toml that pins cache_dir to <workspace>/.clice/.
     pinCacheDir(): void {
         this.write("clice.toml", '[project]\ncache_dir = "${workspace}/.clice"\n');

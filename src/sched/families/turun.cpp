@@ -232,7 +232,13 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_crashed) {
-        landed[path_id] = {.verdict = Verdict::Crashed, .error = result.error().message};
+        landed[path_id] = {.verdict = Verdict::Crashed,
+                           .error = "it crashed the worker: " + result.error().message};
+        co_return RoundOutcome::Stale;
+    }
+    if(result.error().code == worker::dispatch_errc::worker_died ||
+       result.error().code == worker::dispatch_errc::worker_lost) {
+        landed[path_id] = {.verdict = Verdict::Lost, .error = result.error().message};
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_unavailable && pool.revives_slots()) {

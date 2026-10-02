@@ -131,10 +131,6 @@ struct WorkerPoolFixture {
         return pool.assign_worker(path_id);
     }
 
-    std::size_t assign_expendable(std::uint32_t path_id) {
-        return pool.assign_expendable(path_id);
-    }
-
     void remove_owner(std::uint32_t path_id) {
         pool.remove_owner(path_id);
     }
@@ -171,9 +167,36 @@ struct WorkerPoolFixture {
         pool.stateless_workers[idx].retiring = true;
     }
 
-    void set_suspect_inflight(std::size_t idx, bool stateful, unsigned n) {
-        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        workers[idx].suspect_inflight = n;
+    /// The dying worker named the request it ran, as its crash report
+    /// would.
+    void set_culprit(std::size_t idx, bool stateful, std::string tag) {
+        pool.slot(idx, stateful).death->culprit = std::move(tag);
+    }
+
+    std::shared_ptr<WorkerDeath> death(std::size_t idx, bool stateful) {
+        return pool.slot(idx, stateful).death;
+    }
+
+    /// A request in flight on the slot since `age` ago.
+    std::unique_ptr<WorkerPool::Dispatch> dispatch(std::size_t idx,
+                                                   bool stateful,
+                                                   std::string tag,
+                                                   std::chrono::milliseconds age = {}) {
+        auto dispatch = std::make_unique<WorkerPool::Dispatch>(pool, idx, stateful, std::move(tag));
+        dispatch->started -= age;
+        return dispatch;
+    }
+
+    void set_deadline(std::chrono::milliseconds deadline) {
+        pool.options.request_deadline = deadline;
+    }
+
+    void tick_deadlines() {
+        pool.tick_deadlines();
+    }
+
+    static kota::ipc::Error death_error(const WorkerDeath& death, llvm::StringRef tag) {
+        return WorkerPool::death_error(death, tag, "sf:0:1");
     }
 
     void set_revive_after(std::chrono::milliseconds cooldown) {
@@ -182,6 +205,14 @@ struct WorkerPoolFixture {
 
     void set_max_stateless(std::size_t n) {
         pool.options.max_stateless = n;
+    }
+
+    void retire_idle() {
+        pool.retire_idle_worker();
+    }
+
+    bool slot_retired(std::size_t idx) const {
+        return pool.stateless_workers[idx].state == WorkerPool::SlotState::Retired;
     }
 
     bool slot_dead(std::size_t idx, bool stateful = false) const {
@@ -242,11 +273,6 @@ struct WorkerPoolFixture {
     void force_owner(std::uint32_t path_id, std::size_t idx) {
         pool.owner[path_id] = idx;
         pool.stateful_workers[idx].owned_documents += 1;
-    }
-
-    unsigned suspect_inflight(std::size_t idx, bool stateful) const {
-        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        return workers[idx].suspect_inflight;
     }
 
     kota::task<> stop() {
@@ -511,21 +537,6 @@ TEST_CASE(SkipDeadWorkers) {
     f.add_stateful(true, 5);
     f.add_stateful(true, 3);
     EXPECT_EQ(f.pick_least_loaded(), 2u);
-}
-
-TEST_CASE(ProbeWorkerNotPicked) {
-    WorkerPoolFixture f;
-    f.add_stateful(true, 5);
-    f.add_stateful(true, 0);
-    f.set_suspect_inflight(1, true, 1);
-
-    // The idle worker hosts an in-flight quarantine probe — a known crash
-    // risk. A new document goes to the busier worker instead.
-    EXPECT_EQ(f.pick_least_loaded(), 0u);
-
-    // With no alternative, the probe worker still serves.
-    f.mark_dead(0, true);
-    EXPECT_EQ(f.pick_least_loaded(), 1u);
 }
 
 TEST_CASE(StaleEvictionIgnored) {
@@ -1174,7 +1185,9 @@ TEST_CASE(OperationalErrorCodes) {
     EXPECT_TRUE(
         worker::is_operational_error(Error{worker::dispatch_errc::worker_unavailable, "x"}));
     EXPECT_TRUE(worker::is_operational_error(Error{worker::dispatch_errc::worker_crashed, "x"}));
-    EXPECT_TRUE(worker::is_operational_error(Error{worker::dispatch_errc::worker_restarting, "x"}));
+    EXPECT_TRUE(worker::is_operational_error(Error{worker::dispatch_errc::worker_lost, "x"}));
+    EXPECT_TRUE(worker::is_operational_error(Error{worker::dispatch_errc::worker_died, "x"}));
+    EXPECT_TRUE(worker::is_operational_error(Error{worker::dispatch_errc::document_unloaded, "x"}));
     EXPECT_FALSE(worker::is_operational_error(Error{"plain failure"}));
 }
 
@@ -1254,53 +1267,68 @@ TEST_CASE(HealthyUptimeResetsStreak) {
     EXPECT_EQ(f.crash_streak(0), 1u);
 }
 
-TEST_CASE(ExpendableSkipsHosts) {
-    WorkerPoolFixture f;
-    f.add_stateful(true);
-    f.add_stateful(true);
-
-    // A healthy document lives on worker 0 (least-loaded first pick)...
-    ASSERT_EQ(f.assign_worker(1), 0u);
-
-    // ...so a suspect compile may only sacrifice worker 1, and the
-    // document's ownership moves there.
-    ASSERT_EQ(f.assign_expendable(2), 1u);
-    ASSERT_EQ(f.owner_of(2), 1u);
-
-    // The current owner is kept while it hosts nothing else.
-    ASSERT_EQ(f.assign_expendable(2), 1u);
-
-    // With every live worker hosting someone else's document, there is
-    // nothing to sacrifice: the probe stays armed instead of running.
-    ASSERT_EQ(f.assign_worker(3), 0u);
-    ASSERT_EQ(f.assign_expendable(4), SIZE_MAX);
-}
-
-TEST_CASE(SingleWorkerProbes) {
-    WorkerPoolFixture f;
-    f.add_stateful(true);
-
-    // A single-worker pool has nothing to preserve by refusing the
-    // probe: it runs on the lone worker rather than quarantining the
-    // document until the session reopens.
-    ASSERT_EQ(f.assign_worker(1), 0u);
-    ASSERT_EQ(f.assign_expendable(2), 0u);
-    ASSERT_EQ(f.owner_of(2), 0u);
-}
-
-TEST_CASE(SuspectCrashKeepsBudget) {
+TEST_CASE(NamedCrashKeepsBudget) {
     WorkerPoolFixture f;
     f.add_stateful(true);
     f.set_crash_streak(0, true, 2);
-    f.set_suspect_inflight(0, true, 1);
+    f.set_culprit(0, true, "clice/worker/compile /a.cpp");
 
-    // A crash with a suspect request (a quarantined document's probe) in
-    // flight says something about the document, not the slot: the streak
-    // stays where it was and the slot respawns.
+    // A death that names its request is that request's content's doing:
+    // the streak stays where it was and the slot respawns.
     auto should_restart = f.simulate_crash(0, true);
 
     EXPECT_TRUE(should_restart);
     EXPECT_EQ(f.crash_streak(0, true), 2u);
+}
+
+TEST_CASE(DeathNamesItsRequest) {
+    WorkerDeath death;
+    death.cause = "killed by signal 11 (SIGSEGV)";
+    death.culprit = "clice/worker/compile /a.cpp";
+
+    using namespace worker::dispatch_errc;
+    auto own = WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp");
+    EXPECT_EQ(own.code, worker_crashed);
+    EXPECT_EQ(own.message, death.cause);
+    EXPECT_EQ(worker::death_of(own), "sf:0:1");
+    EXPECT_EQ(WorkerPoolFixture::death_error(death, "clice/worker/compile /b.cpp").code,
+              worker_lost);
+
+    death.culprit.clear();
+    EXPECT_EQ(WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp").code,
+              worker_died);
+}
+
+TEST_CASE(DeathTakesDocumentsAtOnce) {
+    WorkerPoolFixture f;
+    f.add_stateful(true);
+    f.add_stateful(true);
+    ASSERT_EQ(f.assign_worker(1), 0u);
+
+    // A request routed in the window before the crash report must not
+    // land on the corpse: the death itself frees the document.
+    f.mark_dead(0, true);
+    EXPECT_EQ(f.assign_worker(1), 1u);
+
+    f.simulate_crash(0, true);
+    ASSERT_EQ(f.crash_reports.size(), 1u);
+    ASSERT_EQ(f.crash_reports[0].lost_documents.size(), 1u);
+    EXPECT_EQ(f.crash_reports[0].lost_documents[0], 1u);
+}
+
+TEST_CASE(DeadlineKillsAndNames) {
+    WorkerPoolFixture f;
+    f.add_stateful(true);
+    f.add_stateful(true);
+    f.set_deadline(std::chrono::milliseconds(1000));
+    auto fresh = f.dispatch(0, true, "clice/worker/query:Hover /a.cpp");
+    auto hung = f.dispatch(1, true, "clice/worker/compile /b.cpp", std::chrono::seconds(2));
+
+    f.tick_deadlines();
+    EXPECT_EQ(f.state(0, true), WorkerPoolFixture::SlotState::Alive);
+    EXPECT_EQ(f.state(1, true), WorkerPoolFixture::SlotState::Dying);
+    EXPECT_EQ(f.death(1, true)->culprit, "clice/worker/compile /b.cpp");
+    EXPECT_TRUE(f.death(1, true)->cause.contains("1 seconds"));
 }
 
 TEST_CASE(BackoffDelaySchedule) {
@@ -1539,10 +1567,10 @@ TEST_CASE(CrashBudgetBoundary) {
     EXPECT_EQ(f.state(0), WorkerPoolFixture::SlotState::Dead);
 }
 
-TEST_CASE(StatefulDyingRejected) {
-    // A request landing in the restart window never reached a worker: it
-    // fails with worker_restarting, not worker_crashed, so crash accounting
-    // (document quarantine) does not blame the document for the window.
+TEST_CASE(StatefulDyingUnavailable) {
+    // A request landing in the restart window never reaches a worker: the
+    // death freed its document, and with no other worker alive it fails
+    // with worker_unavailable — no death for crash accounting to read.
     WorkerPoolFixture f;
     f.add_stateful();
     f.assign_worker(7);
@@ -1552,7 +1580,7 @@ TEST_CASE(StatefulDyingRejected) {
     f.run([&]() -> kota::task<> {
         auto result = co_await f.pool.send_stateful(7, worker::DocumentLinkParams{"/x.cpp"});
         CO_ASSERT_FALSE(result.has_value());
-        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_restarting);
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
         done = true;
     });
     EXPECT_TRUE(done);
@@ -1644,11 +1672,12 @@ TEST_CASE(SevereMemoryTick) {
 
     f.tick_memory(0.05);
 
-    // Zero the allowance, remember the recovery target, kill the low work.
-    // Zero, not one: any allowance left would let the preemption's own
-    // dispatch kick admit a fresh compile into the pressure being relieved.
+    // Zero the allowance, kill the low work, and aim recovery at half the
+    // concurrency that ran into the pressure, not back at it. Zero, not
+    // one: any allowance left would let the preemption's own dispatch
+    // kick admit a fresh compile into the pressure being relieved.
     EXPECT_EQ(f.low_limit(), 0u);
-    EXPECT_EQ(f.w_max(), 2u);
+    EXPECT_EQ(f.w_max(), 1u);
     EXPECT_EQ(f.low_busy(), 0u);
     EXPECT_EQ(f.state(0), WorkerPoolFixture::SlotState::Dying);
     EXPECT_EQ(f.state(1), WorkerPoolFixture::SlotState::Dying);
@@ -1863,32 +1892,6 @@ TEST_CASE(DeadSlotRevives) {
     EXPECT_TRUE(done);
 }
 
-TEST_CASE(InPlaceKeepsOwner) {
-    WorkerPoolFixture f;
-    bool done = false;
-    f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(0, 2));
-
-        // Two documents pin worker 0: it is the owner but not expendable.
-        f.force_owner(7, 0);
-        f.force_owner(8, 0);
-
-        // An in-place suspect keeps owner routing — the AST lives there —
-        // instead of migrating to the free worker like an isolated probe,
-        // and its budget exemption unwinds once the reply lands.
-        auto result = co_await f.pool.send_stateful(7,
-                                                    worker::DocumentLinkParams{"/x.cpp"},
-                                                    {},
-                                                    Suspect::InPlace);
-        EXPECT_EQ(f.owner_of(7), 0u);
-        EXPECT_EQ(f.suspect_inflight(0, true), 0u);
-
-        co_await f.stop();
-        done = true;
-    });
-    EXPECT_TRUE(done);
-}
-
 TEST_CASE(FloorAboveStartupKept) {
     WorkerPoolFixture f;
     bool done = false;
@@ -1973,6 +1976,32 @@ TEST_CASE(ScaleUpRevivesDead) {
     EXPECT_TRUE(done);
 }
 
+TEST_CASE(ScaleUpReusesRetired) {
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT_TRUE(f.start(2, 0));
+        f.retire_idle();
+        for(int i = 0; i < 50 && !f.slot_retired(1); ++i) {
+            co_await kota::sleep(100);
+        }
+        CO_ASSERT_TRUE(f.slot_retired(1));
+
+        // The retired slot is refilled instead of a third appended: a
+        // retire/scale-up cycle must not grow the slot table.
+        CO_ASSERT_TRUE(f.scale_up());
+        EXPECT_EQ(f.stateless_count(), 2u);
+        for(int i = 0; i < 50 && !f.worker_alive(1); ++i) {
+            co_await kota::sleep(100);
+        }
+        EXPECT_TRUE(f.worker_alive(1));
+
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
 TEST_CASE(CrashNotification) {
     WorkerPoolFixture f;
     bool done = false;
@@ -2010,8 +2039,9 @@ TEST_CASE(CrashDuringRequest) {
         CO_ASSERT_TRUE(f.start(2, 0));
 
         // Kill both workers, then send without yielding: the claim lands on
-        // a dead-but-not-yet-reaped slot, and the pool must surface
-        // worker_crashed instead of retrying internally.
+        // a dead-but-not-yet-reaped slot, and the pool must surface the
+        // death instead of retrying internally — worker_died, since an
+        // outside kill names no request.
         f.kill_worker(0);
         f.kill_worker(1);
 
@@ -2023,7 +2053,7 @@ TEST_CASE(CrashDuringRequest) {
 
         auto result = co_await f.pool.send_stateless(params, worker::Priority::Low);
         CO_ASSERT_FALSE(result.has_value());
-        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_crashed);
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_died);
 
         co_await f.stop();
         done = true;

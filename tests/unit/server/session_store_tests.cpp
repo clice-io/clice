@@ -1,3 +1,4 @@
+#include <chrono>
 #include <string>
 
 #include "test/test.h"
@@ -224,69 +225,70 @@ TEST_CASE(ForEachVisitsAll) {
     ASSERT_EQ(visited, 1);
 }
 
-TEST_CASE(QuarantineProbeOnEdit) {
+TEST_CASE(EditLetsCrashRetry) {
     // The state machine itself is pinned by quarantine_tests; this pins
-    // that apply_change feeds real edits into it without resetting the
-    // record — only a successful compile proves the document healthy.
+    // that apply_change feeds real edits into it.
     SessionStore store;
     auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
 
-    session->quarantine.on_crash();
+    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
+    session->quarantine.on_crash(0, "d1", "cause", Quarantine::Clock::now());
+    ASSERT_TRUE(session->quarantine.barred(0, later));
     store.apply_change(*session, partial_change(0, 0, 0, 0, "x"), 2);
-    ASSERT_EQ(session->quarantine.crashes(), 1u);
-
-    // At the threshold an edit re-arms one probe and keeps the streak: a
-    // quarantined document earns a single attempt per change, not a fresh
-    // budget.
-    session->quarantine.on_crash();
-    ASSERT_TRUE(session->quarantine.blocked());
-    store.apply_change(*session, partial_change(0, 0, 0, 0, "y"), 3);
-    ASSERT_EQ(session->quarantine.crashes(), Quarantine::threshold);
-    ASSERT_FALSE(session->quarantine.blocked());
+    ASSERT_FALSE(session->quarantine.barred(0, later));
 }
 
-TEST_CASE(NoopEditNoProbe) {
+TEST_CASE(NoopEditNoRetry) {
     SessionStore store;
     auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
-    session->quarantine.on_crash();
-    session->quarantine.on_crash();
-    ASSERT_TRUE(session->quarantine.blocked());
+    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
+    session->quarantine.on_crash(0, "d1", "cause", Quarantine::Clock::now());
 
-    // The probe license is one attempt per real content change: an
-    // out-of-range deletion clamps to an empty range at the end of the
-    // document, an empty change list and a no-op replacement change
-    // nothing — none may re-arm a compile of the unchanged poison bytes.
+    // A retry needs a real content change: an out-of-range deletion clamps
+    // to an empty range at the end of the document, an empty change list
+    // and a no-op replacement change nothing — none may send the unchanged
+    // crashing bytes to another worker.
     store.apply_change(*session, partial_change(99, 0, 99, 1, ""), 2);
-    ASSERT_TRUE(session->quarantine.blocked());
+    ASSERT_TRUE(session->quarantine.barred(0, later));
 
     store.apply_change(*session, {}, 3);
-    ASSERT_TRUE(session->quarantine.blocked());
+    ASSERT_TRUE(session->quarantine.barred(0, later));
 
     store.apply_change(*session, partial_change(0, 0, 0, 1, "i"), 4);
-    ASSERT_TRUE(session->quarantine.blocked());
+    ASSERT_TRUE(session->quarantine.barred(0, later));
 
     // A whole-document change carrying identical bytes is a no-op too.
     protocol::TextDocumentContentChangeWholeDocument whole;
     whole.text = session->text;
     store.apply_change(*session, protocol::TextDocumentContentChangeEvent(whole), 5);
-    ASSERT_TRUE(session->quarantine.blocked());
+    ASSERT_TRUE(session->quarantine.barred(0, later));
 
     store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 6);
-    ASSERT_FALSE(session->quarantine.blocked());
+    ASSERT_FALSE(session->quarantine.barred(0, later));
 }
 
-TEST_CASE(ReopenClearsQuarantine) {
+TEST_CASE(ReopenKeepsCrashes) {
     SessionStore store;
+    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
     auto session = store.open(Fid{1});
-    session->quarantine.on_crash();
-    session->quarantine.on_crash();
-
     store.apply_open(*session, "int a;\n", 1);
+    session->quarantine.on_crash(0, "d1", "cause", Quarantine::Clock::now());
+    store.close(Fid{1});
+    ASSERT_TRUE(session->quarantine.empty());
 
-    ASSERT_EQ(session->quarantine.crashes(), 0u);
-    ASSERT_FALSE(session->quarantine.blocked());
+    // Closing and reopening the same bytes is no retry.
+    session = store.open(Fid{1});
+    store.apply_open(*session, "int a;\n", 1);
+    ASSERT_TRUE(session->quarantine.barred(0, later));
+
+    // Reopened on other bytes, the difference counts as a change.
+    store.close(Fid{1});
+    session = store.open(Fid{1});
+    store.apply_open(*session, "int b;\n", 1);
+    ASSERT_TRUE(session->quarantine.crashed(0));
+    ASSERT_FALSE(session->quarantine.barred(0, later));
 }
 
 };  // TEST_SUITE(SessionStore)

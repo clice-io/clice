@@ -187,8 +187,8 @@ public:
 
 private:
     /// Whether the worker's AST can answer for this session right now:
-    /// compiled, current, and not quarantined (the quarantine gate sits
-    /// before ensure_compiled's clean-AST fast path, so a quarantined
+    /// compiled, current, and its compile not barred by a crash (the bar
+    /// sits before ensure_compiled's clean-AST fast path, so a barred
     /// session's dispatch returns null even with a clean AST). When false,
     /// the routing rules try the index before deciding to await a compile.
     bool ast_answerable(const Session& session) const;

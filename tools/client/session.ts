@@ -227,6 +227,7 @@ export function createSessionFactory(): SessionHandle {
         const client = CliceClient.start(cliceExecutable(), {
             drainStderr: options.drainStderr,
             args: options.args,
+            env: options.env,
         });
         opened.push({
             client,
@@ -248,6 +249,7 @@ export function createSessionFactory(): SessionHandle {
                 : CliceClient.start(cliceExecutable(), {
                       drainStderr: options.drainStderr,
                       args: options.args,
+                      env: options.env,
                   });
         opened.push({
             client,

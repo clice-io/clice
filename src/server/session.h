@@ -85,10 +85,9 @@ struct Session {
     /// Used to detect stale compilation results (ABA prevention).
     std::uint64_t generation = 0;
 
-    /// Crash containment for this document's content: the crash budget
-    /// lives on pool slots, but the poison lives in documents — without
-    /// the cut one document burns slot after slot until the whole pool is
-    /// dead. All transitions go through the type; see quarantine.h.
+    /// What this document's worker crashes bar it from, and when it may
+    /// try again. All transitions go through the type; see quarantine.h.
+    /// The store parks it across a close.
     Quarantine quarantine;
 
     /// See ServingMode for the write discipline. Escalated is the

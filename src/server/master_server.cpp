@@ -138,6 +138,14 @@ void MasterServer::initialize() {
     if(unbounded) {
         pool_opts.max_stateless = 0;
     }
+    // Lets integration tests hang a worker without waiting out the real
+    // deadline.
+    if(auto value = llvm::sys::Process::GetEnv("CLICE_TEST_REQUEST_DEADLINE_MS")) {
+        std::uint64_t ms = 0;
+        if(!llvm::StringRef(*value).getAsInteger(10, ms)) {
+            pool_opts.request_deadline = std::chrono::milliseconds(ms);
+        }
+    }
 
     auto& first = projects.front()->project.config.project;
     if(!first.logging_dir.empty()) {
@@ -202,11 +210,19 @@ void MasterServer::wire() {
         // Owner-table upkeep is pool-domain state and stays here; the
         // session-side consequence (the worker's AST is gone, same as a
         // crash) goes through the event pipeline like any invalidation.
-        // Only the current owner's eviction counts: a stale copy left
-        // behind by a probe reassignment says nothing about the document
-        // the new owner still holds.
+        // A live round's compile puts the document back on its owner —
+        // the worker evicted it before that compile arrived, or it would
+        // have kept it — so the eviction changes nothing.
+        auto& project = owner_of(*id);
+        if(project.ast.compiling(*id)) {
+            LOG_INFO("Ignoring eviction of {}: a compile of it is under way", path);
+            return;
+        }
+        // Only the current owner's eviction counts: a copy left behind on
+        // a worker that lost ownership says nothing about the document the
+        // new owner still holds.
         if(pool.remove_owner_from(id->raw, worker_index)) {
-            owner_of(*id).dispatch(FileEvent::document_evicted(*id));
+            project.dispatch(FileEvent::document_evicted(*id));
         } else {
             LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
         }
@@ -613,6 +629,11 @@ std::uint64_t MasterServer::context_epoch() {
 }
 
 void MasterServer::saved(Fid path_id) {
+    // The user's retry: whatever crashed on the saved document runs again
+    // on its next request.
+    if(auto session = find_session(path_id)) {
+        owner_of(path_id).ast.saved(*session);
+    }
     llvm::SmallVector<Fid> closures{path_id};
     for(auto& project: projects) {
         project->open_closures(closures);

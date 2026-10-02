@@ -32,23 +32,75 @@ namespace clice {
 
 namespace protocol = kota::ipc::protocol;
 
-/// A quarantined document must not hide behind empty diagnostics: publish
-/// one that says why every semantic feature went quiet, and how to lift it.
-static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
-    std::vector<protocol::Diagnostic> diagnostics(1);
-    auto& diagnostic = diagnostics[0];
-    diagnostic.range = protocol::Range{
-        .start = protocol::Position{.line = 0, .character = 0},
-        .end = protocol::Position{.line = 0, .character = 0},
-    };
-    diagnostic.severity = protocol::DiagnosticSeverity::Error;
-    diagnostic.source = "clice";
-    diagnostic.message = std::format(
-        "compiling this file crashed the language server worker {} times; "
-        "the file is quarantined until it is edited",
-        crashes);
-    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostics);
-    return kota::codec::RawValue{json ? std::move(*json) : "[]"};
+namespace {
+
+/// What crashed, as the note words it: the work, and the feature it
+/// pauses.
+struct CrashSubject {
+    llvm::StringRef work;
+    llvm::StringRef paused;
+};
+
+CrashSubject crash_subject(std::uint8_t kind) {
+    using Q = worker::QueryKind;
+    if(kind >= evidence_kind(EvidenceKind::Count)) {
+        switch(static_cast<Q>(kind - evidence_kind(EvidenceKind::Count))) {
+            case Q::Hover: return {"computing hover for", "Hover is"};
+            case Q::SemanticTokens:
+                return {"computing semantic highlighting for", "Semantic highlighting is"};
+            case Q::InlayHints: return {"computing inlay hints for", "Inlay hints are"};
+            case Q::DocumentSymbol:
+                return {"computing document symbols for", "Document symbols are"};
+        }
+        std::unreachable();
+    }
+    switch(static_cast<EvidenceKind>(kind)) {
+        case EvidenceKind::Compile: return {"compiling", "Semantic features are"};
+        case EvidenceKind::PCH:
+            return {"building the precompiled preamble of", "Semantic features are"};
+        case EvidenceKind::PCM: return {"building a module imported by", "The module is"};
+        case EvidenceKind::DocumentLink:
+            return {"computing document links for", "Document links are"};
+        case EvidenceKind::FoldingRange:
+            return {"computing folding ranges for", "Folding ranges are"};
+        case EvidenceKind::CodeAction: return {"computing code actions for", "Code actions are"};
+        case EvidenceKind::Completion: return {"completing code in", "Code completion is"};
+        case EvidenceKind::SignatureHelp:
+            return {"computing signature help in", "Signature help is"};
+        case EvidenceKind::Format: return {"formatting", "Formatting is"};
+        case EvidenceKind::Count: break;
+    }
+    std::unreachable();
+}
+
+}  // namespace
+
+void append_crash_notes(const Session& session, std::vector<protocol::Diagnostic>& diagnostics) {
+    for(auto& note: session.quarantine.notes()) {
+        auto subject = crash_subject(note.kind);
+        auto retry = note.save_only ? std::string("until you save this file")
+                                    : std::string(
+                                          "until this file or a header it includes changes, or "
+                                          "until you save it");
+        auto repeats =
+            note.strikes > 1 ? std::format(" {} times in a row", note.strikes) : std::string();
+        protocol::Diagnostic diagnostic;
+        diagnostic.range = protocol::Range{
+            .start = protocol::Position{.line = 0, .character = 0},
+            .end = protocol::Position{.line = 0, .character = 0},
+        };
+        diagnostic.severity = protocol::DiagnosticSeverity::Warning;
+        diagnostic.source = "clice";
+        diagnostic.message = std::format(
+            "clice's worker crashed{} while {} this file ({}). {} "
+            "paused here {}.",
+            repeats,
+            subject.work,
+            note.cause,
+            subject.paused,
+            retry);
+        diagnostics.push_back(std::move(diagnostic));
+    }
 }
 
 /// The compile's diagnostics behind the ones its PCH's build raised in the
@@ -185,35 +237,73 @@ void ASTFamily::register_runner() {
     });
 }
 
-void ASTFamily::publish_quarantined(const std::shared_ptr<Session>& session,
-                                    std::optional<CommandSource> source,
-                                    std::optional<std::uint32_t> line_limit) {
-    session->quarantine.mark_announced();
+void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
+                             std::uint8_t kind,
+                             const kota::ipc::Error& error) {
+    LOG_WARN("{} crashed a worker while serving {}: {}",
+             project.file_table.resolve(session->path_id),
+             crash_subject(kind).work,
+             error.message);
+    auto& quarantine = session->quarantine;
+    quarantine.on_crash(kind, worker::death_of(error), error.message, Quarantine::Clock::now());
+    // A silent first crash leaves the published state alone (see
+    // Quarantine invariant 4).
+    if(!quarantine.shows(kind)) {
+        return;
+    }
+    // A barred compile leaves no AST behind the old diagnostics: they go,
+    // and the note says why.
     auto previous = projections.projection(session->path_id);
     bool has_previous = previous && previous->output.has_value();
-    projections.set_output(session->path_id,
-                           CompileOutput{
-                               .version = std::nullopt,
-                               .source = source.value_or(has_previous ? previous->output->source
-                                                                      : CommandSource::CDBExact),
-                               .diagnostics = quarantine_diagnostics(session->quarantine.crashes()),
-                               .line_limit = line_limit,
-                           });
+    if(!has_previous || kind == evidence_kind(EvidenceKind::Compile) ||
+       kind == evidence_kind(EvidenceKind::PCH)) {
+        projections.set_output(
+            session->path_id,
+            CompileOutput{
+                .version = std::nullopt,
+                .source = has_previous ? previous->output->source : CommandSource::CDBExact,
+                .diagnostics = kota::codec::RawValue{},
+                .line_limit = std::nullopt,
+            });
+    }
     on_output.emit(session);
 }
 
-void ASTFamily::publish_recovered(const std::shared_ptr<Session>& session) {
-    auto previous = projections.projection(session->path_id);
-    bool has_previous = previous && previous->output.has_value();
-    projections.set_output(
-        session->path_id,
-        CompileOutput{
-            .version = std::nullopt,
-            .source = has_previous ? previous->output->source : CommandSource::CDBExact,
-            .diagnostics = kota::codec::RawValue{},
-            .line_limit = std::nullopt,
-        });
+void ASTFamily::republish(const std::shared_ptr<Session>& session) {
+    if(auto previous = projections.projection(session->path_id);
+       !previous || !previous->output.has_value()) {
+        projections.set_output(session->path_id,
+                               CompileOutput{
+                                   .version = std::nullopt,
+                                   .source = CommandSource::CDBExact,
+                                   .diagnostics = kota::codec::RawValue{},
+                                   .line_limit = std::nullopt,
+                               });
+    }
     on_output.emit(session);
+}
+
+bool ASTFamily::compile_barred(const Session& session) {
+    auto now = Quarantine::Clock::now();
+    return session.quarantine.barred(evidence_kind(EvidenceKind::Compile), now) ||
+           session.quarantine.barred(evidence_kind(EvidenceKind::PCH), now);
+}
+
+void ASTFamily::saved(Session& session) {
+    session.quarantine.on_save();
+    // The modules it is and imports retry with it: a crashed build is
+    // refused until a consumer holds a license (see depend_modules). A
+    // module crash leaves the importer's compile standing, so only a fresh
+    // round asks for the module again.
+    if(session.quarantine.crashed(evidence_kind(EvidenceKind::PCM))) {
+        invalidate(session.path_id);
+    }
+    pcm.forgive(session.path_id);
+    for(auto dep: graph.dependencies(node(session.path_id))) {
+        if(dep.family == Family::PCM) {
+            pcm.forgive(Fid{static_cast<std::uint32_t>(dep.key)});
+        }
+    }
 }
 
 void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileOutput output) {
@@ -320,6 +410,7 @@ void ASTFamily::switch_identity(Session& session) {
     // identity.
     session.generation += 1;
     session.trial_done = false;
+    session.quarantine.on_change(Quarantine::Clock::now());
     auto& entry = projections.entries[session.path_id];
     if(entry.projection) {
         auto next = ASTProjection(*entry.projection);
@@ -374,20 +465,11 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
               session->generation,
               projections.current(path_id));
 
-    // The crash budget lives on pool slots, the poison lives in documents:
-    // a document that keeps killing workers is quarantined instead of
-    // burning slot after slot. A content change grants one probe attempt.
-    if(session->quarantine.blocked()) {
-        LOG_WARN("ensure_compiled: {} quarantined after {} worker crashes",
-                 project.file_table.resolve(path_id),
-                 session->quarantine.crashes());
-        // A quarantine reached outside the compile-failure landing (a
-        // completion or PCH build tipped the streak, or the crash landed on
-        // a superseded generation) never materialized its diagnostic;
-        // announce it once here instead of leaving the file silently dead.
-        if(session->quarantine.needs_announcement()) {
-            publish_quarantined(session, std::nullopt, std::nullopt);
-        }
+    // A document whose compile keeps killing workers waits for a change
+    // or a save instead of feeding the same content to one more worker;
+    // the crash note was published when the crash was recorded.
+    if(compile_barred(*session)) {
+        LOG_DEBUG("ensure_compiled: {} is barred by a crash", project.file_table.resolve(path_id));
         co_return false;
     }
 
@@ -422,7 +504,7 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
 }
 
 kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
-                                           Fid path_id,
+                                           const std::shared_ptr<Session>& session,
                                            llvm::StringRef directory,
                                            const std::vector<std::string>& arguments,
                                            llvm::StringRef text,
@@ -433,6 +515,7 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
     // the same cost the project pays once providers exist, and per-file
     // reachability approximations of "could this TU see an import" have
     // irreducible blind spots (macro includes, unsaved include chains).
+    auto path_id = session->path_id;
     // The remaining gates catch what the candidate set cannot: this
     // buffer's own unsaved import, a header context's suffix, a forced
     // include. The scan's sentinel edges are what let the name's first
@@ -452,6 +535,7 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
         // earned earlier must stop cascading here, even when the compile
         // itself later fails (failed rounds keep declared edges).
         graph.declare(node(path_id), {});
+        session->quarantine.on_land(evidence_kind(EvidenceKind::PCM));
         co_return true;
     }
 
@@ -491,8 +575,18 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
         }
     }
     if(deps.resolved.empty()) {
+        session->quarantine.on_land(evidence_kind(EvidenceKind::PCM));
         co_return true;
     }
+
+    // A module whose build crashed a worker is refused to every importer
+    // until one holds a license to retry it: a change to its inputs, or a
+    // save (see Quarantine).
+    auto kind = evidence_kind(EvidenceKind::PCM);
+    bool licensed = session->quarantine.crashed(kind) &&
+                    !session->quarantine.barred(kind, Quarantine::Clock::now());
+    Quarantine::Attempt license(session->quarantine, kind);
+    bool crashed = false;
 
     // Building a dependency can itself evict another clean module's PCM
     // under budget pressure, reopening the window the previous attempt's
@@ -505,16 +599,32 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
         }
 
         for(auto dep: deps.resolved) {
+            if(auto* crash = pcm.crashed(dep)) {
+                if(!licensed) {
+                    record_crash(session, kind, *crash);
+                    crashed = true;
+                    continue;
+                }
+                pcm.forgive(dep);
+            }
             switch(co_await ctx.depend({Family::PCM, dep.raw})) {
                 case DependResult::Ready: break;
                 case DependResult::Failed:
                     LOG_INFO("Import {} of {} failed to build; the parse reports it",
                              project.file_table.resolve(dep),
                              project.file_table.resolve(path_id));
+                    if(auto* crash = pcm.crashed(dep)) {
+                        record_crash(session, kind, *crash);
+                        crashed = true;
+                        licensed = false;
+                    }
                     break;
                 case DependResult::Cancelled: co_return false;
             }
         }
+    }
+    if(!crashed) {
+        session->quarantine.on_land(kind);
     }
     co_return true;
 }
@@ -535,11 +645,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     auto gen = session->generation;
 
     // Covers every spawn path, including waiter-driven respawns: content
-    // that just spent its budget must not reach one more worker.
-    if(session->quarantine.blocked()) {
-        if(session->quarantine.needs_announcement()) {
-            publish_quarantined(session, std::nullopt, std::nullopt);
-        }
+    // that just crashed a worker must not reach one more.
+    if(compile_barred(*session)) {
         co_return RoundOutcome::Failed;
     }
 
@@ -548,11 +655,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
     LOG_INFO("compile round: starting path_id={} gen={}", path_id, gen);
 
-    // The evidence this round inherited: a successful landing clears no
-    // more (see Quarantine::land), so crashes recorded past this point — a
-    // PCH build below, a concurrent completion build — keep accumulating
-    // toward quarantine even when the compile itself lands.
-    auto flight = session->quarantine.begin_flight();
+    // A round past the gate on a crashed compile or preamble is its retry,
+    // and holds the license until its outcome (Quarantine invariant 2).
+    auto compile_kind = evidence_kind(EvidenceKind::Compile);
+    auto pch_kind = evidence_kind(EvidenceKind::PCH);
+    Quarantine::Attempt compile_attempt(session->quarantine, compile_kind);
+    bool pch_licensed = session->quarantine.crashed(pch_kind);
+    Quarantine::Attempt pch_attempt(session->quarantine, pch_kind);
 
     // At most two worker sends: a header with unknown self-containment
     // compiles without a prefix first; if the diagnostics indicate missing
@@ -592,7 +701,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                            contexts.commands.header_mode(path_id) == HeaderMode::Unknown;
 
         if(!co_await depend_modules(ctx,
-                                    path_id,
+                                    session,
                                     params.directory,
                                     params.arguments,
                                     params.text,
@@ -616,20 +725,22 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             auto plan =
                 plan_pch(path_id, params.text, params.directory, params.arguments, synthesized);
             switch(plan.verdict) {
-                case PCHPlan::Verdict::None: break;
+                // No preamble left to crash on.
+                case PCHPlan::Verdict::None: session->quarantine.on_land(pch_kind); break;
                 case PCHPlan::Verdict::Defer: adopted_pch = plan.previous; break;
                 case PCHPlan::Verdict::Acquire: {
                     auto pch_key = plan.request.pch_key;
-                    // This round is the dispatch owner when its depend
-                    // spawns the PCH round: the probe pins every worker
-                    // death of the build on this document (the preamble is
-                    // its content), held by that round so the evidence
-                    // lands even if this round goes stale meanwhile.
-                    auto dep =
-                        pch.prepare(std::move(plan.request), [session](llvm::StringRef death) {
-                            session->quarantine.on_kind_crash(evidence_kind(EvidenceKind::PCH),
-                                                              death);
-                        });
+                    // A preamble whose build crashed a worker — for this
+                    // document or another sharing it — is refused until
+                    // this one holds a license to retry it.
+                    if(auto* crash = pch.crashed(pch_key)) {
+                        if(!pch_licensed) {
+                            record_crash(session, pch_kind, *crash);
+                            co_return RoundOutcome::Failed;
+                        }
+                        pch.forgive(pch_key);
+                    }
+                    auto dep = pch.prepare(std::move(plan.request));
                     switch(co_await ctx.depend(dep)) {
                         case DependResult::Ready:
                             // Adoption is gated on the round outcome and on
@@ -640,14 +751,22 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                             // to this round anymore.
                             if(session->generation == gen && ctx.current()) {
                                 adopted_pch = pch_key;
-                                // Adopting a proven-good artifact disproves
-                                // the session's PCH strikes as surely as
+                                // Adopting a proven-good artifact clears
+                                // the session's PCH record as surely as
                                 // building one — but only its own; every
-                                // consumer washes for itself.
-                                session->quarantine.on_kind_land(evidence_kind(EvidenceKind::PCH));
+                                // consumer clears for itself.
+                                session->quarantine.on_land(pch_kind);
                             }
                             break;
-                        case DependResult::Failed: break;
+                        case DependResult::Failed:
+                            // The build itself crashed a worker: this round
+                            // stops before the parse, which would feed the
+                            // same preamble to one more worker.
+                            if(auto* crash = pch.crashed(pch_key)) {
+                                record_crash(session, pch_kind, *crash);
+                                co_return RoundOutcome::Failed;
+                            }
+                            break;
                         case DependResult::Cancelled: co_return RoundOutcome::Stale;
                     }
                     break;
@@ -672,19 +791,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             co_return RoundOutcome::Stale;
         }
 
-        // A PCH crash above may have tipped the document into quarantine —
-        // the entry gate ran before the streak grew. Stop before the
-        // stateful dispatch instead of feeding the same content to one
-        // more worker; the crash also spends any armed probe, since this
-        // WAS the probe's attempt. A probe whose PCH build survived
-        // (streak unchanged) continues to the compile.
-        if(session->quarantine.active() && session->quarantine.grew(flight)) {
-            LOG_WARN("compile round: {} quarantined during dependency prep", file_path);
-            session->quarantine.spend_probe();
-            publish_quarantined(session, source, suffix_line_limit);
-            co_return RoundOutcome::Failed;
-        }
-
         // Seed the worker's inactive-region state from the PCH's preamble:
         // the conditional stack it left open (a #if cut by the bound) and
         // the regions of the preamble share itself. Copy the state out:
@@ -701,37 +807,34 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             params.open_conditionals.assign(conditionals.begin(), conditionals.end());
         }
 
-        // The probe rides the dispatch that can disprove its evidence: a
-        // compile spends it only when compiles are the crashers. A
-        // kind-quarantined document's compile is ordinary work, and the
-        // probe must survive it for the crashing kind's own retry.
-        bool recovery = session->quarantine.recovery_compile();
-        auto suspect = recovery ? Suspect::Isolated : Suspect::No;
-        if(recovery) {
-            session->quarantine.spend_probe();
-        }
         // The send deliberately carries no token: the master must observe
         // the request's real outcome — the crash accounting below depends
         // on it (contract 2). A supersede interrupts the worker with a
         // CancelCompile notification instead (see supersede/stop), and
-        // the stale reply is discarded at the validity gate below.
-        auto result = co_await pool.send_stateful(path_id.raw, params, {}, suspect);
-
+        // the stale reply is discarded at the validity gate below. A death
+        // that is not this compile's doing resends it once — the attempt
+        // only stops early once the buffer moved on, since the next round
+        // compiles that.
+        //
         // Crash accounting runs even for superseded rounds: the crash came
         // from content this document dispatched, and skipping it would let a
-        // poison file dodge quarantine by being edited between dispatch and
-        // the crash response. Only a real mid-request death counts — a
-        // restarting-window fast-fail never reached a worker.
-        if(!result.has_value()) {
-            if(result.error().code == worker::dispatch_errc::worker_crashed) {
-                session->quarantine.on_crash(worker::death_of(result.error()));
-            } else if(suspect == Suspect::Isolated &&
-                      result.error().code == worker::dispatch_errc::worker_unavailable) {
-                // The probe never ran: keep it armed so a later request
-                // retries once an expendable worker frees up.
-                session->quarantine.re_arm_probe();
-            }
-        }
+        // poison file dodge its bar by being edited between dispatch and the
+        // crash response (contract 12).
+        bool blamed = false;
+        auto result = co_await deliver(
+            pool,
+            true,
+            [&]() -> RequestResult<worker::CompileParams> {
+                if(session->generation != gen) {
+                    co_return kota::outcome_error(
+                        kota::ipc::Error{worker::dispatch_errc::cancelled, "Compile superseded"});
+                }
+                co_return co_await pool.send_stateful(path_id.raw, params);
+            },
+            [&](const kota::ipc::Error& error) {
+                blamed = true;
+                record_crash(session, compile_kind, error);
+            });
 
         if(session->generation != gen) {
             LOG_INFO("compile round: superseded reply for {}", file_path);
@@ -755,31 +858,18 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             // (report_fatal_error in the bitstream reader) before any
             // diagnostic can anchor, so the attributable shapes above
             // never get a say. Retract the pair — a corrupt artifact then
-            // heals on the next compile, while a genuinely poisonous
-            // document keeps crashing and its own quarantine budget still
-            // contains it (the extra rebuilds stay bounded by that
-            // budget).
-            if(result.error().code == worker::dispatch_errc::worker_crashed &&
-               adopted_pch.has_value() && !params.pch.first.empty()) {
+            // heals on the retry, while a genuinely poisonous document
+            // keeps crashing and its quarantine still contains it.
+            if(blamed && adopted_pch.has_value() && !params.pch.first.empty()) {
                 LOG_WARN("Compile crashed consuming PCH pair {} for {}; retracting the pair",
                          *adopted_pch,
                          file_path);
                 pch.blame(*adopted_pch);
             }
-            // A quarantined document announces itself instead of hiding
-            // behind the empty list; the clear path publishes empty
-            // diagnostics without a version.
-            if(session->quarantine.active()) {
-                publish_quarantined(session, source, suffix_line_limit);
-            } else {
-                publish_output(session,
-                               CompileOutput{
-                                   .version = std::nullopt,
-                                   .source = source,
-                                   .diagnostics = kota::codec::RawValue{},
-                                   .line_limit = suffix_line_limit,
-                               });
-            }
+            // Short of a crash of its own (published as it was recorded),
+            // the document keeps what it showed: a worker outage or a
+            // second death of somebody else's doing says nothing about its
+            // code.
             co_return RoundOutcome::Failed;
         }
 
@@ -833,20 +923,15 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                      static_cast<int>(result.value().status));
             // The projection stays non-current: the next request
             // recompiles instead of trusting the phantom product. Publish
-            // the honest gap like the dispatch-failure path above —
-            // versionless empty diagnostics rather than a stale list
-            // posing as current.
-            if(session->quarantine.active()) {
-                publish_quarantined(session, source, suffix_line_limit);
-            } else {
-                publish_output(session,
-                               CompileOutput{
-                                   .version = std::nullopt,
-                                   .source = source,
-                                   .diagnostics = kota::codec::RawValue{},
-                                   .line_limit = suffix_line_limit,
-                               });
-            }
+            // the honest gap — versionless empty diagnostics rather than a
+            // stale list posing as current.
+            publish_output(session,
+                           CompileOutput{
+                               .version = std::nullopt,
+                               .source = source,
+                               .diagnostics = kota::codec::RawValue{},
+                               .line_limit = suffix_line_limit,
+                           });
             co_return RoundOutcome::Failed;
         }
 
@@ -942,7 +1027,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         entry.deps =
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
         entry.current = current;
-        session->quarantine.land(flight);
+        session->quarantine.on_land(compile_kind);
         on_output.emit(session);
         // The push above told clients to re-pull what the fresh AST now
         // answers better; one refresh per landing.
@@ -976,6 +1061,7 @@ kota::task<std::optional<std::string>>
         case PCHPlan::Verdict::None:
             if(license()) {
                 projections.set_pch_key(path_id, std::nullopt);
+                session->quarantine.on_land(evidence_kind(EvidenceKind::PCH));
             }
             co_return std::nullopt;
         // The adopted PCH may by now belong to a newer buffer than a
@@ -985,12 +1071,17 @@ kota::task<std::optional<std::string>>
     }
     auto pch_key = plan.request.pch_key;
 
-    // Joiners of an already-running round install nothing and replay
-    // nothing; only the dispatch owner's probe pins the build's deaths.
-    auto outcome = co_await pch.acquire(std::move(plan.request), [session](llvm::StringRef death) {
-        session->quarantine.on_kind_crash(evidence_kind(EvidenceKind::PCH), death);
-    });
-    if(outcome != PCHFamily::Outcome::Ready) {
+    // A preamble that crashed a worker bars the document's content builds
+    // (the caller checks); only a compile round's license forgives it.
+    auto pch_kind = evidence_kind(EvidenceKind::PCH);
+    if(auto* crash = pch.crashed(pch_key)) {
+        record_crash(session, pch_kind, *crash);
+        co_return std::nullopt;
+    }
+    if(co_await pch.acquire(std::move(plan.request)) != PCHFamily::Outcome::Ready) {
+        if(auto* crash = pch.crashed(pch_key)) {
+            record_crash(session, pch_kind, *crash);
+        }
         co_return std::nullopt;
     }
 
@@ -1002,10 +1093,10 @@ kota::task<std::optional<std::string>>
     // compiles against the artifact: it was planned from the text it sends.
     if(license()) {
         projections.set_pch_key(path_id, pch_key);
-        // Adopting a proven-good artifact disproves the session's PCH strikes
-        // as surely as building one — but only its own; every consumer washes
+        // Adopting a proven-good artifact clears the session's PCH record as
+        // surely as building one — but only its own; every consumer clears
         // for itself.
-        session->quarantine.on_kind_land(evidence_kind(EvidenceKind::PCH));
+        session->quarantine.on_land(pch_kind);
     }
     co_return pch_key;
 }

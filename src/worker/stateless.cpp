@@ -13,6 +13,7 @@
 #include "support/logging.h"
 #include "support/stderr_sink.h"
 #include "worker/common.h"
+#include "worker/crash_report.h"
 #include "worker/protocol.h"
 
 #include "kota/async/async.h"
@@ -419,6 +420,11 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     ScopedTimer index_timer;
     if(params.index) {
         result.tu_index_data = index::build_tu_index(unit);
+        if(result.tu_index_data.size() > max_index_bytes()) {
+            return {false,
+                    std::format("the index ({} MiB) is too large to send between clice processes",
+                                result.tu_index_data.size() / (1024 * 1024))};
+        }
     }
     auto index_ms = index_timer.ms();
     if(params.tidy) {
@@ -521,7 +527,10 @@ static void serve(kota::ipc::BincodePeer& peer,
                 if(stop->load(std::memory_order_relaxed)) {
                     return cancelled;
                 }
-                return handler(params, stop);
+                CrashScope crash_scope(worker::crash_tag(params));
+                auto result = handler(params, stop);
+                release_free_memory();
+                return result;
             },
             [stop] { stop->store(true, std::memory_order_relaxed); });
         co_return result.value();
@@ -553,6 +562,8 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     }
 
     LOG_INFO("Starting stateless worker");
+    install_crash_report();
+    prefer_as_oom_victim();
 
     kota::event_loop loop;
 

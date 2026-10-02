@@ -28,7 +28,7 @@ std::uint64_t PCHFamily::intern(llvm::StringRef pch_key) {
     return it->second;
 }
 
-NodeId PCHFamily::prepare(Request request, std::function<void(llvm::StringRef)> on_crash) {
+NodeId PCHFamily::prepare(Request request) {
     auto key_id = intern(request.pch_key);
     auto id = node(key_id);
 
@@ -42,19 +42,18 @@ NodeId PCHFamily::prepare(Request request, std::function<void(llvm::StringRef)> 
 
     // The caller's join spawns a round synchronously only for a dirty
     // node with no round live (a missing node is created dirty) — that
-    // caller is the dispatch owner: stash its inputs and probe for the
-    // round. A clean fresh node's join consumes nothing, and a stash left
-    // there would pin the request's buffer and the probe's captured
-    // session in the monotonic table for as long as the key stays fresh.
+    // caller is the dispatch owner: stash its inputs for the round. A
+    // clean fresh node's join consumes nothing, and a stash left there
+    // would pin the request's buffer in the monotonic table for as long as
+    // the key stays fresh.
     if(!graph.is_compiling(id) && (!graph.has_node(id) || graph.is_dirty(id))) {
-        states[key_id] = {std::move(request), std::move(on_crash)};
+        states[key_id] = {std::move(request)};
     }
     return id;
 }
 
-kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request,
-                                                  std::function<void(llvm::StringRef)> on_crash) {
-    auto id = prepare(std::move(request), std::move(on_crash));
+kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request) {
+    auto id = prepare(std::move(request));
 
     switch(co_await graph.request(id, {.flavor = JoinFlavor::OneAttempt, .foreground = true})) {
         case JoinOutcome::Success: co_return Outcome::Ready;
@@ -84,7 +83,6 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // and the interned-key vector may grow while this frame is suspended,
     // so never hold references into it.
     auto request = states[key_id].inputs;
-    auto probe = states[key_id].on_crash;
     const auto& pch_key = request.pch_key;
 
     // Authoritative revalidation of the registered pair. Both halves must
@@ -136,15 +134,15 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         co_return RoundOutcome::Failed;
     }
 
-    // A preamble whose PCH build keeps killing workers is refused before
-    // the dispatch: the artifact is shared, so one document's quarantine
-    // cannot contain it — every session with this preamble would burn
-    // workers of its own. The key is content-derived: editing the poison
-    // starts a fresh key with a fresh budget. Consumption strikes park
-    // the key the same way: rebuilding a pair whose every rebuild gets
-    // blamed again would fare no better (see blame).
-    if(build_crashes.blocked(pch_key)) {
-        LOG_WARN("PCH build for {} refused: key {} keeps crashing workers", request.file, pch_key);
+    // A preamble whose PCH build killed a worker is refused before the
+    // dispatch: the artifact is shared, so one document's quarantine
+    // cannot contain it — every session with this preamble would burn a
+    // worker of its own. The key is content-derived: editing the poison
+    // starts a fresh key. Consumption strikes park the key the same way:
+    // rebuilding a pair whose every rebuild gets blamed again would fare
+    // no better (see blame).
+    if(build_crashes.contains(pch_key)) {
+        LOG_WARN("PCH build for {} refused: key {} crashed a worker", request.file, pch_key);
         co_return RoundOutcome::Failed;
     }
     if(consume_blames.blocked(pch_key)) {
@@ -175,24 +173,15 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
 
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", bp.file, bp.preamble_bound, pch_key);
 
-    // Each worker kill lands in two ledgers by design: the shared key's
-    // (other sessions with the same preamble must stop re-triggering the
-    // build) and, through the owner's probe, the owning document's (the
-    // preamble is that document's content).
-    auto crashed = [&](const kota::ipc::protocol::Error& error) {
-        build_crashes.on_crash(pch_key);
-        probe(worker::death_of(error));
-    };
-
     // The advisory token rides into the pool, which translates a fire
     // into the cooperative CancelBuild while this frame keeps awaiting
-    // the real reply (contract 2).
-    auto result = co_await send_stateless_retrying(pool,
-                                                   bp,
-                                                   worker::Priority::High,
-                                                   crashed,
-                                                   {},
-                                                   ctx.token());
+    // the real reply (contract 2). A crash lands on the key; its
+    // consumers book it on their documents when they find it there.
+    auto result = co_await deliver(
+        pool,
+        false,
+        [&] { return pool.send_stateless(bp, worker::Priority::High, {}, ctx.token()); },
+        [&](const kota::ipc::Error& error) { build_crashes.insert_or_assign(pch_key, error); });
 
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
         LOG_INFO("PCH build preempted for {}, will retry", bp.file);
@@ -274,7 +263,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // The key built: its strikes were transient, not poison. The shared
     // account clears unconditionally; per-document ledgers clear on the
     // adoption side, each joiner for itself, gated on its own validity.
-    build_crashes.on_land(pch_key);
+    build_crashes.erase(pch_key);
 
     auto& st = project.pch_cache[pch_key];
     if(!st.superseded.empty()) {

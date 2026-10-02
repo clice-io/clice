@@ -7,14 +7,14 @@
 
 namespace clice {
 
-/// Content-keyed crash budget for shared build artifacts (PCH, PCM).
+/// Content-keyed strike budget for shared PCH pairs whose consumers keep
+/// blaming them (see PCHFamily::blame).
 ///
-/// A document quarantine cannot contain a poison preamble or module
-/// interface: the artifact is shared, so every dependent (or every session
-/// with the same preamble) would re-trigger the build and kill workers of
-/// its own. The budget is keyed by the artifact's content-derived cache key,
-/// which makes recovery structural: editing the poison content changes the
-/// key, and the fresh key starts with a fresh budget.
+/// The pair is shared, so one consumer's verdict cannot contain it: every
+/// session with the same preamble would rebuild and blame it again. The
+/// budget is keyed by the artifact's content-derived cache key, which makes
+/// recovery structural: editing the content changes the key, and the fresh
+/// key starts with a fresh budget.
 class CrashBudget {
 public:
     constexpr static unsigned threshold = 2;
@@ -42,14 +42,14 @@ public:
         return false;
     }
 
-    /// Building the artifact with this key killed a worker.
+    /// A consumer blamed the artifact with this key.
     void on_crash(llvm::StringRef key) {
         auto& entry = crashes[key];
         entry.count += 1;
         entry.last_crash = std::chrono::steady_clock::now();
     }
 
-    /// The artifact built: the key's strikes were transient, not poison —
+    /// A consumer used the artifact: the key's strikes were transient —
     /// without this, two unrelated hiccups far apart would block a key
     /// that rebuilds fine in between.
     void on_land(llvm::StringRef key) {

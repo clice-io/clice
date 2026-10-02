@@ -33,15 +33,19 @@ kota::ipc::Error content_modified();
 /// The document side of talking to workers. Every request that carries an
 /// open document's content to a worker — or asks the worker holding its
 /// AST — goes through here and lands through one exit. The pool owns the
-/// worker side (slots, crash budgets, routing); this owns what a request
-/// means for the document: whether its quarantine admits it, whose
-/// evidence a crash is, and whether the reply still describes the buffer.
+/// worker side (slots, crash budgets, routing, attributing a death); this
+/// owns what a request means for the document: whether its quarantine
+/// admits it, whose crash a death is, and whether the reply still
+/// describes the buffer.
 ///
 /// Landing is the invariant: a reply is handed back only while the ticket
 /// is fresh, and only a fresh reply settles the document's quarantine
-/// ledger for its kind. A stale reply becomes ContentModified before any
+/// record for its kind. A stale reply becomes ContentModified before any
 /// caller can see it — no path returns a result for a buffer that no
-/// longer exists.
+/// longer exists. A request the workers could not serve — barred by a
+/// crash, or lost to deaths and outages — answers empty: the crash note on
+/// the document says why, and an error would only surface as a client
+/// popup.
 class Dispatcher {
 public:
     Dispatcher(Project& project, EditorContext& contexts, ASTFamily& ast, WorkerPool& pool);
@@ -121,14 +125,23 @@ private:
                           Params wp,
                           std::optional<kota::cancellation_token> token);
 
-    /// A quarantine refusal of a content-carrying build announces the
-    /// quarantine, or a completion-only client would never see it.
-    kota::ipc::Error refuse(const std::shared_ptr<Session>& session);
+    /// One attempt of an AST query: the compile, then the send. A resend
+    /// after a worker death recompiles first — the AST died with the
+    /// worker — and a worker that no longer holds the document answers
+    /// document_unloaded, which compiles it there and asks once more.
+    /// `no_ast` reports a compile that produced none.
+    template <typename Params>
+    RequestResult<Params> ask(const Ticket& ticket,
+                              const Params& params,
+                              std::optional<kota::cancellation_token> token,
+                              bool compile,
+                              bool& no_ast);
 
     /// The single exit of every dispatch: a fresh reply settles the kind's
-    /// ledger, a stale one never leaves as a value — unless it is a
-    /// `snapshot` reply, which describes the buffer the request carried
-    /// and which the client reconciles with the edits made meanwhile.
+    /// quarantine record, a stale one never leaves as a value — unless it
+    /// is a `snapshot` reply, which describes the buffer the request
+    /// carried and which the client reconciles with the edits made
+    /// meanwhile. A dispatch the workers could not serve answers empty.
     template <typename Outcome>
     Outcome land(const Ticket& ticket,
                  std::uint8_t kind,

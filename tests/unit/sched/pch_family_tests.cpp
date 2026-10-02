@@ -11,9 +11,10 @@
 namespace clice::testing {
 namespace {
 
-/// The acquisition evidence matrix: worker deaths land exactly once, on
-/// the dispatch owner's probe, whatever happens to the joiners or to the
-/// owner's own frame. Real workers, poisoned via the crash pragma.
+/// The acquisition crash matrix: a build's worker death lands on the key
+/// exactly once, whatever happens to the joiners or to the owner's own
+/// frame, and the key is refused until a consumer forgives it. Real
+/// workers, poisoned via the crash pragma.
 TEST_SUITE(PCHFamilyAcquisition) {
 
 std::optional<TempDir> tmp;
@@ -81,63 +82,60 @@ void execute(F&& fn) {
     EXPECT_TRUE(done);
 }
 
-TEST_CASE(JoinerNoReplay) {
-    // Two acquires of one poisoned key: the spawner's probe collects both
-    // worker deaths (one per killed worker, the retry's death is separate
-    // evidence); the joiner observes the same Failed round but never
-    // replays the deaths — alternating replays would break quarantine's
-    // adjacent-death dedup and double-count.
+TEST_CASE(PoisonKeyRecordsOnce) {
+    // Two acquires of one poisoned key observe the same Failed round; the
+    // worker names the build, so its one death is blamed at once — no
+    // resend — and recorded on the key.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
     setup();
 
-    int owner_deaths = 0;
-    int joiner_deaths = 0;
+    int deaths = 0;
+    pool->on_crash = [&](const WorkerCrashInfo&) {
+        deaths += 1;
+    };
     std::optional<PCHFamily::Outcome> a, b;
 
     execute([&]() -> kota::task<> {
         auto poison = "#pragma clang __debug crash\n";
         auto acquire_a = [&]() -> kota::task<> {
-            a = co_await pch->acquire(request(poison), [&](llvm::StringRef) { owner_deaths += 1; });
+            a = co_await pch->acquire(request(poison));
         };
         auto acquire_b = [&]() -> kota::task<> {
-            b = co_await pch->acquire(request(poison),
-                                      [&](llvm::StringRef) { joiner_deaths += 1; });
+            b = co_await pch->acquire(request(poison));
         };
         co_await kota::when_all(acquire_a(), acquire_b());
     });
 
     EXPECT_TRUE(a == PCHFamily::Outcome::Failed);
     EXPECT_TRUE(b == PCHFamily::Outcome::Failed);
-    EXPECT_EQ(owner_deaths, 2);
-    EXPECT_EQ(joiner_deaths, 0);
+    EXPECT_EQ(deaths, 1);
+    auto* crash = pch->crashed("shared-key");
+    ASSERT_TRUE(crash != nullptr);
+    EXPECT_EQ(crash->code, worker::dispatch_errc::worker_crashed);
 
     logging::reset_anomaly_for_testing();
 }
 
 TEST_CASE(OwnerGoneStillRecords) {
-    // The dispatch owner's request is cancelled right after its spawn:
-    // the round holds the probe and runs to its real reply, so both
-    // deaths still land on the owner — evidence is never dropped because
-    // the requester went away (a stale round's crashes still count).
+    // The dispatch owner's request is cancelled right after its spawn: the
+    // round runs to its real reply, so the death still lands on the key —
+    // a crash is never dropped because the requester went away (a stale
+    // round's crashes still count).
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
     setup();
 
-    int owner_deaths = 0;
-    int joiner_deaths = 0;
     std::optional<PCHFamily::Outcome> joined;
     kota::cancellation_source owner_scope;
 
     execute([&]() -> kota::task<> {
         auto poison = "#pragma clang __debug crash\n";
         auto acquire_owner = [&]() -> kota::task<> {
-            auto result = co_await kota::with_token(
-                pch->acquire(request(poison), [&](llvm::StringRef) { owner_deaths += 1; }),
-                owner_scope.token());
+            auto result =
+                co_await kota::with_token(pch->acquire(request(poison)), owner_scope.token());
             EXPECT_TRUE(result.is_cancelled());
         };
         auto acquire_joiner = [&]() -> kota::task<> {
-            joined = co_await pch->acquire(request(poison),
-                                           [&](llvm::StringRef) { joiner_deaths += 1; });
+            joined = co_await pch->acquire(request(poison));
         };
         auto cancel_owner = [&]() -> kota::task<> {
             owner_scope.cancel();
@@ -147,36 +145,60 @@ TEST_CASE(OwnerGoneStillRecords) {
     });
 
     EXPECT_TRUE(joined == PCHFamily::Outcome::Failed);
-    EXPECT_EQ(owner_deaths, 2);
-    EXPECT_EQ(joiner_deaths, 0);
+    EXPECT_TRUE(pch->crashed("shared-key") != nullptr);
+
+    logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(ForgiveLiftsRefusal) {
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    setup();
+
+    int deaths = 0;
+    pool->on_crash = [&](const WorkerCrashInfo&) {
+        deaths += 1;
+    };
+    std::optional<PCHFamily::Outcome> refused, retried;
+
+    execute([&]() -> kota::task<> {
+        auto poison = "#pragma clang __debug crash\n";
+        co_await pch->acquire(request(poison));
+        // Refused before any dispatch: no second death.
+        refused = co_await pch->acquire(request(poison));
+        CO_ASSERT_EQ(deaths, 1);
+
+        pch->forgive("shared-key");
+        retried = co_await pch->acquire(request(poison));
+    });
+
+    EXPECT_TRUE(refused == PCHFamily::Outcome::Failed);
+    EXPECT_TRUE(retried == PCHFamily::Outcome::Failed);
+    EXPECT_EQ(deaths, 2);
 
     logging::reset_anomaly_for_testing();
 }
 
 TEST_CASE(SharedBuildBothReady) {
     // The success half of the matrix: one build serves every joiner, no
-    // probe fires, and the pair lands registered under the key.
+    // crash is recorded, and the pair lands registered under the key.
     setup();
 
-    int owner_deaths = 0;
-    int joiner_deaths = 0;
     std::optional<PCHFamily::Outcome> a, b;
 
     execute([&]() -> kota::task<> {
         auto text = "#define X 1\n";
         auto acquire_a = [&]() -> kota::task<> {
-            a = co_await pch->acquire(request(text), [&](llvm::StringRef) { owner_deaths += 1; });
+            a = co_await pch->acquire(request(text));
         };
         auto acquire_b = [&]() -> kota::task<> {
-            b = co_await pch->acquire(request(text), [&](llvm::StringRef) { joiner_deaths += 1; });
+            b = co_await pch->acquire(request(text));
         };
         co_await kota::when_all(acquire_a(), acquire_b());
     });
 
     EXPECT_TRUE(a == PCHFamily::Outcome::Ready);
     EXPECT_TRUE(b == PCHFamily::Outcome::Ready);
-    EXPECT_EQ(owner_deaths, 0);
-    EXPECT_EQ(joiner_deaths, 0);
+    EXPECT_TRUE(pch->crashed("shared-key") == nullptr);
     auto it = project->pch_cache.find("shared-key");
     ASSERT_TRUE(it != project->pch_cache.end());
     EXPECT_FALSE(it->second.path.empty());
@@ -196,10 +218,10 @@ TEST_CASE(BlameParksKey) {
         pch->blame("shared-key");
         pch->consumed_ok("shared-key");
         pch->blame("shared-key");
-        cleared = co_await pch->acquire(request("#define X 1\n"), {});
+        cleared = co_await pch->acquire(request("#define X 1\n"));
 
         pch->blame("shared-key");
-        parked = co_await pch->acquire(request("#define X 1\n"), {});
+        parked = co_await pch->acquire(request("#define X 1\n"));
     });
     EXPECT_TRUE(cleared == PCHFamily::Outcome::Ready);
     EXPECT_TRUE(parked == PCHFamily::Outcome::Failed);

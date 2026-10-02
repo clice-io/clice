@@ -128,6 +128,9 @@ export interface StartOptions {
     args?: string[] | undefined;
     /// Working directory of the server process; the caller's by default.
     cwd?: string | undefined;
+    /// Extra environment for the server process, which its workers inherit:
+    /// the CLICE_TEST_* hooks.
+    env?: Record<string, string> | undefined;
 }
 
 export interface InitializeOptions {
@@ -191,6 +194,8 @@ export class CliceClient {
     private socket: net.Socket | null = null;
 
     diagnostics = new Map<string, proto.Diagnostic[]>();
+    /// Every publishDiagnostics received, in order.
+    publishedDiagnostics: proto.PublishDiagnosticsParams[] = [];
     logMessages: proto.LogMessageParams[] = [];
     progressTokens: string[] = [];
     progressEvents: { token: string; value: unknown }[] = [];
@@ -241,6 +246,7 @@ export class CliceClient {
         });
 
         this.onNotification(proto.PublishDiagnosticsNotification.type, (params) => {
+            this.publishedDiagnostics.push(params);
             const rawUri = params.uri;
             const normalized = this.normalizeUri(rawUri);
             const diags = [...params.diagnostics];
@@ -296,7 +302,7 @@ export class CliceClient {
         const child = spawn(executable, options.args ?? ["serve"], {
             stdio: ["pipe", "pipe", "pipe"],
             cwd: options.cwd,
-            env: serverEnv(),
+            env: { ...serverEnv(), ...options.env },
         });
         const client = new CliceClient(child, { reader: child.stdout, writer: child.stdin });
         client.stderrDrainedFromStart = options.drainStderr !== false;

@@ -170,6 +170,7 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
         auto projection = project.ast.projections.projection(owner->path_id);
         if(projection && projection->output && projection->output->version == owner->version) {
             params.diagnostics = format_diagnostics(*projection->output);
+            append_crash_notes(*owner, params.diagnostics);
         } else if(!alias.warned) {
             return;
         }
@@ -1101,6 +1102,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     params.uri = feature::to_uri(server.files.display(session.path_id));
     params.version = output.version;
     params.diagnostics = format_diagnostics(output);
+    append_crash_notes(session, params.diagnostics);
     peer.send_notification(params);
     publish_aliases(session.path_id);
 

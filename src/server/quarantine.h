@@ -1,260 +1,151 @@
 #pragma once
 
-#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <string>
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
 
-/// Per-document crash containment: the state machine behind quarantining a
-/// document whose content keeps killing workers.
+/// Per-document crash containment: what a document's worker crashes bar it
+/// from, and when it may try again.
 ///
-/// The pool's crash budget lives on slots; the poison lives in content. This
-/// type owns the document half of that split, and every transition goes
-/// through a method — the fields are private precisely so the invariants
-/// cannot be broken from a call site:
+/// Records are kept per kind of work (a caller-defined discriminator: the
+/// compile, the PCH build, each query kind), so a crashing hover bars hover
+/// alone. Every transition goes through a method — the fields are private
+/// precisely so the invariants cannot be broken from a call site:
 ///
-///  1. Blame conservation — on_crash() is the only way evidence accrues, and
-///     nothing but land() (inherited evidence only) or reset() removes it.
-///     A crash recorded mid-request survives that request's success.
-///  2. Bounded blast radius — blocked() flips at `threshold` crashes and
-///     stays until a probe is armed; each real content change arms at most
-///     one probe (on_edit), consumed by exactly one attempt (spend_probe),
-///     returned only when the attempt provably never ran (re_arm_probe).
-///  3. Visibility — a quarantine spell asks to be announced exactly once
-///     (needs_announcement / mark_announced); leaving quarantine re-arms
-///     the announcement for the next spell.
+///  1. No crash loop — a kind that crashed is barred until its inputs
+///     change (an edit to the file, a change to a file it includes) and
+///     retry_spacing has passed, at most max_strikes crashes in a row; past
+///     that only a save retries. Nothing but a change, a save or the kind
+///     answering lifts a bar: a document that sits still is never retried.
+///  2. One attempt per license — the attempt that uses a retry license
+///     spends it (Attempt), so concurrent dispatches wait for its outcome;
+///     an attempt that ends without crashing or answering hands it back,
+///     and one that crashes on inputs changed meanwhile leaves the change
+///     standing: the newer inputs are still untried.
+///  3. Blame conservation — on_crash() is the only way strikes accrue; one
+///     worker death counts once however many of the document's requests it
+///     failed, and only the kind answering (on_land) or a save clears them.
+///  4. Visibility — a record shows in the document's diagnostics, except a
+///     first crash on inputs changed within editing_window: half-typed code
+///     crashing is the common case there, and the next edit usually fixes
+///     it. A repeat shows.
 ///
-/// The Flight token pins invariant 1 structurally: a compile snapshots the
-/// evidence it inherited at takeoff and can only clear that much on landing,
-/// so a success cannot launder crashes that happened while it flew.
+/// The record outlives the session: a reopened document is still barred.
 class Quarantine {
 public:
-    /// Consecutive worker kills a document gets before it is refused
-    /// further dispatches. Two: one crash can be an unlucky coincidence
-    /// (OOM racing the accounting), two in a row for the same content is
-    /// a pattern.
-    constexpr static unsigned threshold = 2;
+    using Clock = std::chrono::steady_clock;
 
-    /// The evidence a compile inherited at takeoff; land() clears no more.
-    class Flight {
-        friend class Quarantine;
-        unsigned inherited = 0;
-        unsigned inherited_total = 0;
-    };
+    /// Crashes in a row after which only a save retries.
+    constexpr static unsigned max_strikes = 3;
 
-    /// Crashes currently blamed on this document's content.
-    unsigned crashes() const {
-        unsigned total = streak;
-        for(auto& [kind, count]: kind_streaks) {
-            total += count;
-        }
-        return total;
+    /// Least time between a crash and the automatic retry a change earns:
+    /// keystrokes through a half-typed construct must not spend the
+    /// strikes.
+    constexpr static std::chrono::seconds retry_spacing{2};
+
+    /// A first crash on inputs changed this recently stays silent.
+    constexpr static std::chrono::seconds editing_window{10};
+
+    /// A dispatch of `kind` killed a worker. `death` is the worker
+    /// incarnation's identity (worker::death_of): a death already counted
+    /// is not counted again. `cause` is how it died, for the note.
+    void on_crash(std::uint8_t kind,
+                  llvm::StringRef death,
+                  std::string cause,
+                  Clock::time_point now);
+
+    /// A dispatch of `kind` answered: its record goes.
+    void on_land(std::uint8_t kind);
+
+    /// The document's inputs changed: every barred kind may retry once
+    /// retry_spacing has passed since its crash.
+    void on_change(Clock::time_point now);
+
+    /// The user saved the document: every barred kind retries at once,
+    /// with a fresh run of strikes.
+    void on_save();
+
+    /// Whether `kind` crashed and has no license to try again.
+    bool barred(std::uint8_t kind, Clock::time_point now) const;
+
+    /// Whether `kind` has a record at all — barred or holding a license.
+    bool crashed(std::uint8_t kind) const {
+        return records.contains(kind);
     }
 
-    /// The document has spent its crash budget: compile and query evidence
-    /// pool into one budget — both are this content killing workers.
-    bool active() const {
-        return crashes() >= threshold;
-    }
-
-    /// Quarantined with no probe attempt armed: refuse dispatches.
-    bool blocked() const {
-        return active() && !probe;
-    }
-
-    /// Whether a compile is this quarantine's recovery attempt: the probe
-    /// rides the dispatch that can disprove the evidence, and a compile
-    /// disproves only compile strikes — a kind-quarantined document's
-    /// compile is ordinary work and must not spend the probe. Requires the
-    /// armed probe: a concurrent request that lost the race to spend it
-    /// holds no license.
-    bool recovery_compile() const {
-        return active() && streak > 0 && probe;
-    }
-
-    /// Whether a dispatch of `kind` is this quarantine's recovery attempt:
-    /// only a kind holding strikes can disprove them, and only while the
-    /// edit-granted probe is armed. A harmless hover on a
-    /// semantic-tokens-quarantined document must leave the probe for the
-    /// semantic-tokens retry.
-    bool recovery_kind(std::uint8_t kind) const {
-        return active() && kind_streaks.contains(kind) && probe;
-    }
-
-    /// This kind holds strikes and no probe is armed: its dispatch is
-    /// neither licensed recovery nor safe ordinary work — refuse it.
-    bool kind_blocked(std::uint8_t kind) const {
-        return active() && kind_streaks.contains(kind) && !probe;
-    }
-
-    /// Holds a spent probe across a recovery dispatch: if the coroutine
-    /// unwinds (an LSP cancellation) before any attempt dispatched — no
-    /// new strikes recorded — the license is handed back, so a cancelled
-    /// recovery does not strand the document until another edit. Call
-    /// settle() once the outcome is known and owned by the call site.
-    class [[nodiscard]] ProbeGuard {
+    /// A dispatch of `kind`, held across its flight. Under a record's
+    /// license it spends the license and hands it back at destruction
+    /// unless a crash or the kind answering settled the record meanwhile
+    /// (invariant 2). Construct only for an admitted dispatch (!barred).
+    class [[nodiscard]] Attempt {
     public:
-        explicit ProbeGuard(Quarantine& quarantine) :
-            quarantine(&quarantine), strikes(quarantine.crashes()) {
-            quarantine.spend_probe();
-        }
+        Attempt(Quarantine& quarantine, std::uint8_t kind);
 
-        ProbeGuard(const ProbeGuard&) = delete;
-        ProbeGuard& operator=(const ProbeGuard&) = delete;
+        Attempt(const Attempt&) = delete;
+        Attempt& operator=(const Attempt&) = delete;
 
-        ~ProbeGuard() {
-            if(quarantine && quarantine->crashes() == strikes) {
-                quarantine->re_arm_probe();
-            }
-        }
-
-        void settle() {
-            quarantine = nullptr;
-        }
+        ~Attempt();
 
     private:
-        Quarantine* quarantine;
-        unsigned strikes;
+        Quarantine& quarantine;
+        std::uint8_t kind;
+        std::uint64_t changes;
+        unsigned strikes = 0;
+        bool saved = false;
+        bool changed = false;
     };
 
-    /// A dispatch carrying this document's content killed a worker.
-    /// `death` is the worker incarnation's identity (worker::death_of):
-    /// one process death fails every request in flight on it, and a death
-    /// already counted — by either ledger — is not counted again.
-    void on_crash(llvm::StringRef death = {}) {
-        if(!counted(death)) {
-            streak += 1;
-        }
+    /// Whether the record of `kind` shows in the diagnostics.
+    bool shows(std::uint8_t kind) const {
+        auto it = records.find(kind);
+        return it != records.end() && it->second.visible;
     }
 
-    /// Snapshot the inherited evidence at compile takeoff.
-    Flight begin_flight() const {
-        Flight flight;
-        flight.inherited = streak;
-        flight.inherited_total = crashes();
-        return flight;
-    }
+    /// A record the diagnostics show.
+    struct Note {
+        std::uint8_t kind;
+        llvm::StringRef cause;
+        unsigned strikes;
+        /// Only a save retries: the strikes ran out.
+        bool save_only;
+    };
 
-    /// Evidence accrued since this flight took off (a PCH build inside its
-    /// own dependency prep, a concurrent completion build of the same
-    /// content). Used with active() to stop a request whose dependency
-    /// phase already tipped the document into quarantine.
-    bool grew(Flight flight) const {
-        return crashes() > flight.inherited_total;
-    }
+    llvm::SmallVector<Note> notes() const;
 
-    /// A full compile of the current content landed: the inherited compile
-    /// evidence is disproved, but crashes recorded during the flight will
-    /// recur on the next request, and per-kind evidence is untouched — the
-    /// compile succeeding says nothing about the dispatches it never ran.
-    void land(Flight flight) {
-        streak -= std::min(flight.inherited, streak);
-        settle();
-    }
-
-    /// A dispatch of `kind` — a query against the settled AST, a stateless
-    /// build such as completion or format — killed a worker. Per-kind
-    /// ledgers, separate from the compile streak: a compile landing
-    /// disproves none of this (the same AST crashes the same query again,
-    /// clang-format never ran the compile's code), and one kind's success
-    /// says nothing about another's — a harmless hover must not launder
-    /// semantic-tokens evidence. Kind values are caller-defined
-    /// discriminators; each kind clears only via its own on_kind_land.
-    void on_kind_crash(std::uint8_t kind, llvm::StringRef death = {}) {
-        if(!counted(death)) {
-            kind_streaks[kind] += 1;
-        }
-    }
-
-    /// A dispatch of `kind` answered: this kind on the current content
-    /// provably does not kill workers.
-    void on_kind_land(std::uint8_t kind) {
-        kind_streaks.erase(kind);
-        settle();
-    }
-
-    /// A content change grants a quarantined document one probe attempt.
-    /// It deliberately does NOT reset the streak: only a compile that
-    /// succeeds proves the document healthy — resetting on edits would let
-    /// a poison file under active editing crash a worker per keystroke and
-    /// never reach quarantine. Dropped and no-op edits (`changed == false`)
-    /// grant nothing: the poison bytes are unchanged.
-    void on_edit(bool changed) {
-        if(changed && active()) {
-            probe = true;
-        }
-    }
-
-    /// The probe attempt is being spent: at dispatch, or when the attempt's
-    /// own dependency phase crashed (that WAS the attempt).
-    void spend_probe() {
-        probe = false;
-    }
-
-    /// The attempt provably never ran (no expendable worker to host it):
-    /// keep the license so a later request retries.
-    void re_arm_probe() {
-        if(active()) {
-            probe = true;
-        }
-    }
-
-    /// True until the current quarantine spell has been announced to the
-    /// client; a document must never go silently dead.
-    bool needs_announcement() const {
-        return active() && !announced_spell;
-    }
-
-    void mark_announced() {
-        announced_spell = true;
-    }
-
-    /// The document was (re)opened: fresh content, fresh record.
-    void reset() {
-        streak = 0;
-        kind_streaks.clear();
-        probe = false;
-        announced_spell = false;
-        last_death.clear();
+    bool empty() const {
+        return records.empty();
     }
 
 private:
-    /// Leaving quarantine retires the spell's state: the armed probe is a
-    /// license for a quarantine that no longer exists — left set, the next
-    /// spell would start with a free crashing dispatch and no edit — and
-    /// the announcement re-arms for the next spell.
-    void settle() {
-        if(!active()) {
-            probe = false;
-            announced_spell = false;
-        }
-    }
+    struct Record {
+        unsigned strikes = 0;
+        std::string cause;
+        Clock::time_point last_crash;
+        /// The inputs changed since the last crash.
+        bool changed = false;
+        /// A save granted an immediate retry.
+        bool saved = false;
+        bool visible = false;
+    };
 
     /// Whether this death was already counted. Remembering only the most
     /// recent identity suffices: a peer teardown fails all of a death's
     /// in-flight requests in the same loop turn, so their errors arrive
     /// adjacently. Anonymous evidence (no identity) always counts.
-    bool counted(llvm::StringRef death) {
-        if(death.empty()) {
-            return false;
-        }
-        if(death == last_death) {
-            return true;
-        }
-        last_death = death.str();
-        return false;
-    }
+    bool counted(llvm::StringRef death);
 
-    unsigned streak = 0;
-    llvm::SmallDenseMap<std::uint8_t, unsigned, 4> kind_streaks;
-    bool probe = false;
-    bool announced_spell = false;
+    /// Insertion-ordered, so notes keep a stable order across publishes.
+    llvm::MapVector<std::uint8_t, Record> records;
+    Clock::time_point last_change;
+    /// Bumped by every on_change; an Attempt tells by it whether the inputs
+    /// moved during its flight.
+    std::uint64_t changes = 0;
     std::string last_death;
 };
 

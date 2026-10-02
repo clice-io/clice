@@ -4,6 +4,9 @@
 #include "worker/stateful.h"
 #include "worker/stateless.h"
 
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Process.h"
+
 namespace clice::driver {
 
 namespace {
@@ -53,6 +56,10 @@ void add_worker(kota::deco::cli::SubCommander& root, int& exit_code) {
            auto log_dir = opts.log_dir.value_or("");
            if(opts.stateful) {
                auto max_docs = opts.max_documents.value_or(default_max_documents);
+               // Lets integration tests drive eviction through a real server.
+               if(auto value = llvm::sys::Process::GetEnv("CLICE_TEST_MAX_DOCUMENTS")) {
+                   llvm::StringRef(*value).getAsInteger(10, max_docs);
+               }
                exit_code = run_stateful_worker_mode(name, log_dir, max_docs);
            } else {
                exit_code = run_stateless_worker_mode(name, log_dir);
