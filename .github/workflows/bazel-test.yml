@@ -1,7 +1,7 @@
 name: bazel-test
 
-# native-test's RelWithDebInfo legs, built by Bazel. Bazel is the runner
-# image's bazelisk, pinned by .bazelversion.
+# native-test's RelWithDebInfo legs, built by Bazel. Bazel is npm's
+# bazelisk (package-lock.json), which fetches .bazelversion's release.
 
 on:
   workflow_call:
@@ -15,8 +15,8 @@ jobs:
         include:
           - os: windows-2025
             # The default output root under the user profile pushes action
-            # paths past MAX_PATH.
-            startup: --output_user_root=C:/b
+            # paths past MAX_PATH; the runfiles tree is made of symlinks.
+            startup: --output_user_root=C:/b --windows_enable_symlinks
           - os: ubuntu-24.04
           - os: macos-15
     runs-on: ${{ matrix.os }}
@@ -24,9 +24,7 @@ jobs:
       run:
         shell: bash
     env:
-      BAZEL: bazel ${{ matrix.startup }}
-      CACHES: --disk_cache=${{ github.workspace }}/.cache/bazel-disk --repository_cache=${{ github.workspace }}/.cache/bazel-repo
-      CLICE_EXECUTABLE: ${{ github.workspace }}/bazel-bin/dist/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }}
+      BAZEL: npx --no bazel ${{ matrix.startup }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -38,15 +36,25 @@ jobs:
           environments: default test-run
           activate-environment: default
 
-      # The toolchain's compiler is not an action input, so nothing in an
-      # action key changes with xclang: the cache is keyed on pixi.lock, as
+      - name: Install npm packages
+        run: npm ci
+
+      # Bazel refuses a repository cache inside the workspace.
+      - name: Bazel settings
+        run: |
+          temp=$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")
+          echo "CACHES=--disk_cache=$temp/bazel-disk --repository_cache=$temp/bazel-repo" >> "$GITHUB_ENV"
+          echo "CLICE_EXECUTABLE=${{ github.workspace }}/bazel-bin/dist/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }}" >> "$GITHUB_ENV"
+
+      # xclang's headers and libraries are not action inputs, so nothing in
+      # an action key changes with them: the cache is keyed on pixi.lock, as
       # ccache's is.
       - name: Restore Bazel caches
         uses: actions/cache/restore@v6
         with:
           path: |
-            .cache/bazel-disk
-            .cache/bazel-repo
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
           key: ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-
@@ -54,13 +62,15 @@ jobs:
       - name: Mark the run start
         run: touch "$RUNNER_TEMP/bazel-start"
 
+      # On main every cached output is fetched, which marks it used for the
+      # prune below; elsewhere only what the tests need.
       - name: Build and unit tests
         timeout-minutes: 90
-        run: $BAZEL test $CACHES --test_output=errors //:dist //:unit_tests_test
+        run: $BAZEL test $CACHES ${{ github.ref == 'refs/heads/main' && '--remote_download_all' || '' }} --test_output=errors //:dist //:unit_tests_test
 
       - name: Integration tests
         timeout-minutes: 30
-        run: pixi run -e test-run -- bash -c 'npm ci && npm run check && npm test --workspace tests'
+        run: pixi run -e test-run -- bash -c 'npm run check && npm test --workspace tests'
 
       - name: Smoke tests
         timeout-minutes: 5
@@ -71,16 +81,16 @@ jobs:
         run: pixi run -e test-run -- npm run snap --workspace tests
 
       # Bazel refreshes an entry's mtime when it reads it, so what this run
-      # did not touch is what no current build needs.
+      # did not touch is what the current tree no longer needs.
       - name: Prune the disk cache
         if: github.ref == 'refs/heads/main'
-        run: find .cache/bazel-disk -type f ! -newer "$RUNNER_TEMP/bazel-start" -delete
+        run: find "${{ runner.temp }}/bazel-disk" -type f ! -newer "$RUNNER_TEMP/bazel-start" -delete
 
       - name: Save Bazel caches
         if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6
         with:
           path: |
-            .cache/bazel-disk
-            .cache/bazel-repo
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
           key: ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-${{ github.sha }}
