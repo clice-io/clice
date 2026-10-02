@@ -74,8 +74,6 @@ private:
         /// Half-write guard: what the previous tick saw while it differed
         /// from `applied`; a tick seeing it again reloads.
         std::optional<Hashes> pending;
-        /// What a reload failed on, not retried until it moves.
-        std::optional<Hashes> failed;
         /// The source's inputs, in CompilationDatabase::inputs order. The
         /// database is watched by the path the source names: a symlinked
         /// one may be pointed elsewhere since its load.

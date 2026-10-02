@@ -99,9 +99,6 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
             tracked.pending.reset();
             return;
         }
-        if(current == tracked.failed) {
-            return;
-        }
         if(tracked.pending != current) {
             // Generators rewrite the file in place; only act once the
             // content has held for two consecutive ticks (half-write guard).
@@ -133,18 +130,15 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
         return;
     }
     auto diff = project.cdb.reload_and_diff(tracked.id);
-    if(!diff) {
-        // Unreadable or unparsable right now (e.g. still locked by the
-        // generator). Leave `applied` alone: the content stays different,
-        // so the reload is retried once it moves instead of being lost.
-        tracked.failed = std::move(current);
-        return;
-    }
-    tracked.failed.reset();
     // The baseline is the reload's own reads: a rewrite landing meanwhile
-    // is seen next tick.
+    // is seen next tick. A database the reload could not read (still
+    // locked by the generator) leaves them as they were, so the reload is
+    // retried; one it read but could not parse is retried once it moves.
     tracked.applied = loaded(tracked.id);
     watch_inputs(tracked);
+    if(!diff) {
+        return;
+    }
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
              project.cdb.source_path(tracked.id),
              diff->added.size(),

@@ -814,6 +814,11 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         LOG_ERROR("Failed to read compilation database from {}", path);
         return std::nullopt;
     }
+    auto database = file_table.intern(CanonicalPath(Spelling::absolute(source.path)));
+    file_table.observe(database, observed->obs);
+    source.inputs = {
+        {.file = database, .hash = observed->obs.hash}
+    };
     simdjson::padded_string json_buf(observed->content->getBuffer());
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
@@ -838,11 +843,6 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // entries before the cut still swap in) — the CDB poll's two-tick
     // settle debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
-    auto database = file_table.intern(CanonicalPath(Spelling::absolute(source.path)));
-    file_table.observe(database, observed->obs);
-    source.inputs = {
-        {.file = database, .hash = observed->obs.hash}
-    };
     loading = id;
     auto recording = llvm::make_scope_exit([&] { loading.reset(); });
 

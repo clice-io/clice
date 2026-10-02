@@ -349,13 +349,14 @@ public:
         friend bool operator==(const LoadInput&, const LoadInput&) = default;
     };
 
-    /// What the source's current entries were built from: the database
-    /// first, then the response files (`@file`) its commands name, readable
-    /// or not — a change to one changes the commands as much as an edit of
-    /// the database itself. A source never loaded has only the database,
-    /// unread. A watcher compares the disk against these hashes, not
-    /// against a stat taken after the load, which a rewrite landing in
-    /// between would already describe.
+    /// What the source's last load read: the database first, then the
+    /// response files (`@file`) its commands name, readable or not — a
+    /// change to one changes the commands as much as an edit of the
+    /// database itself. A load that could not parse the database read it
+    /// alone, its entries staying those of the load before; a source never
+    /// loaded has only the database, unread. A watcher compares the disk
+    /// against these hashes, not against a stat taken after the load, which
+    /// a rewrite landing in between would already describe.
     llvm::ArrayRef<LoadInput> inputs(SourceID id) const;
 
     /// Whether the source's file exists on disk as last observed: set by a
