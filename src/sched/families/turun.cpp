@@ -162,7 +162,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     project.fill_pcm_deps(params.pcms, path_id);
 
     ScopedTimer timer;
-    auto result = co_await pool.send_stateless(params, worker::Priority::Low, {}, ctx.token());
+    auto result = co_await pool.send_stateless(params, worker::Priority::Low, ctx.token());
     if(result.has_value() && result.value().success) {
         auto run_ms = timer.ms();
         auto& value = result.value();
@@ -222,7 +222,13 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_crashed) {
-        landed[path_id] = {.verdict = Verdict::Crashed, .error = result.error().message};
+        landed[path_id] = {.verdict = Verdict::Crashed,
+                           .error = "it crashed the worker: " + result.error().message};
+        co_return RoundOutcome::Stale;
+    }
+    if(result.error().code == worker::dispatch_errc::worker_died ||
+       result.error().code == worker::dispatch_errc::worker_lost) {
+        landed[path_id] = {.verdict = Verdict::Lost, .error = result.error().message};
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_unavailable && pool.revives_slots()) {

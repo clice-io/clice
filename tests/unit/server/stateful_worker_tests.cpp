@@ -243,16 +243,16 @@ TEST_CASE(HoverWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        // Hover on a file that hasn't been compiled should return null.
         worker::QueryParams params;
         params.kind = worker::QueryKind::Hover;
         params.path = "/tmp/nonexistent.cpp";
         params.offset = 0;
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        // Should be "null" RawValue since document doesn't exist.
-        EXPECT_EQ(result.value().data, std::string("null"));
+        // An unknown document is no empty answer: the master hears it was
+        // evicted (or never sent) and compiles it again.
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
@@ -300,7 +300,7 @@ TEST_CASE(CompileThenHover) {
     ASSERT_TRUE(test_done);
 }
 
-TEST_CASE(CodeActionReturnsEmpty) {
+TEST_CASE(CodeActionWithoutCompile) {
     WorkerHandle w;
     ASSERT_TRUE(w.spawn(true));
 
@@ -312,9 +312,8 @@ TEST_CASE(CodeActionReturnsEmpty) {
         params.range = {0, 0};
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        // No document: the typed request's missing value is an empty list.
-        EXPECT_TRUE(result.value().empty());
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
@@ -333,8 +332,8 @@ TEST_CASE(SemanticTokensWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
@@ -352,8 +351,8 @@ TEST_CASE(FoldingRangeWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_FALSE(result.value().has_value());
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
@@ -372,8 +371,8 @@ TEST_CASE(DocumentSymbolWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
@@ -391,8 +390,8 @@ TEST_CASE(DocumentLinkWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_TRUE(result.value().empty());
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
@@ -411,8 +410,8 @@ TEST_CASE(InlayHintsWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
@@ -538,15 +537,15 @@ TEST_CASE(EvictNotification) {
         ep.path = "/tmp/evict_test.cpp";
         w.peer->send_notification(ep);
 
-        // Hover on the evicted document should return null (document doesn't exist).
+        // Hover on the evicted document reports it unloaded.
         worker::QueryParams hp;
         hp.kind = worker::QueryKind::Hover;
         hp.path = "/tmp/evict_test.cpp";
         hp.offset = 0;
 
         auto result = co_await w.peer->send_request(hp);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
 
         test_done = true;
     });
@@ -596,14 +595,59 @@ TEST_CASE(DocumentLimitEvicts) {
         hp.offset = 4;  // 'var_0'
 
         auto result = co_await w.peer->send_request(hp);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::document_unloaded);
 
         test_done = true;
     });
 
     ASSERT_TRUE(test_done);
     ASSERT_EQ(evicted, std::vector<std::string>{paths[0]});
+}
+
+TEST_CASE(BusyDocumentsStay) {
+    // A document in flight is never evicted: the master would hear of the
+    // eviction while the compile is still to land and compile it again.
+    // The large document's compile is still running when the small one's
+    // lands over the cap; only the small one, idle by the time the large
+    // one lands, may go.
+    TempDir tmp;
+    std::string large = "#include <vector>\n";
+    for(int i = 0; i < 5000; i += 1) {
+        large += std::format("std::vector<int> v_{};\n", i);
+    }
+    tmp.touch("large.cpp", large);
+    tmp.touch("small.cpp", "int x;\n");
+    std::vector<std::pair<std::string, std::string>> documents = {
+        {tmp.path("large.cpp"), large     },
+        {tmp.path("small.cpp"), "int x;\n"},
+    };
+
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn(true, /*max_documents=*/1));
+
+    std::vector<std::string> evicted;
+    w.peer->on_notification(
+        [&](const worker::EvictedParams& params) { evicted.push_back(params.path); });
+
+    bool test_done = false;
+    w.run([&]() -> kota::task<> {
+        auto compile = [&](std::size_t i) -> kota::task<> {
+            worker::CompileParams cp;
+            cp.path = documents[i].first;
+            cp.version = 1;
+            cp.text = documents[i].second;
+            cp.directory = "/tmp";
+            cp.arguments = make_args(cp.path);
+            auto result = co_await w.peer->send_request(cp);
+            EXPECT_TRUE(result.has_value());
+        };
+        co_await kota::when_all(compile(0), compile(1));
+        test_done = true;
+    });
+
+    ASSERT_TRUE(test_done);
+    ASSERT_EQ(evicted, std::vector<std::string>{documents[1].first});
 }
 
 };  // TEST_SUITE(StatefulWorker)

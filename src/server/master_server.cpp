@@ -11,6 +11,7 @@
 #include "server/features.h"
 #include "server/lsp_client.h"
 #include "support/anomaly.h"
+#include "support/environment.h"
 #include "support/logging.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
@@ -142,6 +143,12 @@ void MasterServer::initialize() {
     if(unbounded) {
         pool_opts.max_stateless = 0;
     }
+    // Let integration tests hang a worker without waiting out the real
+    // deadline, and drive eviction through a real server.
+    if(auto ms = env_integer("CLICE_TEST_REQUEST_DEADLINE_MS")) {
+        pool_opts.build_deadline = pool_opts.query_deadline = std::chrono::milliseconds(*ms);
+    }
+    pool_opts.max_documents = env_integer("CLICE_TEST_MAX_DOCUMENTS");
 
     auto& first = projects.front()->project.config.project;
     if(!first.logging_dir.empty()) {
@@ -185,10 +192,8 @@ void MasterServer::initialize(const Spelling& root) {
 void MasterServer::wire() {
     pool.on_crash = [this](const WorkerCrashInfo& info) {
         // A stateless crash loses only in-flight requests, which fail back
-        // to their callers with dispatch_errc::worker_crashed — the families
-        // resend idempotent builds, the pump requeues the file. No state
-        // outlives the request, so there is nothing to invalidate and no
-        // event to dispatch.
+        // to their senders (see deliver). No state outlives the request, so
+        // there is nothing to invalidate and no event to dispatch.
         if(!info.stateful)
             return;
         llvm::DenseMap<ProjectServer*, llvm::SmallVector<Fid>> lost;
@@ -206,11 +211,22 @@ void MasterServer::wire() {
         // Owner-table upkeep is pool-domain state and stays here; the
         // session-side consequence (the worker's AST is gone, same as a
         // crash) goes through the event pipeline like any invalidation.
-        // Only the current owner's eviction counts: a stale copy left
-        // behind by a probe reassignment says nothing about the document
-        // the new owner still holds.
+        // A live round's compile puts the document back on its owner —
+        // the worker evicted it before that compile arrived, or it would
+        // have kept it — so the eviction changes nothing. One that crossed
+        // the compile's reply on the wire leaves the master trusting a
+        // document the worker no longer holds: the next query hears
+        // document_unloaded and compiles it again (see Dispatcher::ask).
+        auto& project = owner_of(*id);
+        if(project.ast.compiling(*id)) {
+            LOG_INFO("Ignoring eviction of {}: a compile of it is under way", path);
+            return;
+        }
+        // Only the current owner's eviction counts: a copy left behind on
+        // a worker that lost ownership says nothing about the document the
+        // new owner still holds.
         if(pool.remove_owner_from(id->raw, worker_index)) {
-            owner_of(*id).dispatch(FileEvent::document_evicted(*id));
+            project.dispatch(FileEvent::document_evicted(*id));
         } else {
             LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
         }
@@ -410,10 +426,18 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
         auto& to = route(path_id);
         owners[path_id] = &to;
         to.open_session(path_id, session->text, session->version);
+        auto moved = to.sessions.find(path_id);
+        // The crash records move with the document; work still in flight
+        // under the old project books into them.
+        moved->quarantine = session->quarantine;
+        from.sessions.parked.erase(path_id);
+        if(!moved->quarantine->empty()) {
+            to.ast.republish(moved);
+        }
         // The client still shows what the old project gave it, and no
         // request of its own replaces it: compile under the new one, or
         // have an index-served document's features pulled again.
-        if(auto moved = to.sessions.find(path_id); moved->serving == ServingMode::Escalated) {
+        if(moved->serving == ServingMode::Escalated) {
             to.ast.request_compile(moved);
         } else {
             index_served = true;
@@ -617,6 +641,11 @@ std::uint64_t MasterServer::context_epoch() {
 }
 
 void MasterServer::saved(Fid path_id) {
+    // The user's retry: whatever crashed on the saved document runs again
+    // on its next request.
+    if(auto session = find_session(path_id)) {
+        owner_of(path_id).ast.saved(*session);
+    }
     llvm::SmallVector<Fid> closures{path_id};
     for(auto& project: projects) {
         project->open_closures(closures);

@@ -5,6 +5,7 @@ namespace clice::testing {
 namespace {
 
 using Verdict = PendingLedger::FailureVerdict;
+using Failure = PendingLedger::Failure;
 
 /// The claim/settle contract in isolation: debt is claimed atomically at
 /// dispatch, flight-time recordings book newer debt, success consumes
@@ -87,20 +88,20 @@ TEST_CASE(superseded_failure_spends_nothing) {
     ASSERT_TRUE(stale.has_value());
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
 
-    EXPECT_TRUE(ledger.on_dispatch_failure(*stale, true).verdict == Verdict::Superseded);
+    EXPECT_TRUE(ledger.on_dispatch_failure(*stale, Failure::Lost).verdict == Verdict::Superseded);
 
     // The fresh claim still has the whole budget: `budget` crashes
     // requeue before the next one abandons.
     for(unsigned i = 0; i < budget; i += 1) {
         auto claim = ledger.claim(Fid{1});
         ASSERT_TRUE(claim.has_value());
-        auto outcome = ledger.on_dispatch_failure(*claim, true);
+        auto outcome = ledger.on_dispatch_failure(*claim, Failure::Lost);
         EXPECT_TRUE(outcome.verdict == Verdict::Requeued);
         EXPECT_TRUE(outcome.needs_slot);
     }
     auto last = ledger.claim(Fid{1});
     ASSERT_TRUE(last.has_value());
-    EXPECT_TRUE(ledger.on_dispatch_failure(*last, true).verdict == Verdict::GaveUp);
+    EXPECT_TRUE(ledger.on_dispatch_failure(*last, Failure::Lost).verdict == Verdict::GaveUp);
     EXPECT_TRUE(ledger.empty());
 }
 
@@ -111,7 +112,8 @@ TEST_CASE(preemption_needs_no_budget) {
     for(int i = 0; i < 10; i += 1) {
         auto claim = ledger.claim(Fid{1});
         ASSERT_TRUE(claim.has_value());
-        EXPECT_TRUE(ledger.on_dispatch_failure(*claim, false).verdict == Verdict::Requeued);
+        EXPECT_TRUE(ledger.on_dispatch_failure(*claim, Failure::Preempted).verdict ==
+                    Verdict::Requeued);
     }
 }
 
@@ -125,8 +127,18 @@ TEST_CASE(requeue_carries_content) {
     ledger.record(Fid{1}, ReindexReason::DepsOnly);
     EXPECT_TRUE(ledger.pending_reason(Fid{1}) == ReindexReason::DepsOnly);
 
-    EXPECT_TRUE(ledger.on_dispatch_failure(*claim, true).verdict == Verdict::Requeued);
+    EXPECT_TRUE(ledger.on_dispatch_failure(*claim, Failure::Lost).verdict == Verdict::Requeued);
     EXPECT_TRUE(ledger.pending_reason(Fid{1}) == ReindexReason::ContentChanged);
+}
+
+TEST_CASE(own_crash_gives_up) {
+    // A run that crashed its worker would crash the retry too: no requeue,
+    // the file waits for its content to change.
+    ledger.record(Fid{1}, ReindexReason::ContentChanged);
+    auto claim = ledger.claim(Fid{1});
+    ASSERT_TRUE(claim.has_value());
+    EXPECT_TRUE(ledger.on_dispatch_failure(*claim, Failure::Crashed).verdict == Verdict::GaveUp);
+    EXPECT_TRUE(ledger.empty());
 }
 
 TEST_CASE(cleared_claim_drops) {
@@ -135,7 +147,7 @@ TEST_CASE(cleared_claim_drops) {
     auto claim = ledger.claim(Fid{1});
     ASSERT_TRUE(claim.has_value());
     ledger.clear(Fid{1});
-    EXPECT_TRUE(ledger.on_dispatch_failure(*claim, true).verdict == Verdict::Dropped);
+    EXPECT_TRUE(ledger.on_dispatch_failure(*claim, Failure::Lost).verdict == Verdict::Dropped);
     EXPECT_TRUE(ledger.empty());
 }
 

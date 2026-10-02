@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <format>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <string>
@@ -15,6 +17,7 @@
 #include "support/logging.h"
 #include "support/stderr_sink.h"
 #include "worker/common.h"
+#include "worker/crash_report.h"
 #include "worker/protocol.h"
 
 #include "kota/async/async.h"
@@ -29,6 +32,28 @@ namespace clice {
 
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::BincodePeer::RequestContext;
+namespace protocol = kota::ipc::protocol;
+
+namespace {
+
+/// What a compile reports in place of an index too large for its reply.
+protocol::Diagnostic index_too_large(std::size_t bytes) {
+    protocol::Diagnostic diagnostic;
+    diagnostic.range = protocol::Range{
+        .start = protocol::Position{.line = 0, .character = 0},
+        .end = protocol::Position{.line = 0, .character = 0},
+    };
+    diagnostic.severity = protocol::DiagnosticSeverity::Warning;
+    diagnostic.source = "clice";
+    diagnostic.message = std::format(
+        "this file's index ({} MiB) is too large to send between clice processes; "
+        "features that read the file's own index, such as references within it, are "
+        "unavailable",
+        bytes / (1024 * 1024));
+    return diagnostic;
+}
+
+}  // namespace
 
 struct DocumentEntry {
     int version = 0;
@@ -50,6 +75,13 @@ struct DocumentEntry {
 
     // Per-document serialization mutex
     kota::mutex strand;
+
+    // Requests holding the entry: a compile queued on or running under the
+    // strand, a query waiting for or reading the AST. The LRU passes such
+    // an entry over — evicting it would tell the master the document is
+    // gone before the compile's own reply, and the master's recompile
+    // would evict the next one.
+    unsigned pending = 0;
 
     // Stop flag of the most recently arrived Compile request, published
     // before its strand wait so a CancelCompile aimed at a queued compile
@@ -73,6 +105,22 @@ struct [[nodiscard]] StrandGuard {
     }
 };
 
+/// A request's hold on a document entry; see DocumentEntry::pending.
+struct [[nodiscard]] PendingGuard {
+    DocumentEntry& doc;
+
+    explicit PendingGuard(DocumentEntry& doc) : doc(doc) {
+        doc.pending += 1;
+    }
+
+    PendingGuard(const PendingGuard&) = delete;
+    PendingGuard& operator=(const PendingGuard&) = delete;
+
+    ~PendingGuard() {
+        doc.pending -= 1;
+    }
+};
+
 class StatefulWorker {
     kota::ipc::BincodePeer& peer;
     std::size_t max_documents;
@@ -92,14 +140,27 @@ class StatefulWorker {
         lru_index[path] = lru.begin();
     }
 
+    /// Evict least recently used idle documents down to the cap. Busy
+    /// ones stay, so the cap is exceeded while more documents than it are
+    /// in flight at once; the calls after their requests settle catch up.
     void shrink_if_over_limit() {
-        while(documents.size() > max_documents && !lru.empty()) {
-            auto path = lru.back();
-            lru.pop_back();
-            lru_index.erase(path);
+        bool evicted = false;
+        auto it = lru.end();
+        while(documents.size() > max_documents && it != lru.begin()) {
+            it = std::prev(it);
+            if(documents.lookup(*it)->pending > 0) {
+                continue;
+            }
+            auto path = *it;
             LOG_DEBUG("Evicting document: {}", path);
-            peer.send_notification(worker::EvictedParams{std::string(path)});
+            peer.send_notification(worker::EvictedParams{path});
             documents.erase(path);
+            lru_index.erase(path);
+            it = lru.erase(it);
+            evicted = true;
+        }
+        if(evicted) {
+            release_free_memory();
         }
     }
 
@@ -113,18 +174,24 @@ class StatefulWorker {
     }
 
     /// Look up document, wait for AST, lock strand, run fn(doc) on thread pool, unlock.
-    /// Returns `missing` if the document is not found or its AST unusable.
-    /// `kind` discriminates the perf series: query kinds have very
-    /// different costs and must not collapse into one distribution.
-    template <typename R, typename F>
-    kota::task<R> with_ast_or(llvm::StringRef kind, llvm::StringRef path, R missing, F&& fn) {
+    /// Returns `missing` if the AST is unusable, document_unloaded if the
+    /// document is not held at all — an eviction the master has not learned
+    /// of yet, which must not pass for an empty answer. `kind`
+    /// discriminates the perf series: query kinds have very different costs
+    /// and must not collapse into one distribution.
+    template <typename Params, typename R, typename F>
+    kota::task<R, kota::ipc::Error>
+        with_ast_or(llvm::StringRef kind, const Params& params, R missing, F&& fn) {
+        llvm::StringRef path = params.path;
         auto it = documents.find(path);
         if(it == documents.end()) {
-            co_return std::move(missing);
+            co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::document_unloaded,
+                                                           "Document is not loaded"});
         }
 
         // Hold shared_ptr so Evict can't destroy the entry mid-request.
         auto doc = it->second;
+        PendingGuard pending{*doc};
         touch_lru(path);
 
         ScopedTimer timer;
@@ -146,6 +213,7 @@ class StatefulWorker {
                 }
                 if(!doc->has_ast || (!doc->unit.completed() && !doc->unit.fatal_error()))
                     return std::move(missing);
+                CrashScope crash_scope(worker::crash_tag(params));
                 ScopedTimer compute_timer;
                 auto value = fn(*doc);
                 compute_ms = compute_timer.ms_f();
@@ -160,14 +228,17 @@ class StatefulWorker {
                  acquire_ms,
                  compute_ms,
                  timer.ms_f());
+        shrink_if_over_limit();
         co_return result.value();
     }
 
-    /// Returns "null" if document not found or AST not usable.
-    template <typename F>
-    kota::task<kota::codec::RawValue> with_ast(llvm::StringRef kind, llvm::StringRef path, F&& fn) {
+    /// Returns "null" if the AST is not usable.
+    template <typename Params, typename F>
+    kota::task<kota::codec::RawValue, kota::ipc::Error> with_ast(llvm::StringRef kind,
+                                                                 const Params& params,
+                                                                 F&& fn) {
         co_return co_await with_ast_or(kind,
-                                       path,
+                                       params,
                                        kota::codec::RawValue{"null"},
                                        std::forward<F>(fn));
     }
@@ -188,6 +259,7 @@ void StatefulWorker::register_handlers() {
 
             // Hold shared_ptr so Evict can't destroy the entry mid-compile.
             auto doc = get_or_create(params.path);
+            PendingGuard pending{*doc};
             touch_lru(params.path);
 
             // Publish the stop flag before the strand wait: a CancelCompile for
@@ -244,6 +316,7 @@ void StatefulWorker::register_handlers() {
             // exit (unit and has_ast are set together).
             auto compile_result = co_await kota::queue(
                 [&]() -> worker::CompileResult {
+                    CrashScope crash_scope(worker::crash_tag(params));
                     ScopedTimer timer;
 
                     CompilationParams cp;
@@ -288,8 +361,20 @@ void StatefulWorker::register_handlers() {
                             });
                     }
 
+                    if(doc->unit.completed() && !stop->load(std::memory_order_relaxed)) {
+                        result.build_at = doc->unit.build_at().count();
+                        result.deps = doc->unit.deps();
+
+                        // Build index for main file only (main_file_only=true).
+                        result.tu_index_data = index::build_tu_index(doc->unit, true);
+                    }
+
                     if(doc->unit.completed() || doc->unit.fatal_error()) {
                         auto diags = feature::diagnostics(doc->unit);
+                        if(result.tu_index_data.size() > max_index_bytes()) {
+                            diags.push_back(index_too_large(result.tu_index_data.size()));
+                            result.tu_index_data.clear();
+                        }
                         auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diags);
                         result.diagnostics = kota::codec::RawValue{json ? std::move(*json) : "[]"};
                         LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
@@ -306,13 +391,6 @@ void StatefulWorker::register_handlers() {
                                  timer.ms(),
                                  doc->unit.setup_fail());
                     }
-                    if(doc->unit.completed() && !stop->load(std::memory_order_relaxed)) {
-                        result.build_at = doc->unit.build_at().count();
-                        result.deps = doc->unit.deps();
-
-                        // Build index for main file only (main_file_only=true).
-                        result.tu_index_data = index::build_tu_index(doc->unit, true);
-                    }
 
                     // A unit that is neither complete nor a fatal-error result
                     // can never serve a query (with_ast_or refuses it), yet it
@@ -326,6 +404,7 @@ void StatefulWorker::register_handlers() {
                         doc->unit = CompilationUnit(nullptr);
                         doc->has_ast = false;
                     }
+                    release_free_memory();
                     return result;
                 },
                 [stop] { stop->store(true, std::memory_order_relaxed); });
@@ -340,7 +419,7 @@ void StatefulWorker::register_handlers() {
                         -> RequestResult<worker::DocumentLinkParams> {
         co_return co_await with_ast_or(
             "DocumentLink",
-            params.path,
+            params,
             std::vector<feature::DocumentLink>{},
             [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
     });
@@ -350,7 +429,7 @@ void StatefulWorker::register_handlers() {
                         -> RequestResult<worker::FoldingRangeParams> {
         co_return co_await with_ast_or(
             "FoldingRange",
-            params.path,
+            params,
             std::optional<std::vector<feature::FoldingRange>>{},
             [&](DocumentEntry& doc) { return std::optional(feature::folding_ranges(doc.unit)); });
     });
@@ -361,7 +440,7 @@ void StatefulWorker::register_handlers() {
                const worker::CodeActionParams& params) -> RequestResult<worker::CodeActionParams> {
             co_return co_await with_ast_or(
                 "CodeAction",
-                params.path,
+                params,
                 std::vector<feature::CodeAction>{},
                 [&](DocumentEntry& doc) { return feature::code_actions(doc.unit, params.range); });
         });
@@ -394,12 +473,12 @@ void StatefulWorker::register_handlers() {
         auto kind = kota::meta::enum_name(params.kind, "Unknown");
         switch(params.kind) {
             case K::Hover:
-                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
+                co_return co_await with_ast(kind, params, [&](DocumentEntry& doc) {
                     auto result = feature::hover(doc.unit, params.offset, params.config.hover);
                     return result ? to_raw(*result) : kota::codec::RawValue{"null"};
                 });
             case K::SemanticTokens:
-                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
+                co_return co_await with_ast(kind, params, [&](DocumentEntry& doc) {
                     // The preamble share from the compile params, then
                     // the own scan past the PCH bound, seeded by the
                     // conditional stack the preamble left open.
@@ -412,7 +491,7 @@ void StatefulWorker::register_handlers() {
                                                            feature::PositionEncoding::UTF16));
                 });
             case K::InlayHints:
-                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
+                co_return co_await with_ast(kind, params, [&](DocumentEntry& doc) {
                     auto range = params.range;
                     if(range.begin == static_cast<uint32_t>(-1))
                         range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
@@ -422,7 +501,7 @@ void StatefulWorker::register_handlers() {
                                                        feature::PositionEncoding::UTF16));
                 });
             case K::DocumentSymbol:
-                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
+                co_return co_await with_ast(kind, params, [&](DocumentEntry& doc) {
                     return to_raw(
                         feature::document_symbols(doc.unit, feature::PositionEncoding::UTF16));
                 });
@@ -448,6 +527,8 @@ int run_stateful_worker_mode(const std::string& worker_name,
     }
 
     LOG_INFO("Starting stateful worker");
+    install_crash_report();
+    prefer_as_oom_victim();
 
     kota::event_loop loop;
 

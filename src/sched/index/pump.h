@@ -234,7 +234,7 @@ private:
     /// the pump-side halves: a Requeued file gets its queue slot, an
     /// abandoned one wakes its waiters.
     PendingLedger::FailureVerdict note_dispatch_failure(const PendingLedger::Claim& claim,
-                                                        bool crashed);
+                                                        PendingLedger::Failure failure);
 
     /// Wake the file's await_attempt waiters whose observed ticket the
     /// settled attempt covers (`ticket` and older) and drop their events.

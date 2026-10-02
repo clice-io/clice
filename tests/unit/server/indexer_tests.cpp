@@ -100,13 +100,13 @@ struct IndexerFixture {
     }
 
     /// Fail the entry's current dispatch: the launch ticket matches.
-    Verdict fail(Fid id, bool crashed) {
-        return pump.note_dispatch_failure({id, ticket(id)}, crashed);
+    Verdict fail(Fid id, PendingLedger::Failure failure) {
+        return pump.note_dispatch_failure({id, ticket(id)}, failure);
     }
 
     /// Fail a dispatch launched with an explicit (possibly stale) ticket.
-    Verdict fail_at(Fid id, std::uint64_t ticket, bool crashed) {
-        return pump.note_dispatch_failure({id, ticket}, crashed);
+    Verdict fail_at(Fid id, std::uint64_t ticket, PendingLedger::Failure failure) {
+        return pump.note_dispatch_failure({id, ticket}, failure);
     }
 
     std::uint64_t ticket(Fid id) {
@@ -3066,33 +3066,48 @@ TEST_CASE(PreemptionKeepsBudget) {
     // A preemption under memory pressure requeues without spending the
     // crash budget, no matter how often it repeats.
     for(unsigned i = 0; i < 2 * IndexerFixture::budget; ++i) {
-        ASSERT_EQ(int(f.fail(id, /*crashed=*/false)), int(IndexerFixture::Verdict::Requeued));
+        ASSERT_EQ(int(f.fail(id, PendingLedger::Failure::Preempted)),
+                  int(IndexerFixture::Verdict::Requeued));
     }
     ASSERT_EQ(f.attempts(id), 0u);
     ASSERT_TRUE(f.pump.pending_reason(id).has_value());
 }
 
-TEST_CASE(CrashSpendsBudget) {
+TEST_CASE(OwnCrashGivesUp) {
+    IndexerFixture f;
+    auto id = f.project.file_table.intern(Spelling::absolute("/proj/poison.cpp"));
+    f.pump.enqueue(id, ReindexReason::ContentChanged);
+
+    // The run named by its dying worker would crash the next one too: the
+    // file waits for its content to change.
+    ASSERT_EQ(int(f.fail(id, PendingLedger::Failure::Crashed)),
+              int(IndexerFixture::Verdict::GaveUp));
+    ASSERT_FALSE(f.pump.pending_reason(id).has_value());
+}
+
+TEST_CASE(LostSpendsBudget) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/poison.cpp"));
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
     for(unsigned i = 0; i < IndexerFixture::budget; ++i) {
-        ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
+        ASSERT_EQ(int(f.fail(id, PendingLedger::Failure::Lost)),
+                  int(IndexerFixture::Verdict::Requeued));
     }
     ASSERT_EQ(f.attempts(id), IndexerFixture::budget);
 
-    // A preemption still requeues a file whose crash budget is spent:
-    // dropping it would erase the pending state and serve the stale
-    // shard as fresh. Only the next crash gives up.
-    ASSERT_EQ(int(f.fail(id, /*crashed=*/false)), int(IndexerFixture::Verdict::Requeued));
+    // A preemption still requeues a file whose budget is spent: dropping
+    // it would erase the pending state and serve the stale shard as fresh.
+    // Only the next lost run gives up.
+    ASSERT_EQ(int(f.fail(id, PendingLedger::Failure::Preempted)),
+              int(IndexerFixture::Verdict::Requeued));
     ASSERT_EQ(f.attempts(id), IndexerFixture::budget);
 
     // Giving up clears the pending slot: nothing is left to requeue, and
     // the stale shard serves as fresh — the accepted cost of abandoning.
-    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::GaveUp));
+    ASSERT_EQ(int(f.fail(id, PendingLedger::Failure::Lost)), int(IndexerFixture::Verdict::GaveUp));
     ASSERT_FALSE(f.pump.pending_reason(id).has_value());
-    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Dropped));
+    ASSERT_EQ(int(f.fail(id, PendingLedger::Failure::Lost)), int(IndexerFixture::Verdict::Dropped));
 }
 
 TEST_CASE(StaleCrashKeepsBudget) {
@@ -3105,7 +3120,7 @@ TEST_CASE(StaleCrashKeepsBudget) {
     // the stale crash must not spend the fixed content's budget or touch
     // its pending slot.
     f.pump.enqueue(id, ReindexReason::ContentChanged);
-    ASSERT_EQ(int(f.fail_at(id, stale, /*crashed=*/true)),
+    ASSERT_EQ(int(f.fail_at(id, stale, PendingLedger::Failure::Lost)),
               int(IndexerFixture::Verdict::Superseded));
     ASSERT_EQ(f.attempts(id), 0u);
     ASSERT_TRUE(f.pump.pending_reason(id).has_value());
@@ -3125,7 +3140,8 @@ TEST_CASE(DepsDowngradeKeepsDebt) {
     f.pump.enqueue(id, ReindexReason::DepsOnly);
     ASSERT_EQ(int(*f.pump.pending_reason(id)), int(ReindexReason::DepsOnly));
 
-    ASSERT_EQ(int(f.fail_at(id, launch, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
+    ASSERT_EQ(int(f.fail_at(id, launch, PendingLedger::Failure::Lost)),
+              int(IndexerFixture::Verdict::Requeued));
     ASSERT_EQ(int(*f.pump.pending_reason(id)), int(ReindexReason::ContentChanged));
     ASSERT_EQ(f.attempts(id), 1u);
 }
@@ -3142,14 +3158,15 @@ TEST_CASE(GaveUpClearsDowngraded) {
     // is doomed, and the give-up already accepted the staleness.
     f.consume(id);
     f.pump.enqueue(id, ReindexReason::DepsOnly);
-    ASSERT_EQ(int(f.fail_at(id, launch, /*crashed=*/true)), int(IndexerFixture::Verdict::GaveUp));
+    ASSERT_EQ(int(f.fail_at(id, launch, PendingLedger::Failure::Lost)),
+              int(IndexerFixture::Verdict::GaveUp));
     ASSERT_FALSE(f.pump.pending_reason(id).has_value());
 }
 
 TEST_CASE(DroppedWithoutPending) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/gone.cpp"));
-    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Dropped));
+    ASSERT_EQ(int(f.fail(id, PendingLedger::Failure::Lost)), int(IndexerFixture::Verdict::Dropped));
 }
 
 TEST_CASE(AttemptWaitPerTicket) {
@@ -3197,8 +3214,10 @@ TEST_CASE(ContentChangeResetsBudget) {
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/fixed.cpp"));
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
-    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
-    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
+    ASSERT_EQ(int(f.fail(id, PendingLedger::Failure::Lost)),
+              int(IndexerFixture::Verdict::Requeued));
+    ASSERT_EQ(int(f.fail(id, PendingLedger::Failure::Lost)),
+              int(IndexerFixture::Verdict::Requeued));
     ASSERT_EQ(f.attempts(id), 2u);
 
     // The user fixes the file: new content starts a fresh poison budget.
@@ -3206,7 +3225,8 @@ TEST_CASE(ContentChangeResetsBudget) {
     ASSERT_EQ(f.attempts(id), 0u);
 
     // A deps-only cascade is not new content and keeps the ledger.
-    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
+    ASSERT_EQ(int(f.fail(id, PendingLedger::Failure::Lost)),
+              int(IndexerFixture::Verdict::Requeued));
     f.pump.enqueue(id, ReindexReason::DepsOnly);
     ASSERT_EQ(f.attempts(id), 1u);
 }

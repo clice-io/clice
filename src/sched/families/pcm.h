@@ -8,7 +8,6 @@
 
 #include "project/command_resolver.h"
 #include "project/project.h"
-#include "sched/crash_budget.h"
 #include "sched/graph.h"
 #include "worker/pool.h"
 
@@ -109,6 +108,17 @@ public:
         return {Family::PCM, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};
     }
 
+    /// The death the module's last build caused, while the module's
+    /// content is still what crashed: every importer that finds it books
+    /// it against its own document instead of burning a worker of its own.
+    const kota::ipc::Error* crashed(Fid module);
+
+    /// An importer holding a license to retry (see server/quarantine.h)
+    /// lifts the module's refusal.
+    void forgive(Fid module) {
+        build_crashes.erase(module);
+    }
+
     /// Whether a node is an unresolved-import sentinel.
     static bool is_unresolved(NodeId id) {
         return id.family == Family::PCM && (id.key >> 63) != 0;
@@ -185,11 +195,20 @@ private:
 
     llvm::DenseMap<Fid, ScanMemo> scan_memos;
 
-    /// Crash budget of the builds, keyed by the content-derived PCM key:
-    /// a module interface that keeps killing workers is refused until its
-    /// content — and therefore its key — changes. Document quarantine
-    /// cannot contain it: every importer would burn workers of its own.
-    CrashBudget build_crashes;
+    /// A module build that killed a worker: the content it was built from
+    /// and the death.
+    struct Crash {
+        std::uint64_t content = 0;
+        kota::ipc::Error error;
+    };
+
+    std::uint64_t content_hash(Fid module);
+
+    /// The modules whose build killed a worker (see crashed): refused
+    /// until an importer forgives them or their content changes. One
+    /// document's quarantine cannot contain it alone: every importer would
+    /// burn a worker of its own.
+    llvm::DenseMap<Fid, Crash> build_crashes;
 };
 
 }  // namespace clice

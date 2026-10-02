@@ -85,11 +85,16 @@ struct Session {
     /// Used to detect stale compilation results (ABA prevention).
     std::uint64_t generation = 0;
 
-    /// Crash containment for this document's content: the crash budget
-    /// lives on pool slots, but the poison lives in documents — without
-    /// the cut one document burns slot after slot until the whole pool is
-    /// dead. All transitions go through the type; see quarantine.h.
-    Quarantine quarantine;
+    /// What this document's worker crashes bar it from, and when it may
+    /// try again. All transitions go through the type; see quarantine.h.
+    /// Shared with the store's parked table across a close, so work still
+    /// in flight on a closed session books into the records a reopen
+    /// restores.
+    std::shared_ptr<Quarantine> quarantine = std::make_shared<Quarantine>();
+
+    /// The store closed or replaced this session: nothing of it is
+    /// published any more, its crash notes included.
+    bool closed = false;
 
     /// See ServingMode for the write discipline. Escalated is the
     /// default so a session constructed outside the didOpen path (tests,
@@ -107,6 +112,11 @@ struct Session {
     /// verdict re-evaluates on dependency changes but ordinary typing
     /// errors never trigger a pointless prefix synthesis.
     bool trial_done = false;
+
+    /// The PCH pair a crash of this document's compile was put on: the
+    /// retraction rebuilds it, and a crash on it again is the document's
+    /// own. Cleared by a compile that lands.
+    std::string crashed_pch;
 };
 
 /// A request's claim on the buffer it was asked about: the generation

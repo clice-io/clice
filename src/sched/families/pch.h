@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "project/project.h"
-#include "sched/crash_budget.h"
+#include "sched/blame_budget.h"
 #include "sched/graph.h"
 #include "worker/pool.h"
 
@@ -23,11 +23,11 @@ namespace clice {
 ///
 /// The family owns the shared side of the policy: the pair-atomic store
 /// commit and cache metadata (a round runs to a real reply, so no
-/// cancellation can split blob from metadata), the shared-key crash
-/// budget, and the cooperative response to advisory cancellation. The
-/// adoption side stays with the server: which session points at the key
-/// and per-document quarantine — crash evidence reaches it through the
-/// dispatch owner's probe (see acquire).
+/// cancellation can split blob from metadata), the keys whose build
+/// crashed a worker, and the cooperative response to advisory
+/// cancellation. The adoption side stays with the server: which session
+/// points at the key and per-document quarantine — every consumer reads a
+/// failed acquisition's crash from crashed() and books it for itself.
 class PCHFamily {
 public:
     PCHFamily(TaskGraph& graph, Project& project, WorkerPool& pool);
@@ -64,22 +64,32 @@ public:
     };
 
     /// Join the key's round, spawning one when none is live. The spawning
-    /// acquire is the dispatch owner: its inputs feed the build, and its
-    /// `on_crash` probe receives every worker death of the round at crash
-    /// time — exactly once across all joiners, surviving the owner's own
-    /// request going stale or unwinding (contract 12: a stale round's
-    /// crashes still count). A non-spawning acquire's probe is simply
-    /// never installed, so deaths are never replayed per joiner. One
+    /// acquire is the dispatch owner: its inputs feed the build. One
     /// acquire observes exactly one attempt; retry policy stays with the
     /// caller.
-    kota::task<Outcome> acquire(Request request, std::function<void(llvm::StringRef)> on_crash);
+    kota::task<Outcome> acquire(Request request);
 
     /// The stash-only half of acquire, for waits that must be recorded as
     /// graph edges: intern the key, re-dirty a stale clean node, and
     /// install the dispatch owner's inputs when the caller's join will
     /// spawn the round. The caller then waits through RoundContext::depend
     /// on the returned node — the only wait form a family round may use.
-    NodeId prepare(Request request, std::function<void(llvm::StringRef)> on_crash);
+    NodeId prepare(Request request);
+
+    /// The death a build of the key caused, while the key is refused: a
+    /// round's crash is recorded whatever became of the request that
+    /// spawned it (contract 12), and every consumer that finds it books it
+    /// against its own document instead of burning a worker of its own.
+    const kota::ipc::Error* crashed(llvm::StringRef pch_key) const {
+        auto it = build_crashes.find(pch_key);
+        return it != build_crashes.end() ? &it->second : nullptr;
+    }
+
+    /// A consumer holding a license to retry (see server/quarantine.h)
+    /// lifts the key's refusal.
+    void forgive(llvm::StringRef pch_key) {
+        build_crashes.erase(pch_key);
+    }
 
     /// A complete, store-backed, deps-current pair is registered under
     /// the key. Non-const: a passing deps check may repair the snapshot's
@@ -97,15 +107,15 @@ public:
     void invalidate(llvm::StringRef pch_key);
 
     /// A parse consuming the pair died or blamed it: retract it AND book a
-    /// strike against the key. The build-side budget cannot bound this —
-    /// each successful rebuild clears it — so consumption strikes keep
-    /// their own ledger; enough of them park the key and acquisitions fail
-    /// fast, so consumers fall back to compiling without a PCH instead of
-    /// looping rebuild/blame forever over failing storage.
+    /// strike against the key. Each successful rebuild clears the build
+    /// side, so consumption strikes keep their own ledger; enough of them
+    /// park the key and acquisitions fail fast, so consumers fall back to
+    /// compiling without a PCH instead of looping rebuild/blame forever
+    /// over failing storage.
     void blame(llvm::StringRef pch_key);
 
     /// A parse consumed the key's pair and completed without blaming it:
-    /// clear its consumption strikes (cf. CrashBudget::on_land).
+    /// clear its consumption strikes (cf. BlameBudget::on_land).
     void consumed_ok(llvm::StringRef pch_key) {
         consume_blames.on_land(pch_key);
     }
@@ -151,13 +161,11 @@ private:
         return {Family::PCH, key_id};
     }
 
-    /// Per-key slot for the dispatch owner's stash; both fields are
-    /// replaced by the spawning acquire, read by its round and any
-    /// stale-retry rounds, and retired when a current round lands a
-    /// verdict.
+    /// Per-key slot for the dispatch owner's stash; replaced by the
+    /// spawning acquire, read by its round and any stale-retry rounds, and
+    /// retired when a current round lands a verdict.
     struct KeyState {
         Request inputs;
-        std::function<void(llvm::StringRef)> on_crash;
     };
 
     TaskGraph& graph;
@@ -168,16 +176,16 @@ private:
     /// whenever an entry's envelope is opened or replaced.
     void touch_loaded_state(llvm::StringRef pch_key);
 
-    /// Crash budget of the builds, keyed by the content-derived pch key:
-    /// a preamble that keeps killing workers is refused until its content
-    /// — and therefore its key — changes. Document quarantine cannot
-    /// contain it: the artifact is shared, so every session with the same
-    /// preamble would burn workers of its own.
-    CrashBudget build_crashes;
+    /// The keys whose build killed a worker, with the death (see
+    /// crashed): refused until a consumer forgives the key or its content —
+    /// and therefore the key — changes. One document's quarantine cannot
+    /// contain it alone: the artifact is shared, so every session with the
+    /// same preamble would burn a worker of its own.
+    llvm::StringMap<kota::ipc::Error> build_crashes;
 
-    /// Consumption strikes per key (see blame); separate from the
-    /// build-side build_crashes, which every successful rebuild clears.
-    CrashBudget consume_blames;
+    /// Consumption strikes per key (see blame); separate from the build
+    /// side, which every successful rebuild clears.
+    BlameBudget consume_blames;
 
     /// Keys of pch_cache entries whose envelope is currently loaded,
     /// most recently used first (see enforce_loaded_budget).
