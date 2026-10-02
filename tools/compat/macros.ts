@@ -13,6 +13,8 @@ import { entryArguments, entrySource, samePath, type DatabaseEntry } from "./dat
 /// Macros whose values follow from the compiler, its target and the
 /// command's flags: language mode, target, data model, and the semantic
 /// switches clice keeps. All are integers, so `#if` can compare them.
+/// `__GNUC__` is left out on purpose: clice parses as clang, which claims
+/// GCC 4.2 compatibility whichever GCC built the project.
 const GNU_MACROS = [
     "__cplusplus",
     "__STDC_VERSION__",
