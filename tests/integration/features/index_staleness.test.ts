@@ -89,3 +89,20 @@ test("deleted source withdraws its rows", async ({ session }) => {
     ) as { result: { symbols: unknown[] }; stale: string[] };
     expect(search.result.symbols).toEqual([]);
 });
+
+test("source deleted while down withdrawn", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write("main.cpp", "int main() { return 0; }\n");
+    ws.write("b.cpp", "int only_in_b() { return 2; }\n");
+    ws.writeCDB(["main.cpp", "b.cpp"]);
+    expect(batchIndex(ws)).toBe(2);
+
+    fs.rmSync(ws.path("b.cpp"));
+    // No background sweep reaches b.cpp before the query.
+    const client = session.spawn(ws);
+    await client.initialize(ws, {
+        initializationOptions: { project: { idle_timeout_ms: 600_000 } },
+    });
+    expect(await client.workspaceSymbols("only_in_b")).toEqual([]);
+});

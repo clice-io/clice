@@ -195,6 +195,10 @@ public:
     /// Look at these files now, due or not, under any policy.
     void look(llvm::ArrayRef<Fid> fids);
 
+    /// Record which of these files are missing now, a status each: a file
+    /// that is there is left as it was, unread.
+    void find_missing(llvm::ArrayRef<Fid> fids);
+
     /// Look at every watched flag and every file now: the test hook's
     /// deterministic stand-in for the ticks.
     void look_all();

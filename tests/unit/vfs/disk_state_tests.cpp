@@ -263,6 +263,16 @@ TEST_CASE(LookNowAtAny) {
     ASSERT_EQ(f.disk.take_changes(), llvm::SmallVector<Fid>{a});
 }
 
+TEST_CASE(FindMissingReadsNothing) {
+    Fixture f;
+    auto here = f.file("src/a.h", "int a;\n");
+    auto gone = f.table.intern(Spelling::absolute(f.tmp.path("src/gone.h")));
+    f.disk.find_missing(llvm::ArrayRef<Fid>{here, gone});
+    ASSERT_TRUE(f.disk.seen_missing(gone));
+    ASSERT_FALSE(f.disk.seen_missing(here));
+    ASSERT_FALSE(f.disk.seen_hash(here).has_value());
+}
+
 TEST_CASE(RootAddedLater) {
     // A root registered after its files were seen governs them from then.
     Fixture f;

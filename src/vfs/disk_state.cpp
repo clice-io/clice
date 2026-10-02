@@ -220,6 +220,17 @@ void DiskState::look(llvm::ArrayRef<Fid> fids) {
     }
 }
 
+void DiskState::find_missing(llvm::ArrayRef<Fid> fids) {
+    auto sorted = llvm::to_vector(fids);
+    std::ranges::sort(sorted, {}, [&](Fid fid) { return path(fid); });
+    StatusBatch statuses;
+    for(auto fid: sorted) {
+        if(!statuses.status(path(fid))) {
+            saw_missing(fid);
+        }
+    }
+}
+
 void DiskState::look_all() {
     look_flags();
     look(llvm::to_vector(llvm::make_first_range(files)));
