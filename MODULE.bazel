@@ -7,7 +7,6 @@ bazel_dep(name = "bazel_skylib", version = "1.9.2")
 
 # From the Bazel Central Registry, at the versions cmake/package.cmake and
 # kotatsu pin.
-bazel_dep(name = "flatbuffers", version = "25.2.10")
 bazel_dep(name = "tomlplusplus", version = "3.4.0")
 bazel_dep(name = "cpptrace", version = "1.0.4.bcr.1")
 bazel_dep(name = "mimalloc", version = "3.5.3.bcr.1")
@@ -22,6 +21,14 @@ http_archive(
     sha256 = "964aecb30b2da5c24fe5326ddec8f35a23e76c9d7ae410dc1a888430cfe375bf",
     strip_prefix = "kotatsu-626bb08d9221aeb611cb61da617d715ea1c14f71",
     urls = ["https://github.com/clice-io/kotatsu/archive/626bb08d9221aeb611cb61da617d715ea1c14f71.tar.gz"],
+)
+
+http_archive(
+    name = "flatbuffers",
+    build_file = "//third_party:flatbuffers.BUILD",
+    sha256 = "b9c2df49707c57a48fc0923d52b8c73beb72d675f9d44b2211e4569be40a7421",
+    strip_prefix = "flatbuffers-25.2.10",
+    urls = ["https://github.com/google/flatbuffers/archive/refs/tags/v25.2.10.tar.gz"],
 )
 
 http_archive(

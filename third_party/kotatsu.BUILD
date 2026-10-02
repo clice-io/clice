@@ -40,7 +40,7 @@ cc_library(
 cc_library(
     name = "codec_flatbuffers",
     visibility = ["//visibility:public"],
-    deps = [":headers", "@flatbuffers//:runtime_cc"],
+    deps = [":headers", "@flatbuffers"],
 )
 
 cc_library(
