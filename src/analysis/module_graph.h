@@ -158,6 +158,7 @@ struct ContextMacro {
 struct Specialization {
     std::uint32_t primary = 0;
     std::uint32_t file = 0;
+    std::uint32_t line = 0;
 };
 
 /// A macro a scoped header defines that out-of-scope headers read, as a

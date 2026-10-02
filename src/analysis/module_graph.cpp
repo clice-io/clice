@@ -148,7 +148,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         facts.file_ids[relative] = it->second;
         facts.files.push_back({
             .path = relative,
-            .source = index.manifests.contains(fid),
+            // A header an editor indexed standalone has a manifest too.
+            .source = index.manifests.contains(fid) && !is_header_path(relative),
             .fragment = is_context_header_path(relative),
         });
         fids.push_back(fid);
@@ -645,7 +646,15 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         if(llvm::none_of(facts.specializations, [&](const Specialization& known) {
                return known.primary == entity && known.file == file;
            })) {
-            facts.specializations.push_back({.primary = entity, .file = file});
+            std::uint32_t line = 0;
+            if(auto it = sites.find(specialization); it != sites.end()) {
+                if(auto site = llvm::find_if(it->second,
+                                             [&](const Site& site) { return site.file == file; });
+                   site != it->second.end()) {
+                    line = site->line;
+                }
+            }
+            facts.specializations.push_back({.primary = entity, .file = file, .line = line});
         }
         auto& use = raw[file][primary];
         use.count += 1;
@@ -2153,6 +2162,7 @@ Obstacles Report::obstacles() const {
                 .name = primary.name,
                 .related = facts.files[primary.owner].path,
                 .file = facts.files[specialization.file].path,
+                .line = specialization.line,
             });
         }
     }
