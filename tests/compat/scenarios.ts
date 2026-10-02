@@ -29,7 +29,6 @@ function cmake(generator: string, cc: string, cxx: string, ...extra: string[]): 
     ];
 }
 
-/// A CMake + Ninja build with the given compilers, both files checked.
 function cmakeNinja(
     name: string,
     platforms: NodeJS.Platform[],

@@ -106,7 +106,7 @@ function developerEnv(): NodeJS.ProcessEnv | null {
     if (install === "" || !fs.existsSync(vcvars)) {
         return developer;
     }
-    const run = spawnSync("cmd.exe", ["/d", "/s", "/c", `""${vcvars}" >nul && set"`], {
+    const run = spawnSync("cmd.exe", ["/d", "/s", "/c", `""${vcvars}" 1>&2 && set"`], {
         env: systemEnv(),
         encoding: "utf8",
         windowsVerbatimArguments: true,

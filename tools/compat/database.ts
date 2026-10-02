@@ -25,8 +25,8 @@ export function readDatabase(root: string): DatabaseEntry[] {
     return JSON.parse(fs.readFileSync(only, "utf8")) as DatabaseEntry[];
 }
 
-/// A Windows command line split the way CommandLineToArgvW and the C
-/// runtime split it: whitespace outside quotes separates, 2n backslashes
+/// A Windows command line split by the CommandLineToArgvW rules the
+/// quoting of build tools relies on: whitespace outside quotes separates, 2n backslashes
 /// before a quote are n backslashes and the quote toggles quoting, 2n+1
 /// are n backslashes and a literal quote, other backslashes are literal.
 /// No maintained npm package implements these rules.

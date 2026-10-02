@@ -66,11 +66,10 @@ function commandProblems(
 }
 
 /// Run `body` on a fresh copy of the project, built in the scenario's
-/// environment.
-function withProject(
-    scenario: Scenario,
-    body: (ws: Workspace, env: NodeJS.ProcessEnv) => void,
-): void {
+/// environment and held to what the checks need from the build: an entry
+/// per checked file carrying what `recorded` names, and the compiler's
+/// macro values written beside each source.
+function withProject(scenario: Scenario, body?: (ws: Workspace) => void): void {
     const missing = missingTools(scenario);
     const env = buildEnv(scenario);
     if (missing.length > 0 || env === null) {
@@ -80,50 +79,40 @@ function withProject(
     try {
         fs.cpSync(PROJECT_DIR, ws.root, { recursive: true });
         build(scenario, ws.root, env);
-        body(ws, env);
+        const entries = readDatabase(ws.root);
+        const scratch = ws.path(".compat");
+        fs.mkdirSync(scratch);
+        for (const [file, expectation] of Object.entries(scenario.files)) {
+            const source = ws.path(file);
+            const entry = entries.find((e) => samePath(entrySource(e), source));
+            if (entry === undefined) {
+                throw new Error(`the database has no entry for ${file}`);
+            }
+            const recorded = entryArguments(entry);
+            for (const sequence of expectation.recorded ?? []) {
+                if (!containsSequence(recorded, sequence)) {
+                    throw new Error(
+                        `${file}: the database entry lacks ${sequence.join(" ")}: ${recorded.join(" ")}`,
+                    );
+                }
+            }
+            writeExpectations(source, compilerMacros(entry, scratch, env));
+        }
+        body?.(ws);
     } finally {
         ws.remove();
-    }
-}
-
-/// Hold the build to what the checks need from it: an entry per checked
-/// file carrying what `recorded` names, and the compiler's macro values
-/// written beside each source.
-function prepareChecks(scenario: Scenario, ws: Workspace, env: NodeJS.ProcessEnv): void {
-    const entries = readDatabase(ws.root);
-    const scratch = ws.path(".compat");
-    fs.mkdirSync(scratch);
-    for (const [file, expectation] of Object.entries(scenario.files)) {
-        const source = ws.path(file);
-        const entry = entries.find((e) => samePath(entrySource(e), source));
-        if (entry === undefined) {
-            throw new Error(`the database has no entry for ${file}`);
-        }
-        const recorded = entryArguments(entry);
-        for (const sequence of expectation.recorded ?? []) {
-            if (!containsSequence(recorded, sequence)) {
-                throw new Error(
-                    `${file}: the database entry lacks ${sequence.join(" ")}: ${recorded.join(" ")}`,
-                );
-            }
-        }
-        writeExpectations(source, compilerMacros(entry, scratch, env));
     }
 }
 
 /// Throws when the scenario's toolchain cannot build the project and
 /// produce what clice would be checked against.
 export function checkBuild(scenario: Scenario): void {
-    withProject(scenario, (ws, env) => {
-        prepareChecks(scenario, ws, env);
-    });
+    withProject(scenario);
 }
 
 /// Throws with everything clice got wrong about the scenario's build.
 export function checkScenario(clice: string, scenario: Scenario): void {
-    withProject(scenario, (ws, env) => {
-        prepareChecks(scenario, ws, env);
-
+    withProject(scenario, (ws) => {
         const run = lint(clice, ws.root);
         if (run.status !== 0 || !run.report.trimEnd().endsWith(": 0 findings.")) {
             const log = run.log.split("\n").slice(-30).join("\n");
