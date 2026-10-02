@@ -1,0 +1,86 @@
+name: bazel-test
+
+# native-test's RelWithDebInfo legs, built by Bazel. Bazel is the runner
+# image's bazelisk, pinned by .bazelversion.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            # The default output root under the user profile pushes action
+            # paths past MAX_PATH.
+            startup: --output_user_root=C:/b
+          - os: ubuntu-24.04
+          - os: macos-15
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      BAZEL: bazel ${{ matrix.startup }}
+      CACHES: --disk_cache=${{ github.workspace }}/.cache/bazel-disk --repository_cache=${{ github.workspace }}/.cache/bazel-repo
+      CLICE_EXECUTABLE: ${{ github.workspace }}/bazel-bin/dist/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: default test-run
+          activate-environment: default
+
+      # The toolchain's compiler is not an action input, so nothing in an
+      # action key changes with xclang: the cache is keyed on pixi.lock, as
+      # ccache's is.
+      - name: Restore Bazel caches
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            .cache/bazel-disk
+            .cache/bazel-repo
+          key: ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-
+
+      - name: Mark the run start
+        run: touch "$RUNNER_TEMP/bazel-start"
+
+      - name: Build and unit tests
+        timeout-minutes: 90
+        run: $BAZEL test $CACHES --test_output=errors //:dist //:unit_tests_test
+
+      - name: Integration tests
+        timeout-minutes: 30
+        run: pixi run -e test-run -- bash -c 'npm ci && npm run check && npm test --workspace tests'
+
+      - name: Smoke tests
+        timeout-minutes: 5
+        run: pixi run -e test-run -- bash -c 'node tools/replay.ts tests/smoke/*.jsonl --clice="$CLICE_EXECUTABLE"'
+
+      - name: Snap tests
+        timeout-minutes: 20
+        run: pixi run -e test-run -- npm run snap --workspace tests
+
+      # Bazel refreshes an entry's mtime when it reads it, so what this run
+      # did not touch is what no current build needs.
+      - name: Prune the disk cache
+        if: github.ref == 'refs/heads/main'
+        run: find .cache/bazel-disk -type f ! -newer "$RUNNER_TEMP/bazel-start" -delete
+
+      - name: Save Bazel caches
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            .cache/bazel-disk
+            .cache/bazel-repo
+          key: ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-bazel-${{ github.sha }}
