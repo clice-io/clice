@@ -28,6 +28,7 @@ cli:
     - overview
     - index
     - query
+    - analyze
     - lint
     - format
 
