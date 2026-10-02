@@ -1,1 +1,1 @@
-exports_files(["cc_toolchain_config.bzl"])
+exports_files(["rules_cc-mingw-artifacts.patch"])

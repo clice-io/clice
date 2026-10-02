@@ -1,14 +1,89 @@
-"""A C++ toolchain over xclang's clang targeting MinGW, with C++20 modules."""
+"""The C++ toolchain, generated from the clang on PATH (pixi's xclang).
 
-_BUILD = """
-load("@@//toolchain:cc_toolchain_config.bzl", "cc_toolchain_config")
+One rule for Linux, macOS and Windows (MinGW), on rules_cc's Unix toolchain
+config; rules_cc's own detection is off (.bazelrc). xclang's config files pick
+sysroot, libc++, compiler-rt and linker, so the flags here are only Bazel's.
+"""
+
+def _run(rctx, args):
+    res = rctx.execute(args)
+    if res.return_code != 0:
+        fail("%s failed: %s" % (" ".join([str(a) for a in args]), res.stderr))
+    return res.stdout.strip()
+
+def _impl(rctx):
+    clang = rctx.which("clang")
+    if not clang:
+        fail("xclang's clang is not on PATH (pixi shell?)")
+    os = rctx.os.name.lower()
+    arm = rctx.os.arch in ("aarch64", "arm64")
+    exe = ""
+    if os.startswith("windows"):
+        exe = ".exe"
+        os_constraint, cpu, libc = "windows", "arm64_windows" if arm else "x64_windows", "mingw"
+    elif os.startswith("mac"):
+        os_constraint, cpu, libc = "macos", "darwin_arm64" if arm else "darwin_x86_64", "macosx"
+    else:
+        os_constraint, cpu, libc = "linux", "aarch64" if arm else "k8", "glibc"
+
+    bindir = str(clang.dirname).replace("\\", "/")
+    tool = lambda name: "%s/%s%s" % (bindir, name, exe)
+    triple = _run(rctx, [tool("clang"), "-print-target-triple"])
+
+    # Every header of the toolchain (libc++, compiler-rt, the sysroots) lives
+    # under xclang's root.
+    builtin_dirs = [str(clang.dirname.dirname).replace("\\", "/")]
+    compile_flags = []
+    link_flags = ["--driver-mode=g++"]
+    opt_link_flags = ["-Wl,--gc-sections"]
+    tool_paths = {
+        "ar": tool("llvm-ar"),
+        "cpp": tool("clang-cpp"),
+        "dwp": tool("llvm-dwp"),
+        "gcc": tool("clang"),
+        "gcov": tool("llvm-cov"),
+        "ld": tool("ld.lld"),
+        "llvm-cov": tool("llvm-cov"),
+        "llvm-profdata": tool("llvm-profdata"),
+        "nm": tool("llvm-nm"),
+        "objcopy": tool("llvm-objcopy"),
+        "objdump": tool("llvm-objdump"),
+        "strip": tool("llvm-strip"),
+    }
+    if os_constraint == "macos":
+        # The SDK comes from Xcode. Its parent directory too: clang reports
+        # SDKSettings.json under the versioned SDK name, not the symlink.
+        sdk = _run(rctx, ["xcrun", "--show-sdk-path"])
+        builtin_dirs += [sdk, sdk.rsplit("/", 1)[0]]
+        compile_flags += ["-isysroot", sdk]
+        link_flags += ["-isysroot", sdk]
+        opt_link_flags = ["-Wl,-dead_strip"]
+        tool_paths["libtool"] = tool("llvm-libtool-darwin")
+
+    if exe:
+        scanner = "deps_scanner_wrapper.bat"
+        rctx.file(scanner, "@echo off\r\n\"%s\" -format=p1689 -- \"%s\" %%* > \"%%DEPS_SCANNER_OUTPUT_FILE%%\"\r\n" % (
+            tool("clang-scan-deps"),
+            tool("clang++"),
+        ))
+    else:
+        scanner = "deps_scanner_wrapper.sh"
+        rctx.file(scanner, "#!/bin/sh\nexec \"%s\" -format=p1689 -- \"%s\" \"$@\" > \"$DEPS_SCANNER_OUTPUT_FILE\"\n" % (
+            tool("clang-scan-deps"),
+            tool("clang++"),
+        ), executable = True)
+    tool_paths["cpp-module-deps-scanner"] = scanner
+
+    constraints = json.encode(["@platforms//os:" + os_constraint, "@platforms//cpu:" + ("aarch64" if arm else "x86_64")])
+    rctx.file("BUILD.bazel", """\
+load("@rules_cc//cc/private/toolchain:unix_cc_toolchain_config.bzl", "cc_toolchain_config")  # buildifier: disable=bzl-visibility
 load("@rules_cc//cc/toolchains:cc_toolchain.bzl", "cc_toolchain")
 
 filegroup(name = "empty")
 
 filegroup(
     name = "scanner",
-    srcs = ["deps_scanner_wrapper.bat"],
+    srcs = [{scanner}],
 )
 
 cc_toolchain(
@@ -30,58 +105,52 @@ cc_toolchain_config(
     abi_libc_version = "local",
     abi_version = "local",
     compiler = "clang",
-    cpu = "x64_windows",
-    cxx_builtin_include_directories = ["{root}"],
-    dbg_compile_flags = ["-g"],
-    host_system_name = "x86_64-w64-mingw32",
-    # The C driver links like g++ (libc++, libunwind) only in g++ mode.
-    link_flags = ["--driver-mode=g++", "-fuse-ld=lld"],
-    opt_compile_flags = ["-O2", "-DNDEBUG", "-ffunction-sections", "-fdata-sections"],
-    opt_link_flags = ["-Wl,--gc-sections"],
     coverage_compile_flags = ["-fprofile-instr-generate", "-fcoverage-mapping"],
     coverage_link_flags = ["-fprofile-instr-generate"],
-    supports_start_end_lib = False,
-    target_libc = "mingw",
-    target_system_name = "x86_64-w64-mingw32",
-    tool_paths = {{
-        "gcc": "{bin}/clang{exe}",
-        "cpp": "{bin}/clang-cpp{exe}",
-        "ar": "{bin}/llvm-ar{exe}",
-        "ld": "{bin}/ld.lld{exe}",
-        "nm": "{bin}/llvm-nm{exe}",
-        "objcopy": "{bin}/llvm-objcopy{exe}",
-        "objdump": "{bin}/llvm-objdump{exe}",
-        "strip": "{bin}/llvm-strip{exe}",
-        "gcov": "{bin}/llvm-cov{exe}",
-        "dwp": "{bin}/llvm-dwp{exe}",
-        "llvm-cov": "{bin}/llvm-cov{exe}",
-        "llvm-profdata": "{bin}/llvm-profdata{exe}",
-        "cpp-module-deps-scanner": "deps_scanner_wrapper.bat",
-    }},
-    toolchain_identifier = "xclang-mingw",
+    compile_flags = {compile_flags},
+    cpu = {cpu},
+    cxx_builtin_include_directories = {builtin_dirs},
+    dbg_compile_flags = ["-g"],
+    host_system_name = {triple},
+    link_flags = {link_flags},
+    opt_compile_flags = ["-O2", "-DNDEBUG", "-ffunction-sections", "-fdata-sections"],
+    opt_link_flags = {opt_link_flags},
+    target_libc = {libc},
+    target_system_name = {triple},
+    tool_paths = {tool_paths},
+    toolchain_identifier = "xclang",
+    # Keep __DATE__ and friends out of the outputs, as rules_cc's detection does.
+    unfiltered_compile_flags = [
+        "-no-canonical-prefixes",
+        "-Wno-builtin-macro-redefined",
+        "-D__DATE__=\\"redacted\\"",
+        "-D__TIMESTAMP__=\\"redacted\\"",
+        "-D__TIME__=\\"redacted\\"",
+    ],
 )
 
 toolchain(
     name = "toolchain",
-    exec_compatible_with = ["@platforms//os:windows", "@platforms//cpu:x86_64"],
-    target_compatible_with = ["@platforms//os:windows", "@platforms//cpu:x86_64"],
+    exec_compatible_with = {constraints},
+    target_compatible_with = {constraints},
     toolchain = ":cc",
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
-"""
-
-def _impl(rctx):
-    clang = rctx.which("clang")
-    if not clang:
-        fail("xclang's clang is not on PATH")
-    windows = rctx.os.name.lower().startswith("windows")
-    exe = ".exe" if windows else ""
-    bindir = str(clang.dirname).replace("\\", "/")
-    root = str(clang.dirname.dirname).replace("\\", "/")
-    rctx.file("deps_scanner_wrapper.bat", "@echo off\r\n\"{bin}/clang-scan-deps{exe}\" -format=p1689 -- \"{bin}/clang++{exe}\" %* > \"%DEPS_SCANNER_OUTPUT_FILE%\"\r\n".format(bin = bindir, exe = exe))
-    rctx.file("BUILD.bazel", _BUILD.format(bin = bindir, root = root, exe = exe))
+""".format(
+        scanner = json.encode(scanner),
+        compile_flags = json.encode(compile_flags),
+        cpu = json.encode(cpu),
+        builtin_dirs = json.encode(builtin_dirs),
+        triple = json.encode(triple),
+        link_flags = json.encode(link_flags),
+        opt_link_flags = json.encode(opt_link_flags),
+        libc = json.encode(libc),
+        tool_paths = json.encode(tool_paths),
+        constraints = constraints,
+    ))
 
 xclang_toolchain = repository_rule(
     implementation = _impl,
     environ = ["PATH"],
+    configure = True,
 )

@@ -2,8 +2,14 @@ module(name = "clice")
 
 bazel_dep(name = "rules_cc", version = "0.2.25")
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "bazel_features", version = "1.51.0")
-bazel_dep(name = "bazel_skylib", version = "1.9.2")
+
+# Windows names for MinGW executables and DLLs in rules_cc's Unix toolchain
+# config (toolchain/xclang.bzl); not upstream yet.
+single_version_override(
+    module_name = "rules_cc",
+    patch_strip = 1,
+    patches = ["//toolchain:rules_cc-mingw-artifacts.patch"],
+)
 
 # From the Bazel Central Registry, at the versions cmake/package.cmake and
 # kotatsu pin.
@@ -105,10 +111,9 @@ env_dir_repository(
     env = "CLICE_LLVM_ROOT",
 )
 
-# Windows: xclang's clang targeting MinGW; rules_cc's MinGW toolchain is MSYS2
-# gcc.
+# The C++ toolchain on every platform, from pixi's xclang.
 xclang_toolchain = use_repo_rule("//toolchain:xclang.bzl", "xclang_toolchain")
 
-xclang_toolchain(name = "xclang_mingw")
+xclang_toolchain(name = "xclang")
 
-register_toolchains("@xclang_mingw//:toolchain")
+register_toolchains("@xclang//:toolchain")

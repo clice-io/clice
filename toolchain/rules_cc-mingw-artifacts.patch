@@ -1,0 +1,27 @@
+diff --git a/cc/private/toolchain/unix_cc_toolchain_config.bzl b/cc/private/toolchain/unix_cc_toolchain_config.bzl
+index 4724887..b850160 100644
+--- a/cc/private/toolchain/unix_cc_toolchain_config.bzl
++++ b/cc/private/toolchain/unix_cc_toolchain_config.bzl
+@@ -1932,6 +1932,22 @@ def _impl(ctx):
+                 extension = _cpp_module_extension(ctx.attr.compiler),
+             ),
+         ]
++        if ctx.attr.target_libc == "mingw":
++            # A GCC-style compiler driver targeting Windows (MinGW): the
++            # executables and DLLs it links need their Windows names; static
++            # libraries keep the GNU lib<name>.a naming MinGW uses as well.
++            artifact_name_patterns.extend([
++                artifact_name_pattern(
++                    category_name = "executable",
++                    prefix = "",
++                    extension = ".exe",
++                ),
++                artifact_name_pattern(
++                    category_name = "dynamic_library",
++                    prefix = "",
++                    extension = ".dll",
++                ),
++            ])
+         features = [
+             cpp_modules_feature,
+             cpp_module_modmap_file_feature,

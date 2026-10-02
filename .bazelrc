@@ -1,8 +1,9 @@
 common --enable_platform_specific_config
-common --repo_env=CC=clang --repo_env=CXX=clang++
+# The toolchain is toolchain/xclang.bzl's, on every platform.
+common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 common --repo_env=CLICE_LLVM_ROOT
-common --repo_env=BAZEL_USE_LEGACY_MACOS_TOOLCHAIN=1
 common --cxxopt=-std=c++23 --host_cxxopt=-std=c++23
 # RelWithDebInfo, as CI builds.
 common -c opt --copt=-g
-common:windows --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+# cmake/toolchain.cmake's CMAKE_OSX_DEPLOYMENT_TARGET.
+common:macos --macos_minimum_os=15.0
