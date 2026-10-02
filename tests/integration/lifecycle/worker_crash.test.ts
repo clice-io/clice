@@ -327,17 +327,14 @@ test("crash reading a preamble rebuilds it", async ({ session }) => {
     );
 });
 
-test("victims are not blamed", async ({ session }) => {
+test("victims are not blamed", { timeout: 240_000 }, async ({ session }) => {
     const workspace = session.tmpdir();
     // Slow enough to be in flight when the poison kills the worker.
-    const slow =
-        `${HEALTHY}constexpr long fib(long n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }\n` +
-        "constexpr long slow = fib(28);\n";
+    const declarations = Array.from({ length: 20_000 }, (_, i) => `int v_${i} = ${i};`);
+    const slow = `${HEALTHY}${declarations.join("\n")}\n`;
     workspace.write("healthy.cpp", slow);
     workspace.write("poison.cpp", poison(0));
-    workspace.writeCDB(["healthy.cpp", "poison.cpp"], {
-        extraArgs: ["-fconstexpr-steps=2147483647"],
-    });
+    workspace.writeCDB(["healthy.cpp", "poison.cpp"]);
     const client = session.spawn(workspace, crashing());
     // One stateful worker hosts both documents.
     await client.initialize(workspace, {

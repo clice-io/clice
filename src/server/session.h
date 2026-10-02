@@ -112,6 +112,11 @@ struct Session {
     /// verdict re-evaluates on dependency changes but ordinary typing
     /// errors never trigger a pointless prefix synthesis.
     bool trial_done = false;
+
+    /// The PCH pair a crash of this document's compile was put on: the
+    /// retraction rebuilds it, and a crash on it again is the document's
+    /// own. Cleared by a compile that lands.
+    std::string crashed_pch;
 };
 
 /// A request's claim on the buffer it was asked about: the generation

@@ -803,9 +803,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // A death while consuming a prebuilt pair may be the pair's fault:
         // deep corruption aborts the AST reader (report_fatal_error in the
         // bitstream reader) before any diagnostic can anchor, so the
-        // pch_suspect gate below never gets a say. The round's first such
-        // death retracts the pair and reruns on a rebuilt one, like that
-        // gate; a death on the rebuilt pair is the document's own.
+        // pch_suspect gate below never gets a say. The first such death
+        // retracts the pair and the round respawns on a rebuilt one; a
+        // death on the rebuilt pair is the document's own.
         bool consuming_pch = adopted_pch.has_value() && !params.pch.first.empty();
         bool pch_crashed = false;
         auto result = co_await deliver(
@@ -819,7 +819,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 co_return co_await pool.send_stateful(path_id.raw, params);
             },
             [&](const kota::ipc::Error& error) {
-                if(consuming_pch && !artifact_retried) {
+                if(consuming_pch && session->crashed_pch != *adopted_pch) {
                     pch_crashed = true;
                 } else {
                     record_crash(session, compile_kind, error);
@@ -830,12 +830,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             LOG_WARN("Compile crashed consuming PCH pair {} for {}; retracting the pair",
                      *adopted_pch,
                      file_path);
+            session->crashed_pch = *adopted_pch;
             pch.blame(*adopted_pch);
-            artifact_retried = true;
-            if(session->generation == gen) {
-                attempt -= 1;
-                continue;
-            }
+            co_return RoundOutcome::Stale;
         }
 
         if(session->generation != gen) {
@@ -1017,6 +1014,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
         entry.current = current;
         session->quarantine->on_land(compile_kind);
+        session->crashed_pch.clear();
         on_output.emit(session);
         // The push above told clients to re-pull what the fresh AST now
         // answers better; one refresh per landing.
