@@ -194,15 +194,19 @@ auto CompilationUnitRef::include_location(clang::FileID fid) -> clang::SourceLoc
 }
 
 bool CompilationUnitRef::synthesized(clang::FileID fid) {
-    if(self->synthesized.empty()) {
+    if(!borrows_context()) {
         return false;
     }
     auto entry = self->SM().getFileEntryRefForID(fid);
     return entry && self->synthesized.contains(file_path(*entry));
 }
 
+bool CompilationUnitRef::borrows_context() {
+    return !self->synthesized.empty();
+}
+
 bool CompilationUnitRef::from_context(clang::FileID fid) {
-    if(self->synthesized.empty()) {
+    if(!borrows_context()) {
         return false;
     }
     auto [it, inserted] = self->context_files.try_emplace(fid);

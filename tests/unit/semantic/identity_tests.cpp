@@ -922,6 +922,48 @@ using §(alias)Result = int;
     }
 }
 
+TEST_CASE(CTagsPerSourceFile) {
+    llvm::StringRef header = R"c(
+struct §(shared)shared { int x; };
+struct §(opaque)opaque;
+)c";
+    llvm::StringRef source = R"c(
+#include "common.h"
+struct §(state)state { int x; };
+)c";
+    add_file("common.h", header);
+    add_main("a.c", source);
+    ASSERT_TRUE(compile("-std=c17"));
+
+    Tester other;
+    other.add_file("common.h", header);
+    other.add_main("b.c", source);
+    ASSERT_TRUE(other.compile("-std=c17"));
+
+    EXPECT_NE(entity_at(*this, "a.c", "state"), entity_at(other, "b.c", "state"));
+    EXPECT_EQ(entity_at(*this, "common.h", "shared"), entity_at(other, "common.h", "shared"));
+    EXPECT_EQ(entity_at(*this, "common.h", "opaque"), entity_at(other, "common.h", "opaque"));
+}
+
+TEST_CASE(CLinkageIgnoresTypes) {
+    add_main("a.c", R"c(
+typedef int wchar_t;
+int §(f)f();
+void §(g)g(wchar_t c);
+)c");
+    ASSERT_TRUE(compile("-std=c17"));
+
+    Tester other;
+    other.add_main("b.cpp", R"cpp(
+extern "C" int §(f)f(void);
+extern "C" void §(g)g(wchar_t c);
+)cpp");
+    ASSERT_TRUE(other.compile());
+
+    EXPECT_EQ(entity_at(*this, "a.c", "f"), entity_at(other, "b.cpp", "f"));
+    EXPECT_EQ(entity_at(*this, "a.c", "g"), entity_at(other, "b.cpp", "g"));
+}
+
 TEST_CASE(HeaderAcrossUnits) {
     llvm::StringRef first = R"cpp(
 #pragma once

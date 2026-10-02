@@ -164,6 +164,10 @@ public:
     /// carries its bytes, so nothing may depend on it.
     bool synthesized(clang::FileID fid);
 
+    /// Whether the compile borrows an includer context: its main file is
+    /// a header, compiled as its host sees it.
+    bool borrows_context();
+
     /// Whether the file belongs to a borrowed includer context: synthesized
     /// itself, or entered through a synthesized file. Such files are the
     /// host's to index, not this unit's.

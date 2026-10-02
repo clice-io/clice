@@ -102,10 +102,20 @@ bool has_c_linkage(const clang::Decl* decl) {
 /// both carry their file. System headers are exempt for typedef names:
 /// they declare a name consistently, and several of them declare the
 /// same one (size_t), whichever is included first. A namespace alias
-/// only renames a namespace and stays shared.
-bool needs_path(const clang::NamedDecl* decl, const clang::SourceManager& SM) {
+/// only renames a namespace and stays shared. A C tag has no linkage
+/// either, though clang reports one: `struct state` defined in two
+/// source files is two types. One first declared in a header stays one
+/// entity per name, whichever header forward-declares it first; the
+/// main file of a header compiled in its host's context is no source
+/// file.
+bool needs_path(const clang::NamedDecl* decl, CompilationUnitRef unit) {
     if(!decl->getDeclContext()->getRedeclContext()->isFileContext()) {
         return false;
+    }
+    if(llvm::isa<clang::TagDecl>(decl) && !unit.context().getLangOpts().CPlusPlus &&
+       !unit.borrows_context() &&
+       unit.is_main_file(unit.file_id(unit.expansion_location(decl->getLocation())))) {
+        return true;
     }
     auto linkage = decl->getLinkageInternal();
     if(linkage == clang::Linkage::Internal || linkage == clang::Linkage::UniqueExternal) {
@@ -124,7 +134,7 @@ bool needs_path(const clang::NamedDecl* decl, const clang::SourceManager& SM) {
         return false;
     }
     return (linkage == clang::Linkage::None || llvm::isa<clang::TypedefNameDecl>(decl)) &&
-           !SM.isInSystemHeader(decl->getLocation());
+           !unit.context().getSourceManager().isInSystemHeader(decl->getLocation());
 }
 
 bool is_template_parameter(const clang::Decl* decl) {
@@ -938,7 +948,7 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
     /// first declaration's file tells the copies apart. Judged by linkage,
     /// not visibility: a typedef or namespace alias has no linkage yet is
     /// shared by every unit that includes its header.
-    if(needs_path(decl, unit.context().getSourceManager())) {
+    if(needs_path(decl, unit)) {
         add_path(hasher, decl->getLocation());
     }
 }
@@ -996,19 +1006,26 @@ void EntityTable::add_function(Hasher& hasher, const clang::FunctionDecl* functi
     /// exception specification nor the attributes in ExtInfo (noreturn,
     /// the calling convention) can distinguish two functions of one
     /// name: a redeclaration may add them, and which declaration a unit
-    /// sees first depends on its include order.
-    auto* written = function->getTypeSourceInfo();
-    QualType type = written ? written->getType() : function->getType();
-    if(type->getAs<FunctionProtoType>()) {
-        type =
-            unit.context().getFunctionTypeWithExceptionSpec(type,
-                                                            FunctionProtoType::ExceptionSpecInfo());
+    /// sees first depends on its include order. Nor can any type tell
+    /// two C-linkage functions of one name apart: `int f();` and
+    /// `int f(void);` declare one function, and a C and a C++ unit read
+    /// one prototype with different types where C's `wchar_t` is a
+    /// typedef.
+    if(!has_c_linkage(function) || function->hasAttr<OverloadableAttr>()) {
+        auto* written = function->getTypeSourceInfo();
+        QualType type = written ? written->getType() : function->getType();
+        if(type->getAs<FunctionProtoType>()) {
+            type = unit.context().getFunctionTypeWithExceptionSpec(
+                type,
+                FunctionProtoType::ExceptionSpecInfo());
+        }
+        if(auto* function_type = type->getAs<FunctionType>()) {
+            type =
+                QualType(unit.context().adjustFunctionType(function_type, FunctionType::ExtInfo()),
+                         0);
+        }
+        add_type(hasher, type);
     }
-    if(auto* function_type = type->getAs<FunctionType>()) {
-        type =
-            QualType(unit.context().adjustFunctionType(function_type, FunctionType::ExtInfo()), 0);
-    }
-    add_type(hasher, type);
 
     if(auto* method = dyn_cast<CXXMethodDecl>(function)) {
         hasher.add(static_cast<std::uint64_t>(method->isExplicitObjectMemberFunction()));
