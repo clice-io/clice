@@ -12,12 +12,12 @@ auto map_resolver(const llvm::StringMap<std::string>& mapping) {
     return [&mapping](const ScanResult::IncludeInfo& include,
                       [[maybe_unused]] llvm::StringRef includer_dir,
                       [[maybe_unused]] std::optional<unsigned> includer_found_dir)
-               -> std::optional<ResolvedInclude> {
+               -> std::optional<ResolveResult> {
         auto it = mapping.find(include.path);
         if(it == mapping.end()) {
             return std::nullopt;
         }
-        return ResolvedInclude{.path = it->second};
+        return ResolveResult{.path = llvm::SmallString<256>(it->second)};
     };
 }
 
@@ -325,15 +325,16 @@ TEST_CASE(IncludeNextFollowsChain) {
 )"};
     ChainEntry mid{"/inc/b/mid.h", R"(#include_next <target.h>
 )"};
-    auto resolver =
-        [](const ScanResult::IncludeInfo& include,
-           [[maybe_unused]] llvm::StringRef includer_dir,
-           std::optional<unsigned> includer_found_dir) -> std::optional<ResolvedInclude> {
+    auto resolver = [](const ScanResult::IncludeInfo& include,
+                       [[maybe_unused]] llvm::StringRef includer_dir,
+                       std::optional<unsigned> includer_found_dir) -> std::optional<ResolveResult> {
         if(include.path == "mid.h" && !includer_found_dir) {
-            return ResolvedInclude{.path = "/inc/b/mid.h", .found_dir_idx = 1};
+            return ResolveResult{.path = llvm::SmallString<256>("/inc/b/mid.h"),
+                                 .found_dir_idx = 1};
         }
         if(include.path == "target.h" && includer_found_dir == 1u) {
-            return ResolvedInclude{.path = "/inc/c/target.h", .found_dir_idx = 2};
+            return ResolveResult{.path = llvm::SmallString<256>("/inc/c/target.h"),
+                                 .found_dir_idx = 2};
         }
         return std::nullopt;
     };

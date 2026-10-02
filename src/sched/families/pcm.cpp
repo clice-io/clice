@@ -61,8 +61,12 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
     std::uint64_t directives = 0;
     if(content) {
+        // Directives the scan never saw may include anything, so past the
+        // graph only a project without module syntax is sure.
         auto lexical = scan_quick(*content);
-        may_import |= lexical.has_module_syntax();
+        may_import |=
+            lexical.has_module_syntax() || (dep_graph.has_import_candidates() &&
+                                            !dep_graph.scanned(path_id, lexical.directives_hash));
         directives = lexical.directives_hash;
     }
     if(!may_import) {
@@ -362,15 +366,18 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
                                          const Resolution& resolution,
                                          llvm::ArrayRef<const char*> arguments,
                                          llvm::StringRef directory,
-                                         std::optional<llvm::StringRef> content,
-                                         bool foreground) {
+                                         llvm::StringRef content) {
     // Resolved fresh on every call — a stale list must never outlive a
     // CDB change. The requester never runs a round here, but its
     // consumer edges must live in the graph: a saved module (or a
     // provider appearing for a sentinel) cascades to the open TUs
     // importing it through them. Declared even when empty, so a removed
     // import stops cascading.
-    auto deps = co_await direct_deps(path_id, resolution, arguments, directory, content);
+    auto deps = co_await direct_deps(path_id,
+                                     resolution,
+                                     arguments,
+                                     directory,
+                                     std::optional<llvm::StringRef>(content));
     // A module unit's PCM node carries its ARTIFACT's edge truth, owned
     // by its own rounds — a request's buffer view must not overwrite it
     // (an unsaved removed import would disconnect the cached PCM from
@@ -383,16 +390,18 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
         co_return true;
     }
 
-    for(int attempt = 0; attempt < 3; ++attempt) {
+    for(int attempt = 0; attempt < 3; attempt += 1) {
         bool any_evicted = revalidate_blobs();
         if(attempt > 0 && !any_evicted) {
             break;
         }
 
+        // A user request waits on these builds: foreground, so the
+        // background budget cannot throttle them.
         std::vector<kota::task<JoinOutcome>> waits;
         waits.reserve(deps.resolved.size());
         for(auto dep: deps.resolved) {
-            waits.push_back(graph.request(node(dep), {.foreground = foreground}));
+            waits.push_back(graph.request(node(dep), {.foreground = true}));
         }
         auto results = co_await kota::when_all(std::move(waits));
         bool ok = std::ranges::all_of(results, [](JoinOutcome outcome) {

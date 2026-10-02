@@ -116,6 +116,10 @@ public:
     std::uint32_t add_group(const CommandRef& command);
     const CommandRef& group(std::uint32_t id) const;
 
+    llvm::ArrayRef<CommandRef> groups() const {
+        return scan_groups;
+    }
+
     /// Record how the scan reached a file; a unit has one context per
     /// command, any other file the first one that reached it.
     void add_context(Fid path_id, ScanContext context);
@@ -160,22 +164,29 @@ public:
         return module_to_path;
     }
 
-    /// Files whose lexer scan saw module syntax (ScanResult::
-    /// has_module_syntax). The names stay unknown: an import's are
-    /// macro-expanded. Whether there is one is lexical truth, though: no
-    /// macro can produce an import directive ([cpp.pre]), so a unit that
-    /// reaches no candidate through includes and forced includes imports
-    /// nothing.
-    void set_import_candidate(Fid path_id, bool candidate) {
-        if(candidate) {
-            import_candidates.insert(path_id);
-        } else {
-            import_candidates.erase(path_id);
-        }
+    /// Record the content facts of a file's scan: whether it holds module
+    /// syntax (an import candidate, see ScanResult::has_module_syntax),
+    /// and the directive stream the edges were resolved from.
+    void record_scan(Fid path_id, const ScanResult& scan);
+
+    /// Drop them, for a file gone from disk.
+    void forget_scan(Fid path_id);
+
+    /// Whether the scan saw the file with this directive stream: then its
+    /// edges describe a text with exactly these directives.
+    bool scanned(Fid path_id, std::uint64_t directives_hash) const;
+
+    /// Whether any file holds module syntax. The names stay unknown — an
+    /// import's names are macro-expanded — but whether there is one is
+    /// lexical truth: no macro can produce an import directive
+    /// ([cpp.pre]).
+    bool has_import_candidates() const {
+        return !import_candidates.empty();
     }
 
-    /// Whether a compile of `path_id` reads an import candidate: the file
-    /// itself, what it includes, and its forced includes, transitively.
+    /// Whether a compile of `path_id`'s scanned text reads an import
+    /// candidate: the file itself, what it includes, and its forced
+    /// includes, transitively.
     bool reaches_import(Fid path_id) const;
 
 private:
@@ -185,8 +196,9 @@ private:
     /// The inverse of module_to_path, maintained by the same two writers.
     llvm::DenseMap<Fid, std::string> module_by_path;
 
-    /// See set_import_candidate().
+    /// See record_scan().
     llvm::DenseSet<Fid> import_candidates;
+    llvm::DenseMap<Fid, std::uint64_t> scanned_directives;
 
     /// (fid, ConfigID) -> directly included files.
     llvm::DenseMap<IncludeKey, llvm::SmallVector<IncludeEdge>, IncludeKeyInfo> includes;
@@ -203,7 +215,7 @@ private:
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> forcing_units;
 
     /// See add_group() and add_context().
-    llvm::SmallVector<CommandRef> groups;
+    llvm::SmallVector<CommandRef> scan_groups;
     llvm::DenseMap<Fid, llvm::SmallVector<ScanContext, 1>> scan_contexts;
 
     /// Whether build_reverse_map() ran, so edge updates maintain the map.
@@ -305,8 +317,7 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
 /// per-file step as the full scan: under every context the scan reached
 /// it by, its include edges, module declaration and module syntax follow
 /// the new bytes, and files it reaches for the first time are scanned
-/// too. A file the scan never reached keeps no edges — no unit's compile
-/// reads it.
+/// too. A file the scan never reached stays out of the graph.
 void rescan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph, Fid path_id);
 
 }  // namespace clice

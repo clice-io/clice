@@ -43,18 +43,16 @@ public:
     /// Re-validate on-disk PCM blobs and build the module dependencies of
     /// a request that compiles under `arguments` with `content` as the
     /// main file and the resolution's synthesized context served from
-    /// memory (the forwarder's
-    /// per-request builds — the scan must see the buffer's imports under
-    /// the request's command). Building a dependency can itself evict
-    /// another clean module's PCM under budget pressure, which reopens the
-    /// window the revalidation just closed — hence the bounded retry until
-    /// the set is stable.
+    /// memory (the forwarder's per-request builds — the scan must see the
+    /// buffer's imports under the request's command). Building a
+    /// dependency can itself evict another clean module's PCM under budget
+    /// pressure, which reopens the window the revalidation just closed —
+    /// hence the bounded retry until the set is stable.
     kota::task<bool> prepare_deps(Fid path_id,
                                   const Resolution& resolution,
                                   llvm::ArrayRef<const char*> arguments,
                                   llvm::StringRef directory,
-                                  std::optional<llvm::StringRef> content,
-                                  bool foreground);
+                                  llvm::StringRef content);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
     /// blob while its node is still clean, so evicted units are
@@ -86,6 +84,11 @@ public:
 
     /// Preprocessor passes direct_deps() ran.
     std::uint64_t import_scans = 0;
+
+    /// A closed document's buffer scans no more.
+    void forget_buffer(Fid path_id) {
+        scan_memos.erase(path_id);
+    }
 
     /// A scan's module dependencies, split by what a consumer does with
     /// them: `resolved` names module units to wait on; `declared` is the
@@ -135,11 +138,12 @@ public:
     ///
     /// The scan is a preprocessor run over the whole unit: it runs on the
     /// thread pool, the event loop only resolves the names it found. A
-    /// unit that can import nothing pays none — its own text has no
-    /// module syntax, and neither it nor the host whose command it
-    /// borrows reaches an import candidate. A buffer's scan is reused
-    /// while its directive stream, its arguments and the project's disk
-    /// state (context_epoch) stay the same.
+    /// unit that can import nothing pays none: its own text has no module
+    /// syntax, neither it nor the host whose command it borrows reaches an
+    /// import candidate, and a buffer's directives are the ones the
+    /// dependency scan saw. A buffer's scan is reused while its directive
+    /// stream, its arguments and the project's disk state (context_epoch)
+    /// stay the same.
     kota::task<ModuleDeps> direct_deps(Fid path_id,
                                        const Resolution& resolution,
                                        llvm::ArrayRef<const char*> arguments,

@@ -27,6 +27,31 @@ test("edits pay no import scan", async ({ session }) => {
     expect((await client.stats()).importScans).toBe(0);
 });
 
+test("modules elsewhere cost nothing", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("force.h", "#define FORCED 1\n");
+    workspace.write("main.cpp", "int main() { return FORCED; }\n");
+    workspace.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    workspace.write("user.cpp", "import A;\nint user() { return a(); }\n");
+    workspace.writeEntries(
+        [
+            ["main.cpp", ["-include", "force.h"]],
+            ["a.cppm", []],
+            ["user.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+
+    const [main] = await client.openAndWait("main.cpp");
+    client.change(main, 1, "int main() { return FORCED + 1; }\n");
+    await client.waitForRecompile(main);
+    client.assertCleanCompile(main);
+    expect((await client.stats()).importScans).toBe(0);
+});
+
 test("saved forced header recompiles", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("force.h", "#define FORCED 1\n");

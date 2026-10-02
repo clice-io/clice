@@ -1,6 +1,7 @@
 #include "syntax/preamble_synthesis.h"
 
 #include <format>
+#include <vector>
 
 #include "syntax/scan.h"
 
@@ -38,29 +39,20 @@ static void append_quoted_path(std::string& out, llvm::StringRef path) {
     out += '"';
 }
 
-/// The directives resolving to `next_path`, in directive order.
-static llvm::SmallVector<std::size_t>
-    collect_candidates(llvm::ArrayRef<std::optional<ResolvedInclude>> resolved,
-                       llvm::StringRef next_path) {
+/// Pick the directive to cut at among those resolving to `next_path`. An
+/// explicit occurrence indexes them in directive order; otherwise
+/// unconditional directives win over ones inside #if blocks, so an
+/// include occurrence in an untaken branch does not shadow the real one.
+static std::optional<std::size_t> find_match(llvm::ArrayRef<ScanResult::IncludeInfo> includes,
+                                             llvm::ArrayRef<std::optional<ResolveResult>> resolved,
+                                             llvm::StringRef next_path,
+                                             std::optional<std::uint32_t> occurrence) {
     llvm::SmallVector<std::size_t> candidates;
     for(std::size_t j = 0; j < resolved.size(); j += 1) {
         if(resolved[j] && resolved[j]->path == next_path) {
             candidates.push_back(j);
         }
     }
-    return candidates;
-}
-
-/// Pick the directive to cut at. An explicit occurrence indexes the
-/// candidate list directly; otherwise unconditional directives win over
-/// ones inside #if blocks, so an include occurrence in an untaken branch
-/// does not shadow the real one.
-static std::optional<std::size_t>
-    find_match(llvm::ArrayRef<ScanResult::IncludeInfo> includes,
-               llvm::ArrayRef<std::optional<ResolvedInclude>> resolved,
-               llvm::StringRef next_path,
-               std::optional<std::uint32_t> occurrence) {
-    auto candidates = collect_candidates(resolved, next_path);
     if(candidates.empty()) {
         return std::nullopt;
     }
@@ -103,7 +95,7 @@ static void emit_fragment(std::string& out,
                           std::uint32_t from,
                           std::uint32_t to,
                           llvm::ArrayRef<ScanResult::IncludeInfo> includes,
-                          llvm::ArrayRef<std::optional<ResolvedInclude>> resolved,
+                          llvm::ArrayRef<std::optional<ResolveResult>> resolved,
                           llvm::StringRef target_path,
                           llvm::StringRef snapshot_path) {
     std::uint32_t pos = from;
@@ -185,7 +177,7 @@ std::optional<SynthesizedContext>
 
         auto scan_result = scan_quick(entry.content);
 
-        llvm::SmallVector<std::optional<ResolvedInclude>> resolved;
+        std::vector<std::optional<ResolveResult>> resolved;
         resolved.reserve(scan_result.includes.size());
         for(auto& include: scan_result.includes) {
             resolved.push_back(resolve(include, includer_dir, found_dir));

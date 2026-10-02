@@ -46,8 +46,10 @@ ScanResult scan_quick(llvm::StringRef content) {
     for(auto& dir: directives) {
         stream.push_back(static_cast<char>(dir.Kind));
         for(auto& tok: dir.Tokens) {
+            // The flags tell `F(x)` from `F (x)` in a #define.
             stream += content.substr(tok.Offset, tok.Length);
-            stream.push_back('\0');
+            stream.append(reinterpret_cast<const char*>(&tok.Flags),
+                          reinterpret_cast<const char*>(&tok.Flags) + sizeof(tok.Flags));
         }
         switch(dir.Kind) {
             case dds::pp_if:

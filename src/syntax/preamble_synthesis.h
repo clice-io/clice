@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -25,20 +26,13 @@ struct ChainEntry {
     llvm::StringRef content;
 };
 
-/// An include directive resolved to a file: its path, and the search
-/// directory it was found in (`#include_next` there resumes after it).
-struct ResolvedInclude {
-    std::string path;
-    std::optional<unsigned> found_dir_idx;
-};
-
 /// Resolve an include directive of a file in `includer_dir`, which was
 /// itself found in search directory `includer_found_dir`; nullopt when
 /// it resolves nowhere.
 using IncludeResolver =
-    llvm::function_ref<std::optional<ResolvedInclude>(const ScanResult::IncludeInfo& include,
-                                                      llvm::StringRef includer_dir,
-                                                      std::optional<unsigned> includer_found_dir)>;
+    llvm::function_ref<std::optional<ResolveResult>(const ScanResult::IncludeInfo& include,
+                                                    llvm::StringRef includer_dir,
+                                                    std::optional<unsigned> includer_found_dir)>;
 
 /// Files a compile reads from memory instead of disk: (path, content).
 using SynthesizedFiles = std::vector<std::pair<std::string, std::string>>;

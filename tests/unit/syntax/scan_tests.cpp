@@ -148,6 +148,18 @@ TEST_CASE(IncludeNext) {
     EXPECT_EQ(result.includes[1].path, "chained.h");
 }
 
+TEST_CASE(DirectivesHashIgnoresBody) {
+    // The hash follows the directive lines only: the text a precise scan
+    // reads of the file.
+    auto hash = [](llvm::StringRef text) {
+        return scan_quick(text).directives_hash;
+    };
+    auto base = hash("import m;\n#define F(x) x\nint f() { return 1; }\n");
+    EXPECT_EQ(base, hash("import m;\n#define F(x) x\nint f() { return 2; }\n"));
+    EXPECT_NE(base, hash("import n;\n#define F(x) x\nint f() { return 1; }\n"));
+    EXPECT_NE(base, hash("import m;\n#define F (x) x\nint f() { return 1; }\n"));
+}
+
 TEST_CASE(EmptyContent) {
     auto result = scan_quick("");
     EXPECT_TRUE(result.includes.empty());

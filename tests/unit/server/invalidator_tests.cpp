@@ -437,8 +437,16 @@ TEST_CASE(RescanKeepsGuardedProvider) {
 
     Project project{files};
     SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cpp"), {"-std=c++20"}}
+    }));
+    scan_all(project.cdb, project.dep_graph);
+    project.dep_graph.build_reverse_map();
     auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cpp")));
-    project.dep_graph.update_module_decl(iface, "m");
+    ASSERT_EQ(project.dep_graph.module_of(iface), "m");
+    tmp.touch("m.cpp", "#if 1\nexport module m;\n#endif\nexport int v;\n");
 
     project.project_index.shards[iface] = shard_of(*read_file(tmp.path("m.cpp")));
 

@@ -481,6 +481,81 @@ TEST_CASE(BufferImportBuildsPCM) {
     EXPECT_TRUE(stack.project.pcm_cache.contains(mod_ids[0]));
 }
 
+TEST_CASE(ImportScanPerUnit) {
+    // In a project with modules only a unit that can import pays the
+    // precise scan, and an edit off its directive lines reuses it.
+    TempDir tmp;
+    tmp.touch("m.cppm",
+              "export module m;\n"
+              "export int mv() { return 1; }\n");
+    tmp.touch("main.cpp", "import m;\nint main() { return mv(); }\n");
+    tmp.touch("plain.cpp", "int plain() { return 0; }\n");
+
+    Stack stack;
+    write_cdb(tmp,
+              stack.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"),    {}},
+                  {tmp.root, tmp.path("main.cpp"),  {}},
+                  {tmp.root, tmp.path("plain.cpp"), {}},
+    }));
+    scan_all(stack.project.cdb, stack.project.dep_graph);
+    stack.project.dep_graph.build_reverse_map();
+    stack.register_pch_store(tmp);
+    stack.project.store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+
+    auto plain = stack.open(tmp.path("plain.cpp"), "int plain() { return 0; }\n");
+    auto main = stack.open(tmp.path("main.cpp"), "import m;\nint main() { return mv(); }\n");
+    auto edit = [&](const std::shared_ptr<Session>& session, std::string text) {
+        session->text = std::move(text);
+        session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+        session->generation += 1;
+        stack.ast.supersede(session->path_id);
+    };
+
+    std::uint64_t plain_scans = 0;
+    std::uint64_t first_scans = 0;
+    std::uint64_t body_scans = 0;
+    std::uint64_t import_scans = 0;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(plain));
+        plain_scans = stack.pcm.import_scans;
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(main));
+        first_scans = stack.pcm.import_scans;
+
+        edit(main, "import m;\nint main() { return mv() + 1; }\n");
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(main));
+        body_scans = stack.pcm.import_scans;
+
+        edit(main, "import m;\n#define TWO 2\nint main() { return mv() + TWO; }\n");
+        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(main));
+        import_scans = stack.pcm.import_scans;
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    EXPECT_EQ(plain_scans, 0u);
+    // The document's scan, and the interface's own PCM round.
+    EXPECT_EQ(first_scans, 2u);
+    EXPECT_EQ(body_scans, first_scans);
+    EXPECT_EQ(import_scans, first_scans + 1);
+}
+
 TEST_CASE(BufferImportRecorded) {
     // Zero-provider window: the compile fails on the unresolved import,
     // but the buffer scan must still record the name — the first

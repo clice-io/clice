@@ -32,7 +32,7 @@ void Project::rescan_disk_file(Fid path_id) {
 
 void Project::forget_file(Fid path_id) {
     dep_graph.update_module_decl(path_id, {});
-    dep_graph.set_import_candidate(path_id, false);
+    dep_graph.forget_scan(path_id);
     dep_graph.clear_includes(path_id);
     context_epoch += 1;
 }

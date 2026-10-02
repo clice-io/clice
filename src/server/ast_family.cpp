@@ -16,7 +16,6 @@
 #include "support/anomaly.h"
 #include "support/logging.h"
 #include "support/timer.h"
-#include "syntax/scan.h"
 #include "vfs/path.h"
 #include "worker/protocol.h"
 
@@ -312,6 +311,7 @@ void ASTFamily::invalidate(Fid path_id) {
 void ASTFamily::drop(Fid path_id) {
     graph.update(node(path_id));
     projections.entries.erase(path_id);
+    pcm.forget_buffer(path_id);
 }
 
 void ASTFamily::switch_identity(Session& session) {
@@ -995,10 +995,8 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     auto path_id = session->path_id;
     auto license_epoch = projections.epoch(path_id);
 
-    // A user request waits on these builds: dispatch them High so the
-    // background budget cannot throttle its own foreground. The scan
-    // runs under the request's command with the same text the dispatch
-    // will compile — buffer plus any appended suffix include — so an
+    // The scan runs under the request's command with the same text the
+    // dispatch will compile — buffer plus any appended suffix include — so an
     // unsaved `import m;` (or one inside a contextual header's suffix)
     // builds its PCM before the parse needs it.
     llvm::SmallVector<const char*, 32> argv;
@@ -1010,12 +1008,7 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     if(synthesized) {
         synthesized->append_suffix_include(scan_text);
     }
-    if(!co_await pcm.prepare_deps(path_id,
-                                  resolution,
-                                  argv,
-                                  directory,
-                                  std::optional<llvm::StringRef>(scan_text),
-                                  /*foreground=*/true)) {
+    if(!co_await pcm.prepare_deps(path_id, resolution, argv, directory, scan_text)) {
         co_return false;
     }
 

@@ -18,7 +18,6 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/StringSaver.h"
-#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -261,12 +260,31 @@ llvm::ArrayRef<Fid> DependencyGraph::get_forcing_units(Fid header) const {
 }
 
 std::uint32_t DependencyGraph::add_group(const CommandRef& command) {
-    groups.push_back(command);
-    return static_cast<std::uint32_t>(groups.size() - 1);
+    scan_groups.push_back(command);
+    return static_cast<std::uint32_t>(scan_groups.size() - 1);
 }
 
 const CommandRef& DependencyGraph::group(std::uint32_t id) const {
-    return groups[id];
+    return scan_groups[id];
+}
+
+void DependencyGraph::record_scan(Fid path_id, const ScanResult& scan) {
+    if(scan.has_module_syntax()) {
+        import_candidates.insert(path_id);
+    } else {
+        import_candidates.erase(path_id);
+    }
+    scanned_directives[path_id] = scan.directives_hash;
+}
+
+void DependencyGraph::forget_scan(Fid path_id) {
+    import_candidates.erase(path_id);
+    scanned_directives.erase(path_id);
+}
+
+bool DependencyGraph::scanned(Fid path_id, std::uint64_t directives_hash) const {
+    auto it = scanned_directives.find(path_id);
+    return it != scanned_directives.end() && it->second == directives_hash;
 }
 
 void DependencyGraph::add_context(Fid path_id, ScanContext context) {
@@ -460,35 +478,38 @@ struct CachedInclude {
 /// syntax, a unit's forced includes, and its include edges. The listings,
 /// the groups' search configurations and the angled-include memo live
 /// as long as the operation, so they never serve a stale filesystem.
-class FileScanner {
-public:
+struct FileScanner {
     FileScanner(CompilationDatabase& cdb, DependencyGraph& graph, ScanReport& report) :
         cdb(cdb), graph(graph), files(cdb.files()), report(report), scope(files.dirs) {}
 
-    vfs::Scope& listings() {
-        return scope;
-    }
-
     /// Record `path_id`'s scan of the bytes hashing to `hash` under
-    /// `context`, calling `reach` for every file it includes or forces in.
-    /// Returns the module a unit provides as an interface, empty for
-    /// every other file.
+    /// `context`. A file it includes or forces in that the scan reaches
+    /// for the first time gets its context and goes to `reach`. Returns
+    /// the module a unit provides as an interface, empty for every other
+    /// file.
     std::string record(Fid path_id,
                        ScanContext context,
                        ScanResult scan,
                        std::uint64_t hash,
                        llvm::function_ref<void(Fid, ScanContext)> reach) {
+        auto reached = [&](Fid target, std::optional<unsigned> found_dir_idx) {
+            if(graph.contexts(target).empty()) {
+                ScanContext target_context{.group = context.group, .found_dir_idx = found_dir_idx};
+                graph.add_context(target, target_context);
+                reach(target, target_context);
+            }
+        };
+
         auto& search = search_of(context.group);
         std::string module;
         if(context.unit) {
             module = module_of(path_id, context, scan, hash);
-            for(auto& forced: forced_of(context.group)) {
-                graph.add_forced_include(path_id, forced.path_id);
-                reach(forced.path_id,
-                      {.group = context.group, .found_dir_idx = forced.found_dir_idx});
+            for(auto& header: forced_of(context.group)) {
+                graph.add_forced_include(path_id, header.path_id);
+                reached(header.path_id, header.found_dir_idx);
             }
         }
-        graph.set_import_candidate(path_id, scan.has_module_syntax());
+        graph.record_scan(path_id, scan);
 
         // Quoted includes start from the directory the build reaches the
         // includer through, as clang's do.
@@ -510,7 +531,7 @@ public:
                 key += include.path;
             }
 
-            std::optional<CachedInclude> resolved;
+            CachedInclude resolved;
             if(auto it = memoized ? angled.find(key) : angled.end(); it != angled.end()) {
                 report.include_cache_hits += 1;
                 resolved = it->second;
@@ -532,11 +553,11 @@ public:
                                                  .found_dir_idx = found->found_dir_idx}
                                  : CachedInclude{};
                 if(memoized) {
-                    angled.try_emplace(key, *resolved);
+                    angled.try_emplace(key, resolved);
                 }
             }
 
-            if(!resolved->path_id.valid()) {
+            if(!resolved.path_id.valid()) {
                 report.unresolved.push_back({
                     .header = include.path,
                     .includer = std::string(files.resolve(path_id)),
@@ -552,15 +573,13 @@ public:
             } else {
                 report.unconditional_edges += 1;
             }
-            edges.push_back({resolved->path_id, include.conditional});
-            reach(resolved->path_id,
-                  {.group = context.group, .found_dir_idx = resolved->found_dir_idx});
+            edges.push_back({resolved.path_id, include.conditional});
+            reached(resolved.path_id, resolved.found_dir_idx);
         }
         graph.set_includes(path_id, context.group, std::move(edges));
         return module;
     }
 
-private:
     struct Search {
         SearchConfig config;
         ResolvedSearchConfig resolved;
@@ -581,7 +600,7 @@ private:
     /// from the compile's working directory, then as a quoted include.
     /// The compile reports the ones that resolve nowhere.
     llvm::ArrayRef<CachedInclude> forced_of(std::uint32_t group) {
-        auto [it, inserted] = forced.try_emplace(group);
+        auto [it, inserted] = forced_cache.try_emplace(group);
         if(inserted) {
             auto& search = search_of(group);
             llvm::StringRef directory = cdb.config(graph.group(group).config).directory;
@@ -649,7 +668,7 @@ private:
     ScanReport& report;
     vfs::Scope scope;
     llvm::DenseMap<std::uint32_t, std::unique_ptr<Search>> searches;
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<CachedInclude>> forced;
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<CachedInclude>> forced_cache;
     llvm::StringMap<CachedInclude> angled;
 };
 
@@ -668,17 +687,14 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     // SearchConfig granularity: different -I sets resolve differently, and
     // the same flags compiled as C and C++ pull different implicit include
     // sets.
-    llvm::SmallVector<CommandRef> group_refs;
     std::vector<WaveEntry> current_wave;
     {
         llvm::DenseMap<std::pair<std::uint32_t, const char*>, std::uint32_t> group_ids;
         for(auto& unit: units) {
             auto [it, inserted] =
-                group_ids.try_emplace({static_cast<std::uint32_t>(unit.config), unit.input.value},
-                                      static_cast<std::uint32_t>(group_refs.size()));
+                group_ids.try_emplace({static_cast<std::uint32_t>(unit.config), unit.input.value});
             if(inserted) {
-                group_refs.push_back(unit);
-                graph.add_group(unit);
+                it->second = graph.add_group(unit);
             }
             ScanContext context{.group = it->second, .unit = true};
             graph.add_context(unit.file, context);
@@ -690,7 +706,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     // so groups differing only in -D/-I collapse to the same probe — N
     // groups often yield just 1-2 subprocess calls.
     auto prewarm_start = std::chrono::steady_clock::now();
-    cdb.warm(group_refs);
+    cdb.warm(graph.groups());
     auto prewarm_end = std::chrono::steady_clock::now();
     report.prewarm_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start).count();
@@ -708,7 +724,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     {
         llvm::StringSet<> unique_dirs;
         std::int64_t lookup_us = 0;
-        for(auto& group: group_refs) {
+        for(auto& group: graph.groups()) {
             auto t0 = std::chrono::steady_clock::now();
             auto search = cdb.search_config(group);
             lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(
@@ -719,7 +735,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             }
         }
         report.config_loop_ms = lookup_us / 1000;
-        LOG_INFO("Config extracted: {} groups, {:.1f}ms", group_refs.size(), lookup_us / 1000.0);
+        LOG_INFO("Config extracted: {} groups, {:.1f}ms",
+                 graph.groups().size(),
+                 lookup_us / 1000.0);
         for(auto& entry: cdb.entries()) {
             unique_dirs.insert(file_table.spelling(entry.file).parent().str());
         }
@@ -745,7 +763,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
 
     FileScanner scanner(cdb, graph, report);
-    auto& scope = scanner.listings();
+    auto& scope = scanner.scope;
 
     report.source_files = current_wave.size();
     std::size_t wave_num = 0;
@@ -891,10 +909,6 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         next_wave.reserve(current_wave.size());  // Heuristic: next wave ≤ current wave.
         auto stats_before = scope.stats;
         auto reach = [&](Fid path_id, ScanContext context) {
-            if(!graph.contexts(path_id).empty()) {
-                return;
-            }
-            graph.add_context(path_id, context);
             next_wave.push_back({path_id, context});
             if(!try_warm(path_id, context)) {
                 auto path = file_table.resolve(path_id).data();
@@ -989,42 +1003,41 @@ void rescan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph, F
     auto& files = cdb.files();
     ScanReport report;
     FileScanner scanner(cdb, graph, report);
-    std::optional<std::string> declared;
     llvm::SmallVector<WaveEntry> reached;
-    auto scan = [&](Fid fid, ScanContext context) {
+    auto reach = [&](Fid fid, ScanContext context) {
+        reached.push_back({fid, context});
+    };
+    auto scan = [&](Fid fid, llvm::ArrayRef<ScanContext> contexts) {
         auto observed = vfs::read_observed(files.resolve(fid));
         if(!observed) {
             return;
         }
         files.observe(fid, observed->obs);
-        auto module =
-            scanner.record(fid,
-                           context,
-                           files.scan_of(fid, observed->obs.hash, observed->content->getBuffer()),
-                           observed->obs.hash,
-                           [&](Fid reached_id, ScanContext reached_context) {
-                               if(graph.contexts(reached_id).empty()) {
-                                   graph.add_context(reached_id, reached_context);
-                                   reached.push_back({reached_id, reached_context});
-                               }
-                           });
-        if(fid == path_id && context.unit && !declared) {
-            declared = std::move(module);
+        auto result = files.scan_of(fid, observed->obs.hash, observed->content->getBuffer());
+        // A unit provides what its commands declare, as on the full scan;
+        // a name it keeps declaring keeps its place among the providers.
+        bool unit = false;
+        llvm::SmallVector<std::string, 1> declared;
+        for(auto context: contexts) {
+            auto module = scanner.record(fid, context, result, observed->obs.hash, reach);
+            unit |= context.unit;
+            if(!module.empty()) {
+                declared.push_back(std::move(module));
+            }
+        }
+        if(unit) {
+            graph.update_module_decl(fid, declared.empty() ? "" : declared.front());
+            for(auto& module: declared) {
+                graph.add_module(module, fid);
+            }
         }
     };
 
     graph.clear_includes(path_id);
-    for(auto context: llvm::to_vector(graph.contexts(path_id))) {
-        scan(path_id, context);
-    }
+    scan(path_id, llvm::to_vector(graph.contexts(path_id)));
     while(!reached.empty()) {
         auto entry = reached.pop_back_val();
         scan(entry.path_id, entry.context);
-    }
-    // Under the default selection, as a unit compiles under its first
-    // command.
-    if(declared) {
-        graph.update_module_decl(path_id, *declared);
     }
 }
 
