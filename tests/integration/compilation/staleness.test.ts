@@ -537,13 +537,15 @@ test("outside edits compile once", async ({ session }) => {
         initializationOptions: { project: { enable_indexing: false } },
     });
     const [uri] = await client.openAndWait("main.cpp");
+    client.assertCleanCompile(uri);
 
     await sleep(MTIME_GRANULARITY);
-    workspace.write("pre.h", "#pragma once\ninline int pre() { return 22; }\n");
-    workspace.write("late.h", "#pragma once\ninline int late() { return 22; }\n");
+    workspace.write("pre.h", "#pragma once\ninline int pre_renamed() { return 1; }\n");
+    workspace.write("late.h", "#pragma once\ninline int late_renamed() { return 1; }\n");
     const before = client.publishCount(uri);
     await client.hoverAt(uri, 1, 4);
     expect(client.publishCount(uri) - before).toBe(1);
+    expect(client.errors(uri)).toHaveLength(2);
 });
 
 test("orphan header default command", async ({ session }) => {
