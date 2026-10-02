@@ -144,8 +144,11 @@ clice_dist(
 
 sh_test(
     name = "unit_tests_test",
-    size = "medium",
+    size = "small",
     srcs = ["//bazel:unit_tests.sh"],
     args = ["--verbose"],
-    data = [":dist"] + glob(["tests/data/**"]),
+    data = [
+        ".clang-format",
+        ":dist",
+    ] + glob(["tests/data/**"]),
 )
