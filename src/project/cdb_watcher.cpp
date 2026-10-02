@@ -189,25 +189,21 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
 
     // In the order a startup discovery would register them, the nearest
     // database first above each open file.
-    llvm::SmallVector<std::string> wanted;
+    llvm::SmallVector<Spelling> wanted;
     llvm::StringSet<> seen;
-    auto want = [&](const Spelling& place) {
-        if(seen.insert(place.str()).second) {
-            wanted.push_back(place.str());
+    auto want = [&](llvm::ArrayRef<Spelling> candidates) {
+        for(auto& place: candidates) {
+            if(seen.insert(place.str()).second) {
+                wanted.push_back(place);
+            }
         }
     };
-    for(auto& place: listed) {
-        want(place);
-    }
+    want(listed);
     for(auto path_id: open_files) {
         auto path = project.file_table.resolve(path_id);
-        if(!project.build.commands(path_id).empty() || !path::under(path, root)) {
-            continue;
+        if(project.build.commands(path_id).empty() && path::under(path, root)) {
+            want(database_places_above(path.parent(), root));
         }
-        path::walk_ancestors(path.parent(), root, [&](llvm::StringRef dir) {
-            want(Spelling("compile_commands.json", Spelling::absolute(dir)));
-            return true;
-        });
     }
 
     llvm::SmallVector<std::string> unwanted;
@@ -221,35 +217,34 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     }
 
     for(auto& place: wanted) {
-        if(registered.contains(place)) {
+        if(registered.contains(place.str())) {
             continue;
         }
-        if(!places.contains(place)) {
-            if(project.cdb.find_source(Spelling::absolute(place))) {
-                registered.insert(place);
+        auto it = places.find(place.str());
+        if(it == places.end()) {
+            if(project.cdb.find_source(place)) {
+                registered.insert(place.str());
                 continue;
             }
-            places[place] = disk.watch(place);
+            it = places.try_emplace(place.str(), disk.watch(place.str())).first;
         }
-        if(!places[place]->stamp) {
+        if(!it->second->stamp) {
             continue;
         }
         // Never loaded, so baselined unread: the fresh file is a change
         // against the never-loaded source and goes through the normal
         // settle-and-reload path.
-        auto id = project.cdb.add_source(Spelling::absolute(place));
+        auto id = project.cdb.add_source(place);
         if(llvm::none_of(sources, [&](const TrackedSource& tracked) { return tracked.id == id; })) {
             LOG_INFO("Found compilation database: {}", place);
             track(id);
         }
-        registered.insert(place);
-        places.erase(place);
+        registered.insert(place.str());
+        places.erase(it);
     }
 }
 
 CDBDiff CDBWatcher::tick(llvm::ArrayRef<Fid> open_files, bool force) {
-    // Nothing declared: keep watching the places a database may appear.
-    // Declared sources are registered (existing or not) and only watched.
     if(!project.build.declares_sources()) {
         discover(open_files);
     }

@@ -349,9 +349,13 @@ bool defines_project(CanonicalRef dir);
 /// Empty when no ancestor has either.
 CanonicalPath project_root_above(CanonicalRef start);
 
-/// The `compile_commands.json` files in `start` and its ancestors up to
-/// `workspace_root`, nearest first: the databases a file deeper in the
-/// tree than startup discovery looks may compile from.
+/// Where a `compile_commands.json` is looked for in `start` and its
+/// ancestors up to `workspace_root`, nearest first.
+llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef workspace_root);
+
+/// The `compile_commands.json` files of database_places_above that exist:
+/// the databases a file deeper in the tree than startup discovery looks
+/// may compile from.
 llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start, CanonicalRef workspace_root);
 
 /// Capture a staleness snapshot from a build's reported inputs, interning

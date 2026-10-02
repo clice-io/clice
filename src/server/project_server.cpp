@@ -68,9 +68,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
 
     // The AST family's pull-side staleness check found an input of an open
     // document changed on disk: the document gets the treatment the
-    // changed file's cascade gives its dependents. The cascade runs now:
-    // drained on a later turn, it would void the round about to compile
-    // the new content.
+    // changed file's cascade gives its dependents.
     ast.on_stale = [this](Fid path_id) {
         this->server.drain_disk_changes();
         if(auto session = sessions.find(path_id)) {

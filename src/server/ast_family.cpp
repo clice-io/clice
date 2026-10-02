@@ -398,13 +398,11 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
             co_return true;
         }
         // A dependency changed on disk behind this session's back — the
-        // lazy twin of the background ticks. The handler cascades the
-        // changes the check found before this document's round starts, so
-        // their invalidation cannot void the round mid-compile, and
-        // recompiles the document whether or not the dependency graph
-        // knows the edge (a macro include). It re-resolves the session by
-        // path_id; no suspension separates it from this frame, so it finds
-        // the same open session this coroutine holds.
+        // lazy twin of the background ticks. The document recompiles now,
+        // whether or not the dependency graph knows the edge (a macro
+        // include). The handler re-resolves the session by path_id; no
+        // suspension separates it from this frame, so it finds the same
+        // open session this coroutine holds.
         on_stale(path_id);
     }
 

@@ -312,15 +312,19 @@ CanonicalPath project_root_above(CanonicalRef start) {
     return root;
 }
 
-llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
-                                                   CanonicalRef workspace_root) {
-    llvm::SmallVector<Spelling> found;
+llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef workspace_root) {
+    llvm::SmallVector<Spelling> places;
     path::walk_ancestors(start, workspace_root, [&](llvm::StringRef dir) {
-        if(auto database = database_in(Spelling::absolute(dir))) {
-            found.push_back(std::move(*database));
-        }
+        places.emplace_back("compile_commands.json", Spelling::absolute(dir));
         return true;
     });
+    return places;
+}
+
+llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
+                                                   CanonicalRef workspace_root) {
+    auto found = database_places_above(start, workspace_root);
+    llvm::erase_if(found, [](const Spelling& place) { return !llvm::sys::fs::exists(place); });
     return found;
 }
 

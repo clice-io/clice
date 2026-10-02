@@ -151,8 +151,9 @@ public:
     /// looked at too.
     void saved(Fid path_id);
 
-    /// Start the background looks at files (see vfs::DiskState::tick); calls
-    /// after the first do nothing.
+    /// Start the background looks at files (see vfs::DiskState::tick), each
+    /// tick followed by the projects' weighing of their databases
+    /// (ProjectServer::tick_databases); calls after the first do nothing.
     void start_polling();
 
     /// Hand the disk changes the file table saw to every project knowing
@@ -330,12 +331,12 @@ private:
     /// task proceeds to shutdown_and_cleanup().
     kota::cancellation_source shutdown_source;
 
-    /// Shutdowns of removed projects and deferred drains of the file
-    /// table's changes; joined in shutdown_and_cleanup().
+    /// Shutdowns of removed projects, deferred drains of the file table's
+    /// changes and the ends of its turns; joined in shutdown_and_cleanup().
     kota::task_group<> bg_tasks;
 
-    /// The background looks at files, ticking until shutdown_and_cleanup()
-    /// cancels them.
+    /// The background looks at files and databases, ticking until
+    /// shutdown_and_cleanup() cancels them.
     kota::task_group<> polling;
     bool polling_started = false;
     kota::task<> poll_task();

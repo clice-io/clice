@@ -52,10 +52,6 @@ struct Fixture {
         tmp.touch(relative, content);
     }
 
-    Verdict check(Fid fid, std::uint64_t hash) {
-        return disk.check(fid, hash);
-    }
-
     std::uint64_t hash_of(Fid fid) {
         auto obs = disk.current(fid);
         EXPECT_TRUE(obs.has_value());
@@ -75,7 +71,7 @@ TEST_CASE(WorkspaceAlwaysLooks) {
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.rewrite("src/a.h", "int b;\n");
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Stale);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Stale);
 }
 
 TEST_CASE(PackageTrustedUntilDue) {
@@ -83,10 +79,10 @@ TEST_CASE(PackageTrustedUntilDue) {
     auto fid = f.file("pkg/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.rewrite("pkg/a.h", "int b;\n");
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
 
     f.time += vfs::DiskState::package_policy.min;
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Stale);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Stale);
     ASSERT_EQ(f.disk.take_changes(), llvm::SmallVector<Fid>{fid});
 }
 
@@ -94,8 +90,8 @@ TEST_CASE(ChecksCounted) {
     Fixture f;
     auto installed = f.file("pkg/a.h", "int a;\n");
     auto local = f.file("src/b.h", "int b;\n");
-    f.check(installed, f.hash_of(installed));
-    f.check(local, f.hash_of(local));
+    f.disk.check(installed, f.hash_of(installed));
+    f.disk.check(local, f.hash_of(local));
     ASSERT_EQ(f.disk.checks.trusted, 1u);
     ASSERT_EQ(f.disk.checks.looked, 1u);
 }
@@ -120,7 +116,7 @@ TEST_CASE(TrustOnlyConfirms) {
     auto fid = f.file("pkg/a.h", "int a;\n");
     f.hash_of(fid);
     f.rewrite("pkg/a.h", "int b;\n");
-    ASSERT_TRUE(f.check(fid, llvm::xxh3_64bits("int b;\n")) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, llvm::xxh3_64bits("int b;\n")) == Verdict::Fresh);
     ASSERT_EQ(f.disk.take_changes(), llvm::SmallVector<Fid>{fid});
 
     // Nor that a place it found empty, after an upgrade removed the file
@@ -139,14 +135,14 @@ TEST_CASE(OneLookPerTurn) {
     };
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
     f.rewrite("src/a.h", "int b;\n");
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
     ASSERT_EQ(f.disk.checks.looked, 1u);
     ASSERT_EQ(turns, 1);
 
     f.disk.end_turn();
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Stale);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Stale);
     ASSERT_EQ(f.disk.checks.looked, 2u);
     ASSERT_EQ(turns, 2);
 }
@@ -158,19 +154,19 @@ TEST_CASE(OtherLookReplacesTurn) {
     };
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
     f.rewrite("src/a.h", "int b;\n");
     f.disk.look(llvm::ArrayRef<Fid>{fid});
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Stale);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Stale);
 }
 
 TEST_CASE(UnownedTurnIsOneCheck) {
     Fixture f;
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
     f.rewrite("src/a.h", "int b;\n");
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Stale);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Stale);
 }
 
 TEST_CASE(DeepestRootDecides) {
@@ -182,7 +178,7 @@ TEST_CASE(DeepestRootDecides) {
     auto fid = f.file("pkg/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.rewrite("pkg/a.h", "int b;\n");
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
 }
 
 TEST_CASE(TickLooksWhenDue) {
@@ -233,7 +229,7 @@ TEST_CASE(LookPostponesTick) {
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.time += 900ms;
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
     f.rewrite("src/a.h", "int b;\n");
     f.time += 200ms;
     ASSERT_TRUE(f.tick().empty());
@@ -249,7 +245,7 @@ TEST_CASE(ExpiredLooksAgain) {
     f.rewrite("pkg/sub/b.h", "int d;\n");
 
     f.disk.expire_under(f.identity("pkg/sub"));
-    ASSERT_TRUE(f.check(b, hash) == Verdict::Stale);
+    ASSERT_TRUE(f.disk.check(b, hash) == Verdict::Stale);
     ASSERT_EQ(f.tick(), llvm::SmallVector<Fid>{b});
 }
 
@@ -280,7 +276,7 @@ TEST_CASE(RootAddedLater) {
     auto hash = f.hash_of(fid);
     f.disk.add_root(f.identity("lib"), vfs::DiskState::package_policy);
     f.rewrite("lib/a.h", "int b;\n");
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
 }
 
 TEST_CASE(BudgetLeavesRest) {
@@ -342,7 +338,7 @@ TEST_CASE(EnvironmentInstallMakesDue) {
     f.disk.add_package(f.identity("env/include"));
     auto hash = f.hash_of(fid);
     f.rewrite("env/include/a.h", "int b;\n");
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
 
     // pixi rewrites the history with the same line every time.
     f.rewrite("env/conda-meta/history", "==> 1 <==\n");
@@ -358,11 +354,11 @@ TEST_CASE(ShadowReportsStaleTrust) {
     f.disk.shadow = true;
     auto fid = f.file("pkg/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
     ASSERT_TRUE(trapped.empty());
 
     f.rewrite("pkg/a.h", "int b;\n");
-    ASSERT_TRUE(f.check(fid, hash) == Verdict::Fresh);
+    ASSERT_TRUE(f.disk.check(fid, hash) == Verdict::Fresh);
     ASSERT_EQ(trapped.size(), 1u);
     ASSERT_EQ(trapped[0], logging::AnomalyId::StaleTrust);
 

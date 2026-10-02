@@ -706,15 +706,15 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
     }
     bool gone = removed && llvm::sys::fs::status(final_path, status);
 
-    bool orphan = false;
     {
         std::lock_guard guard(state->mutex);
         auto* ns_state = state->find_namespace(pending.ns);
         ns_state->publishing.erase(pending.key);
         auto it = ns_state->entries.find(pending.key);
         bool entry_alive = it != ns_state->entries.end();
+        assert((entry_alive || !pending.aux) && "evicting or invalidating a key mid-commit");
         if(failure) {
-            if(removed && pending.aux && entry_alive) {
+            if(removed && pending.aux) {
                 // The removal above may have deleted a committed aux blob;
                 // stop serving it. The primary is intact, the pair is
                 // merely incomplete.
@@ -732,40 +732,31 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
             return std::unexpected(failure);
         }
 
-        // Evicted while the aux blob was being published.
-        orphan = pending.aux && !entry_alive;
-        if(!orphan) {
-            auto& entry = ns_state->entries[pending.key];
-            if(pending.aux) {
-                ns_state->total_size += status.getSize() - entry.aux_size;
-                entry.aux_size = status.getSize();
-            } else {
-                // A republished primary invalidates the old aux blob: serving
-                // yesterday's aux next to today's primary would be a silent
-                // mismatch, while an incomplete pair is a plain cache miss.
-                state->reset_aux_locked(*ns_state, pending.key, entry);
-                // Unsigned wraparound is intentional and exact here:
-                // entry.size is already included in total_size, so total +
-                // new - old stays correct even when the replacement blob is
-                // smaller.
-                ns_state->total_size += status.getSize() - entry.size;
-                entry.size = status.getSize();
-            }
-            entry.atime = state->next_stamp();
-
-            if(ns_state->config.policy == CachePolicy::LRU) {
-                state->evict_locked(*ns_state, pending.key);
-            }
-
-            if(ns_state->config.policy != CachePolicy::Scratch) {
-                state->dirty = true;
-                state->changes_since_checkpoint += 1;
-            }
+        auto& entry = ns_state->entries[pending.key];
+        if(pending.aux) {
+            ns_state->total_size += status.getSize() - entry.aux_size;
+            entry.aux_size = status.getSize();
+        } else {
+            // A republished primary invalidates the old aux blob: serving
+            // yesterday's aux next to today's primary would be a silent
+            // mismatch, while an incomplete pair is a plain cache miss.
+            state->reset_aux_locked(*ns_state, pending.key, entry);
+            // Unsigned wraparound is intentional and exact here: entry.size
+            // is already included in total_size, so total + new - old stays
+            // correct even when the replacement blob is smaller.
+            ns_state->total_size += status.getSize() - entry.size;
+            entry.size = status.getSize();
         }
-    }
-    if(orphan) {
-        fs::remove(final_path);
-        return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
+        entry.atime = state->next_stamp();
+
+        if(ns_state->config.policy == CachePolicy::LRU) {
+            state->evict_locked(*ns_state, pending.key);
+        }
+
+        if(ns_state->config.policy != CachePolicy::Scratch) {
+            state->dirty = true;
+            state->changes_since_checkpoint += 1;
+        }
     }
 
     maybe_checkpoint();
