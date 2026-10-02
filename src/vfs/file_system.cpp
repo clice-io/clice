@@ -825,7 +825,12 @@ bool exists(llvm::StringRef path) {
         return false;
     }
     wide.push_back(L'\0');
-    return ::GetFileAttributesW(wide.data()) != INVALID_FILE_ATTRIBUTES;
+    auto attributes = ::GetFileAttributesW(wide.data());
+    if(attributes == INVALID_FILE_ATTRIBUTES) {
+        return false;
+    }
+    // Attributes describe a link itself, not what it points to.
+    return !(attributes & FILE_ATTRIBUTE_REPARSE_POINT) || status(path).has_value();
 #else
     return status(path).has_value();
 #endif
@@ -842,7 +847,34 @@ bool is_directory(llvm::StringRef path) {
 }
 
 bool is_symlink(llvm::StringRef path) {
+#ifdef _WIN32
+    // LLVM's status reports a link as what it points to.
+    llvm::SmallVector<wchar_t, 256> wide;
+    if(llvm::sys::windows::widenPath(path, wide)) {
+        return false;
+    }
+    wide.push_back(L'\0');
+    HANDLE handle = ::CreateFileW(wide.data(),
+                                  0,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                  nullptr,
+                                  OPEN_EXISTING,
+                                  FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                                  nullptr);
+    if(handle == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    auto close = llvm::make_scope_exit([&] { ::CloseHandle(handle); });
+    // Other reparse points (cloud placeholders, deduplicated files) are
+    // what they are, not links.
+    FILE_ATTRIBUTE_TAG_INFO info;
+    return ::GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &info, sizeof(info)) &&
+           (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+           (info.ReparseTag == IO_REPARSE_TAG_SYMLINK ||
+            info.ReparseTag == IO_REPARSE_TAG_MOUNT_POINT);
+#else
     return llvm::sys::fs::is_symlink_file(path);
+#endif
 }
 
 std::expected<std::vector<Entry>, std::error_code> read_dir(llvm::StringRef dir) {
@@ -955,7 +987,11 @@ std::error_code remove_all(llvm::StringRef path) {
     if(auto error = llvm::sys::fs::status(path, status, /*follow=*/false)) {
         return error == std::errc::no_such_file_or_directory ? std::error_code() : error;
     }
-    if(status.type() != llvm::sys::fs::file_type::directory_file) {
+    bool directory = status.type() == llvm::sys::fs::file_type::directory_file;
+#ifdef _WIN32
+    directory = directory && !is_symlink(path);
+#endif
+    if(!directory) {
         return remove(path);
     }
     auto entries = read_dir(path);

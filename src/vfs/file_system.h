@@ -173,7 +173,7 @@ bool is_file(llvm::StringRef path);
 /// Whether a path names a directory, symlinks followed.
 bool is_directory(llvm::StringRef path);
 
-/// Whether a path is itself a symlink; never on Windows (see Entry).
+/// Whether a path is itself a symlink, or on Windows a junction.
 bool is_symlink(llvm::StringRef path);
 
 /// An entry of a directory: its path, the directory's spelling joined with
@@ -212,12 +212,11 @@ std::error_code rename(llvm::StringRef from, llvm::StringRef to);
 /// compiles, and the store retracts and replaces those blobs under them.
 std::error_code remove(llvm::StringRef path);
 
-/// Remove a tree; a missing one is no error. Symlinks — a symlinked root
-/// included — are removed without following them, so the recursion never
-/// escapes into a link's target; on Windows that holds for file links only
-/// (see Entry). Not llvm::sys::fs::remove_directories: on Windows that runs
-/// shell COM, which initializes an apartment on the calling thread and
-/// silently does nothing when that fails.
+/// Remove a tree; a missing one is no error. Links (see is_symlink) — a
+/// linked root included — are removed without following them, so the
+/// recursion never escapes into a link's target. Not llvm::sys::fs::remove_directories: on
+/// Windows that runs shell COM, which initializes an apartment on the
+/// calling thread and silently does nothing when that fails.
 std::error_code remove_all(llvm::StringRef path);
 
 /// Create a new empty file in the system's temporary directory, named

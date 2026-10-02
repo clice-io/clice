@@ -15,10 +15,28 @@
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/Program.h"
 
 namespace clice::testing {
 
 namespace {
+
+/// A link to a directory: a symlink, or on Windows a junction, which needs
+/// no privilege to make.
+bool link_directory(const std::string& target, const std::string& link) {
+#ifdef _WIN32
+    auto cmd = llvm::sys::findProgramByName("cmd");
+    std::optional<llvm::StringRef> quiet[] = {std::nullopt,
+                                              llvm::StringRef(""),
+                                              llvm::StringRef("")};
+    return cmd && llvm::sys::ExecuteAndWait(*cmd,
+                                            {"cmd", "/c", "mklink", "/J", link, target},
+                                            {},
+                                            quiet) == 0;
+#else
+    return ::symlink(target.c_str(), link.c_str()) == 0;
+#endif
+}
 
 TEST_SUITE(FileSystem) {
 
@@ -230,7 +248,7 @@ TEST_CASE(WalkPrunesAndSkipsLinks) {
     tmp.touch("skip/c.cpp");
     tmp.touch("outside/d.cpp");
 #ifndef _WIN32
-    ASSERT_EQ(::symlink(tmp.path("outside").c_str(), tmp.path("src/link").c_str()), 0);
+    ASSERT_TRUE(link_directory(tmp.path("outside"), tmp.path("src/link")));
 #endif
 
     std::vector<std::string> seen;
@@ -255,17 +273,27 @@ TEST_CASE(WalkPrunesAndSkipsLinks) {
     ASSERT_EQ(seen, (std::vector<std::string>{"d.cpp", "outside", "skip", "src"}));
 }
 
+TEST_CASE(LinksSeenAsLinks) {
+    TempDir tmp;
+    tmp.mkdir("target");
+    ASSERT_TRUE(link_directory(tmp.path("target"), tmp.path("link")));
+    ASSERT_TRUE(vfs::is_symlink(tmp.path("link")));
+    ASSERT_FALSE(vfs::is_symlink(tmp.path("target")));
+    ASSERT_TRUE(vfs::exists(tmp.path("link")));
+    ASSERT_FALSE(static_cast<bool>(vfs::remove(tmp.path("target"))));
+    ASSERT_FALSE(vfs::exists(tmp.path("link")));
+    ASSERT_TRUE(vfs::is_symlink(tmp.path("link")));
+}
+
 TEST_CASE(RemoveAllKeepsLinkTargets) {
     TempDir tmp;
     tmp.touch("tree/a/b.h");
     tmp.touch("tree/c.h");
     tmp.touch("outside/kept.h");
-#ifndef _WIN32
-    ASSERT_EQ(::symlink(tmp.path("outside").c_str(), tmp.path("tree/link").c_str()), 0);
-    ASSERT_EQ(::symlink(tmp.path("outside").c_str(), tmp.path("root-link").c_str()), 0);
+    ASSERT_TRUE(link_directory(tmp.path("outside"), tmp.path("tree/link")));
+    ASSERT_TRUE(link_directory(tmp.path("outside"), tmp.path("root-link")));
     ASSERT_FALSE(static_cast<bool>(vfs::remove_all(tmp.path("root-link"))));
-    ASSERT_FALSE(vfs::exists(tmp.path("root-link")));
-#endif
+    ASSERT_FALSE(vfs::is_symlink(tmp.path("root-link")));
     ASSERT_FALSE(static_cast<bool>(vfs::remove_all(tmp.path("tree"))));
     ASSERT_FALSE(vfs::exists(tmp.path("tree")));
     ASSERT_TRUE(vfs::exists(tmp.path("outside/kept.h")));
