@@ -130,12 +130,12 @@ std::uint32_t text_end(CompilationUnitRef unit) {
 /// code (an X-macro list, a `.tpp` body) is no place for one that must
 /// always apply. Without one, after the leading `#pragma once`, the
 /// guard's `#define` or the `module;` opening the global module fragment,
-/// else at the file's start. Only an `#ifndef`/`#define` pair enclosing
-/// the whole file is a guard; a leading `#ifndef _GNU_SOURCE` block is
-/// not. A raw lex of the text rather than the directive table: the
-/// preamble's directives are compiled into the PCH and never reach this
-/// AST.
-std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
+/// else at the file's start. A module unit without that fragment opens
+/// it at the start: no include may follow the module declaration. Only an `#ifndef`/`#define` pair
+/// enclosing the whole file is a guard; a leading `#ifndef _GNU_SOURCE` block is not. A raw lex of
+/// the text rather than the directive table: the preamble's directives are compiled into the PCH
+/// and never reach this AST.
+IncludeInsertion include_insertion(CompilationUnitRef unit) {
     auto content = unit.main_content();
     auto end = text_end(unit);
 
@@ -151,6 +151,8 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
     auto guard = Guard::None;
     llvm::StringRef guard_macro;
     bool seen_code = false;
+    bool fragment = false;
+    bool declares_module = false;
     std::uint32_t depth = 0;
     std::uint32_t directives = 0;
     Lexer lexer(content, {.lang_opts = &unit.lang_options()});
@@ -176,7 +178,9 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
         if(module_line) {
             if(!seen_code && line.size() == 1 && line[0].kind == clang::tok::semi) {
                 levels[0].prologue = anchor;
+                fragment = true;
             } else {
+                declares_module = true;
                 seen_code = true;
             }
             continue;
@@ -221,8 +225,11 @@ std::uint32_t include_insertion_offset(CompilationUnitRef unit) {
             }
         }
     }
+    if(declares_module && !fragment) {
+        return {.offset = 0, .opens_fragment = true};
+    }
     const auto& level = levels[guard == Guard::Closed ? 1 : 0];
-    return level.include.value_or(level.prologue.value_or(0));
+    return {.offset = level.include.value_or(level.prologue.value_or(0))};
 }
 
 void add_include(CompilationUnitRef unit,
@@ -241,7 +248,7 @@ void add_include(CompilationUnitRef unit,
     if(!unresolved) {
         return;
     }
-    auto offset = include_insertion_offset(unit);
+    auto insertion = include_insertion(unit);
 
     auto language = unit.lang_options().CPlusPlus ? stdlib::Lang::CXX : stdlib::Lang::C;
     llvm::SmallVector<llvm::StringRef, 2> scopes;
@@ -261,7 +268,7 @@ void add_include(CompilationUnitRef unit,
             out.push_back(CodeAction{
                 .title = std::format("Add #include {}", header.name()),
                 .kind = protocol::CodeActionKind::quick_fix,
-                .edits = {{{offset, offset}, std::format("#include {}\n", header.name())}},
+                .edits = {{{insertion.offset, insertion.offset}, insertion.text(header.name())}},
             });
         }
         // A standard library name spelled with its namespace: the index
@@ -274,7 +281,7 @@ void add_include(CompilationUnitRef unit,
     out.push_back(CodeAction{
         .title = std::format("Add #include for '{}{}'", name->scope, name->name),
         .kind = protocol::CodeActionKind::quick_fix,
-        .index = IncludeRequest{.scope = name->scope, .name = name->name, .offset = offset},
+        .index = IncludeRequest{.scope = name->scope, .name = name->name, .insertion = insertion},
     });
 }
 

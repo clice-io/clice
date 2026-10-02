@@ -142,8 +142,8 @@ const clang::TemplateParameterList* template_parameters(const clang::CXXRecordDe
 /// unnamed one needs a name the class qualifier can refer to: `T<index>`,
 /// made unlike every identifier the classes enclosing it spell (the
 /// parameters of their templates and member templates, the names their
-/// members use) and the names given to the parameters of the templates
-/// enclosing this one.
+/// members use), every macro and the names given to the parameters of the
+/// templates enclosing this one.
 std::string parameter_name(const clang::NamedDecl* param, std::size_t index) {
     if(!param->getName().empty()) {
         return param->getNameAsString();
@@ -181,7 +181,7 @@ std::string parameter_name(const clang::NamedDecl* param, std::size_t index) {
         }
     }
     auto name = std::format("T{}", index);
-    while(taken.contains(name)) {
+    while(taken.contains(name) || context.Idents.get(name).hasMacroDefinition()) {
         name += '_';
     }
     return name;
@@ -452,9 +452,28 @@ struct SpelledNames : clang::RecursiveASTVisitor<SpelledNames> {
         return true;
     }
 
+    /// A pointer or reference to a declaration, `Box<&C::x>`, names it.
+    bool TraverseTemplateArgument(const clang::TemplateArgument& argument) {
+        if(argument.getKind() == clang::TemplateArgument::Declaration &&
+           !name(argument.getAsDecl())) {
+            return false;
+        }
+        return clang::RecursiveASTVisitor<SpelledNames>::TraverseTemplateArgument(argument);
+    }
+
     bool name(const clang::NamedDecl* decl) {
         if(decl->isTemplateParameter()) {
             return true;
+        }
+        // A variable, function or enumerator of a tag's name in the tag's
+        // own scope hides it from any spelling but an elaborated one.
+        if(auto* tag = llvm::dyn_cast<clang::TagDecl>(decl); tag && tag->getIdentifier()) {
+            for(const auto* found:
+                tag->getDeclContext()->getRedeclContext()->lookup(tag->getDeclName())) {
+                if(llvm::isa<clang::ValueDecl, clang::FunctionTemplateDecl>(found)) {
+                    return nameable = false;
+                }
+            }
         }
         const clang::NamedDecl* root = decl;
         for(const clang::Decl* member = decl;;) {

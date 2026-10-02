@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <format>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -509,13 +510,26 @@ struct DefineInHostRequest {
     std::vector<DefinitionPiece> pieces;
 };
 
+/// Where a new `#include` line goes in the main file. A module unit
+/// without a global module fragment gets one opened there.
+struct IncludeInsertion {
+    std::uint32_t offset = 0;
+    bool opens_fragment = false;
+
+    /// The text inserting `#include <header>`, the header spelled with its
+    /// quotes or brackets.
+    std::string text(llvm::StringRef header) const {
+        return std::format("{}#include {}\n", opens_fragment ? "module;\n" : "", header);
+    }
+};
+
 /// One action per header declaring `name` under `scope` ("std::" style,
 /// empty for an unqualified name), each inserting its include directive
-/// at `offset` of the main file.
+/// at `insertion` of the main file.
 struct IncludeRequest {
     std::string scope;
     std::string name;
-    std::uint32_t offset = 0;
+    IncludeInsertion insertion;
 };
 
 /// What only the project index can settle: resolved by the master at the

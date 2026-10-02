@@ -307,8 +307,8 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                 emit(std::format("Add #include {}", *spelling),
                      action.kind,
                      {
-                         {{request.offset, request.offset},
-                          std::format("#include {}\n", *spelling)}
+                         {{request.insertion.offset, request.insertion.offset},
+                          request.insertion.text(*spelling)}
                 });
             }
         }

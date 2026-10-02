@@ -63,8 +63,7 @@ void expand_macro(CompilationUnitRef unit,
 /// Anchored on an unresolved name the compiler diagnosed at the selection.
 void add_include(CompilationUnitRef unit, LocalSourceRange selection, std::vector<CodeAction>& out);
 
-/// The main-file offset a new `#include` line is inserted at.
-std::uint32_t include_insertion_offset(CompilationUnitRef unit);
+IncludeInsertion include_insertion(CompilationUnitRef unit);
 
 /// The main-file byte range a source range spells; nullopt when either
 /// end is inside a macro or another file.

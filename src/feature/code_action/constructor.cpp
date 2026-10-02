@@ -8,6 +8,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclFriend.h"
 
 namespace clice::feature::action {
 
@@ -57,34 +58,47 @@ bool default_constructible(const clang::CXXRecordDecl* record) {
     return true;
 }
 
-/// Whether another class's constructor may call `ctor`.
-bool callable(const clang::CXXConstructorDecl* ctor) {
-    return !ctor->isDeleted() && ctor->getAccess() == clang::AS_public;
+/// Whether the constructor of `caller` may call `ctor`: a public one, or
+/// any its class grants `caller` friendship to.
+bool callable(const clang::CXXConstructorDecl* ctor, const clang::CXXRecordDecl* caller) {
+    if(ctor->isDeleted()) {
+        return false;
+    }
+    if(ctor->getAccess() == clang::AS_public) {
+        return true;
+    }
+    return llvm::any_of(ctor->getParent()->friends(), [&](const clang::FriendDecl* friend_decl) {
+        const auto* type = friend_decl->getFriendType();
+        const auto* befriended = type ? type->getType()->getAsCXXRecordDecl() : nullptr;
+        return befriended && befriended->getCanonicalDecl() == caller->getCanonicalDecl();
+    });
 }
 
 /// Whether a `const T&` argument copy-constructs the class. One not yet
 /// declared is the implicit copy constructor, deleted per the class's
 /// flags or by a user-declared move operation; one whose constraints fail
 /// is no candidate.
-bool copy_constructible(const clang::CXXRecordDecl* record) {
+bool copy_constructible(const clang::CXXRecordDecl* record, const clang::CXXRecordDecl* caller) {
     for(const auto* ctor: record->ctors()) {
         unsigned qualifiers = 0;
         if(!ctor->isIneligibleOrNotSelected() && ctor->isCopyConstructor(qualifiers) &&
            (qualifiers & clang::Qualifiers::Const)) {
-            return callable(ctor);
+            return callable(ctor, caller);
         }
     }
     return record->hasSimpleCopyConstructor() && !record->hasUserDeclaredMoveOperation();
 }
 
 /// Whether an rvalue of the class constructs it through a constructor
-/// another class may call: its move constructor, or a constructor template
+/// `caller` may call: its move constructor, or a constructor template
 /// taking the class by rvalue reference, as MSVC's standard library writes
-/// a constrained one.
-bool move_constructible(const clang::CXXRecordDecl* record) {
+/// a constrained one. A template counts when nothing keeps it out of
+/// overload resolution that can be told without instantiating it: a
+/// constraint, or a parameter with neither a default nor a deduction.
+bool move_constructible(const clang::CXXRecordDecl* record, const clang::CXXRecordDecl* caller) {
     for(const auto* ctor: record->ctors()) {
         if(!ctor->isIneligibleOrNotSelected() && ctor->isMoveConstructor()) {
-            return callable(ctor);
+            return callable(ctor, caller);
         }
     }
     auto& context = record->getASTContext();
@@ -98,9 +112,12 @@ bool move_constructible(const clang::CXXRecordDecl* record) {
             continue;
         }
         auto parameter = ctor->getParamDecl(0)->getType();
+        const auto* parameters = pattern->getTemplateParameters();
         if(parameter->isRValueReferenceType() &&
-           context.hasSameUnqualifiedType(parameter.getNonReferenceType(), self)) {
-            return callable(ctor);
+           context.hasSameUnqualifiedType(parameter.getNonReferenceType(), self) &&
+           !parameters->getRequiresClause() && !ctor->getTrailingRequiresClause() &&
+           parameters->getMinRequiredArguments() == 0) {
+            return callable(ctor, caller);
         }
     }
     return record->hasSimpleMoveConstructor();
@@ -164,11 +181,15 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
             type = type.getUnqualifiedType();
             const auto* tag =
                 llvm::dyn_cast_if_present<clang::CXXRecordDecl>(unit.resolver().resolve_tag(type));
-            if(const auto* member = tag ? tag->getDefinition() : nullptr;
-               member && !copy_constructible(member)) {
-                if(!move_constructible(member)) {
-                    return;
-                }
+            const auto* member = tag ? tag->getDefinition() : nullptr;
+            bool copies = !member || copy_constructible(member, record);
+            if(!copies && !move_constructible(member, record)) {
+                return;
+            }
+            // Whether a dependent type copies, only its instantiation
+            // tells: by value and moved, the parameter takes copyable and
+            // move-only arguments alike.
+            if(!copies || (type->isDependentType() && !type->isScalarType())) {
                 moves = true;
             } else if(!type->isScalarType()) {
                 type = context.getLValueReferenceType(type.withConst());
@@ -200,10 +221,10 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
     }
     std::vector<TextReplacement> edits;
     if(moves_any && !declares_std_move(context, record->getBeginLoc())) {
-        auto offset = include_insertion_offset(unit);
+        auto insertion = include_insertion(unit);
         edits.push_back({
-            .range = {offset, offset},
-            .text = "#include <utility>\n"
+            .range = {insertion.offset, insertion.offset},
+            .text = insertion.text("<utility>")
         });
     }
     edits.push_back(std::move(*members));

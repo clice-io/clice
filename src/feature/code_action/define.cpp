@@ -163,8 +163,8 @@ bool declaration_only(const clang::syntax::Token& token) {
            token.kind() == clang::tok::kw_explicit;
 }
 
-/// Where the type the decl-specifiers spell is written beneath a return
-/// type's declarator (`const R` of `const R* (*f())(int)`).
+/// Where the type the decl-specifiers spell is written beneath the
+/// pointers and references of a return type (`const R` of `const R*&`).
 clang::TypeLoc specifier_loc(clang::TypeLoc loc) {
     while(true) {
         auto unqualified = loc.getUnqualifiedLoc();
@@ -172,12 +172,6 @@ clang::TypeLoc specifier_loc(clang::TypeLoc loc) {
             loc = pointer.getPointeeLoc();
         } else if(auto reference = unqualified.getAs<clang::ReferenceTypeLoc>()) {
             loc = reference.getPointeeLoc();
-        } else if(auto paren = unqualified.getAs<clang::ParenTypeLoc>()) {
-            loc = paren.getInnerLoc();
-        } else if(auto function = unqualified.getAs<clang::FunctionTypeLoc>()) {
-            loc = function.getReturnLoc();
-        } else if(auto array = unqualified.getAs<clang::ArrayTypeLoc>()) {
-            loc = array.getElementLoc();
         } else {
             return loc;
         }
@@ -523,7 +517,15 @@ private:
     /// long`) fold into the replaced span, the declaration-only ones
     /// dropped.
     void qualify_return_type(std::uint32_t name) {
-        auto loc = specifier_loc(decl->getFunctionTypeLoc().getReturnLoc());
+        auto function = decl->getFunctionTypeLoc();
+        auto returned = function.getReturnLoc();
+        auto outer_begin = offset_of(returned.getBeginLoc());
+        auto outer_end = offset_of(returned.getEndLoc());
+        if(outer_begin && outer_end && *outer_begin < name && name < *outer_end) {
+            trail_return_type(function, *outer_begin, name, *outer_end);
+            return;
+        }
+        auto loc = specifier_loc(returned);
         auto begin = offset_of(loc.getBeginLoc());
         auto end = offset_of(loc.getEndLoc());
         // A constructor's return type has no location; a conversion
@@ -562,6 +564,44 @@ private:
         text += *spelling;
         return_type = {offset_of(*first), offset_of(*last) + last->length()};
         patches.push_back({return_type->first, return_type->second, std::move(text)});
+    }
+
+    /// A return type wrapping the name, a pointer to a function or an
+    /// array (`R (*f())(int)`), moves behind it: spelled before the name,
+    /// its pieces would be looked up at the definition's scope, after it
+    /// in the function's own, where the declaration wrote them.
+    void trail_return_type(clang::FunctionTypeLoc function,
+                           std::uint32_t begin,
+                           std::uint32_t name,
+                           std::uint32_t end) {
+        // The function's own declarator, `f(...) const noexcept`, ends
+        // where the rest of the return type resumes.
+        auto close = offset_of(function.getLocalRangeEnd());
+        if(!close) {
+            return;
+        }
+        auto spelling = type_name(unit.context(),
+                                  decl->getReturnType(),
+                                  decl->getDeclContext(),
+                                  {},
+                                  decl->getDeclContext());
+        if(!spelling) {
+            return;
+        }
+        auto first = std::ranges::find_if(tokens, [&](const clang::syntax::Token& token) {
+            return offset_of(token) >= begin;
+        });
+        while(first != tokens.begin() && is_cv(*std::prev(first))) {
+            --first;
+        }
+        auto last = std::prev(std::ranges::find_if(tokens, [&](const clang::syntax::Token& token) {
+            return offset_of(token) > end;
+        }));
+        return_type = {offset_of(*first), name};
+        patches.push_back({return_type->first, name, "auto "});
+        patches.push_back({*close + unit.token_length(function.getLocalRangeEnd()),
+                           offset_of(*last) + last->length(),
+                           " -> " + *spelling});
     }
 
     CompilationUnitRef unit;
@@ -718,19 +758,25 @@ std::optional<Placement> placement_of(CompilationUnitRef unit, const clang::Func
 
 /// The last definition of the classes a definition of the function needs
 /// complete, its return and parameter types held by value; null when it
-/// needs none, nullopt when one has no definition in this TU. A template
-/// specialization is taken as complete: using it instantiates it. So is
-/// a class the compiler defines itself, such as AArch64's `va_list`.
+/// needs none, nullopt when one has no definition in this TU. A class
+/// template's implicit specialization completes with the template's
+/// definition, instantiated yet or not. A class the compiler defines
+/// itself, such as AArch64's `va_list`, is complete everywhere.
 std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnitRef unit,
                                                             const clang::FunctionDecl* decl) {
     auto& sm = unit.context().getSourceManager();
     const clang::TagDecl* last = nullptr;
     auto need = [&](clang::QualType type) {
         auto* record = type->isDependentType() ? nullptr : type->getAsCXXRecordDecl();
-        if(!record || llvm::isa<clang::ClassTemplateSpecializationDecl>(record)) {
+        if(!record) {
             return true;
         }
         auto* definition = record->getDefinition();
+        if(auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record);
+           specialization && !specialization->isExplicitSpecialization()) {
+            definition =
+                specialization->getSpecializedTemplate()->getTemplatedDecl()->getDefinition();
+        }
         if(!definition) {
             return false;
         }
@@ -752,25 +798,23 @@ std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnitRef u
 }
 
 /// Whether a definition spelled at `from` defines `decl`. `from` must
-/// enclose it, and a function outside a class must sit in namespaces its
-/// qualifier names: one the qualifier skips, unnamed or inline, would
-/// leave the definition declaring a new function. Inside `extern "C"`,
-/// the definition would give a C++ function C linkage.
+/// enclose it, past namespaces its qualifier names: one the qualifier
+/// skips, unnamed or inline, would leave the definition declaring a new
+/// function, or naming the class of a member ambiguously beside a class
+/// of that name outside it. Inside `extern "C"`, the definition would
+/// give a C++ function C linkage.
 bool defines_from(const clang::FunctionDecl* decl, const clang::DeclContext* from) {
     auto* scope = from->getRedeclContext();
     if(!scope->Encloses(decl->getDeclContext())) {
         return false;
     }
-    if(llvm::isa<clang::CXXMethodDecl>(decl)) {
-        return true;
-    }
-    if(from->isExternCContext() && !decl->isExternC()) {
+    if(!llvm::isa<clang::CXXMethodDecl>(decl) && from->isExternCContext() && !decl->isExternC()) {
         return false;
     }
     for(auto* context = decl->getDeclContext()->getRedeclContext(); !context->Equals(scope);
         context = context->getParent()->getRedeclContext()) {
-        auto* ns = llvm::cast<clang::NamespaceDecl>(context);
-        if(ns->isAnonymousNamespace() || ns->isInline()) {
+        auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context);
+        if(ns && (ns->isAnonymousNamespace() || ns->isInline())) {
             return false;
         }
     }

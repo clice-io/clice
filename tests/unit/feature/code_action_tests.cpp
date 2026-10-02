@@ -54,17 +54,22 @@ void run(llvm::StringRef code, llvm::StringRef main = "main.cpp") {
     ASSERT_TRUE(compile("-std=c++23"));
 }
 
-/// The titles of the definitions offered at the marker.
-std::vector<std::string> definitions(llvm::StringRef marker) {
+/// The titles of the actions offered at the marker, those starting with
+/// `prefix`.
+std::vector<std::string> titles(llvm::StringRef marker, llvm::StringRef prefix) {
     auto offset = point(marker);
     actions = feature::code_actions(*unit, {offset, offset});
     std::vector<std::string> titles;
     for(const auto& action: actions) {
-        if(llvm::StringRef(action.title).starts_with("Define")) {
+        if(llvm::StringRef(action.title).starts_with(prefix)) {
             titles.push_back(action.title);
         }
     }
     return titles;
+}
+
+std::vector<std::string> definitions(llvm::StringRef marker) {
+    return titles(marker, "Define");
 }
 
 /// Apply the action titled `title` offered at the marker, its definitions
@@ -183,6 +188,16 @@ struct Outer::Inner {
 )");
     apply("f", "Define 'Outer::Inner<T0_>::f' out of line");
     EXPECT_APPENDED("template <class T0_>\nvoid Outer::Inner<T0_>::f(T0) {\n}\n", "f");
+
+    run(R"(
+#define T0 int
+template <class>
+struct M {
+    void §(f)f();
+};
+)");
+    apply("f", "Define 'M<T0_>::f' out of line");
+    EXPECT_APPENDED("template <class T0_>\nvoid M<T0_>::f() {\n}\n", "f");
 }
 
 TEST_CASE(ConstrainedTemplateParameter) {
@@ -382,14 +397,20 @@ struct Cond {
 }
 
 TEST_CASE(ReturnTypeAroundName) {
-    run(R"(
+    llvm::StringRef code = R"(
 struct S {
     using R = int;
     R (*§(fp)fp())(int);
+    const R (S::*§(mp)mp(int x) const noexcept)();
 };
-)");
+)";
+    run(code);
     apply("fp", "Define 'S::fp' out of line");
-    EXPECT_APPENDED("S::R (*S::fp())(int) {\n}\n", "fp");
+    EXPECT_APPENDED("auto S::fp() -> S::R (*)(int) {\n}\n", "fp");
+
+    run(code);
+    apply("mp", "Define 'S::mp' out of line");
+    EXPECT_APPENDED("auto S::mp(int x) const noexcept -> const S::R (S::*)() {\n}\n", "mp");
 }
 
 TEST_CASE(ReturnTypeTokenEdges) {
@@ -647,6 +668,189 @@ struct C {};
 )");
     apply("g", "Define 'a::g' out of line");
     EXPECT_APPENDED("C a::g() {\n}\n", "g");
+
+    run(R"(
+struct C;
+namespace a {
+inline namespace v1 {
+struct S {
+    void §(f)f(C c);
+};
+}
+}
+struct C {};
+)");
+    EXPECT_EQ(definitions("f"), std::vector<std::string>{});
+
+    run(R"(
+template <class T>
+struct Later;
+struct P {
+    void §(take)take(Later<int> l);
+};
+)");
+    EXPECT_EQ(definitions("take"), std::vector<std::string>{});
+
+    run(R"(
+template <class T>
+struct Later;
+struct P {
+    void §(take)take(Later<int> l);
+};
+template <class T>
+struct Later {};
+)");
+    apply("take", "Define 'P::take' out of line");
+    EXPECT_APPENDED("void P::take(Later<int> l) {\n}\n", "take");
+}
+
+TEST_CASE(DeducedTypeNames) {
+    run(R"(
+namespace n {
+struct X {};
+struct X make();
+int X;
+}
+§(shadowed)auto shadowed = n::make();
+
+template <int* P>
+struct Box {};
+class C {
+    static int x;
+
+public:
+    static auto get() {
+        return Box<&x>{};
+    }
+};
+§(private)auto hidden = C::get();
+)");
+    EXPECT_EQ(titles("shadowed", "Replace"), std::vector<std::string>{});
+    EXPECT_EQ(titles("private", "Replace"), std::vector<std::string>{});
+
+    run(R"(
+int* _Nonnull get();
+const §(p)auto p = get();
+)");
+    apply("p", "Replace 'const auto' with 'int* _Nonnull const'");
+    EXPECT_COMPILES(R"(
+int* _Nonnull get();
+int* _Nonnull const p = get();
+)");
+}
+
+TEST_CASE(ConstructorParameters) {
+    llvm::StringRef move = R"(
+namespace std {
+template <class T>
+T&& move(T& value) {
+    return static_cast<T&&>(value);
+}
+}
+)";
+    run(move.str() + R"(
+struct Handle {
+    Handle() = default;
+    Handle(Handle&&) = default;
+};
+template <class T>
+struct §(holder)Holder {
+    T value;
+    int count;
+};
+Holder<Handle> held(Handle(), 1);
+)");
+    apply("holder", "Generate a memberwise constructor for 'Holder'");
+    EXPECT_COMPILES(move.str() + R"(
+struct Handle {
+    Handle() = default;
+    Handle(Handle&&) = default;
+};
+template <class T>
+struct Holder {
+    T value;
+    int count;
+    Holder(T value, int count) : value(std::move(value)), count(count) {}
+};
+Holder<Handle> held(Handle(), 1);
+)");
+
+    run(R"(
+class Key {
+    friend struct Door;
+    Key(const Key&) = default;
+
+public:
+    Key() = default;
+};
+struct §(door)Door {
+    Key key;
+    int n;
+};
+Door door(Key(), 1);
+)");
+    apply("door", "Generate a memberwise constructor for 'Door'");
+    EXPECT_COMPILES(R"(
+class Key {
+    friend struct Door;
+    Key(const Key&) = default;
+
+public:
+    Key() = default;
+};
+struct Door {
+    Key key;
+    int n;
+    Door(const Key& key, int n) : key(key), n(n) {}
+};
+Door door(Key(), 1);
+)");
+
+    run(R"(
+struct Pinned {
+    Pinned(const Pinned&) = delete;
+    template <class U = int>
+        requires(sizeof(U) > 64)
+    Pinned(Pinned&&);
+};
+struct Stuck {
+    Stuck(const Stuck&) = delete;
+    template <class U>
+    Stuck(Stuck&&);
+};
+struct §(pinned)OnPinned {
+    Pinned pinned;
+    int n;
+};
+struct §(stuck)OnStuck {
+    Stuck stuck;
+    int n;
+};
+)");
+    EXPECT_EQ(titles("pinned", "Generate"), std::vector<std::string>{});
+    EXPECT_EQ(titles("stuck", "Generate"), std::vector<std::string>{});
+}
+
+TEST_CASE(MacroAcrossLines) {
+    run(R"(
+#define FLAG 1
+#if 1 /*
+*/ && §(flag)FLAG
+#endif
+#define NEG -1
+int a = 1 -\
+§(neg)NEG;
+)");
+    EXPECT_EQ(titles("flag", "Expand"), std::vector<std::string>{});
+    apply("neg", "Expand macro 'NEG'");
+    EXPECT_COMPILES(R"(
+#define FLAG 1
+#if 1 /*
+*/ && FLAG
+#endif
+#define NEG -1
+int a = 1 - -1;
+)");
 }
 
 TEST_CASE(LayoutKeptWithoutStyle) {

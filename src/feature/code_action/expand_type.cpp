@@ -99,7 +99,12 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     // specifiers, or possibly spelled by a macro among them, is out of
     // reach.
     auto content = unit.main_content();
-    if(printed.ends_with('*')) {
+    // Nullability attributes print after the `*` they qualify.
+    const auto* declarator = deduced->getTypePtr();
+    while(auto* attributed = llvm::dyn_cast<clang::AttributedType>(declarator)) {
+        declarator = attributed->getModifiedType().getTypePtr();
+    }
+    if(llvm::isa<clang::PointerType, clang::MemberPointerType>(declarator)) {
         auto tokens = unit.spelled_tokens(unit.main_file());
         const auto* at = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
             return unit.file_offset(token.location()) < range->begin;
