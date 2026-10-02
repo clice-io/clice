@@ -448,8 +448,16 @@ private:
                 return std::nullopt;
             }
             auto spelled = type_name(unit.context(), type, from, {}, decl->getDeclContext());
-            if(spelled && names_parameter(*spelled)) {
-                return std::nullopt;
+            if(!spelled || parameter_names(*spelled).empty()) {
+                return spelled;
+            }
+            // Spelled from the global scope, every name a parameter would
+            // capture is a global one, anchored there.
+            spelled = type_name(unit.context(), type, unit.tu(), {}, decl->getDeclContext());
+            if(spelled) {
+                for(auto offset: llvm::reverse(parameter_names(*spelled))) {
+                    spelled->insert(offset, "::");
+                }
             }
             return spelled;
         }
@@ -460,12 +468,11 @@ private:
         return qualifiers.empty() ? spelled : qualifiers.getAsString() + " " + spelled;
     }
 
-    /// Whether a name `spelling` leaves unqualified is a template parameter
-    /// of the function or a class around it: the definition's template
-    /// heads declare those again, in front of `from`, which type_name looks
-    /// names up in. Inside the class the declaration had to spell around
-    /// them too, so it is copied as written instead.
-    bool names_parameter(llvm::StringRef spelling) {
+    /// Where `spelling` leaves a template parameter's name unqualified, of
+    /// the function or a class around it: the definition's template heads
+    /// declare those again in front of `from`, where type_name looked the
+    /// names up.
+    llvm::SmallVector<std::size_t> parameter_names(llvm::StringRef spelling) {
         llvm::StringSet<> parameters;
         for(const clang::DeclContext* context = decl;
             llvm::isa<clang::FunctionDecl, clang::CXXRecordDecl>(context);
@@ -479,18 +486,29 @@ private:
         auto identifier = [](char c) {
             return llvm::isAlnum(c) || c == '_';
         };
+        llvm::SmallVector<std::size_t> offsets;
         for(std::size_t at = 0; at < spelling.size();) {
+            // A literal's text names nothing.
+            if(spelling[at] == '"' || spelling[at] == '\'') {
+                auto quote = spelling[at];
+                at += 1;
+                while(at < spelling.size() && spelling[at] != quote) {
+                    at += spelling[at] == '\\' ? 2 : 1;
+                }
+                at += 1;
+                continue;
+            }
             auto word = spelling.substr(at).take_while(identifier);
             if(word.empty()) {
                 at += 1;
                 continue;
             }
             if(!spelling.take_front(at).ends_with("::") && parameters.contains(word)) {
-                return true;
+                offsets.push_back(at);
             }
             at += word.size();
         }
-        return false;
+        return offsets;
     }
 
     /// The decl-specifiers are looked up at the definition's scope, unlike

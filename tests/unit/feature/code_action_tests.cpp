@@ -259,7 +259,7 @@ struct S {
 };
 
 template <class T>
-::app::T S<T>::f() {
+app::T S<T>::f() {
 }
 
 }
@@ -287,6 +287,35 @@ template <class G>
 }
 )",
                     "g");
+
+    llvm::StringRef global = R"(
+struct T {};
+template <char C>
+struct Tag {};
+template <class T>
+struct S {
+    ::T §(f)f();
+    Tag<'T'> §(tag)tag();
+};
+)";
+    run(global);
+    apply("f", "Define 'S<T>::f' out of line");
+    EXPECT_APPENDED("template <class T>\n::T S<T>::f() {\n}\n", "f");
+
+    run(global);
+    apply("tag", "Define 'S<T>::tag' out of line");
+    EXPECT_APPENDED("template <class T>\nTag<'T'> S<T>::tag() {\n}\n", "tag");
+
+    run(R"(
+template <class>
+concept C = true;
+template <class C, ::C U>
+struct Box {
+    void §(f)f();
+};
+)");
+    apply("f", "Define 'Box<C, U>::f' out of line");
+    EXPECT_APPENDED("template <class C, ::C U>\nvoid Box<C, U>::f() {\n}\n", "f");
 }
 
 TEST_CASE(TemplateMemberReturnType) {
